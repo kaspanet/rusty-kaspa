@@ -66,6 +66,7 @@ pub trait RollupCovenant {
 impl RollupCovenant for ScriptBuilder {
     type Error = kaspa_txscript::script_builder::ScriptBuilderError;
 
+    // ANCHOR: stash_prev_values
     fn stash_prev_values(&mut self) -> Result<&mut Self, Self::Error> {
         // Stack: [..., block_prove_to, new_app_state_hash, prev_seq_commitment, prev_state_hash]
         self.add_op(OpToAltStack)?;
@@ -73,6 +74,7 @@ impl RollupCovenant for ScriptBuilder {
         self.add_op(OpToAltStack)
         // Stack: [..., block_prove_to, new_app_state_hash], alt:[prev_state_hash, prev_seq_commitment]
     }
+    // ANCHOR_END: stash_prev_values
 
     fn obtain_new_seq_commitment(&mut self) -> Result<&mut Self, Self::Error> {
         // Stack: [..., block_prove_to, new_app_state_hash]
@@ -129,6 +131,7 @@ impl RollupCovenant for ScriptBuilder {
         self.add_op(OpCat)
     }
 
+    // ANCHOR: build_and_hash_journal
     fn build_and_hash_journal(&mut self) -> Result<&mut Self, Self::Error> {
         // Stack:     [...]
         // Alt stack (top→bottom): [new_seq, new_state, prev_seq, prev_state]
@@ -159,7 +162,9 @@ impl RollupCovenant for ScriptBuilder {
         self.verify_outputs_and_append_perm_hash()?;
         self.add_op(OpSHA256) // [..., journal_hash]
     }
+    // ANCHOR_END: build_and_hash_journal
 
+    // ANCHOR: verify_outputs_append_perm
     fn verify_outputs_and_append_perm_hash(&mut self) -> Result<&mut Self, Self::Error> {
         // Stack: [..., base_preimage]
         // Read covenant output count via introspection.
@@ -204,4 +209,5 @@ impl RollupCovenant for ScriptBuilder {
         // Stack: [..., base] (160B, unchanged)
         self.add_op(OpEndIf)
     }
+    // ANCHOR_END: verify_outputs_append_perm
 }

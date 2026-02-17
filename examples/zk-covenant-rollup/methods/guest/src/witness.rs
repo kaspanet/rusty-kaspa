@@ -38,6 +38,7 @@ impl PrevTxV1WitnessData {
     }
 }
 
+// ANCHOR: transfer_witness
 /// Complete witness data for a transfer action
 pub struct TransferWitness {
     /// Source account SMT witness
@@ -57,7 +58,9 @@ impl TransferWitness {
         }
     }
 }
+// ANCHOR_END: transfer_witness
 
+// ANCHOR: exit_witness
 /// Witness data for an exit (withdrawal) action.
 ///
 /// Exits debit the source account and create a permission tree leaf.
@@ -74,7 +77,9 @@ impl ExitWitness {
         Self { source: input::read_account_witness(stdin), prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin) }
     }
 }
+// ANCHOR_END: exit_witness
 
+// ANCHOR: entry_witness
 /// Witness data for an entry (deposit) action.
 ///
 /// Entry deposits don't need source authorization (no source account).
@@ -93,3 +98,4 @@ impl EntryWitness {
         Self { dest: input::read_account_witness(stdin), rest_preimage: input::read_aligned_bytes(stdin) }
     }
 }
+// ANCHOR_END: entry_witness

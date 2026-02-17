@@ -17,13 +17,16 @@ const EMPTY_DOMAIN: &[u8; 8] = b"SMTEmpty";
 /// Domain prefix for branch hashing
 const BRANCH_DOMAIN: &[u8; 9] = b"SMTBranch";
 
+// ANCHOR: empty_leaf_hash
 /// Compute the hash of an empty leaf
 pub fn empty_leaf_hash() -> [u32; 8] {
     let hasher = sha2::Sha256::new_with_prefix(EMPTY_DOMAIN);
     let result: [u8; 32] = hasher.finalize().into();
     crate::bytes_to_words(result)
 }
+// ANCHOR_END: empty_leaf_hash
 
+// ANCHOR: leaf_hash
 /// Compute the hash of an account leaf: sha256("SMTLeaf" || pubkey || balance_le_bytes)
 pub fn leaf_hash(pubkey: &[u32; 8], balance: u64) -> [u32; 8] {
     let mut hasher = sha2::Sha256::new_with_prefix(LEAF_DOMAIN);
@@ -32,7 +35,9 @@ pub fn leaf_hash(pubkey: &[u32; 8], balance: u64) -> [u32; 8] {
     let result: [u8; 32] = hasher.finalize().into();
     crate::bytes_to_words(result)
 }
+// ANCHOR_END: leaf_hash
 
+// ANCHOR: branch_hash
 /// Compute the hash of two sibling nodes: sha256("SMTBranch" || left || right)
 pub fn branch_hash(left: &[u32; 8], right: &[u32; 8]) -> [u32; 8] {
     let mut hasher = sha2::Sha256::new_with_prefix(BRANCH_DOMAIN);
@@ -41,12 +46,16 @@ pub fn branch_hash(left: &[u32; 8], right: &[u32; 8]) -> [u32; 8] {
     let result: [u8; 32] = hasher.finalize().into();
     crate::bytes_to_words(result)
 }
+// ANCHOR_END: branch_hash
 
+// ANCHOR: key_to_index
 /// Get the key index (0-255) from a pubkey (uses first byte)
 pub fn key_to_index(pubkey: &[u32; 8]) -> u8 {
     bytemuck::bytes_of(pubkey)[0]
 }
+// ANCHOR_END: key_to_index
 
+// ANCHOR: smt_proof
 /// SMT proof structure for 8-level tree
 /// Contains sibling hashes at each level from leaf to root
 #[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -55,6 +64,7 @@ pub struct SmtProof {
     /// Sibling hashes from leaf (level 0) to root (level 7)
     pub siblings: [[u32; 8]; SMT_DEPTH],
 }
+// ANCHOR_END: smt_proof
 
 impl SmtProof {
     /// Create an empty proof (all zeros - used for new trees)

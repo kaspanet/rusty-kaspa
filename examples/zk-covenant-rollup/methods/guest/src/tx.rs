@@ -12,6 +12,7 @@ pub fn read_v0_tx(stdin: &mut impl WordRead) -> [u32; 8] {
     input::read_hash(stdin)
 }
 
+// ANCHOR: v1_tx_data
 /// V1 transaction data after reading from stdin
 pub struct V1TxData {
     pub tx_id: [u32; 8],
@@ -21,7 +22,9 @@ pub struct V1TxData {
     /// Needed by entry actions to verify output amounts via rest_preimage.
     pub rest_digest: [u32; 8],
 }
+// ANCHOR_END: v1_tx_data
 
+// ANCHOR: read_v1_tx_data
 /// Read V1 transaction data and compute tx_id
 ///
 /// The guest determines whether this is an action transaction based on:
@@ -71,7 +74,9 @@ pub fn read_v1_tx_data(stdin: &mut impl WordRead) -> V1TxData {
 
     V1TxData { tx_id, action: valid_action, rest_digest }
 }
+// ANCHOR_END: read_v1_tx_data
 
+// ANCHOR: parse_action
 /// Parse action from payload words
 fn parse_action(payload: &[u32]) -> Option<Action> {
     let (header_words, rest) = payload.split_first_chunk::<{ ActionHeader::WORDS }>()?;
@@ -101,3 +106,4 @@ fn parse_action(payload: &[u32]) -> Option<Action> {
         _ => None, // Unknown operation
     }
 }
+// ANCHOR_END: parse_action

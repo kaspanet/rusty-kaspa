@@ -8,6 +8,7 @@ use zk_covenant_rollup_core::{
 
 use crate::{auth, input, state, tx, witness::EntryWitness, witness::ExitWitness, witness::TransferWitness};
 
+// ANCHOR: process_block
 /// Process all transactions in a block, updating state and building merkle tree
 pub fn process_block(
     stdin: &mut impl WordRead,
@@ -26,6 +27,7 @@ pub fn process_block(
 
     merkle_builder.finalize()
 }
+// ANCHOR_END: process_block
 
 /// Process a single transaction
 fn process_transaction(
@@ -62,6 +64,7 @@ fn process_v1_transaction(
     tx_data.tx_id
 }
 
+// ANCHOR: process_action
 /// Process a valid action transaction
 ///
 /// Called only when guest has cryptographically determined this is a valid action.
@@ -80,7 +83,9 @@ fn process_action(
         Action::Exit(exit) => process_exit(stdin, state_root, exit, perm_builder),
     }
 }
+// ANCHOR_END: process_action
 
+// ANCHOR: process_transfer
 /// Process a transfer action
 fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transfer: TransferAction) {
     let witness = TransferWitness::read_from_stdin(stdin);
@@ -97,7 +102,9 @@ fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transf
         *state_root = new_root;
     }
 }
+// ANCHOR_END: process_transfer
 
+// ANCHOR: process_entry
 /// Process an entry (deposit) action
 ///
 /// Entry actions credit a destination account with the deposit amount.
@@ -147,7 +154,9 @@ fn process_entry(
         *state_root = new_root;
     }
 }
+// ANCHOR_END: process_entry
 
+// ANCHOR: process_exit
 /// Process an exit (withdrawal) action
 ///
 /// Exits debit the source account and accumulate a permission tree leaf.
@@ -170,3 +179,4 @@ fn process_exit(
         perm_builder.add_leaf(perm_leaf_hash(exit.destination_spk_bytes(), exit.amount));
     }
 }
+// ANCHOR_END: process_exit

@@ -1,0 +1,2243 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>ZK Covenant Rollup</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-4bd57660.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-352428e6.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">ZK Covenant Rollup</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>This book documents the <strong>ZK Covenant Rollup</strong>, a proof-of-concept Layer 2 rollup bridge built on Kaspa using covenants and zero-knowledge proofs.</p>
+<h2 id="what-is-this"><a class="header" href="#what-is-this">What is this?</a></h2>
+<p>The ZK Covenant Rollup demonstrates how off-chain state transitions can be proven with <a href="https://www.risczero.com/">RISC Zero</a> and verified on-chain through Kaspa’s covenant mechanism. Users deposit funds into a covenant-controlled UTXO, perform off-chain transfers on an account-based L2, and withdraw back to L1 — all enforced cryptographically without trusting the rollup operator.</p>
+<p>The system has three core properties:</p>
+<ol>
+<li><strong>Validity</strong> — Every state transition is backed by a ZK proof. The on-chain script rejects any update that fails verification.</li>
+<li><strong>Liveness</strong> — Withdrawals are processed through a permission tree. Once the guest proof commits an exit, the on-chain permission script allows anyone to claim it.</li>
+<li><strong>Soundness</strong> — The guest proof pipeline verifies every action’s authorization, balance sufficiency, and SMT consistency. A malicious host cannot forge state updates.</li>
+</ol>
+<h2 id="high-level-flow"><a class="header" href="#high-level-flow">High-level flow</a></h2>
+<pre class="mermaid">flowchart LR
+    subgraph L1["Kaspa L1"]
+        UTXO["Covenant UTXO&lt;br/&gt;(state root + seq commitment)"]
+        PERM["Permission UTXO&lt;br/&gt;(withdrawal claims)"]
+    end
+
+    subgraph OffChain["Off-Chain"]
+        HOST["Host / Operator"]
+        GUEST["RISC Zero Guest&lt;br/&gt;(ZK proof)"]
+    end
+
+    HOST --&gt;|"blocks + witnesses"| GUEST
+    GUEST --&gt;|"proof + journal"| HOST
+    HOST --&gt;|"state tx&lt;br/&gt;(proof, new state)"| UTXO
+    UTXO --&gt;|"spawns if exits"| PERM
+    PERM --&gt;|"withdrawal claim"| USER["User L1 wallet"]
+</pre>
+
+<p><strong>Deposit (Entry):</strong> A user sends funds to the delegate script address. The next proof batch picks up the deposit transaction, verifies the output pays the correct covenant-bound P2SH, and credits the L2 account.</p>
+<p><strong>Transfer:</strong> An L2 user signs a transfer payload. The guest verifies the signature via previous-transaction output introspection and updates the SMT.</p>
+<p><strong>Withdrawal (Exit):</strong> An L2 user creates an exit action. The guest debits their account and adds a leaf to the permission tree. The on-chain permission script lets anyone claim the withdrawal by presenting a Merkle proof.</p>
+<h2 id="scope"><a class="header" href="#scope">Scope</a></h2>
+<p>This book covers the <strong>PoC logic only</strong>: the core library, guest proof program, and on-chain script construction. The host binary (demo runner) is not documented — it will become a library crate.</p>
+<h2 id="reading-guide"><a class="header" href="#reading-guide">Reading guide</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>You want to…</th><th>Start at</th></tr>
+</thead>
+<tbody>
+<tr><td>Understand the architecture</td><td><a href="#architecture">Chapter 2: Architecture</a></td></tr>
+<tr><td>Learn the data model</td><td><a href="#account-model">Chapter 3: Account Model</a></td></tr>
+<tr><td>See how proofs work</td><td><a href="#guest-proof-pipeline">Chapter 5: Guest Proof Pipeline</a></td></tr>
+<tr><td>Understand on-chain scripts</td><td><a href="#state-verification-script">Chapter 7: State Verification</a></td></tr>
+<tr><td>Audit security properties</td><td><a href="#security-model">Chapter 11: Security Model</a></td></tr>
+<tr><td>Look up a domain separator</td><td><a href="#appendix-a-domain-separators">Appendix A</a></td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
+<p>The ZK Covenant Rollup is organized into three layers, each running in a different environment. All cryptographic invariants are enforced at layer boundaries.</p>
+<h2 id="three-layer-design"><a class="header" href="#three-layer-design">Three-layer design</a></h2>
+<pre class="mermaid">flowchart TB
+    subgraph Layer1["Layer 1: On-Chain Scripts"]
+        direction LR
+        REDEEM["State Verification&lt;br/&gt;redeem script"]
+        PERM_SCRIPT["Permission&lt;br/&gt;redeem script"]
+        DELEGATE["Delegate/Entry&lt;br/&gt;script"]
+    end
+
+    subgraph Layer2["Layer 2: ZK Guest (RISC-V)"]
+        direction LR
+        GUEST["Guest main()"]
+        BLOCK["Block processor"]
+        STATE["State updater"]
+        JOURNAL["Journal writer"]
+    end
+
+    subgraph Layer3["Layer 3: Host / Core"]
+        direction LR
+        CORE["Core library&lt;br/&gt;(no_std)"]
+        HOST_BIN["Host binary&lt;br/&gt;(script builders)"]
+    end
+
+    Layer3 --&gt;|"witnesses + blocks"| Layer2
+    Layer2 --&gt;|"proof + journal"| Layer1
+    CORE -.-&gt;|"shared types"| Layer2
+    CORE -.-&gt;|"shared types"| Layer1
+</pre>
+
+<h2 id="crate-map"><a class="header" href="#crate-map">Crate map</a></h2>
+<p>The project consists of four crates:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Crate</th><th>Path</th><th>Target</th><th>Role</th></tr>
+</thead>
+<tbody>
+<tr><td><code>zk-covenant-rollup-core</code></td><td><code>core/</code></td><td><code>no_std</code> (RISC-V + native)</td><td>Shared types, hash functions, script construction</td></tr>
+<tr><td><code>zk-covenant-rollup-guest</code></td><td><code>methods/guest/</code></td><td>RISC-V (<code>riscv32im-risc0-zkvm-elf</code>)</td><td>ZK proof program</td></tr>
+<tr><td><code>zk-covenant-rollup-methods</code></td><td><code>methods/</code></td><td>native</td><td>Build harness for guest ELF</td></tr>
+<tr><td><code>zk-covenant-rollup-host</code></td><td><code>host/</code></td><td>native</td><td>Demo runner, script builders, tests</td></tr>
+</tbody>
+</table>
+</div>
+<pre class="mermaid">graph TD
+    GUEST["guest&lt;br/&gt;&lt;i&gt;methods/guest/&lt;/i&gt;"]
+    CORE["core&lt;br/&gt;&lt;i&gt;core/&lt;/i&gt;"]
+    METHODS["methods&lt;br/&gt;&lt;i&gt;methods/&lt;/i&gt;"]
+    HOST["host&lt;br/&gt;&lt;i&gt;host/&lt;/i&gt;"]
+
+    GUEST --&gt; CORE
+    GUEST --&gt; RISC0_ZKVM["risc0-zkvm"]
+    HOST --&gt; CORE
+    HOST --&gt; METHODS
+    HOST --&gt; KASPA["kaspa-txscript"]
+    METHODS --&gt; GUEST
+    CORE --&gt; SHA2["sha2"]
+    CORE --&gt; BLAKE3["blake3"]
+    CORE --&gt; BLAKE2B["blake2b-simd"]
+    CORE --&gt; BYTEMUCK["bytemuck"]
+</pre>
+
+<h3 id="core-no_std"><a class="header" href="#core-no_std">Core (<code>no_std</code>)</a></h3>
+<p>The core crate runs in <strong>both</strong> the RISC-V guest and on native. It is <code>no_std</code> with <code>alloc</code> support. Key responsibilities:</p>
+<ul>
+<li><strong>Data types</strong> — <code>PublicInput</code>, <code>Account</code>, <code>AccountWitness</code>, <code>ActionHeader</code>, action payloads</li>
+<li><strong>SMT</strong> — 8-level Sparse Merkle Tree with SHA-256 domain-separated hashing</li>
+<li><strong>Sequence commitment</strong> — Blake3-based streaming Merkle tree for block chaining</li>
+<li><strong>Permission tree</strong> — SHA-256 Merkle tree of withdrawal claims</li>
+<li><strong>Permission script</strong> — Byte-level redeem script construction (<code>no_std</code> compatible)</li>
+<li><strong>P2SH / P2PK</strong> — Script public key helpers</li>
+<li><strong>Transaction ID</strong> — V0 (blake2b) and V1 (blake3 payload + rest) computation</li>
+</ul>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C, align(4))]
+pub struct PublicInput {
+    pub prev_state_hash: [u32; 8],
+
+    pub prev_seq_commitment: [u32; 8],
+
+    pub covenant_id: [u32; 8],
+}
+<span class="boring">}</span></code></pre>
+<h3 id="guest-risc-v"><a class="header" href="#guest-risc-v">Guest (RISC-V)</a></h3>
+<p>The guest runs inside the RISC Zero zkVM. It reads <code>PublicInput</code> and witness data from stdin, processes all blocks, and writes a journal that the on-chain script verifies.</p>
+<pre class="playground"><code class="language-rust">pub fn main() {
+    let mut stdin = env::stdin();
+
+    // Read and verify public input
+    let public_input = input::read_public_input(&amp;mut stdin);
+    let mut state_root = public_input.prev_state_hash;
+
+    // Process all blocks
+    let chain_len = input::read_u32(&amp;mut stdin);
+    let mut seq_commitment = public_input.prev_seq_commitment;
+    let mut perm_builder = StreamingPermTreeBuilder::new();
+
+    for _ in 0..chain_len {
+        let block_root = block::process_block(&amp;mut stdin, &amp;mut state_root, &amp;public_input.covenant_id, &amp;mut perm_builder);
+        seq_commitment = calc_accepted_id_merkle_root(&amp;seq_commitment, &amp;block_root);
+    }
+
+    // Build permission output if exits occurred
+    let perm_count = perm_builder.leaf_count();
+    let permission_spk_hash = if perm_count &gt; 0 {
+        // Read expected redeem script length from host (private input)
+        let perm_redeem_script_len = input::read_u32(&amp;mut stdin) as i64;
+
+        let depth = required_depth(perm_count as usize);
+        let perm_root = pad_to_depth(perm_builder.finalize(), perm_count, depth);
+
+        // Build once with host-provided length, then assert
+        let perm_redeem =
+            build_permission_redeem_bytes(&amp;perm_root, perm_count as u64, depth, perm_redeem_script_len, MAX_DELEGATE_INPUTS);
+        assert_eq!(perm_redeem.len() as i64, perm_redeem_script_len, "permission redeem script length mismatch");
+
+        // blake2b hash → script_hash
+        let script_hash = blake2b_script_hash(&amp;perm_redeem);
+        Some(bytes_to_words(script_hash))
+    } else {
+        None
+    };
+
+    // Write journal output
+    journal::write_output(&amp;public_input, &amp;state_root, &amp;seq_commitment, permission_spk_hash.as_ref());
+}</code></pre>
+<p>The guest is <strong>deterministic</strong>: given the same inputs, it always produces the same journal. The host cannot influence the output except by providing different (but valid) witness data.</p>
+<h3 id="host"><a class="header" href="#host">Host</a></h3>
+<p>The host crate builds transactions and runs the demo. It uses <code>kaspa-txscript</code>’s <code>ScriptBuilder</code> for the state verification and permission redeem scripts. The host is <strong>not trusted</strong> — everything it produces is verified either by the guest (inside the ZK proof) or by the on-chain script.</p>
+<h2 id="what-runs-where"><a class="header" href="#what-runs-where">What runs where</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Component</th><th>Environment</th><th>Trusted?</th><th>Verified by</th></tr>
+</thead>
+<tbody>
+<tr><td>Core types &amp; hashes</td><td>Everywhere</td><td>N/A (library)</td><td>—</td></tr>
+<tr><td>Guest proof program</td><td>RISC Zero zkVM</td><td>Yes (proven)</td><td>ZK verifier on-chain</td></tr>
+<tr><td>State verification script</td><td>Kaspa node</td><td>Yes (consensus)</td><td>All full nodes</td></tr>
+<tr><td>Permission script</td><td>Kaspa node</td><td>Yes (consensus)</td><td>All full nodes</td></tr>
+<tr><td>Delegate script</td><td>Kaspa node</td><td>Yes (consensus)</td><td>All full nodes</td></tr>
+<tr><td>Host / operator</td><td>Off-chain</td><td><strong>No</strong></td><td>Guest + on-chain scripts</td></tr>
+</tbody>
+</table>
+</div>
+<p>The host can:</p>
+<ul>
+<li>Choose which blocks/transactions to include</li>
+<li>Provide witness data (SMT proofs, prev tx preimages)</li>
+<li>Set the order of actions within a block</li>
+</ul>
+<p>The host <strong>cannot</strong>:</p>
+<ul>
+<li>Forge a valid ZK proof for an invalid state transition</li>
+<li>Steal funds (covenant enforcement)</li>
+<li>Credit accounts without real deposits (SPK verification)</li>
+<li>Process withdrawals without proper authorization (prev tx proof)</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="account-model"><a class="header" href="#account-model">Account Model</a></h1>
+<p>The rollup uses an account-based state model backed by a Sparse Merkle Tree (SMT). Each account maps a 32-byte public key to a balance, and the entire state is summarized by a single 32-byte root hash.</p>
+<h2 id="sparse-merkle-tree"><a class="header" href="#sparse-merkle-tree">Sparse Merkle Tree</a></h2>
+<p>The SMT has <strong>8 levels</strong> supporting up to <strong>256 accounts</strong> — sufficient for the PoC. The tree uses SHA-256 with domain-separated hashing at every level to prevent second-preimage attacks across domains.</p>
+<pre class="mermaid">graph TB
+    ROOT["Root (level 8)"]
+    B0["Branch"]
+    B1["Branch"]
+    B00["Branch"]
+    B01["Branch"]
+    B10["Branch"]
+    B11["Branch"]
+    L0["Leaf 0"]
+    L1["Leaf 1"]
+    L2["Leaf 2"]
+    L3["..."]
+    L255["Leaf 255"]
+
+    ROOT --- B0
+    ROOT --- B1
+    B0 --- B00
+    B0 --- B01
+    B1 --- B10
+    B1 --- B11
+    B00 --- L0
+    B00 --- L1
+    B01 --- L2
+    B01 --- L3
+    B11 --- L255
+</pre>
+
+<h3 id="hash-functions"><a class="header" href="#hash-functions">Hash functions</a></h3>
+<p>All SMT hashes use SHA-256 with distinct domain prefixes:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Compute the hash of an account leaf: sha256("SMTLeaf" || pubkey || balance_le_bytes)
+pub fn leaf_hash(pubkey: &amp;[u32; 8], balance: u64) -&gt; [u32; 8] {
+    let mut hasher = sha2::Sha256::new_with_prefix(LEAF_DOMAIN);
+    hasher.update(bytemuck::bytes_of(pubkey));
+    hasher.update(balance.to_le_bytes());
+    let result: [u8; 32] = hasher.finalize().into();
+    crate::bytes_to_words(result)
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Compute the hash of two sibling nodes: sha256("SMTBranch" || left || right)
+pub fn branch_hash(left: &amp;[u32; 8], right: &amp;[u32; 8]) -&gt; [u32; 8] {
+    let mut hasher = sha2::Sha256::new_with_prefix(BRANCH_DOMAIN);
+    hasher.update(bytemuck::bytes_of(left));
+    hasher.update(bytemuck::bytes_of(right));
+    let result: [u8; 32] = hasher.finalize().into();
+    crate::bytes_to_words(result)
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Compute the hash of an empty leaf
+pub fn empty_leaf_hash() -&gt; [u32; 8] {
+    let hasher = sha2::Sha256::new_with_prefix(EMPTY_DOMAIN);
+    let result: [u8; 32] = hasher.finalize().into();
+    crate::bytes_to_words(result)
+}
+<span class="boring">}</span></code></pre>
+<h3 id="key-mapping"><a class="header" href="#key-mapping">Key mapping</a></h3>
+<p>Account position in the tree is determined by the first byte of the public key:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Get the key index (0-255) from a pubkey (uses first byte)
+pub fn key_to_index(pubkey: &amp;[u32; 8]) -&gt; u8 {
+    bytemuck::bytes_of(pubkey)[0]
+}
+<span class="boring">}</span></code></pre>
+<p>This means two accounts whose pubkeys share the same first byte would collide. For a 256-slot PoC this is acceptable; a production system would use a deeper tree with a proper hash-based index.</p>
+<h3 id="smt-proof"><a class="header" href="#smt-proof">SMT proof</a></h3>
+<p>A proof consists of 8 sibling hashes — one per tree level. Verification walks from leaf to root, choosing left/right based on the key bits:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// SMT proof structure for 8-level tree
+/// Contains sibling hashes at each level from leaf to root
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct SmtProof {
+    /// Sibling hashes from leaf (level 0) to root (level 7)
+    pub siblings: [[u32; 8]; SMT_DEPTH],
+}
+<span class="boring">}</span></code></pre>
+<h2 id="account-and-accountwitness"><a class="header" href="#account-and-accountwitness">Account and AccountWitness</a></h2>
+<p>An <code>Account</code> is a <code>(pubkey, balance)</code> pair (40 bytes). An <code>AccountWitness</code> adds the SMT proof so the guest can verify membership and compute updated roots:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Account structure (40 bytes)
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct Account {
+    /// Account pubkey (32 bytes as [u32; 8])
+    pub pubkey: [u32; 8],
+    /// Account balance (8 bytes)
+    pub balance: u64,
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Witness for a single account in the SMT
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct AccountWitness {
+    /// Account pubkey (32 bytes as [u32; 8])
+    pub pubkey: [u32; 8],
+    /// Account balance (8 bytes)
+    pub balance: u64,
+    /// SMT proof for this account
+    pub proof: SmtProof,
+}
+<span class="boring">}</span></code></pre>
+<h2 id="empty-tree-root"><a class="header" href="#empty-tree-root">Empty tree root</a></h2>
+<p>The empty tree root is computed deterministically by hashing empty leaves upward through all 8 levels:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Compute empty tree root
+pub fn empty_tree_root() -&gt; StateRoot {
+    let empty_leaf = smt::empty_leaf_hash();
+    let mut current = empty_leaf;
+    for _ in 0..SMT_DEPTH {
+        current = smt::branch_hash(&amp;current, &amp;current);
+    }
+    current
+}
+<span class="boring">}</span></code></pre>
+<h2 id="state-root-type"><a class="header" href="#state-root-type">State root type</a></h2>
+<p>The state root is simply <code>[u32; 8]</code> — a 32-byte SHA-256 hash stored as 8 words for zkVM alignment efficiency. See <code>core/src/state.rs:93</code> for the type alias.</p>
+<h2 id="design-rationale"><a class="header" href="#design-rationale">Design rationale</a></h2>
+<p><strong>Why SHA-256?</strong> The RISC Zero zkVM has accelerated SHA-256 support, making it the cheapest hash function inside the guest. All account-state hashing uses SHA-256 for this reason.</p>
+<p><strong>Why <code>[u32; 8]</code> instead of <code>[u8; 32]</code>?</strong> The zkVM operates on 32-bit words. Using <code>[u32; 8]</code> avoids alignment issues and unnecessary byte shuffling. The <code>bytemuck</code> crate provides zero-copy conversion when byte-level access is needed.</p>
+<p><strong>Why 8 levels?</strong> The PoC targets a small number of accounts for demonstration. The depth is a constant (<code>SMT_DEPTH</code>) and could be increased for production use.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="action-types"><a class="header" href="#action-types">Action Types</a></h1>
+<p>Actions are the state-transition primitives of the rollup. Each action is encoded in a Kaspa transaction payload and identified by its operation code.</p>
+<h2 id="action-identification"><a class="header" href="#action-identification">Action identification</a></h2>
+<p>A transaction is recognized as an action when its <code>tx_id</code> starts with the magic prefix byte <code>0x41</code> (<code>'A'</code>):</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Single byte prefix for action transaction IDs (0x41 = 'A')
+/// Using a single byte makes it ~256x easier to find valid nonces for testing
+pub const ACTION_TX_ID_PREFIX: u8 = b'A';
+
+/// Check if a tx_id represents an action transaction (first byte matches prefix)
+#[inline]
+pub fn is_action_tx_id(tx_id: &amp;[u32; 8]) -&gt; bool {
+    (tx_id[0] as u8) == ACTION_TX_ID_PREFIX
+}
+<span class="boring">}</span></code></pre>
+<p>The host mines a <code>nonce</code> in the <code>ActionHeader</code> until the resulting <code>tx_id</code> starts with this prefix. Using a single byte means roughly 1 in 256 nonces will match — fast enough for testing.</p>
+<h2 id="action-header"><a class="header" href="#action-header">Action header</a></h2>
+<p>Every action payload starts with an 8-byte header:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Action header (common to all actions)
+///
+/// Layout:
+/// - version: u16 (2 bytes)
+/// - operation: u16 (2 bytes) - determines action type and data size
+/// - nonce: u32 (4 bytes) - for tx_id matching
+///
+/// Total: 8 bytes = 2 words
+///
+/// After reading the header, read action-specific data based on operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct ActionHeader {
+    /// Format version
+    pub version: u16,
+    /// Operation type - determines what data follows
+    pub operation: u16,
+    /// Nonce for tx_id matching
+    pub nonce: u32,
+}
+<span class="boring">}</span></code></pre>
+<p>The <code>operation</code> field determines what data follows and how much to read.</p>
+<h2 id="three-operation-codes"><a class="header" href="#three-operation-codes">Three operation codes</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Opcode</th><th>Name</th><th>Value</th><th>Payload size</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>OP_TRANSFER</code></td><td>Transfer</td><td>0</td><td>80 bytes (header + 72)</td><td>L2-to-L2 balance transfer</td></tr>
+<tr><td><code>OP_ENTRY</code></td><td>Entry</td><td>1</td><td>40 bytes (header + 32)</td><td>L1-to-L2 deposit</td></tr>
+<tr><td><code>OP_EXIT</code></td><td>Exit</td><td>2</td><td>88 bytes (header + 80)</td><td>L2-to-L1 withdrawal</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="transfer-opcode-0"><a class="header" href="#transfer-opcode-0">Transfer (opcode 0)</a></h2>
+<p>Moves funds between two L2 accounts.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Transfer action data (follows ActionHeader when operation == OP_TRANSFER)
+///
+/// Layout:
+/// - source: [u32; 8] (32 bytes) - sender pubkey
+/// - destination: [u32; 8] (32 bytes) - recipient pubkey
+/// - amount: u64 (8 bytes)
+///
+/// Total: 72 bytes = 18 words
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct TransferAction {
+    /// Sender pubkey (committed to tx_id via payload_digest)
+    pub source: [u32; 8],
+    /// Recipient pubkey
+    pub destination: [u32; 8],
+    /// Amount to transfer
+    pub amount: u64,
+}
+<span class="boring">}</span></code></pre>
+<pre class="mermaid">flowchart LR
+    subgraph Payload
+        HDR["Header&lt;br/&gt;op=0, nonce"]
+        SRC["source&lt;br/&gt;32B pubkey"]
+        DST["destination&lt;br/&gt;32B pubkey"]
+        AMT["amount&lt;br/&gt;8B u64"]
+    end
+
+    HDR --&gt; SRC --&gt; DST --&gt; AMT
+
+    subgraph Guest["Guest verification"]
+        AUTH["Verify source&lt;br/&gt;owns prev tx output"]
+        DEBIT["Debit source&lt;br/&gt;balance -= amount"]
+        CREDIT["Credit destination&lt;br/&gt;balance += amount"]
+    end
+
+    SRC -.-&gt; AUTH
+    AMT -.-&gt; DEBIT
+    AMT -.-&gt; CREDIT
+</pre>
+
+<p><strong>Authorization:</strong> The guest verifies the source pubkey by checking a previous transaction output. The host provides a <code>PrevTxV1Witness</code> containing the <code>rest_preimage</code> and <code>payload_digest</code>. The guest recomputes the <code>tx_id</code>, extracts the output SPK, and confirms it is a Schnorr P2PK matching <code>source</code>.</p>
+<p><strong>State update:</strong> The guest verifies the source’s SMT proof against the current root, debits the balance, computes an intermediate root, then verifies the destination’s proof against that intermediate root and credits the balance.</p>
+<h2 id="entry--deposit-opcode-1"><a class="header" href="#entry--deposit-opcode-1">Entry / Deposit (opcode 1)</a></h2>
+<p>Credits an L2 account from an L1 deposit.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Entry (deposit) action data (follows ActionHeader when operation == OP_ENTRY)
+///
+/// Layout:
+/// - destination: [u32; 8] (32 bytes) - recipient pubkey on L2
+///
+/// Total: 32 bytes = 8 words
+///
+/// The deposit amount is NOT in the payload — it comes from the tx output value,
+/// verified by the guest using the rest_preimage.
+/// Destination can be zeros (no validation on zero pubkey).
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct EntryAction {
+    /// Recipient pubkey on L2
+    pub destination: [u32; 8],
+}
+<span class="boring">}</span></code></pre>
+<pre class="mermaid">flowchart LR
+    subgraph Payload
+        HDR["Header&lt;br/&gt;op=1, nonce"]
+        DST["destination&lt;br/&gt;32B pubkey"]
+    end
+
+    HDR --&gt; DST
+
+    subgraph Guest["Guest verification"]
+        REST["Verify rest_preimage&lt;br/&gt;matches rest_digest"]
+        SUFFIX["Reject if input 0&lt;br/&gt;has permission suffix"]
+        OUTPUT["Parse output 0&lt;br/&gt;extract value"]
+        SPK["Verify output SPK&lt;br/&gt;is P2SH(delegate)"]
+        CREDIT["Credit destination&lt;br/&gt;balance += value"]
+    end
+
+    DST -.-&gt; CREDIT
+</pre>
+
+<p><strong>Key design:</strong> The deposit amount is <strong>not</strong> in the payload. It comes from the transaction’s first output value, verified via the <code>rest_preimage</code>. This prevents the host from inflating deposit amounts — the value is cryptographically committed via <code>rest_digest</code> → <code>tx_id</code>.</p>
+<p><strong>SPK verification:</strong> The guest verifies that output 0’s SPK is <code>P2SH(delegate_script(covenant_id))</code>. This ensures the deposited funds are actually locked in the covenant, not sent to an arbitrary address.</p>
+<p><strong>Permission suffix guard:</strong> The guest rejects entry actions whose transaction’s first input has the permission domain suffix (<code>[0x51, 0x75]</code>). This prevents delegate change outputs (from withdrawal transactions) from being misinterpreted as new deposits.</p>
+<h2 id="exit--withdrawal-opcode-2"><a class="header" href="#exit--withdrawal-opcode-2">Exit / Withdrawal (opcode 2)</a></h2>
+<p>Debits an L2 account and creates a withdrawal claim on L1.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Exit (withdrawal) action data (follows ActionHeader when operation == OP_EXIT)
+///
+/// Layout:
+/// - source: [u32; 8] (32 bytes) - sender L2 pubkey (authorized via prev tx output)
+/// - destination_spk: [u32; 10] (40 bytes) - L1 SPK in first 35 bytes, last 5 zero-padded
+/// - amount: u64 (8 bytes) - amount to withdraw
+///
+/// Total: 80 bytes = 20 words
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct ExitAction {
+    /// Sender L2 pubkey (authorized via prev tx output, same as TransferAction)
+    pub source: [u32; 8],
+    /// Destination L1 SPK stored as words. First 35 bytes = SPK, last 5 = zero padding.
+    pub destination_spk: [u32; EXIT_SPK_WORDS],
+    /// Amount to withdraw
+    pub amount: u64,
+}
+<span class="boring">}</span></code></pre>
+<pre class="mermaid">flowchart LR
+    subgraph Payload
+        HDR["Header&lt;br/&gt;op=2, nonce"]
+        SRC["source&lt;br/&gt;32B pubkey"]
+        SPK["destination_spk&lt;br/&gt;40B (35B + pad)"]
+        AMT["amount&lt;br/&gt;8B u64"]
+    end
+
+    HDR --&gt; SRC --&gt; SPK --&gt; AMT
+
+    subgraph Guest["Guest verification"]
+        AUTH["Verify source&lt;br/&gt;owns prev tx output"]
+        DEBIT["Debit source&lt;br/&gt;balance -= amount"]
+        PERM["Add permission leaf&lt;br/&gt;hash(spk, amount)"]
+    end
+
+    SRC -.-&gt; AUTH
+    AMT -.-&gt; DEBIT
+    SPK -.-&gt; PERM
+    AMT -.-&gt; PERM
+</pre>
+
+<p><strong>SPK encoding:</strong> The <code>destination_spk</code> field holds up to 35 bytes of L1 script public key, padded to 40 bytes (10 words) for alignment. The actual length is inferred from the first byte: <code>0x20</code> (OP_DATA_32) means 34-byte Schnorr P2PK; anything else means 35 bytes (ECDSA P2PK or P2SH).</p>
+<p><strong>Permission leaf:</strong> On successful debit, the guest adds <code>perm_leaf_hash(spk, amount)</code> to the streaming permission tree builder. After all blocks are processed, this tree’s root is committed to the journal, enabling on-chain withdrawal claims.</p>
+<h2 id="the-action-enum"><a class="header" href="#the-action-enum">The Action enum</a></h2>
+<p>All three types are unified under a single enum for dispatch:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Parsed action types
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Action {
+    Transfer(TransferAction),
+    Entry(EntryAction),
+    Exit(ExitAction),
+}
+<span class="boring">}</span></code></pre>
+<p>The <code>source()</code> method returns <code>None</code> for entry actions (deposits come from L1, not an L2 account). This distinction drives the authorization logic in the guest — entries skip source verification entirely.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="guest-proof-pipeline"><a class="header" href="#guest-proof-pipeline">Guest Proof Pipeline</a></h1>
+<p>The guest program is the heart of the rollup. It runs inside the RISC Zero zkVM, reads blocks and witness data from the host, processes every transaction, updates the state root, and writes a journal that the on-chain script can verify.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<pre class="mermaid">flowchart TD
+    INPUT["Read PublicInput&lt;br/&gt;(prev_state, prev_seq, covenant_id)"]
+    BLOCKS["For each block"]
+    TXS["For each transaction"]
+    CLASSIFY["Classify: V0 or V1?"]
+    V0["V0: read tx_id directly"]
+    V1["V1: read payload + rest_digest&lt;br/&gt;compute tx_id"]
+    ACTION["Is action?&lt;br/&gt;(prefix + valid header)"]
+    DISPATCH["Dispatch by opcode"]
+    TRANSFER["Transfer"]
+    ENTRY["Entry"]
+    EXIT["Exit"]
+    MERKLE["Add seq_commitment_leaf&lt;br/&gt;to block merkle"]
+    BLOCK_ROOT["Finalize block merkle root"]
+    SEQ["Update seq_commitment"]
+    PERM["Build permission tree&lt;br/&gt;(if exits occurred)"]
+    JOURNAL["Write journal"]
+
+    INPUT --&gt; BLOCKS
+    BLOCKS --&gt; TXS
+    TXS --&gt; CLASSIFY
+    CLASSIFY --&gt;|V0| V0
+    CLASSIFY --&gt;|V1| V1
+    V1 --&gt; ACTION
+    ACTION --&gt;|Yes| DISPATCH
+    ACTION --&gt;|No| MERKLE
+    DISPATCH --&gt; TRANSFER --&gt; MERKLE
+    DISPATCH --&gt; ENTRY --&gt; MERKLE
+    DISPATCH --&gt; EXIT --&gt; MERKLE
+    V0 --&gt; MERKLE
+    MERKLE --&gt; TXS
+    TXS --&gt;|block done| BLOCK_ROOT
+    BLOCK_ROOT --&gt; SEQ
+    SEQ --&gt; BLOCKS
+    BLOCKS --&gt;|all done| PERM
+    PERM --&gt; JOURNAL
+</pre>
+
+<h2 id="publicinput"><a class="header" href="#publicinput">PublicInput</a></h2>
+<p>The guest begins by reading <code>PublicInput</code> — three 32-byte hashes that anchor the proof to the chain:</p>
+<ul>
+<li><code>prev_state_hash</code> — the SMT root before this batch</li>
+<li><code>prev_seq_commitment</code> — the sequence commitment before this batch</li>
+<li><code>covenant_id</code> — identifies this specific covenant instance</li>
+</ul>
+<p>These values are written to the journal so the on-chain script can verify they match the previous UTXO.</p>
+<h2 id="block-processing"><a class="header" href="#block-processing">Block processing</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Process all transactions in a block, updating state and building merkle tree
+pub fn process_block(
+    stdin: &amp;mut impl WordRead,
+    state_root: &amp;mut [u32; 8],
+    covenant_id: &amp;[u32; 8],
+    perm_builder: &amp;mut StreamingPermTreeBuilder,
+) -&gt; [u32; 8] {
+    let tx_count = input::read_u32(stdin);
+    let mut merkle_builder = StreamingMerkleBuilder::new();
+
+    for _ in 0..tx_count {
+        let (tx_id, version) = process_transaction(stdin, state_root, covenant_id, perm_builder);
+        let leaf = seq_commitment_leaf(&amp;tx_id, version);
+        merkle_builder.add_leaf(leaf);
+    }
+
+    merkle_builder.finalize()
+}
+<span class="boring">}</span></code></pre>
+<p>Each block contains a list of transactions. The guest processes them sequentially, building a streaming Merkle tree of <code>seq_commitment_leaf(tx_id, version)</code> values. The finalized block root is then combined with the running <code>seq_commitment</code> via <code>calc_accepted_id_merkle_root</code>.</p>
+<h2 id="transaction-classification"><a class="header" href="#transaction-classification">Transaction classification</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Read V1 transaction data and compute tx_id
+///
+/// The guest determines whether this is an action transaction based on:
+/// 1. tx_id starts with ACTION_TX_ID_PREFIX
+/// 2. header version is valid and operation is known
+/// 3. action data is valid (e.g., non-zero amount for transfer)
+///
+/// This is computed from the cryptographic data, NOT from a host flag.
+///
+/// Payload handling:
+/// - Host sends payload_len in BYTES (not words)
+/// - We read ceil(payload_len/4) words (padded to word boundary)
+/// - Compute payload_digest from actual bytes (trimmed to payload_len)
+/// - Only parse as action if payload is 4-byte aligned (required for our format)
+pub fn read_v1_tx_data(stdin: &amp;mut impl WordRead) -&gt; V1TxData {
+    // Read payload length in BYTES
+    let payload_byte_len = input::read_u32(stdin) as usize;
+
+    // Calculate words needed (round up to word boundary)
+    let payload_word_len = (payload_byte_len + 3) / 4;
+
+    // Read as words (guaranteed 4-byte aligned)
+    let mut payload_words = vec![0u32; payload_word_len];
+    stdin.read_words(&amp;mut payload_words).unwrap();
+
+    // View as bytes for payload_digest
+    let payload_bytes: &amp;[u8] = bytemuck::cast_slice(&amp;payload_words);
+    let payload_bytes = &amp;payload_bytes[..payload_byte_len]; // trim padding
+
+    // Read rest_digest directly (host pre-computes from arbitrary-length rest data)
+    let mut rest_digest = [0u32; 8];
+    stdin.read_words(&amp;mut rest_digest).unwrap();
+
+    // Compute tx_id from payload bytes and rest_digest
+    let pd = payload_digest_bytes(payload_bytes);
+    let tx_id = tx_id_v1(&amp;pd, &amp;rest_digest);
+
+    // Only parse action if payload is 4-byte aligned (required for our action format)
+    let action = if payload_byte_len % 4 == 0 {
+        parse_action(&amp;payload_words)
+    } else {
+        None // Unaligned payload - not a valid action format
+    };
+
+    // Only valid if tx_id has action prefix AND action parsed successfully AND is valid
+    let valid_action = if is_action_tx_id(&amp;tx_id) { action.filter(|a| a.is_valid()) } else { None };
+
+    V1TxData { tx_id, action: valid_action, rest_digest }
+}
+<span class="boring">}</span></code></pre>
+<p>For V1 transactions, the guest:</p>
+<ol>
+<li>Reads the payload bytes and <code>rest_digest</code> from stdin</li>
+<li>Computes <code>payload_digest</code> from the raw payload bytes</li>
+<li>Computes <code>tx_id = blake3(payload_digest || rest_digest)</code></li>
+<li>Checks if the <code>tx_id</code> starts with <code>ACTION_TX_ID_PREFIX</code> (<code>0x41</code>)</li>
+<li>If so, parses the payload as an action header + data</li>
+</ol>
+<p>The action is only considered valid if the prefix matches <strong>and</strong> the header version and operation are recognized <strong>and</strong> the action-specific validity check passes (e.g., non-zero amount).</p>
+<h2 id="action-parsing"><a class="header" href="#action-parsing">Action parsing</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Parse action from payload words
+fn parse_action(payload: &amp;[u32]) -&gt; Option&lt;Action&gt; {
+    let (header_words, rest) = payload.split_first_chunk::&lt;{ ActionHeader::WORDS }&gt;()?;
+    let header = ActionHeader::from_words_ref(header_words);
+
+    if !header.is_valid_version() {
+        return None;
+    }
+
+    // Parse action data based on operation
+    match header.operation {
+        OP_TRANSFER =&gt; {
+            let transfer_words = rest.first_chunk()?;
+            let transfer = TransferAction::from_words(*transfer_words);
+            Some(Action::Transfer(transfer))
+        }
+        OP_ENTRY =&gt; {
+            let entry_words = rest.first_chunk()?;
+            let entry = EntryAction::from_words(*entry_words);
+            Some(Action::Entry(entry))
+        }
+        OP_EXIT =&gt; {
+            let exit_words = rest.first_chunk()?;
+            let exit = ExitAction::from_words(*exit_words);
+            Some(Action::Exit(exit))
+        }
+        _ =&gt; None, // Unknown operation
+    }
+}
+<span class="boring">}</span></code></pre>
+<h2 id="action-dispatch"><a class="header" href="#action-dispatch">Action dispatch</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Process a valid action transaction
+///
+/// Called only when guest has cryptographically determined this is a valid action.
+/// Host must provide witness data for verification.
+fn process_action(
+    stdin: &amp;mut impl WordRead,
+    state_root: &amp;mut [u32; 8],
+    action: Action,
+    rest_digest: &amp;[u32; 8],
+    covenant_id: &amp;[u32; 8],
+    perm_builder: &amp;mut StreamingPermTreeBuilder,
+) {
+    match action {
+        Action::Transfer(transfer) =&gt; process_transfer(stdin, state_root, transfer),
+        Action::Entry(entry) =&gt; process_entry(stdin, state_root, entry, rest_digest, covenant_id),
+        Action::Exit(exit) =&gt; process_exit(stdin, state_root, exit, perm_builder),
+    }
+}
+<span class="boring">}</span></code></pre>
+<h2 id="witness-structures"><a class="header" href="#witness-structures">Witness structures</a></h2>
+<p>Each action type requires different witness data from the host:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Complete witness data for a transfer action
+pub struct TransferWitness {
+    /// Source account SMT witness
+    pub source: AccountWitness,
+    /// Destination account SMT witness
+    pub dest: AccountWitness,
+    /// Previous tx output witness (proves source ownership)
+    pub prev_tx: PrevTxV1WitnessData,
+}
+
+impl TransferWitness {
+    pub fn read_from_stdin(stdin: &amp;mut impl WordRead) -&gt; Self {
+        Self {
+            source: input::read_account_witness(stdin),
+            dest: input::read_account_witness(stdin),
+            prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin),
+        }
+    }
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Witness data for an entry (deposit) action.
+///
+/// Entry deposits don't need source authorization (no source account).
+/// The deposit amount is always taken from the first output (index 0).
+pub struct EntryWitness {
+    /// Destination account SMT proof (for crediting the deposit)
+    pub dest: AccountWitness,
+    /// rest_preimage of the current entry transaction.
+    /// Used to parse output 0 and extract the deposit value.
+    /// Tamper-proof because rest_digest (committed via tx_id) is verified against this.
+    pub rest_preimage: AlignedBytes,
+}
+
+impl EntryWitness {
+    pub fn read_from_stdin(stdin: &amp;mut impl WordRead) -&gt; Self {
+        Self { dest: input::read_account_witness(stdin), rest_preimage: input::read_aligned_bytes(stdin) }
+    }
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Witness data for an exit (withdrawal) action.
+///
+/// Exits debit the source account and create a permission tree leaf.
+/// Similar to transfer: requires source authorization via prev tx output.
+pub struct ExitWitness {
+    /// Source account SMT witness
+    pub source: AccountWitness,
+    /// Previous tx output witness (proves source ownership)
+    pub prev_tx: PrevTxV1WitnessData,
+}
+
+impl ExitWitness {
+    pub fn read_from_stdin(stdin: &amp;mut impl WordRead) -&gt; Self {
+        Self { source: input::read_account_witness(stdin), prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin) }
+    }
+}
+<span class="boring">}</span></code></pre>
+<pre class="mermaid">flowchart LR
+    subgraph TransferWit["Transfer Witness"]
+        TS["source AccountWitness"]
+        TD["dest AccountWitness"]
+        TP["PrevTxV1WitnessData"]
+    end
+
+    subgraph EntryWit["Entry Witness"]
+        ED["dest AccountWitness"]
+        ER["rest_preimage (AlignedBytes)"]
+    end
+
+    subgraph ExitWit["Exit Witness"]
+        ES["source AccountWitness"]
+        EP["PrevTxV1WitnessData"]
+    end
+</pre>
+
+<h2 id="source-authorization"><a class="header" href="#source-authorization">Source authorization</a></h2>
+<p>For transfers and exits, the guest verifies that the action’s <code>source</code> pubkey matches the public key in a previous transaction output:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Verify source authorization for transfer and exit actions.
+///
+/// Only Schnorr P2PK source SPKs are supported. The guest uses 32-byte pubkeys
+/// internally, so P2SH sources (which have a script hash, not a pubkey) cannot
+/// be mapped to an account. ECDSA P2PK (33-byte compressed pubkey) could work
+/// in theory but is not enabled for simplicity.
+///
+/// If the source SPK is not Schnorr P2PK, `spk_as_p2pk()` returns `None` and
+/// the action is silently skipped (tx_id is still committed to the seq tree).
+///
+/// Returns the verified source pubkey if authorization succeeds.
+pub fn verify_source(source: &amp;[u32; 8], prev_tx: &amp;PrevTxV1WitnessData) -&gt; Option&lt;[u32; 8]&gt; {
+    // Step 1: Verify the SPK is cryptographically committed to prev_tx_id
+    let output_data = prev_tx.verify_output()?;
+
+    // Step 2: Get SPK as Schnorr P2PK (34 bytes). Rejects P2SH and ECDSA.
+    let verified_spk = output_data.spk_as_p2pk()?;
+
+    // Step 3: Extract 32-byte pubkey from the verified SPK
+    let spk_pubkey = extract_pubkey_from_spk(&amp;verified_spk)?;
+
+    // Step 4: Verify action source matches the SPK's pubkey
+    if spk_pubkey != *source {
+        return None;
+    }
+
+    Some(spk_pubkey)
+}
+<span class="boring">}</span></code></pre>
+<p>The verification chain is:</p>
+<ol>
+<li>Host provides <code>prev_tx_id</code> + <code>PrevTxV1Witness</code> (rest_preimage, payload_digest)</li>
+<li>Guest recomputes <code>tx_id</code> from the witness and checks it matches <code>prev_tx_id</code></li>
+<li>Guest parses the output at the specified index from <code>rest_preimage</code></li>
+<li>Guest checks the output SPK is Schnorr P2PK format (34 bytes)</li>
+<li>Guest extracts the 32-byte pubkey and compares with <code>action.source</code></li>
+</ol>
+<p>Only Schnorr P2PK sources are accepted — ECDSA and P2SH sources are rejected.</p>
+<h2 id="state-updates"><a class="header" href="#state-updates">State updates</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Process an exit (withdrawal): debit source account only.
+///
+/// Returns the new state root after debiting the source by `exit.amount`.
+pub fn process_exit(exit: &amp;ExitAction, source_witness: &amp;AccountWitness, current_root: &amp;[u32; 8]) -&gt; Option&lt;[u32; 8]&gt; {
+    if source_witness.pubkey != exit.source {
+        return None;
+    }
+
+    let key = key_to_index(&amp;exit.source);
+    let leaf = leaf_hash(&amp;exit.source, source_witness.balance);
+    if !source_witness.proof.verify(current_root, key, &amp;leaf) {
+        return None;
+    }
+
+    if source_witness.balance &lt; exit.amount {
+        return None;
+    }
+
+    let new_balance = source_witness.balance - exit.amount;
+    let new_leaf = leaf_hash(&amp;exit.source, new_balance);
+    Some(source_witness.proof.compute_root(&amp;new_leaf, key))
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Verify destination account and compute new root after credit.
+///
+/// Used by both transfers and entries. For new accounts, the witness has
+/// pubkey=[0;8] and balance=0, and the SMT slot must be empty.
+fn verify_and_update_dest(
+    destination: &amp;[u32; 8],
+    dest_witness: &amp;AccountWitness,
+    amount: u64,
+    intermediate_root: &amp;[u32; 8],
+) -&gt; Option&lt;[u32; 8]&gt; {
+    let dest_key = key_to_index(destination);
+    let is_new_account = dest_witness.balance == 0 &amp;&amp; dest_witness.pubkey == [0u32; 8];
+
+    if is_new_account {
+        // Verify slot is empty
+        let empty_leaf = empty_leaf_hash();
+        if !dest_witness.proof.verify(intermediate_root, dest_key, &amp;empty_leaf) {
+            return None;
+        }
+    } else {
+        // Verify existing account
+        if dest_witness.pubkey != *destination {
+            return None;
+        }
+        let dest_leaf = leaf_hash(&amp;dest_witness.pubkey, dest_witness.balance);
+        if !dest_witness.proof.verify(intermediate_root, dest_key, &amp;dest_leaf) {
+            return None;
+        }
+    }
+
+    // Compute final root after credit
+    let new_balance = dest_witness.balance + amount;
+    let new_leaf = leaf_hash(destination, new_balance);
+    Some(dest_witness.proof.compute_root(&amp;new_leaf, dest_key))
+}
+<span class="boring">}</span></code></pre>
+<p>For transfers, the state update is two-phase:</p>
+<ol>
+<li><strong>Debit source</strong> — verify SMT proof, check balance, compute intermediate root</li>
+<li><strong>Credit destination</strong> — verify SMT proof against intermediate root, compute final root</li>
+</ol>
+<p>For entries, only the credit phase runs (no source debit).</p>
+<p>For exits, only the debit phase runs, and a permission leaf is added.</p>
+<h2 id="journal-output"><a class="header" href="#journal-output">Journal output</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Write the proof output to the journal.
+///
+/// Journal layout:
+///   Base (160 bytes = 40 words):
+///     prev_state_hash(32) | prev_seq_commitment(32) | new_state(32) | new_seq(32) | covenant_id(32)
+///   With permission (192 bytes = 48 words):
+///     ... base ... | permission_spk_hash(32)
+#[inline]
+pub fn write_output(
+    public_input: &amp;PublicInput,
+    final_state_root: &amp;[u32; 8],
+    final_seq_commitment: &amp;[u32; 8],
+    permission_spk_hash: Option&lt;&amp;[u32; 8]&gt;,
+) {
+    let mut journal = env::journal();
+
+    // Write prev_state_hash and prev_seq_commitment individually
+    // (covenant_id is written at the end, not adjacent to them)
+    journal.write_words(&amp;public_input.prev_state_hash).unwrap();
+    journal.write_words(&amp;public_input.prev_seq_commitment).unwrap();
+
+    // Write new state root
+    journal.write_words(final_state_root).unwrap();
+
+    // Write final sequence commitment
+    journal.write_words(final_seq_commitment).unwrap();
+
+    // Write covenant_id
+    journal.write_words(&amp;public_input.covenant_id).unwrap();
+
+    // Write permission SPK hash when exits are present
+    if let Some(hash_words) = permission_spk_hash {
+        journal.write_words(hash_words).unwrap();
+    }
+}
+<span class="boring">}</span></code></pre>
+<p>The journal is the proof’s public output — the only data the on-chain script can see. Its layout:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Offset</th><th>Size</th><th>Field</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>32B</td><td><code>prev_state_hash</code></td></tr>
+<tr><td>32</td><td>32B</td><td><code>prev_seq_commitment</code></td></tr>
+<tr><td>64</td><td>32B</td><td><code>new_state_root</code></td></tr>
+<tr><td>96</td><td>32B</td><td><code>new_seq_commitment</code></td></tr>
+<tr><td>128</td><td>32B</td><td><code>covenant_id</code></td></tr>
+<tr><td>160</td><td>32B</td><td><code>permission_spk_hash</code> (optional)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Base journal:</strong> 160 bytes (40 words) — always present.</p>
+<p><strong>Extended journal:</strong> 192 bytes (48 words) — when exits occurred. The extra 32 bytes contain the blake2b hash of the permission redeem script’s P2SH SPK.</p>
+<h2 id="permission-tree-construction"><a class="header" href="#permission-tree-construction">Permission tree construction</a></h2>
+<p>When exit actions occur, the guest builds a permission tree:</p>
+<ol>
+<li>Each successful exit adds <code>perm_leaf_hash(spk, amount)</code> to a <code>StreamingPermTreeBuilder</code></li>
+<li>After all blocks, if any exits occurred:
+<ul>
+<li>The host provides the expected redeem script length</li>
+<li>Guest computes the tree root with <code>pad_to_depth</code></li>
+<li>Guest builds the permission redeem script bytes (using the <code>no_std</code> builder in core)</li>
+<li>Guest asserts the built script length matches the host-provided value</li>
+<li>Guest computes <code>blake2b(redeem_script)</code> → the permission SPK hash</li>
+</ul>
+</li>
+<li>This hash is appended to the journal</li>
+</ol>
+<p>The on-chain state verification script uses the journal’s permission SPK hash to verify that the second covenant output (if present) pays to the correct permission script.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="sequence-commitment"><a class="header" href="#sequence-commitment">Sequence Commitment</a></h1>
+<p>The sequence commitment chains blocks together, ensuring no transactions are skipped, reordered, or replayed between proof batches.</p>
+<h2 id="block-chaining"><a class="header" href="#block-chaining">Block chaining</a></h2>
+<p>Each proof batch processes a sequence of blocks. The guest maintains a running <code>seq_commitment</code> value that starts at <code>prev_seq_commitment</code> (from <code>PublicInput</code>) and is updated after each block:</p>
+<pre><code>seq_commitment' = merkle_hash(seq_commitment, block_root)
+</code></pre>
+<pre class="mermaid">flowchart LR
+    PREV["prev_seq_commitment"]
+    B1["Block 1 root"]
+    B2["Block 2 root"]
+    B3["Block 3 root"]
+    S1["seq₁"]
+    S2["seq₂"]
+    FINAL["new_seq_commitment"]
+
+    PREV --&gt;|"hash(prev, B1)"| S1
+    B1 --&gt; S1
+    S1 --&gt;|"hash(seq₁, B2)"| S2
+    B2 --&gt; S2
+    S2 --&gt;|"hash(seq₂, B3)"| FINAL
+    B3 --&gt; FINAL
+</pre>
+
+<p>This is computed using:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn calc_accepted_id_merkle_root(
+    selected_parent_accepted_id_merkle_root: &amp;[u32; 8],
+    accepted_id_merkle_root: &amp;[u32; 8],
+) -&gt; [u32; 8] {
+    merkle_hash(selected_parent_accepted_id_merkle_root, accepted_id_merkle_root, blake3::Hasher::new_keyed(&amp;KEY))
+}
+<span class="boring">}</span></code></pre>
+<p>The on-chain script verifies the new <code>seq_commitment</code> by using <code>OpChainblockSeqCommit</code>, which returns the same value computed by the consensus layer. This anchors the proof to the actual Kaspa block DAG.</p>
+<h2 id="transaction-leaf-hashing"><a class="header" href="#transaction-leaf-hashing">Transaction leaf hashing</a></h2>
+<p>Within each block, every transaction contributes a leaf to the block’s Merkle tree:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn seq_commitment_leaf(tx_id: &amp;[u32; 8], tx_version: u16) -&gt; [u32; 8] {
+    const DOMAIN_SEP: &amp;[u8] = b"SeqCommitmentMerkleLeafHash";
+    const KEY: [u8; blake3::KEY_LEN] = domain_to_key(DOMAIN_SEP);
+
+    let mut hasher = blake3::Hasher::new_keyed(&amp;KEY);
+    hasher.update(bytemuck::bytes_of(tx_id));
+    hasher.update(&amp;tx_version.to_le_bytes());
+    let mut out = [0u32; 8];
+    bytemuck::bytes_of_mut(&amp;mut out).copy_from_slice(hasher.finalize().as_bytes());
+    out
+}
+<span class="boring">}</span></code></pre>
+<p>The leaf hash includes both the <code>tx_id</code> and the transaction <code>version</code>. This matches Kaspa’s consensus-level sequence commitment computation.</p>
+<h2 id="streaming-merkle-builder"><a class="header" href="#streaming-merkle-builder">Streaming Merkle builder</a></h2>
+<p>The block Merkle tree is built incrementally using a streaming algorithm that requires no heap allocation:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>    /// Add a pre-hashed leaf.
+    pub fn add_leaf(&amp;mut self, hash: [u32; 8]) {
+        let mut level = 0u32;
+        let mut current = hash;
+
+        while self.stack_len &gt; 0 {
+            let (top_level, top_hash) = self.stack[self.stack_len - 1];
+            if top_level != level {
+                break;
+            }
+            self.stack_len -= 1;
+            current = H::branch(&amp;top_hash, &amp;current);
+            level += 1;
+        }
+
+        self.stack[self.stack_len] = (level, current);
+        self.stack_len += 1;
+        self.leaf_count += 1;
+    }
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>    /// Finalize and return the Merkle root.
+    ///
+    /// Pads incomplete subtrees with the domain-specific empty subtree
+    /// hashes.
+    pub fn finalize(self) -&gt; [u32; 8] {
+        if self.leaf_count == 0 {
+            return H::empty_subtree(0);
+        }
+
+        if self.leaf_count == 1 {
+            return H::branch(&amp;self.stack[0].1, &amp;H::empty_subtree(0));
+        }
+
+        // Stack represents a binary decomposition of the leaf count.
+        // Process from right (top of stack) to left, padding as needed.
+        let mut result_hash = [0u32; 8];
+        let mut result_level = 0u32;
+        let mut first = true;
+
+        for i in (0..self.stack_len).rev() {
+            let (level, hash) = self.stack[i];
+
+            if first {
+                result_hash = hash;
+                result_level = level;
+                first = false;
+                continue;
+            }
+
+            // Pad result from its current level up to this node's level
+            while result_level &lt; level {
+                result_hash = H::branch(&amp;result_hash, &amp;H::empty_subtree(result_level as usize));
+                result_level += 1;
+            }
+
+            // Merge: this node (left) with padded result (right)
+            result_hash = H::branch(&amp;hash, &amp;result_hash);
+            result_level += 1;
+        }
+
+        result_hash
+    }
+<span class="boring">}</span></code></pre>
+<pre class="mermaid">graph TB
+    subgraph Block["Block Merkle Tree"]
+        ROOT["Block root"]
+        B01["hash(L0, L1)"]
+        B23["hash(L2, pad)"]
+        L0["leaf(tx₀)"]
+        L1["leaf(tx₁)"]
+        L2["leaf(tx₂)"]
+        PAD["zero_hash"]
+
+        ROOT --- B01
+        ROOT --- B23
+        B01 --- L0
+        B01 --- L1
+        B23 --- L2
+        B23 --- PAD
+    end
+</pre>
+
+<p>The streaming builder uses a fixed-size stack of <code>(level, hash)</code> pairs. When two entries at the same level are adjacent, they are merged into a parent. Incomplete subtrees are padded with zero hashes during finalization.</p>
+<h2 id="hash-operations"><a class="header" href="#hash-operations">Hash operations</a></h2>
+<p>The sequence commitment tree uses Blake3 with keyed hashing:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Seq-commitment Merkle hash operations — blake3 with zero-padding.
+pub struct SeqCommitHashOps;
+
+impl MerkleHashOps for SeqCommitHashOps {
+    fn branch(left: &amp;[u32; 8], right: &amp;[u32; 8]) -&gt; [u32; 8] {
+        merkle_hash(left, right, blake3::Hasher::new_keyed(&amp;KEY))
+    }
+
+    fn empty_subtree(_level: usize) -&gt; [u32; 8] {
+        ZERO_HASH
+    }
+}
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Domain separator</th><th>Hash function</th></tr>
+</thead>
+<tbody>
+<tr><td>Branch hash</td><td><code>SeqCommitmentMerkleBranchHash</code></td><td>Blake3 (keyed)</td></tr>
+<tr><td>Leaf hash</td><td><code>SeqCommitmentMerkleLeafHash</code></td><td>Blake3 (keyed)</td></tr>
+<tr><td>Empty subtree</td><td>—</td><td>Zero hash <code>[0u32; 8]</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The zero-padding for empty subtrees matches Kaspa’s <code>calc_merkle_root</code> behavior with the <code>PREPEND_ZERO_HASH</code> flag.</p>
+<h2 id="kaspa-compatibility"><a class="header" href="#kaspa-compatibility">Kaspa compatibility</a></h2>
+<p>The implementation is tested against Kaspa’s native <code>kaspa-merkle</code> crate to ensure identical output for all tree sizes. See <code>core/src/seq_commit.rs</code> tests for compatibility verification against <code>kaspa_merkle::calc_merkle_root_with_hasher</code>.</p>
+<h2 id="why-this-matters"><a class="header" href="#why-this-matters">Why this matters</a></h2>
+<p>Without sequence commitment verification, a malicious host could:</p>
+<ul>
+<li><strong>Skip blocks</strong> — omit blocks containing unfavorable transactions</li>
+<li><strong>Reorder blocks</strong> — change the order of state transitions</li>
+<li><strong>Replay blocks</strong> — process the same transactions twice</li>
+</ul>
+<p>The sequence commitment anchors the proof to the actual Kaspa DAG. The on-chain <code>OpChainblockSeqCommit</code> opcode recomputes the same value from consensus data, ensuring the guest processed exactly the right blocks.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="state-verification-script"><a class="header" href="#state-verification-script">State Verification Script</a></h1>
+<p>The state verification script is the on-chain redeem script that guards the covenant UTXO. It verifies ZK proofs, enforces state transitions, and ensures the covenant UTXO chain continues correctly.</p>
+<h2 id="script-structure"><a class="header" href="#script-structure">Script structure</a></h2>
+<p>The redeem script embeds the previous state directly in its bytecode:</p>
+<pre><code>[domain_prefix(2B)] [OpData32, prev_seq(32B)] [OpData32, prev_state(32B)]
+[... verification logic ...]
+[OpTrue]
+</code></pre>
+<p>The <strong>68-byte prefix</strong> contains:</p>
+<ul>
+<li>2 bytes: domain tag <code>[OP_0(0x00), OP_DROP(0x75)]</code> — identifies this as a state verification script</li>
+<li>1 + 32 bytes: <code>OpData32 || prev_seq_commitment</code></li>
+<li>1 + 32 bytes: <code>OpData32 || prev_state_hash</code></li>
+</ul>
+<p>See <code>host/src/covenant.rs:17</code> for the <code>REDEEM_PREFIX_LEN</code> constant.</p>
+<h2 id="self-referential-length-convergence"><a class="header" href="#self-referential-length-convergence">Self-referential length convergence</a></h2>
+<p>The script embeds its own length (as a parameter to <code>OpTxInputScriptSigSubstr</code>). Since changing the length changes the script, which changes the length, the build process iterates until convergence:</p>
+<ol>
+<li>Start with an estimated length (e.g., 200)</li>
+<li>Build the script with that length</li>
+<li>If the actual length differs, rebuild with the new length</li>
+<li>Repeat until stable (typically 2-3 iterations)</li>
+</ol>
+<p>This same pattern is used by the permission script (see <a href="#permission-script--11-phases">Chapter 9</a>).</p>
+<h2 id="script-data-flow"><a class="header" href="#script-data-flow">Script data flow</a></h2>
+<pre class="mermaid">flowchart TD
+    PREFIX["Prefix: prev_seq, prev_state"]
+    STASH["Stash prev values to alt stack"]
+    SEQ["OpChainblockSeqCommit&lt;br/&gt;→ new_seq_commitment"]
+    BUILD_PREFIX["Build new 68-byte prefix&lt;br/&gt;(new_seq || new_state)"]
+    EXTRACT["Extract suffix from own sig_script"]
+    CONCAT["Concat prefix + suffix&lt;br/&gt;→ new redeem script"]
+    HASH["blake2b(new_redeem) → P2SH SPK"]
+    VERIFY_OUT["Verify output 0 SPK matches"]
+    JOURNAL["Build journal preimage"]
+    PERM["Verify CovOutCount (1 or 2)&lt;br/&gt;Optionally append perm hash"]
+    SHA["SHA256(journal)"]
+    PROGRAM_ID["Push program_id"]
+    ZK["ZK verify (Succinct or Groth16)"]
+    GUARD["Verify input index == 0"]
+
+    PREFIX --&gt; STASH --&gt; SEQ --&gt; BUILD_PREFIX --&gt; EXTRACT --&gt; CONCAT --&gt; HASH --&gt; VERIFY_OUT --&gt; JOURNAL --&gt; PERM --&gt; SHA --&gt; PROGRAM_ID --&gt; ZK --&gt; GUARD
+</pre>
+
+<h2 id="key-operations"><a class="header" href="#key-operations">Key operations</a></h2>
+<h3 id="sequence-commitment-verification"><a class="header" href="#sequence-commitment-verification">Sequence commitment verification</a></h3>
+<p>The script uses <code>OpChainblockSeqCommit</code> — a Kaspa-specific opcode that computes the sequence commitment from consensus data. The guest’s <code>new_seq_commitment</code> must match what the chain reports.</p>
+<p>See <code>host/src/covenant.rs:77-83</code> for the <code>obtain_new_seq_commitment</code> implementation.</p>
+<h3 id="output-spk-verification"><a class="header" href="#output-spk-verification">Output SPK verification</a></h3>
+<p>After building the new redeem script, the script hashes it to a P2SH SPK and verifies that output 0 pays to that address. This ensures the covenant UTXO chain continues with the updated state.</p>
+<h3 id="journal-construction"><a class="header" href="#journal-construction">Journal construction</a></h3>
+<p>The script builds the journal preimage from:</p>
+<ol>
+<li><code>prev_state</code> and <code>prev_seq</code> (from alt stack, originally embedded in prefix)</li>
+<li><code>new_state</code> and <code>new_seq</code> (computed during execution)</li>
+<li><code>covenant_id</code> (via <code>OpInputCovenantId</code> introspection)</li>
+<li>Optionally: <code>permission_spk_hash</code> (if 2 covenant outputs exist)</li>
+</ol>
+<p>See <code>host/src/covenant.rs:132-161</code> for the <code>build_and_hash_journal</code> implementation.</p>
+<h3 id="output-branching-1-vs-2-covenant-outputs"><a class="header" href="#output-branching-1-vs-2-covenant-outputs">Output branching (1 vs 2 covenant outputs)</a></h3>
+<pre class="mermaid">flowchart TD
+    CHECK["OpCovOutCount"]
+    ONE["count == 1&lt;br/&gt;No exits in this batch"]
+    TWO["count == 2&lt;br/&gt;Exits occurred"]
+    BASE["160-byte journal&lt;br/&gt;(base only)"]
+    EXT["192-byte journal&lt;br/&gt;(base + perm hash)"]
+    VERIFY_P2SH["Extract script hash from&lt;br/&gt;output 1 SPK (bytes 4..36)&lt;br/&gt;Verify P2SH format"]
+
+    CHECK --&gt;|"== 1"| ONE --&gt; BASE
+    CHECK --&gt;|"== 2"| TWO --&gt; VERIFY_P2SH --&gt; EXT
+</pre>
+
+<p>When exits occur, the guest includes a <code>permission_spk_hash</code> in the journal. The on-chain script:</p>
+<ol>
+<li>Reads <code>OpCovOutCount</code> — if 2, a permission output exists</li>
+<li>Extracts the script hash from output 1’s P2SH SPK (bytes 4..36 of <code>to_bytes()</code>)</li>
+<li>Verifies output 1 is actually P2SH format (reconstructs and compares)</li>
+<li>Appends the 32-byte script hash to the journal preimage</li>
+</ol>
+<p>See <code>host/src/covenant.rs:163-206</code> for <code>verify_outputs_and_append_perm_hash</code>.</p>
+<h3 id="zk-proof-verification"><a class="header" href="#zk-proof-verification">ZK proof verification</a></h3>
+<p>The final SHA-256 hash of the journal, plus the <code>program_id</code>, are consumed by the ZK verification opcode (<code>OpRisc0Succinct</code> or <code>OpRisc0Groth16</code>). This verifies that a valid RISC Zero proof exists in the transaction witness data whose journal matches the on-chain computed value.</p>
+<h2 id="domain-tagging"><a class="header" href="#domain-tagging">Domain tagging</a></h2>
+<p>The script starts with <code>[OP_0, OP_DROP]</code> — a 2-byte no-op that serves as a domain tag. The last 2 bytes of the sig_script (which equal the last 2 bytes of the redeem script) are <code>[0x00, 0x75]</code>. Other scripts in the covenant system check these bytes via <code>OpTxInputScriptSigSubstr</code> to distinguish script types:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Domain</th><th>Suffix bytes</th><th>Script</th></tr>
+</thead>
+<tbody>
+<tr><td>State verification</td><td><code>[0x00, 0x75]</code></td><td>This script</td></tr>
+<tr><td>Permission</td><td><code>[0x51, 0x75]</code></td><td><a href="#permission-script--11-phases">Chapter 9</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>The delegate script (<a href="#delegateentry-script">Chapter 10</a>) checks that input 0’s suffix is <code>[0x51, 0x75]</code> to verify it co-spends with a permission input.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="permission-tree"><a class="header" href="#permission-tree">Permission Tree</a></h1>
+<p>The permission tree is a SHA-256 Merkle tree that accumulates withdrawal claims from exit actions. It bridges the ZK proof (which commits the tree root) to the on-chain permission script (which verifies individual claims).</p>
+<h2 id="lifecycle"><a class="header" href="#lifecycle">Lifecycle</a></h2>
+<pre class="mermaid">flowchart LR
+    subgraph Guest["ZK Guest"]
+        EXIT1["Exit action 1&lt;br/&gt;spk₁, amount₁"]
+        EXIT2["Exit action 2&lt;br/&gt;spk₂, amount₂"]
+        BUILD["StreamingPermTreeBuilder"]
+        ROOT["Permission root"]
+        REDEEM["Build permission&lt;br/&gt;redeem script"]
+        HASH["blake2b(redeem)&lt;br/&gt;→ spk_hash"]
+        JOURNAL["Write to journal"]
+    end
+
+    subgraph OnChain["On-Chain"]
+        STATE["State verification script&lt;br/&gt;verifies spk_hash in journal"]
+        PERM_UTXO["Permission UTXO&lt;br/&gt;(P2SH of redeem)"]
+        CLAIM["Permission script&lt;br/&gt;verifies Merkle proof"]
+        WITHDRAW["Withdrawal output"]
+    end
+
+    EXIT1 --&gt; BUILD
+    EXIT2 --&gt; BUILD
+    BUILD --&gt; ROOT
+    ROOT --&gt; REDEEM
+    REDEEM --&gt; HASH
+    HASH --&gt; JOURNAL
+    JOURNAL --&gt; STATE
+    STATE --&gt;|"spawns"| PERM_UTXO
+    PERM_UTXO --&gt; CLAIM
+    CLAIM --&gt; WITHDRAW
+</pre>
+
+<h2 id="leaf-hashing"><a class="header" href="#leaf-hashing">Leaf hashing</a></h2>
+<p>Each exit action produces one leaf:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Compute the hash of a permission leaf: sha256("PermLeaf" || spk_bytes || amount_le_bytes)
+pub fn perm_leaf_hash(spk: &amp;[u8], amount: u64) -&gt; [u32; 8] {
+    let mut hasher = sha2::Sha256::new_with_prefix(PERM_LEAF_DOMAIN);
+    hasher.update(spk);
+    hasher.update(amount.to_le_bytes());
+    let result: [u8; 32] = hasher.finalize().into();
+    crate::bytes_to_words(result)
+}
+<span class="boring">}</span></code></pre>
+<p>The SPK is variable-length (34 or 35 bytes depending on address type). The amount is encoded as 8-byte little-endian.</p>
+<h2 id="tree-depth"><a class="header" href="#tree-depth">Tree depth</a></h2>
+<p>The tree depth is variable based on the number of exits:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Compute the required depth for a given leaf count.
+/// Returns `ceil(log2(count))`, minimum 1, maximum `PERM_MAX_DEPTH`.
+pub fn required_depth(count: usize) -&gt; usize {
+    if count &lt;= 1 {
+        return 1;
+    }
+    let bits = usize::BITS - (count - 1).leading_zeros();
+    (bits as usize).min(PERM_MAX_DEPTH)
+}
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Exits</th><th>Depth</th><th>Capacity</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>1</td><td>2</td></tr>
+<tr><td>1-2</td><td>1</td><td>2</td></tr>
+<tr><td>3-4</td><td>2</td><td>4</td></tr>
+<tr><td>5-8</td><td>3</td><td>8</td></tr>
+<tr><td>9-16</td><td>4</td><td>16</td></tr>
+<tr><td>…</td><td>…</td><td>…</td></tr>
+<tr><td>129-256</td><td>8</td><td>256</td></tr>
+</tbody>
+</table>
+</div>
+<p>Maximum depth is 8 (256 leaves), matching the account SMT capacity.</p>
+<h2 id="padding-to-depth"><a class="header" href="#padding-to-depth">Padding to depth</a></h2>
+<p>The streaming builder produces a root whose effective depth is <code>ceil(log2(leaf_count))</code>. If the target depth is larger, empty subtrees are appended on the right:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Pad a streaming builder result up to a target depth.
+///
+/// The streaming builder produces a root whose effective depth is
+/// `ceil(log2(leaf_count))`. If `target_depth` is larger, we need to
+/// extend with empty subtrees on the right.
+pub fn pad_to_depth(mut hash: [u32; 8], leaf_count: u32, target_depth: usize) -&gt; [u32; 8] {
+    if leaf_count == 0 {
+        return perm_empty_subtree_hash(target_depth);
+    }
+    let effective_depth = required_depth(leaf_count as usize);
+    for level in effective_depth..target_depth {
+        hash = perm_branch_hash(&amp;hash, &amp;perm_empty_subtree_hash(level));
+    }
+    hash
+}
+<span class="boring">}</span></code></pre>
+<h2 id="streaming-builder"><a class="header" href="#streaming-builder">Streaming builder</a></h2>
+<p>The permission tree uses the same <code>StreamingMerkle&lt;H&gt;</code> generic builder as the sequence commitment tree, but parameterized with SHA-256 permission-tree hash operations:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Permission tree proof: variable-depth array of siblings + leaf index.
+///
+/// Max depth is 8 (256 leaves). Siblings are stored from leaf (level 0)
+/// to root (level depth-1).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PermProof {
+    /// Sibling hashes from leaf to root
+    pub siblings: [[u32; 8]; PERM_MAX_DEPTH],
+    /// Number of valid siblings (= tree depth)
+    pub depth: usize,
+    /// Leaf index in the tree
+    pub index: usize,
+}
+
+impl PermProof {
+    /// Create a new proof
+    pub fn new(siblings: [[u32; 8]; PERM_MAX_DEPTH], depth: usize, index: usize) -&gt; Self {
+        Self { siblings, depth, index }
+    }
+
+    /// Compute the root from a leaf hash using this proof
+    pub fn compute_root(&amp;self, leaf_hash: &amp;[u32; 8]) -&gt; [u32; 8] {
+        let mut current = *leaf_hash;
+        for level in 0..self.depth {
+            let bit = (self.index &gt;&gt; level) &amp; 1;
+            if bit == 0 {
+                current = perm_branch_hash(&amp;current, &amp;self.siblings[level]);
+            } else {
+                current = perm_branch_hash(&amp;self.siblings[level], &amp;current);
+            }
+        }
+        current
+    }
+
+    /// Verify that a leaf with given hash exists at this proof's index under given root
+    pub fn verify(&amp;self, root: &amp;[u32; 8], leaf_hash: &amp;[u32; 8]) -&gt; bool {
+        self.compute_root(leaf_hash) == *root
+    }
+
+    /// Compute a new root after replacing the leaf at this proof's index.
+    /// Uses the same siblings and index, just a different leaf hash.
+    pub fn compute_new_root(&amp;self, new_leaf_hash: &amp;[u32; 8]) -&gt; [u32; 8] {
+        self.compute_root(new_leaf_hash)
+    }
+}
+<span class="boring">}</span></code></pre>
+<h2 id="guest-builds-the-permission-script"><a class="header" href="#guest-builds-the-permission-script">Guest builds the permission script</a></h2>
+<p>After all blocks are processed, if any exits occurred:</p>
+<ol>
+<li>The host provides the expected redeem script length (private input)</li>
+<li>Guest computes <code>required_depth(perm_count)</code></li>
+<li>Guest finalizes the streaming builder and pads to depth</li>
+<li>Guest builds the entire permission redeem script in <code>no_std</code> (see <code>core/src/permission_script.rs</code>)</li>
+<li>Guest asserts the script length matches the host-provided value</li>
+<li>Guest computes <code>blake2b(redeem_script)</code> → <code>script_hash</code></li>
+<li>Guest writes the script hash to the journal</li>
+</ol>
+<p>The host-provided length is needed because the script embeds its own length (self-referential). The guest builds the script once and asserts — it does <strong>not</strong> iterate. The host must have converged the length beforehand.</p>
+<h2 id="on-chain-usage"><a class="header" href="#on-chain-usage">On-chain usage</a></h2>
+<p>The state verification script checks if <code>CovOutCount == 2</code>. If so, it verifies that the second covenant output’s P2SH script hash matches the journal’s <code>permission_spk_hash</code>. This spawns a permission UTXO that can be spent by the permission script (see <a href="#permission-script--11-phases">Chapter 9</a>).</p>
+<p>The permission script embeds the root and unclaimed count. Each withdrawal claim walks the Merkle tree twice (old root verification + new root computation) and updates the embedded state.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="permission-script--11-phases"><a class="header" href="#permission-script--11-phases">Permission Script — 11 Phases</a></h1>
+<p>The permission script governs L2→L1 withdrawals. It verifies a Merkle proof against the embedded root, pays the withdrawal to the correct address, and optionally continues the permission UTXO with updated state.</p>
+<h2 id="transaction-layout"><a class="header" href="#transaction-layout">Transaction layout</a></h2>
+<pre class="mermaid">flowchart LR
+    subgraph Inputs
+        I0["Input 0: Permission script&lt;br/&gt;(this script)"]
+        I1["Input 1: Delegate input&lt;br/&gt;(bridge reserve)"]
+        I2["Input 2: Delegate input&lt;br/&gt;(optional)"]
+        I3["Input N+1: Collateral&lt;br/&gt;(optional, for fees)"]
+    end
+
+    subgraph Outputs
+        O0["Output 0: Withdrawal&lt;br/&gt;to leaf's SPK"]
+        O1["Output 1: Continuation&lt;br/&gt;(if unclaimed &gt; 0)"]
+        O2["Output 2: Delegate change&lt;br/&gt;(if change &gt; 0)"]
+        O3["Output 3: Collateral change&lt;br/&gt;(optional, unchecked)"]
+    end
+
+    I0 --&gt; O0
+    I0 --&gt; O1
+    I1 --&gt; O2
+    I2 --&gt; O2
+</pre>
+
+<h2 id="sig_script-push-order"><a class="header" href="#sig_script-push-order">Sig_script push order</a></h2>
+<p>The sig_script pushes values in this order (bottom of stack first):</p>
+<pre><code>G2_sib_{d-1}, G2_dir_{d-1}, ..., G2_sib_0, G2_dir_0,
+G1_sib_{d-1}, G1_dir_{d-1}, ..., G1_sib_0, G1_dir_0,
+spk(var), amount(8B LE), deduct(i64),
+redeem_script
+</code></pre>
+<p>G1 and G2 are the same Merkle path (siblings and direction bits), used twice: once to verify the old root and once to compute the new root.</p>
+<h2 id="phase-sequence"><a class="header" href="#phase-sequence">Phase sequence</a></h2>
+<pre class="mermaid">flowchart TD
+    P1["Phase 1: Prefix&lt;br/&gt;Push root(32B) + unclaimed(8B)"]
+    P2["Phase 2: Stash embedded&lt;br/&gt;root → alt, uncl → alt"]
+    P3["Phase 3: Validate amounts&lt;br/&gt;deduct &gt; 0, amount ≥ deduct"]
+    P4["Phase 4: Verify withdrawal&lt;br/&gt;output 0 SPK == leaf SPK"]
+    P5["Phase 5: Compute leaf hashes&lt;br/&gt;old_leaf, new_leaf"]
+    P6["Phase 6: Verify old root&lt;br/&gt;Merkle walk G1 → equalverify(root)"]
+    P7["Phase 7: Compute new root&lt;br/&gt;Merkle walk G2 → new_root"]
+    P8["Phase 8: Compute new unclaimed&lt;br/&gt;uncl - (1 if fully claimed)"]
+    P9["Phase 9: Verify outputs&lt;br/&gt;continuation SPK or cleanup"]
+    P10["Phase 10: Verify delegate balance&lt;br/&gt;sum inputs ≥ deduct"]
+    P11["Phase 11: Domain suffix&lt;br/&gt;[OP_1, OP_DROP]"]
+
+    P1 --&gt; P2 --&gt; P3 --&gt; P4 --&gt; P5 --&gt; P6 --&gt; P7 --&gt; P8 --&gt; P9 --&gt; P10 --&gt; P11
+</pre>
+
+<h2 id="phase-details"><a class="header" href="#phase-details">Phase details</a></h2>
+<h3 id="phase-1-prefix-42-bytes"><a class="header" href="#phase-1-prefix-42-bytes">Phase 1: Prefix (42 bytes)</a></h3>
+<p>The prefix embeds the permission root and unclaimed count directly in the script bytecode:</p>
+<pre><code>OpData32(1B) || root(32B) || OP_DATA_8(1B) || unclaimed_count(8B)
+</code></pre>
+<p>After execution, the stack has <code>[root(32B), unclaimed_count(8B)]</code> on top.</p>
+<h3 id="phase-2-stash-embedded"><a class="header" href="#phase-2-stash-embedded">Phase 2: Stash embedded</a></h3>
+<p>Moves root and unclaimed_count to the alt stack for later comparison/update.</p>
+<pre><code>Main:  [...G2, ...G1, spk, amount, deduct]
+Alt:   [uncl_emb, root_emb]
+</code></pre>
+<h3 id="phase-3-validate-amounts"><a class="header" href="#phase-3-validate-amounts">Phase 3: Validate amounts</a></h3>
+<p>Verifies <code>deduct &gt; 0</code> and computes <code>new_amount = amount - deduct &gt;= 0</code>. Stashes <code>deduct</code> to alt for Phase 10 (delegate balance).</p>
+<h3 id="phase-4-verify-withdrawal"><a class="header" href="#phase-4-verify-withdrawal">Phase 4: Verify withdrawal</a></h3>
+<p>Prepends a 2-byte version prefix to <code>spk</code> and compares with <code>OpTxOutputSpk(0)</code>. This ensures the withdrawal output pays to the leaf’s designated address.</p>
+<h3 id="phase-5-compute-leaf-hashes"><a class="header" href="#phase-5-compute-leaf-hashes">Phase 5: Compute leaf hashes</a></h3>
+<p>Computes both the old leaf hash (<code>SHA256("PermLeaf" || spk || amount)</code>) and the new leaf hash. If <code>new_amount == 0</code>, the new leaf is the empty leaf hash (<code>SHA256("PermEmpty")</code>), indicating the claim is fully consumed.</p>
+<h3 id="phase-6-verify-old-root"><a class="header" href="#phase-6-verify-old-root">Phase 6: Verify old root</a></h3>
+<p>Walks the G1 Merkle path (depth steps), each consuming a <code>(sibling, direction)</code> pair. The computed root is compared against the embedded root via <code>OpEqualVerify</code>.</p>
+<p>Each Merkle step:</p>
+<pre><code>SWAP → IF → [sib||current] → ELSE → SWAP → [current||sib] → ENDIF
+→ CAT → push("PermBranch") → SWAP → CAT → SHA256
+</code></pre>
+<h3 id="phase-7-compute-new-root"><a class="header" href="#phase-7-compute-new-root">Phase 7: Compute new root</a></h3>
+<p>Identical Merkle walk using G2 siblings, but starting from the new leaf hash. The result is the updated permission root.</p>
+<h3 id="phase-8-compute-new-unclaimed"><a class="header" href="#phase-8-compute-new-unclaimed">Phase 8: Compute new unclaimed</a></h3>
+<p>If the leaf was fully consumed (<code>new_amount == 0</code>), decrements <code>unclaimed_count</code> by 1. Converts to 8-byte LE for prefix reconstruction.</p>
+<h3 id="phase-9-verify-outputs"><a class="header" href="#phase-9-verify-outputs">Phase 9: Verify outputs</a></h3>
+<p>Two branches based on <code>new_unclaimed</code>:</p>
+<p><strong>All claimed (new_uncl == 0):</strong> Drop the new root and unclaimed. Verify <code>CovOutCount == 0</code> — no continuation output should exist.</p>
+<p><strong>Unclaimed remain (new_uncl &gt; 0):</strong></p>
+<ol>
+<li>Reconstruct the 42-byte new prefix from <code>new_root</code> and <code>new_uncl</code></li>
+<li>Extract the script body+suffix from the current sig_script (self-introspection)</li>
+<li>Concatenate → new redeem script</li>
+<li>Hash to P2SH SPK and verify output 1 matches</li>
+<li>Verify <code>CovOutCount == 1</code></li>
+</ol>
+<h3 id="phase-10-verify-delegate-balance"><a class="header" href="#phase-10-verify-delegate-balance">Phase 10: Verify delegate balance</a></h3>
+<p>Enforces the delegate input/output balance equation:</p>
+<ol>
+<li><code>input_count &lt;= MAX_DELEGATE_INPUTS + 2</code></li>
+<li>Reconstructs the expected delegate P2SH SPK from <code>covenant_id</code></li>
+<li>Sums amounts from inputs 1..N whose SPK matches the delegate SPK</li>
+<li>Guards that input N+1 does NOT have the delegate SPK (prevents overcounting)</li>
+<li>Computes <code>expected_change = total_input - deduct &gt;= 0</code></li>
+<li>If <code>expected_change &gt; 0</code>: verifies <code>output[1 + CovOutCount]</code> has delegate SPK and correct amount</li>
+</ol>
+<h3 id="phase-11-domain-suffix"><a class="header" href="#phase-11-domain-suffix">Phase 11: Domain suffix</a></h3>
+<p>Appends <code>[OP_TRUE(0x51), OP_DROP(0x75)]</code> after the final <code>OP_TRUE</code>. This is a no-op that tags the script for cross-script introspection by the delegate script.</p>
+<h2 id="implementation"><a class="header" href="#implementation">Implementation</a></h2>
+<p>The permission script has two implementations that produce identical bytecode:</p>
+<ol>
+<li><strong>Host</strong> (<code>host/src/bridge.rs</code>) — uses <code>ScriptBuilder</code> from <code>kaspa-txscript</code></li>
+<li><strong>Core</strong> (<code>core/src/permission_script.rs</code>) — <code>no_std</code> byte-level builder</li>
+</ol>
+<p>The guest uses the core implementation to build the script inside the ZK proof, then hashes it to produce the <code>permission_spk_hash</code> for the journal.</p>
+<p>See <code>core/src/permission_script.rs:139-209</code> for <code>build_permission_redeem_bytes</code> and the converging length loop.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="delegateentry-script"><a class="header" href="#delegateentry-script">Delegate/Entry Script</a></h1>
+<p>The delegate script is a 53-byte P2SH redeem script that allows funds to ride alongside a permission input. It serves dual duty: it locks deposit outputs for entries and provides bridge reserve inputs for withdrawals.</p>
+<h2 id="purpose"><a class="header" href="#purpose">Purpose</a></h2>
+<p>When a user deposits funds (entry action), the funds must be locked in a way that:</p>
+<ol>
+<li>Only the covenant system can spend them</li>
+<li>The guest can verify the deposit is genuine</li>
+</ol>
+<p>When a withdrawal is processed, the permission script needs additional inputs to fund the withdrawal. Delegate inputs provide this liquidity.</p>
+<h2 id="script-structure-1"><a class="header" href="#script-structure-1">Script structure</a></h2>
+<pre class="mermaid">flowchart TD
+    CHECK_IDX["Step 1: OpTxInputIndex &gt; 0?&lt;br/&gt;Self is not at input 0"]
+    CHECK_COV["Step 2: Input 0 has&lt;br/&gt;expected covenant_id?"]
+    CHECK_SUFFIX["Step 3: Input 0's sig_script&lt;br/&gt;ends with [0x51, 0x75]?"]
+    RESULT["OpTrue"]
+
+    CHECK_IDX --&gt;|"Verify"| CHECK_COV
+    CHECK_COV --&gt;|"EqualVerify"| CHECK_SUFFIX
+    CHECK_SUFFIX --&gt;|"EqualVerify"| RESULT
+</pre>
+
+<p>The script is 53 bytes:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Offset</th><th>Size</th><th>Content</th></tr>
+</thead>
+<tbody>
+<tr><td>0-3</td><td>4B</td><td>Index check: <code>OpTxInputIndex Op0 OpGreaterThan OpVerify</code></td></tr>
+<tr><td>4-6</td><td>3B</td><td>Covenant preamble: <code>Op0 OpInputCovenantId OpData32</code></td></tr>
+<tr><td>7-38</td><td>32B</td><td>Embedded <code>covenant_id</code></td></tr>
+<tr><td>39</td><td>1B</td><td><code>OpEqualVerify</code></td></tr>
+<tr><td>40-51</td><td>12B</td><td>Suffix check: extract last 2 bytes of input 0’s sig_script, compare with <code>[0x51, 0x75]</code></td></tr>
+<tr><td>52</td><td>1B</td><td><code>OpTrue</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>See <code>core/src/p2sh.rs:103-156</code> for <code>build_delegate_entry_script_bytes</code>.</p>
+<h2 id="three-verification-steps"><a class="header" href="#three-verification-steps">Three verification steps</a></h2>
+<h3 id="step-1-not-at-input-0"><a class="header" href="#step-1-not-at-input-0">Step 1: Not at input 0</a></h3>
+<pre><code>OpTxInputIndex  Op0  OpGreaterThan  OpVerify
+</code></pre>
+<p>The delegate script must not be at input index 0. Index 0 is reserved for the permission script (or state verification script). This prevents the delegate from being used as the primary covenant input.</p>
+<h3 id="step-2-covenant-id-match"><a class="header" href="#step-2-covenant-id-match">Step 2: Covenant ID match</a></h3>
+<pre><code>Op0  OpInputCovenantId  OpData32  &lt;covenant_id&gt;  OpEqualVerify
+</code></pre>
+<p>Checks that input 0 carries the expected <code>covenant_id</code>. This binds the delegate to a specific covenant instance — it cannot be co-spent with a different covenant’s permission script.</p>
+<h3 id="step-3-permission-domain-suffix"><a class="header" href="#step-3-permission-domain-suffix">Step 3: Permission domain suffix</a></h3>
+<pre><code>Op0 Op0 OpTxInputScriptSigLen OpDup Op2 OpSub OpSwap OpTxInputScriptSigSubstr
+push-2 0x51 0x75 OpEqualVerify
+</code></pre>
+<p>Extracts the last 2 bytes of input 0’s sig_script and verifies they are <code>[0x51, 0x75]</code> (the permission domain suffix). This ensures the delegate is co-spending with a <strong>permission</strong> input specifically, not a state verification input.</p>
+<h2 id="deposit-spk-verification"><a class="header" href="#deposit-spk-verification">Deposit SPK verification</a></h2>
+<p>When a user creates an entry (deposit) transaction, the output must pay to <code>P2SH(delegate_script(covenant_id))</code>. The guest verifies this:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Verify that an entry (deposit) transaction output SPK is a P2SH wrapping the
+/// correct delegate/entry script for the given covenant.
+///
+/// This ensures deposited funds are actually locked in the covenant, preventing
+/// a malicious host from crediting L2 accounts for funds sent to arbitrary addresses.
+pub fn verify_entry_output_spk(spk: &amp;[u8], covenant_id: &amp;[u32; 8]) -&gt; bool {
+    let delegate = build_delegate_entry_script_bytes(covenant_id);
+    verify_p2sh_spk(spk, &amp;delegate)
+}
+<span class="boring">}</span></code></pre>
+<p>This reconstructs the expected delegate script from the <code>covenant_id</code>, hashes it with blake2b, and compares with the output’s P2SH script hash.</p>
+<h2 id="entry-input-guard"><a class="header" href="#entry-input-guard">Entry input guard</a></h2>
+<p>The guest also checks that entry transactions do NOT have a permission script as input 0:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Check if the first input's sig_script ends with the permission domain suffix.
+///
+/// Returns `true` if input 0's sig_script ends with `[0x51, 0x75]` (`OP_TRUE OP_DROP`),
+/// which identifies the permission script domain. This is used by the guest to reject
+/// entry (deposit) transactions whose first input is a permission script, preventing
+/// delegate change outputs from being counted as new deposits.
+///
+/// The transaction byte format is the same as documented on [`parse_output_at_index`].
+pub fn input0_has_permission_suffix(tx_bytes: &amp;[u8]) -&gt; bool {
+    let mut cursor = 0;
+
+    // Skip version (2 bytes)
+    cursor += 2;
+    if cursor &gt; tx_bytes.len() {
+        return false;
+    }
+
+    // Read num_inputs
+    let num_inputs = match read_u64(tx_bytes, &amp;mut cursor) {
+        Some(n) =&gt; n,
+        None =&gt; return false,
+    };
+    if num_inputs == 0 {
+        return false;
+    }
+
+    // Skip prev_tx_id (32 bytes) + prev_index (4 bytes)
+    cursor += 36;
+    if cursor &gt; tx_bytes.len() {
+        return false;
+    }
+
+    // Read sig_script_len
+    let sig_len = match read_u64(tx_bytes, &amp;mut cursor) {
+        Some(n) =&gt; n as usize,
+        None =&gt; return false,
+    };
+
+    if sig_len &lt; 2 || cursor + sig_len &gt; tx_bytes.len() {
+        return false;
+    }
+
+    // Check last 2 bytes of sig_script: [0x51, 0x75] = OP_TRUE, OP_DROP
+    let sig_end = cursor + sig_len;
+    tx_bytes[sig_end - 2] == 0x51 &amp;&amp; tx_bytes[sig_end - 1] == 0x75
+}
+<span class="boring">}</span></code></pre>
+<p>This prevents a subtle attack: without this guard, the delegate change output from a withdrawal transaction could be misinterpreted as a new deposit. The permission suffix check distinguishes withdrawal change from genuine deposits.</p>
+<h2 id="design-rationale-1"><a class="header" href="#design-rationale-1">Design rationale</a></h2>
+<p><strong>Why a separate script?</strong> The delegate script allows bridge reserve funds to be pre-positioned in UTXOs that can only be spent alongside a permission input. This avoids requiring the entire bridge reserve in a single UTXO.</p>
+<p><strong>Why check the suffix?</strong> The covenant_id check alone is insufficient — it would allow co-spending with a state verification input (which has suffix <code>[0x00, 0x75]</code>). The suffix check ensures delegates only participate in withdrawal transactions.</p>
+<p><strong>Why <code>MAX_DELEGATE_INPUTS = 2</code>?</strong> The permission script unrolls the delegate input loop. More inputs mean a larger script. Two delegate inputs are sufficient for the PoC while keeping the script compact.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="security-model"><a class="header" href="#security-model">Security Model</a></h1>
+<p>This chapter catalogues every check in the system, the attack it prevents, and where trust boundaries lie.</p>
+<h2 id="trust-boundaries"><a class="header" href="#trust-boundaries">Trust boundaries</a></h2>
+<pre class="mermaid">flowchart LR
+    subgraph Untrusted["Untrusted (Host)"]
+        HOST[Host binary]
+        WITNESS[Witness data]
+        HINT[Hints: redeem length,&lt;br/&gt;block ordering]
+    end
+
+    subgraph Crypto["Cryptographically Enforced"]
+        ZK[ZK proof verifier]
+        SCRIPT[On-chain scripts]
+        TXID[Transaction ID binding]
+    end
+
+    subgraph Enforced["Guest (ZK) Guarantees"]
+        STATE[State transitions correct]
+        BALANCE[Balances conserved]
+        AUTH[Source authorized]
+        SEQ[Block sequence valid]
+        PERM[Permission tree correct]
+    end
+
+    HOST --&gt;|"provides witnesses"| ZK
+    ZK --&gt;|"verifies guest execution"| STATE
+    ZK --&gt;|"verifies guest execution"| BALANCE
+    ZK --&gt;|"verifies guest execution"| AUTH
+    ZK --&gt;|"verifies guest execution"| SEQ
+    ZK --&gt;|"verifies guest execution"| PERM
+    SCRIPT --&gt;|"verifies ZK proof"| ZK
+    TXID --&gt;|"binds witnesses to chain"| SCRIPT
+</pre>
+
+<h2 id="what-the-host-can-lie-about"><a class="header" href="#what-the-host-can-lie-about">What the host can lie about</a></h2>
+<p>The host provides private inputs (witnesses) to the guest. Some are trusted hints, others are cryptographically bound.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Host input</th><th>Bound by</th><th>Attack if omitted</th></tr>
+</thead>
+<tbody>
+<tr><td>Block transaction data</td><td><code>OpChainblockSeqCommit</code> on-chain</td><td>Host could fabricate transactions</td></tr>
+<tr><td>Previous tx preimage</td><td>tx_id hash verification</td><td>Host could claim false output SPKs</td></tr>
+<tr><td>Account SMT witnesses</td><td>Root hash chain</td><td>Host could fabricate balances</td></tr>
+<tr><td>Permission redeem length</td><td>Assert in guest</td><td>Guest script wouldn’t match on-chain hash</td></tr>
+<tr><td>Action ordering within block</td><td>Seq commitment leaf hash</td><td>Host could reorder or skip actions</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="check-catalogue"><a class="header" href="#check-catalogue">Check catalogue</a></h2>
+<h3 id="guest-side-checks"><a class="header" href="#guest-side-checks">Guest-side checks</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Check</th><th>Location</th><th>Attack prevented</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_action_tx_id(tx_id)</code></td><td><code>guest/src/block.rs</code></td><td>Non-action transactions processed as actions</td></tr>
+<tr><td><code>tx_id[0] == 0x41</code></td><td><code>core/src/lib.rs</code></td><td>Random transactions misclassified</td></tr>
+<tr><td>Action version == <code>ACTION_VERSION</code></td><td><code>guest/src/tx.rs</code></td><td>Future/incompatible action formats</td></tr>
+<tr><td><code>deduct &gt; 0</code></td><td><code>guest/src/state.rs</code></td><td>Zero-value withdrawal claims</td></tr>
+<tr><td><code>amount &gt;= deduct</code></td><td><code>guest/src/state.rs</code></td><td>Underflow in withdrawal amount</td></tr>
+<tr><td>Source pubkey matches input 0 SPK</td><td><code>guest/src/auth.rs</code></td><td>Unauthorized transfers/exits</td></tr>
+<tr><td>SMT proof verifies against root</td><td><code>guest/src/state.rs</code></td><td>Fabricated account balances</td></tr>
+<tr><td>Balance conservation (transfer)</td><td><code>guest/src/state.rs</code></td><td>Value creation from nothing</td></tr>
+<tr><td>Entry output SPK is P2SH(delegate)</td><td><code>core/src/p2sh.rs</code></td><td>Deposits to unrelated addresses credited as L2 entries</td></tr>
+<tr><td>Entry tx input 0 not permission suffix</td><td><code>core/src/prev_tx.rs</code></td><td>Delegate change output misinterpreted as deposit</td></tr>
+<tr><td>Prev tx_id matches computed hash</td><td><code>core/src/prev_tx.rs</code></td><td>Host claims false output SPK/amounts</td></tr>
+<tr><td>Exit SPK length &lt;= <code>EXIT_SPK_MAX</code></td><td><code>core/src/action.rs</code></td><td>Oversized SPK overflows</td></tr>
+<tr><td>Seq commitment matches chain</td><td>On-chain <code>OpChainblockSeqCommit</code></td><td>Fabricated block data</td></tr>
+<tr><td>Permission root matches exits</td><td><code>guest/src/journal.rs</code></td><td>Incorrect withdrawal tree committed</td></tr>
+<tr><td>Redeem script length matches host hint</td><td><code>guest/src/journal.rs</code></td><td>Script hash mismatch</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="on-chain-checks-state-verification-script"><a class="header" href="#on-chain-checks-state-verification-script">On-chain checks (state verification script)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Check</th><th>Phase</th><th>Attack prevented</th></tr>
+</thead>
+<tbody>
+<tr><td>Domain prefix <code>[0x00, 0x75]</code></td><td>Start</td><td>Script type confusion</td></tr>
+<tr><td>Prev state embedded in script</td><td>Prefix</td><td>State rollback or skip</td></tr>
+<tr><td><code>OpChainblockSeqCommit</code></td><td>Seq commit</td><td>Fabricated block sequence</td></tr>
+<tr><td>Output 0 SPK == P2SH(new redeem)</td><td>SPK verify</td><td>Covenant chain broken</td></tr>
+<tr><td>Journal SHA-256 matches ZK proof</td><td>ZK verify</td><td>Proof for different state transition</td></tr>
+<tr><td>Program ID matches</td><td>ZK verify</td><td>Proof from different program</td></tr>
+<tr><td>Input index == 0</td><td>Guard</td><td>Script used at wrong position</td></tr>
+<tr><td><code>CovOutCount</code> == 1 or 2</td><td>Output branch</td><td>Unexpected covenant outputs</td></tr>
+<tr><td>Output 1 P2SH format (if 2 outputs)</td><td>Perm verify</td><td>Non-P2SH permission output</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="on-chain-checks-permission-script"><a class="header" href="#on-chain-checks-permission-script">On-chain checks (permission script)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Check</th><th>Phase</th><th>Attack prevented</th></tr>
+</thead>
+<tbody>
+<tr><td><code>deduct &gt; 0</code></td><td>Phase 3</td><td>Zero-value claims drain UTXO</td></tr>
+<tr><td><code>amount &gt;= deduct</code></td><td>Phase 3</td><td>Balance underflow</td></tr>
+<tr><td>Output 0 SPK == leaf SPK</td><td>Phase 4</td><td>Withdrawal to wrong address</td></tr>
+<tr><td>Old leaf hash verifies under root</td><td>Phase 6</td><td>Fabricated Merkle proof</td></tr>
+<tr><td>New root correctly computed</td><td>Phase 7</td><td>State corruption after claim</td></tr>
+<tr><td>Unclaimed decremented correctly</td><td>Phase 8</td><td>Count desync</td></tr>
+<tr><td>Continuation SPK matches</td><td>Phase 9</td><td>Permission UTXO chain broken</td></tr>
+<tr><td><code>CovOutCount</code> correct</td><td>Phase 9</td><td>Unexpected covenant outputs</td></tr>
+<tr><td><code>output_count &lt;= 4</code></td><td>Phase 9</td><td>Transaction stuffing</td></tr>
+<tr><td><code>input_count &lt;= N+2</code></td><td>Phase 10</td><td>Overcounting delegate inputs</td></tr>
+<tr><td>Delegate SPK matches covenant</td><td>Phase 10</td><td>Spending unrelated UTXOs as delegates</td></tr>
+<tr><td>Input N+1 not delegate SPK</td><td>Phase 10</td><td>Collateral miscounted as delegate</td></tr>
+<tr><td><code>total_input &gt;= deduct</code></td><td>Phase 10</td><td>Insufficient delegate funds</td></tr>
+<tr><td>Delegate change output correct</td><td>Phase 10</td><td>Change amount/address incorrect</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="on-chain-checks-delegateentry-script"><a class="header" href="#on-chain-checks-delegateentry-script">On-chain checks (delegate/entry script)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Check</th><th>Step</th><th>Attack prevented</th></tr>
+</thead>
+<tbody>
+<tr><td>Self not at input index 0</td><td>Step 1</td><td>Delegate used as primary covenant input</td></tr>
+<tr><td>Input 0 covenant_id matches</td><td>Step 2</td><td>Co-spent with wrong covenant</td></tr>
+<tr><td>Input 0 suffix <code>[0x51, 0x75]</code></td><td>Step 3</td><td>Co-spent with state verification (not permission)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="attack-scenarios-and-mitigations"><a class="header" href="#attack-scenarios-and-mitigations">Attack scenarios and mitigations</a></h2>
+<h3 id="malicious-host-credits-fake-deposits"><a class="header" href="#malicious-host-credits-fake-deposits">Malicious host credits fake deposits</a></h3>
+<p><strong>Attack:</strong> Host provides a witness claiming a deposit output SPK that doesn’t actually pay to <code>P2SH(delegate_script(covenant_id))</code>.</p>
+<p><strong>Mitigation:</strong> Guest calls <code>verify_entry_output_spk()</code> which reconstructs the expected delegate script from the covenant_id, hashes it, and compares with the output’s P2SH hash. The tx_id binding ensures the output actually exists on-chain.</p>
+<h3 id="delegate-change-output-mistaken-for-deposit"><a class="header" href="#delegate-change-output-mistaken-for-deposit">Delegate change output mistaken for deposit</a></h3>
+<p><strong>Attack:</strong> A withdrawal transaction creates a delegate change output paying to the delegate script. A malicious host presents this as a new deposit in the next batch.</p>
+<p><strong>Mitigation:</strong> Guest calls <code>input0_has_permission_suffix()</code> on the entry transaction’s preimage. If input 0 ends with <code>[0x51, 0x75]</code> (permission domain), the transaction is a withdrawal — the output is delegate change, not a deposit.</p>
+<h3 id="cross-covenant-co-spending"><a class="header" href="#cross-covenant-co-spending">Cross-covenant co-spending</a></h3>
+<p><strong>Attack:</strong> A delegate input from covenant A is co-spent with a permission input from covenant B, draining A’s bridge reserve.</p>
+<p><strong>Mitigation:</strong> The delegate script embeds a specific <code>covenant_id</code> and verifies input 0 carries that same ID. Different covenants have different IDs, so cross-covenant co-spending fails.</p>
+<h3 id="proof-replay"><a class="header" href="#proof-replay">Proof replay</a></h3>
+<p><strong>Attack:</strong> A valid ZK proof from a previous state transition is replayed to revert state.</p>
+<p><strong>Mitigation:</strong> The journal includes <code>prev_state_hash</code> and <code>prev_seq_commitment</code>, both embedded in the redeem script prefix. The on-chain script verifies these match. Since the seq_commitment changes with every block, a replayed proof would fail the sequence check.</p>
+<h3 id="collateral-input-overcounting"><a class="header" href="#collateral-input-overcounting">Collateral input overcounting</a></h3>
+<p><strong>Attack:</strong> An attacker provides extra inputs beyond the delegate slots and hopes they’re counted toward the delegate balance.</p>
+<p><strong>Mitigation:</strong> Phase 10 enforces <code>input_count &lt;= MAX_DELEGATE_INPUTS + 2</code> and explicitly guards that input N+1 does NOT have the delegate SPK. The unrolled loop only sums inputs at indices 1..N.</p>
+<h2 id="conservation-properties"><a class="header" href="#conservation-properties">Conservation properties</a></h2>
+<p>The system maintains two conservation invariants:</p>
+<ol>
+<li>
+<p><strong>L2 balance conservation:</strong> Every transfer preserves total L2 balance (amount sent equals amount received). Entries increase total L2 balance by the deposit amount. Exits decrease it by the withdrawal amount.</p>
+</li>
+<li>
+<p><strong>Bridge reserve conservation:</strong> The permission script enforces <code>delegate_input_total &gt;= deduct</code> and verifies the change output amount equals <code>total - deduct</code>. No value is created or destroyed during withdrawals.</p>
+</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="appendix-a-domain-separators"><a class="header" href="#appendix-a-domain-separators">Appendix A: Domain Separators</a></h1>
+<p>Every hash in the system uses domain separation to prevent cross-protocol collisions. This appendix lists all domain tags, their hash function, and purpose.</p>
+<h2 id="hash-domain-tags"><a class="header" href="#hash-domain-tags">Hash domain tags</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Domain string</th><th>Hash</th><th>Keyed?</th><th>Module</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"SMTLeaf"</code></td><td>SHA-256</td><td>No (prefix)</td><td><code>core/src/smt.rs</code></td><td>Account leaf: <code>sha256("SMTLeaf" || pubkey || balance)</code></td></tr>
+<tr><td><code>"SMTEmpty"</code></td><td>SHA-256</td><td>No (prefix)</td><td><code>core/src/smt.rs</code></td><td>Empty account slot sentinel: <code>sha256("SMTEmpty")</code></td></tr>
+<tr><td><code>"SMTBranch"</code></td><td>SHA-256</td><td>No (prefix)</td><td><code>core/src/smt.rs</code></td><td>SMT internal node: <code>sha256("SMTBranch" || left || right)</code></td></tr>
+<tr><td><code>"PermLeaf"</code></td><td>SHA-256</td><td>No (prefix)</td><td><code>core/src/permission_tree.rs</code></td><td>Withdrawal leaf: <code>sha256("PermLeaf" || spk || amount)</code></td></tr>
+<tr><td><code>"PermEmpty"</code></td><td>SHA-256</td><td>No (prefix)</td><td><code>core/src/permission_tree.rs</code></td><td>Empty withdrawal slot: <code>sha256("PermEmpty")</code></td></tr>
+<tr><td><code>"PermBranch"</code></td><td>SHA-256</td><td>No (prefix)</td><td><code>core/src/permission_tree.rs</code></td><td>Permission tree node: <code>sha256("PermBranch" || left || right)</code></td></tr>
+<tr><td><code>"SeqCommitmentMerkleLeafHash"</code></td><td>BLAKE3</td><td>Yes (key)</td><td><code>core/src/seq_commit.rs</code></td><td>Seq commitment leaf: <code>blake3_keyed(key, tx_id || version)</code></td></tr>
+<tr><td><code>"SeqCommitmentMerkleBranchHash"</code></td><td>BLAKE3</td><td>Yes (key)</td><td><code>core/src/seq_commit.rs</code></td><td>Seq commitment node: <code>blake3_keyed(key, left || right)</code></td></tr>
+<tr><td><code>"PayloadDigest"</code></td><td>BLAKE3</td><td>Yes (key)</td><td><code>core/src/lib.rs</code></td><td>V1 tx payload hash</td></tr>
+<tr><td><code>"TransactionRest"</code></td><td>BLAKE3</td><td>Yes (key)</td><td><code>core/src/lib.rs</code></td><td>V1 tx rest-of-data hash</td></tr>
+<tr><td><code>"TransactionV1Id"</code></td><td>BLAKE3</td><td>Yes (key)</td><td><code>core/src/lib.rs</code></td><td>V1 tx_id: <code>blake3_keyed(key, payload_digest || rest_digest)</code></td></tr>
+<tr><td><code>"TransactionID"</code></td><td>BLAKE2b-256</td><td>Yes (.key())</td><td><code>core/src/lib.rs</code></td><td>V0 tx_id: <code>blake2b_keyed(key, full_preimage)</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="non-hash-domain-tags"><a class="header" href="#non-hash-domain-tags">Non-hash domain tags</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tag</th><th>Value</th><th>Type</th><th>Module</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ACTION_TX_ID_PREFIX</code></td><td><code>0x41</code> (<code>'A'</code>)</td><td>Byte prefix</td><td><code>core/src/lib.rs</code></td><td>First byte of tx_id identifies action transactions</td></tr>
+<tr><td>State verification suffix</td><td><code>[0x00, 0x75]</code></td><td>Opcode pair</td><td><code>host/src/bridge.rs</code></td><td><code>[OP_0, OP_DROP]</code> tags state verification scripts</td></tr>
+<tr><td>Permission suffix</td><td><code>[0x51, 0x75]</code></td><td>Opcode pair</td><td><code>host/src/bridge.rs</code></td><td><code>[OP_1, OP_DROP]</code> tags permission scripts</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="hashing-strategy"><a class="header" href="#hashing-strategy">Hashing strategy</a></h2>
+<p>The system uses three hash functions, chosen to match Kaspa’s protocol:</p>
+<p><strong>SHA-256</strong> — Used for Merkle trees that must be replicated on-chain via <code>OP_SHA256</code>. Both the account SMT and permission tree use SHA-256 with domain-prefix separation (<code>sha256(tag || data)</code>).</p>
+<p><strong>BLAKE3</strong> — Used for transaction IDs and sequence commitments. Kaspa’s V1 transaction ID scheme uses BLAKE3 with keyed hashing. The <code>domain_to_key()</code> function zero-pads a domain string into a 32-byte BLAKE3 key:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>
+<span class="boring">}</span></code></pre>
+<p><strong>BLAKE2b-256</strong> — Used for V0 transaction IDs (legacy) and P2SH script hashing. V0 tx_id uses keyed BLAKE2b; P2SH uses unkeyed BLAKE2b matching <code>kaspa_txscript::pay_to_script_hash_script</code>.</p>
+<h2 id="why-separate-tree-domains"><a class="header" href="#why-separate-tree-domains">Why separate tree domains?</a></h2>
+<p>The SMT and permission tree intentionally use different domain strings (<code>"SMTLeaf"</code> vs <code>"PermLeaf"</code>, etc.) even though both use SHA-256. This prevents a valid proof in one tree from being accepted in the other. A test in <code>permission_tree.rs</code> explicitly asserts:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>assert_ne!(perm_empty_leaf_hash(), crate::smt::empty_leaf_hash());
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="appendix-b-transaction-id-schemes"><a class="header" href="#appendix-b-transaction-id-schemes">Appendix B: Transaction ID Schemes</a></h1>
+<p>Kaspa supports two transaction ID formats. The rollup guest must handle both to verify previous transaction outputs.</p>
+<h2 id="v0-blake2b-full-preimage"><a class="header" href="#v0-blake2b-full-preimage">V0: BLAKE2b full preimage</a></h2>
+<p>V0 transactions compute their ID by hashing the entire serialized transaction:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// Compute V0 transaction ID using blake2b.
+/// This uses the same domain separator as Kaspa's TransactionID hasher.
+pub fn tx_id_v0(preimage: &amp;[u8]) -&gt; [u32; 8] {
+    const DOMAIN_SEP: &amp;[u8] = b"TransactionID";
+
+    let hash = blake2b_simd::Params::new().hash_length(32).key(DOMAIN_SEP).hash(preimage);
+
+    let mut out = [0u32; 8];
+    bytemuck::bytes_of_mut(&amp;mut out).copy_from_slice(hash.as_bytes());
+    out
+}
+<span class="boring">}</span></code></pre>
+<p>The domain key <code>"TransactionID"</code> matches Kaspa’s <code>kaspa_hashes::TransactionID</code> hasher exactly. The full transaction bytes (version, inputs, outputs, locktime, subnetwork, gas, payload) are hashed in one pass.</p>
+<p><strong>Verification in the guest:</strong></p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>    /// Compute the tx_id from the preimage
+    pub fn compute_tx_id(&amp;self) -&gt; [u32; 8] {
+        crate::tx_id_v0(&amp;self.preimage)
+    }
+<span class="boring">}</span></code></pre>
+<p>The host provides the full transaction preimage. The guest hashes it, compares against the claimed tx_id, then parses the preimage to extract the output SPK at the claimed index.</p>
+<h2 id="v1-blake3-split-digest"><a class="header" href="#v1-blake3-split-digest">V1: BLAKE3 split digest</a></h2>
+<p>V1 transactions split the hash into two components:</p>
+<pre><code>tx_id = blake3_keyed("TransactionV1Id", payload_digest || rest_digest)
+</code></pre>
+<p>where:</p>
+<ul>
+<li><code>payload_digest = blake3_keyed("PayloadDigest", payload_bytes)</code></li>
+<li><code>rest_digest = blake3_keyed("TransactionRest", rest_preimage)</code></li>
+</ul>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn payload_digest(payload: &amp;[u32]) -&gt; [u32; 8] {
+    payload_digest_bytes(bytemuck::cast_slice(payload))
+}
+
+pub fn payload_digest_bytes(payload: &amp;[u8]) -&gt; [u32; 8] {
+    const DOMAIN_SEP: &amp;[u8] = b"PayloadDigest";
+    const KEY: [u8; blake3::KEY_LEN] = domain_to_key(DOMAIN_SEP);
+
+    let mut out = [0u32; 8];
+    bytemuck::bytes_of_mut(&amp;mut out).copy_from_slice(blake3::keyed_hash(&amp;KEY, payload).as_bytes());
+    out
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn tx_id_v1(payload_digest: &amp;[u32; 8], rest_digest: &amp;[u32; 8]) -&gt; [u32; 8] {
+    const DOMAIN_SEP: &amp;[u8] = b"TransactionV1Id";
+    const KEY: [u8; blake3::KEY_LEN] = domain_to_key(DOMAIN_SEP);
+
+    let mut hasher = blake3::Hasher::new_keyed(&amp;KEY);
+    hasher.update(bytemuck::cast_slice(payload_digest));
+    hasher.update(bytemuck::cast_slice(rest_digest));
+    let mut out = [0u32; 8];
+    bytemuck::bytes_of_mut(&amp;mut out).copy_from_slice(hasher.finalize().as_bytes());
+    out
+}
+<span class="boring">}</span></code></pre>
+<p><strong>Verification in the guest:</strong></p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>    /// Compute the tx_id from rest_preimage and payload_digest
+    pub fn compute_tx_id(&amp;self) -&gt; [u32; 8] {
+        let rest_digest = crate::rest_digest_bytes(self.rest_preimage.as_bytes());
+        crate::tx_id_v1(&amp;self.payload_digest, &amp;rest_digest)
+    }
+<span class="boring">}</span></code></pre>
+<p>The host provides:</p>
+<ol>
+<li>The pre-computed <code>payload_digest</code> (32 bytes) — the guest does not need the full payload</li>
+<li>The <code>rest_preimage</code> — the guest hashes this to get <code>rest_digest</code> and parses it for output data</li>
+</ol>
+<h2 id="why-the-split-matters"><a class="header" href="#why-the-split-matters">Why the split matters</a></h2>
+<p>The V1 split design benefits the ZK guest:</p>
+<ol>
+<li>
+<p><strong>Smaller witness:</strong> The guest only needs <code>payload_digest</code> (32 bytes) instead of the full payload (variable, potentially large). The payload contains the action data which the guest already has from block processing.</p>
+</li>
+<li>
+<p><strong>Output extraction:</strong> The <code>rest_preimage</code> contains the outputs, so the guest can extract the output SPK for deposit verification without needing the payload bytes.</p>
+</li>
+<li>
+<p><strong>Efficient hashing:</strong> BLAKE3 is faster than BLAKE2b in the RISC-V guest, and the split allows partial preimage reuse.</p>
+</li>
+</ol>
+<h2 id="witness-structures-1"><a class="header" href="#witness-structures-1">Witness structures</a></h2>
+<p>The <code>PrevTxWitness</code> enum handles both versions:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Version</th><th>Witness type</th><th>Host provides</th><th>Guest computes</th></tr>
+</thead>
+<tbody>
+<tr><td>V0</td><td><code>PrevTxV0Witness</code></td><td>Full preimage</td><td><code>blake2b(preimage)</code></td></tr>
+<tr><td>V1</td><td><code>PrevTxV1Witness</code></td><td><code>rest_preimage</code> + <code>payload_digest</code></td><td><code>blake3(payload_digest || blake3(rest))</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="kaspa-compatibility-1"><a class="header" href="#kaspa-compatibility-1">Kaspa compatibility</a></h2>
+<p>Both implementations are tested against Kaspa’s canonical hashers:</p>
+<ul>
+<li><code>tx_id_v0</code> matches <code>kaspa_hashes::TransactionID</code></li>
+<li><code>payload_digest</code> matches <code>kaspa_hashes::PayloadDigest</code></li>
+<li><code>rest_digest</code> matches <code>kaspa_hashes::TransactionRest</code></li>
+<li><code>tx_id_v1</code> matches <code>kaspa_hashes::TransactionV1Id</code></li>
+</ul>
+<p>See <code>core/src/lib.rs</code> tests for the compatibility assertions.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

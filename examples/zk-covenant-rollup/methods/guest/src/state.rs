@@ -15,6 +15,7 @@ pub fn process_transfer(transfer: &TransferAction, witness: &TransferWitness, cu
     verify_and_update_dest(&transfer.destination, &witness.dest, transfer.amount, &new_root)
 }
 
+// ANCHOR: process_exit_state
 /// Process an exit (withdrawal): debit source account only.
 ///
 /// Returns the new state root after debiting the source by `exit.amount`.
@@ -37,6 +38,7 @@ pub fn process_exit(exit: &ExitAction, source_witness: &AccountWitness, current_
     let new_leaf = leaf_hash(&exit.source, new_balance);
     Some(source_witness.proof.compute_root(&new_leaf, key))
 }
+// ANCHOR_END: process_exit_state
 
 /// Process an entry (deposit): credit destination only (no source debit).
 ///
@@ -70,6 +72,7 @@ fn verify_and_update_source(transfer: &TransferAction, source_witness: &AccountW
     Some(source_witness.proof.compute_root(&new_leaf, source_key))
 }
 
+// ANCHOR: verify_and_update_dest
 /// Verify destination account and compute new root after credit.
 ///
 /// Used by both transfers and entries. For new accounts, the witness has
@@ -105,3 +108,4 @@ fn verify_and_update_dest(
     let new_leaf = leaf_hash(destination, new_balance);
     Some(dest_witness.proof.compute_root(&new_leaf, dest_key))
 }
+// ANCHOR_END: verify_and_update_dest

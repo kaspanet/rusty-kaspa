@@ -7,6 +7,7 @@ use zk_covenant_common::{CovenantBase, Risc0Groth16Verify, Risc0SuccinctVerify};
 
 use crate::covenant::RollupCovenant;
 
+// ANCHOR: build_redeem_script
 /// Build the rollup redeem script with embedded state
 pub fn build_redeem_script(
     prev_state_hash: [u32; 8],
@@ -65,3 +66,4 @@ pub fn build_redeem_script(
 
     builder.drain()
 }
+// ANCHOR_END: build_redeem_script

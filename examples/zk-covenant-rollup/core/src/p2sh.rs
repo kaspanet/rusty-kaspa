@@ -155,6 +155,7 @@ pub fn build_delegate_entry_script_bytes(covenant_id: &[u32; 8]) -> [u8; DELEGAT
     s
 }
 
+// ANCHOR: verify_entry_output_spk
 /// Verify that an entry (deposit) transaction output SPK is a P2SH wrapping the
 /// correct delegate/entry script for the given covenant.
 ///
@@ -164,6 +165,7 @@ pub fn verify_entry_output_spk(spk: &[u8], covenant_id: &[u32; 8]) -> bool {
     let delegate = build_delegate_entry_script_bytes(covenant_id);
     verify_p2sh_spk(spk, &delegate)
 }
+// ANCHOR_END: verify_entry_output_spk
 
 #[cfg(test)]
 mod tests {

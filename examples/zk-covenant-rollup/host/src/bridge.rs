@@ -17,6 +17,7 @@ mod tests;
 //  Script domains
 // ─────────────────────────────────────────────────────────────────
 
+// ANCHOR: script_domain
 /// Script domain suffixes for distinguishing different scripts within the same covenant.
 ///
 /// Each domain has a 2-byte suffix (`[opcode, OP_DROP]`) appended to the redeem script
@@ -40,6 +41,7 @@ impl ScriptDomain {
         }
     }
 }
+// ANCHOR_END: script_domain
 
 // ─────────────────────────────────────────────────────────────────
 //  Constants
@@ -245,6 +247,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
                                          // Alt:  [uncl_emb, root_emb]  (root on top)
     }
 
+    // ANCHOR: emit_validate_amounts
     fn emit_validate_amounts(&self, b: &mut ScriptBuilder) {
         // Main: [..G2, ..G1, spk, amount, deduct]
         // Alt: [uncl, root]
@@ -270,7 +273,9 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpVerify).unwrap();
         // Main: [..G2, ..G1, spk, amount, new_amount]
     }
+    // ANCHOR_END: emit_validate_amounts
 
+    // ANCHOR: emit_verify_withdrawal
     fn emit_verify_withdrawal(&self, b: &mut ScriptBuilder) {
         // Main: [..., spk, amount, new_amount]
 
@@ -299,7 +304,9 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpRot).unwrap(); // [spk, amount, new_amount]
                                   // Main: [..G2, ..G1, spk, amount, new_amount]
     }
+    // ANCHOR_END: emit_verify_withdrawal
 
+    // ANCHOR: emit_compute_leaf_hashes
     fn emit_compute_leaf_hashes(&self, b: &mut ScriptBuilder) {
         // ── is_zero = (new_amount == 0), stash for later ──
         b.add_op(OpDup).unwrap();
@@ -365,7 +372,9 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         // Main: [..G2, ..G1, old_leaf]
         // Alt: [uncl, root, deduct, is_zero, new_leaf]
     }
+    // ANCHOR_END: emit_compute_leaf_hashes
 
+    // ANCHOR: emit_verify_old_root
     fn emit_verify_old_root(&self, b: &mut ScriptBuilder) {
         for _ in 0..self.depth {
             emit_merkle_step(b);
@@ -393,6 +402,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpToAltStack).unwrap(); // stash is_zero. Alt: [uncl, deduct, is_zero]
                                          // Main: [..G2, new_leaf]
     }
+    // ANCHOR_END: emit_verify_old_root
 
     fn emit_compute_new_root(&self, b: &mut ScriptBuilder) {
         for _ in 0..self.depth {
@@ -429,6 +439,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpSwap).unwrap(); // [deduct, new_root, new_uncl_8b]
     }
 
+    // ANCHOR: emit_verify_outputs
     fn emit_verify_outputs(&self, b: &mut ScriptBuilder) {
         // ── enforce output_count <= MAX_OUTPUTS ──
         b.add_op(OpTxOutputCount).unwrap();
@@ -507,7 +518,9 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         }
         b.add_op(OpEndIf).unwrap();
     }
+    // ANCHOR_END: emit_verify_outputs
 
+    // ANCHOR: emit_verify_delegate_balance
     fn emit_verify_delegate_balance(&self, b: &mut ScriptBuilder) {
         let n = self.max_delegate_inputs.get();
 
@@ -618,6 +631,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpEndIf).unwrap();
         // Main: [] (empty — final TRUE is added by build())
     }
+    // ANCHOR_END: emit_verify_delegate_balance
 
     fn emit_domain_suffix(&self, b: &mut ScriptBuilder) {
         b.add_op(OpTrue).unwrap(); // 0x51
@@ -713,6 +727,7 @@ fn emit_hash_redeem_to_spk(b: &mut ScriptBuilder) {
 //  Permission sig_script builder
 // ─────────────────────────────────────────────────────────────────
 
+// ANCHOR: build_permission_sig_script
 /// Build the permission sig_script for a withdrawal claim.
 ///
 /// `deduct` uses minimal i64 encoding (via `add_i64`); a copy is stashed to alt
@@ -743,11 +758,13 @@ pub fn build_permission_sig_script(spk: &[u8], amount: u64, deduct: u64, proof: 
 
     b.drain()
 }
+// ANCHOR_END: build_permission_sig_script
 
 // ─────────────────────────────────────────────────────────────────
 //  Delegate / entry script
 // ─────────────────────────────────────────────────────────────────
 
+// ANCHOR: build_delegate_entry_script
 /// Build the delegate/entry script (used as a P2SH redeem).
 ///
 /// This script allows additional transaction inputs to ride alongside a
@@ -792,3 +809,4 @@ pub fn build_delegate_entry_script(permission_covenant_id: &[u8; 32]) -> Vec<u8>
 
     builder.drain()
 }
+// ANCHOR_END: build_delegate_entry_script

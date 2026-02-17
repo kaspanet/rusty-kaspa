@@ -7,6 +7,7 @@
 
 use crate::smt::{self, SMT_DEPTH, SmtProof};
 
+// ANCHOR: account
 /// Account structure (40 bytes)
 #[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -16,6 +17,7 @@ pub struct Account {
     /// Account balance (8 bytes)
     pub balance: u64,
 }
+// ANCHOR_END: account
 
 impl Account {
     /// Create a new account
@@ -29,6 +31,7 @@ impl Account {
     }
 }
 
+// ANCHOR: account_witness
 /// Witness for a single account in the SMT
 #[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -40,6 +43,7 @@ pub struct AccountWitness {
     /// SMT proof for this account
     pub proof: SmtProof,
 }
+// ANCHOR_END: account_witness
 
 impl AccountWitness {
     /// Size in bytes
@@ -92,6 +96,7 @@ impl AccountWitness {
 /// State root type (32 bytes as [u32; 8])
 pub type StateRoot = [u32; 8];
 
+// ANCHOR: empty_tree_root
 /// Compute empty tree root
 pub fn empty_tree_root() -> StateRoot {
     let empty_leaf = smt::empty_leaf_hash();
@@ -101,6 +106,7 @@ pub fn empty_tree_root() -> StateRoot {
     }
     current
 }
+// ANCHOR_END: empty_tree_root
 
 #[cfg(test)]
 mod tests {

@@ -11,6 +11,7 @@ pub const OP_EXIT: u16 = 2;
 /// Current action version
 pub const ACTION_VERSION: u16 = 1;
 
+// ANCHOR: action_header
 /// Action header (common to all actions)
 ///
 /// Layout:
@@ -31,6 +32,7 @@ pub struct ActionHeader {
     /// Nonce for tx_id matching
     pub nonce: u32,
 }
+// ANCHOR_END: action_header
 
 impl ActionHeader {
     /// Size in bytes
@@ -74,6 +76,7 @@ impl ActionHeader {
     }
 }
 
+// ANCHOR: transfer_action
 /// Transfer action data (follows ActionHeader when operation == OP_TRANSFER)
 ///
 /// Layout:
@@ -92,6 +95,7 @@ pub struct TransferAction {
     /// Amount to transfer
     pub amount: u64,
 }
+// ANCHOR_END: transfer_action
 
 impl TransferAction {
     /// Size in bytes
@@ -121,6 +125,7 @@ impl TransferAction {
     }
 }
 
+// ANCHOR: entry_action
 /// Entry (deposit) action data (follows ActionHeader when operation == OP_ENTRY)
 ///
 /// Layout:
@@ -137,6 +142,7 @@ pub struct EntryAction {
     /// Recipient pubkey on L2
     pub destination: [u32; 8],
 }
+// ANCHOR_END: entry_action
 
 impl EntryAction {
     /// Size in bytes
@@ -174,6 +180,7 @@ pub const EXIT_SPK_MAX: usize = 35;
 /// Word count for the SPK + padding region: 35 bytes SPK + 5 bytes zero padding = 40 bytes = 10 words.
 pub const EXIT_SPK_WORDS: usize = 10;
 
+// ANCHOR: exit_action
 /// Exit (withdrawal) action data (follows ActionHeader when operation == OP_EXIT)
 ///
 /// Layout:
@@ -192,6 +199,7 @@ pub struct ExitAction {
     /// Amount to withdraw
     pub amount: u64,
 }
+// ANCHOR_END: exit_action
 
 impl ExitAction {
     /// Size in bytes
@@ -240,6 +248,7 @@ impl ExitAction {
     }
 }
 
+// ANCHOR: action_enum
 /// Parsed action types
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
@@ -247,6 +256,7 @@ pub enum Action {
     Entry(EntryAction),
     Exit(ExitAction),
 }
+// ANCHOR_END: action_enum
 
 impl Action {
     /// Get the source pubkey (for authorization verification).

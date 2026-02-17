@@ -15,6 +15,7 @@ pub fn merkle_hash(left: &[u32; 8], right: &[u32; 8], mut hasher: blake3::Hasher
     out
 }
 
+// ANCHOR: seq_hash_ops
 /// Seq-commitment Merkle hash operations — blake3 with zero-padding.
 pub struct SeqCommitHashOps;
 
@@ -27,6 +28,7 @@ impl MerkleHashOps for SeqCommitHashOps {
         ZERO_HASH
     }
 }
+// ANCHOR_END: seq_hash_ops
 
 pub fn calc_merkle_root(mut hashes: impl ExactSizeIterator<Item = [u32; 8]>) -> [u32; 8] {
     match hashes.len() {
@@ -60,13 +62,16 @@ fn cold_path_empty() -> [u32; 8] {
     ZERO_HASH
 }
 
+// ANCHOR: calc_accepted_id_merkle_root
 pub fn calc_accepted_id_merkle_root(
     selected_parent_accepted_id_merkle_root: &[u32; 8],
     accepted_id_merkle_root: &[u32; 8],
 ) -> [u32; 8] {
     merkle_hash(selected_parent_accepted_id_merkle_root, accepted_id_merkle_root, blake3::Hasher::new_keyed(&KEY))
 }
+// ANCHOR_END: calc_accepted_id_merkle_root
 
+// ANCHOR: seq_commitment_leaf
 pub fn seq_commitment_leaf(tx_id: &[u32; 8], tx_version: u16) -> [u32; 8] {
     const DOMAIN_SEP: &[u8] = b"SeqCommitmentMerkleLeafHash";
     const KEY: [u8; blake3::KEY_LEN] = domain_to_key(DOMAIN_SEP);
@@ -78,6 +83,7 @@ pub fn seq_commitment_leaf(tx_id: &[u32; 8], tx_version: u16) -> [u32; 8] {
     bytemuck::bytes_of_mut(&mut out).copy_from_slice(hasher.finalize().as_bytes());
     out
 }
+// ANCHOR_END: seq_commitment_leaf
 
 /// Streaming merkle tree builder that requires no heap allocation.
 /// Uses the generic [`StreamingMerkle`] with seq-commitment hash ops.

@@ -131,6 +131,7 @@ pub fn words_to_bytes_ref(words: &[u32; 8]) -> &[u8; 32] {
     bytemuck::cast_ref(words)
 }
 
+// ANCHOR: public_input
 #[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C, align(4))]
 pub struct PublicInput {
@@ -140,6 +141,7 @@ pub struct PublicInput {
 
     pub covenant_id: [u32; 8],
 }
+// ANCHOR_END: public_input
 
 impl PublicInput {
     pub fn as_words(&self) -> &[u32] {
@@ -151,6 +153,7 @@ impl PublicInput {
     }
 }
 
+// ANCHOR: is_action_tx_id
 /// Single byte prefix for action transaction IDs (0x41 = 'A')
 /// Using a single byte makes it ~256x easier to find valid nonces for testing
 pub const ACTION_TX_ID_PREFIX: u8 = b'A';
@@ -160,7 +163,9 @@ pub const ACTION_TX_ID_PREFIX: u8 = b'A';
 pub fn is_action_tx_id(tx_id: &[u32; 8]) -> bool {
     (tx_id[0] as u8) == ACTION_TX_ID_PREFIX
 }
+// ANCHOR_END: is_action_tx_id
 
+// ANCHOR: payload_digest
 pub fn payload_digest(payload: &[u32]) -> [u32; 8] {
     payload_digest_bytes(bytemuck::cast_slice(payload))
 }
@@ -173,7 +178,9 @@ pub fn payload_digest_bytes(payload: &[u8]) -> [u32; 8] {
     bytemuck::bytes_of_mut(&mut out).copy_from_slice(blake3::keyed_hash(&KEY, payload).as_bytes());
     out
 }
+// ANCHOR_END: payload_digest
 
+// ANCHOR: tx_id_v1
 pub fn tx_id_v1(payload_digest: &[u32; 8], rest_digest: &[u32; 8]) -> [u32; 8] {
     const DOMAIN_SEP: &[u8] = b"TransactionV1Id";
     const KEY: [u8; blake3::KEY_LEN] = domain_to_key(DOMAIN_SEP);
@@ -185,7 +192,9 @@ pub fn tx_id_v1(payload_digest: &[u32; 8], rest_digest: &[u32; 8]) -> [u32; 8] {
     bytemuck::bytes_of_mut(&mut out).copy_from_slice(hasher.finalize().as_bytes());
     out
 }
+// ANCHOR_END: tx_id_v1
 
+// ANCHOR: rest_digest
 /// Compute rest_digest for transaction data.
 ///
 /// In kaspa's tx_id_v1 hashing, rest_digest includes all transaction data
@@ -212,6 +221,7 @@ pub fn rest_digest_bytes(rest_preimage: &[u8]) -> [u32; 8] {
     bytemuck::bytes_of_mut(&mut out).copy_from_slice(hasher.finalize().as_bytes());
     out
 }
+// ANCHOR_END: rest_digest
 
 pub const fn domain_to_key(domain: &[u8]) -> [u8; blake3::KEY_LEN] {
     let mut key = [0u8; blake3::KEY_LEN];
@@ -223,6 +233,7 @@ pub const fn domain_to_key(domain: &[u8]) -> [u8; blake3::KEY_LEN] {
     key
 }
 
+// ANCHOR: tx_id_v0
 /// Compute V0 transaction ID using blake2b.
 /// This uses the same domain separator as Kaspa's TransactionID hasher.
 pub fn tx_id_v0(preimage: &[u8]) -> [u32; 8] {
@@ -234,6 +245,7 @@ pub fn tx_id_v0(preimage: &[u8]) -> [u32; 8] {
     bytemuck::bytes_of_mut(&mut out).copy_from_slice(hash.as_bytes());
     out
 }
+// ANCHOR_END: tx_id_v0
 
 #[cfg(test)]
 mod tests {

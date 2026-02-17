@@ -35,6 +35,7 @@ pub fn perm_empty_leaf_hash() -> [u32; 8] {
     crate::bytes_to_words(result)
 }
 
+// ANCHOR: perm_leaf_hash
 /// Compute the hash of a permission leaf: sha256("PermLeaf" || spk_bytes || amount_le_bytes)
 pub fn perm_leaf_hash(spk: &[u8], amount: u64) -> [u32; 8] {
     let mut hasher = sha2::Sha256::new_with_prefix(PERM_LEAF_DOMAIN);
@@ -43,6 +44,7 @@ pub fn perm_leaf_hash(spk: &[u8], amount: u64) -> [u32; 8] {
     let result: [u8; 32] = hasher.finalize().into();
     crate::bytes_to_words(result)
 }
+// ANCHOR_END: perm_leaf_hash
 
 /// Compute the hash of two sibling nodes: sha256("PermBranch" || left || right)
 pub fn perm_branch_hash(left: &[u32; 8], right: &[u32; 8]) -> [u32; 8] {
@@ -70,6 +72,7 @@ impl MerkleHashOps for PermHashOps {
 /// Uses the generic [`StreamingMerkle`] with permission-tree hash ops.
 pub type StreamingPermTreeBuilder = StreamingMerkle<PermHashOps>;
 
+// ANCHOR: required_depth
 /// Compute the required depth for a given leaf count.
 /// Returns `ceil(log2(count))`, minimum 1, maximum `PERM_MAX_DEPTH`.
 pub fn required_depth(count: usize) -> usize {
@@ -79,6 +82,7 @@ pub fn required_depth(count: usize) -> usize {
     let bits = usize::BITS - (count - 1).leading_zeros();
     (bits as usize).min(PERM_MAX_DEPTH)
 }
+// ANCHOR_END: required_depth
 
 /// Compute the hash of an empty subtree at a given depth.
 pub fn perm_empty_subtree_hash(depth: usize) -> [u32; 8] {
@@ -89,6 +93,7 @@ pub fn perm_empty_subtree_hash(depth: usize) -> [u32; 8] {
     current
 }
 
+// ANCHOR: perm_proof
 /// Permission tree proof: variable-depth array of siblings + leaf index.
 ///
 /// Max depth is 8 (256 leaves). Siblings are stored from leaf (level 0)
@@ -134,6 +139,7 @@ impl PermProof {
         self.compute_root(new_leaf_hash)
     }
 }
+// ANCHOR_END: perm_proof
 
 /// Compute the permission tree root from a slice of (spk, amount) leaves.
 ///
@@ -154,6 +160,7 @@ pub fn compute_permission_root(leaves: &[(&[u8], u64)]) -> ([u32; 8], usize) {
     (root, depth)
 }
 
+// ANCHOR: pad_to_depth
 /// Pad a streaming builder result up to a target depth.
 ///
 /// The streaming builder produces a root whose effective depth is
@@ -169,6 +176,7 @@ pub fn pad_to_depth(mut hash: [u32; 8], leaf_count: u32, target_depth: usize) ->
     }
     hash
 }
+// ANCHOR_END: pad_to_depth
 
 /// Host-side permission tree: full in-memory tree.
 /// Builds from a list of (spk, amount) pairs, generates proofs, computes root.

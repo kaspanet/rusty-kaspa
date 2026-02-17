@@ -50,10 +50,12 @@ impl PrevTxV0Witness {
         Self { output_index, preimage }
     }
 
+    // ANCHOR: prev_tx_v0_compute
     /// Compute the tx_id from the preimage
     pub fn compute_tx_id(&self) -> [u32; 8] {
         crate::tx_id_v0(&self.preimage)
     }
+    // ANCHOR_END: prev_tx_v0_compute
 
     /// Parse the preimage to extract the output at output_index
     pub fn extract_output(&self) -> Option<OutputData> {
@@ -84,11 +86,13 @@ impl PrevTxV1Witness {
         Self { output_index, rest_preimage, payload_digest }
     }
 
+    // ANCHOR: prev_tx_v1_compute
     /// Compute the tx_id from rest_preimage and payload_digest
     pub fn compute_tx_id(&self) -> [u32; 8] {
         let rest_digest = crate::rest_digest_bytes(self.rest_preimage.as_bytes());
         crate::tx_id_v1(&self.payload_digest, &rest_digest)
     }
+    // ANCHOR_END: prev_tx_v1_compute
 
     /// Parse the rest_preimage to extract the output at output_index
     pub fn extract_output(&self) -> Option<OutputData> {
@@ -276,6 +280,7 @@ fn read_u16(buf: &[u8], cursor: &mut usize) -> Option<u16> {
     Some(val)
 }
 
+// ANCHOR: input0_has_permission_suffix
 /// Check if the first input's sig_script ends with the permission domain suffix.
 ///
 /// Returns `true` if input 0's sig_script ends with `[0x51, 0x75]` (`OP_TRUE OP_DROP`),
@@ -322,6 +327,7 @@ pub fn input0_has_permission_suffix(tx_bytes: &[u8]) -> bool {
     let sig_end = cursor + sig_len;
     tx_bytes[sig_end - 2] == 0x51 && tx_bytes[sig_end - 1] == 0x75
 }
+// ANCHOR_END: input0_has_permission_suffix
 
 /// Verify an output is in a previous transaction.
 ///

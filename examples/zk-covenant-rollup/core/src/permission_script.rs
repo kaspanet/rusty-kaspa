@@ -132,6 +132,7 @@ impl ScriptVec {
 //  Public builder functions
 // ─────────────────────────────────────────────────────────────────
 
+// ANCHOR: build_perm_redeem_bytes
 /// Build the permission redeem script as raw bytes (`no_std` compatible).
 ///
 /// Byte-level port of `host::bridge::PermissionRedeem::build()`. Produces
@@ -186,7 +187,9 @@ pub fn build_permission_redeem_bytes(
 
     s.0
 }
+// ANCHOR_END: build_perm_redeem_bytes
 
+// ANCHOR: build_perm_redeem_converged
 /// Build permission redeem with converging length loop.
 ///
 /// Iterates `build_permission_redeem_bytes` until the script length
@@ -207,6 +210,7 @@ pub fn build_permission_redeem_bytes_converged(
         len = new_len;
     }
 }
+// ANCHOR_END: build_perm_redeem_converged
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase implementations

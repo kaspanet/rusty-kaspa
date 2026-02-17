@@ -43,6 +43,7 @@ impl<H: MerkleHashOps> StreamingMerkle<H> {
         Self { stack: [(0, [0u32; 8]); MAX_STACK], stack_len: 0, leaf_count: 0, _h: core::marker::PhantomData }
     }
 
+    // ANCHOR: streaming_merkle_add_leaf
     /// Add a pre-hashed leaf.
     pub fn add_leaf(&mut self, hash: [u32; 8]) {
         let mut level = 0u32;
@@ -62,12 +63,14 @@ impl<H: MerkleHashOps> StreamingMerkle<H> {
         self.stack_len += 1;
         self.leaf_count += 1;
     }
+    // ANCHOR_END: streaming_merkle_add_leaf
 
     /// Number of leaves added so far.
     pub fn leaf_count(&self) -> u32 {
         self.leaf_count
     }
 
+    // ANCHOR: streaming_merkle_finalize
     /// Finalize and return the Merkle root.
     ///
     /// Pads incomplete subtrees with the domain-specific empty subtree
@@ -110,4 +113,5 @@ impl<H: MerkleHashOps> StreamingMerkle<H> {
 
         result_hash
     }
+    // ANCHOR_END: streaming_merkle_finalize
 }

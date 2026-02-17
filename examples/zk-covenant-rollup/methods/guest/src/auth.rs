@@ -2,6 +2,7 @@ use zk_covenant_rollup_core::extract_pubkey_from_spk;
 
 use crate::witness::PrevTxV1WitnessData;
 
+// ANCHOR: verify_source
 /// Verify source authorization for transfer and exit actions.
 ///
 /// Only Schnorr P2PK source SPKs are supported. The guest uses 32-byte pubkeys
@@ -30,3 +31,4 @@ pub fn verify_source(source: &[u32; 8], prev_tx: &PrevTxV1WitnessData) -> Option
 
     Some(spk_pubkey)
 }
+// ANCHOR_END: verify_source

@@ -19,6 +19,7 @@ use zk_covenant_rollup_core::{
 
 risc0_zkvm::guest::entry!(main);
 
+// ANCHOR: guest_main
 pub fn main() {
     let mut stdin = env::stdin();
 
@@ -60,3 +61,4 @@ pub fn main() {
     // Write journal output
     journal::write_output(&public_input, &state_root, &seq_commitment, permission_spk_hash.as_ref());
 }
+// ANCHOR_END: guest_main

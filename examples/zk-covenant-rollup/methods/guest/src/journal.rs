@@ -1,6 +1,7 @@
 use risc0_zkvm::{guest::env, serde::WordWrite};
 use zk_covenant_rollup_core::PublicInput;
 
+// ANCHOR: write_output
 /// Write the proof output to the journal.
 ///
 /// Journal layout:
@@ -36,3 +37,4 @@ pub fn write_output(
         journal.write_words(hash_words).unwrap();
     }
 }
+// ANCHOR_END: write_output
