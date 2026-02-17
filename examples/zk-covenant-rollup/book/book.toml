@@ -6,6 +6,7 @@ title = "ZK Covenant Rollup"
 
 [output.html]
 default-theme = "navy"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 [preprocessor.mermaid]
 command = "mdbook-mermaid"
