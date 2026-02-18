@@ -47,7 +47,7 @@ pub fn read_aligned_bytes(stdin: &mut impl WordRead) -> AlignedBytes {
     }
 
     // Read as words (padded to word boundary)
-    let num_words = (byte_len + 3) / 4;
+    let num_words = byte_len.div_ceil(4);
     let mut words = vec![0u32; num_words];
     stdin.read_words(&mut words).unwrap();
 

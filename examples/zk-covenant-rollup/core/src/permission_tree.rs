@@ -241,9 +241,9 @@ impl PermissionTree {
 
         let mut siblings = [[0u32; 8]; PERM_MAX_DEPTH];
         let mut current_idx = index;
-        for level in 0..self.depth {
+        for (idx, level) in siblings.iter_mut().enumerate().take(self.depth) {
             let sibling_idx = current_idx ^ 1;
-            siblings[level] = self.nodes[level][sibling_idx];
+            *level = self.nodes[idx][sibling_idx];
             current_idx /= 2;
         }
 

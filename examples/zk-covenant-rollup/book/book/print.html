@@ -825,7 +825,7 @@ pub fn read_v1_tx_data(stdin: &amp;mut impl WordRead) -&gt; V1TxData {
     let payload_byte_len = input::read_u32(stdin) as usize;
 
     // Calculate words needed (round up to word boundary)
-    let payload_word_len = (payload_byte_len + 3) / 4;
+    let payload_word_len = payload_byte_len.div_ceil(4);
 
     // Read as words (guaranteed 4-byte aligned)
     let mut payload_words = vec![0u32; payload_word_len];
@@ -844,7 +844,7 @@ pub fn read_v1_tx_data(stdin: &amp;mut impl WordRead) -&gt; V1TxData {
     let tx_id = tx_id_v1(&amp;pd, &amp;rest_digest);
 
     // Only parse action if payload is 4-byte aligned (required for our action format)
-    let action = if payload_byte_len % 4 == 0 {
+    let action = if payload_byte_len.is_multiple_of(4) {
         parse_action(&amp;payload_words)
     } else {
         None // Unaligned payload - not a valid action format

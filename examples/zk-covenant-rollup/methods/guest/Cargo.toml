@@ -1,13 +1,13 @@
 [package]
 name = "zk-covenant-rollup-guest"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [workspace]
 
 [dependencies]
 bytemuck = { version = "1.24.0", features = ["derive"]}
-risc0-zkvm = { version = "^3.0.4", default-features = false }
+risc0-zkvm = { version = "^3.0.4", default-features = false, features = ["getrandom"] }
 
 zk-covenant-rollup-core = { path = "../../core" }
 #kaspa-consensus-core = { path = "../../../../consensus/core" }
