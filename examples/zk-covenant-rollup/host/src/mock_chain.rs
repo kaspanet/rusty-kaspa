@@ -7,13 +7,12 @@ use kaspa_txscript::seq_commit_accessor::SeqCommitAccessor;
 use zk_covenant_rollup_core::{
     build_permission_redeem_bytes_converged,
     p2sh::blake2b_script_hash,
-    pay_to_pubkey_spk,
-    perm_leaf_hash,
-    permission_tree::{StreamingPermTreeBuilder, required_depth},
+    pad_to_depth, pay_to_pubkey_spk, perm_leaf_hash,
+    permission_tree::{required_depth, StreamingPermTreeBuilder},
     seq_commit::seq_commitment_leaf,
     smt::Smt,
     state::{AccountWitness, StateRoot},
-    pad_to_depth, MAX_DELEGATE_INPUTS,
+    MAX_DELEGATE_INPUTS,
 };
 
 use crate::bridge::build_delegate_entry_script;
@@ -128,7 +127,7 @@ pub struct MockChain {
 }
 
 /// Build a mock chain with account-based transfers
-pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32]) -> MockChain {
+pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32], non_activity_blocks: u32) -> MockChain {
     // Initialize accounts
     let mut smt = Smt::new();
     let mut balances: HashMap<AccountName, u64> = HashMap::new();
@@ -254,10 +253,7 @@ pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32]) 
             let exit_amount = 1000u64;
             let charlie_dest_spk = pay_to_pubkey_spk(&AccountName::Charlie.pubkey_bytes());
 
-            println!(
-                "  Exit (INVALID): Charlie tries to withdraw {} tokens (balance: {})",
-                exit_amount, charlie_balance
-            );
+            println!("  Exit (INVALID): Charlie tries to withdraw {} tokens (balance: {})", exit_amount, charlie_balance);
 
             let source_proof = smt.prove(&charlie_pk);
             let source_witness = AccountWitness::new(charlie_pk, charlie_balance, source_proof);
@@ -266,10 +262,7 @@ pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32]) 
             let first_input_spk_kaspa = ScriptPublicKey::new(0, first_input_spk.to_vec().into());
             let prev_tx = create_prev_tx(1000, first_input_spk_kaspa);
 
-            let outputs = vec![TransactionOutput::new(
-                exit_amount,
-                ScriptPublicKey::new(0, charlie_dest_spk.to_vec().into()),
-            )];
+            let outputs = vec![TransactionOutput::new(exit_amount, ScriptPublicKey::new(0, charlie_dest_spk.to_vec().into()))];
 
             let exit_tx = create_exit_tx(charlie_pk, &charlie_dest_spk, exit_amount, outputs, source_witness, prev_tx, 0);
             txs.push(exit_tx);
@@ -294,10 +287,7 @@ pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32]) 
             let wrong_input_spk_kaspa = ScriptPublicKey::new(0, wrong_input_spk.to_vec().into());
             let prev_tx = create_prev_tx(1000, wrong_input_spk_kaspa);
 
-            let outputs = vec![TransactionOutput::new(
-                exit_amount,
-                ScriptPublicKey::new(0, eve_dest_spk.to_vec().into()),
-            )];
+            let outputs = vec![TransactionOutput::new(exit_amount, ScriptPublicKey::new(0, eve_dest_spk.to_vec().into()))];
 
             let exit_tx = create_exit_tx(eve_pk, &eve_dest_spk, exit_amount, outputs, source_witness, prev_tx, 0);
             txs.push(exit_tx);
@@ -322,10 +312,7 @@ pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32]) 
             let first_input_spk_kaspa = ScriptPublicKey::new(0, first_input_spk.to_vec().into());
             let prev_tx = create_prev_tx(1000, first_input_spk_kaspa);
 
-            let outputs = vec![TransactionOutput::new(
-                exit_amount,
-                ScriptPublicKey::new(0, eve_dest_spk.to_vec().into()),
-            )];
+            let outputs = vec![TransactionOutput::new(exit_amount, ScriptPublicKey::new(0, eve_dest_spk.to_vec().into()))];
 
             let exit_tx = create_exit_tx(eve_pk, &eve_dest_spk, exit_amount, outputs, source_witness, prev_tx, 0);
             txs.push(exit_tx);
@@ -350,10 +337,7 @@ pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32]) 
             let first_input_spk_kaspa = ScriptPublicKey::new(0, first_input_spk.to_vec().into());
             let prev_tx = create_prev_tx(1000, first_input_spk_kaspa);
 
-            let outputs = vec![TransactionOutput::new(
-                exit_amount,
-                ScriptPublicKey::new(0, dave_dest_spk.to_vec().into()),
-            )];
+            let outputs = vec![TransactionOutput::new(exit_amount, ScriptPublicKey::new(0, dave_dest_spk.to_vec().into()))];
 
             let exit_tx = create_exit_tx(dave_pk, &dave_dest_spk, exit_amount, outputs, source_witness, prev_tx, 0);
             txs.push(exit_tx);
@@ -454,6 +438,31 @@ pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32]) 
         block_txs.push(txs);
     }
 
+    // Append non-activity blocks (V0-only transactions, no state changes)
+    if non_activity_blocks > 0 {
+        println!("\n  Appending {} non-activity blocks (3000 V0 txs each)", non_activity_blocks);
+        let activity_block_count = block_hashes.len();
+        for i in 0..non_activity_blocks {
+            let abs_idx = activity_block_count + i as usize;
+            block_hashes.push(Hash::from_u64_word((abs_idx + 1) as u64));
+
+            let txs: Vec<ZkTransaction> =
+                (0..3000u32).map(|tx_idx| create_v0_tx([0xBEEF0000 | i, tx_idx, 0, 0, 0, 0, 0, 0])).collect();
+
+            let tx_digests: Vec<Hash> = txs
+                .iter()
+                .map(|tx| {
+                    let leaf = seq_commitment_leaf(&tx.tx_id(), tx.version());
+                    Hash::from_bytes(bytemuck::cast_slice(&leaf).try_into().unwrap())
+                })
+                .collect();
+
+            seq_commit = calc_accepted_id_merkle_root(seq_commit, tx_digests.into_iter());
+            accessor_map.insert(block_hashes[abs_idx], seq_commit);
+            block_txs.push(txs);
+        }
+    }
+
     // Compute permission tree data if exits occurred
     let perm_count = perm_builder.leaf_count();
     let (permission_redeem, permission_spk_hash, perm_redeem_script_len) = if perm_count > 0 {
@@ -524,7 +533,7 @@ mod tests {
     #[test]
     fn mock_chain_has_permission_data() {
         let prev_seq = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-        let chain = build_mock_chain(prev_seq, &[0xFF; 32]);
+        let chain = build_mock_chain(prev_seq, &[0xFF; 32], 0);
 
         // Valid exits occurred → permission fields must be populated
         assert!(chain.permission_redeem.is_some(), "should have permission redeem script");
@@ -535,7 +544,7 @@ mod tests {
     #[test]
     fn mock_chain_permission_tree_has_two_leaves() {
         let prev_seq = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-        let chain = build_mock_chain(prev_seq, &[0xFF; 32]);
+        let chain = build_mock_chain(prev_seq, &[0xFF; 32], 0);
 
         // Only 2 valid exits (Eve 100, Dave 200); the 2 invalid exits should NOT add leaves.
         // We verify this indirectly: the permission redeem script length should be
@@ -548,7 +557,7 @@ mod tests {
     #[test]
     fn mock_chain_final_state_matches_expected_balances() {
         let prev_seq = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-        let chain = build_mock_chain(prev_seq, &[0xFF; 32]);
+        let chain = build_mock_chain(prev_seq, &[0xFF; 32], 0);
 
         // Expected final balances:
         //   Block 1: Alice→Bob 100 (A=900,B=600), Bob→Charlie 50 (B=550,C=50)
@@ -573,8 +582,8 @@ mod tests {
     #[test]
     fn mock_chain_deterministic() {
         let prev_seq = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-        let chain1 = build_mock_chain(prev_seq, &[0xFF; 32]);
-        let chain2 = build_mock_chain(prev_seq, &[0xFF; 32]);
+        let chain1 = build_mock_chain(prev_seq, &[0xFF; 32], 0);
+        let chain2 = build_mock_chain(prev_seq, &[0xFF; 32], 0);
 
         assert_eq!(chain1.final_state_root, chain2.final_state_root);
         assert_eq!(chain1.final_seq_commit, chain2.final_seq_commit);

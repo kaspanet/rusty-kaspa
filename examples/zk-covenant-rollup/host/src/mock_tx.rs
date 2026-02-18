@@ -392,10 +392,7 @@ pub fn create_exit_tx(
 
     let tx = Transaction::new(1, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
 
-    ZkTransaction::new(
-        tx,
-        Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index }))),
-    )
+    ZkTransaction::new(tx, Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index }))))
 }
 
 /// Create a "previous transaction" for use as UTXO source.

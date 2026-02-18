@@ -11,16 +11,24 @@ use std::time::Instant;
 
 use kaspa_hashes::Hash;
 use kaspa_txscript::{pay_to_script_hash_script, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag};
+use mock_chain::{build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts, SuccinctReceipt};
+use zk_covenant_common::{hashfn_str_to_id, seal_to_compressed_proof};
 use zk_covenant_rollup_core::PublicInput;
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
-use mock_chain::{build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
-use zk_covenant_common::{hashfn_str_to_id, seal_to_compressed_proof};
 
 fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
 
+    // Parse --non-activity-blocks=N from CLI args
+    let non_activity_blocks: u32 = std::env::args()
+        .find_map(|arg| arg.strip_prefix("--non-activity-blocks=").map(|v| v.parse().expect("invalid --non-activity-blocks value")))
+        .unwrap_or(0);
+
     println!("=== ZK Rollup Covenant Demo (Account-Based) ===");
+    if non_activity_blocks > 0 {
+        println!("Adding {} non-activity blocks (3000 V0 txs each)", non_activity_blocks);
+    }
 
     // Build initial state
     let initial_smt = build_initial_smt();
@@ -33,7 +41,7 @@ fn main() {
     println!("Initial seq_commitment: {}", prev_seq_commit_hash);
 
     // Build mock chain with transfers
-    let chain = build_mock_chain(prev_seq_commit_hash, &[0xFF; 32]);
+    let chain = build_mock_chain(prev_seq_commit_hash, &[0xFF; 32], non_activity_blocks);
     let new_state_hash = chain.final_state_root;
     let new_seq_commitment = from_bytes(chain.final_seq_commit.as_bytes());
 

@@ -871,8 +871,7 @@ fn delegate_balance_missing_change() {
 fn permission_script_cross_validation() {
     // Test various (leaf_count, max_delegate_inputs) combinations
     for (leaf_count, n) in [(1, 1), (2, 1), (2, 2), (4, 2), (3, 1), (5, 2), (8, 2)] {
-        let leaves: Vec<(Vec<u8>, u64)> =
-            (0..leaf_count).map(|i| (test_spk_p2pk(i as u8 + 1), 1000u64 * (i as u64 + 1))).collect();
+        let leaves: Vec<(Vec<u8>, u64)> = (0..leaf_count).map(|i| (test_spk_p2pk(i as u8 + 1), 1000u64 * (i as u64 + 1))).collect();
         let tree = PermissionTree::from_leaves(leaves);
         let depth = tree.depth();
         let root = tree.root();
