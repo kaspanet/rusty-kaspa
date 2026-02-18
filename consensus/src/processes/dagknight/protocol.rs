@@ -1,9 +1,10 @@
 use std::{
     cmp::{Ordering, Reverse},
     collections::{BinaryHeap, VecDeque},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
+use dashmap::DashMap;
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashKTypeMap, HashMapCustomHasher, KType,
@@ -82,6 +83,51 @@ use crate::{
         2. moving to DK storage objects
         3. switch GD/k-coloring to committed coloring
 */
+
+/// TODO[DK]: If writes here are moved out or batched, revisit this
+/// Global lock map for conflict genesis level locking
+/// Maps conflict genesis hashes to their respective locks
+static CONFLICT_LOCKS: OnceLock<DashMap<Hash, Arc<RwLock<()>>>> = OnceLock::new();
+
+fn get_conflict_locks() -> &'static DashMap<Hash, Arc<RwLock<()>>> {
+    CONFLICT_LOCKS.get_or_init(DashMap::new)
+}
+
+/// Cleans up unused locks from the global lock map.
+/// A lock is considered unused if its Arc strong count is 1 (only the map holds a reference).
+/// This should be called periodically or opportunistically to prevent unbounded growth.
+pub fn cleanup_conflict_locks() {
+    let locks = get_conflict_locks();
+    let mut to_remove = Vec::new();
+
+    // First pass: identify locks with no external references
+    for entry in locks.iter() {
+        let hash = *entry.key();
+        let arc = entry.value();
+        // If strong count is 1, only the DashMap holds a reference
+        if Arc::strong_count(arc) == 1 {
+            to_remove.push(hash);
+        }
+    }
+
+    // Second pass: remove identified locks
+    // Note: by the time we remove, another thread might have acquired the lock,
+    // so we double-check the count before removing
+    let mut removed_count = 0;
+    for hash in to_remove {
+        if let Some(entry) = locks.get(&hash)
+            && Arc::strong_count(entry.value()) == 1
+        {
+            drop(entry); // Release the reference before removing
+            locks.remove(&hash);
+            removed_count += 1;
+        }
+    }
+
+    if removed_count > 0 {
+        trace!("Cleaned up {} unused conflict locks, {} remaining", removed_count, locks.len());
+    }
+}
 
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 #[derive(Clone)]
@@ -208,6 +254,10 @@ impl<
         conflict_ordered_parents.reverse();
 
         debug!("dk::sp: {} | conflict_ordered_parents: {:?}", curr_subgroup[0], conflict_ordered_parents);
+
+        // Opportunistically cleanup unused locks after processing
+        cleanup_conflict_locks();
+
         DagknightData { selected_parent: curr_subgroup[0], conflict_ordered_parents }
     }
 
@@ -431,6 +481,13 @@ impl<
         }
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
+
+        // Acquire a read lock for this conflict_genesis to prevent concurrent writes
+        let locks = get_conflict_locks();
+        // Get or create the lock Arc, then acquire the read lock
+        let lock_arc = locks.entry(root).or_insert_with(|| Arc::new(RwLock::new(()))).clone();
+        // This lock ensures that only a single thread will write through a conflict zone rooted at conflict_genesis
+        let _lock = lock_arc.write();
 
         // Determine last known tips by backward iterating from subgroup tips to root
         // and stopping at the latest blocks with GD data to proceed from there.
