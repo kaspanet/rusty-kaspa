@@ -2442,6 +2442,7 @@ dependencies = [
  "bincode",
  "criterion",
  "crossbeam-channel",
+ "dashmap",
  "faster-hex 0.9.0",
  "flate2",
  "futures-util",
