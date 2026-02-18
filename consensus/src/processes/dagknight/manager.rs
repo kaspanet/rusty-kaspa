@@ -63,7 +63,7 @@ impl<S: DagknightStore + DagknightStoreReader, Q: RelationsStoreReader, R: Reach
     pub fn has(&self, pov_hash: Hash) -> bool {
         let key = self.get_key(pov_hash);
 
-        self.dagknight_store.get_data(key).is_ok()
+        self.dagknight_store.has(key).unwrap()
     }
 
     pub fn insert(&self, pov_hash: Hash, gd: Arc<GhostdagData>) -> Result<(), StoreError> {

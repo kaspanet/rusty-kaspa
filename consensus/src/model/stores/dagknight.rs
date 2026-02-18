@@ -30,6 +30,7 @@ pub struct MemoryDagknightStore {
 pub trait DagknightStoreReader {
     fn get_selected_parent(&self, dk_key: DagknightKey) -> Result<Hash, StoreError>;
     fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError>;
+    fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError>;
 }
 
 #[derive(Clone)]
@@ -104,6 +105,10 @@ impl DagknightStoreReader for MemoryDagknightStore {
             Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::DagKnight.as_ref(), key)))
         }
     }
+
+    fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError> {
+        Ok(self.dk_map.borrow().contains_key(&dk_key))
+    }
 }
 
 impl DagknightStore for MemoryDagknightStore {
@@ -153,6 +158,10 @@ impl DagknightStoreReader for DbDagknightStore {
 
     fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError> {
         self.access.read(dk_key)
+    }
+
+    fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError> {
+        self.access.has(dk_key)
     }
 }
 
