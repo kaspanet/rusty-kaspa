@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4bd57660.js";
+            window.path_to_searchindex_js = "searchindex-9c029471.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-352428e6.js"></script>
@@ -220,7 +220,7 @@
 <tr><td>Previous tx preimage</td><td>tx_id hash verification</td><td>Host could claim false output SPKs</td></tr>
 <tr><td>Account SMT witnesses</td><td>Root hash chain</td><td>Host could fabricate balances</td></tr>
 <tr><td>Permission redeem length</td><td>Assert in guest</td><td>Guest script wouldn’t match on-chain hash</td></tr>
-<tr><td>Action ordering within block</td><td>Seq commitment leaf hash</td><td>Host could reorder or skip actions</td></tr>
+<tr><td>Action ordering within block</td><td>Seq commitment leaf hash</td><td>Order inherited from L1 transaction order; host cannot reorder or skip actions</td></tr>
 </tbody>
 </table>
 </div>

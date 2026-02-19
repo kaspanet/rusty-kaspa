@@ -46,7 +46,7 @@ The host provides private inputs (witnesses) to the guest. Some are trusted hint
 | Previous tx preimage | tx_id hash verification | Host could claim false output SPKs |
 | Account SMT witnesses | Root hash chain | Host could fabricate balances |
 | Permission redeem length | Assert in guest | Guest script wouldn't match on-chain hash |
-| Action ordering within block | Seq commitment leaf hash | Host could reorder or skip actions |
+| Action ordering within block | Seq commitment leaf hash | Order inherited from L1 transaction order; host cannot reorder or skip actions |
 
 ## Check catalogue
 

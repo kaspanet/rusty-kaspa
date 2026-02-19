@@ -105,9 +105,11 @@ The host crate builds transactions and runs the demo. It uses `kaspa-txscript`'s
 | Host / operator | Off-chain | **No** | Guest + on-chain scripts |
 
 The host can:
-- Choose which blocks/transactions to include
+- Choose the range of L1 blocks to process (committed to seq commitment, verified against L1)
+- Filter which transactions within those blocks are L2 actions
 - Provide witness data (SMT proofs, prev tx preimages)
-- Set the order of actions within a block
+
+Action order is inherited from L1 transaction order — the host cannot reorder or skip actions.
 
 The host **cannot**:
 - Forge a valid ZK proof for an invalid state transition

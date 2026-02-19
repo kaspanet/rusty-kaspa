@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4bd57660.js";
+            window.path_to_searchindex_js = "searchindex-9c029471.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-352428e6.js"></script>
@@ -268,7 +268,7 @@ pub fn read_v1_tx_data(stdin: &amp;mut impl WordRead) -&gt; V1TxData {
     let payload_byte_len = input::read_u32(stdin) as usize;
 
     // Calculate words needed (round up to word boundary)
-    let payload_word_len = payload_byte_len.div_ceil(4);
+    let payload_word_len =payload_byte_len.div_ceil(4);
 
     // Read as words (guaranteed 4-byte aligned)
     let mut payload_words = vec![0u32; payload_word_len];
