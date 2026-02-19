@@ -2,10 +2,10 @@ use std::num::NonZeroUsize;
 
 use kaspa_consensus_core::constants::TX_VERSION;
 use kaspa_txscript::opcodes::codes::{
-    Op0, OpAdd, OpBlake2b, OpCat, OpCovOutCount, OpData32, OpDrop, OpDup, OpElse, OpEndIf, OpEqual, OpEqualVerify, OpFalse,
-    OpFromAltStack, OpGreaterThan, OpGreaterThanOrEqual, OpIf, OpInputCovenantId, OpNip, OpNum2Bin, OpOver, OpRoll, OpRot, OpSHA256,
-    OpSub, OpSwap, OpToAltStack, OpTrue, OpTxInputAmount, OpTxInputCount, OpTxInputIndex, OpTxInputScriptSigLen,
-    OpTxInputScriptSigSubstr, OpTxInputSpk, OpTxOutputAmount, OpTxOutputCount, OpTxOutputSpk, OpVerify,
+    Op0, Op1Sub, OpAdd, OpBlake2b, OpCat, OpCovOutCount, OpCovOutputIdx, OpData32, OpDrop, OpDup, OpElse, OpEndIf, OpEqual,
+    OpEqualVerify, OpFalse, OpFromAltStack, OpGreaterThan, OpGreaterThanOrEqual, OpIf, OpInputCovenantId, OpNip, OpNum2Bin, OpOver,
+    OpRoll, OpRot, OpSHA256, OpSub, OpSwap, OpToAltStack, OpTrue, OpTxInputAmount, OpTxInputCount, OpTxInputIndex,
+    OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxInputSpk, OpTxOutputAmount, OpTxOutputCount, OpTxOutputSpk, OpVerify,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
 use zk_covenant_rollup_core::permission_tree::PermProof;
@@ -507,12 +507,18 @@ impl PermissionRedeemEmitter for PermissionRedeem {
             b.add_op(OpTxOutputSpk).unwrap();
             b.add_op(OpEqualVerify).unwrap();
 
-            // Verify exactly one covenant continuation output
+            // Verify exactly one covenant continuation output at output index 1
             b.add_op(OpTxInputIndex).unwrap();
             b.add_op(OpInputCovenantId).unwrap();
-            b.add_op(OpCovOutCount).unwrap();
+            b.add_op(OpDup).unwrap(); // [..., covenant_id, covenant_id]
+            b.add_op(OpCovOutCount).unwrap(); // [..., covenant_id, count]
+            b.add_op(OpDup).unwrap(); // [..., covenant_id, count, count]
             b.add_i64(1).unwrap();
-            b.add_op(OpEqualVerify).unwrap();
+            b.add_op(OpEqualVerify).unwrap(); // [..., covenant_id, count]
+            b.add_op(Op1Sub).unwrap(); // [..., covenant_id, 0]  (k = count - 1)
+            b.add_op(OpCovOutputIdx).unwrap(); // [..., output_idx]
+            b.add_i64(1).unwrap();
+            b.add_op(OpEqualVerify).unwrap(); // [...]
 
             // Main: [deduct]
         }

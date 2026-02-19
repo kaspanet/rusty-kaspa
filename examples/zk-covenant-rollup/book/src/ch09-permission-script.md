@@ -120,7 +120,7 @@ Two branches based on `new_unclaimed`:
 2. Extract the script body+suffix from the current sig_script (self-introspection)
 3. Concatenate → new redeem script
 4. Hash to P2SH SPK and verify output 1 matches
-5. Verify `CovOutCount == 1`
+5. Verify `CovOutCount == 1` and `CovOutputIdx(0) == 1` (the single covenant output is at output index 1)
 
 ### Phase 10: Verify delegate balance
 

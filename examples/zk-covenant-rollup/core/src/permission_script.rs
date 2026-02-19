@@ -48,6 +48,8 @@ const OP_TXOUTPUTSPK: u8 = 0xc3;
 const OP_TXINPUTSCRIPTSIGLEN: u8 = 0xc9;
 const OP_INPUTCOVENANTID: u8 = 0xcf;
 const OP_COVOUTCOUNT: u8 = 0xd2;
+const OP_COVOUTPUTIDX: u8 = 0xd3;
+const OP_1SUB: u8 = 0x8c;
 
 // ─────────────────────────────────────────────────────────────────
 //  Script constants
@@ -447,12 +449,18 @@ fn emit_verify_outputs(s: &mut ScriptVec, redeem_script_len: i64) {
         s.push_op(OP_TXOUTPUTSPK);
         s.push_op(OP_EQUALVERIFY);
 
-        // Verify exactly one covenant continuation output
+        // Verify exactly one covenant continuation output at output index 1
         s.push_op(OP_TXINPUTINDEX);
         s.push_op(OP_INPUTCOVENANTID);
-        s.push_op(OP_COVOUTCOUNT);
+        s.push_op(OP_DUP); // [..., covenant_id, covenant_id]
+        s.push_op(OP_COVOUTCOUNT); // [..., covenant_id, count]
+        s.push_op(OP_DUP); // [..., covenant_id, count, count]
         s.push_i64(1);
-        s.push_op(OP_EQUALVERIFY);
+        s.push_op(OP_EQUALVERIFY); // [..., covenant_id, count]
+        s.push_op(OP_1SUB); // [..., covenant_id, 0]  (k = count - 1)
+        s.push_op(OP_COVOUTPUTIDX); // [..., output_idx]
+        s.push_i64(1);
+        s.push_op(OP_EQUALVERIFY); // [...]
     }
     s.push_op(OP_ENDIF);
 }
