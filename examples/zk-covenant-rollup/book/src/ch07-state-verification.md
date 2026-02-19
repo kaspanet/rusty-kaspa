@@ -7,17 +7,18 @@ The state verification script is the on-chain redeem script that guards the cove
 The redeem script embeds the previous state directly in its bytecode:
 
 ```
-[domain_prefix(2B)] [OpData32, prev_seq(32B)] [OpData32, prev_state(32B)]
+[OpData32, prev_seq(32B)] [OpData32, prev_state(32B)]
 [... verification logic ...]
-[OpTrue]
+[OpTrue] [domain_suffix(2B)]
 ```
 
-The **68-byte prefix** contains:
-- 2 bytes: domain tag `[OP_0(0x00), OP_DROP(0x75)]` — identifies this as a state verification script
+The **66-byte prefix** contains:
 - 1 + 32 bytes: `OpData32 || prev_seq_commitment`
 - 1 + 32 bytes: `OpData32 || prev_state_hash`
 
-See `host/src/covenant.rs:17` for the `REDEEM_PREFIX_LEN` constant.
+The 2-byte domain suffix `[OP_0(0x00), OP_DROP(0x75)]` at the end identifies this as a state verification script (see [Domain tagging](#domain-tagging) below).
+
+See `host/src/covenant.rs:15` for the `REDEEM_PREFIX_LEN` constant.
 
 ## Self-referential length convergence
 
@@ -37,7 +38,7 @@ flowchart TD
     PREFIX["Prefix: prev_seq, prev_state"]
     STASH["Stash prev values to alt stack"]
     SEQ["OpChainblockSeqCommit<br/>→ new_seq_commitment"]
-    BUILD_PREFIX["Build new 68-byte prefix<br/>(new_seq || new_state)"]
+    BUILD_PREFIX["Build new 66-byte prefix<br/>(new_seq || new_state)"]
     EXTRACT["Extract suffix from own sig_script"]
     CONCAT["Concat prefix + suffix<br/>→ new redeem script"]
     HASH["blake2b(new_redeem) → P2SH SPK"]
@@ -103,7 +104,7 @@ The final SHA-256 hash of the journal, plus the `program_id`, are consumed by th
 
 ## Domain tagging
 
-The script starts with `[OP_0, OP_DROP]` — a 2-byte no-op that serves as a domain tag. The last 2 bytes of the sig_script (which equal the last 2 bytes of the redeem script) are `[0x00, 0x75]`. Other scripts in the covenant system check these bytes via `OpTxInputScriptSigSubstr` to distinguish script types:
+The script ends with `[OP_0, OP_DROP]` — a 2-byte no-op suffix that serves as a domain tag (placed after `OP_TRUE`). The last 2 bytes of the sig_script (which equal the last 2 bytes of the redeem script) are `[0x00, 0x75]`. Other scripts in the covenant system check these bytes via `OpTxInputScriptSigSubstr` to distinguish script types:
 
 | Domain | Suffix bytes | Script |
 |--------|-------------|--------|

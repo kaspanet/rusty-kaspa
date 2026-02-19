@@ -18,12 +18,7 @@ pub fn build_redeem_script(
 ) -> Vec<u8> {
     let mut builder = ScriptBuilder::new();
 
-    // Domain prefix: OP_0, OP_DROP (state verification domain tag)
-    builder.add_op(Op0).unwrap();
-    builder.add_op(OpDrop).unwrap();
-
-    // 66-byte data: OpData32 || prev_seq_commitment || OpData32 || prev_state_hash
-    // Total prefix is now 68 bytes (2 domain + 66 data)
+    // 66-byte data prefix: OpData32 || prev_seq_commitment || OpData32 || prev_state_hash
     builder.add_data(bytemuck::bytes_of(&prev_seq_commitment)).unwrap();
     builder.add_data(bytemuck::bytes_of(&prev_state_hash)).unwrap();
 
@@ -63,6 +58,10 @@ pub fn build_redeem_script(
     builder.verify_input_index_zero().unwrap();
     // CovOutCount is verified inside verify_outputs_and_append_perm_hash (1 or 2 via introspection)
     builder.add_op(OpTrue).unwrap();
+
+    // Domain suffix: OP_0, OP_DROP (state verification domain tag)
+    builder.add_op(Op0).unwrap();
+    builder.add_op(OpDrop).unwrap();
 
     builder.drain()
 }

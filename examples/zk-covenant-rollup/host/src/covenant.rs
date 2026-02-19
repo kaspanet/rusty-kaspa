@@ -1,19 +1,18 @@
 use kaspa_txscript::opcodes::codes::{
-    Op0, OpAdd, OpBlake2b, OpCat, OpChainblockSeqCommit, OpCovOutCount, OpData32, OpDrop, OpDup, OpElse, OpEndIf, OpEqual,
-    OpEqualVerify, OpFromAltStack, OpIf, OpInputCovenantId, OpNumEqual, OpNumEqualVerify, OpSHA256, OpSwap, OpToAltStack,
-    OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpk, OpTxOutputSpkSubstr,
+    OpAdd, OpBlake2b, OpCat, OpChainblockSeqCommit, OpCovOutCount, OpData32, OpDrop, OpDup, OpElse, OpEndIf, OpEqual, OpEqualVerify,
+    OpFromAltStack, OpIf, OpInputCovenantId, OpNumEqual, OpNumEqualVerify, OpSHA256, OpSwap, OpToAltStack, OpTxInputIndex,
+    OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpk, OpTxOutputSpkSubstr,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
 
 /// Redeem script prefix size in bytes.
 ///
-/// Layout (68 bytes total):
-/// - 2 bytes: domain tag (`OP_0, OP_DROP` for state verification)
+/// Layout (66 bytes total):
 /// - 1 byte:  `OpData32`
 /// - 32 bytes: `prev_seq_commitment`
 /// - 1 byte:  `OpData32`
 /// - 32 bytes: `prev_state_hash`
-pub const REDEEM_PREFIX_LEN: i64 = 68;
+pub const REDEEM_PREFIX_LEN: i64 = 66;
 
 /// Rollup covenant specific methods.
 /// Note: hash_redeem_to_spk, verify_output_spk, and verify_input_index_zero
@@ -86,7 +85,7 @@ impl RollupCovenant for ScriptBuilder {
 
     fn build_next_redeem_prefix_rollup(&mut self) -> Result<&mut Self, Self::Error> {
         // Stack: [..., new_app_state_hash, new_seq_commitment]
-        // Build: OP_0 || OP_DROP || OpData32 || new_seq_commitment || OpData32 || new_app_state_hash
+        // Build: OpData32 || new_seq_commitment || OpData32 || new_app_state_hash
         // Stash new values on alt stack (on top of prev values already there)
 
         self.add_op(OpSwap)?;
@@ -108,14 +107,8 @@ impl RollupCovenant for ScriptBuilder {
         self.add_op(OpCat)?;
         // Stack: [..., (OpData32||new_app_state_hash), (OpData32||new_seq_commitment)]
         self.add_op(OpSwap)?;
-        self.add_op(OpCat)?;
-        // Stack: [..., (OpData32||new_seq_commitment||OpData32||new_app_state_hash)] = 66-byte data
-
-        // Prepend domain prefix: [OP_0(0x00), OP_DROP(0x75)]
-        self.add_data(&[Op0, OpDrop])?;
-        self.add_op(OpSwap)?;
         self.add_op(OpCat)
-        // Stack: [..., (OP_0||OP_DROP||OpData32||new_seq_commitment||OpData32||new_app_state_hash)] = 68-byte prefix
+        // Stack: [..., (OpData32||new_seq_commitment||OpData32||new_app_state_hash)] = 66-byte prefix
     }
 
     fn extract_redeem_suffix_and_concat(&mut self, redeem_script_len: i64) -> Result<&mut Self, Self::Error> {

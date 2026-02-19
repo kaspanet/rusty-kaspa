@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9c029471.js";
+            window.path_to_searchindex_js = "searchindex-562c14b5.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-352428e6.js"></script>
@@ -178,17 +178,17 @@
 <p>The state verification script is the on-chain redeem script that guards the covenant UTXO. It verifies ZK proofs, enforces state transitions, and ensures the covenant UTXO chain continues correctly.</p>
 <h2 id="script-structure"><a class="header" href="#script-structure">Script structure</a></h2>
 <p>The redeem script embeds the previous state directly in its bytecode:</p>
-<pre><code>[domain_prefix(2B)] [OpData32, prev_seq(32B)] [OpData32, prev_state(32B)]
+<pre><code>[OpData32, prev_seq(32B)] [OpData32, prev_state(32B)]
 [... verification logic ...]
-[OpTrue]
+[OpTrue] [domain_suffix(2B)]
 </code></pre>
-<p>The <strong>68-byte prefix</strong> contains:</p>
+<p>The <strong>66-byte prefix</strong> contains:</p>
 <ul>
-<li>2 bytes: domain tag <code>[OP_0(0x00), OP_DROP(0x75)]</code> — identifies this as a state verification script</li>
 <li>1 + 32 bytes: <code>OpData32 || prev_seq_commitment</code></li>
 <li>1 + 32 bytes: <code>OpData32 || prev_state_hash</code></li>
 </ul>
-<p>See <code>host/src/covenant.rs:17</code> for the <code>REDEEM_PREFIX_LEN</code> constant.</p>
+<p>The 2-byte domain suffix <code>[OP_0(0x00), OP_DROP(0x75)]</code> at the end identifies this as a state verification script (see <a href="#domain-tagging">Domain tagging</a> below).</p>
+<p>See <code>host/src/covenant.rs:15</code> for the <code>REDEEM_PREFIX_LEN</code> constant.</p>
 <h2 id="self-referential-length-convergence"><a class="header" href="#self-referential-length-convergence">Self-referential length convergence</a></h2>
 <p>The script embeds its own length (as a parameter to <code>OpTxInputScriptSigSubstr</code>). Since changing the length changes the script, which changes the length, the build process iterates until convergence:</p>
 <ol>
@@ -203,7 +203,7 @@
     PREFIX["Prefix: prev_seq, prev_state"]
     STASH["Stash prev values to alt stack"]
     SEQ["OpChainblockSeqCommit&lt;br/&gt;→ new_seq_commitment"]
-    BUILD_PREFIX["Build new 68-byte prefix&lt;br/&gt;(new_seq || new_state)"]
+    BUILD_PREFIX["Build new 66-byte prefix&lt;br/&gt;(new_seq || new_state)"]
     EXTRACT["Extract suffix from own sig_script"]
     CONCAT["Concat prefix + suffix&lt;br/&gt;→ new redeem script"]
     HASH["blake2b(new_redeem) → P2SH SPK"]
@@ -257,7 +257,7 @@
 <h3 id="zk-proof-verification"><a class="header" href="#zk-proof-verification">ZK proof verification</a></h3>
 <p>The final SHA-256 hash of the journal, plus the <code>program_id</code>, are consumed by the ZK verification opcode (<code>OpRisc0Succinct</code> or <code>OpRisc0Groth16</code>). This verifies that a valid RISC Zero proof exists in the transaction witness data whose journal matches the on-chain computed value.</p>
 <h2 id="domain-tagging"><a class="header" href="#domain-tagging">Domain tagging</a></h2>
-<p>The script starts with <code>[OP_0, OP_DROP]</code> — a 2-byte no-op that serves as a domain tag. The last 2 bytes of the sig_script (which equal the last 2 bytes of the redeem script) are <code>[0x00, 0x75]</code>. Other scripts in the covenant system check these bytes via <code>OpTxInputScriptSigSubstr</code> to distinguish script types:</p>
+<p>The script ends with <code>[OP_0, OP_DROP]</code> — a 2-byte no-op suffix that serves as a domain tag (placed after <code>OP_TRUE</code>). The last 2 bytes of the sig_script (which equal the last 2 bytes of the redeem script) are <code>[0x00, 0x75]</code>. Other scripts in the covenant system check these bytes via <code>OpTxInputScriptSigSubstr</code> to distinguish script types:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -306,22 +306,6 @@
         <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
         <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
         <script>
