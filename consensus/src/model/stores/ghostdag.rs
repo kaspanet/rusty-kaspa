@@ -271,6 +271,21 @@ impl DbGhostdagStore {
         }
     }
 
+    /// Create a coloring-oriented ghostdag store. Uses a separate DB prefix so
+    /// coloring data can be stored independently from the topology ghostdag store.
+    pub fn new_coloring(db: Arc<DB>, level: BlockLevel, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
+        let lvl_bytes = level.to_le_bytes();
+        let prefix = DatabaseStorePrefixes::ColoringGhostdag.into_iter().chain(lvl_bytes).collect_vec();
+        let compact_prefix = DatabaseStorePrefixes::ColoringGhostdagCompact.into_iter().chain(lvl_bytes).collect_vec();
+        Self {
+            db: Arc::clone(&db),
+            level,
+            access: CachedDbAccess::new(db.clone(), cache_policy, prefix),
+            compact_access: CachedDbAccess::new(db, compact_cache_policy, compact_prefix),
+        }
+    }
+
     pub fn new_temp(
         db: Arc<DB>,
         level: BlockLevel,

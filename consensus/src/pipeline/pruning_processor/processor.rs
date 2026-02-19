@@ -654,7 +654,7 @@ impl PruningProcessor {
     }
 
     fn get_sink(&self) -> Hash {
-        self.lkg_virtual_state.load().ghostdag_data.selected_parent
+        self.lkg_virtual_state.load().coloring_ghostdag_data.selected_parent
     }
 
     fn past_pruning_points(&self) -> BlockHashSet {
@@ -666,7 +666,7 @@ impl PruningProcessor {
     fn confirm_pruning_depth_below_virtual(&self, pruning_point: Hash) -> bool {
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
-        virtual_state.ghostdag_data.blue_score >= pp_bs + self.config.params.pruning_depth()
+        virtual_state.coloring_ghostdag_data.blue_score >= pp_bs + self.config.params.pruning_depth()
     }
 
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {

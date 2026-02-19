@@ -22,7 +22,8 @@ use super::utxo_set::DbUtxoSetStore;
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct VirtualState {
     pub parents: Vec<Hash>,
-    pub ghostdag_data: GhostdagData,
+    pub topology_ghostdag_data: GhostdagData,
+    pub coloring_ghostdag_data: GhostdagData,
     pub daa_score: u64,
     pub bits: u32,
     pub past_median_time: u64,
@@ -44,11 +45,13 @@ impl VirtualState {
         accepted_tx_ids: Vec<TransactionId>,
         mergeset_rewards: BlockHashMap<BlockRewardData>,
         mergeset_non_daa: BlockHashSet,
-        ghostdag_data: GhostdagData,
+        topology_ghostdag_data: GhostdagData,
+        coloring_ghostdag_data: GhostdagData,
     ) -> Self {
         Self {
             parents,
-            ghostdag_data,
+            topology_ghostdag_data,
+            coloring_ghostdag_data,
             daa_score,
             bits,
             past_median_time,
@@ -60,10 +63,11 @@ impl VirtualState {
         }
     }
 
-    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData) -> Self {
+    pub fn from_genesis(genesis: &GenesisBlock, topology_ghostdag_data: GhostdagData, coloring_ghostdag_data: GhostdagData) -> Self {
         Self {
             parents: vec![genesis.hash],
-            ghostdag_data,
+            topology_ghostdag_data,
+            coloring_ghostdag_data,
             daa_score: genesis.daa_score,
             bits: genesis.bits,
             past_median_time: genesis.timestamp,
@@ -76,7 +80,7 @@ impl VirtualState {
     }
 
     pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
-        VirtualStateApproxId::new(self.daa_score, self.ghostdag_data.blue_work, self.ghostdag_data.selected_parent)
+        VirtualStateApproxId::new(self.daa_score, self.topology_ghostdag_data.blue_work, self.coloring_ghostdag_data.selected_parent)
     }
 }
 

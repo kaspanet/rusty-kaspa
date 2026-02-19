@@ -64,6 +64,7 @@ pub struct ConsensusServices {
     pub window_manager: DbWindowManager,
     pub dag_traversal_manager: DbDagTraversalManager,
     pub ghostdag_manager: DbGhostdagManager,
+    pub coloring_ghostdag_manager: DbGhostdagManager,
     pub coinbase_manager: CoinbaseManager,
     pub pruning_point_manager: DbPruningPointManager,
     pub pruning_proof_manager: Arc<PruningProofManager>,
@@ -126,6 +127,14 @@ impl ConsensusServices {
             storage.headers_store.clone(),
             reachability_service.clone(),
         );
+        let coloring_ghostdag_manager = GhostdagManager::new(
+            params.genesis.hash,
+            params.ghostdag_k(),
+            storage.coloring_ghostdag_store.clone(),
+            relations_service.clone(),
+            storage.headers_store.clone(),
+            reachability_service.clone(),
+        );
 
         // TODO[DK]: Use a config or ForkActivation to gate this
         let dagknight_executor = storage.dagknight_store.as_ref().map(|dagknight_store| DagknightExecutor {
@@ -168,7 +177,7 @@ impl ConsensusServices {
             params.finality_depth(),
             params.genesis.hash,
             reachability_service.clone(),
-            storage.ghostdag_store.clone(),
+            storage.coloring_ghostdag_store.clone(),
             storage.headers_store.clone(),
             storage.past_pruning_points_store.clone(),
             storage.headers_selected_tip_store.clone(),
@@ -219,6 +228,7 @@ impl ConsensusServices {
             window_manager,
             dag_traversal_manager,
             ghostdag_manager,
+            coloring_ghostdag_manager,
             coinbase_manager,
             pruning_point_manager,
             pruning_proof_manager,

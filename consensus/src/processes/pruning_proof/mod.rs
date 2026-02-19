@@ -366,7 +366,7 @@ impl PruningProofManager {
         let pp_bs = self.headers_store.get_blue_score(pp).unwrap();
 
         // The anticone is considered final only if the pruning point is at sufficient depth from virtual
-        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth {
+        if virtual_state.coloring_ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth {
             let anticone = Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()));
             cache_lock.replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
             Ok(anticone)

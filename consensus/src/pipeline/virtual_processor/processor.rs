@@ -119,7 +119,8 @@ pub struct VirtualStateProcessor {
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) topology_ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) coloring_ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) daa_excluded_store: Arc<DbDaaStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
@@ -142,7 +143,8 @@ pub struct VirtualStateProcessor {
     pub lkg_virtual_state: LkgVirtualState,
 
     // Managers and services
-    pub(super) ghostdag_manager: DbGhostdagManager,
+    pub(super) topology_ghostdag_manager: DbGhostdagManager,
+    pub(super) coloring_ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) relations_service: MTRelationsService<DbRelationsStore>,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
@@ -201,7 +203,8 @@ impl VirtualStateProcessor {
             db,
             statuses_store: storage.statuses_store.clone(),
             headers_store: storage.headers_store.clone(),
-            ghostdag_store: storage.ghostdag_store.clone(),
+            topology_ghostdag_store: storage.ghostdag_store.clone(),
+            coloring_ghostdag_store: storage.coloring_ghostdag_store.clone(),
             daa_excluded_store: storage.daa_excluded_store.clone(),
             block_transactions_store: storage.block_transactions_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
@@ -220,7 +223,8 @@ impl VirtualStateProcessor {
             block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
-            ghostdag_manager: services.ghostdag_manager.clone(),
+            topology_ghostdag_manager: services.ghostdag_manager.clone(),
+            coloring_ghostdag_manager: services.coloring_ghostdag_manager.clone(),
             reachability_service: services.reachability_service.clone(),
             relations_service: services.relations_service.clone(),
             dag_traversal_manager: services.dag_traversal_manager.clone(),
@@ -274,7 +278,7 @@ impl VirtualStateProcessor {
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
-        let finality_point = self.virtual_finality_point(&prev_state.ghostdag_data, pruning_point);
+        let finality_point = self.virtual_finality_point(&prev_state.coloring_ghostdag_data, pruning_point);
 
         // PRUNE SAFETY: in order to avoid locking the prune lock throughout virtual resolving we make sure
         // to only process blocks in the future of the finality point (F) which are never pruned (since finality depth << pruning depth).
@@ -296,17 +300,26 @@ impl VirtualStateProcessor {
             .filter(|&h| self.reachability_service.is_dag_ancestor_of(finality_point, h))
             .collect_vec();
         drop(prune_guard);
-        let prev_sink = prev_state.ghostdag_data.selected_parent;
+        let prev_sink = prev_state.coloring_ghostdag_data.selected_parent;
         let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
 
         let (new_sink, virtual_parent_candidates) =
-            self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips, finality_point, pruning_point);
-        let (virtual_parents, virtual_ghostdag_data) = self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point);
-        assert_eq!(virtual_ghostdag_data.selected_parent, new_sink);
+            self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips.clone(), finality_point, pruning_point);
+        let (virtual_parents, virtual_topology_ghostdag_data, virtual_coloring_ghostdag_data) =
+            self.pick_virtual_parents(new_sink, virtual_parent_candidates.clone(), pruning_point);
+
+        // TODO[DK]: Remove once debugging ends
+        if virtual_coloring_ghostdag_data.selected_parent != new_sink {
+            println!("Coloring GD: {:#?}", virtual_coloring_ghostdag_data.selected_parent);
+            println!("Topology GD: {:#?}", virtual_topology_ghostdag_data.selected_parent);
+            println!("virtual_parent_candidates: {:#?}", virtual_parent_candidates);
+            println!("Tips: {:#?}", tips);
+        }
+        assert_eq!(virtual_coloring_ghostdag_data.selected_parent, new_sink);
 
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
         let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink, None);
-        let sink_ghostdag_data = Lazy::new(|| self.ghostdag_store.get_data(new_sink).unwrap());
+        let sink_ghostdag_data = Lazy::new(|| self.coloring_ghostdag_store.get_data(new_sink).unwrap());
         // Cache the DAA and Median time windows of the sink for future use, as well as prepare for virtual's window calculations
         self.cache_sink_windows(new_sink, prev_sink, &sink_ghostdag_data);
 
@@ -314,7 +327,8 @@ impl VirtualStateProcessor {
             .calculate_and_commit_virtual_state(
                 virtual_read,
                 virtual_parents,
-                virtual_ghostdag_data,
+                virtual_topology_ghostdag_data,
+                virtual_coloring_ghostdag_data,
                 sink_multiset,
                 &mut accumulated_diff,
                 &chain_path,
@@ -326,7 +340,7 @@ impl VirtualStateProcessor {
             sink_ghostdag_data.to_compact()
         } else {
             // Else we query the compact data directly.
-            self.ghostdag_store.get_compact_data(new_sink).unwrap()
+            self.coloring_ghostdag_store.get_compact_data(new_sink).unwrap()
         };
 
         // Update the pruning processor about the virtual state change
@@ -433,7 +447,7 @@ impl VirtualStateProcessor {
                     }
 
                     let header = self.headers_store.get_header(current).unwrap();
-                    let mergeset_data = self.ghostdag_store.get_data(current).unwrap();
+                    let mergeset_data = self.coloring_ghostdag_store.get_data(current).unwrap();
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
@@ -503,7 +517,8 @@ impl VirtualStateProcessor {
         &self,
         virtual_read: RwLockUpgradableReadGuard<'_, VirtualStores>,
         virtual_parents: Vec<Hash>,
-        virtual_ghostdag_data: GhostdagData,
+        virtual_topology_ghostdag_data: GhostdagData,
+        virtual_coloring_ghostdag_data: GhostdagData,
         selected_parent_multiset: MuHash,
         accumulated_diff: &mut UtxoDiff,
         chain_path: &ChainPath,
@@ -511,7 +526,8 @@ impl VirtualStateProcessor {
         let new_virtual_state = self.calculate_virtual_state(
             &virtual_read,
             virtual_parents,
-            virtual_ghostdag_data,
+            virtual_topology_ghostdag_data,
+            virtual_coloring_ghostdag_data,
             selected_parent_multiset,
             accumulated_diff,
         )?;
@@ -523,17 +539,19 @@ impl VirtualStateProcessor {
         &self,
         virtual_stores: &VirtualStores,
         virtual_parents: Vec<Hash>,
-        virtual_ghostdag_data: GhostdagData,
+        virtual_topology_ghostdag_data: GhostdagData,
+        virtual_coloring_ghostdag_data: GhostdagData,
         selected_parent_multiset: MuHash,
         accumulated_diff: &mut UtxoDiff,
     ) -> Result<Arc<VirtualState>, RuleError> {
         let selected_parent_utxo_view = (&virtual_stores.utxo_set).compose(&*accumulated_diff);
-        let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset);
+        let mut ctx = UtxoProcessingContext::new((&virtual_coloring_ghostdag_data).into(), selected_parent_multiset);
 
         // Calc virtual DAA score, difficulty bits and past median time
-        let virtual_daa_window = self.window_manager.block_daa_window(&virtual_ghostdag_data)?;
-        let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &virtual_daa_window);
-        let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
+        let virtual_daa_window = self.window_manager.block_daa_window(&virtual_topology_ghostdag_data)?;
+        // TODO[DK]: should this be topology or coloring ghostdag data?
+        let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_topology_ghostdag_data, &virtual_daa_window);
+        let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_topology_ghostdag_data)?.0;
 
         // Calc virtual UTXO state relative to selected parent
         self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_window.daa_score);
@@ -552,7 +570,8 @@ impl VirtualStateProcessor {
             ctx.accepted_tx_ids,
             ctx.mergeset_rewards,
             virtual_daa_window.mergeset_non_daa,
-            virtual_ghostdag_data,
+            virtual_topology_ghostdag_data,
+            virtual_coloring_ghostdag_data,
         )))
     }
 
@@ -633,7 +652,7 @@ impl VirtualStateProcessor {
 
         let mut heap = tips
             .into_iter()
-            .map(|block| SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() })
+            .map(|block| SortableBlock { hash: block, blue_work: self.topology_ghostdag_store.get_blue_work(block).unwrap() })
             .collect::<BinaryHeap<_>>();
 
         // The initial diff point is the previous sink
@@ -669,7 +688,7 @@ impl VirtualStateProcessor {
                     // 2. will be removed eventually by the bounded merge check.
                     // Hence as an optimization we prefer removing such blocks in advance to allow valid tips to be considered.
                     let filtering_root = self.depth_store.merge_depth_root(candidate).unwrap();
-                    let filtering_blue_work = self.ghostdag_store.get_blue_work(filtering_root).unwrap_or_default();
+                    let filtering_blue_work = self.topology_ghostdag_store.get_blue_work(filtering_root).unwrap_or_default();
                     return (
                         candidate,
                         heap.into_sorted_iter().take_while(|s| s.blue_work >= filtering_blue_work).map(|s| s.hash).collect(),
@@ -687,7 +706,7 @@ impl VirtualStateProcessor {
                 if self.reachability_service.is_dag_ancestor_of(finality_point, parent)
                     && !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash))
                 {
-                    heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() });
+                    heap.push(SortableBlock { hash: parent, blue_work: self.topology_ghostdag_store.get_blue_work(parent).unwrap() });
                 }
             }
             drop(prune_guard);
@@ -704,7 +723,7 @@ impl VirtualStateProcessor {
         selected_parent: Hash,
         mut candidates: VecDeque<Hash>,
         pruning_point: Hash,
-    ) -> (Vec<Hash>, GhostdagData) {
+    ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
         // TODO (relaxed): additional tests
 
         // Mergeset increasing might traverse DAG areas which are below the finality point and which theoretically
@@ -803,14 +822,15 @@ impl VirtualStateProcessor {
         &self,
         mut virtual_parents: Vec<Hash>,
         current_pruning_point: Hash,
-    ) -> (Vec<Hash>, GhostdagData) {
-        let mut ghostdag_data = if let Some(executor) = &self.dagknight_executor {
+    ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
+        let mut topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
+        let mut coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
             let dk_sp = executor.dagknight(&virtual_parents);
-            self.ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
+            self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
         } else {
-            self.ghostdag_manager.ghostdag(&virtual_parents)
+            self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
         };
-        let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, current_pruning_point);
+        let merge_depth_root = self.depth_manager.calc_merge_depth_root(&coloring_ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
         let mut bad_reds = Vec::new();
 
@@ -819,13 +839,13 @@ impl VirtualStateProcessor {
         //
 
         // Find red blocks violating the merge bound and which are not kosherized by any blue
-        for red in ghostdag_data.mergeset_reds.iter().copied() {
+        for red in coloring_ghostdag_data.mergeset_reds.iter().copied() {
             if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
                 continue;
             }
             // Lazy load the kosherizing blocks since this case is extremely rare
             if kosherizing_blues.is_none() {
-                kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&ghostdag_data, merge_depth_root).collect());
+                kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&coloring_ghostdag_data, merge_depth_root).collect());
             }
             if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
                 bad_reds.push(red);
@@ -836,15 +856,16 @@ impl VirtualStateProcessor {
             // Remove all parents which lead to merging a bad red
             virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
             // Recompute ghostdag data since parents changed
-            ghostdag_data = if let Some(executor) = &self.dagknight_executor {
+            topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
+            coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
                 let dk_sp = executor.dagknight(&virtual_parents);
-                self.ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
+                self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
             } else {
-                self.ghostdag_manager.ghostdag(&virtual_parents)
+                self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
             };
         }
 
-        (virtual_parents, ghostdag_data)
+        (virtual_parents, topology_ghostdag_data, coloring_ghostdag_data)
     }
 
     fn validate_mempool_transaction_impl(
@@ -1060,13 +1081,13 @@ impl VirtualStateProcessor {
         let _prune_guard = self.pruning_lock.blocking_read();
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let header_pruning_point =
-            self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact()).pruning_point;
+            self.pruning_point_manager.expected_header_pruning_point(virtual_state.coloring_ghostdag_data.to_compact()).pruning_point;
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(
                 virtual_state.daa_score,
                 miner_data.clone(),
-                &virtual_state.ghostdag_data,
+                &virtual_state.coloring_ghostdag_data,
                 &virtual_state.mergeset_rewards,
                 &virtual_state.mergeset_non_daa,
             )
@@ -1076,8 +1097,10 @@ impl VirtualStateProcessor {
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
-        let accepted_id_merkle_root = self
-            .calc_accepted_id_merkle_root(virtual_state.accepted_tx_ids.iter().copied(), virtual_state.ghostdag_data.selected_parent);
+        let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
+            virtual_state.accepted_tx_ids.iter().copied(),
+            virtual_state.coloring_ghostdag_data.selected_parent,
+        );
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
@@ -1091,11 +1114,11 @@ impl VirtualStateProcessor {
             virtual_state.bits,
             0,
             virtual_state.daa_score,
-            virtual_state.ghostdag_data.blue_work,
-            virtual_state.ghostdag_data.blue_score,
+            virtual_state.topology_ghostdag_data.blue_work,
+            virtual_state.coloring_ghostdag_data.blue_score,
             header_pruning_point,
         );
-        let selected_parent_hash = virtual_state.ghostdag_data.selected_parent;
+        let selected_parent_hash = virtual_state.coloring_ghostdag_data.selected_parent;
         let selected_parent_timestamp = self.headers_store.get_timestamp(selected_parent_hash).unwrap();
         let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent_hash).unwrap();
         Ok(BlockTemplate::new(
@@ -1143,7 +1166,11 @@ impl VirtualStateProcessor {
         // Init virtual state
         self.commit_virtual_state(
             self.virtual_stores.upgradable_read(),
-            Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))),
+            Arc::new(VirtualState::from_genesis(
+                &self.genesis,
+                self.topology_ghostdag_manager.ghostdag(&[self.genesis.hash]),
+                self.coloring_ghostdag_manager.ghostdag(&[self.genesis.hash]),
+            )),
             &Default::default(),
             &Default::default(),
         );
@@ -1213,12 +1240,20 @@ impl VirtualStateProcessor {
 
         // Calculate the virtual state, treating the pruning point as the only virtual parent
         let virtual_parents = vec![new_pruning_point];
-        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
+        let virtual_coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
+            // Ensure we compute coloring GD (for blue score decisions) with the DK selected parent
+            let dk_sp = executor.dagknight(&virtual_parents);
+            self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
+        } else {
+            self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
+        };
+        let virtual_topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
 
         self.calculate_and_commit_virtual_state(
             virtual_read,
             virtual_parents,
-            virtual_ghostdag_data,
+            virtual_topology_ghostdag_data,
+            virtual_coloring_ghostdag_data,
             imported_utxo_multiset.clone(),
             &mut UtxoDiff::default(),
             &ChainPath::default(),
@@ -1238,8 +1273,8 @@ impl VirtualStateProcessor {
         // finality_point.finality_point), meaning this function can only detect finality violations
         // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
         let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
-        let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
-        let vff = self.depth_manager.calc_finality_point(&self.ghostdag_store.get_data(vf).unwrap(), current_pp);
+        let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().coloring_ghostdag_data, current_pp);
+        let vff = self.depth_manager.calc_finality_point(&self.coloring_ghostdag_store.get_data(vf).unwrap(), current_pp);
 
         let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).optional().unwrap() {
             Some(status) => status.is_valid(),
