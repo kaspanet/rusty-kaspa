@@ -484,9 +484,11 @@ impl Consensus {
         // Update virtual state based to the new pruning point
         // Updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
         let virtual_parents = vec![new_pruning_point];
+        let gd_data = self.services.ghostdag_manager.ghostdag(&virtual_parents);
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
-            ghostdag_data: self.services.ghostdag_manager.ghostdag(&virtual_parents),
+            topology_ghostdag_data: gd_data.clone(),
+            coloring_ghostdag_data: gd_data,
             ..VirtualState::default()
         });
         self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
@@ -664,7 +666,7 @@ impl ConsensusApi for Consensus {
         // TODO: consider saving the merge depth root as part of virtual state
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let virtual_state = self.lkg_virtual_state.load();
-        let virtual_ghostdag_data = &virtual_state.ghostdag_data;
+        let virtual_ghostdag_data = &virtual_state.coloring_ghostdag_data;
         let root = self.services.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
         if root.is_origin() { None } else { Some(root) }
     }
@@ -675,7 +677,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_sink(&self) -> Hash {
-        self.lkg_virtual_state.load().ghostdag_data.selected_parent
+        self.lkg_virtual_state.load().coloring_ghostdag_data.selected_parent
     }
 
     fn get_sink_timestamp(&self) -> u64 {
@@ -1350,7 +1352,7 @@ impl ConsensusApi for Consensus {
             }
             None => {
                 let virtual_state = self.lkg_virtual_state.load();
-                self.estimate_network_hashes_per_second_impl(&virtual_state.ghostdag_data, window_size)
+                self.estimate_network_hashes_per_second_impl(&virtual_state.topology_ghostdag_data, window_size)
             }
         }
     }
@@ -1364,7 +1366,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn finality_point(&self) -> Hash {
-        self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
+        self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().coloring_ghostdag_data, self.pruning_point())
     }
 
     /// The utxoset is an additive structure,

@@ -53,6 +53,9 @@ pub struct ConsensusStorage {
 
     // Append-only stores
     pub ghostdag_store: Arc<DbGhostdagStore>,
+    /// Coloring-oriented GhostDAG store. Stored under the `ColoringGhostdag` prefix
+    /// to keep coloring data separate from topology data.
+    pub coloring_ghostdag_store: Arc<DbGhostdagStore>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub past_pruning_points_store: Arc<DbPastPruningPointsStore>,
@@ -191,7 +194,19 @@ impl ConsensusStorage {
             children_builder.build(),
         )));
 
+        // Create a topology-oriented GhostDAG store using the original Ghostdag prefix.
+        // The legacy `new` constructor continues to use the original Ghostdag prefix
+        // and will serve topology queries.
         let ghostdag_store = Arc::new(DbGhostdagStore::new(
+            db.clone(),
+            0,
+            ghostdag_builder.downscale(0).build(),
+            ghostdag_compact_builder.downscale(0).build(),
+        ));
+
+        // Create a separate coloring-oriented GhostDAG store that uses the new
+        // ColoringGhostdag prefix so coloring data is independently persisted.
+        let coloring_ghostdag_store = Arc::new(DbGhostdagStore::new_coloring(
             db.clone(),
             0,
             ghostdag_builder.downscale(0).build(),
@@ -242,6 +257,7 @@ impl ConsensusStorage {
             reachability_relations_store,
             reachability_store,
             ghostdag_store,
+            coloring_ghostdag_store,
             pruning_point_store,
             headers_selected_tip_store,
             body_tips_store,

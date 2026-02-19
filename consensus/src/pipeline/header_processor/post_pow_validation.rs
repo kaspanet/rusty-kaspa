@@ -17,7 +17,7 @@ impl HeaderProcessor {
     }
 
     pub fn check_median_timestamp(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let (past_median_time, window) = self.window_manager.calc_past_median_time(ctx.ghostdag_data())?;
+        let (past_median_time, window) = self.window_manager.calc_past_median_time(ctx.topology_ghostdag_data())?;
         ctx.block_window_for_past_median_time = Some(window);
 
         if header.timestamp <= past_median_time {
@@ -28,7 +28,7 @@ impl HeaderProcessor {
     }
 
     pub fn check_mergeset_size_limit(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        let mergeset_size = ctx.ghostdag_data().mergeset_size() as u64;
+        let mergeset_size = ctx.coloring_ghostdag_data().mergeset_size() as u64;
         let mergeset_size_limit = self.mergeset_size_limit;
         if mergeset_size > mergeset_size_limit {
             return Err(RuleError::MergeSetTooBig(mergeset_size, mergeset_size_limit));
@@ -37,7 +37,7 @@ impl HeaderProcessor {
     }
 
     fn check_blue_score(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let gd_blue_score = ctx.ghostdag_data().blue_score;
+        let gd_blue_score = ctx.coloring_ghostdag_data().blue_score;
         if gd_blue_score != header.blue_score {
             return Err(RuleError::UnexpectedHeaderBlueScore(gd_blue_score, header.blue_score));
         }
@@ -45,7 +45,7 @@ impl HeaderProcessor {
     }
 
     fn check_blue_work(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let gd_blue_work = ctx.ghostdag_data().blue_work;
+        let gd_blue_work = ctx.topology_ghostdag_data().blue_work;
         if gd_blue_work != header.blue_work {
             return Err(RuleError::UnexpectedHeaderBlueWork(gd_blue_work, header.blue_work));
         }
@@ -77,7 +77,7 @@ impl HeaderProcessor {
     }
 
     pub fn check_bounded_merge_depth(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        let ghostdag_data = ctx.ghostdag_data();
+        let ghostdag_data = ctx.coloring_ghostdag_data();
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(ghostdag_data, ctx.pruning_point);
         let finality_point = self.depth_manager.calc_finality_point(ghostdag_data, ctx.pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;

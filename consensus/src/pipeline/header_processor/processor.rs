@@ -55,7 +55,8 @@ pub struct HeaderProcessingContext {
     pub known_direct_parents: BlockHashes,
 
     // Staging data
-    pub ghostdag_data: Option<Arc<GhostdagData>>,
+    pub topology_ghostdag_data: Option<Arc<GhostdagData>>,
+    pub coloring_ghostdag_data: Option<Arc<GhostdagData>>,
     pub block_window_for_difficulty: Option<Arc<BlockWindowHeap>>,
     pub block_window_for_past_median_time: Option<Arc<BlockWindowHeap>>,
     pub mergeset_non_daa: Option<BlockHashSet>,
@@ -77,7 +78,8 @@ impl HeaderProcessingContext {
             block_level,
             pruning_point,
             known_direct_parents,
-            ghostdag_data: None,
+            topology_ghostdag_data: None,
+            coloring_ghostdag_data: None,
             block_window_for_difficulty: None,
             mergeset_non_daa: None,
             block_window_for_past_median_time: None,
@@ -88,8 +90,12 @@ impl HeaderProcessingContext {
 
     /// Returns the primary (level 0) GHOSTDAG data of this header.
     /// NOTE: expected to be called only after GHOSTDAG computation was pushed into the context
-    pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
-        self.ghostdag_data.as_ref().unwrap()
+    pub fn topology_ghostdag_data(&self) -> &Arc<GhostdagData> {
+        self.topology_ghostdag_data.as_ref().unwrap()
+    }
+
+    pub fn coloring_ghostdag_data(&self) -> &Arc<GhostdagData> {
+        self.coloring_ghostdag_data.as_ref().unwrap()
     }
 }
 
@@ -116,7 +122,8 @@ pub struct HeaderProcessor {
     pub(super) relations_store: Arc<RwLock<DbRelationsStore>>,
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) topology_ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) coloring_ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
@@ -128,6 +135,7 @@ pub struct HeaderProcessor {
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
+    pub(super) coloring_ghostdag_manager: DbGhostdagManager,
     pub(super) _dag_traversal_manager: DbDagTraversalManager,
     pub(super) window_manager: DbWindowManager,
     pub(super) depth_manager: DbBlockDepthManager,
@@ -168,7 +176,8 @@ impl HeaderProcessor {
             relations_store: storage.relations_store.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
-            ghostdag_store: storage.ghostdag_store.clone(),
+            topology_ghostdag_store: storage.ghostdag_store.clone(),
+            coloring_ghostdag_store: storage.coloring_ghostdag_store.clone(),
             statuses_store: storage.statuses_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             daa_excluded_store: storage.daa_excluded_store.clone(),
@@ -179,6 +188,7 @@ impl HeaderProcessor {
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
             ghostdag_manager: services.ghostdag_manager.clone(),
+            coloring_ghostdag_manager: services.coloring_ghostdag_manager.clone(),
             _dag_traversal_manager: services.dag_traversal_manager.clone(),
             window_manager: services.window_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -334,20 +344,30 @@ impl HeaderProcessor {
 
     /// Runs the GHOSTDAG algorithm and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
-        let ghostdag_data = self.ghostdag_store.get_data(ctx.hash).optional().unwrap().unwrap_or_else(|| {
+        let coloring_ghostdag_data = self.coloring_ghostdag_store.get_data(ctx.hash).optional().unwrap().unwrap_or_else(|| {
             Arc::new(if let Some(executor) = &self.dagknight_executor {
                 let dk_sp = executor.dagknight(&ctx.known_direct_parents);
-                self.ghostdag_manager.incremental_coloring(&ctx.known_direct_parents, dk_sp)
+                self.coloring_ghostdag_manager.incremental_coloring(&ctx.known_direct_parents, dk_sp)
             } else {
-                self.ghostdag_manager.ghostdag(&ctx.known_direct_parents)
+                self.coloring_ghostdag_manager.ghostdag(&ctx.known_direct_parents)
             })
         });
-        self.counters.mergeset_counts.fetch_add(ghostdag_data.mergeset_size() as u64, Ordering::Relaxed);
-        ctx.ghostdag_data = Some(ghostdag_data);
+        let topology_ghostdag_data = self
+            .topology_ghostdag_store
+            .get_data(ctx.hash)
+            .optional()
+            .unwrap()
+            .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_direct_parents)));
+
+        self.counters.mergeset_counts.fetch_add(coloring_ghostdag_data.mergeset_size() as u64, Ordering::Relaxed);
+
+        ctx.coloring_ghostdag_data = Some(coloring_ghostdag_data);
+        ctx.topology_ghostdag_data = Some(topology_ghostdag_data);
     }
 
     fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
-        let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
+        let coloring_ghostdag_data = ctx.coloring_ghostdag_data.as_ref().unwrap();
+        let topology_ghostdag_data = ctx.topology_ghostdag_data.as_ref().unwrap();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
@@ -355,7 +375,8 @@ impl HeaderProcessor {
         //
         // Append-only stores: these require no lock and hence done first in order to reduce locking time
         //
-        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap();
+        self.topology_ghostdag_store.insert_batch(&mut batch, ctx.hash, topology_ghostdag_data).unwrap();
+        self.coloring_ghostdag_store.insert_batch(&mut batch, ctx.hash, coloring_ghostdag_data).unwrap();
 
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, window);
@@ -377,8 +398,8 @@ impl HeaderProcessor {
         // time, and thus serializing this part will do no harm. However this should be benchmarked. The
         // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-        let selected_parent = ghostdag_data.selected_parent;
-        let mut reachability_mergeset = ghostdag_data.unordered_mergeset_without_selected_parent();
+        let selected_parent = coloring_ghostdag_data.selected_parent;
+        let mut reachability_mergeset = coloring_ghostdag_data.unordered_mergeset_without_selected_parent();
         reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut reachability_mergeset).unwrap();
 
         // Non-append only stores need to use write locks.
@@ -423,13 +444,15 @@ impl HeaderProcessor {
     }
 
     fn commit_trusted_header(&self, ctx: HeaderProcessingContext, _header: &Header) {
-        let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
+        let topology_ghostdag_data = ctx.topology_ghostdag_data.as_ref().unwrap();
+        let coloring_ghostdag_data = ctx.coloring_ghostdag_data.as_ref().unwrap();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
         // This data might have been already written when applying the pruning proof.
-        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).idempotent().unwrap();
+        self.topology_ghostdag_store.insert_batch(&mut batch, ctx.hash, topology_ghostdag_data).idempotent().unwrap();
+        self.coloring_ghostdag_store.insert_batch(&mut batch, ctx.hash, coloring_ghostdag_data).idempotent().unwrap();
 
         let mut relations_write = self.relations_store.write();
         relations_write.insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents).idempotent().unwrap();
@@ -466,7 +489,8 @@ impl HeaderProcessor {
             self.genesis.hash,
             BlockHashes::new(vec![ORIGIN]),
         );
-        ctx.ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));
+        ctx.topology_ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));
+        ctx.coloring_ghostdag_data = Some(Arc::new(self.coloring_ghostdag_manager.genesis_ghostdag_data()));
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
@@ -482,7 +506,8 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
         let mut relations_write = self.relations_store.write();
         relations_write.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
-        self.ghostdag_store.insert_batch(&mut batch, ORIGIN, &self.ghostdag_manager.origin_ghostdag_data()).unwrap();
+        self.topology_ghostdag_store.insert_batch(&mut batch, ORIGIN, &self.ghostdag_manager.origin_ghostdag_data()).unwrap();
+        self.coloring_ghostdag_store.insert_batch(&mut batch, ORIGIN, &self.coloring_ghostdag_manager.origin_ghostdag_data()).unwrap();
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();

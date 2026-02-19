@@ -141,9 +141,12 @@ impl PruningProofManager {
         // Update virtual state based on proof derived pruning point.
         // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
         let virtual_parents = vec![pruning_point];
+        // TODO[DK]: Check if I need a different coloring GD for here too
+        let gd_data = self.ghostdag_manager.ghostdag(&virtual_parents);
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
-            ghostdag_data: self.ghostdag_manager.ghostdag(&virtual_parents),
+            topology_ghostdag_data: gd_data.clone(),
+            coloring_ghostdag_data: gd_data,
             ..VirtualState::default()
         });
         self.virtual_stores.write().state.set(virtual_state).unwrap();

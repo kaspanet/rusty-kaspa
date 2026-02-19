@@ -47,7 +47,7 @@ pub struct PruningPointManager<
     genesis_hash: Hash,
 
     reachability_service: MTReachabilityService<T>,
-    ghostdag_store: Arc<S>,
+    coloring_ghostdag_store: Arc<S>,
     headers_store: Arc<U>,
     past_pruning_points_store: Arc<V>,
     _header_selected_tip_store: Arc<RwLock<W>>,
@@ -71,7 +71,7 @@ impl<
         finality_depth: u64,
         genesis_hash: Hash,
         reachability_service: MTReachabilityService<T>,
-        ghostdag_store: Arc<S>,
+        coloring_ghostdag_store: Arc<S>,
         headers_store: Arc<U>,
         past_pruning_points_store: Arc<V>,
         header_selected_tip_store: Arc<RwLock<W>>,
@@ -84,7 +84,7 @@ impl<
             finality_depth,
             genesis_hash,
             reachability_service,
-            ghostdag_store,
+            coloring_ghostdag_store,
             headers_store,
             past_pruning_points_store,
             _header_selected_tip_store: header_selected_tip_store,
@@ -219,7 +219,7 @@ impl<
             return false;
         }
 
-        let tip_bs = self.ghostdag_store.get_blue_score(tip).unwrap();
+        let tip_bs = self.coloring_ghostdag_store.get_blue_score(tip).unwrap();
         self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, self.pruning_depth)
     }
 
@@ -236,7 +236,7 @@ impl<
             // Post-crescendo: expected header pruning point is no longer part of header validity, but we want to make sure
             // the syncer's virtual chain indeed coincides with the pruning point and past pruning points before downloading
             // the UTXO set and resolving virtual. Hence we perform the check over this chain here.
-            let reply = self.expected_header_pruning_point(self.ghostdag_store.get_compact_data(current).unwrap());
+            let reply = self.expected_header_pruning_point(self.coloring_ghostdag_store.get_compact_data(current).unwrap());
             if reply.pruning_point != current_header.pruning_point {
                 return Err(PruningImportError::WrongHeaderPruningPoint(current_header.pruning_point, current));
             }

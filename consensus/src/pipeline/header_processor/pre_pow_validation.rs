@@ -24,7 +24,7 @@ impl HeaderProcessor {
     }
 
     fn check_difficulty_and_daa_score(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let ghostdag_data = ctx.ghostdag_data();
+        let ghostdag_data = ctx.topology_ghostdag_data();
         let daa_window = self.window_manager.block_daa_window(ghostdag_data)?;
 
         if daa_window.daa_score != header.daa_score {

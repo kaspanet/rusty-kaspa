@@ -55,6 +55,10 @@ pub enum DatabaseStorePrefixes {
     TempRelationsParents = 42,
     TempRelationsChildren = 43,
 
+    // ---- Coloring Ghostdag Store ----
+    ColoringGhostdag = 44,
+    ColoringGhostdagCompact = 45,
+
     // ---- Retention Period Root ----
     RetentionPeriodRoot = 50,
 

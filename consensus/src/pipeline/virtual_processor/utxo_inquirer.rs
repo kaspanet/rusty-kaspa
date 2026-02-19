@@ -77,7 +77,7 @@ impl VirtualStateProcessor {
         retention_period_root_hash: Hash,
     ) -> UtxoInquirerResult<Vec<SignableTransaction>> {
         let virual_state_read = self.virtual_stores.read();
-        let sink_hash = virual_state_read.state.get().expect("expected virtual state").ghostdag_data.selected_parent;
+        let sink_hash = virual_state_read.state.get().expect("expected virtual state").coloring_ghostdag_data.selected_parent;
         let utxo_store = &virual_state_read.utxo_set;
 
         let mut signable_transactions = Vec::with_capacity(txs.len());
