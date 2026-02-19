@@ -12,6 +12,7 @@
 - [Permission Script](ch09-permission-script.md)
 - [Delegate/Entry Script](ch10-delegate-script.md)
 - [Security Model](ch11-security-model.md)
+- [Running the Demo](ch12-running-the-demo.md)
 
 ---
 

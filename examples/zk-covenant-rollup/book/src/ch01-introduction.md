@@ -41,7 +41,7 @@ flowchart LR
 
 ## Scope
 
-This book covers the **PoC logic only**: the core library, guest proof program, and on-chain script construction. The host binary (demo runner) is not documented — it will become a library crate.
+This book covers the **PoC logic**: the core library, guest proof program, and on-chain script construction. See [Chapter 12: Running the Demo](ch12-running-the-demo.md) for how to build and run it.
 
 ## Reading guide
 
@@ -52,4 +52,5 @@ This book covers the **PoC logic only**: the core library, guest proof program, 
 | See how proofs work             | [Chapter 5: Guest Proof Pipeline](ch05-guest-proof-pipeline.md) |
 | Understand on-chain scripts     | [Chapter 7: State Verification](ch07-state-verification.md) |
 | Audit security properties       | [Chapter 11: Security Model](ch11-security-model.md) |
+| Run the demo yourself            | [Chapter 12: Running the Demo](ch12-running-the-demo.md) |
 | Look up a domain separator      | [Appendix A](appendix-a-domain-separators.md) |
