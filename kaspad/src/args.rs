@@ -97,6 +97,20 @@ pub struct Args {
     pub rocksdb_preset: Option<String>,
     pub rocksdb_wal_dir: Option<String>,
     pub rocksdb_cache_size: Option<usize>,
+
+    // Fast Trusted Relay (FTR) options
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    pub trusted_relay_incoming: Vec<ContextualNetAddress>,
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    pub trusted_relay_outgoing: Vec<ContextualNetAddress>,
+    pub trusted_relay_secret: Option<String>,
+    pub fec_enabled: bool,
+    #[serde(rename = "fec-data-blocks")]
+    pub fec_data_blocks: Option<usize>,
+    #[serde(rename = "fec-parity-blocks")]
+    pub fec_parity_blocks: Option<usize>,
+    #[serde(rename = "udp-payload-size")]
+    pub udp_payload_size: Option<usize>,
 }
 
 impl Default for Args {
@@ -152,6 +166,13 @@ impl Default for Args {
             rocksdb_preset: None,
             rocksdb_wal_dir: None,
             rocksdb_cache_size: None,
+            trusted_relay_incoming: vec![],
+            trusted_relay_outgoing: vec![],
+            trusted_relay_secret: None,
+            fec_enabled: true,
+            fec_data_blocks: Some(16),
+            fec_parity_blocks: Some(8),
+            udp_payload_size: Some(1200),
         }
     }
 }
@@ -309,7 +330,7 @@ pub fn cli() -> Command {
         )
         .arg(
             Arg::new("maxinpeers")
-                .long("maxinpeers") 
+                .long("maxinpeers")
                 .env("KASPAD_MAXINPEERS")
                 .value_name("maxinpeers")
                 .require_equals(true)
@@ -342,8 +363,8 @@ pub fn cli() -> Command {
                 .env("KASPAD_MAX_TRACKED_ADDRESSES")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help(format!("Max (preallocated) number of addresses being tracked for UTXO changed events (default: {}, maximum: {}). 
-Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0 memory footprint as long as unused but to sub-optimal footprint if used.", 
+                .help(format!("Max (preallocated) number of addresses being tracked for UTXO changed events (default: {}, maximum: {}).
+Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0 memory footprint as long as unused but to sub-optimal footprint if used.",
 0, Tracker::MAX_ADDRESS_UPPER_BOUND, Tracker::DEFAULT_MAX_ADDRESSES)),
         )
         .arg(arg!(--testnet "Use the test network").env("KASPAD_TESTNET"))
@@ -441,6 +462,73 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .help("RocksDB block cache size in MB. Default: 256MB for HDD preset (scales with --ram-scale). \
                        Increase for public RPC nodes with heavy query loads. Example: --rocksdb-cache-size=2048 for 2GB cache.")
         )
+        // Fast Trusted Relay (FTR) options
+        .arg(
+            Arg::new("trusted-relay-incoming")
+                .long("trusted-relay-incoming")
+                .env("KASPAD_TRUSTED_RELAY_INCOMING")
+                .value_name("IP[:PORT]")
+                .action(ArgAction::Append)
+                .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("UDP listen address for incoming fast trusted relay blocks (can specify multiple times for redundancy).")
+        )
+        .arg(
+            Arg::new("trusted-relay-outgoing")
+                .long("trusted-relay-outgoing")
+                .env("KASPAD_TRUSTED_RELAY_OUTGOING")
+                .value_name("IP[:PORT]")
+                .action(ArgAction::Append)
+                .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Outgoing trusted relay peer addresses (can specify multiple times).")
+        )
+        .arg(
+            Arg::new("trusted-relay-secret")
+                .long("trusted-relay-secret")
+                .env("KASPAD_TRUSTED_RELAY_SECRET")
+                .value_name("SECRET")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Shared secret for HMAC authentication of fast relay blocks.")
+        )
+        .arg(
+            Arg::new("fec-enabled")
+                .long("fec-enabled")
+                .env("KASPAD_FEC_ENABLED")
+                .value_name("true|false")
+                .default_value("true")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(bool))
+                .help("Enable FEC encoding for fast relay (default: true).")
+        )
+        .arg(
+            Arg::new("fec-data-blocks")
+                .long("fec-data-blocks")
+                .env("KASPAD_FEC_DATA_BLOCKS")
+                .value_name("K")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("Number of Reed-Solomon data blocks for FEC (default: 16). Range 4-128.")
+        )
+        .arg(
+            Arg::new("fec-parity-blocks")
+                .long("fec-parity-blocks")
+                .env("KASPAD_FEC_PARITY_BLOCKS")
+                .value_name("M")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("Number of Reed-Solomon parity blocks for FEC (default: 8). Range 1-64.")
+        )
+        .arg(
+            Arg::new("udp-payload-size")
+                .long("udp-payload-size")
+                .env("KASPAD_UDP_PAYLOAD_SIZE")
+                .value_name("BYTES")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("UDP fragment payload size in bytes (default: 1200). Range 500-1472.")
+        )
         ;
 
     #[cfg(feature = "devnet-prealloc")]
@@ -532,6 +620,20 @@ impl Args {
             rocksdb_preset: m.get_one::<String>("rocksdb-preset").cloned().or(defaults.rocksdb_preset),
             rocksdb_wal_dir: m.get_one::<String>("rocksdb-wal-dir").cloned().or(defaults.rocksdb_wal_dir),
             rocksdb_cache_size: m.get_one::<usize>("rocksdb-cache-size").cloned().or(defaults.rocksdb_cache_size),
+            // Fast Trusted Relay options
+            trusted_relay_incoming: m
+                .get_many::<ContextualNetAddress>("trusted-relay-incoming")
+                .map(|vals| vals.cloned().collect())
+                .unwrap_or_default(),
+            trusted_relay_outgoing: m
+                .get_many::<ContextualNetAddress>("trusted-relay-outgoing")
+                .map(|vals| vals.cloned().collect())
+                .unwrap_or_default(),
+            trusted_relay_secret: m.get_one::<String>("trusted-relay-secret").cloned(),
+            fec_enabled: arg_match_unwrap_or::<bool>(&m, "fec-enabled", defaults.fec_enabled),
+            fec_data_blocks: m.get_one::<usize>("fec-data-blocks").cloned().or(defaults.fec_data_blocks),
+            fec_parity_blocks: m.get_one::<usize>("fec-parity-blocks").cloned().or(defaults.fec_parity_blocks),
+            udp_payload_size: m.get_one::<usize>("udp-payload-size").cloned().or(defaults.udp_payload_size),
         };
 
         if arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", false) {

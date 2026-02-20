@@ -649,6 +649,7 @@ Do you confirm? (y/n)";
         address_manager,
         config.clone(),
         mining_manager.clone(),
+        None,
         tick_service.clone(),
         notification_root,
         hub.clone(),

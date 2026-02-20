@@ -16,6 +16,7 @@ pub(crate) mod request_block_bodies;
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
 use crate::ibd::IbdFlow;
+use kaspa_core::error;
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute, convert::header::HeaderFormat};
 use kaspa_utils::channel;
 use request_block_bodies::HandleBlockBodyRequests;
@@ -162,4 +163,8 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
     // KaspadMessagePayloadType::IbdBlockLocator,
 
     flows
+}
+
+fn register_fast_trusted_relay() {
+    // This function is intentionally left blank. The actual registration of the FastTrustedRelay flow is done in `FlowContext::new()` where it is passed as an optional parameter.
 }

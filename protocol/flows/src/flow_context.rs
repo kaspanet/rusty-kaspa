@@ -1,8 +1,8 @@
-use crate::flowcontext::{
+use crate::{fast_trusted_relay, flowcontext::{
     orphans::{OrphanBlocksPool, OrphanOutput},
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
-};
+}};
 use crate::{v7, v8};
 use async_trait::async_trait;
 use futures::future::join_all;
@@ -36,6 +36,7 @@ use kaspa_p2p_lib::{
     pb::{InvRelayBlockMessage, kaspad_message::Payload},
 };
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
+use kaspa_trusted_relay::FastTrustedRelay;
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -219,6 +220,7 @@ pub struct FlowContextInner {
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: MiningManagerProxy,
+    fast_trusted_relay: Option<FastTrustedRelay>,
     pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
 
@@ -303,6 +305,7 @@ impl FlowContext {
         address_manager: Arc<Mutex<AddressManager>>,
         config: Arc<Config>,
         mining_manager: MiningManagerProxy,
+        fast_trusted_relay: Option<FastTrustedRelay>,
         tick_service: Arc<TickService>,
         notification_root: Arc<ConsensusNotificationRoot>,
         hub: Hub,
@@ -328,6 +331,7 @@ impl FlowContext {
                 address_manager,
                 connection_manager: Default::default(),
                 mining_manager,
+                fast_trusted_relay,
                 tick_service,
                 notification_root,
                 block_event_logger: Some(BlockEventLogger::new(bps)),
@@ -380,6 +384,10 @@ impl FlowContext {
 
     pub fn mining_manager(&self) -> &MiningManagerProxy {
         &self.mining_manager
+    }
+
+    pub fn fast_trusted_relay(&self) -> Option<&FastTrustedRelay> {
+        self.fast_trusted_relay.as_ref()
     }
 
     pub fn try_set_ibd_running(&self, peer: PeerKey, relay_daa_score: u64) -> Option<IbdRunningGuard> {

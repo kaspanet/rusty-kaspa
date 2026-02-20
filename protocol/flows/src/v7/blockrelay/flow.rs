@@ -202,6 +202,11 @@ impl HandleRelayInvsFlow {
             // The only mining rule which permanently excludes a block is the merge depth bound
             // (as opposed to "max parents" and "mergeset size limit" rules)
             if broadcast {
+                if let Some(trusted_relay) = self.ctx.fast_trusted_relay() {
+                    // broadcast to the fast trusted relay.
+                    trusted_relay.broadcast_block(inv.hash, block.clone()).await.unwrap();
+                }
+
                 let msgs = ancestor_batch
                     .blocks
                     .iter()
