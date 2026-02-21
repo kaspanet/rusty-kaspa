@@ -492,7 +492,7 @@ impl<
         // Determine last known tips by backward iterating from subgroup tips to root
         // and stopping at the latest blocks with GD data to proceed from there.
         // Guaranteed to return at least one entry since the conflict_genesis is initialized above
-        let last_known_tips = self.find_last_known_tips(root, tips, &conflict_manager);
+        let (last_known_tips, visited_subdag) = self.find_last_known_tips(root, tips, &conflict_manager);
 
         if last_known_tips.len() == 1 && last_known_tips[0] == root {
             trace!("fill_conflict_zone_data from root: {}", root);
@@ -551,12 +551,32 @@ impl<
             }
 
             for child in relations_service.get_children(current_hash).unwrap().read().iter().copied() {
-                if !self.reachability_service.is_chain_ancestor_of(root, child) {
-                    debug!("Skipping child not a chain descendant of root | root: {:#?} | child: {:#?}", root, child);
-                    continue;
+                if let Ok(is_chain_ancestor) = self.reachability_service.try_is_chain_ancestor_of(root, child) {
+                    if !is_chain_ancestor {
+                        debug!("Skipping child not a chain descendant of root | root: {:#?} | child: {:#?}", root, child);
+                        continue;
+                    }
+                    topological_heap.push(Reverse(SortableBlock {
+                        hash: child,
+                        blue_work: self.headers_store.get_header(child).unwrap().blue_work,
+                    }));
+                } else {
+                    debug!(
+                        "reachability has | {}: {} | {}: {}",
+                        root,
+                        self.reachability_service.has_reachability_data(root),
+                        child,
+                        self.reachability_service.has_reachability_data(child)
+                    );
+                    if visited_subdag.contains(&child) {
+                        panic!("root: {} | Unexpected missing reachability data for {} | tips: {:?}", child, root, tips);
+                    } else {
+                        debug!(
+                            "root: {} | Child block was in relations but is not a member of the conflict zone. Skip: {}",
+                            root, child
+                        )
+                    }
                 }
-                topological_heap
-                    .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
             }
         }
 
@@ -568,7 +588,7 @@ impl<
         conflict_genesis: Hash,
         tips: &[Hash],
         conflict_manager: &ConflictZoneManager<C, O, D, R>,
-    ) -> Vec<Hash> {
+    ) -> (Vec<Hash>, BlockHashSet) {
         let mut visited = BlockHashSet::new();
         let mut queue: VecDeque<Hash> = VecDeque::from_iter(tips.iter().copied());
 
@@ -598,7 +618,7 @@ impl<
             }
         }
 
-        roots
+        (roots, visited)
     }
 }
 
