@@ -83,9 +83,15 @@ impl ActionType {
     }
 }
 
+pub enum TextInputTarget {
+    ImportCovenantId,
+    ImportDeployTxId { covenant_id: Hash },
+}
+
 pub enum InputMode {
     Normal,
     PromptAmount { action: ActionType, buffer: String, context: String },
+    PromptText { target: TextInputTarget, buffer: String, context: String },
     Confirm { action: ActionType, amount: u64, summary: Vec<String> },
     Processing { action: ActionType },
 }
@@ -145,6 +151,9 @@ pub struct App {
     // Account tab state (loaded for selected covenant)
     pub accounts: Vec<(Pubkey, [u8; 32])>, // (pubkey, privkey)
     pub account_list_index: usize,
+
+    // Prover key (separate from deployer — for proving role)
+    pub prover_key: Option<(Pubkey, [u8; 32])>, // (pubkey, privkey)
 
     // Actions tab state
     pub action_menu_index: usize,
@@ -207,6 +216,7 @@ impl App {
             selected_covenant: None,
             accounts: Vec::new(),
             account_list_index: 0,
+            prover_key: None,
             action_menu_index: 0,
             input_mode: InputMode::Normal,
             tx_history: Vec::new(),
@@ -321,6 +331,7 @@ impl App {
             Tab::Covenants => self.handle_covenant_key(key),
             Tab::Accounts => self.handle_account_key(key),
             Tab::Actions => self.handle_action_key(key),
+            Tab::State => self.handle_state_key(key),
             Tab::Proving => self.handle_proving_key(key),
             Tab::TxHistory => self.handle_tx_history_key(key),
             _ => {}
@@ -333,7 +344,9 @@ impl App {
         match key.code {
             KeyCode::Char('c') => self.create_covenant(),
             KeyCode::Char('d') => self.deploy_covenant(),
+            KeyCode::Char('i') => self.start_import_covenant(),
             KeyCode::Char('x') => self.delete_covenant(),
+            KeyCode::Char('y') => self.copy_covenant_info(),
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.covenant_list_index > 0 {
                     self.covenant_list_index -= 1;
@@ -350,6 +363,7 @@ impl App {
                     let id = self.covenants[self.covenant_list_index].0;
                     let is_deployed = self.covenants[self.covenant_list_index].1.deployment_tx_id.is_some();
                     self.refresh_accounts();
+                    self.load_prover_key(id);
                     self.subscribe_covenant_addresses();
                     self.log(format!("Selected covenant: {id}"));
 
@@ -392,6 +406,12 @@ impl App {
             return;
         }
 
+        // Store same key as prover key (creator gets both roles)
+        if let Err(e) = self.db.put_prover_key(covenant_id, &secret_key.secret_bytes()) {
+            self.log(format!("Failed to save prover key: {e}"));
+            return;
+        }
+
         self.log(format!("Created covenant {covenant_id} | deployer: {address}"));
 
         // Refresh list
@@ -414,6 +434,12 @@ impl App {
         // Must not already be deployed
         if record.deployment_tx_id.is_some() {
             self.log("Covenant is already deployed".into());
+            return;
+        }
+
+        // Imported covenants have no deployer key
+        if record.deployer_privkey.len() != 32 {
+            self.log("Cannot deploy — no deployer key (imported covenant)".into());
             return;
         }
 
@@ -624,6 +650,11 @@ impl App {
             addresses.push(addr);
         }
 
+        // Prover address
+        if let Some((pk, _)) = &self.prover_key {
+            addresses.push(Address::new(self.network_prefix, Version::PubKey, &pk.as_bytes()));
+        }
+
         // Account addresses
         for (pubkey, _) in &self.accounts {
             let addr = Address::new(self.network_prefix, Version::PubKey, &pubkey.as_bytes());
@@ -741,6 +772,12 @@ impl App {
     }
 
     pub fn handle_input_key(&mut self, key: crossterm::event::KeyEvent) {
+        // Handle PromptText separately to avoid borrow checker issues
+        if matches!(self.input_mode, InputMode::PromptText { .. }) {
+            self.handle_prompt_text_key(key);
+            return;
+        }
+
         match &mut self.input_mode {
             InputMode::Normal => {}
             InputMode::PromptAmount { action, buffer, .. } => {
@@ -786,6 +823,7 @@ impl App {
             InputMode::Processing { .. } => {
                 // Ignore keys while processing
             }
+            InputMode::PromptText { .. } => unreachable!("handled above"),
         }
     }
 
@@ -818,6 +856,172 @@ impl App {
         lines.push(String::new());
         lines.push("Enter: submit | Esc: cancel".into());
         lines
+    }
+
+    // ── State tab ──
+
+    fn handle_state_key(&mut self, key: crossterm::event::KeyEvent) {
+        if let KeyCode::Char('r') = key.code {
+            if self.prover.is_some() {
+                self.pending_ops.push(PendingOp::FetchAndProcessChain);
+                self.log("Refetching chain data...".into());
+            } else {
+                self.log("No prover initialized — select a deployed covenant first".into());
+            }
+        }
+    }
+
+    // ── Text input (import covenant) ──
+
+    fn handle_prompt_text_key(&mut self, key: crossterm::event::KeyEvent) {
+        match key.code {
+            KeyCode::Char(c) if c.is_ascii_hexdigit() => {
+                if let InputMode::PromptText { buffer, .. } = &mut self.input_mode {
+                    if buffer.len() < 64 {
+                        buffer.push(c);
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                if let InputMode::PromptText { buffer, .. } = &mut self.input_mode {
+                    buffer.pop();
+                }
+            }
+            KeyCode::Enter => {
+                // Extract buffer contents before mutating self
+                let (buf_len, buf_clone, target_clone) = match &self.input_mode {
+                    InputMode::PromptText { buffer, target, .. } => {
+                        let t = match target {
+                            TextInputTarget::ImportCovenantId => None,
+                            TextInputTarget::ImportDeployTxId { covenant_id } => Some(*covenant_id),
+                        };
+                        (buffer.len(), buffer.clone(), t)
+                    }
+                    _ => return,
+                };
+
+                if buf_len != 64 {
+                    self.log(format!("Need exactly 64 hex chars, got {buf_len}"));
+                    return;
+                }
+                let mut bytes = [0u8; 32];
+                if faster_hex::hex_decode(buf_clone.as_bytes(), &mut bytes).is_err() {
+                    self.log("Invalid hex string".into());
+                    return;
+                }
+                let hash = Hash::from_bytes(bytes);
+                match target_clone {
+                    None => {
+                        // Was ImportCovenantId -> advance to ImportDeployTxId
+                        self.input_mode = InputMode::PromptText {
+                            target: TextInputTarget::ImportDeployTxId { covenant_id: hash },
+                            buffer: String::new(),
+                            context: "Enter deploy tx ID (64 hex chars):".into(),
+                        };
+                    }
+                    Some(covenant_id) => {
+                        // Was ImportDeployTxId -> finish import
+                        self.input_mode = InputMode::Normal;
+                        self.finish_import_covenant(covenant_id, hash);
+                    }
+                }
+            }
+            KeyCode::Esc => {
+                self.input_mode = InputMode::Normal;
+                self.log("Import cancelled".into());
+            }
+            _ => {}
+        }
+    }
+
+    // ── Import covenant ──
+
+    fn start_import_covenant(&mut self) {
+        self.input_mode = InputMode::PromptText {
+            target: TextInputTarget::ImportCovenantId,
+            buffer: String::new(),
+            context: "Enter covenant ID (64 hex chars):".into(),
+        };
+    }
+
+    fn finish_import_covenant(&mut self, covenant_id: Hash, deploy_tx_id: Hash) {
+        // Generate new prover keypair
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+        let (xonly_pk, _) = public_key.x_only_public_key();
+        let prover_addr = Address::new(self.network_prefix, Version::PubKey, &xonly_pk.serialize());
+
+        let record = CovenantRecord {
+            deployer_privkey: vec![], // imported — no deployer key
+            deployment_tx_id: Some(deploy_tx_id),
+            covenant_utxo: Some((deploy_tx_id, 0)),
+            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+        };
+
+        if let Err(e) = self.db.put_covenant(covenant_id, &record) {
+            self.log(format!("Failed to save imported covenant: {e}"));
+            return;
+        }
+        if let Err(e) = self.db.put_prover_key(covenant_id, &secret_key.secret_bytes()) {
+            self.log(format!("Failed to save prover key: {e}"));
+            return;
+        }
+
+        self.log(format!("Imported covenant {covenant_id} — prover address: {prover_addr}"));
+
+        // Refresh list and select the imported covenant
+        self.covenants = self.db.list_covenants();
+        if let Some(idx) = self.covenants.iter().position(|(id, _)| *id == covenant_id) {
+            self.covenant_list_index = idx;
+            self.selected_covenant = Some(idx);
+            self.load_prover_key(covenant_id);
+            self.refresh_accounts();
+            self.subscribe_covenant_addresses();
+
+            // Auto-init prover (deployed covenant)
+            let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
+            let initial_seq = zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
+            self.prover = Some(RollupProver::new(covenant_id, initial_state_root, initial_seq, self.pruning_point));
+            self.log("Auto-initialized prover for imported covenant".into());
+            self.pending_ops.push(PendingOp::FetchAndProcessChain);
+        }
+    }
+
+    fn copy_covenant_info(&mut self) {
+        if self.covenants.is_empty() {
+            self.log("No covenants to copy".into());
+            return;
+        }
+        let (id, ref record) = self.covenants[self.covenant_list_index];
+        let mut info = format!("Covenant: {id}");
+        if let Some(tx_id) = record.deployment_tx_id {
+            info.push_str(&format!("\nDeploy TX: {tx_id}"));
+        }
+        let _ = cli_clipboard::set_contents(info);
+        self.log("Covenant ID + Deploy TX copied to clipboard".into());
+    }
+
+    fn load_prover_key(&mut self, covenant_id: CovenantId) {
+        self.prover_key = match self.db.get_prover_key(covenant_id) {
+            Ok(Some(privkey)) => {
+                let sk = match secp256k1::SecretKey::from_slice(&privkey) {
+                    Ok(sk) => sk,
+                    Err(_) => return,
+                };
+                let pk = sk.public_key(secp256k1::SECP256K1);
+                let (xonly, _) = pk.x_only_public_key();
+                let pubkey = Hash::from_bytes(xonly.serialize());
+                Some((pubkey, privkey))
+            }
+            _ => None,
+        };
+    }
+
+    /// Get the prover address as a string.
+    pub fn prover_address(&self) -> Option<String> {
+        let (pk, _) = self.prover_key.as_ref()?;
+        let addr = Address::new(self.network_prefix, Version::PubKey, &pk.as_bytes());
+        Some(addr.to_string())
     }
 
     // ── Proving tab ──
@@ -1286,6 +1490,7 @@ impl App {
         let id = self.covenants[0].0;
         let is_deployed = self.covenants[0].1.deployment_tx_id.is_some();
         self.refresh_accounts();
+        self.load_prover_key(id);
         self.subscribe_covenant_addresses();
         self.log(format!("Auto-selected covenant: {id}"));
 

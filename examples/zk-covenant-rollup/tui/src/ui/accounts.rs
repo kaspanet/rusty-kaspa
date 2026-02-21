@@ -1,5 +1,6 @@
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table};
 use ratatui::Frame;
 
@@ -16,12 +17,38 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         }
     };
 
-    let covenant_id = app.covenants[cov_idx].0;
+    // Split area: top section for special roles, bottom for account table
+    let chunks = ratatui::layout::Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([Constraint::Length(4), Constraint::Min(0)])
+        .split(area);
 
+    // ── Special Roles section ──
+    let deployer_line = match app.deployer_address(&app.covenants[cov_idx].1) {
+        Some(addr) => {
+            let bal = app.utxo_tracker.balance(&addr);
+            Line::from(format!(" Deployer:  {addr}   Balance: {}", format_sompi(bal)))
+        }
+        None => Line::from(" Deployer:  N/A (imported)"),
+    };
+
+    let prover_line = match app.prover_address() {
+        Some(addr) => {
+            let bal = app.utxo_tracker.balance(&addr);
+            Line::from(format!(" Prover:    {addr}   Balance: {}", format_sompi(bal)))
+        }
+        None => Line::from(" Prover:    not configured"),
+    };
+
+    let roles_block = Block::default().borders(Borders::ALL).title("Special Roles");
+    let roles = Paragraph::new(vec![deployer_line, prover_line]).block(roles_block);
+    frame.render_widget(roles, chunks[0]);
+
+    // ── Accounts table ──
     if app.accounts.is_empty() {
-        let msg = Paragraph::new(format!("No accounts for covenant {covenant_id}. Press 'c' to create one."))
-            .block(Block::default().borders(Borders::ALL).title("Accounts"));
-        frame.render_widget(msg, area);
+        let msg = Paragraph::new("No accounts yet. Press 'c' to create one.")
+            .block(Block::default().borders(Borders::ALL).title("Accounts [c:create  j/k:navigate]"));
+        frame.render_widget(msg, chunks[1]);
         return;
     }
 
@@ -41,21 +68,18 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         })
         .collect();
 
-    // Also show deployer balance
-    let deployer_bal = app.deployer_address(&app.covenants[cov_idx].1).map(|addr| app.utxo_tracker.balance(&addr)).unwrap_or(0);
-
-    let title = format!("Accounts [c:create  j/k:navigate] | Deployer L1: {}", format_sompi(deployer_bal));
-
     let widths = [Constraint::Length(6), Constraint::Min(40), Constraint::Length(18)];
     let header = Row::new(vec!["Index", "Address", "L1 Balance"]).style(Style::default().add_modifier(Modifier::BOLD));
 
-    let table = Table::new(rows, widths).header(header).block(Block::default().borders(Borders::ALL).title(title));
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(Block::default().borders(Borders::ALL).title("Accounts [c:create  j/k:navigate]"));
 
-    frame.render_widget(table, area);
+    frame.render_widget(table, chunks[1]);
 }
 
 /// Format sompi amount as KAS with 8 decimal places.
-fn format_sompi(sompi: u64) -> String {
+pub fn format_sompi(sompi: u64) -> String {
     let kas = sompi / 100_000_000;
     let frac = sompi % 100_000_000;
     if frac == 0 {

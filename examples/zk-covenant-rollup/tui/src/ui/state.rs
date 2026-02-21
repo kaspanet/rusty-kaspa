@@ -10,8 +10,8 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     if let Some(prover) = &app.prover {
         draw_state(frame, app, prover, area);
     } else {
-        let msg = Paragraph::new("No prover state — select a covenant and press 'p' in Proving tab")
-            .block(Block::default().borders(Borders::ALL).title("L2 State"));
+        let msg = Paragraph::new("No L2 state — select a deployed covenant (auto-syncs from VCC v2)")
+            .block(Block::default().borders(Borders::ALL).title("Live L2 State (unproven)  r:refetch"));
         frame.render_widget(msg, area);
     }
 }
@@ -34,7 +34,7 @@ fn draw_state(frame: &mut Frame, app: &App, prover: &crate::prover::RollupProver
             app.selected_covenant.and_then(|i| app.covenants.get(i)).map(|(id, _)| id.to_string()).unwrap_or_else(|| "none".into())
         )),
     ];
-    let info = Paragraph::new(info_lines).block(Block::default().borders(Borders::ALL).title("Chain State"));
+    let info = Paragraph::new(info_lines).block(Block::default().borders(Borders::ALL).title("Chain State  r:refetch"));
     frame.render_widget(info, chunks[0]);
 
     // Account balances from SMT
@@ -58,7 +58,7 @@ fn draw_state(frame: &mut Frame, app: &App, prover: &crate::prover::RollupProver
     let table = Table::new(rows, widths)
         .header(header)
         .row_highlight_style(Style::default().fg(Color::Yellow))
-        .block(Block::default().borders(Borders::ALL).title("L2 Account Balances (SMT)"));
+        .block(Block::default().borders(Borders::ALL).title("L2 Balances (derived from accepted txs)"));
 
     frame.render_widget(table, chunks[1]);
 }

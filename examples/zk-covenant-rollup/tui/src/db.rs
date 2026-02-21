@@ -21,6 +21,7 @@ pub type Pubkey = Hash;
 /// | `acct/`    | covenant_id (32B) + pubkey (32B)    | privkey (32B raw)            |
 /// | `utxo/`    | address string bytes                | `Vec<UtxoRecord>` (borsh)    |
 /// | `proving/` | covenant_id (32B)                   | `ProvingState`               |
+/// | `provkey/` | covenant_id (32B)                   | privkey (32B raw)            |
 ///
 /// Balance keys inherit the first-byte index from the pubkey, so:
 /// - Lookup by covenant + pubkey: exact 64-byte key
@@ -80,6 +81,7 @@ const PREFIX_BALANCE: &[u8] = b"bal/";
 const PREFIX_ACCOUNT: &[u8] = b"acct/";
 const PREFIX_UTXO: &[u8] = b"utxo/";
 const PREFIX_PROVING: &[u8] = b"proving/";
+const PREFIX_PROVER_KEY: &[u8] = b"provkey/";
 
 impl RollupDb {
     /// Open (or create) the database at the given path.
@@ -265,6 +267,20 @@ impl RollupDb {
     pub fn get_proving_state(&self, id: CovenantId) -> Result<Option<ProvingState>, rocksdb::Error> {
         let key = prefix_key(PREFIX_PROVING, &id.as_bytes());
         Ok(self.db.get(key)?.map(|v| ProvingState::try_from_slice(&v).expect("borsh deserialize")))
+    }
+
+    // ── Prover key ──
+
+    /// Store the prover's private key for a covenant (separate from deployer).
+    pub fn put_prover_key(&self, id: CovenantId, privkey: &[u8; 32]) -> Result<(), rocksdb::Error> {
+        let key = prefix_key(PREFIX_PROVER_KEY, &id.as_bytes());
+        self.db.put(key, privkey)
+    }
+
+    /// Get the prover's private key for a covenant.
+    pub fn get_prover_key(&self, id: CovenantId) -> Result<Option<[u8; 32]>, rocksdb::Error> {
+        let key = prefix_key(PREFIX_PROVER_KEY, &id.as_bytes());
+        Ok(self.db.get(key)?.map(|v| <[u8; 32]>::try_from(&v[..32]).expect("32-byte prover key")))
     }
 }
 

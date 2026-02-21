@@ -592,3 +592,232 @@ async fn test_tx_history_tracking() {
     drop(grpc_client);
     kaspad.shutdown();
 }
+
+// ── Role-based accounts & import tests ──
+
+/// Helper: type a hex string char-by-char into an App's input handler.
+fn type_hex_string(app: &mut App, hex: &str) {
+    for c in hex.chars() {
+        app.handle_input_key(key_event(KeyCode::Char(c)));
+    }
+}
+
+/// Test importing a covenant by entering covenant ID and deploy tx ID.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_import_covenant() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
+    let (mut app1, grpc_client, _miner_address, _keypair) = setup_test_app(&mut kaspad).await;
+
+    // ── "Device A": create + deploy covenant ──
+    app1.handle_key(key_event(KeyCode::Char('c')));
+    app1.covenant_list_index = 0;
+    app1.handle_key(key_event(KeyCode::Enter));
+
+    let deployer_addr_str = app1.deployer_address(&app1.covenants[0].1).unwrap();
+    let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
+    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+
+    app1.subscribe_covenant_addresses();
+    app1.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    app1.handle_key(key_event(KeyCode::Char('d')));
+    app1.process_pending_ops().await;
+    app1.covenants = app1.db.list_covenants();
+
+    let covenant_id = app1.covenants[0].0;
+    let deploy_tx_id = app1.covenants[0].1.deployment_tx_id.unwrap();
+
+    // ── "Device B": create a second App and import the covenant ──
+    let tmpdir2 = tempfile::tempdir().unwrap();
+    let db2 = Arc::new(RollupDb::open(tmpdir2.path()).unwrap());
+    let url = format!("ws://localhost:{}", kaspad.rpc_borsh_port);
+    let network_id = NetworkId::new(NetworkType::Simnet);
+    let node2 = KaspaNode::try_new(&url, network_id).unwrap();
+    node2.connect().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let dag_info = node2.get_block_dag_info().await.unwrap();
+    let mut app2 = App::new(db2, node2, Prefix::Simnet);
+    app2.pruning_point = dag_info.pruning_point_hash;
+    app2.connected = true;
+
+    // Press 'i' to start import
+    app2.active_tab = Tab::Covenants;
+    app2.handle_key(key_event(KeyCode::Char('i')));
+    assert!(matches!(app2.input_mode, InputMode::PromptText { .. }), "Should be in PromptText mode");
+
+    // Type covenant ID (64 hex chars)
+    let cov_id_hex = covenant_id.to_string();
+    type_hex_string(&mut app2, &cov_id_hex);
+    app2.handle_input_key(key_event(KeyCode::Enter));
+
+    // Should now be prompting for deploy tx ID
+    assert!(matches!(app2.input_mode, InputMode::PromptText { .. }), "Should still be in PromptText for deploy tx");
+
+    // Type deploy tx ID
+    let deploy_tx_hex = deploy_tx_id.to_string();
+    type_hex_string(&mut app2, &deploy_tx_hex);
+    app2.handle_input_key(key_event(KeyCode::Enter));
+
+    // Should be back to Normal
+    assert!(app2.input_mode.is_normal(), "Should be back to Normal mode after import");
+
+    // Verify import
+    assert_eq!(app2.covenants.len(), 1, "Should have one imported covenant");
+    assert_eq!(app2.covenants[0].0, covenant_id, "Covenant ID should match");
+    assert!(app2.covenants[0].1.deployer_privkey.is_empty(), "Imported covenant should have no deployer key");
+    assert!(app2.covenants[0].1.deployment_tx_id.is_some(), "Should have deploy tx ID");
+    assert!(app2.prover_key.is_some(), "Should have a prover key");
+    assert!(app2.prover.is_some(), "Prover should auto-init for imported deployed covenant");
+
+    // Verify deployer address returns None for imported covenant
+    assert!(app2.deployer_address(&app2.covenants[0].1).is_none(), "No deployer address for imported covenant");
+    // Verify prover address exists
+    assert!(app2.prover_address().is_some(), "Should have prover address");
+
+    app1.node.stop().await.unwrap();
+    app2.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
+/// Test that deployer, prover, and accounts are separate roles.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_role_separation() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
+    let (mut app, grpc_client, _address, _keypair) = setup_test_app(&mut kaspad).await;
+
+    // Create covenant
+    app.active_tab = Tab::Covenants;
+    app.handle_key(key_event(KeyCode::Char('c')));
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+
+    // Deployer address should exist (created covenant)
+    let deployer_addr = app.deployer_address(&app.covenants[0].1);
+    assert!(deployer_addr.is_some(), "Created covenant should have deployer address");
+
+    // Prover key should be loaded
+    assert!(app.prover_key.is_some(), "Prover key should be loaded after selecting covenant");
+    let prover_addr = app.prover_address();
+    assert!(prover_addr.is_some(), "Prover address should exist");
+
+    // Accounts list should be empty (deployer/prover are NOT in accounts)
+    assert!(app.accounts.is_empty(), "Accounts should be empty — deployer and prover are separate");
+
+    // Create an action account
+    app.active_tab = Tab::Accounts;
+    app.handle_key(key_event(KeyCode::Char('c')));
+    assert_eq!(app.accounts.len(), 1, "Should have exactly one account");
+
+    // The account should be different from deployer and prover
+    let (acct_pk, _) = app.accounts[0];
+    let acct_addr = app.pubkey_to_address(&acct_pk).unwrap();
+    assert_ne!(Some(acct_addr.clone()), deployer_addr, "Account address should differ from deployer");
+    assert_ne!(Some(acct_addr), prover_addr, "Account address should differ from prover");
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
+/// Test state tab 'r' key refetches chain data.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_state_tab_refetch() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
+    let (mut app, grpc_client, miner_address, _keypair) = setup_test_app(&mut kaspad).await;
+
+    // Create covenant
+    app.handle_key(key_event(KeyCode::Char('c')));
+    let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
+    let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
+    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+
+    // Select, subscribe, deploy
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    app.active_tab = Tab::Covenants;
+    app.handle_key(key_event(KeyCode::Char('d')));
+    app.process_pending_ops().await;
+
+    // Refresh and re-select to init prover
+    app.covenants = app.db.list_covenants();
+    app.prover = None;
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+    assert!(app.prover.is_some(), "Prover should be initialized");
+
+    // Process initial chain sync
+    mine_blocks(&grpc_client, &miner_address, 5).await;
+    app.process_pending_ops().await;
+
+    let last_block_before = app.prover.as_ref().unwrap().last_processed_block;
+
+    // Mine more blocks
+    mine_blocks(&grpc_client, &miner_address, 5).await;
+
+    // Switch to State tab and press 'r' to refetch
+    app.active_tab = Tab::State;
+    app.handle_key(key_event(KeyCode::Char('r')));
+    app.process_pending_ops().await;
+
+    // Prover should have advanced
+    let last_block_after = app.prover.as_ref().unwrap().last_processed_block;
+    assert_ne!(last_block_before, last_block_after, "Prover should have advanced after refetch");
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
+/// Test that an imported covenant cannot be deployed (already deployed / no deployer key).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_imported_covenant_no_deploy() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
+    let (mut app, grpc_client, _address, _keypair) = setup_test_app(&mut kaspad).await;
+
+    // Simulate importing a covenant by pressing 'i' and entering hex values
+    app.active_tab = Tab::Covenants;
+    app.handle_key(key_event(KeyCode::Char('i')));
+
+    // Enter a fake covenant ID (64 hex chars)
+    let fake_cov_id = "aa".repeat(32);
+    type_hex_string(&mut app, &fake_cov_id);
+    app.handle_input_key(key_event(KeyCode::Enter));
+
+    // Enter a fake deploy tx ID (64 hex chars)
+    let fake_tx_id = "bb".repeat(32);
+    type_hex_string(&mut app, &fake_tx_id);
+    app.handle_input_key(key_event(KeyCode::Enter));
+
+    assert_eq!(app.covenants.len(), 1, "Should have one imported covenant");
+    assert!(app.selected_covenant.is_some(), "Imported covenant should be auto-selected");
+
+    // Try to deploy — should be rejected
+    let log_len_before = app.log_messages.len();
+    app.handle_key(key_event(KeyCode::Char('d')));
+
+    // Check that the deploy was rejected (already deployed OR no deployer key)
+    let rejection_logged =
+        app.log_messages[log_len_before..].iter().any(|m| m.contains("already deployed") || m.contains("no deployer key"));
+    assert!(rejection_logged, "Should log rejection when trying to deploy imported covenant");
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
