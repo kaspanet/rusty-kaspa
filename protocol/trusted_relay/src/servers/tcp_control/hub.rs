@@ -8,9 +8,9 @@ use arc_swap::ArcSwap;
 use log::{debug, info, trace, warn};
 use tokio::sync::mpsc;
 
-use crate::servers::tcp_control::{ControlMsg, Peer, PeerCloseReason};
 use crate::servers::peer_directory::PeerDirectory;
 use crate::servers::peer_directory::PeerInfo;
+use crate::servers::tcp_control::{ControlMsg, Peer, PeerCloseReason, hub};
 // ============================================================================
 // HUB EVENTS
 // ============================================================================
@@ -61,12 +61,11 @@ pub struct Hub {
     /// Shared peer directory — updated by Hub on connect/disconnect,
     /// read by `ShardForwarder` and `BroadcastWorker` on the data plane.
     directory: Arc<PeerDirectory>,
-    /// Allowlist of UDP source endpoints that completed handshake.
-    /// Uses `ArcSwap` for lock-free reads on the collector hot path.
-    allowlist: Arc<ArcSwap<HashSet<SocketAddr>>>,
     /// Sender for Hub events — cloned and given to peer tasks so they can
     /// report `PeerDisconnected`.
-    event_tx: mpsc::Sender<HubEvent>,
+    hub_event_sender: mpsc::UnboundedSender<HubEvent>,
+    /// Receiver for Hub events — owned by the Hub's event loop.
+    hub_event_receiver: mpsc::UnboundedReceiver<HubEvent>,
     /// Whether *we* are ready to relay. Flipped by the Adaptor via
     /// `start_fast_relay()` / `stop_fast_relay()`. Outbound shards are
     /// only sent when `local_ready && peer_ready`.
@@ -80,20 +79,24 @@ impl Hub {
     /// returned sender to submit events.
     pub fn new(
         directory: Arc<PeerDirectory>,
-        allowlist: Arc<ArcSwap<HashSet<SocketAddr>>>,
-        local_ready: Arc<AtomicBool>,
-        event_channel_capacity: usize,
-    ) -> (mpsc::Sender<HubEvent>, mpsc::Receiver<HubEvent>, Self) {
-        let (event_tx, event_rx) = mpsc::channel(event_channel_capacity);
-        let hub = Self { peers: HashMap::new(), directory, allowlist, event_tx: event_tx.clone(), local_ready };
-        (event_tx, event_rx, hub)
+        is_ready: Arc<AtomicBool>, // this is the same / alias as udp shutdown bool. i.e. if we shutdown udp, we signal not ready here.
+        hub_event_sender: mpsc::UnboundedSender<HubEvent>,
+        hub_event_receiver: mpsc::UnboundedReceiver<HubEvent>,
+    ) -> Self {
+        Self {
+            peers: HashMap::new(),
+            directory,
+            hub_event_sender: hub_event_sender.clone(),
+            hub_event_receiver,
+            local_ready: is_ready,
+        }
     }
 
     /// Run the Hub event loop. Blocks until `Shutdown` or all senders drop.
-    pub async fn run(mut self, mut event_rx: mpsc::Receiver<HubEvent>) {
+    pub async fn run(&mut self) {
         info!("Hub started, listening for events");
 
-        while let Some(event) = event_rx.recv().await {
+        while let Some(event) = self.hub_event_receiver.recv().await {
             match event {
                 HubEvent::PeerConnected(peer) => self.handle_peer_connected(peer),
                 HubEvent::PeerDisconnected(addr, reason) => self.handle_peer_disconnected(addr, reason),
@@ -130,7 +133,7 @@ impl Hub {
         let direction = info.direction();
         let udp_target = info.udp_target();
         let control_tx = peer.control_tx();
-        let hub_event_tx = self.event_tx.clone();
+        let hub_event_sender = self.hub_event_sender.clone();
 
         info!("Peer connected: {} ({})", addr, direction);
 
@@ -140,11 +143,6 @@ impl Hub {
         // Insert into the shared PeerDirectory so the data-plane workers
         // (ShardForwarder, BroadcastWorker) can see this peer immediately.
         self.directory.insert_peer(info.clone());
-
-        // Add peer UDP target to allowlist so the UDP receive loop will accept packets.
-        let mut new_set = (**self.allowlist.load()).clone();
-        new_set.insert(udp_target);
-        self.allowlist.store(Arc::new(new_set));
 
         // If we are already in relay-active mode, immediately tell this new
         // peer to start (writes Start over TCP so the remote knows).
@@ -164,17 +162,14 @@ impl Hub {
             let reason = peer.run_control_loop().await;
             debug!("Peer {} control loop exited: {:?}", addr, reason);
             // Notify Hub to clean up.
-            let _ = hub_event_tx.send(HubEvent::PeerDisconnected(addr, reason)).await;
+            let _ = hub_event_sender.send(HubEvent::PeerDisconnected(addr, reason));
         });
     }
 
     fn handle_peer_disconnected(&mut self, addr: SocketAddr, reason: PeerCloseReason) {
-        if let Some(handle) = self.peers.remove(&addr) {
+        if let Some(_) = self.peers.remove(&addr) {
             info!("Peer removed: {} (reason: {:?})", addr, reason);
-            let mut new_set = (**self.allowlist.load()).clone();
-            new_set.remove(&handle.info.udp_target());
-            self.allowlist.store(Arc::new(new_set));
-            // Remove from the shared PeerDirectory so data-plane workers
+            // Remove from the shared PeerDirectory so udp transport workers
             // stop sending to this peer.
             self.directory.remove_peer(&addr);
         } else {
@@ -202,19 +197,31 @@ impl Hub {
         }
     }
 
-    async fn shutdown_all_peers(&mut self) {
+    pub async fn shutdown_all_peers(&mut self) {
         for (addr, handle) in self.peers.drain() {
             debug!("Sending Shutdown to peer {}", addr);
             let _ = handle.control_tx.send(ControlMsg::Shutdown).await;
         }
     }
 
+    pub async fn signal_ready(&self) {
+        for (addr, handle) in self.peers.iter() {
+            debug!("Signaling Start to peer {}", addr);
+            let _ = handle.control_tx.send(ControlMsg::Start).await;
+        }
+    }
+
+    pub async fn signal_not_ready(&self) {
+        for (addr, handle) in self.peers.iter() {
+            debug!("Signaling Stop to peer {}", addr);
+            let _ = handle.control_tx.send(ControlMsg::Stop).await;
+        }
+    }
 }
 
 // ============================================================================
 // TESTS
 // ============================================================================
-
 #[cfg(test)]
 mod tests {
     use crate::params::FragmentationConfig;
@@ -230,17 +237,16 @@ mod tests {
     }
 
     /// Create a Hub wired to throwaway channels.
-    async fn make_hub() -> (mpsc::Sender<HubEvent>, Hub, mpsc::Receiver<HubEvent>) {
-        let directory = Arc::new(PeerDirectory::new());
-        let allowlist = Arc::new(ArcSwap::from_pointee(HashSet::new()));
+    async fn make_hub() -> (mpsc::UnboundedSender<HubEvent>, Hub) {
+        let directory = Arc::new(PeerDirectory::new(std::collections::HashMap::new()));
         let local_ready = Arc::new(AtomicBool::new(false));
-        // Create a throwaway broadcast channel (we won't consume it in most tests).
-        let (_tx, _rx, hub) = Hub::new(directory, allowlist.clone(), local_ready, 128);
-        (_tx, hub, _rx)
+        let (hub_tx, hub_rx) = mpsc::unbounded_channel();
+        let hub = Hub::new(directory, local_ready, hub_tx.clone(), hub_rx);
+        (hub_tx, hub)
     }
 
     /// Helper: create a connected TCP pair and wrap one side in a Peer.
-    async fn make_peer(direction: PeerDirection, hub_event_tx: mpsc::Sender<HubEvent>) -> (Peer, TcpStream) {
+    async fn make_peer(direction: PeerDirection, hub_event_tx: mpsc::UnboundedSender<HubEvent>) -> (Peer, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
 
@@ -256,15 +262,15 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_hub_register_and_disconnect() {
-        let (event_tx, hub, event_rx) = make_hub().await;
+        let (event_tx, mut hub) = make_hub().await;
 
         // Spawn Hub event loop.
-        let hub_handle = tokio::spawn(async move { hub.run(event_rx).await });
+        let hub_handle = tokio::spawn(async move { hub.run().await });
 
         // Connect a peer.
         let (peer, remote) = make_peer(PeerDirection::Both, event_tx.clone()).await;
         let addr = peer.address();
-        event_tx.send(HubEvent::PeerConnected(peer)).await.unwrap();
+        event_tx.send(HubEvent::PeerConnected(peer)).unwrap();
 
         // Give the Hub a moment to process.
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -275,7 +281,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
         // Shut down the Hub.
-        event_tx.send(HubEvent::Shutdown).await.unwrap();
+        event_tx.send(HubEvent::Shutdown).unwrap();
         hub_handle.await.unwrap();
 
         // If we get here without panic the register/unregister path works.
@@ -284,42 +290,35 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_hub_updates_allowlist_on_connect_and_disconnect() {
-        use std::collections::HashSet;
+        use std::collections::HashMap;
         use std::sync::Arc;
 
-        let directory = Arc::new(PeerDirectory::new());
-        let allowlist = Arc::new(ArcSwap::from_pointee(HashSet::new()));
+        let directory = Arc::new(PeerDirectory::new(HashMap::new()));
         let local_ready = Arc::new(AtomicBool::new(false));
-        let (event_tx, event_rx, hub) = Hub::new(directory.clone(), allowlist.clone(), local_ready, 128);
+        let (event_tx, hub_rx) = mpsc::unbounded_channel();
+        let mut hub = Hub::new(directory.clone(), local_ready, event_tx.clone(), hub_rx);
 
         // Run the Hub loop in background.
-        let hub_handle = tokio::spawn(async move { hub.run(event_rx).await });
+        let hub_handle = tokio::spawn(async move { hub.run().await });
 
         // Create a Peer and submit PeerConnected.
         let (peer, _remote) = make_peer(PeerDirection::Both, event_tx.clone()).await;
-        let udp_target = peer.udp_target();
         let peer_addr = peer.address();
-        event_tx.send(HubEvent::PeerConnected(peer)).await.unwrap();
+        event_tx.send(HubEvent::PeerConnected(peer)).unwrap();
 
         // Allow event loop to process.
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-        // Expect the peer's udp_target to be inserted into the allowlist.
-        assert!(allowlist.load().contains(&udp_target), "udp_target should be allowlisted after PeerConnected");
-
         // Expect the peer to appear in the PeerDirectory.
         assert_eq!(directory.peer_info_list().load_full().len(), 1, "PeerDirectory should have 1 peer after PeerConnected");
 
-        // Simulate peer disconnect and ensure removal from allowlist + directory.
-        event_tx
-            .send(HubEvent::PeerDisconnected(peer_addr, crate::servers::tcp_control::PeerCloseReason::StreamClosed))
-            .await
-            .unwrap();
+        // Simulate peer disconnect and ensure removal from directory.
+        event_tx.send(HubEvent::PeerDisconnected(peer_addr, crate::servers::tcp_control::PeerCloseReason::StreamClosed)).unwrap();
 
-        // Wait (bounded) for the allowlist to be updated by the Hub event loop.
+        // Wait (bounded) for the directory to be updated by the Hub event loop.
         let removed = tokio::time::timeout(tokio::time::Duration::from_millis(500), async {
             loop {
-                if !allowlist.load().contains(&udp_target) {
+                if directory.peer_info_list().load_full().is_empty() {
                     break;
                 }
                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -328,25 +327,24 @@ mod tests {
         .await
         .is_ok();
 
-        assert!(removed, "udp_target should be removed from allowlist after PeerDisconnected");
-        assert!(directory.peer_info_list().load_full().is_empty(), "PeerDirectory should be empty after PeerDisconnected");
+        assert!(removed, "PeerDirectory should be empty after PeerDisconnected");
 
         // Shutdown Hub and finish.
-        event_tx.send(HubEvent::Shutdown).await.unwrap();
+        event_tx.send(HubEvent::Shutdown).unwrap();
         hub_handle.await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_hub_shutdown_sends_to_peers() {
-        let (event_tx, hub, event_rx) = make_hub().await;
-        let hub_handle = tokio::spawn(async move { hub.run(event_rx).await });
+        let (event_tx, mut hub) = make_hub().await;
+        let hub_handle = tokio::spawn(async move { hub.run().await });
 
         let (peer, mut remote) = make_peer(PeerDirection::Inbound, event_tx.clone()).await;
-        event_tx.send(HubEvent::PeerConnected(peer)).await.unwrap();
+        event_tx.send(HubEvent::PeerConnected(peer)).unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
         // Shutdown Hub — should send Shutdown control to the peer.
-        event_tx.send(HubEvent::Shutdown).await.unwrap();
+        event_tx.send(HubEvent::Shutdown).unwrap();
         hub_handle.await.unwrap();
 
         // The remote should receive the Shutdown frame.
@@ -357,27 +355,30 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_peer_ready_event_updates_directory() {
-        let directory = Arc::new(PeerDirectory::new());
-        let allowlist = Arc::new(ArcSwap::from_pointee(HashSet::new()));
-        let local_ready = Arc::new(AtomicBool::new(false));
-        let (event_tx, event_rx, hub) = Hub::new(directory.clone(), allowlist, local_ready, 128);
+        use std::collections::HashMap;
+        use std::sync::Arc;
 
-        let hub_handle = tokio::spawn(async move { hub.run(event_rx).await });
+        let directory = Arc::new(PeerDirectory::new(HashMap::new()));
+        let local_ready = Arc::new(AtomicBool::new(false));
+        let (event_tx, hub_rx) = mpsc::unbounded_channel();
+        let mut hub = Hub::new(directory.clone(), local_ready, event_tx.clone(), hub_rx);
+
+        let hub_handle = tokio::spawn(async move { hub.run().await });
 
         let (peer, _remote) = make_peer(PeerDirection::Outbound, event_tx.clone()).await;
         let addr = peer.address();
-        event_tx.send(HubEvent::PeerConnected(peer)).await.unwrap();
+        event_tx.send(HubEvent::PeerConnected(peer)).unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
         // Remote peer signals readiness; Hub should swap the directory entry.
-        event_tx.send(HubEvent::PeerReady(addr, true)).await.unwrap();
+        event_tx.send(HubEvent::PeerReady(addr, true)).unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
         let snap = directory.peer_info_list().load_full();
         assert_eq!(snap.len(), 1);
         assert!(snap[0].is_outbound_ready(), "Peer ready flag should be reflected in directory snapshot");
 
-        event_tx.send(HubEvent::Shutdown).await.unwrap();
+        event_tx.send(HubEvent::Shutdown).unwrap();
         hub_handle.await.unwrap();
     }
 }

@@ -1,78 +1,151 @@
-use crate::servers::udp_transport::runtime::TransportRuntime;
+use std::{
+    collections::HashSet, net::SocketAddr, ops::Deref, sync::{Arc, atomic::AtomicBool}, time::Duration
+};
 
+use kaspa_core::{info, warn};
+use kaspa_hashes::Hash;
+use kaspa_utils::networking::ContextualNetAddress;
+use tokio::sync::Mutex as TokioMutex;
 
+use crate::{
+    model::ftr_block::FtrBlock,
+    params::{FragmentationConfig, TransportParams},
+    servers::{
+        auth::TokenAuthenticator,
+        peer_directory::{Allowlist, PeerDirectory},
+        tcp_control::{PeerDirection, runtime::ControlRuntime},
+        udp_transport::runtime::TransportRuntime,
+    },
+};
+
+#[derive(Clone)]
 pub struct FastTrustedRelay {
-    udp_runtime: Option<TransportRuntime>,
-    tcp_runtime: ControlRuntime,
+    udp_runtime: Option<Arc<TransportRuntime>>,
+    tcp_runtime: Arc<TokioMutex<ControlRuntime>>,
+    authenticator: Arc<TokenAuthenticator>,
+    directory: Arc<PeerDirectory>,
+    params: TransportParams,
+    fragmentation_config: FragmentationConfig,
+    listen_address: SocketAddr,
+    udp_active: Arc<AtomicBool>,
+    receive_block_waker: Arc<tokio::sync::Notify>,
+    udp_port: u16,
+    tcp_port: u16,
 }
 
 impl FastTrustedRelay {
-// TODO
+    async fn new(
+        params: TransportParams,
+        fragmentation_config: FragmentationConfig,
+        listen_address: SocketAddr,
+        udp_port: u16,
+        tcp_port: u16,
+        secret: Vec<u8>,
+        peers: Vec<(ContextualNetAddress, PeerDirection)>,
+    ) -> Self {
+        let directory = Arc::new(PeerDirectory::new(peers.iter().cloned().map(|(addr, direction)| (addr.into(), direction)).collect()));
+        let authenticator = Arc::new(TokenAuthenticator::new(secret));
+        let is_udp_active = Arc::new(AtomicBool::new(false));
+        let receive_block_waker = Arc::new(tokio::sync::Notify::new());
+        let tcp_runtime =
+            ControlRuntime::new( listen_address, directory.clone(), authenticator.clone(), is_udp_active.clone()).await;
+        Self { listen_address, tcp_runtime: Arc::new(TokioMutex::new(tcp_runtime)), udp_runtime: None, authenticator, directory, params, fragmentation_config, udp_port, tcp_port, udp_active: is_udp_active, receive_block_waker }
+    }
+
+    pub async fn start_control_runtime(&mut self) {
+        let tcp_runtime = self.tcp_runtime.clone();
+        tokio::spawn(async move {
+            let mut rt = tcp_runtime.lock().await;
+            rt.run().await;
+        });
+    }
+
+    /// stop the UDP relay without consuming the struct so the caller can still
+    /// use the relay instance afterwards.
+    pub async fn stop_fast_relay(&mut self) {
+        if !self.is_udp_active() {
+            warn!("trying to stop fast trusted relay although it is not active");
+            return;
+        } else {
+            self.udp_active.store(false, std::sync::atomic::Ordering::SeqCst);
+            // drops the runtime, which frees the resources
+            self.udp_runtime.take();
+            // signal to peers that the relay is not ready to receive blocks.
+            self.tcp_runtime.lock().await.signal_not_ready().await;
+        };
+    }
+
+    /// start or restart the UDP relay; takes `&mut self` to avoid moving the
+    /// entire relay instance out of the caller.
+    pub async fn start_fast_relay(&mut self) {
+        if self.is_udp_active() {
+            warn!("trying to start fast trusted relay although it is already active");
+            return;
+        }
+        self.udp_active.store(true, std::sync::atomic::Ordering::SeqCst);
+        let mut udp_runtime = TransportRuntime::new(
+            self.params.clone(),
+            self.listen_address.into(),
+            self.fragmentation_config.clone(),
+            self.directory.clone(),
+            self.authenticator.clone(),
+            self.udp_active.clone(),
+        );
+        udp_runtime.start();
+        self.udp_runtime = Some(Arc::new(udp_runtime));
+        // signal to peers that the relay is ready to receive blocks.
+        self.tcp_runtime.lock().await.signal_ready().await;
+        self.receive_block_waker.notify_one();
+        info!("fast trusted relay UDP transport started");
+    }
+
+    /// shut down both runtimes; does not consume the relay in order to allow
+    /// callers (including `Drop`) to borrow it.
+    pub fn shutdown(&mut self) {
+        self.stop_fast_relay();
+        // only move the control runtime into the spawned task, keeping the
+        // rest of `self` live.
+        let tcp_runtime = self.tcp_runtime.clone();
+        tokio::spawn(async move {
+            let mut rt = tcp_runtime.lock().await;
+            rt.stop().await;
+        });
+    }
+
+    pub async fn broadcast_block(&self, hash: Hash, block: FtrBlock) -> Result<(), String> {
+        if let Some(udp_runtime) = &self.udp_runtime {
+            udp_runtime.submit_block_for_broadcast(hash, block)
+        } else {
+            // Relay is inactive; ignore the broadcast but return Ok to avoid
+            // treating this as an error.
+            Ok(())
+        }
+    }
+
+    pub async fn recv_block(&self) -> (Hash, FtrBlock) {
+        loop {
+            if let Some(udp_runtime) = &self.udp_runtime {
+                let block_receiver_arc = udp_runtime.block_receive();
+                let mut block_receiver = block_receiver_arc.lock().await;
+                if let Some(msg) = block_receiver.recv().await {
+                    return msg.into_parts();
+                }
+            }
+            // wait until the udp runtime becomes active again.
+            self.receive_block_waker.notified().await;
+        }
+    }
+
+    pub fn is_udp_active(&self) -> bool {
+        self.udp_runtime.as_ref().is_some_and(|udp_runtime| udp_runtime.is_active())
+    }
 }
 
-/*
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use kaspa_consensus_core::header::Header;
-    use kaspa_consensus_core::tx::Transaction;
-
-    use super::*;
-    use crate::params::{DecodingParams, TransportParams};
-    use crate::sharding::config::ShardingConfig;
-
-    fn generate_test_block() -> Block {
-        use kaspa_hashes::Hash;
-        // Construct a minimal but valid header and transactions rather than
-        // deserializing arbitrary bytes.
-        let header = Arc::new(Header::from_precomputed_hash(Hash::from_bytes([0u8; 32]), Vec::new()));
-        let tx =
-            Transaction::new(0, Vec::new(), Vec::new(), 0, kaspa_consensus_core::subnets::SubnetworkId::from_byte(0), 0, Vec::new());
-        let transactions = Arc::new(vec![tx; 10]);
-        Block { header, transactions }
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_adaptor_broadcast_block_noop_when_inactive() {
-        let params = TrustedRelayParams {
-            sharding: ShardingConfig::new(4, 2, 1024),
-            transport: TransportParams { hmac_workers: 1, ..TransportParams::default() },
-            decoding: DecodingParams { block_reassembly_workers: 1, num_workers: 1, ..DecodingParams::default() },
-        };
-        let listen_addr = "127.0.0.1:0".parse().unwrap();
-        let secret = b"test-secret".to_vec();
-
-        let adaptor = FastTrustedRelay::start(params, listen_addr, secret).await.unwrap();
-        // Relay inactive by default; broadcast_block should be a no-op and return Ok.
-        let hash = kaspa_hashes::Hash::from_bytes([1u8; 32]);
-        // send pre-serialized bytes via convenience helper
-        let res = adaptor.broadcast_block(hash, generate_test_block()).await;
-        assert!(res.is_ok());
-
-        // Shutdown the adaptor to clean up tasks.
-        adaptor.shutdown().await;
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_adaptor_broadcast_block_when_active() {
-        let params = TrustedRelayParams {
-            sharding: ShardingConfig::new(4, 2, 1024),
-            transport: TransportParams { hmac_workers: 1, ..TransportParams::default() },
-            decoding: DecodingParams { block_reassembly_workers: 1, num_workers: 1, ..DecodingParams::default() },
-        };
-        let listen_addr = "127.0.0.1:0".parse().unwrap();
-        let secret = b"test-secret".to_vec();
-
-        let adaptor = FastTrustedRelay::start(params, listen_addr, secret).await.unwrap();
-        // Activate relay and broadcast a block — should enqueue successfully.
-        adaptor.start_fast_relay().await.unwrap();
-        let hash = kaspa_hashes::Hash::from_bytes([2u8; 32]);
-        // send pre-serialized bytes via convenience helper
-        let res = adaptor.broadcast_block(hash, generate_test_block()).await;
-        assert!(res.is_ok());
-
-        adaptor.shutdown().await;
+impl Drop for FastTrustedRelay {
+    fn drop(&mut self) {
+        // Ensure all tasks are stopped when the relay is dropped.
+        // `shutdown` now borrows `&mut self` and spawns the necessary async
+        // work internally.
+        self.shutdown();
     }
 }
-*/

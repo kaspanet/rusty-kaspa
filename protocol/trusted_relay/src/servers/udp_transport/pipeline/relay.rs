@@ -52,6 +52,7 @@ fn run(
 
         while let Ok(RelayMessage { 0: raw_packet, 1: src }) = receiver.recv() {
 
+            trace!("{}-{}: received packet (len={}) from {}", WORKER_NAME, worker_idx, raw_packet.len(), src);
 
             // One snapshot for the entire batch.
             let peers = peer_info_list.load_full();

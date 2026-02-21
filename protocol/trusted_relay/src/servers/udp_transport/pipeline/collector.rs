@@ -22,12 +22,15 @@ fn run(
         config: FragmentationConfig,
         shutting_down: Arc<AtomicBool>,
     ) {
+        info!("{}-{} started", COLLECTOR_WORKER_NAME, collector_idx);
         let mut buf = vec![0u8; buf_size];
         let min_expected_fragment_size = AuthToken::TOKEN_SIZE + FragmentHeader::SIZE + config.payload_size;
         let fragment_index_offset = AuthToken::TOKEN_SIZE + FragmentHeader::FRAGMENT_INDEX_OFFSET;
-        while shutting_down.load(Ordering::Relaxed) == true {
+        let mut count = 0u64;
+        while shutting_down.load(Ordering::Relaxed) == false {
             match socket.recv_from(&mut buf) {
                 Ok((len, src)) => {
+                    count += 1;
                     // We must ensure we can read the fragment index bytes before routing.
                     // This is the only check we do in the collector.
                     if len < min_expected_fragment_size {
@@ -38,7 +41,7 @@ fn run(
                     let worker_idx =
                         u16::from_le_bytes([buf[fragment_index_offset], buf[fragment_index_offset + 1]]) as usize % verification_senders.len();
 
-                    trace!("{}[{}]: recv {} bytes from {}, routing to worker {}", COLLECTOR_WORKER_NAME, collector_idx, len, src, worker_idx);
+                    trace!("{}[{}]: {} recv {} bytes from {}, routing to worker {}", count, COLLECTOR_WORKER_NAME, collector_idx, len, src, worker_idx);
                     let packet = Bytes::copy_from_slice(&buf[..len]);
                     let msg = VerificationMessage::PacketReceived(PacketReceivedMessage::new(packet, src));
                     if let Err(e) = verification_senders[worker_idx].try_send(msg) {
@@ -62,6 +65,7 @@ fn run(
                             info!("Collector {}: shutting down (recv timeout)", collector_idx);
                             break;
                         }
+                        continue;
                     }
                 }
             }

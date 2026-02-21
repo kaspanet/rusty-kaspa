@@ -11,19 +11,21 @@ use tokio::sync::mpsc;
 use crate::servers::tcp_control::HubEvent;
 use crate::servers::peer_directory::PeerInfo;
 
+
 // ============================================================================
 // PEER DIRECTION
 // ============================================================================
 
 /// Whether this peer sends us shards, receives shards from us, or both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum PeerDirection {
     /// We receive shards from this peer.
-    Inbound,
+    Inbound = 1u8,
     /// We send shards to this peer.
-    Outbound,
+    Outbound = 2u8,
     /// Bidirectional — we both send and receive.
-    Both,
+    Both = 3u8,
 }
 
 impl PeerDirection {
@@ -127,7 +129,7 @@ pub struct Peer {
     /// Receiver half — consumed by `run_control_loop`.
     control_rx: Option<mpsc::Receiver<ControlMsg>>,
     /// Sender back to the Hub for readiness and disconnect events.
-    hub_event_tx: mpsc::Sender<HubEvent>,
+    hub_event_tx: mpsc::UnboundedSender<HubEvent>,
 }
 
 impl Peer {
@@ -141,7 +143,7 @@ impl Peer {
         direction: PeerDirection,
         tcp_stream: TcpStream,
         udp_target: SocketAddr,
-        hub_event_tx: mpsc::Sender<HubEvent>,
+        hub_event_tx: mpsc::UnboundedSender<HubEvent>,
     ) -> Self {
         let (control_tx, control_rx) = mpsc::channel(64);
         let peer_info = Arc::new(PeerInfo::new(address, direction, udp_target));
@@ -175,7 +177,7 @@ impl Peer {
         self.control_tx.clone()
     }
 
-    /// Shared peer metadata used by Hub / PeerDirectory / transport.
+    /// peer metadata used by Hub / PeerDirectory / transport.
     pub fn peer_info(&self) -> &PeerInfo {
         &self.peer_info
     }
@@ -266,11 +268,11 @@ impl Peer {
                                 },
                                 Some(ControlMsg::Start) => {
                                     trace!("Peer {} remote START — peer is ready", self.address());
-                                    let _ = self.hub_event_tx.send(HubEvent::PeerReady(self.address(), true)).await;
+                                    let _ = self.hub_event_tx.send(HubEvent::PeerReady(self.address(), true));
                                 },
                                 Some(ControlMsg::Stop) => {
                                     trace!("Peer {} remote STOP — peer is not ready", self.address());
-                                    let _ = self.hub_event_tx.send(HubEvent::PeerReady(self.address(), false)).await;
+                                    let _ = self.hub_event_tx.send(HubEvent::PeerReady(self.address(), false));
                                 },
                                 None => {
                                     warn!("Peer {} sent unknown tag 0x{:02x}", self.address(), tag);
@@ -339,10 +341,10 @@ mod tests {
         let remote_stream = remote_result.unwrap();
         let (server_stream, _) = accept_result.unwrap();
 
-        let (hub_tx, _hub_rx) = mpsc::channel(1);
+        let (hub_tx, _hub_rx) = mpsc::unbounded_channel();
         let peer = Peer::new(addr, PeerDirection::Both, server_stream, "127.0.0.1:9999".parse().unwrap(), hub_tx);
         (peer, remote_stream)
-    }
+        }
 
     #[tokio::test]
     async fn test_control_msg_roundtrip() {

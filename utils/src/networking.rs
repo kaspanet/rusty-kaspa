@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::*;
 const TS_IP_ADDRESS: &'static str = r#"
     /**
      * Generic network address representation.
-     * 
+     *
      * @category General
      */
     export interface INetworkAddress {
@@ -314,6 +314,18 @@ impl FromStr for ContextualNetAddress {
             Ok(socket) => Ok(Self::new(socket.ip().into(), Some(socket.port()))),
             Err(_) => Ok(Self::new(IpAddress::from_str(s)?, None)),
         }
+    }
+}
+
+impl From<SocketAddr> for ContextualNetAddress {
+    fn from(value: SocketAddr) -> Self {
+        Self::new(value.ip().into(), Some(value.port()))
+    }
+}
+
+impl From<ContextualNetAddress> for SocketAddr {
+    fn from(value: ContextualNetAddress) -> Self {
+        SocketAddr::new(value.ip.0, value.port.unwrap())
     }
 }
 

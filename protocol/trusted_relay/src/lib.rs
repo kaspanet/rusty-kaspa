@@ -12,6 +12,7 @@ pub mod fast_trusted_relay;
 pub mod model;
 pub mod servers;
 pub mod codec;
+pub mod error;
 
 // Centralized runtime params for trusted relay.
 pub mod params;

@@ -97,9 +97,12 @@ fn run(
     allowlist: Allowlist,
 ) {
     info!("{}-{} started", WORKER_NAME, worker_idx);
+    let mut count = 0u64;
     while let Ok(message) = receiver.recv() {
         match message {
             VerificationMessage::PacketReceived(PacketReceivedMessage(packet, src)) => {
+                count += 1;
+                trace!("{}-{}: {} received packet (len={}) from {}", WORKER_NAME, worker_idx, count, packet.len(), src);
                 // Quickly drop malformed packets.
                 if packet.len() != AuthToken::TOKEN_SIZE + FragmentHeader::SIZE + config.payload_size {
                     trace!("{}-{}: dropping malformed packet (len={}) from {}", WORKER_NAME, worker_idx, packet.len(), src);
@@ -198,6 +201,7 @@ fn run(
                 }
             }
             VerificationMessage::MarkBlockBroadcasted(MarkBlockBroadcastedMessage(hash, total_fragments)) => {
+                trace!("{}-{}: received MarkBlockBroadcasted for block {} with total_fragments={}", WORKER_NAME, worker_idx, hash, total_fragments);
                 let count = total_fragments.saturating_add(1) as usize;
                 let compressed_capacity = count.div_ceil(num_of_workers).max(1);
 
@@ -326,7 +330,7 @@ fn is_authenticated(packet: &[u8], authenticator: &TokenAuthenticator) -> bool {
 
 #[inline(always)]
 fn is_from_allowlist(src: &SocketAddr, allowlist: &Allowlist) -> bool {
-    allowlist.load().contains(src)
+    allowlist.load().contains_key(src)
 }
 
 #[inline(always)]

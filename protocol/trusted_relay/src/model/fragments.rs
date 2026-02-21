@@ -180,15 +180,11 @@ impl Fragment {
         // Deserialize header
         let hash = BlockHash::from_slice(&header_bytes[0..32]);
 
-        let fragment_index = header_bytes[32..34]
-            .try_into()
-            .map(u16::from_le_bytes)
-            .expect("Invalid Fragment data: failed to parse fragment_index");
+        let fragment_index =
+            header_bytes[32..34].try_into().map(u16::from_le_bytes).expect("Invalid Fragment data: failed to parse fragment_index");
 
-        let total_fragments = header_bytes[34..36]
-            .try_into()
-            .map(u16::from_le_bytes)
-            .expect("Invalid Fragment data: failed to parse total_fragments");
+        let total_fragments =
+            header_bytes[34..36].try_into().map(u16::from_le_bytes).expect("Invalid Fragment data: failed to parse total_fragments");
 
         let header = FragmentHeader::new(hash, fragment_index, total_fragments);
         Fragment { header, payload: payload_bytes }
@@ -207,15 +203,14 @@ impl From<&[u8]> for Fragment {
     }
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
     use kaspa_consensus_core::Hash as BlockHash;
 
     #[test]
-    fn try_from_bytes_accepts_valid_wire_format_and_rejects_truncated() {
-        // Build a minimal valid Fragment: 32-byte hash + 2-byte Fragment_index + 2-byte total_fragments + payload
+    fn from_bytes_accepts_valid_wire_format() {
+        // Build a minimal valid Fragment: 32-byte hash + 2-byte fragment_index + 2-byte total_fragments + payload
         let hash = BlockHash::from_bytes([7u8; 32]);
         let mut buf = Vec::with_capacity(36 + 4);
         buf.extend_from_slice(&hash.as_bytes()[..]);
@@ -224,23 +219,17 @@ mod tests {
         buf.extend_from_slice(&[1u8, 2u8, 3u8, 4u8]);
 
         let bytes = Bytes::from(buf.clone());
-        let Fragment = Fragment::try_from_bytes(bytes).expect("valid Fragment should parse");
-        assert_eq!(Fragment.header().Fragment_index(), 1);
-        assert_eq!(Fragment.header().total_fragments(), 4);
-        assert_eq!(&Fragment.payload()[..], &[1u8, 2u8, 3u8, 4u8]);
-
-        // Truncated input (missing payload/header) should return an error
-        let truncated = Bytes::copy_from_slice(&buf[..10]);
-        let err = Fragment::try_from_bytes(truncated);
-        assert!(matches!(err, Err(crate::RelayError::InvalidPacket(_))));
+        let frag = Fragment::from_bytes(bytes);
+        assert_eq!(frag.header().fragment_index(), 1);
+        assert_eq!(frag.header().total_fragments(), 4);
+        assert_eq!(&frag.payload()[..], &[1u8, 2u8, 3u8, 4u8]);
     }
 
     #[test]
-    fn test_Fragment_header_endianness_roundtrip() {
+    fn test_fragment_header_endianness_roundtrip() {
         let hash = BlockHash::from_bytes([0xAAu8; 32]);
         let hdr = FragmentHeader::new(hash, 0x1234, 0x00FF);
-        assert_eq!(hdr.Fragment_index(), 0x1234);
+        assert_eq!(hdr.fragment_index(), 0x1234);
         assert_eq!(hdr.total_fragments(), 0x00FF);
     }
 }
-*/

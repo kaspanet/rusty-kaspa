@@ -4,13 +4,14 @@ use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use tokio::sync::Mutex as TokioMutex;
 
-use crossbeam_channel::{bounded};
+use crossbeam_channel::bounded;
 use fixedbitset::FixedBitSet;
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, Hash, HashMapCustomHasher};
 use kaspa_core::{info, warn};
 use ringmap::{RingMap, RingSet};
-use tokio::sync::mpsc::{unbounded_channel as tokio_unbounded_channel};
+use tokio::sync::mpsc::unbounded_channel as tokio_unbounded_channel;
 
 use crate::codec::buffers::BlockDecodeState;
 use crate::model::ftr_block::FtrBlock;
@@ -18,11 +19,13 @@ use crate::params::{FragmentationConfig, TransportParams};
 use crate::servers::auth::TokenAuthenticator;
 use crate::servers::peer_directory::PeerDirectory;
 use crate::servers::udp_transport::pipeline::broadcast::{self, BroadcastMessage, BroadcastReceiver, BroadcastSender};
-use crate::servers::udp_transport::pipeline::{collector, reassembly, verification};
 use crate::servers::udp_transport::pipeline::reassembly::decoding::{self, DecodeJobMessage, DecodeResultMessage};
-use crate::servers::udp_transport::pipeline::reassembly::reassembly::{BlockReassemblerBlockMessage, ReassemblerBlockReceiver, ReassemblerBlockSender, ReassemblerFragmentMessage};
+use crate::servers::udp_transport::pipeline::reassembly::reassembly::{
+    BlockReassemblerBlockMessage, ReassemblerBlockReceiver, ReassemblerBlockSender, ReassemblerFragmentMessage,
+};
 use crate::servers::udp_transport::pipeline::relay::RelayMessage;
 use crate::servers::udp_transport::pipeline::verification::VerificationMessage;
+use crate::servers::udp_transport::pipeline::{collector, reassembly, verification};
 
 struct TransportRuntimeHandles {
     broadcast_handles: Vec<JoinHandle<()>>,
@@ -35,42 +38,37 @@ struct TransportRuntimeHandles {
 
 impl TransportRuntimeHandles {
     fn shutdown(&mut self) {
-        for h in self.broadcast_handles.drain(..) {
-            info!("Stopping broadcast thread: {}", h.thread().name().unwrap_or("unknown"));
-            let _ = h.join();
-        };
-        for h in self.verifier_handles.drain(..) {
-            info!("Stopping verifier thread: {}", h.thread().name().unwrap_or("unknown"));
-            let _ = h.join();
-        };
-        for h in self.coordinator_handles.drain(..) {
-            info!("Stopping coordinator thread: {}", h.thread().name().unwrap_or("unknown"));
-            let _ = h.join();
-        };
         for h in self.collector_handles.drain(..) {
             info!("Stopping collector thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
-        };
-        for h in self.decoder_handles.drain(..) {
-            info!("Stopping decoder thread: {}", h.thread().name().unwrap_or("unknown"));
+        }
+        for h in self.broadcast_handles.drain(..) {
+            info!("Stopping broadcast thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
-        };
+                }
+        for h in self.verifier_handles.drain(..) {
+            info!("Stopping verifier thread: {}", h.thread().name().unwrap_or("unknown"));
+            let _ = h.join();
+        }
         for h in self.forwarder_handles.drain(..) {
             info!("Stopping forwarder thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
-        };
+        }
+        for h in self.coordinator_handles.drain(..) {
+            info!("Stopping coordinator thread: {}", h.thread().name().unwrap_or("unknown"));
+            let _ = h.join();
+        }
+        for h in self.decoder_handles.drain(..) {
+            info!("Stopping decoder thread: {}", h.thread().name().unwrap_or("unknown"));
+            let _ = h.join();
+        }
         info!("UdpTransportRuntime: all worker threads stopped");
-    }
-}
-
-impl Drop for TransportRuntimeHandles {
-    fn drop(&mut self) {
-        self.shutdown();
     }
 }
 struct TransportRuntimeInner {
     handles: Arc<Mutex<TransportRuntimeHandles>>,
     shut_down: Arc<AtomicBool>,
+    bound_addr: SocketAddr,
 }
 
 impl TransportRuntimeInner {
@@ -102,7 +100,20 @@ impl TransportRuntimeInner {
 
         //1) create and bind udp socket.
         let socket = Arc::new(UdpSocket::bind(listen_address).expect("Failed to bind UDP socket"));
+        let bound_addr = socket.local_addr().expect("Failed to get local address from UDP socket");
+        // This allows us to check for shutdowns occasionally, even if the socket is blocked on recv.
+        socket.set_read_timeout(Some(std::time::Duration::from_millis(200))).expect("Failed to set UDP socket read timeout");
+        // This should only be set to true if we are using tokio or want a "spinning thread" style implementation.
         socket.set_nonblocking(false).expect("Failed to set UDP socket to non-blocking mode");
+        // Some options are only available with the lower level socket2 crate.
+        // Increase send / receive kernel buffer sizes for the port, else we will drop packets on insufficient default buffer sizes.
+        // Note: it is also important to also set max buffer sizes at the OS level (e.g. /etc/sysctl.conf) to ensure they can actually be set to the desired size.
+        socket2::SockRef::from(&*socket)
+            .set_send_buffer_size(1024 * 1024 * 16)
+            .expect("Failed to set SO_SNDBUF on UDP socket");
+        socket2::SockRef::from(&*socket)
+            .set_recv_buffer_size(1024 * 1024 * 16 * 2)
+            .expect("Failed to set SO_RCVBUF on UDP socket");
 
         //2)  Pre-generate channels
 
@@ -153,7 +164,8 @@ impl TransportRuntimeInner {
             );
             params.num_of_coordinators
         ];
-        let mut partial_blocks = vec![BlockHashMap::<BlockDecodeState>::with_capacity(params.max_concurrent_blocks()); params.num_of_coordinators];
+        let mut partial_blocks =
+            vec![BlockHashMap::<BlockDecodeState>::with_capacity(params.max_concurrent_blocks()); params.num_of_coordinators];
         let mut recent_shards_cache =
             vec![RingMap::<Hash, FixedBitSet>::with_capacity(params.block_cache_capacity()); params.num_of_verifiers];
 
@@ -226,12 +238,13 @@ impl TransportRuntimeInner {
             ));
         }
 
-        TransportRuntimeInner { handles, shut_down: shutdown }
+        TransportRuntimeInner { handles, shut_down: shutdown, bound_addr }
     }
 }
 
 /// Owned runtime that holds transport resources. Dropping this will drop
 /// the held resources; prefer calling `shutdown` for deterministic join.
+#[derive(Clone)]
 pub struct TransportRuntime {
     params: TransportParams,
     config: FragmentationConfig,
@@ -239,9 +252,9 @@ pub struct TransportRuntime {
     authenticator: Arc<TokenAuthenticator>,
     shutdown: Arc<AtomicBool>,
     listen_addr: SocketAddr,
-    block_emit_receiver: ReassemblerBlockReceiver,
+    block_emit_receiver: Arc<TokioMutex<ReassemblerBlockReceiver>>,
     block_emit_sender: Arc<ReassemblerBlockSender>,
-    broadcast_sender: BroadcastSender,
+    broadcast_sender: Option<BroadcastSender>,
     broadcast_receiver: BroadcastReceiver,
     inner: Option<Arc<TransportRuntimeInner>>,
 }
@@ -258,7 +271,19 @@ impl TransportRuntime {
     ) -> Self {
         let (block_emit_sender, block_emit_receiver) = tokio_unbounded_channel::<BlockReassemblerBlockMessage>();
         let (broadcast_sender, broadcast_receiver) = bounded::<BroadcastMessage>(params.broadcast_channel_capacity());
-        Self { params, listen_addr, config, directory, authenticator: authenticator.clone(), shutdown: shutdown.clone(), block_emit_sender: Arc::new(block_emit_sender),  broadcast_receiver, inner: None, block_emit_receiver, broadcast_sender }
+        Self {
+            params,
+            listen_addr,
+            config,
+            directory,
+            authenticator: authenticator.clone(),
+            shutdown: shutdown.clone(),
+            block_emit_sender: Arc::new(block_emit_sender),
+            broadcast_receiver: broadcast_receiver,
+            inner: None,
+            block_emit_receiver: Arc::new(TokioMutex::new(block_emit_receiver)),
+            broadcast_sender: Some(broadcast_sender),
+        }
     }
 
     pub fn start(&mut self) {
@@ -267,7 +292,6 @@ impl TransportRuntime {
             return;
         }
         self.inner = Some(Arc::new(TransportRuntimeInner::start(
-
             self.listen_addr,
             self.params.clone(),
             self.config.clone(),
@@ -278,19 +302,14 @@ impl TransportRuntime {
             self.block_emit_sender.clone(),
         )));
     }
-    /// Shutdown the runtime: close channels and join worker threads.
-    /// This is a best-effort operation; it will attempt to join any spawned
-    /// workers recorded in the runtime.
-    pub fn shutdown(mut self) {
-        if let Some(inner) = self.inner.clone() {
-            inner.shutdown();
-        }
-        self.inner = None;
-    }
 
     pub fn submit_block_for_broadcast(&self, hash: Hash, block: FtrBlock) -> Result<(), String> {
         if self.inner.is_some() {
-            self.broadcast_sender.send(BroadcastMessage::new(hash, block)).map_err(|e| format!("Failed to send broadcast message: {}", e))
+            self.broadcast_sender
+                .as_ref()
+                .ok_or_else(|| "TransportRuntime is not started".to_string())?
+                .send(BroadcastMessage::new(hash, block))
+                .map_err(|e| format!("Failed to send broadcast message: {}", e))
         } else {
             Err("TransportRuntime is not started".to_string())
         }
@@ -300,18 +319,28 @@ impl TransportRuntime {
     ///
     /// This channel is a tokio channel, as to integrate with the wider tokio runtime.
     /// as such this is the only async method on the runtime.
-pub async fn block_receive(mut self) -> (Hash, FtrBlock) {
-        let res = self.block_emit_receiver.recv().await.expect("Failed to receive block from coordinator");
-        res.into_parts()
+    pub fn block_receive(&self) -> Arc<TokioMutex<ReassemblerBlockReceiver>> {
+        self.block_emit_receiver.clone()
+    }
+
+    /// Returns the actual bound UDP address of the runtime.
+    /// Only available after `start()` has been called.
+    pub fn local_addr(&self) -> Option<SocketAddr> {
+        self.inner.as_ref().map(|inner| inner.bound_addr)
+    }
+
+    pub fn is_active(&self) -> bool {
+        !self.shutdown.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
 impl Drop for TransportRuntime {
     fn drop(&mut self) {
-        if let Some(inner) = &self.inner {
-            if Arc::strong_count(inner) == 1 {
-                inner.shutdown();
-            }
+        if let Some(inner) = &self.inner
+            && Arc::strong_count(inner) == 1
+        {
+            self.broadcast_sender.take(); // drop this sender to unblock the broadcaster.
+            inner.shutdown();
         }
     }
 }

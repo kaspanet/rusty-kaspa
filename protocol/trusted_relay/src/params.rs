@@ -155,10 +155,10 @@ impl Default for TransportParams {
             num_of_broadcasters: 1,
             num_of_coordinators: 1,
             num_of_decoders_per_coordinators: 2,
-            multiplier: 1.0,
+            multiplier: 1.0, // large multiplier for benches TODO: remove.
             consensus_bps: 10,
             consensus_mergeset_root: 1200,
-            consensus_k: 16,
+            consensus_k: 256,
             k: 16,
             m: 4,
             payload_size: 1200,

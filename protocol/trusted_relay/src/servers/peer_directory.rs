@@ -1,12 +1,12 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::{collections::HashSet, sync::Arc};
 
-use crate::servers::tcp_control::{PeerDirection};
+use crate::servers::tcp_control::PeerDirection;
 use arc_swap::ArcSwap;
 use log::trace;
 
-
-pub type Allowlist = Arc<ArcSwap<HashSet<SocketAddr>>>;
+pub type Allowlist = Arc<ArcSwap<HashMap<SocketAddr, PeerDirection>>>;
 pub type PeerInfoList = Arc<ArcSwap<Vec<PeerInfo>>>;
 
 // ============================================================================
@@ -96,8 +96,8 @@ pub struct PeerDirectory {
 
 impl PeerDirectory {
     /// Create an empty directory.
-    pub fn new() -> Self {
-        Self { peer_infos: Arc::new(ArcSwap::from_pointee(Vec::new())), allowlist: Arc::new(ArcSwap::from_pointee(HashSet::new())) }
+    pub fn new(allow_list: HashMap<SocketAddr, PeerDirection>) -> Self {
+        Self { peer_infos: Arc::new(ArcSwap::from_pointee(Vec::new())), allowlist: Arc::new(ArcSwap::from_pointee(allow_list)) }
     }
 
     pub fn peer_info_list(&self) -> PeerInfoList {
@@ -117,11 +117,12 @@ impl PeerDirectory {
         let old_allowlist = self.allowlist.load_full();
         let peer_addr = peer.address();
         let mut new_vec: Vec<_> = old_vec.iter().filter(|p| p.address() != peer_addr).cloned().collect();
-        new_vec.push(peer);
+        new_vec.push(peer.clone());
         let len = new_vec.len();
         self.peer_infos.store(Arc::new(new_vec));
+        // Also update the allowlist so the verifier worker accepts UDP packets from this peer.
         let mut new_allowlist = (*old_allowlist).clone();
-        new_allowlist.insert(peer_addr);
+        new_allowlist.insert(peer_addr, peer.direction());
         self.allowlist.store(Arc::new(new_allowlist));
         trace!("PeerDirectory: inserted peer, total={}", len);
     }
@@ -138,9 +139,6 @@ impl PeerDirectory {
         let removed = new_vec.remove(position);
         let len = new_vec.len();
         self.peer_infos.store(Arc::new(new_vec));
-        let mut new_allowlist = (*self.allowlist.load_full()).clone();
-        new_allowlist.remove(address);
-        self.allowlist.store(Arc::new(new_allowlist));
         trace!("PeerDirectory: removed peer {}, total={}", address, len);
         Some(removed)
     }
@@ -148,7 +146,7 @@ impl PeerDirectory {
 
 impl Default for PeerDirectory {
     fn default() -> Self {
-        Self::new()
+        Self::new(HashMap::new())
     }
 }
 
@@ -156,25 +154,20 @@ impl Default for PeerDirectory {
 // TESTS
 // ============================================================================
 
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::servers::control::peer::PeerDirection;
+    use crate::servers::tcp_control::PeerDirection;
     use std::sync::Arc;
 
     fn meta(port: u16, direction: PeerDirection, ready: bool) -> PeerInfo {
-            PeerInfo::new(
-                format!("127.0.0.1:{}", port).parse().unwrap(),
-                direction,
-                format!("127.0.0.1:{}", port + 1000).parse().unwrap(),
-            )
+        PeerInfo::new(format!("127.0.0.1:{}", port).parse().unwrap(), direction, format!("127.0.0.1:{}", port + 1000).parse().unwrap())
             .with_ready(ready)
     }
 
     #[test]
     fn insert_and_snapshot() {
-        let dir = PeerDirectory::new();
+        let dir = PeerDirectory::new(HashMap::new());
         assert!(dir.peer_info_list().load_full().is_empty());
 
         dir.insert_peer(meta(1000, PeerDirection::Outbound, true));
@@ -187,14 +180,14 @@ mod tests {
 
     #[test]
     fn remove_peer() {
-        let dir = PeerDirectory::new();
+        let dir = PeerDirectory::new(HashMap::new());
         let m = meta(1000, PeerDirection::Outbound, true);
         dir.insert_peer(m.clone());
-        assert_eq!(dir.snapshot_peers().len(), 1);
+        assert_eq!(dir.peer_info_list().load_full().len(), 1);
 
         let removed = dir.remove_peer(&"127.0.0.1:1000".parse().unwrap());
         assert!(removed.is_some());
-        assert!(dir.snapshot_peers().is_empty());
+        assert!(dir.peer_info_list().load_full().is_empty());
 
         // Removing again is a no-op.
         let removed = dir.remove_peer(&"127.0.0.1:1000".parse().unwrap());
@@ -203,27 +196,27 @@ mod tests {
 
     #[test]
     fn insert_replaces_existing() {
-        let dir = PeerDirectory::new();
+        let dir = PeerDirectory::new(HashMap::new());
         dir.insert_peer(meta(1000, PeerDirection::Outbound, true));
         dir.insert_peer(meta(1000, PeerDirection::Both, false));
 
-        let snap = dir.snapshot_peers();
+        let snap = dir.peer_info_list().load_full();
         assert_eq!(snap.len(), 1);
         assert_eq!(snap[0].direction(), PeerDirection::Both);
     }
 
     #[test]
     fn snapshot_is_independent_of_mutations() {
-        let dir = PeerDirectory::new();
+        let dir = PeerDirectory::new(HashMap::new());
         dir.insert_peer(meta(1000, PeerDirection::Outbound, true));
 
-        let snap = dir.snapshot_peers();
+        let snap = dir.peer_info_list().load_full();
         assert_eq!(snap.len(), 1);
 
         // Mutate the directory — the existing snapshot must not change.
         dir.insert_peer(meta(2000, PeerDirection::Inbound, false));
         assert_eq!(snap.len(), 1); // still 1
-        assert_eq!(dir.snapshot_peers().len(), 2); // directory has 2
+        assert_eq!(dir.peer_info_list().load_full().len(), 2); // directory has 2
     }
 
     #[test]
@@ -241,4 +234,3 @@ mod tests {
         assert!(m.is_outbound_ready());
     }
 }
-*/

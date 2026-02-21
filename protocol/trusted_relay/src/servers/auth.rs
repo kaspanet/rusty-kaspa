@@ -76,10 +76,10 @@ impl TokenAuthenticator {
     ///
     /// Token = HMAC-SHA256(secret, block_hash ‖ SHA256(block_data)).
     #[inline(always)]
-    pub fn generate_token(&self, block_hash: &[u8; 32], block_data: &[u8]) -> AuthToken {
+    pub fn generate_token(&self, nonce: &[u8; 32], block_data: &[u8]) -> AuthToken {
         let data_hash = Sha256::digest(block_data);
         let mut mac = self.new_hmac();
-        mac.update(block_hash);
+        mac.update(nonce);
         mac.update(&data_hash);
         AuthToken(mac.finalize().into_bytes().into())
     }
