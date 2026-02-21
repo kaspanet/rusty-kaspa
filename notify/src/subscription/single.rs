@@ -5,8 +5,8 @@ use crate::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{
-        context::SubscriptionContext, BroadcastingSingle, Command, DynSubscription, Mutation, MutationOutcome, MutationPolicies,
-        Single, Subscription, UtxosChangedMutationPolicy,
+        BroadcastingSingle, Command, DynSubscription, Mutation, MutationOutcome, MutationPolicies, Single, Subscription,
+        UtxosChangedMutationPolicy, context::SubscriptionContext,
     },
 };
 use itertools::Itertools;
@@ -19,8 +19,8 @@ use std::{
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 

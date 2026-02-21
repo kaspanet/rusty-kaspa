@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     model::stores::{
+        DB,
         acceptance_data::DbAcceptanceDataStore,
         block_transactions::DbBlockTransactionsStore,
         block_window_cache::BlockWindowCacheStore,
@@ -21,14 +22,12 @@ use crate::{
         utxo_diffs::DbUtxoDiffsStore,
         utxo_multisets::DbUtxoMultisetsStore,
         virtual_state::{LkgVirtualState, VirtualStores},
-        DB,
     },
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
-use itertools::Itertools;
-use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
+use kaspa_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -36,11 +35,11 @@ use std::{ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
-    db: Arc<DB>,
+    _db: Arc<DB>,
 
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    pub relations_store: Arc<RwLock<DbRelationsStore>>,
     pub reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub pruning_point_store: Arc<RwLock<DbPruningStore>>,
@@ -83,8 +82,8 @@ impl ConsensusStorage {
         let perf_params = &config.perf;
 
         // Lower and upper bounds
-        let pruning_depth = params.pruning_depth().after() as usize;
-        let pruning_size_for_caches = pruning_depth + params.finality_depth().after() as usize; // Upper bound for any block/header related data
+        let pruning_depth = params.pruning_depth() as usize;
+        let pruning_size_for_caches = pruning_depth + params.finality_depth() as usize; // Upper bound for any block/header related data
         let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
         // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
@@ -111,8 +110,8 @@ impl ConsensusStorage {
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
 
         // If the fork is already scheduled, prefer the long-term, permanent values
-        let difficulty_window_bytes = params.difficulty_window_size().after() * size_of::<SortableBlock>();
-        let median_window_bytes = params.past_median_time_window_size().after() * size_of::<SortableBlock>();
+        let difficulty_window_bytes = params.difficulty_window_size * size_of::<SortableBlock>();
+        let median_window_bytes = params.past_median_time_window_size * size_of::<SortableBlock>();
 
         // Cache policy builders
         let daa_excluded_builder =
@@ -171,18 +170,12 @@ impl ConsensusStorage {
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), statuses_builder.build())));
-        let relations_stores = Arc::new(RwLock::new(
-            (0..=params.max_block_level)
-                .map(|level| {
-                    DbRelationsStore::new(
-                        db.clone(),
-                        level,
-                        parents_builder.downscale(level).build(),
-                        children_builder.downscale(level).build(),
-                    )
-                })
-                .collect_vec(),
-        ));
+        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(
+            db.clone(),
+            0,
+            parents_builder.downscale(0).build(),
+            children_builder.downscale(0).build(),
+        )));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(
             db.clone(),
             reachability_data_builder.build(),
@@ -236,9 +229,9 @@ impl ConsensusStorage {
         relations::init(reachability_relations_store.write().deref_mut());
 
         Arc::new(Self {
-            db,
+            _db: db,
             statuses_store,
-            relations_stores,
+            relations_store,
             reachability_relations_store,
             reachability_store,
             ghostdag_store,

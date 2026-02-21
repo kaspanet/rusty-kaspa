@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
+use kaspa_consensus_core::tx::{TransactionQueryResult, TransactionType};
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
     block::Block,
@@ -14,7 +15,7 @@ use kaspa_consensus_core::{
     config::Config,
     constants::MAX_SOMPI,
     network::NetworkType,
-    tx::{Transaction, COINBASE_TRANSACTION_INDEX},
+    tx::{COINBASE_TRANSACTION_INDEX, Transaction},
 };
 use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
@@ -45,7 +46,7 @@ use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_notify::{
     collector::DynCollector,
     connection::ChannelType,
-    events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
+    events::{EVENT_TYPE_ARRAY, EventSwitches, EventType},
     listener::ListenerId,
     notifier::Notifier,
     scope::Scope,
@@ -54,16 +55,16 @@ use kaspa_notify::{
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
-use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
+use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
 use kaspa_rpc_core::{
+    Notification, RpcError, RpcResult,
     api::{
         connection::DynRpcConnection,
         ops::{RPC_API_REVISION, RPC_API_VERSION},
-        rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+        rpc::{MAX_SAFE_WINDOW_SIZE, RpcApi},
     },
     model::*,
     notify::connection::ChannelConnection,
-    Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
@@ -75,7 +76,7 @@ use std::time::Duration;
 use std::{
     collections::HashMap,
     iter::once,
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
     vec,
 };
 use tokio::join;
@@ -323,7 +324,7 @@ impl RpcApi for RpcCoreService {
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests.
-            let difficulty_window_duration = self.config.difficulty_window_duration_in_block_units().after();
+            let difficulty_window_duration = self.config.difficulty_window_duration_in_block_units();
             if virtual_daa_score > difficulty_window_duration
                 && block.header.daa_score < virtual_daa_score - difficulty_window_duration
             {
@@ -337,7 +338,7 @@ impl RpcApi for RpcCoreService {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
                 warn!(
-                    "The RPC submitted block {} triggered a {} error: {}. 
+                    "The RPC submitted block {} triggered a {} error: {}.
 NOTE: This error usually indicates an RPC conversion error between the node and the miner. This is likely to reflect using a NON-SUPPORTED miner.",
                     hash,
                     stringify!(RuleError::BadMerkleRoot),
@@ -449,15 +450,24 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         // We use +1 because low_hash is also returned
         // max_blocks MUST be >= mergeset_size_limit + 1
-        let max_blocks = self.config.mergeset_size_limit().after() as usize + 1;
+        let max_blocks = self.config.mergeset_size_limit() as usize + 1;
         let (block_hashes, high_hash) = session.async_get_hashes_between(low_hash, sink_hash, max_blocks).await?;
 
         // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
         // there's space to add the sink anticone, otherwise we cannot add the anticone because
         // there's no guarantee that all of the anticone root ancestors will be present.
-        let sink_anticone = if high_hash == sink_hash { session.async_get_anticone(sink_hash).await? } else { vec![] };
-        // Prepend low hash to make it inclusive and append the sink anticone
-        let block_hashes = once(low_hash).chain(block_hashes).chain(sink_anticone).collect::<Vec<_>>();
+        let filtered_sink_anticone = if high_hash == sink_hash {
+            // Get the sink anticone and filter out duplicates: remove low_hash and any blocks already in block_hashes
+            // This prevents the bug where low_hash appears twice (once at the start and once in sink_anticone)
+            let sink_anticone = session.async_get_anticone(sink_hash).await?;
+            let mut seen_hashes: std::collections::HashSet<_> = once(low_hash).chain(block_hashes.iter().copied()).collect();
+            sink_anticone.into_iter().filter(|hash| seen_hashes.insert(*hash)).collect()
+        } else {
+            vec![]
+        };
+
+        // Prepend low hash to make it inclusive and append the filtered sink anticone
+        let block_hashes = once(low_hash).chain(block_hashes).chain(filtered_sink_anticone).collect::<Vec<_>>();
         let blocks = if request.include_blocks {
             let mut blocks = Vec::with_capacity(block_hashes.len());
             for hash in block_hashes.iter().copied() {
@@ -551,7 +561,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<SubmitTransactionResponse> {
         let allow_orphan = self.config.unsafe_rpc && request.allow_orphan;
         if !self.config.unsafe_rpc && request.allow_orphan {
-            debug!("SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- switching to ForbidOrphan.");
+            debug!(
+                "SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- switching to ForbidOrphan."
+            );
         }
 
         let transaction: Transaction = request.transaction.try_into()?;
@@ -632,25 +644,25 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         // this bounds by number of merged blocks, if include_accepted_transactions = true
         // else it returns the batch_size amount on pure chain blocks.
         // Note: batch_size does not bound removed chain blocks, only added chain blocks.
-        let batch_size = (self.config.mergeset_size_limit().after() * 10) as usize;
+        let batch_size = (self.config.mergeset_size_limit() * 10) as usize;
         let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
 
-        if let Some(min_confirmation_count) = request.min_confirmation_count {
-            if min_confirmation_count > 0 {
-                let sink_blue_score = session.async_get_sink_blue_score().await;
+        if let Some(min_confirmation_count) = request.min_confirmation_count
+            && min_confirmation_count > 0
+        {
+            let sink_blue_score = session.async_get_sink_blue_score().await;
 
-                while !virtual_chain_batch.added.is_empty() {
-                    let vc_last_accepted_block_hash = virtual_chain_batch.added.last().unwrap();
-                    let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
+            while !virtual_chain_batch.added.is_empty() {
+                let vc_last_accepted_block_hash = virtual_chain_batch.added.last().unwrap();
+                let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
 
-                    let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
+                let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
 
-                    if distance > min_confirmation_count {
-                        break;
-                    }
-
-                    virtual_chain_batch.added.pop();
+                if distance > min_confirmation_count {
+                    break;
                 }
+
+                virtual_chain_batch.added.pop();
             }
         }
 
@@ -799,7 +811,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
                     // estimate milliseconds = (daa_score * target_time_per_block)
-                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block().after())
+                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block())
                 } else {
                     // "next" header is the one that we processed last iteration
                     let next_header = &headers[header_idx - 1];
@@ -874,23 +886,34 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             return Err(RpcError::ConsensusInTransitionalIbdState);
         }
 
-        match session.async_get_populated_transaction(request.txid, request.accepting_block_daa_score).await {
-            Ok(tx) => {
-                if tx.tx.inputs.is_empty() || tx.entries.is_empty() {
-                    return Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::TxFromCoinbase));
+        match session
+            .async_get_transactions_by_accepting_daa_score(
+                request.accepting_block_daa_score,
+                Some(vec![request.txid]),
+                TransactionType::SignableTransaction,
+            )
+            .await?
+        {
+            TransactionQueryResult::SignableTransaction(txs) => {
+                if txs.is_empty() {
+                    return Err(RpcError::ConsensusError(UtxoInquirerError::TransactionNotFound.into()));
+                };
+
+                if txs[0].tx.inputs.is_empty() || txs[0].entries.is_empty() {
+                    return Err(RpcError::ConsensusError(UtxoInquirerError::TxFromCoinbase.into()));
                 }
 
-                if let Some(utxo_entry) = &tx.entries[0] {
+                if let Some(utxo_entry) = &txs[0].entries[0] {
                     if let Ok(address) = extract_script_pub_key_address(&utxo_entry.script_public_key, self.config.prefix()) {
                         Ok(GetUtxoReturnAddressResponse { return_address: address })
                     } else {
-                        Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::NonStandard))
+                        Err(RpcError::ConsensusError(UtxoInquirerError::NonStandard.into()))
                     }
                 } else {
-                    Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::UnfilledUtxoEntry))
+                    Err(RpcError::ConsensusError(UtxoInquirerError::UnfilledUtxoEntry.into()))
                 }
             }
-            Err(error) => return Err(RpcError::UtxoReturnAddressNotFound(error)),
+            TransactionQueryResult::Transaction(_) => Err(RpcError::ConsensusError(UtxoInquirerError::TransactionNotFound.into())),
         }
     }
 
@@ -936,18 +959,18 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.unsafe_rpc && request.window_size > MAX_SAFE_WINDOW_SIZE {
             return Err(RpcError::WindowSizeExceedingMaximum(request.window_size, MAX_SAFE_WINDOW_SIZE));
         }
-        if request.window_size as u64 > self.config.pruning_depth().after() {
-            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth().after()));
+        if request.window_size as u64 > self.config.pruning_depth() {
+            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth()));
         }
 
         // In the previous golang implementation the convention for virtual was the following const.
         // In the current implementation, consensus behaves the same when it gets a None instead.
         const LEGACY_VIRTUAL: kaspa_hashes::Hash = kaspa_hashes::Hash::from_bytes([0xff; kaspa_hashes::HASH_SIZE]);
         let mut start_hash = request.start_hash;
-        if let Some(start) = start_hash {
-            if start == LEGACY_VIRTUAL {
-                start_hash = None;
-            }
+        if let Some(start) = start_hash
+            && start == LEGACY_VIRTUAL
+        {
+            start_hash = None;
         }
 
         Ok(EstimateNetworkHashesPerSecondResponse::new(
@@ -1220,6 +1243,54 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let is_synced = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp)
             && !session.async_is_consensus_in_transitional_ibd_state().await;
         Ok(GetSyncStatusResponse { is_synced })
+    }
+
+    async fn get_virtual_chain_from_block_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetVirtualChainFromBlockV2Request,
+    ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
+        let session = self.consensus_manager.consensus().session().await;
+        // sets to full by default
+        let data_verbosity_level = request.data_verbosity_level.or(Some(RpcDataVerbosityLevel::Full));
+        let verbosity: RpcAcceptanceDataVerbosity = data_verbosity_level.map(RpcAcceptanceDataVerbosity::from).unwrap_or_default();
+        let batch_size = (self.config.mergeset_size_limit() * 10) as usize;
+
+        let mut chain_path = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
+
+        // if min confirmation count is present, strip chain head if needed
+        // so the new head has at least min_confirmation_count confirmations
+        if let Some(min_confirmation_count) = request.min_confirmation_count
+            && min_confirmation_count > 0
+        {
+            let sink_blue_score = session.async_get_sink_blue_score().await;
+
+            while !chain_path.added.is_empty() {
+                let vc_last_accepted_block_hash = chain_path.added.last().unwrap();
+                let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
+
+                let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
+
+                if distance > min_confirmation_count {
+                    break;
+                }
+
+                chain_path.added.pop();
+            }
+        }
+
+        let chain_blocks_accepted_transactions = self
+            .consensus_converter
+            .get_chain_blocks_accepted_transactions(&session, &verbosity, &chain_path, Some(batch_size))
+            .await?;
+
+        chain_path.added.truncate(chain_blocks_accepted_transactions.len());
+
+        Ok(GetVirtualChainFromBlockV2Response {
+            removed_chain_block_hashes: chain_path.removed.into(),
+            added_chain_block_hashes: chain_path.added.into(),
+            chain_block_accepted_transactions: chain_blocks_accepted_transactions.into(),
+        })
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

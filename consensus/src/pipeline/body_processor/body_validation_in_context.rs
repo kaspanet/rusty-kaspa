@@ -4,14 +4,14 @@ use crate::{
     model::stores::statuses::StatusesStoreReader,
     processes::{
         transaction_validator::{
-            tx_validation_in_header_context::{LockTimeArg, LockTimeType},
             TransactionValidator,
+            tx_validation_in_header_context::{LockTimeArg, LockTimeType},
         },
         window::WindowManager,
     },
 };
 use kaspa_consensus_core::block::Block;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use once_cell::unsync::Lazy;
 use std::sync::Arc;
@@ -49,7 +49,7 @@ impl BlockBodyProcessor {
             .iter()
             .copied()
             .filter(|parent| {
-                let status_option = statuses_read_guard.get(*parent).unwrap_option();
+                let status_option = statuses_read_guard.get(*parent).optional().unwrap();
                 status_option.is_none_or(|s| !s.has_block_body())
             })
             .collect();
@@ -89,11 +89,11 @@ mod tests {
         constants::TX_VERSION,
         errors::RuleError,
         model::stores::ghostdag::GhostdagStoreReader,
-        params::DEVNET_PARAMS,
         processes::{transaction_validator::errors::TxRuleError, window::WindowManager},
     };
     use kaspa_consensus_core::{
         api::ConsensusApi,
+        config::params::MAINNET_PARAMS,
         merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
@@ -103,9 +103,9 @@ mod tests {
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
-        let config = ConfigBuilder::new(DEVNET_PARAMS)
+        let config = ConfigBuilder::new(MAINNET_PARAMS)
             .skip_proof_of_work()
-            .edit_consensus_params(|p| p.deflationary_phase_daa_score = 2)
+            .edit_consensus_params(|p| p.deflationary_phase_daa_score = p.genesis.daa_score + 2)
             .build();
         let consensus = TestConsensus::new(&config);
         let wait_handles = consensus.init();

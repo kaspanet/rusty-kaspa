@@ -3,12 +3,12 @@ use crate::constants;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::statuses::StatusesStoreReader;
+use kaspa_consensus_core::BlockLevel;
 use kaspa_consensus_core::blockhash::BlockHashExtensions;
 use kaspa_consensus_core::blockstatus::BlockStatus::StatusInvalid;
 use kaspa_consensus_core::header::Header;
-use kaspa_consensus_core::BlockLevel;
 use kaspa_core::time::unix_now;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_pow::calc_level_from_pow;
 
 impl HeaderProcessor {
@@ -49,7 +49,7 @@ impl HeaderProcessor {
             return Err(RuleError::NoParents);
         }
 
-        let max_block_parents = self.max_block_parents.after() as usize;
+        let max_block_parents = self.max_block_parents as usize;
         if header.direct_parents().len() > max_block_parents {
             return Err(RuleError::TooManyParents(header.direct_parents().len(), max_block_parents));
         }
@@ -68,7 +68,7 @@ impl HeaderProcessor {
     fn check_parents_exist(&self, header: &Header) -> BlockProcessResult<()> {
         let mut missing_parents = Vec::new();
         for parent in header.direct_parents() {
-            match self.statuses_store.read().get(*parent).unwrap_option() {
+            match self.statuses_store.read().get(*parent).optional().unwrap() {
                 None => missing_parents.push(*parent),
                 Some(StatusInvalid) => {
                     return Err(RuleError::InvalidParent(*parent));
@@ -102,10 +102,6 @@ impl HeaderProcessor {
     fn check_pow_and_calc_block_level(&self, header: &Header) -> BlockProcessResult<BlockLevel> {
         let state = kaspa_pow::State::new(header);
         let (passed, pow) = state.check_pow(header.nonce);
-        if passed || self.skip_proof_of_work {
-            Ok(calc_level_from_pow(pow, self.max_block_level))
-        } else {
-            Err(RuleError::InvalidPoW)
-        }
+        if passed || self.skip_proof_of_work { Ok(calc_level_from_pow(pow, self.max_block_level)) } else { Err(RuleError::InvalidPoW) }
     }
 }

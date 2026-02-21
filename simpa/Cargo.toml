@@ -27,6 +27,7 @@ clap.workspace = true
 dhat = { workspace = true, optional = true }
 futures-util.workspace = true
 futures.workspace = true
+flate2.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
 log.workspace = true
@@ -37,6 +38,10 @@ rayon.workspace = true
 secp256k1.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 serde_json.workspace = true
+serde.workspace = true
+faster-hex.workspace = true
+kaspa-testing-integration.workspace = true
+
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]

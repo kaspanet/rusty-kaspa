@@ -2,8 +2,8 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::tx::generator as native;
 use crate::wasm::PrivateKeyArrayT;
-use kaspa_consensus_client::{numeric, string};
 use kaspa_consensus_client::{Transaction, TransactionT};
+use kaspa_consensus_client::{numeric, string};
 use kaspa_consensus_core::hashing::wasm::SighashType;
 use kaspa_wallet_keys::privatekey::PrivateKey;
 use kaspa_wasm_core::types::{BinaryT, HexString};
@@ -26,11 +26,7 @@ impl PendingTransaction {
     /// Total amount transferred to the destination (aggregate output - change).
     #[wasm_bindgen(getter, js_name = paymentAmount)]
     pub fn payment_value(&self) -> JsValue {
-        if let Some(payment_value) = self.inner.payment_value() {
-            BigInt::from(payment_value).into()
-        } else {
-            JsValue::UNDEFINED
-        }
+        if let Some(payment_value) = self.inner.payment_value() { BigInt::from(payment_value).into() } else { JsValue::UNDEFINED }
     }
 
     /// Change amount (if any).
@@ -73,11 +69,7 @@ impl PendingTransaction {
     /// Transaction type ("batch" or "final").
     #[wasm_bindgen(getter, js_name = "type")]
     pub fn kind(&self) -> String {
-        if self.inner.is_batch() {
-            "batch".to_string()
-        } else {
-            "final".to_string()
-        }
+        if self.inner.is_batch() { "batch".to_string() } else { "final".to_string() }
     }
 
     /// List of unique addresses used by transaction inputs.

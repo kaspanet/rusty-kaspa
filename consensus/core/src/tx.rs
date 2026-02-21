@@ -13,10 +13,11 @@ use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
 pub use script_public_key::{
-    scriptvec, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, SCRIPT_VECTOR_SIZE,
+    SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::{
@@ -193,6 +194,22 @@ impl Transaction {
         payload: Vec<u8>,
     ) -> Self {
         let mut tx = Self::new_non_finalized(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
+        tx.finalize();
+        tx
+    }
+
+    pub fn new_with_mass(
+        version: u16,
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        lock_time: u64,
+        subnetwork_id: SubnetworkId,
+        gas: u64,
+        payload: Vec<u8>,
+        mass: u64,
+    ) -> Self {
+        let mut tx = Self::new_non_finalized(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
+        tx.set_mass(mass);
         tx.finalize();
         tx
     }
@@ -442,13 +459,10 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
 
     pub fn missing_outpoints(&self) -> impl Iterator<Item = TransactionOutpoint> + '_ {
         assert_eq!(self.entries.len(), self.tx.as_ref().inputs.len());
-        self.entries.iter().enumerate().filter_map(|(i, entry)| {
-            if entry.is_none() {
-                Some(self.tx.as_ref().inputs[i].previous_outpoint)
-            } else {
-                None
-            }
-        })
+        self.entries
+            .iter()
+            .enumerate()
+            .filter_map(|(i, entry)| if entry.is_none() { Some(self.tx.as_ref().inputs[i].previous_outpoint) } else { None })
     }
 
     pub fn clear_entries(&mut self) {
@@ -537,6 +551,18 @@ impl MutableTransaction {
 /// Alias for a fully mutable and owned transaction which can be populated with external data
 /// and can also be modified internally and signed etc.
 pub type SignableTransaction = MutableTransaction<Transaction>;
+
+#[derive(Debug, Clone)]
+pub enum TransactionType {
+    Transaction,
+    SignableTransaction,
+}
+
+#[derive(Debug, Clone)]
+pub enum TransactionQueryResult {
+    Transaction(Arc<Vec<Transaction>>),
+    SignableTransaction(Arc<Vec<SignableTransaction>>),
+}
 
 #[cfg(test)]
 mod tests {

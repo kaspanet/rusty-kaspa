@@ -24,22 +24,13 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
 
 ```json
 {
-  "prior_ghostdag_k": 124,
   "timestamp_deviation_tolerance": 600,
-  "prior_target_time_per_block": 1000,
-  "prior_difficulty_window_size": 2641,
+  "pre_crescendo_target_time_per_block": 1000,
+  "past_median_time_window_size": 27,
+  "difficulty_window_size": 661,
   "min_difficulty_window_size": 150,
-  "prior_max_block_parents": 81,
-  "prior_mergeset_size_limit": 1240,
-  "prior_merge_depth": 3600,
-  "prior_finality_depth": 86400,
-  "prior_pruning_depth": 185798,
   "coinbase_payload_script_public_key_max_len": 150,
   "max_coinbase_payload_len": 204,
-  "prior_max_tx_inputs": 1000000000,
-  "prior_max_tx_outputs": 1000000000,
-  "prior_max_signature_script_len": 1000000000,
-  "prior_max_script_public_key_len": 1000000000,
   "mass_per_tx_byte": 1,
   "mass_per_script_pub_key_byte": 10,
   "mass_per_sig_op": 1000,
@@ -47,13 +38,10 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
   "storage_mass_parameter": 10000,
   "deflationary_phase_daa_score": 15519600,
   "pre_deflationary_phase_base_subsidy": 50000000000,
-  "prior_coinbase_maturity": 100,
   "skip_proof_of_work": true,
   "max_block_level": 254,
   "pruning_proof_m": 1000,
-  "crescendo": {
-    "past_median_time_sampled_window_size": 27,
-    "sampled_difficulty_window_size": 661,
+  "blockrate": {
     "target_time_per_block": 100,
     "ghostdag_k": 124,
     "past_median_time_sample_rate": 10,
@@ -63,36 +51,30 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
     "merge_depth": 36000,
     "finality_depth": 432000,
     "pruning_depth": 1080000,
-    "max_tx_inputs": 1000,
-    "max_tx_outputs": 1000,
-    "max_signature_script_len": 10000,
-    "max_script_public_key_len": 10000,
     "coinbase_maturity": 200
   },
   "crescendo_activation": 0
 }
 ```
 
-All high level (non-nested) fields are optional, and if omitted, their default values in the respective network will be used. The sub-fields of the `crescendo` won't be overriden by the network default value, but instead will be set to 0 if not specified (this is a temporary behavior that will be changed once Crescendo activation logic is cleaned).
+All high level (non-nested) fields are optional, and if omitted, their default values in the respective network will be used. 
+The `blockrate` field must either be absent or provided in full with all subfields (missing subfields will default to zero and not to default network params). This is
+because they have logical relations and should be modified as a unit.  
+
 ## Available parameters
-| Field                                      | Description                |
+| Field                                       | Description                |
 |---------------------------------------------|----------------------------|
-| prior_ghostdag_k                           | Pre-crescendo GHOSTDAG K parameter       |
-| timestamp_deviation_tolerance              | Timestamp deviation tolerance |
-| prior_target_time_per_block                | Pre-crescendo target time per block |
-| prior_difficulty_window_size                | Pre-crescendo difficulty window size |
+| timestamp_deviation_tolerance               | Timestamp deviation tolerance |
+| pre_crescendo_target_time_per_block         | Pre-crescendo target time per block |
+| past_median_time_window_size                | Past median time window size |
+| difficulty_window_size                      | Difficulty window size |
 | min_difficulty_window_size                  | Minimum difficulty window size |
-| prior_max_block_parents                     | Pre-crescendo max block parents    |
-| prior_mergeset_size_limit                   | Pre-crescendo mergeset size limit  |
-| prior_merge_depth                           | Pre-crescendo merge depth          |
-| prior_finality_depth                        | Pre-crescendo finality depth      |
-| prior_pruning_depth                         | Pre-crescendo pruning depth       |
 | coinbase_payload_script_public_key_max_len  | Coinbase payload script public key max length |
 | max_coinbase_payload_len                    | Maximum coinbase payload length |
-| prior_max_tx_inputs                         | Pre-crescendo max transaction inputs |
-| prior_max_tx_outputs                        | Pre-crescendo max transaction outputs |
-| prior_max_signature_script_len              | Pre-crescendo max signature script length |
-| prior_max_script_public_key_len             | Pre-crescendo max script public key length |
+| max_tx_inputs                               | Max transaction inputs |
+| max_tx_outputs                              | Max transaction outputs |
+| max_signature_script_len                    | Max signature script length |
+| max_script_public_key_len                   | Max script public key length |
 | mass_per_tx_byte                            | Mass per transaction byte     |
 | mass_per_script_pub_key_byte                | Mass per script public key byte |
 | mass_per_sig_op                             | Mass per signature operation  |
@@ -100,33 +82,26 @@ All high level (non-nested) fields are optional, and if omitted, their default v
 | storage_mass_parameter                      | Storage mass parameter        |
 | deflationary_phase_daa_score                | Deflationary phase DAA score  |
 | pre_deflationary_phase_base_subsidy         | Pre-deflationary phase base subsidy |
-| prior_coinbase_maturity                     | Pre-crescendo coinbase maturity       |
 | skip_proof_of_work                          | Whether to skip proof of work checks            |
 | max_block_level                             | Maximum block level           |
 | pruning_proof_m                             | Pruning proof M parameter                        |
-| crescendo                                   | Post-crescendo parameters            |
+| blockrate                                   | Blockrate-related parameters            |
 | crescendo_activation                        | Crescendo DAA score                        |
 
-**crescendo sub-fields:**
+**blockrate sub-fields:**
 
 | Field                              | Description                |
 |-------------------------------------|----------------------------|
-| past_median_time_sampled_window_size| Post-crescendo median time window size |
-| sampled_difficulty_window_size      | Post-crescendo difficulty window size      |
-| target_time_per_block               | Post-crescendo target time per block               |
-| ghostdag_k                          | Post-crescendo ghostdag K                          |
-| past_median_time_sample_rate        | Post-crescendo median time sample rate        |
-| difficulty_sample_rate              | Post-crescendo difficulty sample rate              |
-| max_block_parents                   | Post-crescendo maximum block parents                   |
-| mergeset_size_limit                 | Post-crescendo mergeset size limit                 |
-| merge_depth                         | Post-crescendo merge depth                         |
-| finality_depth                      | Post-crescendo finality depth                      |
-| pruning_depth                       | Post-crescendo pruning depth                       |
-| max_tx_inputs                       | Post-crescendo maximum transaction inputs          |
-| max_tx_outputs                      | Post-crescendo maximum transaction outputs         |
-| max_signature_script_len            | Post-crescendo maximum signature script length     |
-| max_script_public_key_len           | Post-crescendo maximum script public key length    |
-| coinbase_maturity                   | Post-crescendo coinbase maturity                   |
+| target_time_per_block               | Target time per block               |
+| ghostdag_k                          | Ghostdag K                          |
+| past_median_time_sample_rate        | Median time sample rate        |
+| difficulty_sample_rate              | Difficulty sample rate              |
+| max_block_parents                   | Maximum block parents                   |
+| mergeset_size_limit                 | Mergeset size limit                 |
+| merge_depth                         | Merge depth                         |
+| finality_depth                      | Finality depth                      |
+| pruning_depth                       | Pruning depth                       |
+| coinbase_maturity                   | Coinbase maturity                   |
 
 Refer to the source definition in
 `consensus/core/src/config/params.rs` for the full list of available fields and

@@ -263,7 +263,7 @@ mod tests {
             reachability::{DbReachabilityStore, MemoryReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore, StagingRelationsStore},
         },
-        processes::reachability::{interval::Interval, tests::gen::generate_complex_dag},
+        processes::reachability::{interval::Interval, tests::r#gen::generate_complex_dag},
     };
     use itertools::Itertools;
     use kaspa_consensus_core::blockhash::ORIGIN;

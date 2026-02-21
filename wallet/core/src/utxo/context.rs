@@ -539,7 +539,9 @@ impl UtxoContext {
         // log for a fixed bug, but we want to keep the check
         // just in case.
         if consumed < outgoing {
-            log_error!("Error: outgoing transaction value exceeds available balance, mature: {mature}, consumed: {consumed}, outgoing: {outgoing}");
+            log_error!(
+                "Error: outgoing transaction value exceeds available balance, mature: {mature}, consumed: {consumed}, outgoing: {outgoing}"
+            );
         }
 
         let mature = (mature + consumed).saturating_sub(outgoing);
@@ -713,11 +715,7 @@ impl UtxoContext {
             .iter()
             .filter_map(|address| {
                 let address = Arc::new(address.clone());
-                if local.insert(address.clone()) {
-                    Some(address)
-                } else {
-                    None
-                }
+                if local.insert(address.clone()) { Some(address) } else { None }
             })
             .collect::<Vec<_>>();
 
@@ -765,11 +763,12 @@ impl UtxoContext {
                 let filtered_utxos = utxos
                     .iter()
                     .filter_map(|utxo| {
-                        if let Some(address) = utxo.address() {
-                            if addresses.contains(&address) && amount < min_amount_sompi {
-                                amount += utxo.amount();
-                                return Some(utxo.entry().clone());
-                            }
+                        if let Some(address) = utxo.address()
+                            && addresses.contains(&address)
+                            && amount < min_amount_sompi
+                        {
+                            amount += utxo.amount();
+                            return Some(utxo.entry().clone());
                         }
 
                         None
@@ -780,10 +779,10 @@ impl UtxoContext {
                 let filtered_utxos = utxos
                     .iter()
                     .filter_map(|utxo| {
-                        if let Some(address) = utxo.address() {
-                            if addresses.contains(&address) {
-                                return Some(utxo.entry().clone());
-                            }
+                        if let Some(address) = utxo.address()
+                            && addresses.contains(&address)
+                        {
+                            return Some(utxo.entry().clone());
                         }
                         None
                     })

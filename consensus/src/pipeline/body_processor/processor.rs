@@ -7,32 +7,29 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
+            DB,
             block_transactions::DbBlockTransactionsStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStore},
-            DB,
         },
     },
     pipeline::{
-        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
         ProcessingCounters,
+        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
     },
     processes::{coinbase::CoinbaseManager, transaction_validator::TransactionValidator},
 };
 use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
+    KType,
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::{
-        genesis::GenesisBlock,
-        params::{ForkedParam, Params},
-    },
+    config::{genesis::GenesisBlock, params::Params},
     mass::{Mass, MassCalculator, MassOps},
     tx::Transaction,
-    KType,
 };
 use kaspa_consensus_notify::{
     notification::{BlockAddedNotification, Notification},
@@ -44,7 +41,7 @@ use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 pub struct BlockBodyProcessor {
     // Channels
@@ -60,17 +57,17 @@ pub struct BlockBodyProcessor {
     // Config
     pub(super) max_block_mass: u64,
     pub(super) genesis: GenesisBlock,
-    pub(super) ghostdag_k: ForkedParam<KType>,
+    pub(super) _ghostdag_k: KType,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
-    pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) _ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) _headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Managers and services
-    pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) _reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
@@ -112,15 +109,15 @@ impl BlockBodyProcessor {
 
             max_block_mass: params.max_block_mass,
             genesis: params.genesis.clone(),
-            ghostdag_k: params.ghostdag_k(),
+            _ghostdag_k: params.ghostdag_k(),
 
             statuses_store: storage.statuses_store.clone(),
-            ghostdag_store: storage.ghostdag_store.clone(),
-            headers_store: storage.headers_store.clone(),
+            _ghostdag_store: storage.ghostdag_store.clone(),
+            _headers_store: storage.headers_store.clone(),
             block_transactions_store: storage.block_transactions_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),
 
-            reachability_service: services.reachability_service.clone(),
+            _reachability_service: services.reachability_service.clone(),
             coinbase_manager: services.coinbase_manager.clone(),
             mass_calculator: services.mass_calculator.clone(),
             transaction_validator: services.transaction_validator.clone(),

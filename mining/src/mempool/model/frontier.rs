@@ -1,13 +1,13 @@
 use crate::{
+    Policy, RebalancingWeightedTransactionSelector,
     feerate::{FeerateEstimator, FeerateEstimatorArgs},
     model::candidate_tx::CandidateTransaction,
-    Policy, RebalancingWeightedTransactionSelector,
 };
 
 use feerate_key::FeerateTransactionKey;
 use kaspa_consensus_core::{block::TemplateTransactionSelector, tx::Transaction};
 use kaspa_core::trace;
-use rand::{distributions::Uniform, prelude::Distribution, Rng};
+use rand::{Rng, distributions::Uniform, prelude::Distribution};
 use search_tree::SearchTree;
 use selectors::{SequenceSelector, SequenceSelectorInput, TakeAllSelector};
 use std::{collections::HashSet, iter::FusedIterator, sync::Arc};

@@ -2,7 +2,7 @@ use crate::fd_budget;
 use crate::git;
 use crate::hex::ToHex;
 use sha2::{Digest, Sha256};
-use std::fs::{read_to_string, File};
+use std::fs::{File, read_to_string};
 use std::io::Read;
 use std::path::PathBuf;
 // use std::fs::read_to_string;

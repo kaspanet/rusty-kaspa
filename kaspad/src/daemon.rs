@@ -10,7 +10,10 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, debug, info};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
-use kaspa_database::prelude::CachePolicy;
+use kaspa_database::{
+    prelude::{CachePolicy, DbWriter, DirectDbWriter, RocksDbPreset},
+    registry::DatabaseStorePrefixes,
+};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_p2p_lib::Hub;
@@ -24,25 +27,25 @@ use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::{
-    consensus::factory::Factory as ConsensusFactory,
-    params::{OverrideParams, Params},
-    pipeline::ProcessingCounters,
+    consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
 };
 use kaspa_consensus::{
-    consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
+    consensus::factory::{Factory as ConsensusFactory, LATEST_DB_VERSION},
+    params::{OverrideParams, Params},
+    pipeline::ProcessingCounters,
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::{
+    MiningCounters,
     manager::{MiningManager, MiningManagerProxy},
     monitor::MiningMonitor,
-    MiningCounters,
 };
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
-use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
+use kaspa_utxoindex::{UtxoIndex, api::UtxoIndexProxy};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
 /// Desired soft FD limit that needs to be configured
@@ -113,6 +116,12 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     Ok(())
 }
 
+fn request_database_deletion_approval(approve: bool) -> bool {
+    let msg = "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
+    get_user_approval_or_exit(msg, approve);
+    info!("Deleting databases from previous Kaspad version");
+    true // if consensus not exited, always return true
+}
 fn get_user_approval_or_exit(message: &str, approve: bool) {
     if approve {
         return;
@@ -152,11 +161,7 @@ pub fn get_app_dir_from_args(args: &Args) -> PathBuf {
         .clone()
         .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
         .replace('~', get_home_dir().as_path().to_str().unwrap());
-    if app_dir.is_empty() {
-        get_app_dir()
-    } else {
-        PathBuf::from(app_dir)
-    }
+    if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) }
 }
 
 /// Get the log directory from the supplied [`Args`].
@@ -167,8 +172,8 @@ pub fn get_log_dir(args: &Args) -> Option<String> {
     // Logs directory is usually under the application directory, unless otherwise specified
     let log_dir = args.logdir.clone().unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
     let log_dir = if log_dir.is_empty() { app_dir.join(network.to_prefixed()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
-    let log_dir = if args.no_log_files { None } else { log_dir.to_str().map(String::from) };
-    log_dir
+
+    if args.no_log_files { None } else { log_dir.to_str().map(String::from) }
 }
 
 impl Runtime {
@@ -208,6 +213,56 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
     create_core_with_runtime(&rt, &args, fd_total_budget)
 }
 
+/// Configure RocksDB parameters from CLI arguments.
+///
+/// Returns: (preset, cache_budget, wal_directory)
+fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathBuf>) {
+    // Parse preset
+    let preset = if let Some(preset_str) = &args.rocksdb_preset {
+        match preset_str.parse::<RocksDbPreset>() {
+            Ok(p) => {
+                info!("Using RocksDB preset: {} - {}", p, p.description());
+                info!("  Use case: {}", p.use_case());
+                info!("  Memory requirements: {}", p.memory_requirements());
+                p
+            }
+            Err(err) => {
+                println!("Invalid RocksDB preset: {}", err);
+                exit(1);
+            }
+        }
+    } else {
+        RocksDbPreset::Default
+    };
+
+    // Calculate cache budget for HDD preset
+    let cache_budget = if matches!(preset, RocksDbPreset::Hdd) {
+        if let Some(cache_mb) = args.rocksdb_cache_size {
+            let cache_bytes = cache_mb * 1024 * 1024;
+            info!("Custom RocksDB cache size: {} MB", cache_mb);
+            Some(cache_bytes)
+        } else {
+            let base_cache = 256 * 1024 * 1024;
+            let scaled_cache = (base_cache as f64 * args.ram_scale) as usize;
+            let min_cache = 64 * 1024 * 1024;
+            let final_cache = scaled_cache.max(min_cache);
+            info!("RocksDB cache size: {} MB (scaled by ram-scale)", final_cache / 1024 / 1024);
+            Some(final_cache)
+        }
+    } else {
+        None
+    };
+
+    // Setup WAL directory if specified
+    let wal_dir = args.rocksdb_wal_dir.as_ref().map(|custom_wal_dir| {
+        let wal_path = PathBuf::from(custom_wal_dir);
+        info!("Custom WAL directory: {}", wal_path.display());
+        wal_path
+    });
+
+    (preset, cache_budget, wal_dir)
+}
+
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
 ///
 /// Usage semantics:
@@ -229,6 +284,10 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     } else {
         0
     };
+
+    // Configure RocksDB parameters
+    let (rocksdb_preset, cache_budget, wal_dir) = configure_rocksdb(args);
+
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
         println!("{}", err);
@@ -302,11 +361,12 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
 
-    if !args.archival && args.retention_period_days.is_some() {
-        let retention_period_days = args.retention_period_days.unwrap();
+    if !args.archival
+        && let Some(retention_period_days) = args.retention_period_days
+    {
         // Look only at post-fork values (which are the worst-case)
-        let finality_depth = config.finality_depth().after();
-        let target_time_per_block = config.target_time_per_block().after(); // in ms
+        let finality_depth = config.finality_depth();
+        let target_time_per_block = config.target_time_per_block(); // in ms
 
         let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
         if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
@@ -329,6 +389,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let mut meta_db = kaspa_database::prelude::ConnBuilder::default()
         .with_db_path(meta_db_dir.clone())
         .with_files_limit(META_DB_FILE_LIMIT)
+        .with_preset(rocksdb_preset)
+        .with_wal_dir(wal_dir.clone())
+        .with_cache_budget(cache_budget)
         .build()
         .unwrap();
 
@@ -344,6 +407,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 let consensus_db = kaspa_database::prelude::ConnBuilder::default()
                     .with_db_path(consensus_db_dir.clone().join(dir_name))
                     .with_files_limit(1)
+                    .with_preset(rocksdb_preset)
+                    .with_wal_dir(wal_dir.clone())
+                    .with_cache_budget(cache_budget)
                     .build()
                     .unwrap();
 
@@ -366,31 +432,77 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     // Reset Condition: Need to reset if we're upgrading from kaspad DB version
     // TEMP: upgrade from Alpha version or any version before this one
-    if !is_db_reset_needed
+    'db_upgrade: while !is_db_reset_needed
         && (meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some())
             || MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap())
     {
         let mut mcms = MultiConsensusManagementStore::new(meta_db.clone());
         let version = mcms.version().unwrap();
 
-        // TODO: Update this entire section to a more robust implementation that allows applying multiple upgrade strategies.
-        // If I'm at version 3 and latest version is 7, I need to be able to upgrade to that version following the intermediate
-        // steps without having to delete the DB
-        if version == 4 {
-            let msg = "NOTE: Node database is from an older version. Proceeding with the upgrade is instant and safe.
+        if version <= 3 {
+            is_db_reset_needed = request_database_deletion_approval(args.yes);
+            continue 'db_upgrade;
+        }
+
+        let msg = "NOTE: Node database is from an older version. Proceeding with the upgrade is instant and safe.
 However, downgrading to an older node version later will require deleting the database.
 Do you confirm? (y/n)";
-            get_user_approval_or_exit(msg, args.yes);
-            mcms.set_version(kaspa_consensus::consensus::factory::LATEST_DB_VERSION).unwrap();
-        } else {
-            let msg =
-                "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
-            get_user_approval_or_exit(msg, args.yes);
-
-            info!("Deleting databases from previous Kaspad version");
-
-            is_db_reset_needed = true;
+        get_user_approval_or_exit(msg, args.yes);
+        if version <= 4 {
+            mcms.set_version(5).unwrap();
         }
+        if version <= 5 {
+            let active_consensus_dir_name = mcms.active_consensus_dir_name().unwrap();
+
+            match active_consensus_dir_name {
+                Some(current_consensus_db) => {
+                    // Apply soft upgrade logic: delete relation data from higher levels
+                    // and then update DB version to 6
+
+                    let consensus_db = kaspa_database::prelude::ConnBuilder::default()
+                        .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
+                        .with_files_limit(10)
+                        .with_preset(rocksdb_preset)
+                        .with_wal_dir(wal_dir.clone())
+                        .with_cache_budget(cache_budget)
+                        .build()
+                        .unwrap();
+
+                    let start_level: u8 = 1;
+                    let start_level_bytes = start_level.to_le_bytes();
+
+                    let mut writer = DirectDbWriter::new(&consensus_db);
+
+                    let end_level: u8 = config.max_block_level + 1;
+                    let end_level_bytes = end_level.to_le_bytes();
+
+                    let start_parents_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsParents.into_iter().chain(start_level_bytes).collect();
+                    let end_parents_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsParents.into_iter().chain(end_level_bytes).collect();
+
+                    let start_children_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsChildren.into_iter().chain(start_level_bytes).collect();
+                    let end_children_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsChildren.into_iter().chain(end_level_bytes).collect();
+
+                    // Apply delete of range from level 1 to max (+1) for RelationsParents and RelationsChildren:
+                    writer.delete_range(start_parents_prefix_vec.clone(), end_parents_prefix_vec.clone()).unwrap();
+                    writer.delete_range(start_children_prefix_vec.clone(), end_children_prefix_vec.clone()).unwrap();
+
+                    //  update the version to one higher:
+                    mcms.set_version(6).unwrap();
+                    info!("Deprecated stores have been removed from database, storage will be gradually cleared in due time.");
+                    info!("Database is now in version 6");
+                }
+                None => {
+                    is_db_reset_needed = request_database_deletion_approval(args.yes);
+                    continue 'db_upgrade;
+                }
+            }
+        }
+        // if we reached here, db should be upgraded fully and we should exit the loop next
+        assert_eq!(mcms.version().unwrap(), LATEST_DB_VERSION);
     }
 
     // Will be true if any of the other condition above except args.reset_db
@@ -414,12 +526,18 @@ Do you confirm? (y/n)";
         meta_db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(meta_db_dir)
             .with_files_limit(META_DB_FILE_LIMIT)
+            .with_preset(rocksdb_preset)
+            .with_wal_dir(wal_dir.clone())
+            .with_cache_budget(cache_budget)
             .build()
             .unwrap();
     }
 
     if !args.archival && MultiConsensusManagementStore::new(meta_db.clone()).is_archival_node().unwrap() {
-        get_user_approval_or_exit("--archival is set to false although the node was previously archival. Proceeding may delete archived data. Do you confirm? (y/n)", args.yes);
+        get_user_approval_or_exit(
+            "--archival is set to false although the node was previously archival. Proceeding may delete archived data. Do you confirm? (y/n)",
+            args.yes,
+        );
     }
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
@@ -462,6 +580,9 @@ Do you confirm? (y/n)";
         tx_script_cache_counters.clone(),
         fd_remaining,
         mining_rules.clone(),
+        rocksdb_preset,
+        wal_dir.clone(),
+        cache_budget,
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
@@ -489,6 +610,9 @@ Do you confirm? (y/n)";
         let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(utxoindex_db_dir)
             .with_files_limit(utxo_files_limit)
+            .with_preset(rocksdb_preset)
+            .with_wal_dir(wal_dir.clone())
+            .with_cache_budget(cache_budget)
             .build()
             .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
@@ -596,7 +720,7 @@ Do you confirm? (y/n)";
     async_runtime.register(mining_rule_engine);
 
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
-                                       // Register wRPC servers based on command line arguments
+    // Register wRPC servers based on command line arguments
     [
         (args.rpclisten_borsh.clone(), WrpcEncoding::Borsh, wrpc_borsh_counters),
         (args.rpclisten_json.clone(), WrpcEncoding::SerdeJson, wrpc_json_counters),

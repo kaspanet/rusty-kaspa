@@ -10,12 +10,17 @@ pub fn calc_hash_merkle_root_pre_crescendo<'a>(txs: impl ExactSizeIterator<Item 
     calc_merkle_root(txs.map(hashing::tx::hash_pre_crescendo))
 }
 
+pub fn calc_accepted_id_merkle_root_pre_crescendo(mut accepted_tx_ids: Vec<Hash>) -> Hash {
+    accepted_tx_ids.sort();
+    kaspa_merkle::calc_merkle_root(accepted_tx_ids.into_iter())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::merkle::{calc_hash_merkle_root, calc_hash_merkle_root_pre_crescendo};
     use crate::{
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec},
     };
     use kaspa_hashes::Hash;
 

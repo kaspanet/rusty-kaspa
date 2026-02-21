@@ -6,7 +6,7 @@ use crate::{
         daemon::{ClientManager, Daemon},
         utils::CONTRACT_FACTOR,
     },
-    tasks::{block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask, Stopper, TasksRunner},
+    tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
 };
 use futures_util::future::join_all;
 use kaspa_addresses::Address;
@@ -17,7 +17,7 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{NewBlockTemplateScope, Scope},
 };
-use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcError};
+use kaspa_rpc_core::{Notification, RpcError, api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
 use kaspa_utils::fd_budget;
 use kaspad_lib::args::Args;
@@ -27,8 +27,8 @@ use rand_distr::{Distribution, Exp};
 use std::{
     cmp::max,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -105,7 +105,7 @@ async fn bench_bbt_latency() {
     let bbt_client = daemon.new_client().await;
 
     // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
-    let dist: Exp<f64> = Exp::new(params.bps().upper_bound() as f64).unwrap();
+    let dist: Exp<f64> = Exp::new(params.bps() as f64).unwrap();
     let comm_delay = 1000;
 
     // Mining key and address
@@ -347,15 +347,8 @@ async fn bench_bbt_latency_2() {
         .launch()
         .await
         .task(
-            MinerGroupTask::build(
-                network,
-                client_manager.clone(),
-                SUBMIT_BLOCK_CLIENTS,
-                params.bps().upper_bound(),
-                BLOCK_COUNT,
-                Stopper::Signal,
-            )
-            .await,
+            MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal)
+                .await,
         )
         .task(
             TxSenderGroupTask::build(

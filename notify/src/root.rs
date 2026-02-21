@@ -7,8 +7,8 @@ use crate::{
     scope::Scope,
     subscriber::SubscriptionManager,
     subscription::{
-        array::ArrayBuilder, context::SubscriptionContext, Command, DynSubscription, MutateSingle, Mutation, MutationPolicies,
-        UtxosChangedMutationPolicy,
+        Command, DynSubscription, MutateSingle, Mutation, MutationPolicies, UtxosChangedMutationPolicy, array::ArrayBuilder,
+        context::SubscriptionContext,
     },
 };
 use async_channel::Sender;
@@ -137,10 +137,10 @@ where
     fn notify(&self, notification: N) -> Result<()> {
         let event = notification.event_type();
         let subscription = &self.subscriptions.read()[event];
-        if subscription.active() {
-            if let Some(applied_notification) = notification.apply_subscription(&**subscription, &self.subscription_context) {
-                self.sender.try_send(applied_notification)?;
-            }
+        if subscription.active()
+            && let Some(applied_notification) = notification.apply_subscription(&**subscription, &self.subscription_context)
+        {
+            self.sender.try_send(applied_notification)?;
         }
         Ok(())
     }

@@ -1,9 +1,14 @@
 use crate::RpcError;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_consensus_core::{header::Header, BlueWorkType};
+use kaspa_consensus_core::{
+    BlueWorkType,
+    header::{CompressedParents, Header},
+};
 use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
+
+pub type RpcCompressedParents = CompressedParents;
 
 /// Raw Rpc header type - without a cached header hash.
 /// Used for mining APIs (get_block_template & submit_block)
@@ -47,11 +52,7 @@ pub struct RpcHeader {
 
 impl RpcHeader {
     pub fn direct_parents(&self) -> &[Hash] {
-        if self.parents_by_level.is_empty() {
-            &[]
-        } else {
-            &self.parents_by_level[0]
-        }
+        if self.parents_by_level.is_empty() { &[] } else { &self.parents_by_level[0] }
     }
 }
 
