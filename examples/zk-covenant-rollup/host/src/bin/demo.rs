@@ -1,20 +1,14 @@
-#[allow(dead_code)] // Bridge functions are defined but not yet wired into the demo (deferred).
-mod bridge;
-mod covenant;
-mod mock_chain;
-mod mock_tx;
-mod redeem;
-#[allow(dead_code)] // Multi-input tx helpers are used by bridge tests only.
-mod tx;
-
 use std::time::Instant;
 
 use kaspa_hashes::Hash;
 use kaspa_txscript::{pay_to_script_hash_script, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag};
-use mock_chain::{build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts, SuccinctReceipt};
 use zk_covenant_common::{hashfn_str_to_id, seal_to_compressed_proof};
 use zk_covenant_rollup_core::PublicInput;
+use zk_covenant_rollup_host::{
+    mock_chain::{self, build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes},
+    redeem, tx,
+};
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
 
 fn main() {

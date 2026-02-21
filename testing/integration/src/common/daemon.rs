@@ -1,18 +1,18 @@
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
 use kaspa_database::utils::get_kaspa_tempdir;
-use kaspa_grpc_client::GrpcClient;
+use kaspa_grpc_client::{ClientPool, GrpcClient};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::Listener;
+use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
+use kaspa_wrpc_server::address::WrpcNetAddress;
 use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tempfile::TempDir;
-
-use kaspa_grpc_client::ClientPool;
 
 pub struct ClientManager {
     pub args: RwLock<Args>,
@@ -26,6 +26,7 @@ pub struct ClientManager {
     // Daemon ports
     pub rpc_port: u16,
     pub p2p_port: u16,
+    pub rpc_borsh_port: u16,
 }
 
 impl ClientManager {
@@ -34,8 +35,12 @@ impl ClientManager {
         let context = SubscriptionContext::with_options(None);
         let rpc_port = args.rpclisten.unwrap().normalize(0).port;
         let p2p_port = args.listen.unwrap().normalize(0).port;
+        let rpc_borsh_port = match args.rpclisten_borsh.clone().unwrap() {
+            WrpcNetAddress::Custom(addr) => addr.normalize(0).port,
+            _ => panic!("Test infrastructure requires custom wRPC address with port"),
+        };
         let args = RwLock::new(args);
-        Self { args, network, context, rpc_port, p2p_port }
+        Self { args, network, context, rpc_port, p2p_port, rpc_borsh_port }
     }
 
     pub async fn new_client(&self) -> GrpcClient {
@@ -82,6 +87,18 @@ impl ClientManager {
             clients.push(Arc::new(self.new_client().await));
         }
         ClientPool::new(clients, distribution_channel_capacity)
+    }
+
+    /// Create a new wRPC (WebSocket RPC) client using Borsh encoding.
+    pub fn new_wrpc_client(&self) -> KaspaRpcClient {
+        KaspaRpcClient::new(
+            WrpcEncoding::Borsh,
+            Some(&format!("ws://localhost:{}", self.rpc_borsh_port)),
+            None,
+            Some(self.network),
+            Some(self.context.clone()),
+        )
+        .expect("Failed to create wRPC client")
     }
 }
 

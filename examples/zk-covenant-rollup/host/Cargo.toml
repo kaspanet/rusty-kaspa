@@ -5,6 +5,14 @@ edition = "2021"
 
 [workspace]
 
+[lib]
+name = "zk_covenant_rollup_host"
+path = "src/lib.rs"
+
+[[bin]]
+name = "demo"
+path = "src/bin/demo.rs"
+
 [features]
 cuda = ["risc0-zkvm/cuda"]
 
