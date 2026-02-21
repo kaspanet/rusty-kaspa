@@ -1,5 +1,5 @@
-use crate::config::constants::consensus::*;
 use crate::KType;
+use crate::config::constants::consensus::*;
 
 /// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
 /// with probability less than `delta` (follows eq. 1 from section 4.2 of the PHANTOM paper)
@@ -103,11 +103,7 @@ impl<const BPS: u64> Bps<BPS> {
             + 2 * Self::ghostdag_k() as u64
             + 2;
 
-        if lower_bound > BPS * PRUNING_DURATION {
-            lower_bound
-        } else {
-            BPS * PRUNING_DURATION
-        }
+        if lower_bound > BPS * PRUNING_DURATION { lower_bound } else { BPS * PRUNING_DURATION }
     }
 
     /// Sample rate for sampling blocks to the median time window (in block units, hence dependent on BPS)

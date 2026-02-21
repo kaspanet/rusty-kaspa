@@ -1,8 +1,8 @@
-use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
+use crate::{ConnectionInitializer, Peer, Router, common::ProtocolError, pb::KaspadMessage};
 use kaspa_core::{debug, info, warn};
 use parking_lot::RwLock;
 use std::{
-    collections::{hash_map::Entry::Occupied, HashMap},
+    collections::{HashMap, hash_map::Entry::Occupied},
     sync::Arc,
 };
 use tokio::sync::mpsc::Receiver as MpscReceiver;
@@ -130,9 +130,15 @@ impl Hub {
         }
     }
 
-    /// Broadcast a message to all peers
-    pub async fn broadcast(&self, msg: KaspadMessage) {
-        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
+    /// Broadcast a message to all peers (except an optional filtered peer)
+    pub async fn broadcast(&self, msg: KaspadMessage, filter_peer: Option<PeerKey>) {
+        let peers = self
+            .peers
+            .read()
+            .values()
+            .filter(|&r| filter_peer.is_none_or(|filter_peer| r.key() != filter_peer))
+            .cloned()
+            .collect::<Vec<_>>();
         for router in peers {
             let _ = router.enqueue(msg.clone()).await;
         }
@@ -149,12 +155,18 @@ impl Hub {
         }
     }
 
-    /// Broadcast a vector of messages to all peers
-    pub async fn broadcast_many(&self, msgs: Vec<KaspadMessage>) {
+    /// Broadcast a vector of messages to all peers (except an optional filtered peer)
+    pub async fn broadcast_many(&self, msgs: Vec<KaspadMessage>, filter_peer: Option<PeerKey>) {
         if msgs.is_empty() {
             return;
         }
-        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
+        let peers = self
+            .peers
+            .read()
+            .values()
+            .filter(|&r| filter_peer.is_none_or(|filter_peer| r.key() != filter_peer))
+            .cloned()
+            .collect::<Vec<_>>();
         for router in peers {
             for msg in msgs.iter().cloned() {
                 let _ = router.enqueue(msg).await;

@@ -20,7 +20,7 @@
 
 use crate::protowire::{self, submit_block_response_message::RejectReason};
 use kaspa_addresses::Address;
-use kaspa_consensus_core::{network::NetworkId, Hash};
+use kaspa_consensus_core::{Hash, network::NetworkId};
 use kaspa_core::debug;
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
@@ -1101,7 +1101,7 @@ try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa
 mod tests {
     use kaspa_rpc_core::{RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
 
-    use crate::protowire::{self, submit_block_response_message::RejectReason, SubmitBlockResponseMessage};
+    use crate::protowire::{self, SubmitBlockResponseMessage, submit_block_response_message::RejectReason};
 
     #[test]
     fn test_submit_block_response() {

@@ -1,9 +1,9 @@
 use crate::result::Result;
-use crate::tx::{mass, MAXIMUM_STANDARD_TRANSACTION_MASS};
+use crate::tx::{MAXIMUM_STANDARD_TRANSACTION_MASS, mass};
 use js_sys::Array;
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::config::params::Params;
-use kaspa_consensus_core::mass::{calc_storage_mass, UtxoCell};
+use kaspa_consensus_core::mass::{UtxoCell, calc_storage_mass};
 use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
 use kaspa_wasm_core::types::NumberArray;
 use wasm_bindgen::prelude::*;
@@ -89,11 +89,7 @@ pub fn calculate_unsigned_transaction_fee(
     let consensus_params = Params::from(network_id);
     let mc = mass::MassCalculator::new(&consensus_params);
     let mass = mc.calc_overall_mass_for_unsigned_client_transaction(tx.as_ref(), minimum_signatures.unwrap_or(1))?;
-    if mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-        Ok(None)
-    } else {
-        Ok(Some(mc.calc_fee_for_mass(mass)))
-    }
+    if mass > MAXIMUM_STANDARD_TRANSACTION_MASS { Ok(None) } else { Ok(Some(mc.calc_fee_for_mass(mass))) }
 }
 
 /// `calculateStorageMass()` is a helper function to compute the storage mass of inputs and outputs.

@@ -6,8 +6,8 @@ use crate::api::{message::*, traits::WalletApi};
 use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::interface::TransactionRangeResult;
 use crate::storage::Binding;
+use crate::storage::interface::TransactionRangeResult;
 use crate::tx::Fees;
 use kaspa_rpc_core::RpcFeeEstimate;
 use kaspa_wallet_pskt::bundle::Bundle;
@@ -108,11 +108,7 @@ impl WalletApi for super::Wallet {
             // wait for connection signal, cascade if error
             receiver.recv().await?.map_err(Error::custom)?;
 
-            if require_sync && !self.is_synced() {
-                Err(Error::NotSynced)
-            } else {
-                Ok(ConnectResponse {})
-            }
+            if require_sync && !self.is_synced() { Err(Error::NotSynced) } else { Ok(ConnectResponse {}) }
         } else {
             Err(Error::NotWrpcClient)
         }

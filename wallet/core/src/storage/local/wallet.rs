@@ -3,10 +3,10 @@
 //!
 
 use crate::imports::*;
-use crate::storage::local::Payload;
-use crate::storage::local::Storage;
 use crate::storage::Encryptable;
 use crate::storage::TransactionRecord;
+use crate::storage::local::Payload;
+use crate::storage::local::Storage;
 use crate::storage::{AccountMetadata, Decrypted, Encrypted, Hint, PrvKeyData, PrvKeyDataId};
 use workflow_store::fs;
 
@@ -114,7 +114,11 @@ impl BorshDeserialize for WalletStorage {
         if version > Self::STORAGE_VERSION {
             return Err(IoError::new(
                 IoErrorKind::InvalidData,
-                format!("This wallet data was generated using a new version of the software. Please upgrade your software environment. Expected at most version '{}', encountered version '{}'", Self::STORAGE_VERSION, version),
+                format!(
+                    "This wallet data was generated using a new version of the software. Please upgrade your software environment. Expected at most version '{}', encountered version '{}'",
+                    Self::STORAGE_VERSION,
+                    version
+                ),
             ));
         }
 

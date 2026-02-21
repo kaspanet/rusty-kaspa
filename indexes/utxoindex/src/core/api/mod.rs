@@ -1,7 +1,7 @@
 use kaspa_consensus_core::{
+    BlockHashSet,
     tx::{ScriptPublicKeys, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
-    BlockHashSet,
 };
 use kaspa_consensusmanager::spawn_blocking;
 use kaspa_database::prelude::StoreResult;

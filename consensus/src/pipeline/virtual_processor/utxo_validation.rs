@@ -22,6 +22,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
     acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
     api::args::TransactionValidationArgs,
     coinbase::*,
@@ -33,7 +34,6 @@ use kaspa_consensus_core::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
-    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_core::{info, trace};
 use kaspa_hashes::Hash;
@@ -41,30 +41,30 @@ use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
 use rayon::prelude::*;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 use std::{iter::once, ops::Deref};
 
 pub(crate) mod crescendo {
     use kaspa_core::{info, log::CRESCENDO_KEYWORD};
     use std::sync::{
-        atomic::{AtomicU8, Ordering},
         Arc,
+        atomic::{AtomicU8, Ordering},
     };
 
     #[derive(Clone)]
-    pub(crate) struct CrescendoLogger {
+    pub(crate) struct _CrescendoLogger {
         steps: Arc<AtomicU8>,
     }
 
-    impl CrescendoLogger {
-        pub fn new() -> Self {
-            Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)) }
+    impl _CrescendoLogger {
+        pub fn _new() -> Self {
+            Self { steps: Arc::new(AtomicU8::new(Self::_ACTIVATE)) }
         }
 
-        const ACTIVATE: u8 = 0;
+        const _ACTIVATE: u8 = 0;
 
-        pub fn report_activation(&self) -> bool {
-            if self.steps.compare_exchange(Self::ACTIVATE, Self::ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        pub fn _report_activation(&self) -> bool {
+            if self.steps.compare_exchange(Self::_ACTIVATE, Self::_ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
                 info!(target: CRESCENDO_KEYWORD, "[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
                 true
             } else {
@@ -254,11 +254,7 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
-            Err(BadCoinbaseTransaction)
-        } else {
-            Ok(())
-        }
+        if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) { Err(BadCoinbaseTransaction) } else { Ok(()) }
     }
 
     /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions

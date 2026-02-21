@@ -34,10 +34,14 @@ cfg_if::cfg_if! {
         mod utils;
         mod hash;
         mod sign;
+        mod parents;
+        mod optional_header;
 
         pub use header::*;
         pub use utils::*;
         pub use hash::*;
         pub use sign::sign_with_multiple_v3;
+        pub use parents::*;
+        pub use optional_header::*;
     }
 }

@@ -1,15 +1,15 @@
 use crate::{
+    IDENT,
     api::UtxoIndexApi,
     errors::{UtxoIndexError, UtxoIndexResult},
     model::{CirculatingSupply, UtxoChanges, UtxoSetByScriptPublicKey},
     stores::store_manager::Store,
     update_container::UtxoIndexChanges,
-    IDENT,
 };
-use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
+use kaspa_consensus_core::{BlockHashSet, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
-use kaspa_database::prelude::{StoreError, StoreResult, DB};
+use kaspa_database::prelude::{DB, StoreError, StoreResult};
 use kaspa_hashes::Hash;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use kaspa_utils::arc::ArcExtensions;
@@ -222,7 +222,7 @@ impl ConsensusResetHandler for UtxoIndexConsensusResetHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::{api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator, UtxoIndex};
+    use crate::{UtxoIndex, api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator};
     use kaspa_consensus::{
         config::Config,
         consensus::test_consensus::TestConsensus,

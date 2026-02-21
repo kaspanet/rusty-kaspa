@@ -10,11 +10,11 @@ use kaspa_wallet_core::{
 };
 use kaspa_wallet_grpc_core::convert::{deserialize_txs, extract_tx};
 use kaspa_wallet_grpc_core::kaspawalletd::{
-    fee_policy::FeePolicy, kaspawalletd_server::Kaspawalletd, BroadcastRequest, BroadcastResponse, BumpFeeRequest, BumpFeeResponse,
-    CreateUnsignedTransactionsRequest, CreateUnsignedTransactionsResponse, GetBalanceRequest, GetBalanceResponse,
-    GetExternalSpendableUtxOsRequest, GetExternalSpendableUtxOsResponse, GetVersionRequest, GetVersionResponse, NewAddressRequest,
-    NewAddressResponse, SendRequest, SendResponse, ShowAddressesRequest, ShowAddressesResponse, ShutdownRequest, ShutdownResponse,
-    SignRequest, SignResponse,
+    BroadcastRequest, BroadcastResponse, BumpFeeRequest, BumpFeeResponse, CreateUnsignedTransactionsRequest,
+    CreateUnsignedTransactionsResponse, GetBalanceRequest, GetBalanceResponse, GetExternalSpendableUtxOsRequest,
+    GetExternalSpendableUtxOsResponse, GetVersionRequest, GetVersionResponse, NewAddressRequest, NewAddressResponse, SendRequest,
+    SendResponse, ShowAddressesRequest, ShowAddressesResponse, ShutdownRequest, ShutdownResponse, SignRequest, SignResponse,
+    fee_policy::FeePolicy, kaspawalletd_server::Kaspawalletd,
 };
 use kaspa_wallet_grpc_core::protoserialization::{PartiallySignedTransaction, TransactionMessage};
 use service::Service;

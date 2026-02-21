@@ -1,13 +1,13 @@
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream;
 use proc_macro2::{Ident, Span};
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use std::convert::Into;
 use syn::{
+    Error, Expr, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, Result, Token,
 };
 
 #[derive(Debug)]

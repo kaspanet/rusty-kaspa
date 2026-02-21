@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_wallet_core::account::{multisig::MultiSig, Account, BIP32_ACCOUNT_KIND, MULTISIG_ACCOUNT_KIND};
+use kaspa_wallet_core::account::{Account, BIP32_ACCOUNT_KIND, MULTISIG_ACCOUNT_KIND, multisig::MultiSig};
 
 #[derive(Default, Handler)]
 #[help("Export transactions, a wallet or a private key")]

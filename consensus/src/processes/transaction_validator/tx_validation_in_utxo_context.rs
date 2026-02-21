@@ -3,15 +3,15 @@ use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     tx::{TransactionInput, VerifiableTransaction},
 };
-use kaspa_txscript::{caches::Cache, get_sig_op_count_upper_bound, SigCacheKey, TxScriptEngine};
+use kaspa_txscript::{SigCacheKey, TxScriptEngine, caches::Cache};
 use kaspa_txscript_errors::TxScriptError;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::ThreadPool;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::marker::Sync;
 
 use super::{
-    errors::{TxResult, TxRuleError},
     TransactionValidator,
+    errors::{TxResult, TxRuleError},
 };
 
 /// The threshold above which we apply parallelism to input script processing
@@ -154,17 +154,6 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
-        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let calculated =
-                get_sig_op_count_upper_bound::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
-            if calculated != input.sig_op_count as u64 {
-                return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
-            }
-        }
-        Ok(())
-    }
-
     pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
         check_scripts(&self.sig_cache, tx)
     }
@@ -207,11 +196,7 @@ pub fn check_scripts_par_iter_pool(
 }
 
 fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {
-    if input.signature_script.is_empty() {
-        TxRuleError::SignatureEmpty(script_err)
-    } else {
-        TxRuleError::SignatureInvalid(script_err)
-    }
+    if input.signature_script.is_empty() { TxRuleError::SignatureEmpty(script_err) } else { TxRuleError::SignatureInvalid(script_err) }
 }
 
 #[cfg(test)]
@@ -800,6 +785,5 @@ mod tests {
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
         assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
-        assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
     }
 }

@@ -1,32 +1,36 @@
 use crate::{
     flow_context::FlowContext,
     flow_trait::Flow,
-    ibd::{negotiate::ChainNegotiationOutput, HeadersChunkStream, TrustedEntryStream},
+    ibd::{HeadersChunkStream, TrustedEntryStream, negotiate::ChainNegotiationOutput},
 };
-use futures::future::{join_all, select, try_join_all, Either};
+use futures::future::{Either, join_all, select, try_join_all};
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashSet,
     api::BlockValidationFuture,
     block::Block,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList, PruningProofMetadata},
     trusted::TrustedBlock,
     tx::Transaction,
-    BlockHashSet,
 };
-use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
+use kaspa_consensusmanager::{ConsensusProxy, StagingConsensus, spawn_blocking};
 use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
+    IncomingRoute, Router,
     common::ProtocolError,
-    convert::model::trusted::TrustedDataPackage,
+    convert::{
+        header::{HeaderFormat, Versioned},
+        model::trusted::TrustedDataPackage,
+    },
     dequeue_with_timeout, make_message, make_request,
     pb::{
-        kaspad_message::Payload, RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
+        RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
         RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
+        kaspad_message::Payload,
     },
-    IncomingRoute, Router,
 };
 use kaspa_utils::channel::JobReceiver;
 use std::{
@@ -35,7 +39,7 @@ use std::{
 };
 use tokio::time::sleep;
 
-use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
+use super::{HeadersChunk, IBD_BATCH_SIZE, PruningPointUtxosetChunkStream, progress::ProgressReporter};
 type BlockBody = Vec<Transaction>;
 
 /// Flow for managing IBD - Initial Block Download
@@ -44,6 +48,7 @@ pub struct IbdFlow {
     pub(super) router: Arc<Router>,
     pub(super) incoming_route: IncomingRoute,
     pub(super) body_only_ibd_permitted: bool,
+    header_format: HeaderFormat,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: JobReceiver<Block>,
@@ -80,8 +85,9 @@ impl IbdFlow {
         incoming_route: IncomingRoute,
         relay_receiver: JobReceiver<Block>,
         body_only_ibd_permitted: bool,
+        header_format: HeaderFormat,
     ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted }
+        Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted, header_format }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -157,8 +163,8 @@ impl IbdFlow {
                         spawn_blocking(|| staging.commit()).await.unwrap();
                         info!(
                             "Header download stage of IBD with headers proof completed successfully from {}. Committed staging consensus.",
-                                    self.router
-                                );
+                            self.router
+                        );
 
                         // This will reobtain the freshly committed staging consensus
                         session = self.ctx.consensus().session().await;
@@ -262,7 +268,9 @@ impl IbdFlow {
                     (SyncerSkew::Lagging, true) => {
                         Ok(IbdType::Sync { highest_known_syncer_chain_hash, is_utxo_stable, is_pp_anticone_synced })
                     }
-                    (SyncerSkew::Lagging, false) => Err(ProtocolError::Other("Local node is in a transitional state requiring external data to stabilize, but the syncer lags behind and is unable to provide said data")),
+                    (SyncerSkew::Lagging, false) => Err(ProtocolError::Other(
+                        "Local node is in a transitional state requiring external data to stabilize, but the syncer lags behind and is unable to provide said data",
+                    )),
                     (SyncerSkew::Leading, true) => {
                         if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body()) {
                             // While a leading syncer skew often indicates the need for catchup, in this case
@@ -363,7 +371,7 @@ impl IbdFlow {
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
-        let proof: PruningPointProof = msg.try_into()?;
+        let proof: PruningPointProof = Versioned(self.header_format, msg).try_into()?;
         info!(
             "Received headers proof with overall {} headers ({} unique)",
             proof.iter().map(|l| l.len()).sum::<usize>(),
@@ -395,7 +403,7 @@ impl IbdFlow {
             .await?;
         // First, all pruning points up to the last are sent
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
-        let pruning_points: PruningPointsList = msg.try_into()?;
+        let pruning_points: PruningPointsList = Versioned(self.header_format, msg).try_into()?;
 
         if pruning_points.is_empty() || pruning_points.last().unwrap().hash != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the last pruning point in the list"));
@@ -411,6 +419,19 @@ impl IbdFlow {
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }
 
+        {
+            // Sanity check for consistency between past pruning points and the headers proof
+            let pruning_points_set: BlockHashSet = pruning_points.iter().map(|h| h.hash).collect();
+            for level in proof.iter() {
+                if let Some(root) = level.first()
+                    && root.hash != self.ctx.config.genesis.hash
+                    && !pruning_points_set.contains(&root.pruning_point)
+                {
+                    return Err(ProtocolError::Other("proof and past pruning points are inconsistent with each other"));
+                }
+            }
+        }
+
         // Trusted data is sent in two stages:
         // The first, TrustedDataPackage, contains meta data about daa_window
         // blocks headers, and ghostdag data, which are required to verify the pruning
@@ -418,10 +439,10 @@ impl IbdFlow {
         // The latter, the trusted data entries, each represent a block (with daa) from the anticone of the pruning point
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
-        let pkg: TrustedDataPackage = msg.try_into()?;
+        let pkg: TrustedDataPackage = Versioned(self.header_format, msg).try_into()?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
-        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
+        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route, self.header_format);
         // The first entry of the trusted data is the pruning point itself.
         let Some(pruning_point_entry) = entry_stream.next().await? else {
             return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
@@ -523,7 +544,7 @@ impl IbdFlow {
                 }
             ))
             .await?;
-        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
+        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route, self.header_format);
 
         if let Some(chunk) = chunk_stream.next().await? {
             let (mut prev_daa_score, mut prev_timestamp) = {
@@ -571,10 +592,14 @@ impl IbdFlow {
     }
 
     async fn sync_new_utxo_set(&mut self, consensus: &ConsensusProxy, pruning_point: Hash) -> Result<(), ProtocolError> {
-        // A  better solution could be to create a copy of the old utxo state for some sort of fallback rather than delete it.
+        // A better solution could be to create a copy of the old utxo state for some sort of fallback rather than delete it.
         consensus.async_clear_pruning_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
-        consensus.async_set_pruning_utxoset_stable().await; //  only if the function has reached here, will the utxo be considered "final"
+        // Only if the function has reached here, will the utxo be considered "final"
+        consensus.async_set_pruning_utxoset_stable().await;
+        // Once a new utxoset is stored, the utxoindex needs to be resynced as well. This happens through the reset handler mechanism.
+        let consensus_manager = self.ctx.consensus_manager.clone();
+        spawn_blocking(move || consensus_manager.invoke_consensus_reset_handlers()).await.unwrap();
         self.ctx.on_pruning_point_utxoset_override();
         Ok(())
     }
@@ -605,7 +630,7 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
-        let chunk: HeadersChunk = msg.try_into()?;
+        let chunk: HeadersChunk = Versioned(self.header_format, msg).try_into()?;
         let jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
         try_join_all(jobs).await?;
@@ -735,7 +760,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             for &hash in chunk.iter() {
                 // TODO: change to BodyOnly requests when incorporated
                 let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let block: Block = msg.try_into()?;
+                let block: Block = Versioned(self.header_format, msg).try_into()?;
                 if block.hash() != hash {
                     return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", hash, block.hash())));
                 }
@@ -834,7 +859,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             .await?;
         for &expected_hash in chunk {
             let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-            let block: Block = msg.try_into()?;
+            let block: Block = Versioned(self.header_format, msg).try_into()?;
             if block.hash() != expected_hash {
                 return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
             }

@@ -13,16 +13,16 @@ use kaspa_consensus_core::{
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::{ClientPool, GrpcClient};
 use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode, RpcUtxoEntry};
+use kaspa_rpc_core::{RpcUtxoEntry, api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
 use rand::RngCore;
 use rayon::prelude::*;
 use secp256k1::{
-    rand::{thread_rng, Rng},
     Keypair,
+    rand::{Rng, thread_rng},
 };
-use tokio::time::{interval, Instant, MissedTickBehavior};
+use tokio::time::{Instant, MissedTickBehavior, interval};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const FEE_RATE: u64 = 10;

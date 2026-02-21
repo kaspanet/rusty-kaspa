@@ -97,7 +97,7 @@ impl BitWriter {
     pub fn with_capacity(capacity: usize) -> Self {
         let mut bytes = capacity / 8;
 
-        if capacity % 8 != 0 {
+        if !capacity.is_multiple_of(8) {
             bytes += 1;
         }
 

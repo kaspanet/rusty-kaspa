@@ -1,8 +1,8 @@
 use crate::core::hub::HubEvent;
 use crate::pb::RejectMessage;
-use crate::pb::{kaspad_message::Payload as KaspadMessagePayload, KaspadMessage};
-use crate::{common::ProtocolError, KaspadMessagePayloadType};
-use crate::{make_message, Peer};
+use crate::pb::{KaspadMessage, kaspad_message::Payload as KaspadMessagePayload};
+use crate::{KaspadMessagePayloadType, common::ProtocolError};
+use crate::{Peer, make_message};
 use kaspa_core::{debug, error, info, trace, warn};
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -15,8 +15,8 @@ use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+use tokio::sync::mpsc::{Receiver as MpscReceiver, Sender as MpscSender, channel as mpsc_channel};
+use tokio::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use tonic::Streaming;
 
 use super::peer::{PeerKey, PeerProperties};
@@ -461,10 +461,10 @@ fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
 
         // h2::Error do not expose std::io::Error with `source()`
         // https://github.com/hyperium/h2/pull/462
-        if let Some(h2_err) = err.downcast_ref::<h2::Error>() {
-            if let Some(io_err) = h2_err.get_io() {
-                return Some(io_err);
-            }
+        if let Some(h2_err) = err.downcast_ref::<h2::Error>()
+            && let Some(io_err) = h2_err.get_io()
+        {
+            return Some(io_err);
         }
 
         err = err.source()?;

@@ -1,5 +1,5 @@
 use fee_policy::FeePolicy;
-use futures_util::{select, FutureExt, TryStreamExt};
+use futures_util::{FutureExt, TryStreamExt, select};
 use kaspa_addresses::Prefix;
 use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, UtxoEntry};
@@ -43,11 +43,10 @@ impl Service {
                             if let Ok(msg) = msg {
                                 match *msg {
                                     Events::SyncState { sync_state } => {
-                                        if sync_state.is_synced() {
-                                            if let Err(err) = wallet.clone().wallet_reload(false).await {
+                                        if sync_state.is_synced()
+                                            && let Err(err) = wallet.clone().wallet_reload(false).await {
                                                 panic!("Wallet reloading failed: {}", err)
                                             }
-                                        }
                                     },
                                     Events::Balance { balance: _new_balance, .. } => {
                                         // TBD: index balance per address for call

@@ -1,9 +1,9 @@
 use std::iter::once;
 
 use crate::{
+    MAX_SCRIPT_ELEMENT_SIZE, MAX_SCRIPTS_SIZE,
     data_stack::OpcodeData,
-    opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL},
-    MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
+    opcodes::{OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL, codes::*},
 };
 use hexplay::{HexView, HexViewBuilder};
 use kaspa_txscript_errors::SerializationError;

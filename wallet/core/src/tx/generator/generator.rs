@@ -60,8 +60,8 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{
-    mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, PendingTransactionIterator,
-    PendingTransactionStream,
+    Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, PendingTransactionIterator,
+    PendingTransactionStream, mass::*,
 };
 use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
 use kaspa_consensus_client::UtxoEntry;
@@ -568,7 +568,7 @@ impl Generator {
     /// transaction for each stream item request. NOTE: transactions
     /// are generated only when each stream item is polled.
     #[inline(always)]
-    pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> {
+    pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> + 'static {
         Box::pin(PendingTransactionStream::new(self))
     }
 
@@ -591,18 +591,20 @@ impl Generator {
             .pop_front()
             .or_else(|| stage.utxo_iterator.as_mut().and_then(|utxo_stage_iterator| utxo_stage_iterator.next()))
             .or_else(|| context.priority_utxo_entries.as_mut().and_then(|entries| entries.pop_front()))
-            .or_else(|| loop {
-                let utxo_entry = context.utxo_source_iterator.next()?;
+            .or_else(|| {
+                loop {
+                    let utxo_entry = context.utxo_source_iterator.next()?;
 
-                if let Some(filter) = context.priority_utxo_entry_filter.as_ref() {
-                    if filter.contains(&utxo_entry) {
+                    if let Some(filter) = context.priority_utxo_entry_filter.as_ref()
+                        && filter.contains(&utxo_entry)
+                    {
                         // skip the entry from the iterator intake
                         // if it has been supplied as a priority entry
                         continue;
                     }
-                }
 
-                break Some(utxo_entry);
+                    break Some(utxo_entry);
+                }
             })
     }
 
@@ -677,15 +679,14 @@ impl Generator {
             if let Some(final_transaction) = &self.inner.final_transaction {
                 // try finish a stage or produce a final transaction with target value
                 // use basic condition checks to avoid unnecessary processing
-                if data.aggregate_mass > TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION
+                if (data.aggregate_mass > TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION
                     || (self.inner.final_transaction_priority_fee.sender_pays()
                         && stage.aggregate_input_value >= final_transaction.value_with_priority_fee)
                     || (self.inner.final_transaction_priority_fee.receiver_pays()
-                        && stage.aggregate_input_value >= final_transaction.value_no_fees.saturating_sub(context.aggregate_fees))
+                        && stage.aggregate_input_value >= final_transaction.value_no_fees.saturating_sub(context.aggregate_fees)))
+                    && let Some(kind) = self.try_finish_standard_stage_processing(context, stage, &mut data, final_transaction)?
                 {
-                    if let Some(kind) = self.try_finish_standard_stage_processing(context, stage, &mut data, final_transaction)? {
-                        return Ok((kind, data));
-                    }
+                    return Ok((kind, data));
                 }
             }
         }

@@ -33,20 +33,20 @@ pub struct SyncManager<
     traversal_manager: DagTraversalManager<U, T, S>,
     ghostdag_store: Arc<U>,
     selected_chain_store: Arc<RwLock<V>>,
-    header_selected_tip_store: Arc<RwLock<W>>,
+    _header_selected_tip_store: Arc<RwLock<W>>,
     pruning_point_store: Arc<RwLock<X>>,
     statuses_store: Arc<RwLock<Y>>,
 }
 
 impl<
-        S: RelationsStoreReader,
-        T: ReachabilityStoreReader,
-        U: GhostdagStoreReader,
-        V: SelectedChainStoreReader,
-        W: HeadersSelectedTipStoreReader,
-        X: PruningStoreReader,
-        Y: StatusesStoreReader,
-    > SyncManager<S, T, U, V, W, X, Y>
+    S: RelationsStoreReader,
+    T: ReachabilityStoreReader,
+    U: GhostdagStoreReader,
+    V: SelectedChainStoreReader,
+    W: HeadersSelectedTipStoreReader,
+    X: PruningStoreReader,
+    Y: StatusesStoreReader,
+> SyncManager<S, T, U, V, W, X, Y>
 {
     pub fn new(
         mergeset_size_limit: u64,
@@ -64,7 +64,7 @@ impl<
             traversal_manager,
             ghostdag_store,
             selected_chain_store,
-            header_selected_tip_store,
+            _header_selected_tip_store: header_selected_tip_store,
             pruning_point_store,
             statuses_store,
         }
