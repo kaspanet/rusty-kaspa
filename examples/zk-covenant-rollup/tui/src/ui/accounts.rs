@@ -17,31 +17,43 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         }
     };
 
-    // Split area: top section for special roles, bottom for account table
+    // Split area: top section for role, bottom for account table
     let chunks = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .constraints([Constraint::Length(4), Constraint::Min(0)])
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(area);
 
-    // ── Special Roles section ──
-    let deployer_line = match app.deployer_address(&app.covenants[cov_idx].1) {
-        Some(addr) => {
-            let bal = app.utxo_tracker.balance(&addr);
-            Line::from(format!(" Deployer:  {addr}   Balance: {}", format_sompi(bal)))
+    // ── Role section (single navigable line) ──
+    let record = &app.covenants[cov_idx].1;
+    let is_deployed = record.deployment_tx_id.is_some();
+    let has_deployer = record.deployer_privkey.len() == 32;
+
+    let role_line = if is_deployed {
+        // Deployed or imported — show prover
+        match app.prover_address() {
+            Some(addr) => {
+                let bal = app.utxo_tracker.balance(&addr);
+                Line::from(format!(" Prover:    {addr}   Balance: {}", format_sompi(bal)))
+            }
+            None => Line::from(" Prover:    not configured"),
         }
-        None => Line::from(" Deployer:  N/A (imported)"),
+    } else if has_deployer {
+        // Undeployed with deployer key
+        match app.deployer_address(record) {
+            Some(addr) => {
+                let bal = app.utxo_tracker.balance(&addr);
+                Line::from(format!(" Deployer:  {addr}   Balance: {}", format_sompi(bal)))
+            }
+            None => Line::from(" Deployer:  N/A"),
+        }
+    } else {
+        Line::from(" No role key available")
     };
 
-    let prover_line = match app.prover_address() {
-        Some(addr) => {
-            let bal = app.utxo_tracker.balance(&addr);
-            Line::from(format!(" Prover:    {addr}   Balance: {}", format_sompi(bal)))
-        }
-        None => Line::from(" Prover:    not configured"),
-    };
+    let role_style = if app.role_focused { Style::default().bg(Color::DarkGray) } else { Style::default() };
 
-    let roles_block = Block::default().borders(Borders::ALL).title("Special Roles");
-    let roles = Paragraph::new(vec![deployer_line, prover_line]).block(roles_block);
+    let roles_block = Block::default().borders(Borders::ALL).title("Role [y:copy address  j/k:navigate]");
+    let roles = Paragraph::new(role_line).style(role_style).block(roles_block);
     frame.render_widget(roles, chunks[0]);
 
     // ── Accounts table ──
@@ -62,7 +74,8 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             let balance = app.utxo_tracker.balance(&addr);
             let bal_str = format_sompi(balance);
 
-            let style = if i == app.account_list_index { Style::default().bg(Color::DarkGray) } else { Style::default() };
+            let style =
+                if !app.role_focused && i == app.account_list_index { Style::default().bg(Color::DarkGray) } else { Style::default() };
 
             Row::new(vec![Cell::from(format!("0x{index:02x}")), Cell::from(addr), Cell::from(bal_str)]).style(style)
         })

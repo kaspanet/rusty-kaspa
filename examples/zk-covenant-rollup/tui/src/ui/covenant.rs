@@ -46,7 +46,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let table = Table::new(rows, widths).header(header).block(
         Block::default()
             .borders(Borders::ALL)
-            .title("Covenants [c:create  i:import  d:deploy  y:copy ID  x:delete  Enter:select  j/k:navigate]"),
+            .title("Covenants [c:create  i:import  d:deploy  y:export  x:delete  Enter:select  j/k:navigate]"),
     );
 
     frame.render_widget(table, area);

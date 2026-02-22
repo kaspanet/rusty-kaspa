@@ -85,7 +85,6 @@ impl ActionType {
 
 pub enum TextInputTarget {
     ImportCovenantId,
-    ImportDeployTxId { covenant_id: Hash },
 }
 
 pub enum InputMode {
@@ -131,6 +130,8 @@ enum BgResult {
     ActionBuildFailed { action: ActionType, error: String },
     ProofCompleted { gen: u64, elapsed_ms: u128, segments: usize, total_cycles: u64 },
     ProofFailed { gen: u64, error: String },
+    ImportValidated { covenant_id: Hash, deploy_tx_id: Hash },
+    ImportFailed { error: String },
 }
 
 pub struct App {
@@ -151,6 +152,7 @@ pub struct App {
     // Account tab state (loaded for selected covenant)
     pub accounts: Vec<(Pubkey, [u8; 32])>, // (pubkey, privkey)
     pub account_list_index: usize,
+    pub role_focused: bool, // true when cursor is on the role entry in accounts tab
 
     // Prover key (separate from deployer — for proving role)
     pub prover_key: Option<(Pubkey, [u8; 32])>, // (pubkey, privkey)
@@ -196,6 +198,7 @@ enum PendingOp {
     FetchAndProcessChain,
     BuildAndSubmitAction { action: ActionType, amount: u64 },
     GenerateProof { gen: u64, input: ProveInput, backend: ProverBackend, kind: ProofKind },
+    ValidateImport { covenant_id: Hash, start_hash: Hash },
 }
 
 impl App {
@@ -216,6 +219,7 @@ impl App {
             selected_covenant: None,
             accounts: Vec::new(),
             account_list_index: 0,
+            role_focused: false,
             prover_key: None,
             action_menu_index: 0,
             input_mode: InputMode::Normal,
@@ -346,7 +350,7 @@ impl App {
             KeyCode::Char('d') => self.deploy_covenant(),
             KeyCode::Char('i') => self.start_import_covenant(),
             KeyCode::Char('x') => self.delete_covenant(),
-            KeyCode::Char('y') => self.copy_covenant_info(),
+            KeyCode::Char('y') => self.export_covenant_info(),
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.covenant_list_index > 0 {
                     self.covenant_list_index -= 1;
@@ -581,21 +585,36 @@ impl App {
 
     fn handle_account_key(&mut self, key: crossterm::event::KeyEvent) {
         match key.code {
-            KeyCode::Char('c') => self.create_account(),
+            KeyCode::Char('c') => {
+                self.role_focused = false;
+                self.create_account();
+            }
             KeyCode::Char('y') => {
-                if let Some((pk, _)) = self.accounts.get(self.account_list_index) {
+                if self.role_focused {
+                    if let Some(addr) = self.role_address() {
+                        let _ = cli_clipboard::set_contents(addr.clone());
+                        self.log(format!("Copied role address: {addr}"));
+                    }
+                } else if let Some((pk, _)) = self.accounts.get(self.account_list_index) {
                     let addr = self.pubkey_to_address(pk).unwrap_or_default();
                     let _ = cli_clipboard::set_contents(addr.clone());
                     self.log(format!("Copied address: {addr}"));
                 }
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                if self.account_list_index > 0 {
+                if self.role_focused {
+                    // Already at top, do nothing
+                } else if self.account_list_index == 0 {
+                    self.role_focused = true;
+                } else {
                     self.account_list_index -= 1;
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if !self.accounts.is_empty() && self.account_list_index < self.accounts.len() - 1 {
+                if self.role_focused {
+                    self.role_focused = false;
+                    self.account_list_index = 0;
+                } else if !self.accounts.is_empty() && self.account_list_index < self.accounts.len() - 1 {
                     self.account_list_index += 1;
                 }
             }
@@ -647,6 +666,7 @@ impl App {
             let covenant_id = self.covenants[i].0;
             self.accounts = self.db.list_accounts(covenant_id);
             self.account_list_index = 0;
+            self.role_focused = false;
         }
     }
 
@@ -902,15 +922,8 @@ impl App {
                 }
             }
             KeyCode::Enter => {
-                // Extract buffer contents before mutating self
-                let (buf_len, buf_clone, target_clone) = match &self.input_mode {
-                    InputMode::PromptText { buffer, target, .. } => {
-                        let t = match target {
-                            TextInputTarget::ImportCovenantId => None,
-                            TextInputTarget::ImportDeployTxId { covenant_id } => Some(*covenant_id),
-                        };
-                        (buffer.len(), buffer.clone(), t)
-                    }
+                let (buf_len, buf_clone) = match &self.input_mode {
+                    InputMode::PromptText { buffer, .. } => (buffer.len(), buffer.clone()),
                     _ => return,
                 };
 
@@ -923,22 +936,10 @@ impl App {
                     self.log("Invalid hex string".into());
                     return;
                 }
-                let hash = Hash::from_bytes(bytes);
-                match target_clone {
-                    None => {
-                        // Was ImportCovenantId -> advance to ImportDeployTxId
-                        self.input_mode = InputMode::PromptText {
-                            target: TextInputTarget::ImportDeployTxId { covenant_id: hash },
-                            buffer: String::new(),
-                            context: "Enter deploy tx ID (64 hex chars):".into(),
-                        };
-                    }
-                    Some(covenant_id) => {
-                        // Was ImportDeployTxId -> finish import
-                        self.input_mode = InputMode::Normal;
-                        self.finish_import_covenant(covenant_id, hash);
-                    }
-                }
+                let covenant_id = Hash::from_bytes(bytes);
+                self.input_mode = InputMode::Normal;
+                self.log("Scanning chain for deployment tx...".into());
+                self.pending_ops.push(PendingOp::ValidateImport { covenant_id, start_hash: self.pruning_point });
             }
             KeyCode::Esc => {
                 self.input_mode = InputMode::Normal;
@@ -1001,18 +1002,15 @@ impl App {
         }
     }
 
-    fn copy_covenant_info(&mut self) {
+    fn export_covenant_info(&mut self) {
         if self.covenants.is_empty() {
-            self.log("No covenants to copy".into());
+            self.log("No covenants to export".into());
             return;
         }
-        let (id, ref record) = self.covenants[self.covenant_list_index];
-        let mut info = format!("Covenant: {id}");
-        if let Some(tx_id) = record.deployment_tx_id {
-            info.push_str(&format!("\nDeploy TX: {tx_id}"));
-        }
-        let _ = cli_clipboard::set_contents(info);
-        self.log("Covenant ID + Deploy TX copied to clipboard".into());
+        let (id, _) = self.covenants[self.covenant_list_index];
+        let info = format!("{id}");
+        let _ = cli_clipboard::set_contents(info.clone());
+        self.log(format!("Exported covenant ID to clipboard: {info}"));
     }
 
     fn load_prover_key(&mut self, covenant_id: CovenantId) {
@@ -1036,6 +1034,20 @@ impl App {
         let (pk, _) = self.prover_key.as_ref()?;
         let addr = Address::new(self.network_prefix, Version::PubKey, &pk.as_bytes());
         Some(addr.to_string())
+    }
+
+    /// Get the active role address for the selected covenant.
+    /// Returns prover address for deployed/imported covenants, deployer address for undeployed.
+    pub fn role_address(&self) -> Option<String> {
+        let cov_idx = self.selected_covenant?;
+        let record = &self.covenants[cov_idx].1;
+        if record.deployment_tx_id.is_some() {
+            // Deployed or imported — use prover address
+            self.prover_address()
+        } else {
+            // Undeployed — use deployer address
+            self.deployer_address(record)
+        }
     }
 
     // ── Proving tab ──
@@ -1253,6 +1265,68 @@ impl App {
                         }
                     });
                 }
+                PendingOp::ValidateImport { covenant_id, start_hash } => {
+                    let node = self.node.clone();
+                    let bg_tx = self.bg_tx.clone();
+
+                    // Build the expected covenant SPK (initial deploy P2SH script)
+                    let prev_state_hash = empty_tree_root();
+                    let prev_seq_commitment = from_bytes(calc_accepted_id_merkle_root(Hash::default(), std::iter::empty()).as_bytes());
+                    let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
+                    let zk_tag = ZkTag::R0Succinct;
+                    let mut computed_len: i64 = 75;
+                    loop {
+                        let script = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, &zk_tag);
+                        let new_len = script.len() as i64;
+                        if new_len == computed_len {
+                            break;
+                        }
+                        computed_len = new_len;
+                    }
+                    let redeem_script = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, &zk_tag);
+                    let expected_spk = pay_to_script_hash_script(&redeem_script);
+
+                    tokio::spawn(async move {
+                        let mut cursor = start_hash;
+                        loop {
+                            let resp = match node.get_virtual_chain_v2(cursor, None).await {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    let _ = bg_tx.send(BgResult::ImportFailed { error: format!("Chain fetch error: {e}") });
+                                    return;
+                                }
+                            };
+
+                            for block in resp.chain_block_accepted_transactions.iter() {
+                                for rpc_tx in &block.accepted_transactions {
+                                    // Check outputs for matching SPK
+                                    for out in &rpc_tx.outputs {
+                                        if let Some(ref spk) = out.script_public_key {
+                                            if spk == &expected_spk {
+                                                // Found the deploy tx — get its ID from verbose_data
+                                                let deploy_tx_id = rpc_tx.verbose_data.as_ref().and_then(|v| v.transaction_id);
+                                                if let Some(tx_id) = deploy_tx_id {
+                                                    let _ = bg_tx.send(BgResult::ImportValidated { covenant_id, deploy_tx_id: tx_id });
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            match resp.added_chain_block_hashes.last() {
+                                Some(&last) if last != cursor => cursor = last,
+                                _ => {
+                                    let _ = bg_tx.send(BgResult::ImportFailed {
+                                        error: "Deployment tx not found on chain — import cancelled".into(),
+                                    });
+                                    return;
+                                }
+                            }
+                        }
+                    });
+                }
             }
         }
     }
@@ -1447,6 +1521,13 @@ impl App {
                 let result_msg = format!("Proof failed: {error}");
                 self.log(result_msg.clone());
                 self.last_proof_result = Some(result_msg);
+            }
+            BgResult::ImportValidated { covenant_id, deploy_tx_id } => {
+                self.log(format!("Found deployment tx {deploy_tx_id} on chain"));
+                self.finish_import_covenant(covenant_id, deploy_tx_id);
+            }
+            BgResult::ImportFailed { error } => {
+                self.log(error);
             }
         }
     }
