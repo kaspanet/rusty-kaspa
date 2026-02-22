@@ -99,6 +99,9 @@ impl TcpServer {
                     // this is a static list of allowed addresses, and directions, from which we will attempt reconnections.
                     let allow_list = self.directory.allowlist().load_full();
                     for (a, direction) in allow_list.iter() {
+                        if direction == &PeerDirection::Inbound {
+                            continue; // we only attempt reconnections to peers we are supposed to send to.
+                        }
                         if !peer_info_list.iter().any(|p| &p.address().ip() == a) {
                             debug!("Attempting reconnection to peer {}", a);
                             match tcp_connect(SocketAddr::from((*a, DEFAULT_TCP_PORT)), self.authenticator.clone(), *direction, 0, self.hub_event_sender.clone(), self.directory.allowlist()).await {

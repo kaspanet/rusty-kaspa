@@ -182,7 +182,7 @@ impl FastTrustedRelay {
             }
             debug!("UDP runtime not active, waiting for it to become active...");
             // wait until the udp runtime becomes active again.
-            self.receive_block_waker.notified().await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
     }
 
