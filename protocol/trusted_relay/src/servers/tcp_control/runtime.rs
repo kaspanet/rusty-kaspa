@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, atomic::AtomicBool};
 
-use kaspa_core::warn;
+use kaspa_core::{info, warn};
 use kaspa_utils::triggers::SingleTrigger;
 use tokio::{net::TcpListener, sync::mpsc};
 
@@ -28,7 +28,8 @@ impl ControlRuntime {
         is_ready: Arc<AtomicBool>, // this is the same bool that defines if udp runtime is on / off.
     ) -> Self {
         let (hub_sender, hub_receiver) = mpsc::unbounded_channel::<HubEvent>();
-        let tcp_listener = TcpListener::bind(listen_address).await.unwrap();
+        info!("Starting TCP control runtime on {}", listen_address);
+        let tcp_listener = TcpListener::bind(format!("0.0.0.0:{}", listen_address.port())).await.unwrap();
         let shutdown = SingleTrigger::new();
         let tcp_server = TcpServer::new(tcp_listener, authenticator.clone(), hub_sender.clone(), shutdown.listener.clone(), directory.clone());
         let hub = Hub::new(directory.clone(), is_ready.clone(), hub_sender.clone(), hub_receiver);
