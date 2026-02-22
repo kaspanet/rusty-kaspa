@@ -2,7 +2,7 @@ use std::{
     collections::HashSet, net::SocketAddr, ops::Deref, sync::{Arc, atomic::AtomicBool}, time::Duration
 };
 
-use kaspa_core::{info, warn};
+use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
 use kaspa_utils::networking::ContextualNetAddress;
 use tokio::sync::Mutex as TokioMutex;
@@ -149,10 +149,12 @@ impl FastTrustedRelay {
             if let Some(udp_runtime) = &self.udp_runtime {
                 let block_receiver_arc = udp_runtime.block_receive();
                 let mut block_receiver = block_receiver_arc.lock().await;
+                debug!("Waiting to receive block from UDP runtime...");
                 if let Some(msg) = block_receiver.recv().await {
                     return msg.into_parts();
                 }
             }
+            debug!("UDP runtime not active, waiting for it to become active...");
             // wait until the udp runtime becomes active again.
             self.receive_block_waker.notified().await;
         }
