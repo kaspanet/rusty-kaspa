@@ -396,7 +396,9 @@ impl FlowContext {
                 self.clone(),
                 ftr,
             ));
-            flow.start().await.unwrap();
+            tokio::spawn(async move {
+                flow.start().await.unwrap();
+            });
         }
 
     }
