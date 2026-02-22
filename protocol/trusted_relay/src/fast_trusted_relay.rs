@@ -75,6 +75,7 @@ impl FastTrustedRelay {
     }
 
     pub async fn start_control_runtime(&mut self) {
+        info!("Starting TCP control runtime...");
         let tcp_runtime = self.tcp_runtime.clone();
         tokio::spawn(async move {
             let mut rt = tcp_runtime.lock().await;
@@ -94,6 +95,7 @@ impl FastTrustedRelay {
             // signal to peers that the relay is not ready to receive blocks.
             self.tcp_runtime.lock().await.signal_not_ready().await;
         };
+        info!("fast trusted relay UDP transport stopped");
     }
 
     /// start or restart the UDP relay; takes `&mut self` to avoid moving the
@@ -123,6 +125,7 @@ impl FastTrustedRelay {
     /// shut down both runtimes; does not consume the relay in order to allow
     /// callers (including `Drop`) to borrow it.
     pub fn shutdown(&mut self) {
+        debug!("shutting down fast trusted relay...");
         let mut self_clone = self.clone();
             tokio::spawn(async move {
             self_clone.stop_fast_relay().await;
@@ -135,6 +138,7 @@ impl FastTrustedRelay {
     }
 
     pub async fn broadcast_block(&self, hash: Hash, block: Arc<FtrBlock>) -> Result<(), String> {
+        debug!("broadcasting block from fast trusted relay...");
         if let Some(udp_runtime) = &self.udp_runtime {
             udp_runtime.submit_block_for_broadcast(hash, block)
         } else {
@@ -145,6 +149,7 @@ impl FastTrustedRelay {
     }
 
     pub async fn recv_block(&self) -> (Hash, FtrBlock) {
+        debug!("entering receive block loop from fast trusted relay...");
         loop {
             if let Some(udp_runtime) = &self.udp_runtime {
                 let block_receiver_arc = udp_runtime.block_receive();
@@ -161,6 +166,7 @@ impl FastTrustedRelay {
     }
 
     pub fn is_udp_active(&self) -> bool {
+        debug!("checking if UDP runtime is active: {}", self.udp_active.load(std::sync::atomic::Ordering::SeqCst));
         self.udp_runtime.as_ref().is_some_and(|udp_runtime| udp_runtime.is_active())
     }
 }

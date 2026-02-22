@@ -718,6 +718,8 @@ Do you confirm? (y/n)";
     // construct fast-trusted-relay if requested by user
     let fast_trusted_relay = build_fast_trusted_relay(&args);
 
+    info!("fast trusted relay: {}", if fast_trusted_relay.is_some() { "enabled" } else { "disabled" });
+    
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
