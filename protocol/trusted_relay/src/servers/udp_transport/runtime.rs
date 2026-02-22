@@ -4,6 +4,7 @@ use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 use tokio::sync::Mutex as TokioMutex;
 
 use crossbeam_channel::bounded;
@@ -46,7 +47,7 @@ impl TransportRuntimeHandles {
         for h in self.broadcast_handles.drain(..) {
             info!("Stopping broadcast thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
-                }
+        }
         for h in self.verifier_handles.drain(..) {
             info!("Stopping verifier thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
@@ -99,28 +100,19 @@ impl TransportRuntimeInner {
             forwarder_handles: Vec::with_capacity(params.num_of_forwarders),
         }));
 
-        //1) create and bind udp socket.
-        let socket = UdpSocket::bind(SocketAddr::new("0.0.0.0".parse().unwrap(), DEFAULT_UDP_PORT)).expect("Failed to bind UDP socket");
+        // Create a UDP datagram socket using socket2 for advanced options
+        use socket2::{Domain, Protocol, Socket, Type};
+        let udp_socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).expect("Failed to create UDP socket");
+        // Optionally set socket options here (reuse, buffer sizes, etc.)
+        // Example: udp_socket.set_reuse_address(true).expect("set_reuse_address failed");
+        // Bind to the desired address
+        udp_socket.set_nonblocking(true).unwrap();
+        udp_socket.set_reuse_address(true).unwrap();
+        udp_socket.set_reuse_port(true).unwrap();
+        udp_socket.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
+        udp_socket.bind(&SocketAddr::new("0.0.0.0".parse().unwrap(), DEFAULT_UDP_PORT).into()).expect("Failed to bind UDP socket");
+        let socket = UdpSocket::from(udp_socket);
         let bound_addr = socket.local_addr().expect("Failed to get local address from UDP socket");
-        // This allows us to check for shutdowns occasionally, even if the socket is blocked on recv.
-        socket.set_read_timeout(Some(std::time::Duration::from_millis(200))).expect("Failed to set UDP socket read timeout");
-        // This should only be set to true if we are using tokio or want a "spinning thread" style implementation.
-        socket.set_nonblocking(false).expect("Failed to set UDP socket to non-blocking mode");
-        // Some options are only available with the lower level socket2 crate.
-        // Increase send / receive kernel buffer sizes for the port, else we will drop packets on insufficient default buffer sizes.
-        // Note: it is also important to also set max buffer sizes at the OS level (e.g. /etc/sysctl.conf) to ensure they can actually be set to the desired size.
-        socket2::SockRef::from(&socket)
-            .set_send_buffer_size(1024 * 1024 * 16)
-            .expect("Failed to set SO_SNDBUF on UDP socket");
-        socket2::SockRef::from(&socket)
-            .set_recv_buffer_size(1024 * 1024 * 16 * 2)
-            .expect("Failed to set SO_RCVBUF on UDP socket");
-        socket2::SockRef::from(&socket)
-            .set_reuse_address(true)
-            .expect("Failed to set UDP socket to blocking mode with socket2");
-        socket2::SockRef::from(&socket)
-            .set_reuse_port(true)
-            .expect("Failed to set UDP socket to blocking mode with socket2");
 
         //2)  Pre-generate channels
 
@@ -287,7 +279,7 @@ impl TransportRuntime {
             authenticator: authenticator.clone(),
             shutdown: shutdown.clone(),
             block_emit_sender: Arc::new(block_emit_sender),
-            broadcast_receiver: broadcast_receiver,
+            broadcast_receiver,
             inner: None,
             block_emit_receiver: Arc::new(TokioMutex::new(block_emit_receiver)),
             broadcast_sender: Some(broadcast_sender),
