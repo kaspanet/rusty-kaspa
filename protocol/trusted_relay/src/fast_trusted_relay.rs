@@ -77,11 +77,9 @@ impl FastTrustedRelay {
     pub async fn start_control_runtime(&mut self) {
         info!("Starting TCP control runtime...");
         let tcp_runtime = self.tcp_runtime.clone();
-        tokio::spawn(async move {
-            let mut rt = tcp_runtime.lock().await;
+        let mut rt = tcp_runtime.lock().await;
             rt.run().await;
-        });
-    }
+        }
 
     /// stop the UDP relay without consuming the struct so the caller can still
     /// use the relay instance afterwards.
