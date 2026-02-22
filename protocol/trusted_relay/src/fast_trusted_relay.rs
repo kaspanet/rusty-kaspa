@@ -27,7 +27,7 @@ pub const DEFAULT_TCP_PORT: u16 = 16113;
 
 #[derive(Clone)]
 pub struct FastTrustedRelay {
-    udp_runtime: Option<Arc<TransportRuntime>>,
+    udp_runtime: Arc<TokioMutex<Option<TransportRuntime>>>,
     tcp_runtime: Arc<TokioMutex<ControlRuntime>>,
     authenticator: Arc<TokenAuthenticator>,
     directory: Arc<PeerDirectory>,
@@ -77,7 +77,7 @@ impl FastTrustedRelay {
         Self {
             listen_address,
             tcp_runtime: Arc::new(TokioMutex::new(tcp_runtime)),
-            udp_runtime: None,
+            udp_runtime: Arc::new(TokioMutex::new(None)),
             authenticator,
             directory,
             params,
@@ -99,38 +99,23 @@ impl FastTrustedRelay {
     /// stop the UDP relay without consuming the struct so the caller can still
     /// use the relay instance afterwards.
     pub async fn stop_fast_relay(&mut self) {
-        if self.udp_runtime.is_none() || !self.toggle_udp_active(false) {
-            debug!("trying to stop fast trusted relay although it is not active");
-            return;
-        }
-
-        // drops the runtime, which frees the resources
-        self.udp_runtime.take();
-        // signal to peers that the relay is not ready to receive blocks.
-        self.tcp_runtime.lock().await.signal_not_ready().await;
-        info!("fast trusted relay UDP transport stopped");
+        self.udp_runtime.lock().await.take();
     }
 
     /// start or restart the UDP relay; takes `&mut self` to avoid moving the
     /// entire relay instance out of the caller.
     pub async fn start_fast_relay(&mut self) {
-        if self.udp_runtime.is_some() || !self.toggle_udp_active(true) {
-            debug!("trying to start fast trusted relay although it is already active");
-            return;
-        }
-        let mut udp_runtime = TransportRuntime::new(
+        let mut guard = self.udp_runtime.lock().await;
+        let udp_runtime = guard.get_or_insert(TransportRuntime::new(
             self.params,
             self.listen_address,
             self.fragmentation_config,
             self.directory.clone(),
             self.authenticator.clone(),
             self.udp_active.clone(),
-        );
+        ));
         udp_runtime.start();
-        self.udp_runtime = Some(Arc::new(udp_runtime));
-        // signal to peers that the relay is ready to receive blocks.
         self.tcp_runtime.lock().await.signal_ready().await;
-        self.receive_block_waker.notify_waiters();
         info!("fast trusted relay UDP transport started");
     }
 
@@ -151,7 +136,7 @@ impl FastTrustedRelay {
 
     pub async fn broadcast_block(&self, hash: Hash, block: Arc<FtrBlock>) -> Result<(), String> {
         debug!("broadcasting block from fast trusted relay...");
-        if let Some(udp_runtime) = &self.udp_runtime {
+        if let Some(udp_runtime) = &self.udp_runtime.lock().await.as_ref() {
             udp_runtime.submit_block_for_broadcast(hash, block)
         } else {
             // Relay is inactive; ignore the broadcast but return Ok to avoid
@@ -163,7 +148,7 @@ impl FastTrustedRelay {
     pub async fn recv_block(&self) -> (Hash, FtrBlock) {
         debug!("entering receive block loop from fast trusted relay...");
         loop {
-            if let Some(udp_runtime) = &self.udp_runtime {
+            if let Some(udp_runtime) = &self.udp_runtime.lock().await.as_ref() {
                 let block_receiver_arc = udp_runtime.block_receive();
                 let mut block_receiver = block_receiver_arc.lock().await;
                 debug!("Waiting to receive block from UDP runtime...");
@@ -205,7 +190,7 @@ impl Drop for FastTrustedRelay {
     fn drop(&mut self) {
         // tcp_runtime is always present; udp_runtime is optional
         let tcp_refs = Arc::strong_count(&self.tcp_runtime);
-        let udp_refs = self.udp_runtime.as_ref().map_or(0, |rt| Arc::strong_count(rt));
+        let udp_refs = Arc::strong_count(&self.udp_runtime);
 
         // when both counts are 1 (i.e. only `self` holds the reference) we are
         // the last handle.
