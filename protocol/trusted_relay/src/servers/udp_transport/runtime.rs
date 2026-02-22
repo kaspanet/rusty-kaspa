@@ -115,6 +115,12 @@ impl TransportRuntimeInner {
         socket2::SockRef::from(&socket)
             .set_recv_buffer_size(1024 * 1024 * 16 * 2)
             .expect("Failed to set SO_RCVBUF on UDP socket");
+        socket2::SockRef::from(&socket)
+            .set_reuse_address(true)
+            .expect("Failed to set UDP socket to blocking mode with socket2");
+        socket2::SockRef::from(&socket)
+            .set_reuse_port(true)
+            .expect("Failed to set UDP socket to blocking mode with socket2");
 
         //2)  Pre-generate channels
 
