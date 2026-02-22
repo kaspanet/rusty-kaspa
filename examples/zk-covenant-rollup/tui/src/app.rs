@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use kaspa_addresses::{Address, Prefix, Version};
@@ -239,6 +239,9 @@ pub struct App {
 
     /// Persistent clipboard instance (Linux requires the owner to stay alive).
     clipboard: Option<arboard::Clipboard>,
+
+    /// Temporary flash message shown in the status bar (e.g. "Copied!").
+    pub status_flash: Option<(String, Instant)>,
 }
 
 /// Deferred async operations triggered from sync key handlers.
@@ -304,6 +307,7 @@ impl App {
             bg_rx,
             chain_sync_active: false,
             clipboard: None,
+            status_flash: None,
         }
     }
 
@@ -1960,8 +1964,12 @@ impl App {
             }
         }
         if let Some(cb) = &mut self.clipboard {
-            if let Err(e) = cb.set_text(content) {
-                self.log(format!("Clipboard error: {e}"));
+            match cb.set_text(content) {
+                Ok(()) => {
+                    let preview = if content.len() > 20 { format!("{}...", &content[..20]) } else { content.to_string() };
+                    self.status_flash = Some((format!("Copied: {preview}"), Instant::now()));
+                }
+                Err(e) => self.log(format!("Clipboard error: {e}")),
             }
         }
     }
@@ -2210,6 +2218,32 @@ mod tests {
         app.active_tab = Tab::TxHistory;
         let output = render_to_string(&app, 120, 30);
         assert!(output.contains("No transactions yet"), "should show empty tx history");
+    }
+
+    #[test]
+    fn test_ui_status_flash_on_copy() {
+        let mut app = test_app();
+        app.connected = true;
+        app.daa_score = 100;
+        // Simulate a successful copy flash
+        app.status_flash = Some(("Copied: kaspatest:abc123...".into(), std::time::Instant::now()));
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Copied: kaspatest:abc123"), "flash message should appear in status bar");
+        // The normal status bar content should NOT appear while flash is active
+        assert!(!output.contains("Ctrl+Q:quit"), "normal status bar hidden during flash");
+    }
+
+    #[test]
+    fn test_ui_status_flash_expires() {
+        let mut app = test_app();
+        app.connected = true;
+        app.daa_score = 100;
+        // Set a flash that expired 3 seconds ago
+        app.status_flash = Some(("Copied: old".into(), std::time::Instant::now() - std::time::Duration::from_secs(3)));
+        let output = render_to_string(&app, 120, 30);
+        // Normal status bar should be back
+        assert!(output.contains("Ctrl+Q:quit"), "normal status bar should return after flash expires");
+        assert!(!output.contains("Copied: old"), "expired flash should not appear");
     }
 
     #[test]

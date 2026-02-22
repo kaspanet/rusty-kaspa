@@ -41,22 +41,29 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 
     // Status bar
-    let cov_label = app
-        .selected_covenant
-        .and_then(|i| app.covenants.get(i))
-        .map(|(id, _)| {
-            let s = id.to_string();
-            s[..8.min(s.len())].to_string()
-        })
-        .unwrap_or_else(|| "none".into());
+    let flash_active = app.status_flash.as_ref().map(|(_, t)| t.elapsed() < std::time::Duration::from_secs(2)).unwrap_or(false);
 
-    let status = format!(
-        " {} | DAA: {} | Covenant: {} | Ctrl+Q:quit",
-        if app.connected { "Connected" } else { "Disconnected" },
-        app.daa_score,
-        cov_label,
-    );
-    let status_bar = Line::from(status).style(Style::default().bg(Color::DarkGray).fg(Color::White));
+    let status_bar = if flash_active {
+        let msg = &app.status_flash.as_ref().unwrap().0;
+        Line::from(format!(" {msg}")).style(Style::default().bg(Color::Green).fg(Color::Black))
+    } else {
+        let cov_label = app
+            .selected_covenant
+            .and_then(|i| app.covenants.get(i))
+            .map(|(id, _)| {
+                let s = id.to_string();
+                s[..8.min(s.len())].to_string()
+            })
+            .unwrap_or_else(|| "none".into());
+
+        let status = format!(
+            " {} | DAA: {} | Covenant: {} | Ctrl+Q:quit",
+            if app.connected { "Connected" } else { "Disconnected" },
+            app.daa_score,
+            cov_label,
+        );
+        Line::from(status).style(Style::default().bg(Color::DarkGray).fg(Color::White))
+    };
     frame.render_widget(status_bar, chunks[2]);
 }
 
