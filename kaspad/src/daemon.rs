@@ -279,7 +279,6 @@ pub fn build_fast_trusted_relay(args: &Args) -> Option<FastTrustedRelay> {
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("failed to create temporary tokio runtime");
 
     let mut relay = rt.block_on(FastTrustedRelay::new(transport, frag_cfg, listen_address, secret, incoming, outgoing));
-    rt.block_on(relay.start_control_runtime());
     Some(relay)
 }
 
