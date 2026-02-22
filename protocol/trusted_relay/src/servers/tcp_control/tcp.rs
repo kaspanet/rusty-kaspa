@@ -20,13 +20,13 @@ use crate::servers::tcp_control::{Peer, PeerDirection};
 /// Handshake wire format (kept simple):
 ///
 /// ```text
-/// Client → Server:  [nonce: 32 bytes] [hmac(secret, nonce‖direction‖udp_port): 32 bytes] [direction: 1 byte] [udp_port: 2 bytes LE]
+/// Client → Server:  [hmac(secret, nonce‖direction‖udp_port): 32 bytes] [nonce:32 bytes] [direction: 1 byte] [udp_port: 2 bytes LE]
 /// Server → Client:  [0x01 = OK | 0x00 = REJECT]
 /// ```
 ///
-/// The nonce is sent first so that the server can verify freshness before
-/// processing the rest of the message.  `direction` is encoded from the
-/// client’s perspective: 0x01 = Inbound (client receives shards),
+/// The token is transmitted first so the server can immediately start
+/// validating the authenticity of the message.  `direction` is encoded from
+/// the client’s perspective: 0x01 = Inbound (client receives shards),
 /// 0x02 = Outbound (client sends shards), 0x03 = Both.
 pub struct TcpServer {
     listen_address: SocketAddr,
@@ -203,15 +203,14 @@ pub async fn tcp_connect(
         PeerDirection::Both => 0x03,
     };
 
-    // construct message according to new layout: nonce first, then token
+    // original layout: token first, then nonce
     let mut msg = [0u8; HANDSHAKE_MSG_SIZE];
-    msg[0..32].copy_from_slice(nonce.as_ref());
+    msg[32..64].copy_from_slice(nonce.as_ref());
     msg[64] = direction_byte;
     //msg[65..67].copy_from_slice(&local_udp_port.to_le_bytes());
-    // token is computed over nonce and the data that follows it (direction
-    // + udp_port)
+    // token computed over nonce and direction+port
     let token = authenticator.generate_token(&nonce, &msg[64..]);
-    msg[32..64].copy_from_slice(&token.as_bytes());
+    msg[0..32].copy_from_slice(&token.as_bytes());
 
     // perform the write with an explicit result type so the compiler
     // can infer the intermediate `Result` produced by `timeout`.
@@ -353,17 +352,16 @@ mod tests {
             handshake_accept(stream, addr, Arc::new(TokenAuthenticator::new(server_secret)), hub_tx, server_allow_list).await
         });
 
-        // craft a valid handshake, then tamper with the direction byte *after* the
-        // token has been generated.  The server should reject this as an
-        // authentication failure.
+        // craft a valid handshake in the original token-first layout, then
+        // tamper with the direction byte after the token has been calculated.
         let mut client = TcpStream::connect(server_addr).await.unwrap();
         let mut nonce = [0u8; 32];
         OsRng.fill_bytes(&mut nonce);
         let mut msg = [0u8; HANDSHAKE_MSG_SIZE];
-        msg[0..32].copy_from_slice(&nonce);
+        msg[32..64].copy_from_slice(&nonce);
         msg[64] = 0x01; // inbound
         let token = TokenAuthenticator::new(secret.clone()).generate_token(&nonce, &msg[64..]);
-        msg[32..64].copy_from_slice(&token.as_bytes());
+        msg[0..32].copy_from_slice(&token.as_bytes());
         // tamper direction
         msg[64] = 0x02;
         client.write_all(&msg).await.unwrap();
