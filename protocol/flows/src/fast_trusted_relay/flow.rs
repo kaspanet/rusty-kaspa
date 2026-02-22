@@ -17,7 +17,7 @@ use kaspa_p2p_lib::{
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
 use std::{collections::VecDeque, sync::Arc};
-use kaspa_trusted_relay::{FastTrustedRelay, model::ftr_block::FtrBlock};
+use kaspa_trusted_relay::{FastTrustedRelay, fast_trusted_relay, model::ftr_block::FtrBlock};
 
 
 // TODO: implement more intricate orphan handling.
@@ -48,7 +48,10 @@ impl HandleFastTrustedRelayFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         info!("{} flow started", self.name());
-        self.fast_trusted_relay.start_control_runtime().await;
+        let mut fast_trusted_relay = self.fast_trusted_relay.clone();
+        tokio::spawn(async move {
+            fast_trusted_relay.start_control_runtime().await;
+        });
         loop {
             let session = self.ctx.consensus().unguarded_session();
             let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
