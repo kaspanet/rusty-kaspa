@@ -134,15 +134,15 @@ async fn handshake_accept(
         .map_err(|_| RelayError::PeerConnection(format!("handshake read timed out for {}", addr)))?
         .map_err(|e| RelayError::PeerConnection(format!("handshake read from {}: {}", addr, e)))?;
 
-    let nonce = &buf[0..32];
-    let client_hmac = &buf[32..64];
+    let nonce =&buf[32..64];
+    let client_hmac = &buf[0..32];
     let direction_byte = buf[64];
     let udp_port = u16::from_le_bytes([buf[65], buf[66]]);
 
     // Validate HMAC(secret, nonce).
     let auth = TokenAuthenticator::new(secret.to_vec());
     let nonce_array: [u8; 32] = nonce.try_into().map_err(|_| RelayError::AuthenticationFailed("invalid nonce size".into()))?;
-    let expected = auth.generate_token(&nonce_array, nonce);
+    let expected = auth.generate_token(&nonce_array, buf[64..].as_ref());
     if expected.as_bytes() != client_hmac {
         let _ = stream.write_all(&[0x00]).await;
         return Err(RelayError::AuthenticationFailed(format!("HMAC mismatch from {}", addr)));
@@ -188,9 +188,8 @@ pub async fn tcp_connect(
     // Generate cryptographically secure nonce + HMAC.
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);
-    let token = authenticator.generate_token(&nonce, &nonce);
 
-    // Direction byte: from *our* perspective.
+        // Direction byte: from *our* perspective.
     let direction_byte = match our_direction {
         PeerDirection::Inbound => 0x01,
         PeerDirection::Outbound => 0x02,
@@ -198,10 +197,12 @@ pub async fn tcp_connect(
     };
 
     let mut msg = [0u8; HANDSHAKE_MSG_SIZE];
-    msg[0..32].copy_from_slice(&nonce);
-    msg[32..64].copy_from_slice(token.as_bytes());
+    msg[32..64].copy_from_slice(nonce.as_ref());
     msg[64] = direction_byte;
     msg[65..67].copy_from_slice(&local_udp_port.to_le_bytes());
+    let token = authenticator.generate_token(&nonce, &msg[64..]);
+    msg[0..32].copy_from_slice(&token.as_bytes());
+
 
     // perform the write with an explicit result type so the compiler
     // can infer the intermediate `Result` produced by `timeout`.

@@ -84,10 +84,10 @@ impl FastTrustedRelay {
     /// stop the UDP relay without consuming the struct so the caller can still
     /// use the relay instance afterwards.
     pub async fn stop_fast_relay(&mut self) {
-        if !self.is_udp_active() {
-            warn!("trying to stop fast trusted relay although it is not active");
+        if !self.toggle_udp_active(false) {
+            debug!("trying to stop fast trusted relay although it is not active");
+            return;
         } else {
-            self.udp_active.store(false, std::sync::atomic::Ordering::SeqCst);
             // drops the runtime, which frees the resources
             self.udp_runtime.take();
             // signal to peers that the relay is not ready to receive blocks.
@@ -99,11 +99,10 @@ impl FastTrustedRelay {
     /// start or restart the UDP relay; takes `&mut self` to avoid moving the
     /// entire relay instance out of the caller.
     pub async fn start_fast_relay(&mut self) {
-        if self.is_udp_active() {
-            warn!("trying to start fast trusted relay although it is already active");
+        if self.toggle_udp_active(true) {
+            debug!("trying to start fast trusted relay although it is already active");
             return;
         }
-        self.udp_active.store(true, std::sync::atomic::Ordering::SeqCst);
         let mut udp_runtime = TransportRuntime::new(
             self.params,
             self.listen_address,
@@ -163,9 +162,14 @@ impl FastTrustedRelay {
         }
     }
 
-    pub fn is_udp_active(&self) -> bool {
+    pub fn toggle_udp_active(&self, toggle: bool) -> bool {
         debug!("checking if UDP runtime is active: {}", self.udp_active.load(std::sync::atomic::Ordering::SeqCst));
-        self.udp_runtime.as_ref().is_some_and(|udp_runtime| udp_runtime.is_active())
+        let old = self.udp_active.swap(toggle, std::sync::atomic::Ordering::SeqCst);
+        old
+    }
+
+    pub fn is_udp_active(&self) -> bool {
+        self.udp_active.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 

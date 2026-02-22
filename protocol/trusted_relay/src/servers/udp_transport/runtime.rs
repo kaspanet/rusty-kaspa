@@ -69,7 +69,6 @@ impl TransportRuntimeHandles {
 }
 struct TransportRuntimeInner {
     handles: Arc<Mutex<TransportRuntimeHandles>>,
-    shut_down: Arc<AtomicBool>,
     bound_addr: SocketAddr,
 }
 
@@ -77,12 +76,10 @@ impl TransportRuntimeInner {
     /// Spawn a broadcast worker and record its handle.
     fn shutdown(&self) {
         let mut handles = self.handles.lock().unwrap();
-        self.shut_down.store(true, std::sync::atomic::Ordering::SeqCst);
         handles.shutdown();
     }
 
     fn start(
-        listen_address: SocketAddr,
         params: TransportParams,
         config: FragmentationConfig,
         directory: Arc<PeerDirectory>,
@@ -238,7 +235,7 @@ impl TransportRuntimeInner {
             ));
         }
 
-        TransportRuntimeInner { handles, shut_down: shutdown, bound_addr }
+        TransportRuntimeInner { handles, bound_addr }
     }
 }
 
@@ -292,7 +289,6 @@ impl TransportRuntime {
             return;
         }
         self.inner = Some(Arc::new(TransportRuntimeInner::start(
-            self.listen_addr,
             self.params.clone(),
             self.config.clone(),
             self.directory.clone(),
