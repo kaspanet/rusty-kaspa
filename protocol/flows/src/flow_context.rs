@@ -396,7 +396,7 @@ impl FlowContext {
         self.fast_trusted_relay.as_ref()
     }
 
-    pub async fn register_fast_trusted_relay_flow(&mut self) {
+    pub async fn register_fast_trusted_relay_flow(&self) {
         let mut flow = Box::new(HandleFastTrustedRelayFlow::new(
             self.clone(),
             self.fast_trusted_relay.as_ref().unwrap().clone(),

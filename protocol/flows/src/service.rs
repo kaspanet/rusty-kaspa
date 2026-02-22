@@ -10,7 +10,7 @@ use kaspa_p2p_lib::Adaptor;
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
-use crate::flow_context::FlowContext;
+use crate::flow_context::{self, FlowContext};
 
 const P2P_CORE_SERVICE: &str = "p2p-service";
 
@@ -82,9 +82,15 @@ impl AsyncService for P2pService {
 
         self.flow_context.set_connection_manager(connection_manager.clone());
         self.flow_context.start_async_services();
+        let mut flow_context = self.flow_context.clone();
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
+            if flow_context.fast_trusted_relay().is_some() {
+                flow_context.register_fast_trusted_relay_flow().await;
+            } else {
+                trace!("{} is running without fast trusted relay support", P2P_CORE_SERVICE);
+            }
             for peer_address in self.connect_peers.iter().cloned().chain(self.add_peers.iter().cloned()) {
                 connection_manager.add_connection_request(peer_address.into(), true).await;
             }

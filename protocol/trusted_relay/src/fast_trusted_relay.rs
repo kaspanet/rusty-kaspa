@@ -2,7 +2,7 @@ use std::{
     collections::HashSet, net::SocketAddr, ops::Deref, sync::{Arc, atomic::AtomicBool}, time::Duration
 };
 
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, info, task::service::AsyncService, warn};
 use kaspa_hashes::Hash;
 use kaspa_utils::networking::ContextualNetAddress;
 use tokio::sync::Mutex as TokioMutex;
