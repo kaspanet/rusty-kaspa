@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::{collections::HashSet, sync::Arc};
 
 use crate::servers::tcp_control::PeerDirection;
 use arc_swap::ArcSwap;
 use log::trace;
 
-pub type Allowlist = Arc<ArcSwap<HashMap<SocketAddr, PeerDirection>>>;
+pub type Allowlist = Arc<ArcSwap<HashMap<IpAddr, PeerDirection>>>;
 pub type PeerInfoList = Arc<ArcSwap<Vec<PeerInfo>>>;
 
 // ============================================================================
@@ -96,7 +96,7 @@ pub struct PeerDirectory {
 
 impl PeerDirectory {
     /// Create an empty directory.
-    pub fn new(allow_list: HashMap<SocketAddr, PeerDirection>) -> Self {
+    pub fn new(allow_list: HashMap<IpAddr, PeerDirection>) -> Self {
         Self { peer_infos: Arc::new(ArcSwap::from_pointee(Vec::new())), allowlist: Arc::new(ArcSwap::from_pointee(allow_list)) }
     }
 
@@ -122,7 +122,7 @@ impl PeerDirectory {
         self.peer_infos.store(Arc::new(new_vec));
         // Also update the allowlist so the verifier worker accepts UDP packets from this peer.
         let mut new_allowlist = (*old_allowlist).clone();
-        new_allowlist.insert(peer_addr, peer.direction());
+        new_allowlist.insert(peer_addr.ip(), peer.direction());
         self.allowlist.store(Arc::new(new_allowlist));
         trace!("PeerDirectory: inserted peer, total={}", len);
     }

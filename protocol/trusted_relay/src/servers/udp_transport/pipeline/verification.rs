@@ -330,7 +330,7 @@ fn is_authenticated(packet: &[u8], authenticator: &TokenAuthenticator) -> bool {
 
 #[inline(always)]
 fn is_from_allowlist(src: &SocketAddr, allowlist: &Allowlist) -> bool {
-    allowlist.load().contains_key(src)
+    allowlist.load().contains_key(&src.ip())
 }
 
 #[inline(always)]

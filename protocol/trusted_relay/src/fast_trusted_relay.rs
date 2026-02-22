@@ -55,13 +55,13 @@ impl FastTrustedRelay {
 
         for peer in incoming_peers {
             if outgoing_peers.contains(&peer) {
-                allowlist.insert((peer, PeerDirection::Both));
+                allowlist.insert((SocketAddr::from((peer)).ip(), PeerDirection::Both));
             } else {
-                allowlist.insert((peer, PeerDirection::Inbound));
+                allowlist.insert((SocketAddr::from((peer)).ip(), PeerDirection::Inbound));
             }
         }
         for peer in outgoing_peers {
-            allowlist.insert((peer, PeerDirection::Outbound));
+            allowlist.insert((SocketAddr::from((peer)).ip(), PeerDirection::Outbound));
         }
 
 

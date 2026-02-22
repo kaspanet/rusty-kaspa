@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use tokio::time::{Duration, timeout};
 
 use crate::error::{RelayError, RelayResult};
+use crate::fast_trusted_relay::DEFAULT_TCP_PORT;
 use crate::servers::auth::{self, TokenAuthenticator};
 use crate::servers::peer_directory::{Allowlist, PeerDirectory};
 use crate::servers::tcp_control::HubEvent;
@@ -96,9 +97,9 @@ impl TcpServer {
                     // this is a static list of allowed addresses, and directions, from which we will attempt reconnections.
                     let allow_list = self.directory.allowlist().load_full();
                     for (a, direction) in allow_list.iter() {
-                        if !peer_info_list.iter().any(|p| &p.address() == a) {
+                        if !peer_info_list.iter().any(|p| &p.address().ip() == a) {
                             debug!("Attempting reconnection to peer {}", a);
-                            match tcp_connect(*a, self.authenticator.clone(), *direction, 0, self.hub_event_sender.clone(), self.directory.allowlist()).await {
+                            match tcp_connect(SocketAddr::from((*a, DEFAULT_TCP_PORT)), self.authenticator.clone(), *direction, 0, self.hub_event_sender.clone(), self.directory.allowlist()).await {
                                 Ok(_) => info!("Fast Trusted Relay Reconnection to peer {} succeeded", a),
                                 Err(e) => info!("Fast Trusted Relay Reconnection to peer {} failed: {}", a, e),
                             }
@@ -123,7 +124,7 @@ async fn handshake_accept(
     hub_event_tx: mpsc::UnboundedSender<HubEvent>,
     allow_list: Allowlist,
 ) -> RelayResult<Peer> {
-    if !allow_list.load_full().contains_key(&addr) {
+    if !allow_list.load_full().contains_key(&addr.ip()) {
         return Err(RelayError::PeerConnection(format!("peer {} not in allowlist", addr)));
     }
 
@@ -175,7 +176,7 @@ pub async fn tcp_connect(
     hub_event_sender: mpsc::UnboundedSender<HubEvent>,
     allow_list: Allowlist,
 ) -> RelayResult<SocketAddr> {
-    if !allow_list.load_full().contains_key(&remote_addr) {
+    if !allow_list.load_full().contains_key(&remote_addr.ip()) {
         return Err(RelayError::PeerConnection(format!("peer {} not in allowlist", remote_addr)));
     }
 
@@ -251,7 +252,7 @@ mod tests {
         let mut server_allowlist = std::collections::HashMap::new();
         // Add a broad range of loopback addresses
         for port in 0u16..65535 {
-            server_allowlist.insert(std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), port), PeerDirection::Both);
+            server_allowlist.insert(std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), DEFAULT_TCP_PORT).ip(), PeerDirection::Both);
         }
         let server_allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(server_allowlist));
         let server_handle = tokio::spawn(async move {
@@ -261,7 +262,7 @@ mod tests {
 
         // Client side: connect + handshake.
         let authenticator = Arc::new(TokenAuthenticator::new(secret.clone()));
-        let allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr, PeerDirection::Both)].into_iter().collect()));
+        let allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr.ip(), PeerDirection::Both)].into_iter().collect()));
         let client_hub_tx = hub_tx.clone();
         let client_handle = tokio::spawn(async move {
             tcp_connect(server_addr, authenticator, PeerDirection::Both, 9999, client_hub_tx, allow_list).await
@@ -292,7 +293,7 @@ mod tests {
         // Allow all loopback addresses
         let mut server_allowlist = std::collections::HashMap::new();
         for port in 0u16..65535 {
-            server_allowlist.insert(std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), port), PeerDirection::Inbound);
+            server_allowlist.insert(std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), DEFAULT_TCP_PORT).ip(), PeerDirection::Inbound);
         }
         let server_allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(server_allowlist));
         let server_handle = tokio::spawn(async move {
@@ -301,7 +302,7 @@ mod tests {
         });
 
         let wrong_authenticator = Arc::new(TokenAuthenticator::new(b"wrong-secret".to_vec()));
-        let allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr, PeerDirection::Inbound)].into_iter().collect()));
+        let allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr.ip(), PeerDirection::Inbound)].into_iter().collect()));
         let client_hub_tx = hub_tx.clone();
         let client_handle = tokio::spawn(async move {
             tcp_connect(server_addr, wrong_authenticator, PeerDirection::Inbound, 9999, client_hub_tx, allow_list).await
