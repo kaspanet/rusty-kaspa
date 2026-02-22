@@ -110,6 +110,37 @@ impl RollupDb {
         self.db.delete(key)
     }
 
+    /// Delete a covenant and ALL related data (meta, balances, accounts, proving state, prover key).
+    pub fn delete_covenant_all(&self, id: CovenantId) -> Result<(), rocksdb::Error> {
+        // Fixed-key entries
+        self.db.delete(prefix_key(PREFIX_COVENANT, &id.as_bytes()))?;
+        self.db.delete(prefix_key(PREFIX_META, &id.as_bytes()))?;
+        self.db.delete(prefix_key(PREFIX_PROVING, &id.as_bytes()))?;
+        self.db.delete(prefix_key(PREFIX_PROVER_KEY, &id.as_bytes()))?;
+
+        // Prefix-scanned entries: balances
+        let bal_prefix = prefix_key(PREFIX_BALANCE, &id.as_bytes());
+        for item in self.db.prefix_iterator(&bal_prefix) {
+            let (k, _) = item?;
+            if !k.starts_with(&bal_prefix) {
+                break;
+            }
+            self.db.delete(&*k)?;
+        }
+
+        // Prefix-scanned entries: account keys
+        let acct_prefix = prefix_key(PREFIX_ACCOUNT, &id.as_bytes());
+        for item in self.db.prefix_iterator(&acct_prefix) {
+            let (k, _) = item?;
+            if !k.starts_with(&acct_prefix) {
+                break;
+            }
+            self.db.delete(&*k)?;
+        }
+
+        Ok(())
+    }
+
     /// List all covenants. Returns (covenant_id, record) pairs.
     pub fn list_covenants(&self) -> Vec<(CovenantId, CovenantRecord)> {
         let iter = self.db.prefix_iterator(PREFIX_COVENANT);
@@ -462,5 +493,59 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = RollupDb::open(dir.path()).unwrap();
         assert!(db.list_covenants().is_empty());
+    }
+
+    #[test]
+    fn delete_covenant_all_removes_everything() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let id = Hash::from_bytes([0xCC; 32]);
+        let record = CovenantRecord {
+            deployer_privkey: vec![0x01; 32],
+            deployment_tx_id: Some(Hash::from_bytes([0xDD; 32])),
+            covenant_utxo: Some((Hash::from_bytes([0xDD; 32]), 0)),
+            created_at: 100,
+        };
+        db.put_covenant(id, &record).unwrap();
+        db.put_covenant_meta(id, &CovenantMeta { state_root: Hash::from_bytes([1; 32]), seq_commitment: Hash::from_bytes([2; 32]) })
+            .unwrap();
+        db.put_prover_key(id, &[0xAA; 32]).unwrap();
+        db.put_proving_state(
+            id,
+            &ProvingState {
+                last_proved_block_hash: Hash::default(),
+                state_root: Hash::default(),
+                seq_commitment: Hash::default(),
+                proof_count: 5,
+            },
+        )
+        .unwrap();
+
+        let pk1 = Hash::from_bytes([10; 32]);
+        let pk2 = Hash::from_bytes([20; 32]);
+        db.put_balance(id, pk1, 500).unwrap();
+        db.put_balance(id, pk2, 700).unwrap();
+        db.put_account_key(id, pk1, &[0x11; 32]).unwrap();
+        db.put_account_key(id, pk2, &[0x22; 32]).unwrap();
+
+        // Verify everything exists
+        assert!(db.get_covenant(id).unwrap().is_some());
+        assert!(db.get_covenant_meta(id).unwrap().is_some());
+        assert!(db.get_prover_key(id).unwrap().is_some());
+        assert!(db.get_proving_state(id).unwrap().is_some());
+        assert_eq!(db.list_balances(id).len(), 2);
+        assert_eq!(db.list_accounts(id).len(), 2);
+
+        // Delete all
+        db.delete_covenant_all(id).unwrap();
+
+        // Verify everything is gone
+        assert!(db.get_covenant(id).unwrap().is_none());
+        assert!(db.get_covenant_meta(id).unwrap().is_none());
+        assert!(db.get_prover_key(id).unwrap().is_none());
+        assert!(db.get_proving_state(id).unwrap().is_none());
+        assert!(db.list_balances(id).is_empty());
+        assert!(db.list_accounts(id).is_empty());
     }
 }

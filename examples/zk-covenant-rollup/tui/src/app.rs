@@ -535,21 +535,28 @@ impl App {
             return;
         }
 
-        let (id, ref record) = self.covenants[self.covenant_list_index];
+        let (id, _) = self.covenants[self.covenant_list_index];
 
-        if record.deployment_tx_id.is_some() {
-            self.log("Cannot delete a deployed covenant".into());
-            return;
-        }
-
-        if let Err(e) = self.db.delete_covenant(id) {
+        if let Err(e) = self.db.delete_covenant_all(id) {
             self.log(format!("Failed to delete covenant: {e}"));
             return;
         }
 
         let deleted_idx = self.covenant_list_index;
-        self.log(format!("Deleted covenant {id}"));
+        self.log(format!("Deleted covenant {id} and all related data"));
         self.covenants = self.db.list_covenants();
+
+        // Clean up in-memory state if the deleted covenant was selected
+        if self.selected_covenant == Some(deleted_idx) {
+            self.selected_covenant = None;
+            self.accounts.clear();
+            self.account_list_index = 0;
+            self.prover_key = None;
+            self.prover = None;
+            self.proof_in_progress = false;
+            self.last_proof_result = None;
+            self.proving_status = "No covenant selected".into();
+        }
 
         // Adjust cursor
         if self.covenants.is_empty() {
