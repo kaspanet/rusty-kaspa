@@ -575,6 +575,13 @@ impl App {
     fn handle_account_key(&mut self, key: crossterm::event::KeyEvent) {
         match key.code {
             KeyCode::Char('c') => self.create_account(),
+            KeyCode::Char('y') => {
+                if let Some((pk, _)) = self.accounts.get(self.account_list_index) {
+                    let addr = self.pubkey_to_address(pk).unwrap_or_default();
+                    let _ = cli_clipboard::set_contents(addr.clone());
+                    self.log(format!("Copied address: {addr}"));
+                }
+            }
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.account_list_index > 0 {
                     self.account_list_index -= 1;

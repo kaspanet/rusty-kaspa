@@ -1,3 +1,4 @@
+use kaspa_hashes::Hash;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
@@ -37,23 +38,33 @@ fn draw_state(frame: &mut Frame, app: &App, prover: &crate::prover::RollupProver
     let info = Paragraph::new(info_lines).block(Block::default().borders(Borders::ALL).title("Chain State  r:refetch"));
     frame.render_widget(info, chunks[0]);
 
-    // Account balances from SMT
+    // Account balances from SMT — iterate all 256 slots so chain-discovered
+    // accounts are visible even on prover-only instances without local keys.
     let mut rows = Vec::new();
-    for (pubkey, _privkey) in &app.accounts {
-        let pk_words = zk_covenant_rollup_host::mock_chain::from_bytes(pubkey.as_bytes());
-        let index = pubkey.as_bytes()[0];
-        let balance = prover.smt.get(&pk_words).unwrap_or(0);
-        let pk_hex = pubkey.to_string();
+    for idx in 0u16..=255 {
+        if let Some((pk_words, balance)) = prover.smt.get_by_index(idx as u8) {
+            let pk_bytes: [u8; 32] = bytemuck::cast(pk_words);
+            let pk_hash = Hash::from_bytes(pk_bytes);
+            let pk_hex = pk_hash.to_string();
+            let owned = app.accounts.iter().any(|(pk, _)| *pk == pk_hash);
+            let label = if owned { "owned" } else { "watch" };
 
-        rows.push(Row::new(vec![
-            format!("0x{index:02x}"),
-            format!("{}..{}", &pk_hex[..8], &pk_hex[pk_hex.len() - 8..]),
-            format!("{balance}"),
-        ]));
+            let style = if !owned { Style::default().fg(Color::DarkGray) } else { Style::default() };
+
+            rows.push(
+                Row::new(vec![
+                    format!("0x{idx:02x}"),
+                    format!("{}..{}", &pk_hex[..8], &pk_hex[pk_hex.len() - 8..]),
+                    format!("{balance}"),
+                    label.to_string(),
+                ])
+                .style(style),
+            );
+        }
     }
 
-    let widths = [Constraint::Length(6), Constraint::Length(20), Constraint::Min(15)];
-    let header = Row::new(vec!["Idx", "Pubkey", "L2 Balance"]).style(Style::default().add_modifier(Modifier::BOLD));
+    let widths = [Constraint::Length(6), Constraint::Length(20), Constraint::Min(15), Constraint::Length(7)];
+    let header = Row::new(vec!["Idx", "Pubkey", "L2 Balance", "Type"]).style(Style::default().add_modifier(Modifier::BOLD));
 
     let table = Table::new(rows, widths)
         .header(header)

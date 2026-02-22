@@ -47,7 +47,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     // ── Accounts table ──
     if app.accounts.is_empty() {
         let msg = Paragraph::new("No accounts yet. Press 'c' to create one.")
-            .block(Block::default().borders(Borders::ALL).title("Accounts [c:create  j/k:navigate]"));
+            .block(Block::default().borders(Borders::ALL).title("Accounts [c:create  y:copy address  j/k:navigate]"));
         frame.render_widget(msg, chunks[1]);
         return;
     }
@@ -73,7 +73,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     let table = Table::new(rows, widths)
         .header(header)
-        .block(Block::default().borders(Borders::ALL).title("Accounts [c:create  j/k:navigate]"));
+        .block(Block::default().borders(Borders::ALL).title("Accounts [c:create  y:copy address  j/k:navigate]"));
 
     frame.render_widget(table, chunks[1]);
 }
