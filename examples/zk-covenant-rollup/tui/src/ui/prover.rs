@@ -22,12 +22,17 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn draw_controls(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let kind_label = app
+        .selected_covenant
+        .and_then(|i| app.covenants.get(i))
+        .map(|(_, rec)| if rec.proof_kind == 1 { "Groth16" } else { "Succinct" })
+        .unwrap_or("—");
+
     let lines = vec![
         Line::from(vec![
             ratatui::text::Span::styled("b", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             ratatui::text::Span::raw(format!(":backend [{}]  ", app.prover_backend.label())),
-            ratatui::text::Span::styled("k", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            ratatui::text::Span::raw(format!(":kind [{}]  ", app.proof_kind.label())),
+            ratatui::text::Span::raw(format!("kind: [{kind_label}]  ")),
             ratatui::text::Span::styled("p", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             ratatui::text::Span::raw(":sync chain  "),
             ratatui::text::Span::styled("r", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),

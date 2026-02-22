@@ -174,6 +174,7 @@ enum BgResult {
     ImportValidated {
         covenant_id: Hash,
         deploy_tx_id: Hash,
+        proof_kind: u8,
     },
     ImportFailed {
         error: String,
@@ -219,7 +220,6 @@ pub struct App {
     pub proving_status: String,
     pub pruning_point: Hash,
     pub prover_backend: ProverBackend,
-    pub proof_kind: ProofKind,
     pub proof_in_progress: bool,
     pub last_proof_result: Option<String>,
     pub(crate) completed_proofs: Vec<CompletedProof>,
@@ -268,6 +268,21 @@ enum PendingOp {
     },
 }
 
+fn u8_to_proof_kind(v: u8) -> ProofKind {
+    if v == 1 {
+        ProofKind::Groth16
+    } else {
+        ProofKind::Succinct
+    }
+}
+
+fn proof_kind_to_zk_tag(kind: ProofKind) -> ZkTag {
+    match kind {
+        ProofKind::Succinct => ZkTag::R0Succinct,
+        ProofKind::Groth16 => ZkTag::Groth16,
+    }
+}
+
 impl App {
     pub fn new(db: Arc<RollupDb>, node: KaspaNode, network_prefix: Prefix) -> Self {
         let covenants = db.list_covenants();
@@ -297,7 +312,6 @@ impl App {
             proving_status: "No covenant selected".into(),
             pruning_point: Hash::default(),
             prover_backend: ProverBackend::Cpu,
-            proof_kind: ProofKind::Succinct,
             proof_in_progress: false,
             last_proof_result: None,
             completed_proofs: Vec::new(),
@@ -421,6 +435,7 @@ impl App {
             KeyCode::Char('i') => self.start_import_covenant(),
             KeyCode::Char('x') => self.delete_covenant(),
             KeyCode::Char('y') => self.export_covenant_info(),
+            KeyCode::Char('t') => self.toggle_proof_kind(),
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.covenant_list_index > 0 {
                     self.covenant_list_index -= 1;
@@ -474,6 +489,7 @@ impl App {
             covenant_utxo: None,
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
             covenant_value: None,
+            proof_kind: 0,
         };
 
         if let Err(e) = self.db.put_covenant(covenant_id, &record) {
@@ -492,6 +508,28 @@ impl App {
         // Refresh list
         self.covenants = self.db.list_covenants();
         self.covenant_list_index = self.covenants.len().saturating_sub(1);
+    }
+
+    fn toggle_proof_kind(&mut self) {
+        if self.covenants.is_empty() {
+            self.log("No covenants".into());
+            return;
+        }
+        let (id, ref record) = self.covenants[self.covenant_list_index];
+        if record.deployment_tx_id.is_some() {
+            self.log("Cannot change proof type — covenant already deployed".into());
+            return;
+        }
+        let new_kind = if record.proof_kind == 0 { 1 } else { 0 };
+        let mut updated = record.clone();
+        updated.proof_kind = new_kind;
+        if let Err(e) = self.db.put_covenant(id, &updated) {
+            self.log(format!("Failed to save proof kind: {e}"));
+            return;
+        }
+        let label = u8_to_proof_kind(new_kind).label();
+        self.log(format!("Proof type: {label}"));
+        self.covenants = self.db.list_covenants();
     }
 
     fn deploy_covenant(&mut self) {
@@ -554,7 +592,7 @@ impl App {
         let prev_state_hash = empty_tree_root();
         let prev_seq_commitment = from_bytes(calc_accepted_id_merkle_root(Hash::default(), std::iter::empty()).as_bytes());
         let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
-        let zk_tag = ZkTag::R0Succinct;
+        let zk_tag = proof_kind_to_zk_tag(u8_to_proof_kind(record.proof_kind));
 
         // Convergence loop for script length
         let mut computed_len: i64 = 75;
@@ -581,7 +619,7 @@ impl App {
         let outputs = vec![TransactionOutput::new(covenant_value, covenant_spk)];
         let _ = total_input; // all consumed
 
-        let tx = Transaction::new(0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let tx = Transaction::new(0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![record.proof_kind]);
         let signable = SignableTransaction::with_entries(tx, utxo_entries);
 
         // Sign
@@ -1033,7 +1071,7 @@ impl App {
         };
     }
 
-    fn finish_import_covenant(&mut self, covenant_id: Hash, deploy_tx_id: Hash) {
+    fn finish_import_covenant(&mut self, covenant_id: Hash, deploy_tx_id: Hash, proof_kind: u8) {
         // Generate new prover keypair
         let secp = secp256k1::Secp256k1::new();
         let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
@@ -1046,6 +1084,7 @@ impl App {
             covenant_utxo: Some((deploy_tx_id, 0)),
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
             covenant_value: None, // unknown for imported covenants
+            proof_kind,
         };
 
         if let Err(e) = self.db.put_covenant(covenant_id, &record) {
@@ -1135,14 +1174,6 @@ impl App {
                 self.prover_backend = self.prover_backend.next();
                 self.log(format!("Prover backend: {}", self.prover_backend.label()));
             }
-            KeyCode::Char('k') => {
-                // Cycle proof kind
-                self.proof_kind = match self.proof_kind {
-                    ProofKind::Succinct => ProofKind::Groth16,
-                    ProofKind::Groth16 => ProofKind::Succinct,
-                };
-                self.log(format!("Proof kind: {}", self.proof_kind.label()));
-            }
             KeyCode::Char('r') => self.start_proving(),
             KeyCode::Char('s') => self.submit_proof(),
             KeyCode::Esc => self.cancel_proving(),
@@ -1166,6 +1197,15 @@ impl App {
             self.log("Proof already in progress".into());
             return;
         }
+
+        let cov_idx = match self.selected_covenant {
+            Some(i) => i,
+            None => {
+                self.log("Select a covenant first".into());
+                return;
+            }
+        };
+        let proof_kind = u8_to_proof_kind(self.covenants[cov_idx].1.proof_kind);
 
         let prover = match &mut self.prover {
             Some(p) => p,
@@ -1202,14 +1242,14 @@ impl App {
             "Starting proof: {} blocks, backend={}, kind={}",
             snapshot.input.block_txs.len(),
             self.prover_backend.label(),
-            self.proof_kind.label()
+            proof_kind.label()
         ));
 
         self.pending_ops.push(PendingOp::GenerateProof {
             gen,
             input: snapshot.input,
             backend: self.prover_backend,
-            kind: self.proof_kind,
+            kind: proof_kind,
             public_input,
             block_prove_to,
             perm_redeem_script: snapshot.perm_redeem_script,
@@ -1571,22 +1611,27 @@ impl App {
                     let node = self.node.clone();
                     let bg_tx = self.bg_tx.clone();
 
-                    // Build the expected covenant SPK (initial deploy P2SH script)
+                    // Build expected covenant SPKs for both proof types
                     let prev_state_hash = empty_tree_root();
                     let prev_seq_commitment = from_bytes(calc_accepted_id_merkle_root(Hash::default(), std::iter::empty()).as_bytes());
                     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
-                    let zk_tag = ZkTag::R0Succinct;
-                    let mut computed_len: i64 = 75;
-                    loop {
-                        let script = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, &zk_tag);
-                        let new_len = script.len() as i64;
-                        if new_len == computed_len {
-                            break;
+
+                    let build_expected_spk = |tag: &ZkTag| {
+                        let mut computed_len: i64 = 75;
+                        loop {
+                            let script = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, tag);
+                            let new_len = script.len() as i64;
+                            if new_len == computed_len {
+                                break;
+                            }
+                            computed_len = new_len;
                         }
-                        computed_len = new_len;
-                    }
-                    let redeem_script = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, &zk_tag);
-                    let expected_spk = pay_to_script_hash_script(&redeem_script);
+                        let redeem = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, tag);
+                        pay_to_script_hash_script(&redeem)
+                    };
+
+                    let expected_spk_succinct = build_expected_spk(&ZkTag::R0Succinct);
+                    let expected_spk_groth16 = build_expected_spk(&ZkTag::Groth16);
 
                     tokio::spawn(async move {
                         let mut cursor = start_hash;
@@ -1601,14 +1646,23 @@ impl App {
 
                             for block in resp.chain_block_accepted_transactions.iter() {
                                 for rpc_tx in &block.accepted_transactions {
-                                    // Check outputs for matching SPK
                                     for out in &rpc_tx.outputs {
                                         if let Some(ref spk) = out.script_public_key {
-                                            if spk == &expected_spk {
-                                                // Found the deploy tx — get its ID from verbose_data
+                                            let matched_kind = if spk == &expected_spk_succinct {
+                                                Some(0u8)
+                                            } else if spk == &expected_spk_groth16 {
+                                                Some(1u8)
+                                            } else {
+                                                None
+                                            };
+                                            if let Some(proof_kind) = matched_kind {
                                                 let deploy_tx_id = rpc_tx.verbose_data.as_ref().and_then(|v| v.transaction_id);
                                                 if let Some(tx_id) = deploy_tx_id {
-                                                    let _ = bg_tx.send(BgResult::ImportValidated { covenant_id, deploy_tx_id: tx_id });
+                                                    let _ = bg_tx.send(BgResult::ImportValidated {
+                                                        covenant_id,
+                                                        deploy_tx_id: tx_id,
+                                                        proof_kind,
+                                                    });
                                                     return;
                                                 }
                                             }
@@ -1844,9 +1898,10 @@ impl App {
                 self.log(result_msg.clone());
                 self.last_proof_result = Some(result_msg);
             }
-            BgResult::ImportValidated { covenant_id, deploy_tx_id } => {
-                self.log(format!("Found deployment tx {deploy_tx_id} on chain"));
-                self.finish_import_covenant(covenant_id, deploy_tx_id);
+            BgResult::ImportValidated { covenant_id, deploy_tx_id, proof_kind } => {
+                let kind_label = u8_to_proof_kind(proof_kind).label();
+                self.log(format!("Found deployment tx {deploy_tx_id} on chain (proof type: {kind_label})"));
+                self.finish_import_covenant(covenant_id, deploy_tx_id, proof_kind);
             }
             BgResult::ImportFailed { error } => {
                 self.log(error);
@@ -2257,5 +2312,32 @@ mod tests {
         let output = render_to_string(&app, 120, 30);
         assert!(output.contains("Import Covenant"), "should show import popup title");
         assert!(output.contains("abc123"), "should show typed buffer");
+    }
+
+    #[test]
+    fn test_proof_kind_toggle_on_undeployed() {
+        let mut app = test_app();
+        app.create_covenant();
+        app.covenant_list_index = 0;
+
+        // Default is Succinct (0)
+        assert_eq!(app.covenants[0].1.proof_kind, 0);
+
+        // Toggle to Groth16 (1)
+        app.handle_key(key(KeyCode::Char('t')));
+        assert_eq!(app.covenants[0].1.proof_kind, 1);
+
+        // Toggle back to Succinct (0)
+        app.handle_key(key(KeyCode::Char('t')));
+        assert_eq!(app.covenants[0].1.proof_kind, 0);
+    }
+
+    #[test]
+    fn test_proof_kind_shown_in_covenant_table() {
+        let mut app = test_app();
+        app.create_covenant();
+        let output = render_to_string(&app, 140, 30);
+        assert!(output.contains("Kind"), "should show Kind column header");
+        assert!(output.contains("Succinct"), "should show Succinct for default proof kind");
     }
 }

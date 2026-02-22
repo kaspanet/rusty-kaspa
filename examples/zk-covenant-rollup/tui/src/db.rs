@@ -45,6 +45,8 @@ pub struct CovenantRecord {
     pub created_at: u64,
     /// Value (in sompi) held by the live covenant UTXO.
     pub covenant_value: Option<u64>,
+    /// Proof type: 0 = Succinct (STARK), 1 = Groth16 (SNARK).
+    pub proof_kind: u8,
 }
 
 /// Aggregate covenant state (state root + seq commitment).
@@ -356,6 +358,7 @@ mod tests {
             covenant_utxo: None,
             created_at: 1234567890,
             covenant_value: None,
+            proof_kind: 0,
         };
 
         db.put_covenant(id, &record).unwrap();
@@ -491,6 +494,7 @@ mod tests {
             covenant_utxo: None,
             created_at: 1234567890,
             covenant_value: None,
+            proof_kind: 0,
         };
 
         db.put_covenant(id, &record).unwrap();
@@ -519,6 +523,7 @@ mod tests {
             covenant_utxo: Some((Hash::from_bytes([0xDD; 32]), 0)),
             created_at: 100,
             covenant_value: Some(100_000),
+            proof_kind: 0,
         };
         db.put_covenant(id, &record).unwrap();
         db.put_covenant_meta(id, &CovenantMeta { state_root: Hash::from_bytes([1; 32]), seq_commitment: Hash::from_bytes([2; 32]) })

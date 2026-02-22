@@ -22,6 +22,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             let id_str = id.to_string();
             let id_short = &id_str[..16.min(id_str.len())];
             let deployed = if rec.deployment_tx_id.is_some() { "Yes" } else { "No" };
+            let kind = if rec.proof_kind == 1 { "Groth16" } else { "Succinct" };
             let origin = if rec.deployer_privkey.len() == 32 { "Created" } else { "Imported" };
             let addr = app.deployer_address(rec).unwrap_or_else(|| "N/A".into());
             let selected_marker = if app.selected_covenant == Some(i) { "*" } else { " " };
@@ -32,6 +33,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                 Cell::from(selected_marker.to_string()),
                 Cell::from(format!("{id_short}...")),
                 Cell::from(deployed.to_string()),
+                Cell::from(kind.to_string()),
                 Cell::from(origin.to_string()),
                 Cell::from(addr),
             ])
@@ -39,14 +41,21 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         })
         .collect();
 
-    let widths = [Constraint::Length(1), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Min(40)];
-    let header = Row::new(vec![" ", "Covenant ID", "Deployed", "Origin", "Deployer Address"])
+    let widths = [
+        Constraint::Length(1),
+        Constraint::Length(20),
+        Constraint::Length(10),
+        Constraint::Length(10),
+        Constraint::Length(10),
+        Constraint::Min(40),
+    ];
+    let header = Row::new(vec![" ", "Covenant ID", "Deployed", "Kind", "Origin", "Deployer Address"])
         .style(Style::default().add_modifier(Modifier::BOLD));
 
     let table = Table::new(rows, widths).header(header).block(
         Block::default()
             .borders(Borders::ALL)
-            .title("Covenants [c:create  i:import  d:deploy  y:export  x:delete  Enter:select  j/k:navigate]"),
+            .title("Covenants [c:create  i:import  d:deploy  t:proof-type  y:export  x:delete  Enter:select  j/k:navigate]"),
     );
 
     frame.render_widget(table, area);
