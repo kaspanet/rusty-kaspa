@@ -1,10 +1,9 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use kaspa_utils::triggers::{Listener, Trigger};
+use kaspa_utils::triggers::Listener;
 use log::{debug, info, warn};
 use rand::{RngCore, rngs::OsRng};
-use subtle::ConstantTimeEq;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
@@ -21,12 +20,14 @@ use crate::servers::tcp_control::{Peer, PeerDirection};
 /// Handshake wire format (kept simple):
 ///
 /// ```text
-/// Client → Server:  [nonce: 32 bytes] [hmac(secret, nonce): 32 bytes] [direction: 1 byte] [udp_port: 2 bytes LE]
+/// Client → Server:  [nonce: 32 bytes] [hmac(secret, nonce‖direction‖udp_port): 32 bytes] [direction: 1 byte] [udp_port: 2 bytes LE]
 /// Server → Client:  [0x01 = OK | 0x00 = REJECT]
 /// ```
 ///
-/// `direction` from the *client's* perspective: 0x01 = Inbound (client
-/// receives shards), 0x02 = Outbound (client sends shards), 0x03 = Both.
+/// The nonce is sent first so that the server can verify freshness before
+/// processing the rest of the message.  `direction` is encoded from the
+/// client’s perspective: 0x01 = Inbound (client receives shards),
+/// 0x02 = Outbound (client sends shards), 0x03 = Both.
 pub struct TcpServer {
     listen_address: SocketAddr,
     authenticator: Arc<TokenAuthenticator>,
@@ -135,17 +136,20 @@ async fn handshake_accept(
         .map_err(|_| RelayError::PeerConnection(format!("handshake read timed out for {}", addr)))?
         .map_err(|e| RelayError::PeerConnection(format!("handshake read from {}: {}", addr, e)))?;
 
-    let nonce = &buf[32..64];
-    let client_hmac = &buf[0..32];
+    // message layout now: [nonce][hmac][direction][udp_port]
+    let nonce = &buf[0..32];
+    let client_hmac = &buf[32..64];
     let direction_byte = buf[64];
     //let udp_port = u16::from_le_bytes([buf[65], buf[66]]);
-    let data_for_hmac = &buf[32..]; // direction + udp_port
 
-    // Validate HMAC(secret, nonce).
+    // data used in the HMAC is everything after the nonce (direction + udp_port)
+    let data_for_hmac = &buf[64..];
+
+    // Validate HMAC(secret, nonce || SHA256(direction||udp_port)).
     let nonce_array: [u8; 32] = nonce.try_into().map_err(|_| RelayError::AuthenticationFailed("invalid nonce size".into()))?;
     let their_token = auth::AuthToken::from_bytes(client_hmac.to_vec());
     let is_authentic = authenticator.validate_token(&nonce_array, &data_for_hmac, &their_token);
-    if !is_authentic{
+    if !is_authentic {
         info!("msg auth failed expected HMAC");
         let _ = stream.write_all(&[0x00]).await;
         return Err(RelayError::AuthenticationFailed(format!("HMAC mismatch from {}", addr)));
@@ -192,20 +196,22 @@ pub async fn tcp_connect(
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);
 
-        // Direction byte: from *our* perspective.
+    // Direction byte: from *our* perspective.
     let direction_byte = match our_direction {
         PeerDirection::Inbound => 0x01,
         PeerDirection::Outbound => 0x02,
         PeerDirection::Both => 0x03,
     };
 
+    // construct message according to new layout: nonce first, then token
     let mut msg = [0u8; HANDSHAKE_MSG_SIZE];
-    msg[32..64].copy_from_slice(nonce.as_ref());
+    msg[0..32].copy_from_slice(nonce.as_ref());
     msg[64] = direction_byte;
     //msg[65..67].copy_from_slice(&local_udp_port.to_le_bytes());
+    // token is computed over nonce and the data that follows it (direction
+    // + udp_port)
     let token = authenticator.generate_token(&nonce, &msg[64..]);
-    msg[0..32].copy_from_slice(&token.as_bytes());
-
+    msg[32..64].copy_from_slice(&token.as_bytes());
 
     // perform the write with an explicit result type so the compiler
     // can infer the intermediate `Result` produced by `timeout`.
@@ -255,8 +261,9 @@ mod tests {
         // Allow all loopback addresses (the server will accept any client connecting from 127.0.0.1)
         let mut server_allowlist = std::collections::HashMap::new();
         // Add a broad range of loopback addresses
-        for port in 0u16..65535 {
-            server_allowlist.insert(std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), DEFAULT_TCP_PORT).ip(), PeerDirection::Both);
+        for __port in 0u16..65535 {
+            server_allowlist
+                .insert(std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), DEFAULT_TCP_PORT).ip(), PeerDirection::Both);
         }
         let server_allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(server_allowlist));
         let server_handle = tokio::spawn(async move {
@@ -266,7 +273,8 @@ mod tests {
 
         // Client side: connect + handshake.
         let authenticator = Arc::new(TokenAuthenticator::new(secret.clone()));
-        let allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr.ip(), PeerDirection::Both)].into_iter().collect()));
+        let allow_list =
+            Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr.ip(), PeerDirection::Both)].into_iter().collect()));
         let client_hub_tx = hub_tx.clone();
         let client_handle = tokio::spawn(async move {
             tcp_connect(server_addr, authenticator, PeerDirection::Both, 9999, client_hub_tx, allow_list).await
@@ -296,17 +304,26 @@ mod tests {
         let server_hub_tx = hub_tx.clone();
         // Allow all loopback addresses
         let mut server_allowlist = std::collections::HashMap::new();
-        for port in 0u16..65535 {
-            server_allowlist.insert(std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), DEFAULT_TCP_PORT).ip(), PeerDirection::Inbound);
+        for _port in 0u16..65535 {
+            server_allowlist
+                .insert(std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), DEFAULT_TCP_PORT).ip(), PeerDirection::Inbound);
         }
         let server_allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(server_allowlist));
         let server_handle = tokio::spawn(async move {
             let (stream, addr) = listener.accept().await.unwrap();
-            handshake_accept(stream, addr, Arc::new(TokenAuthenticator::new(b"correct-secret".to_vec())), server_hub_tx, server_allow_list).await
+            handshake_accept(
+                stream,
+                addr,
+                Arc::new(TokenAuthenticator::new(b"correct-secret".to_vec())),
+                server_hub_tx,
+                server_allow_list,
+            )
+            .await
         });
 
         let wrong_authenticator = Arc::new(TokenAuthenticator::new(b"wrong-secret".to_vec()));
-        let allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr.ip(), PeerDirection::Inbound)].into_iter().collect()));
+        let allow_list =
+            Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr.ip(), PeerDirection::Inbound)].into_iter().collect()));
         let client_hub_tx = hub_tx.clone();
         let client_handle = tokio::spawn(async move {
             tcp_connect(server_addr, wrong_authenticator, PeerDirection::Inbound, 9999, client_hub_tx, allow_list).await
@@ -317,5 +334,44 @@ mod tests {
 
         let client_result = client_handle.await.unwrap();
         assert!(client_result.is_err());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_handshake_detects_tampered_payload() {
+        let secret = b"test-secret".to_vec();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = listener.local_addr().unwrap();
+
+        let (hub_tx, _hub_rx) = mpsc::unbounded_channel::<HubEvent>();
+
+        // server will independently compute the expected token
+        let server_allow_list =
+            Arc::new(arc_swap::ArcSwap::from_pointee(vec![(server_addr.ip(), PeerDirection::Both)].into_iter().collect()));
+        let server_secret = secret.clone();
+        let server_handle = tokio::spawn(async move {
+            let (stream, addr) = listener.accept().await.unwrap();
+            handshake_accept(stream, addr, Arc::new(TokenAuthenticator::new(server_secret)), hub_tx, server_allow_list).await
+        });
+
+        // craft a valid handshake, then tamper with the direction byte *after* the
+        // token has been generated.  The server should reject this as an
+        // authentication failure.
+        let mut client = TcpStream::connect(server_addr).await.unwrap();
+        let mut nonce = [0u8; 32];
+        OsRng.fill_bytes(&mut nonce);
+        let mut msg = [0u8; HANDSHAKE_MSG_SIZE];
+        msg[0..32].copy_from_slice(&nonce);
+        msg[64] = 0x01; // inbound
+        let token = TokenAuthenticator::new(secret.clone()).generate_token(&nonce, &msg[64..]);
+        msg[32..64].copy_from_slice(&token.as_bytes());
+        // tamper direction
+        msg[64] = 0x02;
+        client.write_all(&msg).await.unwrap();
+        let mut resp = [0u8; 1];
+        let _ = timeout(HANDSHAKE_TIMEOUT, client.read_exact(&mut resp)).await;
+        assert_eq!(resp[0], 0x00);
+
+        let server_result = server_handle.await.unwrap();
+        assert!(server_result.is_err());
     }
 }
