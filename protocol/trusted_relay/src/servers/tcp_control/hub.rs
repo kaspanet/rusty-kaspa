@@ -137,6 +137,7 @@ impl Hub {
 
         info!("Peer connected: {} ({})", addr, direction);
 
+        let info = info.with_ready(true);
         let handle = PeerHandle { info: info.clone(), control_tx };
         self.peers.insert(addr, handle);
 
