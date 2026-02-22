@@ -21,17 +21,17 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             let style = if i == app.tx_history_index { Style::default().bg(Color::DarkGray) } else { Style::default() };
             let tx_str = record.tx_id.to_string();
             let tx_short = if tx_str.len() > 16 { format!("{}..{}", &tx_str[..8], &tx_str[tx_str.len() - 8..]) } else { tx_str };
-            let status_str = match &record.status {
-                TxStatus::Submitted => "Submitted".to_string(),
-                TxStatus::Confirmed => "Confirmed".to_string(),
-                TxStatus::Failed(msg) => format!("Failed: {msg}"),
+            let (status_str, status_color) = match &record.status {
+                TxStatus::Submitted => ("Submitted".to_string(), Color::Yellow),
+                TxStatus::Confirmed => ("Confirmed".to_string(), Color::Green),
+                TxStatus::Failed(msg) => (format!("Failed: {msg}"), Color::Red),
             };
             Row::new(vec![
                 Cell::from(format!("{}", i + 1)),
                 Cell::from(record.action.as_str()),
                 Cell::from(format!("{}", record.amount)),
                 Cell::from(tx_short),
-                Cell::from(status_str),
+                Cell::from(status_str).style(Style::default().fg(status_color)),
             ])
             .style(style)
         })

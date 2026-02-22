@@ -41,7 +41,8 @@ async fn main() -> anyhow::Result<()> {
     let dag_info = node.get_block_dag_info().await?;
 
     // Build app state
-    let mut app = App::new(db, node.clone(), prefix);
+    let log_path = args.db_path.join("tui.log");
+    let mut app = App::with_log_path(db, node.clone(), prefix, Some(log_path));
     app.daa_score = dag_info.virtual_daa_score;
     app.pruning_point = dag_info.pruning_point_hash;
     app.connected = true;

@@ -22,6 +22,7 @@ pub type Pubkey = Hash;
 /// | `utxo/`    | address string bytes                | `Vec<UtxoRecord>` (borsh)    |
 /// | `proving/` | covenant_id (32B)                   | `ProvingState`               |
 /// | `provkey/` | covenant_id (32B)                   | privkey (32B raw)            |
+/// | `txhist/`  | covenant_id (32B) + index (8B LE)   | `TxRecordDb`                 |
 ///
 /// Balance keys inherit the first-byte index from the pubkey, so:
 /// - Lookup by covenant + pubkey: exact 64-byte key
@@ -77,6 +78,24 @@ pub struct ProvingState {
     pub proof_count: u64,
 }
 
+/// Transaction status stored in DB.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+pub enum TxStatusDb {
+    Submitted,
+    Confirmed,
+    Failed(String),
+}
+
+/// Persistent transaction history record.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct TxRecordDb {
+    pub tx_id: Hash,
+    pub action: String,
+    pub amount: u64,
+    pub timestamp: u64,
+    pub status: TxStatusDb,
+}
+
 // ── Prefix constants ──
 
 const PREFIX_COVENANT: &[u8] = b"cov/";
@@ -86,6 +105,7 @@ const PREFIX_ACCOUNT: &[u8] = b"acct/";
 const PREFIX_UTXO: &[u8] = b"utxo/";
 const PREFIX_PROVING: &[u8] = b"proving/";
 const PREFIX_PROVER_KEY: &[u8] = b"provkey/";
+const PREFIX_TX_HISTORY: &[u8] = b"txhist/";
 
 impl RollupDb {
     /// Open (or create) the database at the given path.
@@ -141,6 +161,9 @@ impl RollupDb {
             }
             self.db.delete(&*k)?;
         }
+
+        // Prefix-scanned entries: tx history
+        self.delete_tx_history(id)?;
 
         Ok(())
     }
@@ -317,6 +340,67 @@ impl RollupDb {
         let key = prefix_key(PREFIX_PROVER_KEY, &id.as_bytes());
         Ok(self.db.get(key)?.map(|v| <[u8; 32]>::try_from(&v[..32]).expect("32-byte prover key")))
     }
+
+    // ── Transaction history ──
+
+    /// Append a transaction record to the history for a covenant.
+    /// Key = `txhist/` + covenant_id (32B) + sequential index (8B LE).
+    pub fn append_tx(&self, id: CovenantId, record: &TxRecordDb) -> Result<(), rocksdb::Error> {
+        // Count existing entries to get the next index
+        let scan = prefix_key(PREFIX_TX_HISTORY, &id.as_bytes());
+        let count =
+            self.db.prefix_iterator(&scan).filter(|item| item.as_ref().map(|(k, _)| k.starts_with(&scan)).unwrap_or(false)).count()
+                as u64;
+        let key = tx_history_key(id, count);
+        let val = borsh::to_vec(record).expect("borsh serialize");
+        self.db.put(key, val)
+    }
+
+    /// Update an existing transaction record (matched by tx_id) for a covenant.
+    pub fn update_tx_status(&self, id: CovenantId, tx_id: Hash, status: TxStatusDb) -> Result<(), rocksdb::Error> {
+        let scan = prefix_key(PREFIX_TX_HISTORY, &id.as_bytes());
+        for item in self.db.prefix_iterator(&scan) {
+            let (k, v) = item?;
+            if !k.starts_with(&scan) {
+                break;
+            }
+            let mut rec = TxRecordDb::try_from_slice(&v).expect("borsh deserialize");
+            if rec.tx_id == tx_id {
+                rec.status = status;
+                let val = borsh::to_vec(&rec).expect("borsh serialize");
+                self.db.put(&*k, val)?;
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// Load all transaction records for a covenant, in insertion order.
+    pub fn list_txs(&self, id: CovenantId) -> Vec<TxRecordDb> {
+        let scan = prefix_key(PREFIX_TX_HISTORY, &id.as_bytes());
+        let mut results = Vec::new();
+        for item in self.db.prefix_iterator(&scan) {
+            let (k, v) = item.expect("db iterator");
+            if !k.starts_with(&scan) {
+                break;
+            }
+            results.push(TxRecordDb::try_from_slice(&v).expect("borsh deserialize"));
+        }
+        results
+    }
+
+    /// Delete all transaction history for a covenant (used in delete_covenant_all).
+    fn delete_tx_history(&self, id: CovenantId) -> Result<(), rocksdb::Error> {
+        let scan = prefix_key(PREFIX_TX_HISTORY, &id.as_bytes());
+        for item in self.db.prefix_iterator(&scan) {
+            let (k, _) = item?;
+            if !k.starts_with(&scan) {
+                break;
+            }
+            self.db.delete(&*k)?;
+        }
+        Ok(())
+    }
 }
 
 fn prefix_key(prefix: &[u8], suffix: &[u8]) -> Vec<u8> {
@@ -339,6 +423,14 @@ fn account_key(id: CovenantId, pubkey: Pubkey) -> Vec<u8> {
     key.extend_from_slice(PREFIX_ACCOUNT);
     key.extend_from_slice(&id.as_bytes());
     key.extend_from_slice(&pubkey.as_bytes());
+    key
+}
+
+fn tx_history_key(id: CovenantId, index: u64) -> Vec<u8> {
+    let mut key = Vec::with_capacity(PREFIX_TX_HISTORY.len() + 40);
+    key.extend_from_slice(PREFIX_TX_HISTORY);
+    key.extend_from_slice(&id.as_bytes());
+    key.extend_from_slice(&index.to_le_bytes());
     key
 }
 

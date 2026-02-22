@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -23,10 +24,12 @@ use zk_covenant_rollup_host::mock_chain::{calc_accepted_id_merkle_root, from_byt
 use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
 
+use zk_covenant_rollup_core::action::{ActionHeader, ExitAction, TransferAction};
+use zk_covenant_rollup_host::mock_tx::ActionWitness;
 use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProveInput, ProverBackend};
 
 use crate::balance::UtxoTracker;
-use crate::db::{CovenantId, CovenantRecord, ProvingState, Pubkey, RollupDb};
+use crate::db::{CovenantId, CovenantRecord, ProvingState, Pubkey, RollupDb, TxRecordDb, TxStatusDb};
 use crate::node::{KaspaNode, NodeEvent};
 use crate::prover::RollupProver;
 
@@ -114,7 +117,7 @@ pub struct TxRecord {
     pub status: TxStatus,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TxStatus {
     Submitted,
     Confirmed,
@@ -246,6 +249,12 @@ pub struct App {
     /// When true, the run-loop will call `terminal.clear()` before the next draw
     /// to force a full screen redraw (Ctrl+L).
     pub needs_full_redraw: bool,
+
+    /// Deferred side-effects keyed by tx_id. Applied on TxSubmitted, reverted on TxSubmitFailed.
+    pending_tx_effects: HashMap<Hash, PendingTxEffect>,
+
+    /// Append-only log file for persistent error logging.
+    log_file: Option<std::fs::File>,
 }
 
 /// Deferred async operations triggered from sync key handlers.
@@ -272,6 +281,15 @@ enum PendingOp {
     },
 }
 
+/// Deferred side-effects of submitted transactions.
+/// Applied on `TxSubmitted`, reverted on `TxSubmitFailed`.
+enum PendingTxEffect {
+    /// Deploy tx: only mark covenant as deployed when the node accepts the tx.
+    Deploy { covenant_id: CovenantId, deploy_tx_id: Hash, covenant_value: u64 },
+    /// Prove-submit tx: on failure, revert the covenant UTXO to its old value.
+    ProveSubmit { covenant_id: CovenantId, old_utxo: (Hash, u32), old_value: u64 },
+}
+
 fn u8_to_proof_kind(v: u8) -> ProofKind {
     if v == 1 {
         ProofKind::Groth16
@@ -287,10 +305,47 @@ fn proof_kind_to_zk_tag(kind: ProofKind) -> ZkTag {
     }
 }
 
+fn tx_status_to_db(s: &TxStatus) -> TxStatusDb {
+    match s {
+        TxStatus::Submitted => TxStatusDb::Submitted,
+        TxStatus::Confirmed => TxStatusDb::Confirmed,
+        TxStatus::Failed(msg) => TxStatusDb::Failed(msg.clone()),
+    }
+}
+
+fn tx_status_from_db(s: TxStatusDb) -> TxStatus {
+    match s {
+        TxStatusDb::Submitted => TxStatus::Submitted,
+        TxStatusDb::Confirmed => TxStatus::Confirmed,
+        TxStatusDb::Failed(msg) => TxStatus::Failed(msg),
+    }
+}
+
+fn tx_record_to_db(r: &TxRecord) -> TxRecordDb {
+    TxRecordDb {
+        tx_id: r.tx_id,
+        action: r.action.clone(),
+        amount: r.amount,
+        timestamp: r.timestamp,
+        status: tx_status_to_db(&r.status),
+    }
+}
+
+fn tx_record_from_db(r: TxRecordDb) -> TxRecord {
+    TxRecord { tx_id: r.tx_id, action: r.action, amount: r.amount, timestamp: r.timestamp, status: tx_status_from_db(r.status) }
+}
+
 impl App {
     pub fn new(db: Arc<RollupDb>, node: KaspaNode, network_prefix: Prefix) -> Self {
+        Self::with_log_path(db, node, network_prefix, None)
+    }
+
+    pub fn with_log_path(db: Arc<RollupDb>, node: KaspaNode, network_prefix: Prefix, log_path: Option<std::path::PathBuf>) -> Self {
         let covenants = db.list_covenants();
         let (bg_tx, bg_rx) = mpsc::unbounded_channel();
+
+        let log_file = log_path.and_then(|p| std::fs::OpenOptions::new().create(true).append(true).open(p).ok());
+
         Self {
             db,
             node,
@@ -327,6 +382,8 @@ impl App {
             clipboard: None,
             status_flash: None,
             needs_full_redraw: false,
+            pending_tx_effects: HashMap::new(),
+            log_file,
         }
     }
 
@@ -463,6 +520,7 @@ impl App {
                     let is_deployed = self.covenants[self.covenant_list_index].1.deployment_tx_id.is_some();
                     self.refresh_accounts();
                     self.load_prover_key(id);
+                    self.load_tx_history(id);
                     self.subscribe_covenant_addresses();
                     self.log(format!("Selected covenant: {id}"));
 
@@ -637,22 +695,12 @@ impl App {
         let signed = sign(signable, keypair);
         let tx_id = signed.id();
 
-        // Update DB
-        let mut updated_record = record.clone();
-        updated_record.deployment_tx_id = Some(tx_id);
-        updated_record.covenant_utxo = Some((tx_id, 0));
-        updated_record.covenant_value = Some(covenant_value);
-        if let Err(e) = self.db.put_covenant(covenant_id, &updated_record) {
-            self.log(format!("Failed to update covenant in DB: {e}"));
-            return;
-        }
+        // Do NOT mark covenant as deployed yet — wait for TxSubmitted confirmation.
+        self.pending_tx_effects.insert(tx_id, PendingTxEffect::Deploy { covenant_id, deploy_tx_id: tx_id, covenant_value });
 
-        self.log(format!("Deploying covenant {covenant_id} — tx: {tx_id}"));
+        self.log(format!("Deploying covenant {covenant_id} — tx: {tx_id} (pending confirmation)"));
         self.record_tx(tx_id, "Deploy", covenant_value);
         self.pending_ops.push(PendingOp::SubmitTransaction(signed.tx));
-
-        // Refresh list
-        self.covenants = self.db.list_covenants();
     }
 
     fn delete_covenant(&mut self) {
@@ -1114,6 +1162,7 @@ impl App {
             self.covenant_list_index = idx;
             self.selected_covenant = Some(idx);
             self.load_prover_key(covenant_id);
+            self.load_tx_history(covenant_id);
             self.refresh_accounts();
             self.subscribe_covenant_addresses();
 
@@ -1421,7 +1470,12 @@ impl App {
         let tx = Transaction::new(TX_VERSION + 1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         let tx_id = tx.id();
 
-        // Update covenant record with new UTXO outpoint and value
+        // Save old UTXO info so we can revert on submission failure
+        self.pending_tx_effects
+            .insert(tx_id, PendingTxEffect::ProveSubmit { covenant_id, old_utxo: covenant_utxo, old_value: covenant_value });
+
+        // Optimistically update covenant record with new UTXO outpoint and value
+        // (reverted in handle_bg_result if TxSubmitFailed)
         let mut updated_record = record.clone();
         updated_record.covenant_utxo = Some((tx_id, 0));
         updated_record.covenant_value = Some(output_value);
@@ -1563,7 +1617,7 @@ impl App {
                         let start_hash = prover.last_processed_block;
                         let tx = self.bg_tx.clone();
                         tokio::spawn(async move {
-                            match node.get_virtual_chain_v2(start_hash, Some(100)).await {
+                            match node.get_virtual_chain_v2(start_hash, Some(1000)).await {
                                 Ok(resp) => {
                                     let _ = tx.send(BgResult::ChainFetched(resp));
                                 }
@@ -1647,7 +1701,7 @@ impl App {
                     tokio::spawn(async move {
                         let mut cursor = start_hash;
                         loop {
-                            let resp = match node.get_virtual_chain_v2(cursor, None).await {
+                            let resp = match node.get_virtual_chain_v2(cursor, Some(1000)).await {
                                 Ok(r) => r,
                                 Err(e) => {
                                     let _ = bg_tx.send(BgResult::ImportFailed { error: format!("Chain fetch error: {e}") });
@@ -1822,6 +1876,8 @@ impl App {
                         ));
                     }
                 }
+                // Mine on-chain txs into history (confirms ours, records others')
+                self.detect_onchain_txs();
             }
             BgResult::ChainFetchFailed(e) => {
                 self.chain_sync_active = false;
@@ -1832,9 +1888,65 @@ impl App {
                 self.log(format!("Submitted tx: {tx_id}"));
                 self.copy_to_clipboard(&tx_id.to_string());
                 self.log("Tx ID copied to clipboard".into());
+
+                // Status stays Submitted — only chain confirmation would make it Confirmed.
+
+                // Apply deferred side-effects
+                if let Some(effect) = self.pending_tx_effects.remove(&tx_id) {
+                    match effect {
+                        PendingTxEffect::Deploy { covenant_id, deploy_tx_id, covenant_value } => {
+                            if let Ok(Some(mut rec)) = self.db.get_covenant(covenant_id) {
+                                rec.deployment_tx_id = Some(deploy_tx_id);
+                                rec.covenant_utxo = Some((deploy_tx_id, 0));
+                                rec.covenant_value = Some(covenant_value);
+                                if let Err(e) = self.db.put_covenant(covenant_id, &rec) {
+                                    self.log(format!("Failed to mark covenant as deployed: {e}"));
+                                } else {
+                                    self.log(format!("Covenant {covenant_id} deployed successfully"));
+                                    self.covenants = self.db.list_covenants();
+                                }
+                            }
+                        }
+                        PendingTxEffect::ProveSubmit { .. } => {
+                            // Optimistic update already applied — nothing to do on success
+                        }
+                    }
+                }
             }
             BgResult::TxSubmitFailed { tx_id, error } => {
                 self.log(format!("Failed to submit tx {tx_id}: {error}"));
+
+                // Update tx history status in memory and in DB
+                if let Some(record) = self.tx_history.iter_mut().find(|r| r.tx_id == tx_id) {
+                    record.status = TxStatus::Failed(error.clone());
+                }
+                if let Some(cov_id) = self.selected_covenant_id() {
+                    if let Err(e) = self.db.update_tx_status(cov_id, tx_id, TxStatusDb::Failed(error.clone())) {
+                        self.log(format!("Failed to persist tx status: {e}"));
+                    }
+                }
+
+                // Revert deferred side-effects
+                if let Some(effect) = self.pending_tx_effects.remove(&tx_id) {
+                    match effect {
+                        PendingTxEffect::Deploy { covenant_id, .. } => {
+                            self.log(format!("Deploy tx failed — covenant {covenant_id} remains undeployed"));
+                        }
+                        PendingTxEffect::ProveSubmit { covenant_id, old_utxo, old_value } => {
+                            // Revert covenant UTXO to old values
+                            if let Ok(Some(mut rec)) = self.db.get_covenant(covenant_id) {
+                                rec.covenant_utxo = Some(old_utxo);
+                                rec.covenant_value = Some(old_value);
+                                if let Err(e) = self.db.put_covenant(covenant_id, &rec) {
+                                    self.log(format!("Failed to revert covenant UTXO: {e}"));
+                                } else {
+                                    self.log(format!("Reverted covenant {covenant_id} UTXO to previous state"));
+                                    self.covenants = self.db.list_covenants();
+                                }
+                            }
+                        }
+                    }
+                }
             }
             BgResult::ActionBuilt { action, amount, tx } => {
                 let tx_id = tx.id();
@@ -1955,9 +2067,131 @@ impl App {
     }
 
     fn record_tx(&mut self, tx_id: Hash, action: &str, amount: u64) {
+        self.record_tx_with_status(tx_id, action, amount, TxStatus::Submitted);
+    }
+
+    fn record_tx_with_status(&mut self, tx_id: Hash, action: &str, amount: u64, status: TxStatus) {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-        self.tx_history.push(TxRecord { tx_id, action: action.to_string(), amount, timestamp, status: TxStatus::Submitted });
+        let rec = TxRecord { tx_id, action: action.to_string(), amount, timestamp, status };
+        if let Some(cov_id) = self.selected_covenant_id() {
+            if let Err(e) = self.db.append_tx(cov_id, &tx_record_to_db(&rec)) {
+                self.log(format!("Failed to persist tx record: {e}"));
+            }
+        }
+        self.tx_history.push(rec);
         self.tx_history_index = self.tx_history.len().saturating_sub(1);
+    }
+
+    /// If `tx_id` is already in history with Submitted status, upgrade it to Confirmed and
+    /// persist. Otherwise insert a new Confirmed record (tx seen from another instance).
+    fn confirm_or_record(&mut self, covenant_id: CovenantId, tx_id: Hash, label: &str, amount: u64) {
+        if let Some(existing) = self.tx_history.iter_mut().find(|r| r.tx_id == tx_id) {
+            if existing.status == TxStatus::Submitted {
+                existing.status = TxStatus::Confirmed;
+                if let Err(e) = self.db.update_tx_status(covenant_id, tx_id, TxStatusDb::Confirmed) {
+                    self.log(format!("Failed to persist tx status update: {e}"));
+                }
+            }
+        } else {
+            // Seen on-chain from another instance — record as already confirmed
+            let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+            let rec = TxRecord { tx_id, action: label.to_string(), amount, timestamp, status: TxStatus::Confirmed };
+            if let Err(e) = self.db.append_tx(covenant_id, &tx_record_to_db(&rec)) {
+                self.log(format!("Failed to persist chain tx: {e}"));
+            }
+            self.tx_history.push(rec);
+            self.tx_history_index = self.tx_history.len().saturating_sub(1);
+        }
+    }
+
+    /// Load tx history for a covenant from DB (called on covenant select).
+    fn load_tx_history(&mut self, covenant_id: CovenantId) {
+        self.tx_history = self.db.list_txs(covenant_id).into_iter().map(tx_record_from_db).collect();
+        self.tx_history_index = self.tx_history.len().saturating_sub(1);
+    }
+
+    /// Scan the last processed block txs for on-chain activity not yet in our history.
+    /// Confirms our own pending txs and records txs from other instances.
+    fn detect_onchain_txs(&mut self) {
+        let cov_idx = match self.selected_covenant {
+            Some(i) => i,
+            None => return,
+        };
+        let covenant_id = self.covenants[cov_idx].0;
+        let deployment_tx_id = self.covenants[cov_idx].1.deployment_tx_id;
+
+        // Collect detected txs without holding a borrow on self.prover
+        let mut detected: Vec<(Hash, &'static str, u64)> = Vec::new();
+        let mut new_cov_utxo: Option<(Hash, u32)> = None;
+        let mut new_cov_value: Option<u64> = None;
+
+        {
+            let prover = match &self.prover {
+                Some(p) => p,
+                None => return,
+            };
+            // Follow the covenant UTXO chain through the response
+            let mut tracking_utxo = self.covenants[cov_idx].1.covenant_utxo;
+
+            for block_txs in &prover.last_block_txs {
+                for ztx in block_txs {
+                    let tx_id = ztx.tx.id();
+
+                    // Deployment confirmation: match by tx_id
+                    if let Some(deploy_id) = deployment_tx_id {
+                        if tx_id == deploy_id {
+                            detected.push((tx_id, "Deploy", 0));
+                            continue;
+                        }
+                    }
+
+                    if let Some(ref witness) = ztx.witness {
+                        // Successfully applied action tx
+                        let (label, amount) = witness_label_amount(witness, &ztx.tx);
+                        detected.push((tx_id, label, amount));
+                    } else if ztx.tx.version >= 1 {
+                        // Check if this spends our tracked covenant UTXO → proof submission
+                        if let Some((utxo_tx, utxo_idx)) = tracking_utxo {
+                            let spends =
+                                ztx.tx.inputs.iter().any(|inp| {
+                                    inp.previous_outpoint.transaction_id == utxo_tx && inp.previous_outpoint.index == utxo_idx
+                                });
+                            if spends {
+                                let val = ztx.tx.outputs.first().map(|o| o.value).unwrap_or(0);
+                                detected.push((tx_id, "Prove", val));
+                                // Follow the UTXO chain for subsequent proofs in same response
+                                tracking_utxo = Some((tx_id, 0));
+                                new_cov_utxo = Some((tx_id, 0));
+                                new_cov_value = Some(val);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apply detections (needs mutable self)
+        for (tx_id, label, amount) in detected {
+            self.confirm_or_record(covenant_id, tx_id, label, amount);
+        }
+
+        // If an on-chain proof was found, update the covenant UTXO
+        if let Some(new_utxo) = new_cov_utxo {
+            if let Ok(Some(mut rec)) = self.db.get_covenant(covenant_id) {
+                rec.covenant_utxo = Some(new_utxo);
+                rec.covenant_value = new_cov_value;
+                if let Err(e) = self.db.put_covenant(covenant_id, &rec) {
+                    self.log(format!("Failed to update covenant UTXO after on-chain proof: {e}"));
+                } else {
+                    self.covenants = self.db.list_covenants();
+                    self.log("Updated covenant UTXO from on-chain proof".into());
+                }
+            }
+        }
+    }
+
+    fn selected_covenant_id(&self) -> Option<CovenantId> {
+        self.selected_covenant.map(|i| self.covenants[i].0)
     }
 
     // ── Helpers ──
@@ -1974,6 +2208,7 @@ impl App {
         let is_deployed = self.covenants[0].1.deployment_tx_id.is_some();
         self.refresh_accounts();
         self.load_prover_key(id);
+        self.load_tx_history(id);
         self.subscribe_covenant_addresses();
         self.log(format!("Auto-selected covenant: {id}"));
 
@@ -1987,6 +2222,11 @@ impl App {
     }
 
     pub fn log(&mut self, msg: String) {
+        if let Some(file) = &mut self.log_file {
+            use std::io::Write;
+            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+            let _ = writeln!(file, "[{ts}] {msg}");
+        }
         self.log_messages.push(msg);
     }
 
@@ -2037,6 +2277,35 @@ impl App {
                 }
                 Err(e) => self.log(format!("Clipboard error: {e}")),
             }
+        }
+    }
+}
+
+/// Derive action label and amount from a successfully-applied witness + transaction.
+fn witness_label_amount(witness: &ActionWitness, tx: &Transaction) -> (&'static str, u64) {
+    let payload_words: Vec<u32> = tx.payload.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+    match witness {
+        ActionWitness::Entry(_) => {
+            let amount = tx.outputs.first().map(|o| o.value).unwrap_or(0);
+            ("Entry", amount)
+        }
+        ActionWitness::Transfer(_) => {
+            let amount = payload_words
+                .get(ActionHeader::WORDS..)
+                .and_then(|w| w.get(..TransferAction::WORDS))
+                .and_then(|w| w.try_into().ok())
+                .map(|w| TransferAction::from_words(w).amount)
+                .unwrap_or(0);
+            ("Transfer", amount)
+        }
+        ActionWitness::Exit(_) => {
+            let amount = payload_words
+                .get(ActionHeader::WORDS..)
+                .and_then(|w| w.get(..ExitAction::WORDS))
+                .and_then(|w| w.try_into().ok())
+                .map(|w| ExitAction::from_words(w).amount)
+                .unwrap_or(0);
+            ("Exit", amount)
         }
     }
 }
@@ -2394,6 +2663,149 @@ mod tests {
         // Verify it matches a fresh render (no popup was ever shown on this terminal)
         let fresh_output = render_to_string(&app, 120, 30);
         assert_eq!(clean_output, fresh_output, "render after popup dismiss should match a fresh render");
+    }
+
+    #[test]
+    fn test_deploy_not_confirmed_until_tx_submitted() {
+        let mut app = test_app();
+        app.create_covenant();
+        app.covenant_list_index = 0;
+        app.selected_covenant = Some(0);
+
+        // The covenant is created but not deployed
+        assert!(app.covenants[0].1.deployment_tx_id.is_none());
+
+        // Simulate deploy — record_tx is called but DB is NOT updated
+        let fake_tx_id = Hash::from_bytes([0xAA; 32]);
+        let cov_id = app.covenants[0].0;
+        app.pending_tx_effects
+            .insert(fake_tx_id, PendingTxEffect::Deploy { covenant_id: cov_id, deploy_tx_id: fake_tx_id, covenant_value: 100_000 });
+        app.record_tx(fake_tx_id, "Deploy", 100_000);
+
+        // Covenant should still NOT be deployed
+        let rec = app.db.get_covenant(cov_id).unwrap().unwrap();
+        assert!(rec.deployment_tx_id.is_none(), "covenant must not be deployed before TxSubmitted");
+
+        // Simulate TxSubmitted
+        app.handle_bg_result(BgResult::TxSubmitted { tx_id: fake_tx_id });
+
+        // Now it should be deployed
+        let rec = app.db.get_covenant(cov_id).unwrap().unwrap();
+        assert!(rec.deployment_tx_id.is_some(), "covenant must be deployed after TxSubmitted");
+        assert_eq!(rec.deployment_tx_id.unwrap(), fake_tx_id);
+        assert_eq!(rec.covenant_value, Some(100_000));
+    }
+
+    #[test]
+    fn test_deploy_reverts_on_tx_submit_failed() {
+        let mut app = test_app();
+        app.create_covenant();
+        app.covenant_list_index = 0;
+        app.selected_covenant = Some(0);
+
+        let fake_tx_id = Hash::from_bytes([0xBB; 32]);
+        let cov_id = app.covenants[0].0;
+        app.pending_tx_effects
+            .insert(fake_tx_id, PendingTxEffect::Deploy { covenant_id: cov_id, deploy_tx_id: fake_tx_id, covenant_value: 100_000 });
+        app.record_tx(fake_tx_id, "Deploy", 100_000);
+
+        // Simulate TxSubmitFailed
+        app.handle_bg_result(BgResult::TxSubmitFailed { tx_id: fake_tx_id, error: "rejected".into() });
+
+        // Covenant must remain undeployed
+        let rec = app.db.get_covenant(cov_id).unwrap().unwrap();
+        assert!(rec.deployment_tx_id.is_none(), "covenant must not be deployed after TxSubmitFailed");
+
+        // Tx history should show Failed
+        let tx = app.tx_history.iter().find(|r| r.tx_id == fake_tx_id).unwrap();
+        assert!(matches!(tx.status, TxStatus::Failed(_)));
+    }
+
+    #[test]
+    fn test_tx_stays_submitted_on_rpc_accept() {
+        let mut app = test_app();
+        let tx_id = Hash::from_bytes([0xCC; 32]);
+        app.record_tx(tx_id, "Entry", 5000);
+
+        // Initially Submitted
+        assert_eq!(app.tx_history[0].status, TxStatus::Submitted);
+
+        // RPC accepts the tx — status stays Submitted (not Confirmed)
+        app.handle_bg_result(BgResult::TxSubmitted { tx_id });
+        assert_eq!(app.tx_history[0].status, TxStatus::Submitted);
+    }
+
+    #[test]
+    fn test_tx_status_updated_on_submit_failure() {
+        let mut app = test_app();
+        let tx_id = Hash::from_bytes([0xDD; 32]);
+        app.record_tx(tx_id, "Exit", 3000);
+
+        assert_eq!(app.tx_history[0].status, TxStatus::Submitted);
+
+        // Simulate failure
+        app.handle_bg_result(BgResult::TxSubmitFailed { tx_id, error: "insufficient funds".into() });
+        assert!(matches!(app.tx_history[0].status, TxStatus::Failed(ref msg) if msg.contains("insufficient")));
+    }
+
+    #[test]
+    fn test_prove_submit_reverts_utxo_on_failure() {
+        let mut app = test_app();
+        app.create_covenant();
+        app.covenant_list_index = 0;
+        app.selected_covenant = Some(0);
+        let cov_id = app.covenants[0].0;
+
+        // Simulate deployed state
+        let old_utxo_tx = Hash::from_bytes([0x11; 32]);
+        let mut rec = app.covenants[0].1.clone();
+        rec.deployment_tx_id = Some(old_utxo_tx);
+        rec.covenant_utxo = Some((old_utxo_tx, 0));
+        rec.covenant_value = Some(500_000);
+        app.db.put_covenant(cov_id, &rec).unwrap();
+        app.covenants = app.db.list_covenants();
+
+        // Simulate a prove-submit that optimistically updated UTXO
+        let prove_tx_id = Hash::from_bytes([0x22; 32]);
+        app.pending_tx_effects
+            .insert(prove_tx_id, PendingTxEffect::ProveSubmit { covenant_id: cov_id, old_utxo: (old_utxo_tx, 0), old_value: 500_000 });
+
+        // Optimistic update (as submit_proof does)
+        let mut updated = rec.clone();
+        updated.covenant_utxo = Some((prove_tx_id, 0));
+        updated.covenant_value = Some(497_000);
+        app.db.put_covenant(cov_id, &updated).unwrap();
+
+        // Simulate failure
+        app.handle_bg_result(BgResult::TxSubmitFailed { tx_id: prove_tx_id, error: "bad proof".into() });
+
+        // UTXO should be reverted to old values
+        let reverted = app.db.get_covenant(cov_id).unwrap().unwrap();
+        assert_eq!(reverted.covenant_utxo, Some((old_utxo_tx, 0)));
+        assert_eq!(reverted.covenant_value, Some(500_000));
+    }
+
+    #[test]
+    fn test_log_writes_to_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(crate::db::RollupDb::open(dir.path()).unwrap());
+        let node = crate::node::KaspaNode::try_new("ws://127.0.0.1:1", NetworkId::new(NetworkType::Simnet)).unwrap();
+        let log_path = dir.path().join("tui.log");
+        let mut app = App::with_log_path(db, node, Prefix::Simnet, Some(log_path.clone()));
+
+        app.log("test error one".into());
+        app.log("test error two".into());
+
+        // Force flush by dropping the file handle
+        drop(app.log_file.take());
+
+        let contents = std::fs::read_to_string(&log_path).unwrap();
+        assert!(contents.contains("test error one"), "log file should contain first message");
+        assert!(contents.contains("test error two"), "log file should contain second message");
+        // Each line should have a timestamp prefix
+        for line in contents.lines() {
+            assert!(line.starts_with('['), "each log line should start with timestamp bracket");
+        }
     }
 
     /// Verify Confirm popup renders and dismisses cleanly.
