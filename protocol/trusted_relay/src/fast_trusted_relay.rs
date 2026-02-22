@@ -148,7 +148,10 @@ impl FastTrustedRelay {
     pub async fn recv_block(&self) -> (Hash, FtrBlock) {
         debug!("entering receive block loop from fast trusted relay...");
         loop {
-            if let Some(udp_runtime) = &self.udp_runtime.lock().await.as_ref() {
+            let guard = self.udp_runtime.lock().await;
+            let udp_runtime = guard.clone();
+            drop(guard);
+            if let Some(udp_runtime) = udp_runtime {
                 let block_receiver_arc = udp_runtime.block_receive();
                 let mut block_receiver = block_receiver_arc.lock().await;
                 debug!("Waiting to receive block from UDP runtime...");
