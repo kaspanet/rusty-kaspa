@@ -360,12 +360,6 @@ impl FlowContext {
         if let Some(logger) = self.block_event_logger.as_ref() {
             logger.start();
         }
-        if self.fast_trusted_relay.is_some() {
-            let mut self_clone = self.clone();
-             tokio::spawn(async move {
-                self_clone.register_fast_trusted_relay_flow().await;
-            });
-        }
     }
 
     pub fn set_connection_manager(&self, connection_manager: Arc<ConnectionManager>) {
