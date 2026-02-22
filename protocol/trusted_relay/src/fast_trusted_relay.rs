@@ -1,5 +1,9 @@
 use std::{
-    collections::HashSet, net::SocketAddr, ops::Deref, sync::{Arc, atomic::AtomicBool}, time::Duration
+    collections::HashSet,
+    net::SocketAddr,
+    ops::Deref,
+    sync::{Arc, atomic::AtomicBool},
+    time::Duration,
 };
 
 use kaspa_core::{debug, info, task::service::AsyncService, warn};
@@ -64,22 +68,33 @@ impl FastTrustedRelay {
             allowlist.insert((SocketAddr::from((peer)).ip(), PeerDirection::Outbound));
         }
 
-
-        let directory = Arc::new(PeerDirectory::new(allowlist.iter().cloned().map(|(addr, direction)| (addr.into(), direction)).collect()));
+        let directory =
+            Arc::new(PeerDirectory::new(allowlist.iter().cloned().map(|(addr, direction)| (addr.into(), direction)).collect()));
         let authenticator = Arc::new(TokenAuthenticator::new(secret));
         let is_udp_active = Arc::new(AtomicBool::new(false));
         let receive_block_waker = Arc::new(tokio::sync::Notify::new());
-        let tcp_runtime =
-            ControlRuntime::new( listen_address, directory.clone(), authenticator.clone(), is_udp_active.clone());
-        Self { listen_address, tcp_runtime: Arc::new(TokioMutex::new(tcp_runtime)), udp_runtime: None, authenticator, directory, params, fragmentation_config, udp_port: DEFAULT_UDP_PORT, tcp_port: DEFAULT_TCP_PORT, udp_active: is_udp_active, receive_block_waker }
+        let tcp_runtime = ControlRuntime::new(listen_address, directory.clone(), authenticator.clone(), is_udp_active.clone());
+        Self {
+            listen_address,
+            tcp_runtime: Arc::new(TokioMutex::new(tcp_runtime)),
+            udp_runtime: None,
+            authenticator,
+            directory,
+            params,
+            fragmentation_config,
+            udp_port: DEFAULT_UDP_PORT,
+            tcp_port: DEFAULT_TCP_PORT,
+            udp_active: is_udp_active,
+            receive_block_waker,
+        }
     }
 
     pub async fn start_control_runtime(&mut self) {
         info!("Starting TCP control runtime...");
         let tcp_runtime = self.tcp_runtime.clone();
         let mut rt = tcp_runtime.lock().await;
-            rt.run().await;
-        }
+        rt.run().await;
+    }
 
     /// stop the UDP relay without consuming the struct so the caller can still
     /// use the relay instance afterwards.
@@ -87,12 +102,21 @@ impl FastTrustedRelay {
         if !self.toggle_udp_active(false) {
             debug!("trying to stop fast trusted relay although it is not active");
             return;
-        } else {
-            // drops the runtime, which frees the resources
-            self.udp_runtime.take();
-            // signal to peers that the relay is not ready to receive blocks.
-            self.tcp_runtime.lock().await.signal_not_ready().await;
-        };
+        }
+
+        // Wake any tasks that are blocked in `recv_block` so they can
+        // observe that the runtime is gone and either exit or await the next
+        // activation.  This used to be done by waiting on a notification from
+        // `start_fast_relay`, which caused `stop_fast_relay` to hang forever if
+        // no subsequent start occurred.  The hang you're still seeing is
+        // because the relay was repeatedly shut down when clones were dropped
+        // and the last shutdown task never completed.
+        self.receive_block_waker.notify_waiters();
+
+        // drops the runtime, which frees the resources
+        self.udp_runtime.take();
+        // signal to peers that the relay is not ready to receive blocks.
+        self.tcp_runtime.lock().await.signal_not_ready().await;
         info!("fast trusted relay UDP transport stopped");
     }
 
@@ -124,7 +148,7 @@ impl FastTrustedRelay {
     pub fn shutdown(&mut self) {
         debug!("shutting down fast trusted relay...");
         let mut self_clone = self.clone();
-            tokio::spawn(async move {
+        tokio::spawn(async move {
             self_clone.stop_fast_relay().await;
             // only move the control runtime into the spawned task, keeping the
             // rest of `self` live.
@@ -173,10 +197,29 @@ impl FastTrustedRelay {
     }
 }
 
+// The relay is a cheap, cloneable handle; clones share the same
+// underlying control/udp runtimes via `Arc`.  We used to shut the transport
+// down on _every_ drop, which meant that creating a temporary clone (for
+// example when registering the relay flow) would immediately trigger a shutdown
+// task.  That task would then block waiting for a future `start_fast_relay` and
+// eventually starve the tokio runtime – leaving kaspad apparently hung after
+// IBD.
+//
+// Instead we only perform a shutdown when the _last_ strong reference disappears.
+// At drop time the only thing we can observe synchronously is the current
+// strong count; if it is one then this handle is the final owner and we can
+// safely spawn the background task to tear everything down.  If there are others
+// remaining we simply do nothing and let the real owner clean up later.
 impl Drop for FastTrustedRelay {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.tcp_runtime) > 1 || self.udp_runtime.as_ref().map_or(0, Arc::strong_count) > 1 {
-            debug!("Dropping FastTrustedRelay with active runtimes; shutting down...");
+        // tcp_runtime is always present; udp_runtime is optional
+        let tcp_refs = Arc::strong_count(&self.tcp_runtime);
+        let udp_refs = self.udp_runtime.as_ref().map_or(0, |rt| Arc::strong_count(rt));
+
+        // when both counts are 1 (i.e. only `self` holds the reference) we are
+        // the last handle.
+        if tcp_refs == 1 && udp_refs <= 1 {
+            debug!("last FastTrustedRelay handle dropped, performing shutdown (tcp={}, udp={})", tcp_refs, udp_refs);
             self.shutdown();
         }
     }
