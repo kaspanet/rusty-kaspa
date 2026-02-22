@@ -1075,7 +1075,7 @@ mod tests {
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
         let mut buf = [0u8; 16];
         let mut str_buf = String::with_capacity(32);
-        for i in 0..80_000 {
+        for i in 0..1 << 17 {
             // Checking all the fmt's is quite expensive.
             let check_fmt = i % 8 == 1;
             rng.fill_bytes(&mut buf);
@@ -1087,9 +1087,27 @@ mod tests {
             assert_equal(mine, default, check_fmt);
             assert_equal(mine2, default2, check_fmt);
 
-            let mine = mine.overflowing_add(mine2).0.overflowing_mul(mine2).0;
-            let default = default.overflowing_add(default2).0.overflowing_mul(default2).0;
-            assert_equal(mine, default, check_fmt);
+            // Test add
+            {
+                let mine_overflow_add = mine.overflowing_add(mine2);
+                let default_overflow_add = default.overflowing_add(default2);
+                assert_equal(mine_overflow_add.0, default_overflow_add.0, check_fmt);
+                assert_eq!(mine_overflow_add.1, default_overflow_add.1);
+            }
+            // Test sub
+            {
+                let mine_overflow_sub = mine.overflowing_sub(mine2);
+                let default_overflow_sub = default.overflowing_sub(default2);
+                assert_equal(mine_overflow_sub.0, default_overflow_sub.0, check_fmt);
+                assert_eq!(mine_overflow_sub.1, default_overflow_sub.1);
+            }
+            // Test mul
+            {
+                let mine_overflow_mul = mine.overflowing_mul(mine2);
+                let default_overflow_mul = default.overflowing_mul(default2);
+                assert_equal(mine_overflow_mul.0, default_overflow_mul.0, check_fmt);
+                assert_eq!(mine_overflow_mul.1, default_overflow_mul.1);
+            }
             let shift = rng.next_u32() % 4096;
             {
                 let mine_overflow_shl = mine.overflowing_shl(shift);
@@ -1098,8 +1116,8 @@ mod tests {
                 assert_eq!(mine_overflow_shl.1, default_overflow_shl.1);
             }
             {
-                let mine_overflow_shr = mine.overflowing_shl(shift);
-                let default_overflow_shr = default.overflowing_shl(shift);
+                let mine_overflow_shr = mine.overflowing_shr(shift);
+                let default_overflow_shr = default.overflowing_shr(shift);
                 assert_equal(mine_overflow_shr.0, default_overflow_shr.0, check_fmt);
                 assert_eq!(mine_overflow_shr.1, default_overflow_shr.1);
             }
@@ -1173,6 +1191,76 @@ mod tests {
         // Add
         assert_eq!(u1.saturating_add(Uint128::from_u64(1)), Uint128::MAX);
         assert_eq!(u2.saturating_add(Uint128::from_u64(1)), Uint128::from_u128(u64::MAX as u128 + 1));
+    }
+
+    #[test]
+    fn test_mul_overflow() {
+        let a: u128 = 848550227390639374336;
+        let b: u128 = 2614529362970723404469741027328;
+
+        let my_a = Uint128::from_u128(a);
+        let my_b = Uint128::from_u128(b);
+
+        let (expected_val, expected_overflow) = a.overflowing_mul(b);
+        let (actual_val, actual_overflow) = my_a.overflowing_mul(my_b);
+        assert_eq!(expected_val, actual_val.as_u128());
+        assert_eq!(expected_overflow, actual_overflow);
+    }
+
+    #[test]
+    fn test_iter_be_bits() {
+        let mut rng = ChaCha8Rng::from_seed([42; 32]);
+        let mut buf = [0u8; 16];
+        rng.fill_bytes(&mut buf);
+        let val = Uint128::from_le_bytes(buf);
+        let be_bytes = val.to_be_bytes();
+
+        // Collect the expected bits from the big-endian byte representation
+        let expected_bits: Vec<bool> = be_bytes.iter().flat_map(|byte| (0..8).map(move |i| (byte >> (7 - i)) & 1 == 1)).collect();
+        assert_eq!(expected_bits.len(), 128);
+
+        // Test next() exhaustively and size_hint() at every step
+        let mut iter = val.iter_be_bits();
+        assert_eq!(iter.len(), 128);
+        for (i, expected) in expected_bits.iter().enumerate() {
+            assert_eq!(iter.size_hint(), (128 - i, Some(128 - i)));
+            assert_eq!(iter.next(), Some(*expected), "next() mismatch at bit {i}");
+        }
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+        assert_eq!(iter.next(), None);
+        // FusedIterator: stays None
+        assert_eq!(iter.next(), None);
+
+        // Test nth(): loop over all split points and use nth() to skip to it
+        for skip in 0..128 {
+            let mut iter = val.iter_be_bits();
+            // nth(skip) should return the element at index `skip`
+            assert_eq!(iter.nth(skip), Some(expected_bits[skip]), "nth({skip}) mismatch");
+            let expected_len = 128 - skip - 1;
+            assert_eq!(iter.len(), expected_len);
+            assert_eq!(iter.size_hint(), (expected_len, Some(expected_len)));
+            // Remaining elements after nth should be correct
+            for (i, expected) in expected_bits[skip + 1..].iter().enumerate() {
+                assert_eq!(iter.next(), Some(*expected), "next() after nth({skip}) mismatch at offset {i}");
+            }
+            assert_eq!(iter.next(), None);
+            assert_eq!(iter.len(), 0);
+            assert_eq!(iter.size_hint(), (0, Some(0)));
+        }
+
+        // Test nth() past the end
+        let mut iter = val.iter_be_bits();
+        assert_eq!(iter.nth(128), None);
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+
+        // Test nth() usize::MAX
+        let mut iter = val.iter_be_bits();
+        assert_eq!(iter.nth(usize::MAX), None);
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.size_hint(), (0, Some(0)));
     }
 
     #[test]
