@@ -3,18 +3,22 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use kaspa_addresses::{Address, Prefix, Version};
+use kaspa_consensus_core::constants::TX_VERSION;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
-    SignableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    CovenantBinding, SignableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::RpcTransaction;
+use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
 use kaspa_wrpc_client::prelude::Notification;
+use risc0_zkvm::sha::Digestible;
 use tokio::sync::mpsc;
 use zk_covenant_rollup_core::state::empty_tree_root;
+use zk_covenant_rollup_core::PublicInput;
 use zk_covenant_rollup_host::mock_chain::{calc_accepted_id_merkle_root, from_bytes};
 use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
@@ -26,7 +30,7 @@ use crate::db::{CovenantId, CovenantRecord, ProvingState, Pubkey, RollupDb};
 use crate::node::{KaspaNode, NodeEvent};
 use crate::prover::RollupProver;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tab {
     Covenants,
     Accounts,
@@ -117,21 +121,63 @@ pub enum TxStatus {
     Failed(String),
 }
 
+/// A completed ZK proof ready for on-chain submission.
+pub(crate) struct CompletedProof {
+    receipt: risc0_zkvm::Receipt,
+    public_input: PublicInput,
+    block_prove_to: Hash,
+    proof_kind: ProofKind,
+    perm_redeem_script: Option<Vec<u8>>,
+}
+
 /// Results delivered from background tasks back to the main event loop.
 enum BgResult {
-    UtxosFetched { entries: Vec<kaspa_rpc_core::RpcUtxosByAddressesEntry>, address_count: usize },
+    UtxosFetched {
+        entries: Vec<kaspa_rpc_core::RpcUtxosByAddressesEntry>,
+        address_count: usize,
+    },
     UtxosFetchFailed(String),
     UtxoSubscribeFailed(String),
     ChainFetched(kaspa_rpc_core::GetVirtualChainFromBlockV2Response),
     ChainFetchFailed(String),
-    TxSubmitted { tx_id: Hash },
-    TxSubmitFailed { tx_id: Hash, error: String },
-    ActionBuilt { action: ActionType, amount: u64, tx: Transaction },
-    ActionBuildFailed { action: ActionType, error: String },
-    ProofCompleted { gen: u64, elapsed_ms: u128, segments: usize, total_cycles: u64 },
-    ProofFailed { gen: u64, error: String },
-    ImportValidated { covenant_id: Hash, deploy_tx_id: Hash },
-    ImportFailed { error: String },
+    TxSubmitted {
+        tx_id: Hash,
+    },
+    TxSubmitFailed {
+        tx_id: Hash,
+        error: String,
+    },
+    ActionBuilt {
+        action: ActionType,
+        amount: u64,
+        tx: Transaction,
+    },
+    ActionBuildFailed {
+        action: ActionType,
+        error: String,
+    },
+    ProofCompleted {
+        gen: u64,
+        receipt: Box<risc0_zkvm::Receipt>,
+        public_input: PublicInput,
+        block_prove_to: Hash,
+        proof_kind: ProofKind,
+        perm_redeem_script: Option<Vec<u8>>,
+        elapsed_ms: u128,
+        segments: usize,
+        total_cycles: u64,
+    },
+    ProofFailed {
+        gen: u64,
+        error: String,
+    },
+    ImportValidated {
+        covenant_id: Hash,
+        deploy_tx_id: Hash,
+    },
+    ImportFailed {
+        error: String,
+    },
 }
 
 pub struct App {
@@ -176,6 +222,7 @@ pub struct App {
     pub proof_kind: ProofKind,
     pub proof_in_progress: bool,
     pub last_proof_result: Option<String>,
+    pub(crate) completed_proofs: Vec<CompletedProof>,
     /// Monotonic counter — incremented on each prove start and on cancel.
     /// Results from older generations are discarded.
     proof_generation: u64,
@@ -189,6 +236,9 @@ pub struct App {
 
     /// True while a FetchAndProcessChain task is in-flight (prevents double-firing).
     chain_sync_active: bool,
+
+    /// Persistent clipboard instance (Linux requires the owner to stay alive).
+    clipboard: Option<arboard::Clipboard>,
 }
 
 /// Deferred async operations triggered from sync key handlers.
@@ -196,9 +246,23 @@ enum PendingOp {
     SubscribeAndFetchUtxos(Vec<Address>),
     SubmitTransaction(Transaction),
     FetchAndProcessChain,
-    BuildAndSubmitAction { action: ActionType, amount: u64 },
-    GenerateProof { gen: u64, input: ProveInput, backend: ProverBackend, kind: ProofKind },
-    ValidateImport { covenant_id: Hash, start_hash: Hash },
+    BuildAndSubmitAction {
+        action: ActionType,
+        amount: u64,
+    },
+    GenerateProof {
+        gen: u64,
+        input: ProveInput,
+        backend: ProverBackend,
+        kind: ProofKind,
+        public_input: PublicInput,
+        block_prove_to: Hash,
+        perm_redeem_script: Option<Vec<u8>>,
+    },
+    ValidateImport {
+        covenant_id: Hash,
+        start_hash: Hash,
+    },
 }
 
 impl App {
@@ -233,11 +297,13 @@ impl App {
             proof_kind: ProofKind::Succinct,
             proof_in_progress: false,
             last_proof_result: None,
+            completed_proofs: Vec::new(),
             proof_generation: 0,
             pending_ops: Vec::new(),
             bg_tx,
             bg_rx,
             chain_sync_active: false,
+            clipboard: None,
         }
     }
 
@@ -313,7 +379,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
 
             // Tab switching
@@ -403,6 +469,7 @@ impl App {
             deployment_tx_id: None,
             covenant_utxo: None,
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+            covenant_value: None,
         };
 
         if let Err(e) = self.db.put_covenant(covenant_id, &record) {
@@ -461,18 +528,23 @@ impl App {
         let deployer_addr_str = deployer_addr.to_string();
         let deployer_spk = pay_to_address_script(&deployer_addr);
 
-        // Select UTXOs from deployer
-        let covenant_value: u64 = 100_000; // 0.001 KAS
-        let fee: u64 = 10_000;
-        let needed = covenant_value + fee;
-
-        let (selected_utxos, total_input) = match self.utxo_tracker.select_utxos(&deployer_addr_str, needed) {
-            Some(r) => r,
+        // Take the first available UTXO; all value minus fee goes into the covenant
+        let estimated_fee: u64 = 3000;
+        let utxos = self.utxo_tracker.available_utxos(&deployer_addr_str);
+        let first_utxo = match utxos.first() {
+            Some(u) => (*u).clone(),
             None => {
-                self.log(format!("Insufficient funds at deployer address {deployer_addr_str} (need {needed} sompi)"));
+                self.log(format!("No UTXOs at deployer address {deployer_addr_str}"));
                 return;
             }
         };
+        if first_utxo.amount <= estimated_fee {
+            self.log(format!("UTXO too small ({} sompi) — need > {estimated_fee} sompi", first_utxo.amount));
+            return;
+        }
+        let covenant_value = first_utxo.amount - estimated_fee;
+        let selected_utxos = [first_utxo];
+        let total_input = covenant_value + estimated_fee;
 
         // Build initial redeem script
         let prev_state_hash = empty_tree_root();
@@ -501,12 +573,9 @@ impl App {
         let utxo_entries: Vec<UtxoEntry> =
             selected_utxos.iter().map(|u| UtxoEntry::new(u.amount, deployer_spk.clone(), 0, false, None)).collect();
 
-        // Build outputs
-        let mut outputs = vec![TransactionOutput::new(covenant_value, covenant_spk)];
-        let change = total_input - needed;
-        if change > 0 {
-            outputs.push(TransactionOutput::new(change, deployer_spk.clone()));
-        }
+        // Build outputs (single output — all value minus fee goes to covenant)
+        let outputs = vec![TransactionOutput::new(covenant_value, covenant_spk)];
+        let _ = total_input; // all consumed
 
         let tx = Transaction::new(0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         let signable = SignableTransaction::with_entries(tx, utxo_entries);
@@ -520,6 +589,7 @@ impl App {
         let mut updated_record = record.clone();
         updated_record.deployment_tx_id = Some(tx_id);
         updated_record.covenant_utxo = Some((tx_id, 0));
+        updated_record.covenant_value = Some(covenant_value);
         if let Err(e) = self.db.put_covenant(covenant_id, &updated_record) {
             self.log(format!("Failed to update covenant in DB: {e}"));
             return;
@@ -592,12 +662,12 @@ impl App {
             KeyCode::Char('y') => {
                 if self.role_focused {
                     if let Some(addr) = self.role_address() {
-                        let _ = cli_clipboard::set_contents(addr.clone());
+                        self.copy_to_clipboard(&addr);
                         self.log(format!("Copied role address: {addr}"));
                     }
                 } else if let Some((pk, _)) = self.accounts.get(self.account_list_index) {
                     let addr = self.pubkey_to_address(pk).unwrap_or_default();
-                    let _ = cli_clipboard::set_contents(addr.clone());
+                    self.copy_to_clipboard(&addr);
                     self.log(format!("Copied address: {addr}"));
                 }
             }
@@ -971,6 +1041,7 @@ impl App {
             deployment_tx_id: Some(deploy_tx_id),
             covenant_utxo: Some((deploy_tx_id, 0)),
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+            covenant_value: None, // unknown for imported covenants
         };
 
         if let Err(e) = self.db.put_covenant(covenant_id, &record) {
@@ -1009,7 +1080,7 @@ impl App {
         }
         let (id, _) = self.covenants[self.covenant_list_index];
         let info = format!("{id}");
-        let _ = cli_clipboard::set_contents(info.clone());
+        self.copy_to_clipboard(&info);
         self.log(format!("Exported covenant ID to clipboard: {info}"));
     }
 
@@ -1069,6 +1140,7 @@ impl App {
                 self.log(format!("Proof kind: {}", self.proof_kind.label()));
             }
             KeyCode::Char('r') => self.start_proving(),
+            KeyCode::Char('s') => self.submit_proof(),
             KeyCode::Esc => self.cancel_proving(),
             _ => {}
         }
@@ -1105,13 +1177,18 @@ impl App {
             return;
         }
 
-        let input = match prover.take_prove_snapshot() {
-            Some(input) => input,
+        // Capture block_prove_to before the snapshot resets the proving window
+        let block_prove_to = prover.last_processed_block;
+
+        let snapshot = match prover.take_prove_snapshot() {
+            Some(s) => s,
             None => {
                 self.log("Failed to create proving snapshot".into());
                 return;
             }
         };
+
+        let public_input = snapshot.input.public_input;
 
         self.proof_generation += 1;
         self.proof_in_progress = true;
@@ -1119,12 +1196,20 @@ impl App {
         let gen = self.proof_generation;
         self.log(format!(
             "Starting proof: {} blocks, backend={}, kind={}",
-            input.block_txs.len(),
+            snapshot.input.block_txs.len(),
             self.prover_backend.label(),
             self.proof_kind.label()
         ));
 
-        self.pending_ops.push(PendingOp::GenerateProof { gen, input, backend: self.prover_backend, kind: self.proof_kind });
+        self.pending_ops.push(PendingOp::GenerateProof {
+            gen,
+            input: snapshot.input,
+            backend: self.prover_backend,
+            kind: self.proof_kind,
+            public_input,
+            block_prove_to,
+            perm_redeem_script: snapshot.perm_redeem_script,
+        });
     }
 
     pub fn start_chain_processing(&mut self) {
@@ -1147,6 +1232,214 @@ impl App {
 
         self.proving_status = "Fetching chain data...".into();
         self.pending_ops.push(PendingOp::FetchAndProcessChain);
+    }
+
+    fn submit_proof(&mut self) {
+        if self.completed_proofs.is_empty() {
+            self.log("No completed proofs to submit — press 'r' to prove first".into());
+            return;
+        }
+
+        let cov_idx = match self.selected_covenant {
+            Some(i) => i,
+            None => {
+                self.log("Select a covenant first".into());
+                return;
+            }
+        };
+
+        let (covenant_id, ref record) = self.covenants[cov_idx];
+        let covenant_utxo = match record.covenant_utxo {
+            Some(utxo) => utxo,
+            None => {
+                self.log("No covenant UTXO — deploy the covenant first".into());
+                return;
+            }
+        };
+        let covenant_value = match record.covenant_value {
+            Some(v) => v,
+            None => {
+                self.log("Unknown covenant UTXO value — cannot submit proof".into());
+                return;
+            }
+        };
+
+        let proof = self.completed_proofs.remove(0);
+
+        // Extract new state from journal
+        let journal = &proof.receipt.journal.bytes;
+        if journal.len() < 128 {
+            self.log(format!("Invalid journal length: {} (need >= 128)", journal.len()));
+            return;
+        }
+        let new_state_hash: [u32; 8] = bytemuck::pod_read_unaligned(&journal[64..96]);
+        let new_seq_commitment: [u32; 8] = bytemuck::pod_read_unaligned(&journal[96..128]);
+
+        let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
+        let zk_tag = match proof.proof_kind {
+            ProofKind::Succinct => ZkTag::R0Succinct,
+            ProofKind::Groth16 => ZkTag::Groth16,
+        };
+
+        // Convergence loop for redeem script length
+        let mut computed_len: i64 = 75;
+        loop {
+            let script = build_redeem_script(
+                proof.public_input.prev_state_hash,
+                proof.public_input.prev_seq_commitment,
+                computed_len,
+                &program_id,
+                &zk_tag,
+            );
+            let new_len = script.len() as i64;
+            if new_len == computed_len {
+                break;
+            }
+            computed_len = new_len;
+        }
+
+        let input_redeem = build_redeem_script(
+            proof.public_input.prev_state_hash,
+            proof.public_input.prev_seq_commitment,
+            computed_len,
+            &program_id,
+            &zk_tag,
+        );
+        let output_redeem = build_redeem_script(new_state_hash, new_seq_commitment, computed_len, &program_id, &zk_tag);
+        let output_spk = pay_to_script_hash_script(&output_redeem);
+
+        // Build sig_script
+        let sig_script = match proof.proof_kind {
+            ProofKind::Succinct => {
+                match self.build_succinct_sig_script(&proof.receipt, proof.block_prove_to, &new_state_hash, &input_redeem) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        self.log(format!("Failed to build succinct sig_script: {e}"));
+                        return;
+                    }
+                }
+            }
+            ProofKind::Groth16 => {
+                match self.build_groth16_sig_script(&proof.receipt, proof.block_prove_to, &new_state_hash, &input_redeem) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        self.log(format!("Failed to build groth16 sig_script: {e}"));
+                        return;
+                    }
+                }
+            }
+        };
+
+        // Build transaction
+        let estimated_fee: u64 = 3000;
+        let has_permission = proof.perm_redeem_script.is_some();
+        let perm_dust: u64 = 1000;
+        let output_value = if has_permission {
+            covenant_value.saturating_sub(estimated_fee).saturating_sub(perm_dust)
+        } else {
+            covenant_value.saturating_sub(estimated_fee)
+        };
+
+        if output_value == 0 {
+            self.log("Covenant UTXO value too low to cover fee".into());
+            return;
+        }
+
+        let covenant_id_hash = Hash::from_bytes(bytemuck::cast(proof.public_input.covenant_id));
+
+        let inputs = vec![TransactionInput::new(TransactionOutpoint::new(covenant_utxo.0, covenant_utxo.1), sig_script, 0, u8::MAX)];
+
+        let mut outputs = vec![TransactionOutput::with_covenant(
+            output_value,
+            output_spk,
+            Some(CovenantBinding { authorizing_input: 0, covenant_id: covenant_id_hash }),
+        )];
+
+        if let Some(ref perm_redeem) = proof.perm_redeem_script {
+            let perm_spk = pay_to_script_hash_script(perm_redeem);
+            outputs.push(TransactionOutput::with_covenant(
+                perm_dust,
+                perm_spk,
+                Some(CovenantBinding { authorizing_input: 0, covenant_id: covenant_id_hash }),
+            ));
+        }
+
+        let tx = Transaction::new(TX_VERSION + 1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let tx_id = tx.id();
+
+        // Update covenant record with new UTXO outpoint and value
+        let mut updated_record = record.clone();
+        updated_record.covenant_utxo = Some((tx_id, 0));
+        updated_record.covenant_value = Some(output_value);
+        if let Err(e) = self.db.put_covenant(covenant_id, &updated_record) {
+            self.log(format!("Failed to update covenant in DB: {e}"));
+            return;
+        }
+
+        self.log(format!("Submitting prove tx: {tx_id}"));
+        self.record_tx(tx_id, "Prove", output_value);
+        self.pending_ops.push(PendingOp::SubmitTransaction(tx));
+
+        // Refresh covenants list to pick up the updated record
+        self.covenants = self.db.list_covenants();
+    }
+
+    fn build_succinct_sig_script(
+        &self,
+        receipt: &risc0_zkvm::Receipt,
+        block_prove_to: Hash,
+        new_state_hash: &[u32; 8],
+        input_redeem: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let succinct = receipt.inner.succinct().map_err(|e| format!("Not a succinct receipt: {e}"))?;
+
+        let seal_bytes: Vec<u8> = succinct.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let claim_bytes: Vec<u8> = succinct.claim.digest().as_bytes().to_vec();
+        let hashfn_byte: Vec<u8> = vec![zk_covenant_common::hashfn_str_to_id(&succinct.hashfn).ok_or("invalid hashfn")?];
+        let control_index_bytes: Vec<u8> = succinct.control_inclusion_proof.index.to_le_bytes().to_vec();
+        let control_digests_bytes: Vec<u8> =
+            succinct.control_inclusion_proof.digests.iter().flat_map(|d| d.as_bytes()).copied().collect();
+
+        Ok(ScriptBuilder::new()
+            .add_data(&seal_bytes)
+            .unwrap()
+            .add_data(&claim_bytes)
+            .unwrap()
+            .add_data(&hashfn_byte)
+            .unwrap()
+            .add_data(&control_index_bytes)
+            .unwrap()
+            .add_data(&control_digests_bytes)
+            .unwrap()
+            .add_data(block_prove_to.as_bytes().as_slice())
+            .unwrap()
+            .add_data(bytemuck::bytes_of(new_state_hash))
+            .unwrap()
+            .add_data(input_redeem)
+            .unwrap()
+            .drain())
+    }
+
+    fn build_groth16_sig_script(
+        &self,
+        receipt: &risc0_zkvm::Receipt,
+        block_prove_to: Hash,
+        new_state_hash: &[u32; 8],
+        input_redeem: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let groth16 = receipt.inner.groth16().map_err(|e| format!("Not a groth16 receipt: {e}"))?;
+        let compressed_proof = zk_covenant_common::seal_to_compressed_proof(&groth16.seal);
+
+        Ok(ScriptBuilder::new()
+            .add_data(&compressed_proof)
+            .unwrap()
+            .add_data(block_prove_to.as_bytes().as_slice())
+            .unwrap()
+            .add_data(bytemuck::bytes_of(new_state_hash))
+            .unwrap()
+            .add_data(input_redeem)
+            .unwrap()
+            .drain())
     }
 
     // ── Node events ──
@@ -1249,12 +1542,17 @@ impl App {
                 PendingOp::BuildAndSubmitAction { action, amount } => {
                     self.spawn_build_action(action, amount);
                 }
-                PendingOp::GenerateProof { gen, input, backend, kind } => {
+                PendingOp::GenerateProof { gen, input, backend, kind, public_input, block_prove_to, perm_redeem_script } => {
                     let bg_tx = self.bg_tx.clone();
                     tokio::task::spawn_blocking(move || match host_prove::prove(&input, backend, kind) {
                         Ok(output) => {
                             let _ = bg_tx.send(BgResult::ProofCompleted {
                                 gen,
+                                receipt: Box::new(output.receipt),
+                                public_input,
+                                block_prove_to,
+                                proof_kind: kind,
+                                perm_redeem_script,
                                 elapsed_ms: output.elapsed_ms,
                                 segments: output.stats.segments,
                                 total_cycles: output.stats.total_cycles,
@@ -1463,7 +1761,7 @@ impl App {
             }
             BgResult::TxSubmitted { tx_id } => {
                 self.log(format!("Submitted tx: {tx_id}"));
-                let _ = cli_clipboard::set_contents(tx_id.to_string());
+                self.copy_to_clipboard(&tx_id.to_string());
                 self.log("Tx ID copied to clipboard".into());
             }
             BgResult::TxSubmitFailed { tx_id, error } => {
@@ -1483,7 +1781,17 @@ impl App {
                 self.log(format!("Failed to build {} tx: {error}", action.label()));
                 self.input_mode = InputMode::Normal;
             }
-            BgResult::ProofCompleted { gen, elapsed_ms, segments, total_cycles } => {
+            BgResult::ProofCompleted {
+                gen,
+                receipt,
+                public_input,
+                block_prove_to,
+                proof_kind,
+                perm_redeem_script,
+                elapsed_ms,
+                segments,
+                total_cycles,
+            } => {
                 if gen != self.proof_generation {
                     self.log("Discarded stale proof result (cancelled)".to_string());
                     return;
@@ -1493,6 +1801,16 @@ impl App {
                     format!("Proof completed in {:.1}s ({} segments, {} cycles)", elapsed_ms as f64 / 1000.0, segments, total_cycles);
                 self.log(result_msg.clone());
                 self.last_proof_result = Some(result_msg);
+
+                // Store the completed proof for later submission
+                self.completed_proofs.push(CompletedProof {
+                    receipt: *receipt,
+                    public_input,
+                    block_prove_to,
+                    proof_kind,
+                    perm_redeem_script,
+                });
+                self.log(format!("{} proof(s) ready for submission — press 's' in Proving tab", self.completed_proofs.len()));
 
                 // Save proving state to DB
                 if let Some(prover) = &self.prover {
@@ -1549,7 +1867,7 @@ impl App {
             KeyCode::Char('c') => {
                 // Copy selected tx ID to clipboard
                 if let Some(record) = self.tx_history.get(self.tx_history_index) {
-                    let _ = cli_clipboard::set_contents(record.tx_id.to_string());
+                    self.copy_to_clipboard(&record.tx_id.to_string());
                     self.log("Tx ID copied to clipboard".into());
                 }
             }
@@ -1630,6 +1948,23 @@ impl App {
         let (xonly, _) = pk.x_only_public_key();
         Some(Address::new(self.network_prefix, Version::PubKey, &xonly.serialize()))
     }
+
+    fn copy_to_clipboard(&mut self, content: &str) {
+        if self.clipboard.is_none() {
+            match arboard::Clipboard::new() {
+                Ok(cb) => self.clipboard = Some(cb),
+                Err(e) => {
+                    self.log(format!("Clipboard error: {e}"));
+                    return;
+                }
+            }
+        }
+        if let Some(cb) = &mut self.clipboard {
+            if let Err(e) = cb.set_text(content) {
+                self.log(format!("Clipboard error: {e}"));
+            }
+        }
+    }
 }
 
 /// Convert a consensus `Transaction` to an `RpcTransaction` for submission.
@@ -1644,5 +1979,249 @@ fn tx_to_rpc(tx: Transaction) -> RpcTransaction {
         payload: tx.payload,
         mass: 0,
         verbose_data: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use kaspa_wrpc_client::prelude::{NetworkId, NetworkType};
+    use std::sync::Arc;
+
+    fn test_app() -> App {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(crate::db::RollupDb::open(dir.path()).unwrap());
+        let node = crate::node::KaspaNode::try_new("ws://127.0.0.1:1", NetworkId::new(NetworkType::Simnet)).unwrap();
+        // Leak the tempdir so it isn't deleted while the DB handle is alive
+        std::mem::forget(dir);
+        App::new(db, node, Prefix::Simnet)
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn key_ctrl(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn test_ctrl_q_quits() {
+        let mut app = test_app();
+        assert!(!app.should_quit);
+        app.handle_key(key_ctrl('q'));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_plain_q_does_not_quit() {
+        let mut app = test_app();
+        app.handle_key(key(KeyCode::Char('q')));
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn test_tab_switching() {
+        let mut app = test_app();
+        assert_eq!(app.active_tab, Tab::Covenants);
+
+        app.handle_key(key(KeyCode::Char('5')));
+        assert_eq!(app.active_tab, Tab::Proving);
+
+        app.handle_key(key(KeyCode::Char('2')));
+        assert_eq!(app.active_tab, Tab::Accounts);
+
+        app.handle_key(key(KeyCode::Char('7')));
+        assert_eq!(app.active_tab, Tab::Log);
+    }
+
+    #[test]
+    fn test_covenant_navigation() {
+        let mut app = test_app();
+        // Create two covenants
+        app.create_covenant();
+        app.create_covenant();
+        assert_eq!(app.covenants.len(), 2);
+        assert_eq!(app.covenant_list_index, 1); // points to last created
+
+        // Navigate up
+        app.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(app.covenant_list_index, 0);
+
+        // Navigate down
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.covenant_list_index, 1);
+
+        // Can't go past end
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.covenant_list_index, 1);
+    }
+
+    #[test]
+    fn test_account_role_focus() {
+        let mut app = test_app();
+        app.active_tab = Tab::Accounts;
+
+        // Start with role_focused = false, index = 0
+        assert!(!app.role_focused);
+        assert_eq!(app.account_list_index, 0);
+
+        // k at index 0 focuses role
+        app.handle_key(key(KeyCode::Char('k')));
+        assert!(app.role_focused);
+
+        // j unfocuses role
+        app.handle_key(key(KeyCode::Char('j')));
+        assert!(!app.role_focused);
+        assert_eq!(app.account_list_index, 0);
+    }
+
+    #[test]
+    fn test_export_empty_covenants_logs() {
+        let mut app = test_app();
+        let log_count_before = app.log_messages.len();
+        app.export_covenant_info();
+        assert!(app.log_messages.len() > log_count_before);
+        assert!(app.log_messages.last().unwrap().contains("No covenants"));
+    }
+
+    #[test]
+    fn test_input_mode_blocks_normal_keys() {
+        let mut app = test_app();
+        app.input_mode =
+            InputMode::PromptText { target: TextInputTarget::ImportCovenantId, buffer: String::new(), context: "test".into() };
+
+        // Ctrl+Q should NOT quit when in input mode
+        app.handle_key(key_ctrl('q'));
+        assert!(!app.should_quit);
+
+        // Tab keys should not switch tabs
+        let prev_tab = app.active_tab;
+        app.handle_key(key(KeyCode::Char('5')));
+        assert_eq!(app.active_tab, prev_tab);
+    }
+
+    // ── UI rendering tests ───────────────────────────────────────────
+
+    /// Helper: render the full UI into a test buffer and return the buffer contents as a string.
+    fn render_to_string(app: &App, width: u16, height: u16) -> String {
+        let backend = ratatui::backend::TestBackend::new(width, height);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|frame| crate::ui::draw(frame, app)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let mut output = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                output.push_str(buf.cell((x, y)).map(|c| c.symbol()).unwrap_or(" "));
+            }
+            output.push('\n');
+        }
+        output
+    }
+
+    #[test]
+    fn test_ui_status_bar_connected() {
+        let mut app = test_app();
+        app.connected = true;
+        app.daa_score = 42;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Connected"), "status bar should show Connected");
+        assert!(output.contains("DAA: 42"), "status bar should show DAA score");
+        assert!(output.contains("Ctrl+Q:quit"), "status bar should show Ctrl+Q:quit");
+    }
+
+    #[test]
+    fn test_ui_status_bar_disconnected() {
+        let app = test_app();
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Disconnected"), "status bar should show Disconnected");
+    }
+
+    #[test]
+    fn test_ui_covenants_empty() {
+        let app = test_app();
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("No covenants yet"), "should show empty covenants message");
+    }
+
+    #[test]
+    fn test_ui_covenants_with_data() {
+        let mut app = test_app();
+        app.create_covenant();
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Covenant ID"), "should show covenant table header");
+        assert!(output.contains("Deployed"), "should show Deployed column");
+        assert!(output.contains("Created"), "should show Created origin for new covenant");
+    }
+
+    #[test]
+    fn test_ui_accounts_no_covenant() {
+        let mut app = test_app();
+        app.active_tab = Tab::Accounts;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Select a covenant first"), "should prompt to select covenant");
+    }
+
+    #[test]
+    fn test_ui_log_tab() {
+        let mut app = test_app();
+        app.active_tab = Tab::Log;
+        app.log("Test message alpha".into());
+        app.log("Test message beta".into());
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Test message alpha"), "log should show first message");
+        assert!(output.contains("Test message beta"), "log should show second message");
+    }
+
+    #[test]
+    fn test_ui_prover_not_initialized() {
+        let mut app = test_app();
+        app.active_tab = Tab::Proving;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Prover not initialized"), "should show prover not initialized");
+    }
+
+    #[test]
+    fn test_ui_status_bar_no_overlap_with_content() {
+        // Verify the status bar line is clean (no content bleeding into it)
+        let mut app = test_app();
+        app.connected = true;
+        app.daa_score = 999;
+        let backend = ratatui::backend::TestBackend::new(100, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|frame| crate::ui::draw(frame, &app)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        // The last row (index 19) is the status bar
+        let last_row = 19u16;
+        let mut status_line = String::new();
+        for x in 0..buf.area.width {
+            status_line.push_str(buf.cell((x, last_row)).map(|c| c.symbol()).unwrap_or(" "));
+        }
+        assert!(status_line.contains("Connected"), "status bar should be on last row");
+        assert!(status_line.contains("DAA: 999"), "status bar should contain DAA score");
+        // Status bar should NOT contain content from other panels
+        assert!(!status_line.contains("No covenants"), "status bar should not contain covenant content");
+    }
+
+    #[test]
+    fn test_ui_tx_history_empty() {
+        let mut app = test_app();
+        app.active_tab = Tab::TxHistory;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("No transactions yet"), "should show empty tx history");
+    }
+
+    #[test]
+    fn test_ui_popup_import() {
+        let mut app = test_app();
+        app.input_mode = InputMode::PromptText {
+            target: TextInputTarget::ImportCovenantId,
+            buffer: "abc123".into(),
+            context: "Enter covenant ID".into(),
+        };
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Import Covenant"), "should show import popup title");
+        assert!(output.contains("abc123"), "should show typed buffer");
     }
 }

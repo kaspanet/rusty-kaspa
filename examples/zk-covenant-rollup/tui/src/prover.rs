@@ -2,6 +2,7 @@ use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::GetVirtualChainFromBlockV2Response;
+use zk_covenant_rollup_core::permission_tree::required_depth;
 use zk_covenant_rollup_core::PublicInput;
 use zk_covenant_rollup_core::{
     action::{ActionHeader, EntryAction, ExitAction, TransferAction, OP_ENTRY, OP_EXIT, OP_TRANSFER},
@@ -13,7 +14,7 @@ use zk_covenant_rollup_core::{
 };
 use zk_covenant_rollup_host::mock_chain::{calc_accepted_id_merkle_root, from_bytes};
 use zk_covenant_rollup_host::mock_tx::{ActionWitness, EntryWitnessData, ExitWitnessData, TransferWitnessData, ZkTransaction};
-use zk_covenant_rollup_host::prove::{compute_perm_redeem_script_len, ProveInput};
+use zk_covenant_rollup_host::prove::ProveInput;
 
 /// Tracks L2 state and processes chain data for proving.
 pub struct RollupProver {
@@ -44,6 +45,14 @@ pub struct RollupProver {
     pub accumulated_block_txs: Vec<Vec<ZkTransaction>>,
     /// Permission tree builder for the current proving window (for exits).
     pub accumulated_perm_builder: StreamingPermTreeBuilder,
+}
+
+/// Data returned by `take_prove_snapshot`, combining the prove input
+/// with the permission redeem script (if exits occurred in this batch).
+pub struct ProveSnapshot {
+    pub input: ProveInput,
+    /// Full permission redeem script bytes (only when exits occurred).
+    pub perm_redeem_script: Option<Vec<u8>>,
 }
 
 /// Result of processing a VCC v2 response.
@@ -83,7 +92,7 @@ impl RollupProver {
     /// accumulator so new chain data can continue flowing in.
     ///
     /// Returns `None` if there are no blocks to prove.
-    pub fn take_prove_snapshot(&mut self) -> Option<ProveInput> {
+    pub fn take_prove_snapshot(&mut self) -> Option<ProveSnapshot> {
         if self.accumulated_block_txs.is_empty() {
             return None;
         }
@@ -99,18 +108,27 @@ impl RollupProver {
         // Take the accumulated perm builder (replace with fresh one)
         let old_perm_builder = std::mem::replace(&mut self.accumulated_perm_builder, StreamingPermTreeBuilder::new());
         let perm_count = old_perm_builder.leaf_count();
-        let perm_redeem_script_len = if perm_count > 0 {
+        let (perm_redeem_script_len, perm_redeem_script) = if perm_count > 0 {
             let perm_root = old_perm_builder.finalize();
-            compute_perm_redeem_script_len(&perm_root, perm_count)
+            let depth = required_depth(perm_count as usize);
+            let padded_root = zk_covenant_rollup_core::permission_tree::pad_to_depth(perm_root, perm_count, depth);
+            let redeem = zk_covenant_rollup_core::permission_script::build_permission_redeem_bytes_converged(
+                &padded_root,
+                perm_count as u64,
+                depth,
+                zk_covenant_rollup_core::MAX_DELEGATE_INPUTS,
+            );
+            let len = Some(redeem.len() as i64);
+            (len, Some(redeem))
         } else {
-            None
+            (None, None)
         };
 
         // Advance the proving window start to current state
         self.prev_proved_state_root = self.state_root;
         self.prev_proved_seq_commitment = self.seq_commitment;
 
-        Some(ProveInput { public_input, block_txs, perm_redeem_script_len })
+        Some(ProveSnapshot { input: ProveInput { public_input, block_txs, perm_redeem_script_len }, perm_redeem_script })
     }
 
     /// Process a VCC v2 response, converting RPC transactions to ZkTransactions

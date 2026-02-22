@@ -31,7 +31,9 @@ fn draw_controls(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             ratatui::text::Span::styled("p", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             ratatui::text::Span::raw(":sync chain  "),
             ratatui::text::Span::styled("r", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-            ratatui::text::Span::raw(":PROVE"),
+            ratatui::text::Span::raw(":PROVE  "),
+            ratatui::text::Span::styled("s", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            ratatui::text::Span::raw(format!(":submit [{}]", app.completed_proofs.len())),
         ]),
         Line::from(""),
         Line::from(format!("Sync status: {}", app.proving_status)),
@@ -76,6 +78,14 @@ fn draw_proof_status(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) 
     } else {
         lines.push(Line::styled("No proof generated yet", Style::default().fg(Color::DarkGray)));
         lines.push(Line::from("Press 'r' to start proving accumulated blocks"));
+    }
+
+    if !app.completed_proofs.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            format!("{} proof(s) ready for submission — press 's'", app.completed_proofs.len()),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ));
     }
 
     // Show saved proving state from DB

@@ -43,6 +43,8 @@ pub struct CovenantRecord {
     pub covenant_utxo: Option<(Hash, u32)>,
     /// Unix timestamp of creation.
     pub created_at: u64,
+    /// Value (in sompi) held by the live covenant UTXO.
+    pub covenant_value: Option<u64>,
 }
 
 /// Aggregate covenant state (state root + seq commitment).
@@ -348,8 +350,13 @@ mod tests {
         let db = RollupDb::open(dir.path()).unwrap();
 
         let id = Hash::from_bytes([0xAA; 32]);
-        let record =
-            CovenantRecord { deployer_privkey: vec![1, 2, 3], deployment_tx_id: None, covenant_utxo: None, created_at: 1234567890 };
+        let record = CovenantRecord {
+            deployer_privkey: vec![1, 2, 3],
+            deployment_tx_id: None,
+            covenant_utxo: None,
+            created_at: 1234567890,
+            covenant_value: None,
+        };
 
         db.put_covenant(id, &record).unwrap();
         let loaded = db.get_covenant(id).unwrap().unwrap();
@@ -478,8 +485,13 @@ mod tests {
         let db = RollupDb::open(dir.path()).unwrap();
 
         let id = Hash::from_bytes([0xBB; 32]);
-        let record =
-            CovenantRecord { deployer_privkey: vec![1, 2, 3], deployment_tx_id: None, covenant_utxo: None, created_at: 1234567890 };
+        let record = CovenantRecord {
+            deployer_privkey: vec![1, 2, 3],
+            deployment_tx_id: None,
+            covenant_utxo: None,
+            created_at: 1234567890,
+            covenant_value: None,
+        };
 
         db.put_covenant(id, &record).unwrap();
         assert!(db.get_covenant(id).unwrap().is_some());
@@ -506,6 +518,7 @@ mod tests {
             deployment_tx_id: Some(Hash::from_bytes([0xDD; 32])),
             covenant_utxo: Some((Hash::from_bytes([0xDD; 32]), 0)),
             created_at: 100,
+            covenant_value: Some(100_000),
         };
         db.put_covenant(id, &record).unwrap();
         db.put_covenant_meta(id, &CovenantMeta { state_root: Hash::from_bytes([1; 32]), seq_commitment: Hash::from_bytes([2; 32]) })
