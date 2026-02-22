@@ -308,7 +308,6 @@ pub fn find_action_tx_nonce(source: [u32; 8], destination: [u32; 8], amount: u64
 
         let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
-            println!("  Found valid action nonce: {}", nonce);
             return payload;
         }
     }
@@ -324,7 +323,6 @@ pub fn find_entry_tx_nonce(destination: [u32; 8], outputs: &[TransactionOutput])
 
         let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
-            println!("  Found valid entry nonce: {}", nonce);
             return payload;
         }
     }
@@ -371,7 +369,6 @@ pub fn find_exit_tx_nonce(source: [u32; 8], destination_spk: &[u8], amount: u64,
 
         let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
-            println!("  Found valid exit nonce: {}", nonce);
             return payload;
         }
     }
@@ -487,7 +484,6 @@ pub fn create_unknown_action_tx() -> ZkTransaction {
 
         let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
-            println!("  Found unknown action nonce: {}", nonce);
             return ZkTransaction::new(tx, None);
         }
     }

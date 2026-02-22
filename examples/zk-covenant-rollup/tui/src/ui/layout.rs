@@ -57,7 +57,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             .unwrap_or_else(|| "none".into());
 
         let status = format!(
-            " {} | DAA: {} | Covenant: {} | Ctrl+Q:quit",
+            " {} | DAA: {} | Covenant: {} | Ctrl+L:redraw  Ctrl+Q:quit",
             if app.connected { "Connected" } else { "Disconnected" },
             app.daa_score,
             cov_label,

@@ -242,6 +242,10 @@ pub struct App {
 
     /// Temporary flash message shown in the status bar (e.g. "Copied!").
     pub status_flash: Option<(String, Instant)>,
+
+    /// When true, the run-loop will call `terminal.clear()` before the next draw
+    /// to force a full screen redraw (Ctrl+L).
+    pub needs_full_redraw: bool,
 }
 
 /// Deferred async operations triggered from sync key handlers.
@@ -322,6 +326,7 @@ impl App {
             chain_sync_active: false,
             clipboard: None,
             status_flash: None,
+            needs_full_redraw: false,
         }
     }
 
@@ -329,6 +334,10 @@ impl App {
         let event_rx = self.node.event_receiver();
 
         loop {
+            if self.needs_full_redraw {
+                self.needs_full_redraw = false;
+                terminal.clear()?;
+            }
             terminal.draw(|frame| crate::ui::draw(frame, self))?;
 
             // Poll for crossterm events with 100ms timeout.
@@ -399,6 +408,7 @@ impl App {
         match key.code {
             KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
+            KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => self.needs_full_redraw = true,
 
             // Tab switching
             KeyCode::Char('1') => self.active_tab = Tab::Covenants,
@@ -2340,5 +2350,76 @@ mod tests {
         let output = render_to_string(&app, 140, 30);
         assert!(output.contains("Kind"), "should show Kind column header");
         assert!(output.contains("Succinct"), "should show Succinct for default proof kind");
+    }
+
+    #[test]
+    fn test_ctrl_l_sets_redraw_flag() {
+        let mut app = test_app();
+        assert!(!app.needs_full_redraw);
+        app.handle_key(key_ctrl('l'));
+        assert!(app.needs_full_redraw);
+    }
+
+    #[test]
+    fn test_ui_status_bar_shows_redraw_hint() {
+        let app = test_app();
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Ctrl+L:redraw"), "status bar should show Ctrl+L:redraw hint");
+    }
+
+    /// Verify that after a popup (Processing) appears and then disappears,
+    /// the underlying content renders cleanly with no leftover artifacts.
+    #[test]
+    fn test_ui_no_artifacts_after_popup_dismiss() {
+        let mut app = test_app();
+        app.active_tab = Tab::Actions;
+        app.create_covenant();
+        app.selected_covenant = Some(0);
+        app.create_account();
+
+        // Render with Processing popup active
+        app.input_mode = InputMode::Processing { action: ActionType::Entry };
+        let popup_output = render_to_string(&app, 120, 30);
+        assert!(popup_output.contains("Building transaction"), "popup should show Building text");
+
+        // Dismiss popup (action completes)
+        app.input_mode = InputMode::Normal;
+        let clean_output = render_to_string(&app, 120, 30);
+
+        // The clean render should show normal Actions content, no popup leftovers
+        assert!(clean_output.contains("Actions"), "should show Actions tab content");
+        assert!(!clean_output.contains("Building transaction"), "popup text should be gone after dismiss");
+        assert!(!clean_output.contains("nonce grinding"), "popup detail text should be gone after dismiss");
+
+        // Verify it matches a fresh render (no popup was ever shown on this terminal)
+        let fresh_output = render_to_string(&app, 120, 30);
+        assert_eq!(clean_output, fresh_output, "render after popup dismiss should match a fresh render");
+    }
+
+    /// Verify Confirm popup renders and dismisses cleanly.
+    #[test]
+    fn test_ui_no_artifacts_after_confirm_dismiss() {
+        let mut app = test_app();
+        app.active_tab = Tab::Actions;
+        app.create_covenant();
+        app.selected_covenant = Some(0);
+        app.create_account();
+
+        // Show confirm popup
+        app.input_mode = InputMode::Confirm {
+            action: ActionType::Entry,
+            amount: 1000,
+            summary: vec!["Action: Entry".into(), "Amount: 1000 sompi".into(), "Enter: submit | Esc: cancel".into()],
+        };
+        let popup_output = render_to_string(&app, 120, 30);
+        assert!(popup_output.contains("Confirm"), "should show confirm popup");
+
+        // Dismiss
+        app.input_mode = InputMode::Normal;
+        let clean_output = render_to_string(&app, 120, 30);
+        assert!(!clean_output.contains("Confirm Entry"), "confirm popup should be gone");
+
+        let fresh_output = render_to_string(&app, 120, 30);
+        assert_eq!(clean_output, fresh_output, "post-dismiss render should match fresh render");
     }
 }
