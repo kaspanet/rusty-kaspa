@@ -175,6 +175,9 @@ impl FastTrustedRelay {
 
 impl Drop for FastTrustedRelay {
     fn drop(&mut self) {
-        self.shutdown();
+        if Arc::strong_count(&self.tcp_runtime) > 1 || self.udp_runtime.as_ref().map_or(0, Arc::strong_count) > 1 {
+            debug!("Dropping FastTrustedRelay with active runtimes; shutting down...");
+            self.shutdown();
+        }
     }
 }

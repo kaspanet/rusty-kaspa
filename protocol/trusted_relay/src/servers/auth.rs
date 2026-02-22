@@ -74,7 +74,7 @@ impl TokenAuthenticator {
 
     /// Generate an authentication token for a block.
     ///
-    /// Token = HMAC-SHA256(secret, block_hash ‖ SHA256(block_data)).
+    /// Token = HMAC-SHA256(secret, nonce ‖ SHA256(block_data)).
     #[inline(always)]
     pub fn generate_token(&self, nonce: &[u8; 32], block_data: &[u8]) -> AuthToken {
         let data_hash = Sha256::digest(block_data);
@@ -86,8 +86,8 @@ impl TokenAuthenticator {
 
     /// Validate an authentication token in constant time.
     #[inline(always)]
-    pub fn validate_token(&self, block_hash: &[u8; 32], block_data: &[u8], token: &AuthToken) -> bool {
-        let expected = self.generate_token(block_hash, block_data);
+    pub fn validate_token(&self, nonce: &[u8; 32], block_data: &[u8], token: &AuthToken) -> bool {
+        let expected = self.generate_token(nonce, block_data);
         expected.as_bytes().ct_eq(token.as_bytes()).into()
     }
 

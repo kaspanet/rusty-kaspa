@@ -3350,6 +3350,7 @@ dependencies = [
  "crossbeam-channel",
  "fixedbitset 0.5.7",
  "getrandom 0.2.15",
+ "hex",
  "hmac",
  "kaspa-consensus-core",
  "kaspa-core",

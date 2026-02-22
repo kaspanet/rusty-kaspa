@@ -103,7 +103,7 @@ impl TransportRuntimeInner {
         // Optionally set socket options here (reuse, buffer sizes, etc.)
         // Example: udp_socket.set_reuse_address(true).expect("set_reuse_address failed");
         // Bind to the desired address
-        udp_socket.set_nonblocking(true).unwrap();
+        udp_socket.set_nonblocking(false).unwrap();
         udp_socket.set_reuse_address(true).unwrap();
         udp_socket.set_reuse_port(true).unwrap();
         udp_socket.set_read_timeout(Some(Duration::from_millis(200))).unwrap();

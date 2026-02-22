@@ -4,6 +4,7 @@ use std::sync::Arc;
 use kaspa_utils::triggers::{Listener, Trigger};
 use log::{debug, info, warn};
 use rand::{RngCore, rngs::OsRng};
+use subtle::ConstantTimeEq;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
@@ -11,7 +12,7 @@ use tokio::sync::mpsc;
 use tokio::time::{Duration, timeout};
 
 use crate::error::{RelayError, RelayResult};
-use crate::fast_trusted_relay::DEFAULT_TCP_PORT;
+use crate::fast_trusted_relay::{DEFAULT_TCP_PORT, DEFAULT_UDP_PORT};
 use crate::servers::auth::{self, TokenAuthenticator};
 use crate::servers::peer_directory::{Allowlist, PeerDirectory};
 use crate::servers::tcp_control::HubEvent;
@@ -66,11 +67,11 @@ impl TcpServer {
                         match tcp_accept {
                             Ok((stream, addr)) => {
                                 debug!("TCP connection from {}", addr);
-                                let authenticator_secret = self.authenticator.secret().to_vec();
                                 let hub_tx = self.hub_event_sender.clone();
                                 let directory = self.directory.clone();
+                                let authenticator = self.authenticator.clone();
                                 tokio::spawn(async move {
-                                    match handshake_accept(stream, addr, &authenticator_secret, hub_tx.clone(), directory.allowlist().clone()).await {
+                                    match handshake_accept(stream, addr, authenticator, hub_tx.clone(), directory.allowlist().clone()).await {
                                         Ok(peer) => {
                                             info!("Peer {} authenticated ({})", addr, peer.direction());
                                             if hub_tx.send(HubEvent::PeerConnected(peer)).is_err() {
@@ -120,7 +121,7 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 async fn handshake_accept(
     mut stream: TcpStream,
     addr: SocketAddr,
-    secret: &[u8],
+    authenticator: Arc<TokenAuthenticator>,
     hub_event_tx: mpsc::UnboundedSender<HubEvent>,
     allow_list: Allowlist,
 ) -> RelayResult<Peer> {
@@ -134,16 +135,18 @@ async fn handshake_accept(
         .map_err(|_| RelayError::PeerConnection(format!("handshake read timed out for {}", addr)))?
         .map_err(|e| RelayError::PeerConnection(format!("handshake read from {}: {}", addr, e)))?;
 
-    let nonce =&buf[32..64];
+    let nonce = &buf[32..64];
     let client_hmac = &buf[0..32];
     let direction_byte = buf[64];
-    let udp_port = u16::from_le_bytes([buf[65], buf[66]]);
+    //let udp_port = u16::from_le_bytes([buf[65], buf[66]]);
+    let data_for_hmac = &buf[32..]; // direction + udp_port
 
     // Validate HMAC(secret, nonce).
-    let auth = TokenAuthenticator::new(secret.to_vec());
     let nonce_array: [u8; 32] = nonce.try_into().map_err(|_| RelayError::AuthenticationFailed("invalid nonce size".into()))?;
-    let expected = auth.generate_token(&nonce_array, buf[64..].as_ref());
-    if expected.as_bytes() != client_hmac {
+    let their_token = auth::AuthToken::from_bytes(client_hmac.to_vec());
+    let is_authentic = authenticator.validate_token(&nonce_array, &data_for_hmac, &their_token);
+    if !is_authentic{
+        info!("msg auth failed expected HMAC");
         let _ = stream.write_all(&[0x00]).await;
         return Err(RelayError::AuthenticationFailed(format!("HMAC mismatch from {}", addr)));
     }
@@ -159,7 +162,7 @@ async fn handshake_accept(
         _ => return Err(RelayError::PeerConnection(format!("invalid direction byte 0x{:02x}", direction_byte))),
     };
 
-    let udp_target = SocketAddr::new(addr.ip(), udp_port);
+    let udp_target = SocketAddr::new(addr.ip(), DEFAULT_UDP_PORT);
     Ok(Peer::new(addr, direction, stream, udp_target, hub_event_tx))
 }
 
@@ -199,7 +202,7 @@ pub async fn tcp_connect(
     let mut msg = [0u8; HANDSHAKE_MSG_SIZE];
     msg[32..64].copy_from_slice(nonce.as_ref());
     msg[64] = direction_byte;
-    msg[65..67].copy_from_slice(&local_udp_port.to_le_bytes());
+    //msg[65..67].copy_from_slice(&local_udp_port.to_le_bytes());
     let token = authenticator.generate_token(&nonce, &msg[64..]);
     msg[0..32].copy_from_slice(&token.as_bytes());
 
@@ -258,7 +261,7 @@ mod tests {
         let server_allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(server_allowlist));
         let server_handle = tokio::spawn(async move {
             let (stream, addr) = listener.accept().await.unwrap();
-            handshake_accept(stream, addr, &server_secret, server_hub_tx, server_allow_list).await
+            handshake_accept(stream, addr, Arc::new(TokenAuthenticator::new(server_secret)), server_hub_tx, server_allow_list).await
         });
 
         // Client side: connect + handshake.
@@ -299,7 +302,7 @@ mod tests {
         let server_allow_list = Arc::new(arc_swap::ArcSwap::from_pointee(server_allowlist));
         let server_handle = tokio::spawn(async move {
             let (stream, addr) = listener.accept().await.unwrap();
-            handshake_accept(stream, addr, b"correct-secret", server_hub_tx, server_allow_list).await
+            handshake_accept(stream, addr, Arc::new(TokenAuthenticator::new(b"correct-secret".to_vec())), server_hub_tx, server_allow_list).await
         });
 
         let wrong_authenticator = Arc::new(TokenAuthenticator::new(b"wrong-secret".to_vec()));
