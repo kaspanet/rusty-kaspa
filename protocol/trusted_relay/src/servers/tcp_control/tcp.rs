@@ -91,7 +91,7 @@ impl TcpServer {
                         }
                     },
                 // reconnection attempts
-                _ = tokio::time::sleep(Duration::from_secs(120)) => {
+                _ = tokio::time::sleep(Duration::from_secs(30)) => {
                     debug!("TCP server periodic wakeup for reconnection attempts");
                     // this is a dynamically created list of currently connected peers,
                     // we may use this to filter reconnection attempts.

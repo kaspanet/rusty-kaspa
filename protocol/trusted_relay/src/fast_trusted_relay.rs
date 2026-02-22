@@ -99,7 +99,7 @@ impl FastTrustedRelay {
     /// stop the UDP relay without consuming the struct so the caller can still
     /// use the relay instance afterwards.
     pub async fn stop_fast_relay(&mut self) {
-        if !self.toggle_udp_active(false) {
+        if self.udp_runtime.is_none() || !self.toggle_udp_active(false) {
             debug!("trying to stop fast trusted relay although it is not active");
             return;
         }
@@ -114,7 +114,7 @@ impl FastTrustedRelay {
     /// start or restart the UDP relay; takes `&mut self` to avoid moving the
     /// entire relay instance out of the caller.
     pub async fn start_fast_relay(&mut self) {
-        if self.toggle_udp_active(true) {
+        if self.udp_runtime.is_some() || !self.toggle_udp_active(true) {
             debug!("trying to start fast trusted relay although it is already active");
             return;
         }
