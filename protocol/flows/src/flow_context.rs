@@ -386,16 +386,19 @@ impl FlowContext {
         &self.mining_manager
     }
 
-    pub fn fast_trusted_relay(&self) -> Option<&FastTrustedRelay> {
-        self.fast_trusted_relay.as_ref()
+    pub fn fast_trusted_relay(mut self) -> Option<FastTrustedRelay> {
+        self.fast_trusted_relay.clone()
     }
 
-    pub async fn register_fast_trusted_relay_flow(&self) {
-        let mut flow = Box::new(HandleFastTrustedRelayFlow::new(
-            self.clone(),
-            self.fast_trusted_relay.as_ref().unwrap().clone(),
-        ));
-        flow.start().await.unwrap();
+    pub async fn try_register_fast_trusted_relay_flow(&self) {
+        if let Some(ftr) = self.clone().fast_trusted_relay() {
+            let mut flow = Box::new(HandleFastTrustedRelayFlow::new(
+                self.clone(),
+                ftr,
+            ));
+            flow.start().await.unwrap();
+        }
+
     }
 
     pub fn try_set_ibd_running(&self, peer: PeerKey, relay_daa_score: u64) -> Option<IbdRunningGuard> {

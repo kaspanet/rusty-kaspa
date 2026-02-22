@@ -86,11 +86,8 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            if flow_context.fast_trusted_relay().is_some() {
-                flow_context.register_fast_trusted_relay_flow().await;
-            } else {
-                trace!("{} is running without fast trusted relay support", P2P_CORE_SERVICE);
-            }
+            flow_context.try_register_fast_trusted_relay_flow().await;
+
             for peer_address in self.connect_peers.iter().cloned().chain(self.add_peers.iter().cloned()) {
                 connection_manager.add_connection_request(peer_address.into(), true).await;
             }
