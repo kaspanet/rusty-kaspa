@@ -41,6 +41,7 @@ kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
 kaspa-wrpc-server.workspace = true
+kaspa-trusted-relay.workspace = true
 
 async-channel.workspace = true
 cfg-if.workspace = true

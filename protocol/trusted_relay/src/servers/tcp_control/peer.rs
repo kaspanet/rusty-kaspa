@@ -17,7 +17,7 @@ use crate::servers::peer_directory::PeerInfo;
 // ============================================================================
 
 /// Whether this peer sends us shards, receives shards from us, or both.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum PeerDirection {
     /// We receive shards from this peer.

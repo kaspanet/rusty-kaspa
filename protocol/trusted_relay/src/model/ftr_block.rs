@@ -4,9 +4,10 @@
 /// functions to consensus-layer `Block` types.
 use std::sync::Arc;
 
-use kaspa_consensus_core::block::Block;
+use kaspa_consensus_core::{block::Block, header::Header, tx::Transaction};
 use kaspa_hashes::Hash;
 
+#[derive(Clone)]
 pub struct FtrBlock(pub Vec<u8>);
 
 impl FtrBlock {
@@ -57,9 +58,39 @@ impl FtrBlock {
     }
 }
 
+
+impl From<FtrBlock> for Block {
+    fn from(ftr_block: FtrBlock) -> Self {
+        let header_len = ftr_block.header_len() as usize;
+        let txs_len = ftr_block.txs_len() as usize;
+        let header_start = 32 + 4 + 4;
+        let header_end = header_start + header_len;
+        let txs_end = header_end + txs_len;
+
+        let header_bytes = &ftr_block.0[header_start..header_end];
+        let txs_bytes = &ftr_block.0[header_end..txs_end];
+
+        let header: Arc<Header> = Arc::new(bincode::deserialize(header_bytes).expect("header deserialization failed"));
+        let transactions: Arc<Vec<Transaction>> =
+            Arc::new(bincode::deserialize(txs_bytes).expect("transactions deserialization failed"));
+
+        Block::from_arcs(header, transactions)
+    }
+}
+
 impl From<Block> for FtrBlock {
 
     fn from(block: Block) -> Self {
+        let header_bytes = bincode::serialize(&*block.header).expect("header serialization failed");
+        let txs_bytes =
+            bincode::serialize(&*block.transactions).expect("transactions serialization failed");
+        let hash = block.header.hash;
+        Self::new(hash, header_bytes.len() as u32, txs_bytes.len() as u32, header_bytes, txs_bytes)
+    }
+}
+
+impl From<&Block> for FtrBlock {
+    fn from(block: &Block) -> Self {
         let header_bytes = bincode::serialize(&*block.header).expect("header serialization failed");
         let txs_bytes =
             bincode::serialize(&*block.transactions).expect("transactions serialization failed");

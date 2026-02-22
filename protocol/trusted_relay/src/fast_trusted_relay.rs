@@ -18,6 +18,9 @@ use crate::{
     },
 };
 
+pub const DEFAULT_UDP_PORT: u16 = 16114;
+pub const DEFAULT_TCP_PORT: u16 = 16113;
+
 #[derive(Clone)]
 pub struct FastTrustedRelay {
     udp_runtime: Option<Arc<TransportRuntime>>,
@@ -34,22 +37,41 @@ pub struct FastTrustedRelay {
 }
 
 impl FastTrustedRelay {
-    async fn new(
+    /// Create a new relay instance. Public so callers outside the crate can
+    /// construct the relay; the actual transport initialization happens via
+    /// [`start_control_runtime`].
+    pub async fn new(
         params: TransportParams,
         fragmentation_config: FragmentationConfig,
         listen_address: SocketAddr,
-        udp_port: u16,
-        tcp_port: u16,
         secret: Vec<u8>,
-        peers: Vec<(ContextualNetAddress, PeerDirection)>,
+        incoming_peers: Vec<ContextualNetAddress>,
+        outgoing_peers: Vec<ContextualNetAddress>,
     ) -> Self {
-        let directory = Arc::new(PeerDirectory::new(peers.iter().cloned().map(|(addr, direction)| (addr.into(), direction)).collect()));
+        // create the allowlist if in incoming only -> PeerDirection::Inbound, outgoing only -> PeerDirection::Outbound, or both -> PeerDirection::Both modes.
+        let mut allowlist = HashSet::new();
+        let incoming_peers_set: HashSet<_> = incoming_peers.iter().collect();
+        let outgoing_peers_set: HashSet<_> = outgoing_peers.iter().collect();
+
+        for peer in incoming_peers {
+            if outgoing_peers.contains(&peer) {
+                allowlist.insert((peer, PeerDirection::Both));
+            } else {
+                allowlist.insert((peer, PeerDirection::Inbound));
+            }
+        }
+        for peer in outgoing_peers {
+            allowlist.insert((peer, PeerDirection::Outbound));
+        }
+
+
+        let directory = Arc::new(PeerDirectory::new(allowlist.iter().cloned().map(|(addr, direction)| (addr.into(), direction)).collect()));
         let authenticator = Arc::new(TokenAuthenticator::new(secret));
         let is_udp_active = Arc::new(AtomicBool::new(false));
         let receive_block_waker = Arc::new(tokio::sync::Notify::new());
         let tcp_runtime =
             ControlRuntime::new( listen_address, directory.clone(), authenticator.clone(), is_udp_active.clone()).await;
-        Self { listen_address, tcp_runtime: Arc::new(TokioMutex::new(tcp_runtime)), udp_runtime: None, authenticator, directory, params, fragmentation_config, udp_port, tcp_port, udp_active: is_udp_active, receive_block_waker }
+        Self { listen_address, tcp_runtime: Arc::new(TokioMutex::new(tcp_runtime)), udp_runtime: None, authenticator, directory, params, fragmentation_config, udp_port: DEFAULT_UDP_PORT, tcp_port: DEFAULT_TCP_PORT, udp_active: is_udp_active, receive_block_waker }
     }
 
     pub async fn start_control_runtime(&mut self) {
@@ -65,7 +87,6 @@ impl FastTrustedRelay {
     pub async fn stop_fast_relay(&mut self) {
         if !self.is_udp_active() {
             warn!("trying to stop fast trusted relay although it is not active");
-            return;
         } else {
             self.udp_active.store(false, std::sync::atomic::Ordering::SeqCst);
             // drops the runtime, which frees the resources
@@ -84,9 +105,9 @@ impl FastTrustedRelay {
         }
         self.udp_active.store(true, std::sync::atomic::Ordering::SeqCst);
         let mut udp_runtime = TransportRuntime::new(
-            self.params.clone(),
-            self.listen_address.into(),
-            self.fragmentation_config.clone(),
+            self.params,
+            self.listen_address,
+            self.fragmentation_config,
             self.directory.clone(),
             self.authenticator.clone(),
             self.udp_active.clone(),
@@ -95,24 +116,25 @@ impl FastTrustedRelay {
         self.udp_runtime = Some(Arc::new(udp_runtime));
         // signal to peers that the relay is ready to receive blocks.
         self.tcp_runtime.lock().await.signal_ready().await;
-        self.receive_block_waker.notify_one();
+        self.receive_block_waker.notify_waiters();
         info!("fast trusted relay UDP transport started");
     }
 
     /// shut down both runtimes; does not consume the relay in order to allow
     /// callers (including `Drop`) to borrow it.
     pub fn shutdown(&mut self) {
-        self.stop_fast_relay();
-        // only move the control runtime into the spawned task, keeping the
-        // rest of `self` live.
-        let tcp_runtime = self.tcp_runtime.clone();
-        tokio::spawn(async move {
+        let mut self_clone = self.clone();
+            tokio::spawn(async move {
+            self_clone.stop_fast_relay().await;
+            // only move the control runtime into the spawned task, keeping the
+            // rest of `self` live.
+            let tcp_runtime = self_clone.tcp_runtime.clone();
             let mut rt = tcp_runtime.lock().await;
             rt.stop().await;
         });
     }
 
-    pub async fn broadcast_block(&self, hash: Hash, block: FtrBlock) -> Result<(), String> {
+    pub async fn broadcast_block(&self, hash: Hash, block: Arc<FtrBlock>) -> Result<(), String> {
         if let Some(udp_runtime) = &self.udp_runtime {
             udp_runtime.submit_block_for_broadcast(hash, block)
         } else {
@@ -143,9 +165,6 @@ impl FastTrustedRelay {
 
 impl Drop for FastTrustedRelay {
     fn drop(&mut self) {
-        // Ensure all tasks are stopped when the relay is dropped.
-        // `shutdown` now borrows `&mut self` and spawns the necessary async
-        // work internally.
         self.shutdown();
     }
 }

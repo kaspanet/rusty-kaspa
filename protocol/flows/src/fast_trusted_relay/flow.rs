@@ -6,7 +6,7 @@ use crate::{
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
-use kaspa_core::{debug, warn};
+use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router, SharedIncomingRoute,
@@ -17,11 +17,15 @@ use kaspa_p2p_lib::{
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
 use std::{collections::VecDeque, sync::Arc};
-use kaspa_trusted_relay::{FastTrustedRelay, ftr_block::FtrBlock};
+use kaspa_trusted_relay::{FastTrustedRelay, model::ftr_block::FtrBlock};
+
+
+// TODO: implement more intricate orphan handling. 
+
 
 pub struct HandleFastTrustedRelayFlow {
     ctx: FlowContext,
-    fast_trusted_relay: Arc<FastTrustedRelay>,
+    fast_trusted_relay: FastTrustedRelay,
 }
 
 #[async_trait::async_trait]
@@ -38,7 +42,7 @@ impl Flow for HandleFastTrustedRelayFlow {
 
 
 impl HandleFastTrustedRelayFlow {
-    pub fn new(ctx: FlowContext, fast_trusted_relay: Arc<FastTrustedRelay>) -> Self {
+    pub fn new(ctx: FlowContext, fast_trusted_relay: FastTrustedRelay) -> Self {
         Self { ctx, fast_trusted_relay }
     }
 
@@ -48,19 +52,15 @@ impl HandleFastTrustedRelayFlow {
             let session = self.ctx.consensus().unguarded_session();
             let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
 
-            let (hash, ftr_block) = match self.fast_trusted_relay.block_recv().await.recv() {
-                Ok(data) => data,
-                Err(e) => {
-                    warn!("Fast Trusted Relay channel block receive error: {}", e);
-                    continue;
-                }
-            };
+            let (hash, ftr_block) = self.fast_trusted_relay.recv_block().await;
+
+            info!("Received block {} from fast trusted relay", hash);
 
             // We do not sync from fast relay messages, but if in transitional state,
             // toggle the fast relay off.
             if is_ibd_in_transitional_state {
-                if self.fast_trusted_relay.is_relay_active() {
-                    self.fast_trusted_relay.stop_fast_relay().await.unwrap();
+                if self.fast_trusted_relay.is_udp_active() {
+                    self.fast_trusted_relay.stop_fast_relay().await;
                 }
                 continue;
             }
@@ -69,7 +69,7 @@ impl HandleFastTrustedRelayFlow {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv
                 Some(BlockStatus::StatusInvalid) => {
                     // Report a protocol error
-                    return Err(ProtocolError::OtherOwned(format!("sent inv of an invalid block {}", hash)));
+                    warn!("Fast Trusted Relay sent inv of an invalid block {}", hash);
                 }
                 _ => {
                     // Block is already known, skip to next inv
@@ -84,28 +84,28 @@ impl HandleFastTrustedRelayFlow {
                 OrphanOutput::Roots(_) => {
                     // This is a change to the standard relay, Since by its very nature the fast relay is only push based, we cannot enqueue,
                     // hence we just add it to the orphan pool, and let it resolve via std relay flows and logic.
-                    self.ctx.add_orphan(&session, ftr_block.to_block().unwrap()).await;
+                    self.ctx.add_orphan(&session, ftr_block.into()).await;
                     continue;
                 }
             }
 
             if self.ctx.is_ibd_running() && !self.ctx.should_mine(&session).await {
                 // we toggle out fast relay off, since we consider it out of sync
-                if self.fast_trusted_relay.is_relay_active() {
-                    self.fast_trusted_relay.stop_fast_relay().await.unwrap();
+                if self.fast_trusted_relay.is_udp_active() {
+                    self.fast_trusted_relay.stop_fast_relay().await;
                 }
                 debug!("Got fast relay block {} while in IBD and the node is out of sync, continuing...", hash);
                 continue;
             }
 
             // If we were not considered synced yet we do now.
-            if !self.fast_trusted_relay.is_relay_active() {
-                // open the flood-gates.
-                self.fast_trusted_relay.start_fast_relay().await.unwrap();
+            if !self.fast_trusted_relay.is_udp_active() {
+                info!("Turning on fast trusted relay UDP transport since we consider ourselves synced now");
+                self.fast_trusted_relay.start_fast_relay().await;
             }
 
             // now we start working with consensus blocks
-            let block = ftr_block.to_block().unwrap();
+            let block = Block::from(ftr_block);
             if block.is_header_only() {
                 // TODO: check if this should be unexpected an a warn message.
                 debug!("Received header-only block {} from fast relay", hash);
@@ -119,7 +119,7 @@ impl HandleFastTrustedRelayFlow {
             let broadcast = block.header.blue_work > blue_work_threshold;
 
             if !broadcast {
-                debug!(
+                warn!(
                     "Fast Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
                     hash, block.header.blue_work, blue_work_threshold
                 );
@@ -129,7 +129,7 @@ impl HandleFastTrustedRelayFlow {
             // Consider: This might be bad practice, but technically if we consider all fast relay peers in the trusted relay "trusted"
             // we could consider adding blocks with no consensus verification (only state advancements), to further speed up the synchronization of fast relay nodes.
             // at least this could reduce the latency for block templating.
-            let BlockValidationFutures { block_task, mut virtual_state_task } = session.validate_and_insert_block(block.clone());
+            let BlockValidationFutures { block_task, virtual_state_task } = session.validate_and_insert_block(block.clone());
 
             let validated_block = match block_task.await {
                 Ok(_) => block,
@@ -146,12 +146,14 @@ impl HandleFastTrustedRelayFlow {
                 },
             };
 
+            info!("Block {} from fast relay passed validation", hash);
+
             if broadcast {
                 self.ctx
                     .hub()
                     .broadcast(
                         make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) }),
-                        None, // Because of fast relay block fragmentation, we don't consider one peer to have sent us this.
+                        None, // Because of fast relay block fragmentation, we don't consider one "particular" peer to have sent us this.
                     )
                     .await;
             }

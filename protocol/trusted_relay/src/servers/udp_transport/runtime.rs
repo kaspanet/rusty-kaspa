@@ -303,7 +303,7 @@ impl TransportRuntime {
         )));
     }
 
-    pub fn submit_block_for_broadcast(&self, hash: Hash, block: FtrBlock) -> Result<(), String> {
+    pub fn submit_block_for_broadcast(&self, hash: Hash, block: Arc<FtrBlock>) -> Result<(), String> {
         if self.inner.is_some() {
             self.broadcast_sender
                 .as_ref()

@@ -3,12 +3,19 @@ use kaspa_consensus_core::{
     config::Config,
     network::{NetworkId, NetworkType},
 };
+
+// fast trusted relay types needed for helper
 use kaspa_core::kaspad_env::version;
 use kaspa_notify::address::tracker::Tracker;
+use kaspa_trusted_relay::{
+    FastTrustedRelay,
+    params::{FragmentationConfig, TransportParams},
+};
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, serde_as};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::{ffi::OsString, fs};
 use toml::from_str;
 
@@ -171,7 +178,7 @@ impl Default for Args {
             trusted_relay_secret: None,
             fec_enabled: true,
             fec_data_blocks: Some(16),
-            fec_parity_blocks: Some(8),
+            fec_parity_blocks: Some(4),
             udp_payload_size: Some(1200),
         }
     }
@@ -518,7 +525,7 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .value_name("M")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("Number of Reed-Solomon parity blocks for FEC (default: 8). Range 1-64.")
+                .help("Number of Reed-Solomon parity blocks for FEC (default: 4). Range 1-64.")
         )
         .arg(
             Arg::new("udp-payload-size")

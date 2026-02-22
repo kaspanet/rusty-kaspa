@@ -249,7 +249,7 @@ fn benchmark_decoding_perfect_reception(c: &mut Criterion) {
                 });
 
                 match received {
-                    Ok(Some(_)) => {},
+                    Ok(Some(_)) => {}
                     Ok(None) | Err(_) => panic!("decoding_perfect: timeout or channel closed at iter {}", iter_id,),
                 }
                 start.elapsed()
@@ -719,7 +719,7 @@ fn benchmark_broadcast_worker_e2e_1mb(c: &mut Criterion) {
     println!("BroadcastWorker bench: sending {} fragments of size {} bytes", expected_packets, config.payload_size);
 
     // warm-up (best-effort)
-    broadcast_tx.try_send(BroadcastMessage::new(sample_hash, FtrBlock(data.clone()))).expect("warmup");
+    broadcast_tx.try_send(BroadcastMessage::new(sample_hash, Arc::new(FtrBlock(data.clone())))).expect("warmup");
     std::thread::sleep(Duration::from_millis(50));
     let mut drained = 0usize;
     while drained < expected_packets {
@@ -737,7 +737,7 @@ fn benchmark_broadcast_worker_e2e_1mb(c: &mut Criterion) {
             peer_recv.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
 
             let start = Instant::now();
-            broadcast_tx.try_send(BroadcastMessage::new(black_box(hash), FtrBlock(black_box(data.clone())))).expect("send job");
+            broadcast_tx.try_send(BroadcastMessage::new(black_box(hash), Arc::new(FtrBlock(black_box(data.clone()))))).expect("send job");
 
             // wait for all fragments to arrive at peer socket
             let mut received = 0usize;
@@ -1101,17 +1101,17 @@ fn benchmark_congestion(c: &mut Criterion) {
         // We are generous with the coordinator and decoder threads, to ensure
         // these are not bottlenecks.
         // Congestion with same verifiers and collectors
-        ("1c_12p_1v", 1, 12, 1, 8, 1),
-        ("2c_12p_2v", 2, 12, 2, 8, 1),
-        ("4c_12p_4v", 4, 12, 4, 8, 1),
+        ("1c_12p_1v", 1, 24, 1, 8, 1),
+        ("2c_12p_2v", 2, 24, 2, 8, 1),
+        ("4c_12p_4v", 4, 24, 4, 8, 1),
         // Congestion with fewer verifiers
-        ("2c_12p_1v", 2, 12, 1, 8, 1),
-        ("4c_12p_2v", 4, 12, 2, 8, 1),
-        ("4c_12p_1v", 4, 12, 1, 8, 1),
+        ("2c_12p_1v", 2, 24, 1, 8, 1),
+        ("4c_12p_1v", 4, 24, 2, 8, 1),
+        ("8c_12p_1v", 4, 24, 1, 8, 1),
         // Congestion with few collectors
-        ("1c_12p_2v", 1, 12, 2, 8, 1),
-        ("2c_12p_4v", 2, 12, 4, 8, 1),
-        ("1c_12p_4v", 1, 12, 4, 8, 1),
+        ("1c_12p_2v", 1, 24, 2, 8, 1),
+        ("2c_12p_4v", 2, 24, 4, 8, 1),
+        ("1c_12p_4v", 1, 24, 4, 8, 1),
     ];
 
     // Iteration counter for unique hashes
@@ -1276,7 +1276,7 @@ criterion_group!(
     //benchmark_broadcast_worker_e2e_1mb,
     //benchmark_recv_path_processing,
     //benchmark_full_pipeline,
-    benchmark_throughput,
+    //benchmark_throughput,
     benchmark_congestion,
 );
 criterion_main!(benches);

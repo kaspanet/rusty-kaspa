@@ -3885,6 +3885,7 @@ dependencies = [
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-trusted-relay",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",

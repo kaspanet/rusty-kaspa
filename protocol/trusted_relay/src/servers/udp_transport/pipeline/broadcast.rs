@@ -13,11 +13,11 @@ const WORKER_NAME : &str = "broadcast-worker";
 pub type BroadcastSender = crossbeam_channel::Sender<BroadcastMessage>;
 pub type BroadcastReceiver = crossbeam_channel::Receiver<BroadcastMessage>;
 
-pub struct BroadcastMessage(Hash, FtrBlock);
+pub struct BroadcastMessage(Hash, Arc<FtrBlock>);
 
 impl BroadcastMessage {
     #[inline(always)]
-    pub fn new(hash: Hash, block: FtrBlock) -> Self {
+    pub fn new(hash: Hash, block: Arc<FtrBlock>) -> Self {
         Self(hash, block)
     }
 
@@ -27,7 +27,7 @@ impl BroadcastMessage {
     }
 
     #[inline(always)]
-    pub fn block(self) -> FtrBlock {
+    pub fn block(self) -> Arc<FtrBlock> {
         self.1
     }
 }
@@ -54,7 +54,7 @@ fn run(
                     }
 
                     trace!("{}-{}: encoding block {} for {} peer(s)", WORKER_NAME, broadcaster_idx, hash, outbound_peers.len());
-                    let fragment_gen =FragmentGenerator::new(config, hash, ftr_block);
+                    let fragment_gen =FragmentGenerator::new(config, hash, Arc::unwrap_or_clone(ftr_block));
 
                     // Notify verification workers that this block is being broadcasted,
                     // marking all its shards as seen to filter duplicates.

@@ -27,7 +27,7 @@ fn run(
         let min_expected_fragment_size = AuthToken::TOKEN_SIZE + FragmentHeader::SIZE + config.payload_size;
         let fragment_index_offset = AuthToken::TOKEN_SIZE + FragmentHeader::FRAGMENT_INDEX_OFFSET;
         let mut count = 0u64;
-        while shutting_down.load(Ordering::Relaxed) == false {
+        while !shutting_down.load(Ordering::Relaxed) {
             match socket.recv_from(&mut buf) {
                 Ok((len, src)) => {
                     count += 1;
@@ -61,7 +61,7 @@ fn run(
                     if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut {
                         // since we use blocking recv with timeouts, we expect this to timeout, occasionally.
                         // check if we should shut-down, or not.
-                        if shutting_down.load(Ordering::Relaxed) == true {
+                        if !shutting_down.load(Ordering::Relaxed) {
                             info!("Collector {}: shutting down (recv timeout)", collector_idx);
                             break;
                         }

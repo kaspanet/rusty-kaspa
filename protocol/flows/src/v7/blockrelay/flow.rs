@@ -204,7 +204,7 @@ impl HandleRelayInvsFlow {
             if broadcast {
                 if let Some(trusted_relay) = self.ctx.fast_trusted_relay() {
                     // broadcast to the fast trusted relay.
-                    trusted_relay.broadcast_block(inv.hash, block.clone()).await.unwrap();
+                    trusted_relay.broadcast_block(inv.hash, Arc::new((&block).into())).await.unwrap();
                 }
 
                 let msgs = ancestor_batch
