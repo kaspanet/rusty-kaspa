@@ -136,17 +136,22 @@ async fn handshake_accept(
         .map_err(|_| RelayError::PeerConnection(format!("handshake read timed out for {}", addr)))?
         .map_err(|e| RelayError::PeerConnection(format!("handshake read from {}: {}", addr, e)))?;
 
-    // message layout now: [nonce][hmac][direction][udp_port]
-    let nonce = &buf[0..32];
-    let client_hmac = &buf[32..64];
+    // message layout: [token][nonce][direction][udp_port]
+    // our goal: extract nonce and token in the same order the client
+    // transmitted them, then compute HMAC over `direction||udp_port` exactly
+    // as the client did.
+    let client_hmac = &buf[0..32];
+    let nonce = &buf[32..64];
     let direction_byte = buf[64];
     //let udp_port = u16::from_le_bytes([buf[65], buf[66]]);
 
-    // data used in the HMAC is everything after the nonce (direction + udp_port)
+    // data used in the HMAC is everything following the nonce (direction + udp_port)
     let data_for_hmac = &buf[64..];
 
     // Validate HMAC(secret, nonce || SHA256(direction||udp_port)).
-    let nonce_array: [u8; 32] = nonce.try_into().map_err(|_| RelayError::AuthenticationFailed("invalid nonce size".into()))?;
+    let nonce_array: [u8; 32] = nonce
+        .try_into()
+        .map_err(|_| RelayError::AuthenticationFailed("invalid nonce size".into()))?;
     let their_token = auth::AuthToken::from_bytes(client_hmac.to_vec());
     let is_authentic = authenticator.validate_token(&nonce_array, &data_for_hmac, &their_token);
     if !is_authentic {
