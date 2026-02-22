@@ -14,6 +14,7 @@ use ringmap::{RingMap, RingSet};
 use tokio::sync::mpsc::unbounded_channel as tokio_unbounded_channel;
 
 use crate::codec::buffers::BlockDecodeState;
+use crate::fast_trusted_relay::DEFAULT_UDP_PORT;
 use crate::model::ftr_block::FtrBlock;
 use crate::params::{FragmentationConfig, TransportParams};
 use crate::servers::auth::TokenAuthenticator;
@@ -99,7 +100,7 @@ impl TransportRuntimeInner {
         }));
 
         //1) create and bind udp socket.
-        let socket = Arc::new(UdpSocket::bind(listen_address).expect("Failed to bind UDP socket"));
+        let socket = UdpSocket::bind(SocketAddr::new("0.0.0.0".parse().unwrap(), DEFAULT_UDP_PORT)).expect("Failed to bind UDP socket");
         let bound_addr = socket.local_addr().expect("Failed to get local address from UDP socket");
         // This allows us to check for shutdowns occasionally, even if the socket is blocked on recv.
         socket.set_read_timeout(Some(std::time::Duration::from_millis(200))).expect("Failed to set UDP socket read timeout");
@@ -108,15 +109,16 @@ impl TransportRuntimeInner {
         // Some options are only available with the lower level socket2 crate.
         // Increase send / receive kernel buffer sizes for the port, else we will drop packets on insufficient default buffer sizes.
         // Note: it is also important to also set max buffer sizes at the OS level (e.g. /etc/sysctl.conf) to ensure they can actually be set to the desired size.
-        socket2::SockRef::from(&*socket)
+        socket2::SockRef::from(&socket)
             .set_send_buffer_size(1024 * 1024 * 16)
             .expect("Failed to set SO_SNDBUF on UDP socket");
-        socket2::SockRef::from(&*socket)
+        socket2::SockRef::from(&socket)
             .set_recv_buffer_size(1024 * 1024 * 16 * 2)
             .expect("Failed to set SO_RCVBUF on UDP socket");
 
         //2)  Pre-generate channels
 
+        let socket = Arc::new(socket);
         //2.1) verification channels: Collector -> Verifier
         let mut verification_sender_channels = Vec::with_capacity(params.num_of_verifiers);
         let mut verification_receiver_channels = Vec::with_capacity(params.num_of_verifiers);
@@ -173,7 +175,7 @@ impl TransportRuntimeInner {
         for i in 0..params.num_of_coordinators {
             handles.lock().unwrap().collector_handles.push(collector::spawn_collector_thread(
                 i,
-                socket.clone(),
+                Arc::clone(&socket),
                 verification_sender_channels.clone(),
                 verification_receiver_channels.clone(),
                 params.clone(),
@@ -229,7 +231,7 @@ impl TransportRuntimeInner {
         for i in 0..params.num_of_broadcasters {
             handles.lock().unwrap().broadcast_handles.push(broadcast::spawn_broadcaster_thread(
                 i,
-                socket.clone(),
+                Arc::clone(&socket),
                 directory.clone(),
                 broadcast_receiver.clone(),
                 authenticator.clone(),
