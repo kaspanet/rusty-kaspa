@@ -104,15 +104,6 @@ impl FastTrustedRelay {
             return;
         }
 
-        // Wake any tasks that are blocked in `recv_block` so they can
-        // observe that the runtime is gone and either exit or await the next
-        // activation.  This used to be done by waiting on a notification from
-        // `start_fast_relay`, which caused `stop_fast_relay` to hang forever if
-        // no subsequent start occurred.  The hang you're still seeing is
-        // because the relay was repeatedly shut down when clones were dropped
-        // and the last shutdown task never completed.
-        self.receive_block_waker.notify_waiters();
-
         // drops the runtime, which frees the resources
         self.udp_runtime.take();
         // signal to peers that the relay is not ready to receive blocks.

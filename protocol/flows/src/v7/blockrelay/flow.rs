@@ -122,7 +122,7 @@ impl HandleRelayInvsFlow {
             }
 
             if self.ctx.is_ibd_running() && !self.ctx.should_mine(&session).await {
-                if let Some(mut ftr) = self.ctx.clone().fast_trusted_relay().filter(|ftr| ftr.is_udp_active()) {
+                if let Some(mut ftr) = self.ctx.clone().fast_trusted_relay() {
                     ftr.stop_fast_relay().await;
                 }
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
@@ -159,15 +159,14 @@ impl HandleRelayInvsFlow {
             }
             // if in a transitional ibd state, do not wait, sync immediately
             if is_ibd_in_transitional_state {
-                if let Some(mut ftr) = self.ctx.clone().fast_trusted_relay().filter(|ftr| ftr.is_udp_active()) {
+                if let Some(mut ftr) = self.ctx.clone().fast_trusted_relay() {
                     ftr.stop_fast_relay().await;
                 }
                 self.try_trigger_ibd(block)?;
                 continue;
-            } else {
-                if let Some(mut ftr) = self.ctx.clone().fast_trusted_relay().filter(|ftr| !ftr.is_udp_active()) {
-                    ftr.start_fast_relay().await;
-                }
+            }
+            if let Some(mut ftr) = self.ctx.clone().fast_trusted_relay() {
+                ftr.start_fast_relay().await;
             }
 
             let BlockValidationFutures { block_task, mut virtual_state_task } = session.validate_and_insert_block(block.clone());

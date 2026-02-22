@@ -396,11 +396,8 @@ impl FlowContext {
                 self.clone(),
                 ftr,
             ));
-            tokio::spawn(async move {
-                flow.start().await.unwrap();
-            });
+            flow.launch();
         }
-
     }
 
     pub fn try_set_ibd_running(&self, peer: PeerKey, relay_daa_score: u64) -> Option<IbdRunningGuard> {
