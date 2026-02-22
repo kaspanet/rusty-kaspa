@@ -1421,6 +1421,7 @@ impl App {
         }
 
         self.log(format!("Submitting prove tx: {tx_id}"));
+        self.last_proof_result = Some(format!("Proof submitted — tx: {tx_id}"));
         self.record_tx(tx_id, "Prove", output_value);
         self.pending_ops.push(PendingOp::SubmitTransaction(tx));
 

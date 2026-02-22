@@ -78,7 +78,13 @@ fn draw_proof_status(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) 
         lines.push(Line::styled("Proving in progress...", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
         lines.push(Line::styled("(this may take several minutes)", Style::default().fg(Color::DarkGray)));
     } else if let Some(result) = &app.last_proof_result {
-        let color = if result.starts_with("Proof failed") { Color::Red } else { Color::Green };
+        let color = if result.starts_with("Proof failed") {
+            Color::Red
+        } else if result.starts_with("Proof submitted") {
+            Color::Cyan
+        } else {
+            Color::Green
+        };
         lines.push(Line::styled(result.clone(), Style::default().fg(color)));
     } else {
         lines.push(Line::styled("No proof generated yet", Style::default().fg(Color::DarkGray)));
