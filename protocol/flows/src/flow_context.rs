@@ -1,4 +1,4 @@
-use crate::{fast_trusted_relay, flowcontext::{
+use crate::{fast_trusted_relay::{self, flow::HandleFastTrustedRelayFlow}, flow_trait::Flow, flowcontext::{
     orphans::{OrphanBlocksPool, OrphanOutput},
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
@@ -313,7 +313,7 @@ impl FlowContext {
     ) -> Self {
         let bps = config.bps() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
-        
+
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
         let max_orphans = (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k() as usize).min(MAX_ORPHANS_UPPER_BOUND);
@@ -360,6 +360,12 @@ impl FlowContext {
         if let Some(logger) = self.block_event_logger.as_ref() {
             logger.start();
         }
+        if self.fast_trusted_relay.is_some() {
+            let mut self_clone = self.clone();
+             tokio::spawn(async move {
+                self_clone.register_fast_trusted_relay_flow().await;
+            });
+        }
     }
 
     pub fn set_connection_manager(&self, connection_manager: Arc<ConnectionManager>) {
@@ -388,6 +394,14 @@ impl FlowContext {
 
     pub fn fast_trusted_relay(&self) -> Option<&FastTrustedRelay> {
         self.fast_trusted_relay.as_ref()
+    }
+
+    pub async fn register_fast_trusted_relay_flow(&mut self) {
+        let mut flow = Box::new(HandleFastTrustedRelayFlow::new(
+            self.clone(),
+            self.fast_trusted_relay.as_ref().unwrap().clone(),
+        ));
+        flow.start().await.unwrap();
     }
 
     pub fn try_set_ibd_running(&self, peer: PeerKey, relay_daa_score: u64) -> Option<IbdRunningGuard> {
