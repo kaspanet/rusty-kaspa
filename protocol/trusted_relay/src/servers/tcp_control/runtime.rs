@@ -21,7 +21,7 @@ pub struct ControlRuntime {
 }
 
 impl ControlRuntime {
-    pub async fn new(
+    pub fn new(
         listen_address: SocketAddr,
         directory: Arc<PeerDirectory>,
         authenticator: Arc<TokenAuthenticator>,
@@ -29,9 +29,9 @@ impl ControlRuntime {
     ) -> Self {
         let (hub_sender, hub_receiver) = mpsc::unbounded_channel::<HubEvent>();
         info!("Starting TCP control runtime on {}", listen_address);
-        let tcp_listener = TcpListener::bind(format!("0.0.0.0:{}", listen_address.port())).await.unwrap();
+        let listen_address = format!("0.0.0.0:{}", listen_address.port()).parse().expect("failed to parse listen address");
         let shutdown = SingleTrigger::new();
-        let tcp_server = TcpServer::new(tcp_listener, authenticator.clone(), hub_sender.clone(), shutdown.listener.clone(), directory.clone());
+        let tcp_server = TcpServer::new(listen_address, authenticator.clone(), hub_sender.clone(), shutdown.listener.clone(), directory.clone());
         let hub = Hub::new(directory.clone(), is_ready.clone(), hub_sender.clone(), hub_receiver);
         Self { tcp_server, hub, shutdown, hub_sender, directory, is_ready: is_ready.clone() }
     }

@@ -26,7 +26,7 @@ use crate::servers::tcp_control::{Peer, PeerDirection};
 /// `direction` from the *client's* perspective: 0x01 = Inbound (client
 /// receives shards), 0x02 = Outbound (client sends shards), 0x03 = Both.
 pub struct TcpServer {
-    listener: TcpListener,
+    listen_address: SocketAddr,
     authenticator: Arc<TokenAuthenticator>,
     hub_event_sender: mpsc::UnboundedSender<HubEvent>,
     shutdown_listen: Listener,
@@ -35,19 +35,21 @@ pub struct TcpServer {
 
 impl TcpServer {
     pub fn new(
-        listener: TcpListener,
+        listen_address: SocketAddr,
         authenticator: Arc<TokenAuthenticator>,
         hub_event_sender: mpsc::UnboundedSender<HubEvent>,
         shutdown_listen: Listener,
         directory: Arc<PeerDirectory>,
     ) -> Self {
-        Self { listener, authenticator, hub_event_sender, shutdown_listen, directory }
+        Self { listen_address, authenticator, hub_event_sender, shutdown_listen, directory }
     }
 
     /// Run the accept loop. Spawns a task per incoming TCP connection to
     /// perform the handshake, then registers the peer with the Hub.
     pub async fn run(&mut self) {
-        let local_addr = self.listener.local_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "unknown".to_string());
+        let tcp_listener = TcpListener::bind(format!("0.0.0.0:{}", self.listen_address.port())).await.unwrap();
+
+        let local_addr = tcp_listener.local_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "unknown".to_string());
         info!("TCP server listening on {}", local_addr);
 
         let shutdown_listener = self.shutdown_listen.clone();
@@ -59,7 +61,7 @@ impl TcpServer {
                         break;
                     },
                     // tcp accept
-                    tcp_accept = self.listener.accept() => {
+                    tcp_accept = tcp_listener.accept() => {
                         match tcp_accept {
                             Ok((stream, addr)) => {
                                 debug!("TCP connection from {}", addr);

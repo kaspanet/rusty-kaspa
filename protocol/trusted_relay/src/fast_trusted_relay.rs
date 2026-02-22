@@ -40,7 +40,7 @@ impl FastTrustedRelay {
     /// Create a new relay instance. Public so callers outside the crate can
     /// construct the relay; the actual transport initialization happens via
     /// [`start_control_runtime`].
-    pub async fn new(
+    pub fn new(
         params: TransportParams,
         fragmentation_config: FragmentationConfig,
         listen_address: SocketAddr,
@@ -70,7 +70,7 @@ impl FastTrustedRelay {
         let is_udp_active = Arc::new(AtomicBool::new(false));
         let receive_block_waker = Arc::new(tokio::sync::Notify::new());
         let tcp_runtime =
-            ControlRuntime::new( listen_address, directory.clone(), authenticator.clone(), is_udp_active.clone()).await;
+            ControlRuntime::new( listen_address, directory.clone(), authenticator.clone(), is_udp_active.clone());
         Self { listen_address, tcp_runtime: Arc::new(TokioMutex::new(tcp_runtime)), udp_runtime: None, authenticator, directory, params, fragmentation_config, udp_port: DEFAULT_UDP_PORT, tcp_port: DEFAULT_TCP_PORT, udp_active: is_udp_active, receive_block_waker }
     }
 

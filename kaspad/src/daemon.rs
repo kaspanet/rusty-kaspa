@@ -275,10 +275,7 @@ pub fn build_fast_trusted_relay(args: &Args) -> Option<FastTrustedRelay> {
     // multiple nodes can run concurrently without port conflicts.
     let listen_address = args.externalip.unwrap().normalize(DEFAULT_TCP_PORT).into();
 
-    // `FastTrustedRelay::new` is async; create a temporary runtime to kick it off.
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("failed to create temporary tokio runtime");
-
-    let mut relay = rt.block_on(FastTrustedRelay::new(transport, frag_cfg, listen_address, secret, incoming, outgoing));
+    let mut relay = FastTrustedRelay::new(transport, frag_cfg, listen_address, secret, incoming, outgoing);
     Some(relay)
 }
 

@@ -82,7 +82,7 @@ impl AsyncService for P2pService {
 
         self.flow_context.set_connection_manager(connection_manager.clone());
         self.flow_context.start_async_services();
-        let mut flow_context = self.flow_context.clone();
+        let flow_context = self.flow_context.clone();
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
