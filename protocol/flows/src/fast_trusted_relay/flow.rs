@@ -48,12 +48,13 @@ impl HandleFastTrustedRelayFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         info!("{} flow started", self.name());
+        self.fast_trusted_relay.start_control_runtime().await;
         loop {
             let session = self.ctx.consensus().unguarded_session();
             let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
 
             info!("Waiting to receive block from fast trusted relay...");
-            
+
             let (hash, ftr_block) = self.fast_trusted_relay.recv_block().await;
 
             info!("Received block {} from fast trusted relay", hash);
