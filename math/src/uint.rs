@@ -401,7 +401,8 @@ macro_rules! construct_uint {
                     }
                     #[inline]
                     fn size_hint(&self) -> (usize, Option<usize>) {
-                        let remaining_bits = $n_words * (u64::BITS as usize) - self.bit;
+                        let total = $n_words * (u64::BITS as usize);
+                        let remaining_bits = total.saturating_sub(self.bit);
                         (remaining_bits, Some(remaining_bits))
                     }
                 }
