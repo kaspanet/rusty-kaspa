@@ -26,7 +26,7 @@ use crate::{
             selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
-            utxo_set::{UtxoSetStore, UtxoSetStoreReader},
+            utxo_set::UtxoSetStoreReader,
             virtual_state::VirtualState,
         },
     },
