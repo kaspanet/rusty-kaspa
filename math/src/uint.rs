@@ -1,5 +1,5 @@
 #[doc(hidden)]
-pub use {faster_hex, malachite_base, malachite_nz, serde};
+pub use {faster_hex, js_sys, kaspa_utils, malachite_base, malachite_nz, serde, wasm_bindgen};
 
 // TODO: Add u32 support for optimization on 32 bit machines.
 
@@ -432,37 +432,37 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn as_bigint(&self) -> Result<js_sys::BigInt, $crate::Error> {
+            pub fn as_bigint(&self) -> Result<$crate::uint::js_sys::BigInt, $crate::Error> {
                 self.try_into()
             }
 
             #[inline]
-            pub fn to_bigint(self) -> Result<js_sys::BigInt, $crate::Error> {
+            pub fn to_bigint(self) -> Result<$crate::uint::js_sys::BigInt, $crate::Error> {
                 self.try_into()
             }
 
         }
 
-        impl kaspa_utils::mem_size::MemSizeEstimator for $name {
+        impl $crate::uint::kaspa_utils::mem_size::MemSizeEstimator for $name {
             fn estimate_mem_units(&self) -> usize {
                 1
 
             }
         }
 
-        impl kaspa_utils::hex::ToHex for $name {
+        impl $crate::uint::kaspa_utils::hex::ToHex for $name {
             fn to_hex(&self) -> String {
                 self.to_be_bytes().as_slice().to_hex()
             }
         }
 
-        impl kaspa_utils::hex::ToHex for &$name {
+        impl $crate::uint::kaspa_utils::hex::ToHex for &$name {
             fn to_hex(&self) -> String {
                 self.to_be_bytes().as_slice().to_hex()
             }
         }
 
-        impl kaspa_utils::hex::FromHex for $name {
+        impl $crate::uint::kaspa_utils::hex::FromHex for $name {
             type Error = $crate::Error;
             fn from_hex(hex: &str) -> Result<$name, Self::Error> {
                 Ok($name::from_hex(hex)?)
@@ -862,7 +862,7 @@ macro_rules! construct_uint {
             #[inline]
             fn deserialize<D: $crate::uint::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
                 if deserializer.is_human_readable() {
-                    let hex = <std::string::String as serde::Deserialize>::deserialize(deserializer)?;
+                    let hex = <std::string::String as $crate::uint::serde::Deserialize>::deserialize(deserializer)?;
                     Ok(Self::from_hex(&hex).map_err($crate::uint::serde::de::Error::custom)?)
                 } else {
                     use core::{fmt, marker::PhantomData};
@@ -960,27 +960,27 @@ macro_rules! construct_uint {
 
         }
 
-        impl TryFrom<&$name> for js_sys::BigInt {
+        impl TryFrom<&$name> for $crate::uint::js_sys::BigInt {
             type Error = $crate::Error;
             #[inline]
-            fn try_from(value: &$name) -> Result<js_sys::BigInt, Self::Error> {
+            fn try_from(value: &$name) -> Result<$crate::uint::js_sys::BigInt, Self::Error> {
                 use $crate::wasm::*;
                 BigInt::new(&JsValue::from_str(&format!("0x{value:x}"))).map_err(|err|$crate::Error::JsSys(Sendable(err)))
             }
         }
 
-        impl TryFrom<$name> for js_sys::BigInt {
+        impl TryFrom<$name> for $crate::uint::js_sys::BigInt {
             type Error = $crate::Error;
             #[inline]
-            fn try_from(value: $name) -> Result<js_sys::BigInt, Self::Error> {
+            fn try_from(value: $name) -> Result<$crate::uint::js_sys::BigInt, Self::Error> {
                 use $crate::wasm::*;
                 BigInt::try_from(&value)
             }
         }
 
-        impl TryFrom<wasm_bindgen::JsValue> for $name {
+        impl TryFrom<$crate::uint::wasm_bindgen::JsValue> for $name {
             type Error = $crate::Error;
-            fn try_from(js_value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+            fn try_from(js_value: $crate::uint::wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
                 use $crate::wasm::*;
 
                 if js_value.is_string() || js_value.is_array() {
