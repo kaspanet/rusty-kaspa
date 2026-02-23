@@ -150,3 +150,145 @@ pub fn try_verify_tx_input(
         TxScriptEngine::from_transaction_input(&populated, &tx.inputs[input_idx], input_idx, &utxos[input_idx], exec_ctx, flags);
     vm.execute().map_err(|e| format!("{e}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use kaspa_consensus_core::{
+        hashing::covenant_id::covenant_id as compute_genesis_covenant_id,
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::{
+            CovenantBinding, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint,
+            TransactionOutput, UtxoEntry,
+        },
+    };
+    use kaspa_hashes::Hash;
+    use kaspa_txscript::covenants::CovenantsContext;
+
+    use super::TX_VERSION;
+
+    fn dummy_spk() -> ScriptPublicKey {
+        ScriptPublicKey::default()
+    }
+
+    /// Build a minimal single-input transaction and finalize it.
+    fn make_tx(
+        outpoint: TransactionOutpoint,
+        outputs: Vec<TransactionOutput>,
+        version: u16,
+    ) -> Transaction {
+        let input = TransactionInput::new(outpoint, vec![], 0, 0);
+        let mut tx = Transaction::new(version, vec![input], outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        tx.finalize();
+        tx
+    }
+
+    // ── Deploy tx covenant ID ────────────────────────────────────────────────
+
+    /// The deploy tx's output must carry a CovenantBinding whose covenant_id equals the
+    /// genesis hash of (deploy_input_outpoint, deploy_outputs).  This test verifies that
+    /// CovenantsContext::from_tx accepts the transaction and treats it as genesis.
+    #[test]
+    fn test_deploy_tx_genesis_covenant_id_is_accepted() {
+        let outpoint = TransactionOutpoint::new(Hash::from_u64_word(42), 0);
+
+        // Build plain output first (covenant binding field excluded from hash — no circularity).
+        let plain_output = TransactionOutput::new(1_000_000, dummy_spk());
+        let genesis_id = compute_genesis_covenant_id(outpoint, std::iter::once((0u32, &plain_output)));
+
+        // Build deploy tx with genesis covenant binding on the output.
+        let output = TransactionOutput::with_covenant(
+            1_000_000,
+            dummy_spk(),
+            Some(CovenantBinding { covenant_id: genesis_id, authorizing_input: 0 }),
+        );
+        let tx = make_tx(outpoint, vec![output], 0);
+        let utxo = UtxoEntry::new(1_000_000, dummy_spk(), 0, false, None);
+        let populated = PopulatedTransaction::new(&tx, vec![utxo]);
+
+        // Genesis validation must pass (the computed id matches).
+        let ctx = CovenantsContext::from_tx(&populated).expect("deploy tx genesis validation failed");
+
+        // Genesis outputs do NOT populate script-engine contexts.
+        assert!(ctx.input_ctxs.is_empty(), "genesis should not add input ctx");
+        assert!(ctx.shared_ctxs.is_empty(), "genesis should not add shared ctx");
+    }
+
+    /// Sanity-check: if a deploy tx output uses a *wrong* covenant_id, from_tx must reject it.
+    #[test]
+    fn test_deploy_tx_wrong_covenant_id_is_rejected() {
+        let outpoint = TransactionOutpoint::new(Hash::from_u64_word(42), 0);
+        let wrong_id = Hash::from_bytes([0xAB; 32]);
+
+        let output = TransactionOutput::with_covenant(
+            1_000_000,
+            dummy_spk(),
+            Some(CovenantBinding { covenant_id: wrong_id, authorizing_input: 0 }),
+        );
+        let tx = make_tx(outpoint, vec![output], 0);
+        let utxo = UtxoEntry::new(1_000_000, dummy_spk(), 0, false, None);
+        let populated = PopulatedTransaction::new(&tx, vec![utxo]);
+
+        let result = CovenantsContext::from_tx(&populated);
+        assert!(result.is_err(), "wrong covenant_id should be rejected");
+    }
+
+    // ── Proof tx covenant continuity ─────────────────────────────────────────
+
+    /// A proof tx spending the deploy UTXO must be a *continuation* (input covenant_id ==
+    /// output covenant_id).  This test builds the deploy UTXO with on_chain_covenant_id set,
+    /// then verifies that the proof tx is accepted without triggering genesis validation.
+    #[test]
+    fn test_proof_tx_is_continuation_of_deploy_utxo() {
+        // Simulate the genesis covenant_id that the deploy tx produced.
+        let deploy_outpoint = TransactionOutpoint::new(Hash::from_u64_word(42), 0);
+        let plain = TransactionOutput::new(1_000_000, dummy_spk());
+        let genesis_id = compute_genesis_covenant_id(deploy_outpoint, std::iter::once((0u32, &plain)));
+
+        // The deploy UTXO carries covenant_id = genesis_id (set by the node when the deploy
+        // tx output had a CovenantBinding with that id).
+        let proof_input_outpoint = TransactionOutpoint::new(Hash::from_u64_word(100), 0);
+        let deploy_utxo = UtxoEntry::new(997_000, dummy_spk(), 0, false, Some(genesis_id));
+
+        // Proof tx: single input (deploy UTXO), single output with same covenant_id.
+        let output = TransactionOutput::with_covenant(
+            994_000, // value minus fee
+            dummy_spk(),
+            Some(CovenantBinding { covenant_id: genesis_id, authorizing_input: 0 }),
+        );
+        let tx = make_tx(proof_input_outpoint, vec![output], TX_VERSION + 1);
+        let populated = PopulatedTransaction::new(&tx, vec![deploy_utxo]);
+
+        // Must succeed: continuation case (no genesis validation triggered).
+        let ctx = CovenantsContext::from_tx(&populated).expect("proof tx continuation validation failed");
+
+        // The covenant input must appear in shared_ctxs and must authorize output 0.
+        assert!(!ctx.shared_ctxs.is_empty(), "shared context must exist for covenant input");
+        // input_ctxs[0].auth_outputs must be [0]
+        let input_ctx = ctx.input_ctxs.get(&0).expect("input 0 must have an input ctx");
+        assert_eq!(input_ctx.auth_outputs, vec![0], "input 0 must authorize output 0");
+    }
+
+    /// Regression: the *old* bug — deploy output had no CovenantBinding, so the deploy
+    /// UTXO had covenant_id = None, and the proof tx's output became a *genesis* with the
+    /// wrong covenant_id, causing WrongGenesisCovenantId.
+    #[test]
+    fn test_proof_tx_fails_when_deploy_utxo_has_no_covenant_id() {
+        // Deploy UTXO without covenant_id (old behaviour before the fix).
+        let proof_input_outpoint = TransactionOutpoint::new(Hash::from_u64_word(100), 0);
+        let deploy_utxo = UtxoEntry::new(997_000, dummy_spk(), 0, false, None);
+
+        // Any covenant_id on the proof output — does not matter what value.
+        let arbitrary_id = Hash::from_bytes([0xCD; 32]);
+        let output = TransactionOutput::with_covenant(
+            994_000,
+            dummy_spk(),
+            Some(CovenantBinding { covenant_id: arbitrary_id, authorizing_input: 0 }),
+        );
+        let tx = make_tx(proof_input_outpoint, vec![output], TX_VERSION + 1);
+        let populated = PopulatedTransaction::new(&tx, vec![deploy_utxo]);
+
+        // Must fail: genesis case with wrong hash.
+        let result = CovenantsContext::from_tx(&populated);
+        assert!(result.is_err(), "expected genesis covenant_id validation to fail");
+    }
+}

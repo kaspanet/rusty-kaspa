@@ -313,7 +313,7 @@ enum PendingOp {
 #[allow(clippy::type_complexity)]
 enum PendingTxEffect {
     /// Deploy tx: only mark covenant as deployed when the node accepts the tx.
-    Deploy { covenant_id: CovenantId, deploy_tx_id: Hash, covenant_value: u64 },
+    Deploy { covenant_id: CovenantId, deploy_tx_id: Hash, covenant_value: u64, on_chain_covenant_id: Hash },
     /// Prove-submit tx: on failure, revert the covenant UTXO to its old value.
     /// On success, if perm_state is Some, set the permission UTXO state.
     ProveSubmit {
@@ -596,6 +596,7 @@ impl App {
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
             covenant_value: None,
             proof_kind: 0,
+            on_chain_covenant_id: None,
         };
 
         if let Err(e) = self.db.put_covenant(covenant_id, &record) {
@@ -721,8 +722,20 @@ impl App {
         let utxo_entries: Vec<UtxoEntry> =
             selected_utxos.iter().map(|u| UtxoEntry::new(u.amount, deployer_spk.clone(), 0, false, None)).collect();
 
-        // Build outputs (single output — all value minus fee goes to covenant)
-        let outputs = vec![TransactionOutput::new(covenant_value, covenant_spk)];
+        // Compute genesis covenant_id: hash(deploy_input_outpoint, outputs).
+        // The covenant binding field is excluded from the hash, so we can compute it
+        // before attaching it to the output (no circular dependency).
+        let deploy_outpoint = TransactionOutpoint::new(selected_utxos[0].tx_id, selected_utxos[0].index);
+        let plain_output = TransactionOutput::new(covenant_value, covenant_spk.clone());
+        let on_chain_covenant_id =
+            kaspa_consensus_core::hashing::covenant_id::covenant_id(deploy_outpoint, std::iter::once((0u32, &plain_output)));
+
+        // Build outputs with the genesis covenant binding
+        let outputs = vec![TransactionOutput::with_covenant(
+            covenant_value,
+            covenant_spk,
+            Some(CovenantBinding { covenant_id: on_chain_covenant_id, authorizing_input: 0 }),
+        )];
         let _ = total_input; // all consumed
 
         let tx = Transaction::new(0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![record.proof_kind]);
@@ -733,8 +746,13 @@ impl App {
         let signed = sign(signable, keypair);
         let tx_id = signed.id();
 
+        self.log(format!("Genesis covenant ID (on-chain): {on_chain_covenant_id}"));
+
         // Do NOT mark covenant as deployed yet — wait for TxSubmitted confirmation.
-        self.pending_tx_effects.insert(tx_id, PendingTxEffect::Deploy { covenant_id, deploy_tx_id: tx_id, covenant_value });
+        self.pending_tx_effects.insert(
+            tx_id,
+            PendingTxEffect::Deploy { covenant_id, deploy_tx_id: tx_id, covenant_value, on_chain_covenant_id },
+        );
 
         self.log(format!("Deploying covenant {covenant_id} — tx: {tx_id} (pending confirmation)"));
         self.record_tx(tx_id, "Deploy", covenant_value);
@@ -1230,6 +1248,7 @@ impl App {
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
             covenant_value: None, // unknown for imported covenants
             proof_kind,
+            on_chain_covenant_id: None, // populated when chain data arrives
         };
 
         if let Err(e) = self.db.put_covenant(covenant_id, &record) {
@@ -1537,7 +1556,12 @@ impl App {
             return;
         }
 
-        let covenant_id_hash = Hash::from_bytes(bytemuck::cast(proof.public_input.covenant_id));
+        // Use the genesis-derived on-chain covenant ID for all CovenantBindings.
+        // This ensures the proof tx is a continuation of the deploy tx UTXO, not a
+        // genesis tx (which would require the hash to match — and it won't).
+        let covenant_id_hash = record
+            .on_chain_covenant_id
+            .unwrap_or_else(|| Hash::from_bytes(bytemuck::cast(proof.public_input.covenant_id)));
 
         let inputs = vec![TransactionInput::new(TransactionOutpoint::new(covenant_utxo.0, covenant_utxo.1), sig_script, 0, 115)];
 
@@ -2149,15 +2173,18 @@ impl App {
                 // Apply deferred side-effects
                 if let Some(effect) = self.pending_tx_effects.remove(&tx_id) {
                     match effect {
-                        PendingTxEffect::Deploy { covenant_id, deploy_tx_id, covenant_value } => {
+                        PendingTxEffect::Deploy { covenant_id, deploy_tx_id, covenant_value, on_chain_covenant_id } => {
                             if let Ok(Some(mut rec)) = self.db.get_covenant(covenant_id) {
                                 rec.deployment_tx_id = Some(deploy_tx_id);
                                 rec.covenant_utxo = Some((deploy_tx_id, 0));
                                 rec.covenant_value = Some(covenant_value);
+                                rec.on_chain_covenant_id = Some(on_chain_covenant_id);
                                 if let Err(e) = self.db.put_covenant(covenant_id, &rec) {
                                     self.log(format!("Failed to mark covenant as deployed: {e}"));
                                 } else {
-                                    self.log(format!("Covenant {covenant_id} deployed successfully"));
+                                    self.log(format!(
+                                        "Covenant {covenant_id} deployed (on-chain ID: {on_chain_covenant_id})"
+                                    ));
                                     self.covenants = self.db.list_covenants();
                                 }
                             }
@@ -2985,8 +3012,16 @@ mod tests {
         // Simulate deploy — record_tx is called but DB is NOT updated
         let fake_tx_id = Hash::from_bytes([0xAA; 32]);
         let cov_id = app.covenants[0].0;
-        app.pending_tx_effects
-            .insert(fake_tx_id, PendingTxEffect::Deploy { covenant_id: cov_id, deploy_tx_id: fake_tx_id, covenant_value: 100_000 });
+        let fake_on_chain_id = Hash::from_bytes([0xCC; 32]);
+        app.pending_tx_effects.insert(
+            fake_tx_id,
+            PendingTxEffect::Deploy {
+                covenant_id: cov_id,
+                deploy_tx_id: fake_tx_id,
+                covenant_value: 100_000,
+                on_chain_covenant_id: fake_on_chain_id,
+            },
+        );
         app.record_tx(fake_tx_id, "Deploy", 100_000);
 
         // Covenant should still NOT be deployed
@@ -3001,6 +3036,7 @@ mod tests {
         assert!(rec.deployment_tx_id.is_some(), "covenant must be deployed after TxSubmitted");
         assert_eq!(rec.deployment_tx_id.unwrap(), fake_tx_id);
         assert_eq!(rec.covenant_value, Some(100_000));
+        assert_eq!(rec.on_chain_covenant_id, Some(fake_on_chain_id), "on_chain_covenant_id must be persisted");
     }
 
     #[test]
@@ -3012,8 +3048,16 @@ mod tests {
 
         let fake_tx_id = Hash::from_bytes([0xBB; 32]);
         let cov_id = app.covenants[0].0;
-        app.pending_tx_effects
-            .insert(fake_tx_id, PendingTxEffect::Deploy { covenant_id: cov_id, deploy_tx_id: fake_tx_id, covenant_value: 100_000 });
+        let fake_on_chain_id = Hash::from_bytes([0xDD; 32]);
+        app.pending_tx_effects.insert(
+            fake_tx_id,
+            PendingTxEffect::Deploy {
+                covenant_id: cov_id,
+                deploy_tx_id: fake_tx_id,
+                covenant_value: 100_000,
+                on_chain_covenant_id: fake_on_chain_id,
+            },
+        );
         app.record_tx(fake_tx_id, "Deploy", 100_000);
 
         // Simulate TxSubmitFailed

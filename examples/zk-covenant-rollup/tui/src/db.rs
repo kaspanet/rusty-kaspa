@@ -48,6 +48,12 @@ pub struct CovenantRecord {
     pub covenant_value: Option<u64>,
     /// Proof type: 0 = Succinct (STARK), 1 = Groth16 (SNARK).
     pub proof_kind: u8,
+    /// Genesis-derived on-chain covenant ID (None until the deploy tx is accepted).
+    ///
+    /// Computed as `hash(deploy_input_outpoint, deploy_outputs)` and used for all
+    /// on-chain `CovenantBinding` entries.  The internal DB key remains the randomly
+    /// generated covenant_id; this field carries the consensus-level ID.
+    pub on_chain_covenant_id: Option<Hash>,
 }
 
 /// Aggregate covenant state (state root + seq commitment).
@@ -451,6 +457,7 @@ mod tests {
             created_at: 1234567890,
             covenant_value: None,
             proof_kind: 0,
+            on_chain_covenant_id: None,
         };
 
         db.put_covenant(id, &record).unwrap();
@@ -587,6 +594,7 @@ mod tests {
             created_at: 1234567890,
             covenant_value: None,
             proof_kind: 0,
+            on_chain_covenant_id: None,
         };
 
         db.put_covenant(id, &record).unwrap();
@@ -616,6 +624,7 @@ mod tests {
             created_at: 100,
             covenant_value: Some(100_000),
             proof_kind: 0,
+            on_chain_covenant_id: None,
         };
         db.put_covenant(id, &record).unwrap();
         db.put_covenant_meta(id, &CovenantMeta { state_root: Hash::from_bytes([1; 32]), seq_commitment: Hash::from_bytes([2; 32]) })
