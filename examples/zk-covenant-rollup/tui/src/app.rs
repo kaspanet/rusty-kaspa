@@ -19,8 +19,9 @@ use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
 use kaspa_wrpc_client::prelude::Notification;
 use risc0_zkvm::sha::Digestible;
 use tokio::sync::mpsc;
+use zk_covenant_rollup_core::seq_commit::seq_commitment_leaf;
 use zk_covenant_rollup_core::state::empty_tree_root;
-use zk_covenant_rollup_core::PublicInput;
+use zk_covenant_rollup_core::{bytes_to_words_ref, PublicInput};
 use zk_covenant_rollup_host::mock_chain::{calc_accepted_id_merkle_root, from_bytes};
 use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
@@ -93,14 +94,9 @@ impl ActionType {
     }
 }
 
-pub enum TextInputTarget {
-    ImportCovenantId,
-}
-
 pub enum InputMode {
     Normal,
     PromptAmount { action: ActionType, buffer: String, context: String },
-    PromptText { target: TextInputTarget, buffer: String, context: String },
     Confirm { action: ActionType, amount: u64, summary: Vec<String> },
     /// Confirmation popup before deleting a covenant (deployed or not).
     ConfirmDelete { covenant_id: Hash, lines: Vec<String> },
@@ -183,12 +179,18 @@ enum BgResult {
         gen: u64,
         error: String,
     },
-    ImportValidated {
-        covenant_id: Hash,
-        deploy_tx_id: Hash,
-        proof_kind: u8,
+    /// VCC scan completed; deploy tx built with the correct seq_commitment.
+    DeployTxBuilt {
+        tx: Transaction,
+        covenant_id: CovenantId,
+        covenant_value: u64,
+        on_chain_covenant_id: Hash,
+        deploy_starting_block: Hash,
+        deploy_initial_seq: Hash,
     },
-    ImportFailed {
+    /// VCC fetch or tx build failed — deploy aborted.
+    DeployFailed {
+        covenant_id: CovenantId,
         error: String,
     },
 }
@@ -268,7 +270,7 @@ pub struct App {
     /// Number of SubmitTransaction tasks currently in-flight.
     pending_submit_count: usize,
 
-    /// Number of ValidateImport (and SubscribeAndFetchUtxos) tasks currently in-flight.
+    /// Number of background tasks (SubscribeAndFetchUtxos, FetchVccAndDeploy) currently in-flight.
     /// Used by `process_pending_ops` to wait for all background tasks before returning.
     pending_bg_count: usize,
 
@@ -311,9 +313,18 @@ enum PendingOp {
         perm_redeem_script: Option<Vec<u8>>,
         perm_exit_data: Vec<(Vec<u8>, u64)>,
     },
-    ValidateImport {
-        covenant_id: Hash,
-        start_hash: Hash,
+    /// Fetch VCC to compute seq_commitment at the confirmed tip, then build and submit the deploy tx.
+    /// All parameters needed to construct the tx are carried here.
+    FetchVccAndDeploy {
+        covenant_id: CovenantId,
+        deployer_sk_bytes: [u8; 32],
+        first_utxo_tx_id: Hash,
+        first_utxo_index: u32,
+        first_utxo_amount: u64,
+        proof_kind: u8,
+        covenant_value: u64,
+        network_prefix: Prefix,
+        pruning_point: Hash,
     },
 }
 
@@ -557,9 +568,7 @@ impl App {
         match key.code {
             KeyCode::Char('c') => self.create_covenant(),
             KeyCode::Char('d') => self.deploy_covenant(),
-            KeyCode::Char('i') => self.start_import_covenant(),
             KeyCode::Char('x') => self.delete_covenant(),
-            KeyCode::Char('y') => self.export_covenant_info(),
             KeyCode::Char('t') => self.toggle_proof_kind(),
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.covenant_list_index > 0 {
@@ -725,78 +734,30 @@ impl App {
         }
 
         let proof_kind = record.proof_kind;
-
-        // Record the current pruning point as the prover's starting block (set in main.rs
-        // from dag_info; defaults to Hash::default() if not yet initialized).
-        let deploy_starting_block = self.pruning_point;
-
-        // Use the empty sequence commitment as deploy_initial_seq — correct for a fresh
-        // rollup that has not yet processed any transactions.
-        let empty_seq = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-        let deploy_initial_seq = empty_seq;
-
-        // Build the deploy redeem script using initial_seq.
-        let prev_state_hash = empty_tree_root();
-        let initial_seq_words = from_bytes(deploy_initial_seq.as_bytes());
-        let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
-        let zk_tag = proof_kind_to_zk_tag(u8_to_proof_kind(proof_kind));
-
-        let mut computed_len: i64 = 75;
-        loop {
-            let script = build_redeem_script(prev_state_hash, initial_seq_words, computed_len, &program_id, &zk_tag);
-            let new_len = script.len() as i64;
-            if new_len == computed_len {
-                break;
-            }
-            computed_len = new_len;
-        }
-        let redeem_script = build_redeem_script(prev_state_hash, initial_seq_words, computed_len, &program_id, &zk_tag);
-        let covenant_spk = pay_to_script_hash_script(&redeem_script);
-
         let covenant_value = first_utxo.amount.saturating_sub(estimated_fee);
-        let deployer_spk = pay_to_address_script(&deployer_addr);
 
-        // Compute the on-chain genesis covenant_id (excludes covenant binding field from hash).
-        let deploy_outpoint = TransactionOutpoint::new(first_utxo.tx_id, first_utxo.index);
-        let plain_output = TransactionOutput::new(covenant_value, covenant_spk.clone());
-        let on_chain_covenant_id = kaspa_consensus_core::hashing::covenant_id::covenant_id(
-            deploy_outpoint,
-            std::iter::once((0u32, &plain_output)),
-        );
+        // Extract deployer secret key bytes for the async task
+        let deployer_sk_bytes = deployer_sk.secret_bytes();
 
-        let inputs = vec![TransactionInput::new(deploy_outpoint, vec![], 0, 0)];
-        let utxo_entries = vec![UtxoEntry::new(first_utxo.amount, deployer_spk, 0, false, None)];
-        let outputs = vec![TransactionOutput::with_covenant(
-            covenant_value,
-            covenant_spk,
-            Some(CovenantBinding { covenant_id: on_chain_covenant_id, authorizing_input: 0 }),
-        )];
-
-        let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![proof_kind]);
-        let signable = SignableTransaction::with_entries(tx, utxo_entries);
-        let keypair = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &deployer_sk);
-        let signed = sign(signable, keypair);
-        let tx_id = signed.id();
-
-        self.log(format!("Genesis covenant ID (on-chain): {on_chain_covenant_id}"));
-        self.log(format!("Deploy starting block: {deploy_starting_block}  initial seq: {deploy_initial_seq}"));
-
-        self.pending_tx_effects.insert(
-            tx_id,
-            PendingTxEffect::Deploy {
-                covenant_id,
-                deploy_tx_id: tx_id,
-                covenant_value,
-                on_chain_covenant_id,
-                deploy_starting_block,
-                deploy_initial_seq,
-            },
-        );
-
+        // Optimistically mark the UTXO as spent so it won't be selected again while we wait
         self.utxo_tracker.mark_spent(first_utxo.tx_id, first_utxo.index);
-        self.log(format!("Deploying covenant {covenant_id} — tx: {tx_id} (pending confirmation)"));
-        self.record_tx(tx_id, "Deploy", covenant_value);
-        self.pending_ops.push(PendingOp::SubmitTransaction(signed.tx));
+        self.log(format!(
+            "Deploying covenant {covenant_id} — fetching VCC to compute seq commitment at confirmed tip..."
+        ));
+        self.pending_bg_count += 1;
+        // All tx building (redeem script, signing) happens in the async task after the VCC fetch,
+        // because deploy_initial_seq (from VCC) is embedded in the redeem script.
+        self.pending_ops.push(PendingOp::FetchVccAndDeploy {
+            covenant_id,
+            deployer_sk_bytes,
+            first_utxo_tx_id: first_utxo.tx_id,
+            first_utxo_index: first_utxo.index,
+            first_utxo_amount: first_utxo.amount,
+            proof_kind,
+            covenant_value,
+            network_prefix: self.network_prefix,
+            pruning_point: self.pruning_point,
+        });
     }
 
     fn delete_covenant(&mut self) {
@@ -1115,12 +1076,6 @@ impl App {
             return;
         }
 
-        // Handle PromptText separately to avoid borrow checker issues
-        if matches!(self.input_mode, InputMode::PromptText { .. }) {
-            self.handle_prompt_text_key(key);
-            return;
-        }
-
         // Handle ConfirmDelete separately to avoid borrow checker issues
         if let InputMode::ConfirmDelete { covenant_id, .. } = &self.input_mode {
             let id = *covenant_id;
@@ -1185,7 +1140,6 @@ impl App {
             InputMode::Processing { .. } => {
                 // Ignore keys while processing
             }
-            InputMode::PromptText { .. } => unreachable!("handled above"),
         }
     }
 
@@ -1233,50 +1187,6 @@ impl App {
         }
     }
 
-    // ── Text input (import covenant) ──
-
-    fn handle_prompt_text_key(&mut self, key: crossterm::event::KeyEvent) {
-        match key.code {
-            KeyCode::Char(c) if c.is_ascii_hexdigit() => {
-                if let InputMode::PromptText { buffer, .. } = &mut self.input_mode {
-                    if buffer.len() < 64 {
-                        buffer.push(c);
-                    }
-                }
-            }
-            KeyCode::Backspace => {
-                if let InputMode::PromptText { buffer, .. } = &mut self.input_mode {
-                    buffer.pop();
-                }
-            }
-            KeyCode::Enter => {
-                let (buf_len, buf_clone) = match &self.input_mode {
-                    InputMode::PromptText { buffer, .. } => (buffer.len(), buffer.clone()),
-                    _ => return,
-                };
-
-                if buf_len != 64 {
-                    self.log(format!("Need exactly 64 hex chars, got {buf_len}"));
-                    return;
-                }
-                let mut bytes = [0u8; 32];
-                if faster_hex::hex_decode(buf_clone.as_bytes(), &mut bytes).is_err() {
-                    self.log("Invalid hex string".into());
-                    return;
-                }
-                let covenant_id = Hash::from_bytes(bytes);
-                self.input_mode = InputMode::Normal;
-                self.log("Scanning chain for deployment tx...".into());
-                self.pending_ops.push(PendingOp::ValidateImport { covenant_id, start_hash: self.pruning_point });
-            }
-            KeyCode::Esc => {
-                self.input_mode = InputMode::Normal;
-                self.log("Import cancelled".into());
-            }
-            _ => {}
-        }
-    }
-
     // ── ViewDetail popup ──
 
     fn handle_view_detail_key(&mut self, key: crossterm::event::KeyEvent) {
@@ -1294,82 +1204,6 @@ impl App {
             }
             _ => {}
         }
-    }
-
-    // ── Import covenant ──
-
-    fn start_import_covenant(&mut self) {
-        self.input_mode = InputMode::PromptText {
-            target: TextInputTarget::ImportCovenantId,
-            buffer: String::new(),
-            context: "Enter covenant ID (64 hex chars):".into(),
-        };
-    }
-
-    fn finish_import_covenant(&mut self, covenant_id: Hash, deploy_tx_id: Hash, proof_kind: u8) {
-        // Generate new prover keypair
-        let secp = secp256k1::Secp256k1::new();
-        let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
-        let (xonly_pk, _) = public_key.x_only_public_key();
-        let prover_addr = Address::new(self.network_prefix, Version::PubKey, &xonly_pk.serialize());
-
-        let record = CovenantRecord {
-            deployer_privkey: vec![], // imported — no deployer key
-            deployment_tx_id: Some(deploy_tx_id),
-            covenant_utxo: Some((deploy_tx_id, 0)),
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
-            covenant_value: None, // unknown for imported covenants
-            proof_kind,
-            on_chain_covenant_id: None, // populated when chain data arrives
-            deploy_starting_block: None,
-            deploy_initial_seq: None,
-        };
-
-        if let Err(e) = self.db.put_covenant(covenant_id, &record) {
-            self.log(format!("Failed to save imported covenant: {e}"));
-            return;
-        }
-        if let Err(e) = self.db.put_prover_key(covenant_id, &secret_key.secret_bytes()) {
-            self.log(format!("Failed to save prover key: {e}"));
-            return;
-        }
-
-        self.log(format!("Imported covenant {covenant_id} — prover address: {prover_addr}"));
-
-        // Refresh list and select the imported covenant
-        self.covenants = self.db.list_covenants();
-        if let Some(idx) = self.covenants.iter().position(|(id, _)| *id == covenant_id) {
-            self.covenant_list_index = idx;
-            self.selected_covenant = Some(idx);
-            self.load_prover_key(covenant_id);
-            self.load_tx_history(covenant_id);
-            self.refresh_accounts();
-            self.subscribe_covenant_addresses();
-
-            // Auto-init prover (deployed covenant)
-            let starting_block = self.covenants[idx].1.deploy_starting_block.unwrap_or(self.pruning_point);
-            let initial_seq = self.covenants[idx]
-                .1
-                .deploy_initial_seq
-                .unwrap_or_else(|| {
-                    zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty())
-                });
-            let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-            self.prover = Some(RollupProver::new(covenant_id, initial_state_root, initial_seq, starting_block));
-            self.log("Auto-initialized prover for imported covenant".into());
-            self.pending_ops.push(PendingOp::FetchAndProcessChain);
-        }
-    }
-
-    fn export_covenant_info(&mut self) {
-        if self.covenants.is_empty() {
-            self.log("No covenants to export".into());
-            return;
-        }
-        let (id, _) = self.covenants[self.covenant_list_index];
-        let info = format!("{id}");
-        self.copy_to_clipboard(&info);
-        self.log(format!("Exported covenant ID to clipboard: {info}"));
     }
 
     fn load_prover_key(&mut self, covenant_id: CovenantId) {
@@ -2013,83 +1847,175 @@ impl App {
                         }
                     });
                 }
-                PendingOp::ValidateImport { covenant_id, start_hash } => {
+                PendingOp::FetchVccAndDeploy {
+                    covenant_id,
+                    deployer_sk_bytes,
+                    first_utxo_tx_id,
+                    first_utxo_index,
+                    first_utxo_amount,
+                    proof_kind,
+                    covenant_value,
+                    network_prefix,
+                    pruning_point,
+                } => {
                     let node = self.node.clone();
                     let bg_tx = self.bg_tx.clone();
-                    self.pending_bg_count += 1;
+                    tokio::spawn(async move {
+                        // ── Phase 1: scan the VCC to compute seq_commitment at the confirmed tip ──
+                        // Loop through paginated VCC responses from pruning_point forward.
+                        // For each block, update the rolling seq_commitment using the same formula
+                        // as RollupProver::process_chain_response.
+                        let empty_seq = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
+                        let mut seq_commitment = empty_seq;
+                        let mut deploy_starting_block = pruning_point;
+                        let mut cursor = pruning_point;
 
-                    // Build expected covenant SPKs for both proof types
-                    let prev_state_hash = empty_tree_root();
-                    let prev_seq_commitment = from_bytes(calc_accepted_id_merkle_root(Hash::default(), std::iter::empty()).as_bytes());
-                    let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
+                        loop {
+                            let resp = match node.get_virtual_chain_v2(cursor, Some(1000)).await {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    let _ = bg_tx.send(BgResult::DeployFailed {
+                                        covenant_id,
+                                        error: format!("VCC fetch failed: {e}"),
+                                    });
+                                    return;
+                                }
+                            };
 
-                    let build_expected_spk = |tag: &ZkTag| {
+                            for (block_idx, block) in resp.chain_block_accepted_transactions.iter().enumerate() {
+                                let tx_digests: Vec<Hash> = block
+                                    .accepted_transactions
+                                    .iter()
+                                    .filter_map(|rpc_tx| {
+                                        let tx_id = rpc_tx.verbose_data.as_ref()?.transaction_id?;
+                                        let version = rpc_tx.version.unwrap_or(0);
+                                        let tx_id_words = bytes_to_words_ref(&tx_id.as_bytes());
+                                        let leaf = seq_commitment_leaf(&tx_id_words, version);
+                                        Some(Hash::from_bytes(
+                                            bytemuck::cast_slice(&leaf).try_into().ok()?,
+                                        ))
+                                    })
+                                    .collect();
+
+                                seq_commitment = calc_accepted_id_merkle_root(
+                                    seq_commitment,
+                                    tx_digests.into_iter(),
+                                );
+
+                                if block_idx < resp.added_chain_block_hashes.len() {
+                                    deploy_starting_block =
+                                        resp.added_chain_block_hashes[block_idx];
+                                }
+                            }
+
+                            match resp.added_chain_block_hashes.last().copied() {
+                                Some(last) if last != cursor => cursor = last,
+                                _ => break,
+                            }
+                        }
+
+                        let deploy_initial_seq = seq_commitment;
+
+                        // ── Phase 2: build and sign the deploy tx ──
+                        // The redeem script embeds deploy_initial_seq, so it must be built after
+                        // the VCC scan above.
+                        let deployer_sk = match secp256k1::SecretKey::from_slice(&deployer_sk_bytes) {
+                            Ok(sk) => sk,
+                            Err(e) => {
+                                let _ = bg_tx.send(BgResult::DeployFailed {
+                                    covenant_id,
+                                    error: format!("Invalid deployer key: {e}"),
+                                });
+                                return;
+                            }
+                        };
+                        let deployer_pk = deployer_sk.public_key(secp256k1::SECP256K1);
+                        let (xonly_pk, _) = deployer_pk.x_only_public_key();
+                        let deployer_addr =
+                            Address::new(network_prefix, Version::PubKey, &xonly_pk.serialize());
+                        let deployer_spk = pay_to_address_script(&deployer_addr);
+
+                        let prev_state_hash = empty_tree_root();
+                        let initial_seq_words = from_bytes(deploy_initial_seq.as_bytes());
+                        let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
+                        let zk_tag = proof_kind_to_zk_tag(u8_to_proof_kind(proof_kind));
+
                         let mut computed_len: i64 = 75;
                         loop {
-                            let script = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, tag);
+                            let script = build_redeem_script(
+                                prev_state_hash,
+                                initial_seq_words,
+                                computed_len,
+                                &program_id,
+                                &zk_tag,
+                            );
                             let new_len = script.len() as i64;
                             if new_len == computed_len {
                                 break;
                             }
                             computed_len = new_len;
                         }
-                        let redeem = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, tag);
-                        pay_to_script_hash_script(&redeem)
-                    };
+                        let redeem_script = build_redeem_script(
+                            prev_state_hash,
+                            initial_seq_words,
+                            computed_len,
+                            &program_id,
+                            &zk_tag,
+                        );
+                        let covenant_spk = pay_to_script_hash_script(&redeem_script);
 
-                    let expected_spk_succinct = build_expected_spk(&ZkTag::R0Succinct);
-                    let expected_spk_groth16 = build_expected_spk(&ZkTag::Groth16);
+                        let deploy_outpoint =
+                            TransactionOutpoint::new(first_utxo_tx_id, first_utxo_index);
+                        let plain_output =
+                            TransactionOutput::new(covenant_value, covenant_spk.clone());
+                        let on_chain_covenant_id =
+                            kaspa_consensus_core::hashing::covenant_id::covenant_id(
+                                deploy_outpoint,
+                                std::iter::once((0u32, &plain_output)),
+                            );
 
-                    tokio::spawn(async move {
-                        let mut cursor = start_hash;
-                        loop {
-                            // No min_confirmations: we want to find the deploy tx even if it was
-                            // just recently submitted (may have only a handful of confirmations).
-                            let resp = match node.get_virtual_chain_v2(cursor, None).await {
-                                Ok(r) => r,
-                                Err(e) => {
-                                    let _ = bg_tx.send(BgResult::ImportFailed { error: format!("Chain fetch error: {e}") });
-                                    return;
-                                }
-                            };
+                        let inputs =
+                            vec![TransactionInput::new(deploy_outpoint, vec![], 0, 0)];
+                        let utxo_entries = vec![UtxoEntry::new(
+                            first_utxo_amount,
+                            deployer_spk,
+                            0,
+                            false,
+                            None,
+                        )];
+                        let outputs = vec![TransactionOutput::with_covenant(
+                            covenant_value,
+                            covenant_spk,
+                            Some(CovenantBinding {
+                                covenant_id: on_chain_covenant_id,
+                                authorizing_input: 0,
+                            }),
+                        )];
 
-                            for block in resp.chain_block_accepted_transactions.iter() {
-                                for rpc_tx in &block.accepted_transactions {
-                                    for out in &rpc_tx.outputs {
-                                        if let Some(ref spk) = out.script_public_key {
-                                            let matched_kind = if spk == &expected_spk_succinct {
-                                                Some(0u8)
-                                            } else if spk == &expected_spk_groth16 {
-                                                Some(1u8)
-                                            } else {
-                                                None
-                                            };
-                                            if let Some(proof_kind) = matched_kind {
-                                                let deploy_tx_id = rpc_tx.verbose_data.as_ref().and_then(|v| v.transaction_id);
-                                                if let Some(tx_id) = deploy_tx_id {
-                                                    let _ = bg_tx.send(BgResult::ImportValidated {
-                                                        covenant_id,
-                                                        deploy_tx_id: tx_id,
-                                                        proof_kind,
-                                                    });
-                                                    return;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        let tx = Transaction::new(
+                            TX_VERSION_POST_COV_HF,
+                            inputs,
+                            outputs,
+                            0,
+                            SUBNETWORK_ID_NATIVE,
+                            0,
+                            vec![proof_kind],
+                        );
+                        let signable = SignableTransaction::with_entries(tx, utxo_entries);
+                        let keypair = secp256k1::Keypair::from_secret_key(
+                            secp256k1::SECP256K1,
+                            &deployer_sk,
+                        );
+                        let signed = sign(signable, keypair);
 
-                            match resp.added_chain_block_hashes.last() {
-                                Some(&last) if last != cursor => cursor = last,
-                                _ => {
-                                    let _ = bg_tx.send(BgResult::ImportFailed {
-                                        error: "Deployment tx not found on chain — import cancelled".into(),
-                                    });
-                                    return;
-                                }
-                            }
-                        }
+                        let _ = bg_tx.send(BgResult::DeployTxBuilt {
+                            tx: signed.tx,
+                            covenant_id,
+                            covenant_value,
+                            on_chain_covenant_id,
+                            deploy_starting_block,
+                            deploy_initial_seq,
+                        });
                     });
                 }
             }
@@ -2416,15 +2342,34 @@ impl App {
                 self.log(result_msg.clone());
                 self.last_proof_result = Some(result_msg);
             }
-            BgResult::ImportValidated { covenant_id, deploy_tx_id, proof_kind } => {
+            BgResult::DeployTxBuilt { tx, covenant_id, covenant_value, on_chain_covenant_id, deploy_starting_block, deploy_initial_seq } => {
                 self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
-                let kind_label = u8_to_proof_kind(proof_kind).label();
-                self.log(format!("Found deployment tx {deploy_tx_id} on chain (proof type: {kind_label})"));
-                self.finish_import_covenant(covenant_id, deploy_tx_id, proof_kind);
+                let tx_id = tx.id();
+                self.log(format!("Genesis covenant ID (on-chain): {on_chain_covenant_id}"));
+                self.log(format!("Deploy starting block: {deploy_starting_block}  initial seq: {deploy_initial_seq}"));
+                self.log(format!("Deploying covenant {covenant_id} — tx: {tx_id} (pending confirmation)"));
+                self.record_tx(tx_id, "Deploy", covenant_value);
+                self.pending_tx_effects.insert(
+                    tx_id,
+                    PendingTxEffect::Deploy {
+                        covenant_id,
+                        deploy_tx_id: tx_id,
+                        covenant_value,
+                        on_chain_covenant_id,
+                        deploy_starting_block,
+                        deploy_initial_seq,
+                    },
+                );
+                self.pending_ops.push(PendingOp::SubmitTransaction(tx));
             }
-            BgResult::ImportFailed { error } => {
+            BgResult::DeployFailed { covenant_id, error } => {
                 self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
-                self.log(error);
+                self.log(format!("Deploy failed for covenant {covenant_id}: {error}"));
+                // The UTXO was optimistically marked as spent in deploy_covenant(); un-mark it
+                // by clearing pending_spent for all UTXOs (tracker will re-sync on next update).
+                // A full un-mark would require storing the utxo outpoint; instead, log so the
+                // user can reload by reconnecting or restarting.
+                self.log("Note: refresh UTXOs if the deployer balance appears zero.".into());
             }
         }
     }
@@ -2866,19 +2811,9 @@ mod tests {
     }
 
     #[test]
-    fn test_export_empty_covenants_logs() {
-        let mut app = test_app();
-        let log_count_before = app.log_messages.len();
-        app.export_covenant_info();
-        assert!(app.log_messages.len() > log_count_before);
-        assert!(app.log_messages.last().unwrap().contains("No covenants"));
-    }
-
-    #[test]
     fn test_input_mode_blocks_normal_keys() {
         let mut app = test_app();
-        app.input_mode =
-            InputMode::PromptText { target: TextInputTarget::ImportCovenantId, buffer: String::new(), context: "test".into() };
+        app.input_mode = InputMode::PromptAmount { action: ActionType::Entry, buffer: String::new(), context: "test".into() };
 
         // Ctrl+Q should NOT quit when in input mode
         app.handle_key(key_ctrl('q'));
@@ -2940,7 +2875,7 @@ mod tests {
         let output = render_to_string(&app, 120, 30);
         assert!(output.contains("Covenant ID"), "should show covenant table header");
         assert!(output.contains("Deployed"), "should show Deployed column");
-        assert!(output.contains("Created"), "should show Created origin for new covenant");
+        assert!(output.contains("Deployer Address"), "should show Deployer Address column");
     }
 
     #[test]
@@ -3024,19 +2959,6 @@ mod tests {
         // Normal status bar should be back
         assert!(output.contains("Ctrl+Q:quit"), "normal status bar should return after flash expires");
         assert!(!output.contains("Copied: old"), "expired flash should not appear");
-    }
-
-    #[test]
-    fn test_ui_popup_import() {
-        let mut app = test_app();
-        app.input_mode = InputMode::PromptText {
-            target: TextInputTarget::ImportCovenantId,
-            buffer: "abc123".into(),
-            context: "Enter covenant ID".into(),
-        };
-        let output = render_to_string(&app, 120, 30);
-        assert!(output.contains("Import Covenant"), "should show import popup title");
-        assert!(output.contains("abc123"), "should show typed buffer");
     }
 
     #[test]

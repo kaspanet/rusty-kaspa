@@ -128,18 +128,6 @@ fn draw_popup(frame: &mut Frame, app: &App) {
     match &app.input_mode {
         InputMode::Normal => {}
         InputMode::ViewDetail { .. } => unreachable!("handled above"),
-        InputMode::PromptText { buffer, context, .. } => {
-            let mut lines: Vec<Line> = context.lines().map(|l| Line::from(l.to_string())).collect();
-            lines.push(Line::from(""));
-            lines.push(Line::styled(format!("> {buffer}_"), Style::default().fg(Color::White)));
-            lines.push(Line::from(""));
-            lines.push(Line::styled(format!("{}/64 hex chars  |  Esc: cancel", buffer.len()), Style::default().fg(Color::DarkGray)));
-
-            let block =
-                Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)).title(" Import Covenant ");
-            let paragraph = Paragraph::new(lines).block(block);
-            frame.render_widget(paragraph, area);
-        }
         InputMode::PromptAmount { action, buffer, context } => {
             let mut lines: Vec<Line> = context.lines().map(|l| Line::from(l.to_string())).collect();
             lines.push(Line::from(""));
