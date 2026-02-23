@@ -274,11 +274,13 @@ macro_rules! construct_uint {
                 (self, rem)
             }
 
+            /// Implements the same algorithm as (u* as f64) in the standard library, but for arbitrary large integers.
+            /// Note that for numbers bigger than ~2^1024, this will return `[f64::INFINITY]` since f64 cannot represent them.
             #[inline]
             pub fn as_f64(&self) -> f64 {
                 // Reference: https://blog.m-ou.se/floats/
                 // Step 1: Get leading zeroes
-                let leading_zeroes =  self.leading_zeros();
+                let leading_zeroes = self.leading_zeros();
                 // Step 2: Align the bits to the left, so the highest bit will be 1.
                 let left_aligned = self.wrapping_shl(leading_zeroes);
                 // Step 3: Take the highest 53 bits as the mantissa (equivalent to shifting by (Self::BITS - 53))
@@ -305,6 +307,14 @@ macro_rules! construct_uint {
                 // Otherwise, (Self::BITS - 1 - leading_zeros) + 1022 so it simplifies to Self::BITS + 1021 - leading_zeroes
                 // 1023 and 1022 are the cutoffs for the exponent having the msb next to the decimal point
                 let exponent = if self.is_zero() { 0 } else { u64::from(Self::BITS) + 1021 - u64::from(leading_zeroes) };
+
+                // For integers >= 1024 bits, the exponent may overflow the 11-bit f64 exponent field (max 0x7FF).
+                // We check the final encoded exponent, including the potential carry from rounding,
+                // to saturate to infinity instead of producing NaN.
+                const SATURATING_EXPONENT: u64 = (1 << 11) - 1;
+                if Self::BITS >= 1024 && (exponent + (mantissa >> 52)) >= SATURATING_EXPONENT {
+                    return f64::INFINITY;
+                }
                 // Step 7: sign bit is always 0, exponent is shifted into place
                 // Use addition instead of bitwise OR to saturate the exponent if mantissa overflows
                 f64::from_bits((exponent << 52) + mantissa)
