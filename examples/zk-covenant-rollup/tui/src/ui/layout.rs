@@ -68,11 +68,32 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn draw_log(frame: &mut Frame, app: &App, area: Rect) {
-    let visible_height = area.height.saturating_sub(2) as usize; // borders
-    let start = app.log_messages.len().saturating_sub(visible_height);
-    let lines: Vec<Line> = app.log_messages[start..].iter().map(|m| Line::from(m.as_str())).collect();
-    let log = Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title("Log"));
-    frame.render_widget(log, area);
+    let visible_height = area.height.saturating_sub(2) as usize;
+    let total = app.log_messages.len();
+    let scroll = if app.log_selected >= app.log_scroll + visible_height {
+        app.log_selected.saturating_sub(visible_height.saturating_sub(1))
+    } else {
+        app.log_scroll.min(app.log_selected)
+    };
+    let end = (scroll + visible_height).min(total);
+    let lines: Vec<Line> = app.log_messages[scroll..end]
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let line = Line::from(m.as_str());
+            if scroll + i == app.log_selected {
+                line.style(Style::default().bg(Color::DarkGray))
+            } else {
+                line
+            }
+        })
+        .collect();
+    let title = if total == 0 {
+        " Log [0/0]  j/k:nav  Enter:expand ".to_string()
+    } else {
+        format!(" Log [{}/{}]  j/k:nav  Enter:expand ", app.log_selected + 1, total)
+    };
+    frame.render_widget(Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title)), area);
 }
 
 /// Centered popup rect of given width/height within `area`.
@@ -83,11 +104,31 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 }
 
 fn draw_popup(frame: &mut Frame, app: &App) {
+    // ViewDetail popup uses the full screen (minus margins)
+    if let InputMode::ViewDetail { lines, scroll } = &app.input_mode {
+        let area = centered_rect(frame.area().width.saturating_sub(4), frame.area().height.saturating_sub(4), frame.area());
+        frame.render_widget(Clear, area);
+        let visible = area.height.saturating_sub(2) as usize;
+        let start = (*scroll).min(lines.len().saturating_sub(1));
+        let end = lines.len().min(start + visible);
+        let shown: Vec<Line> = lines[start..end].iter().map(|l| Line::from(l.as_str())).collect();
+        let title = if lines.is_empty() {
+            " Detail  Esc:close ".to_string()
+        } else {
+            format!(" Detail [{}/{}]  j/k:scroll  Esc:close ", start + 1, lines.len())
+        };
+        let para = Paragraph::new(shown)
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan)).title(title));
+        frame.render_widget(para, area);
+        return;
+    }
+
     let area = centered_rect(70, 12, frame.area());
     frame.render_widget(Clear, area);
 
     match &app.input_mode {
         InputMode::Normal => {}
+        InputMode::ViewDetail { .. } => unreachable!("handled above"),
         InputMode::PromptText { buffer, context, .. } => {
             let mut lines: Vec<Line> = context.lines().map(|l| Line::from(l.to_string())).collect();
             lines.push(Line::from(""));

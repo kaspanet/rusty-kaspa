@@ -45,6 +45,8 @@ pub struct RollupProver {
     pub accumulated_block_txs: Vec<Vec<ZkTransaction>>,
     /// Permission tree builder for the current proving window (for exits).
     pub accumulated_perm_builder: StreamingPermTreeBuilder,
+    /// (spk_bytes, amount) for each exit in the current proving window.
+    pub accumulated_exit_data: Vec<(Vec<u8>, u64)>,
 }
 
 /// Data returned by `take_prove_snapshot`, combining the prove input
@@ -53,6 +55,8 @@ pub struct ProveSnapshot {
     pub input: ProveInput,
     /// Full permission redeem script bytes (only when exits occurred).
     pub perm_redeem_script: Option<Vec<u8>>,
+    /// (spk_bytes, amount) for each exit in the proving window (empty if none).
+    pub perm_exit_data: Vec<(Vec<u8>, u64)>,
 }
 
 /// Result of processing a VCC v2 response.
@@ -80,6 +84,7 @@ impl RollupProver {
             prev_proved_seq_commitment: initial_seq_commitment,
             accumulated_block_txs: Vec::new(),
             accumulated_perm_builder: StreamingPermTreeBuilder::new(),
+            accumulated_exit_data: Vec::new(),
         }
     }
 
@@ -124,11 +129,18 @@ impl RollupProver {
             (None, None)
         };
 
+        // Take exit data for this proving window
+        let perm_exit_data = std::mem::take(&mut self.accumulated_exit_data);
+
         // Advance the proving window start to current state
         self.prev_proved_state_root = self.state_root;
         self.prev_proved_seq_commitment = self.seq_commitment;
 
-        Some(ProveSnapshot { input: ProveInput { public_input, block_txs, perm_redeem_script_len }, perm_redeem_script })
+        Some(ProveSnapshot {
+            input: ProveInput { public_input, block_txs, perm_redeem_script_len },
+            perm_redeem_script,
+            perm_exit_data,
+        })
     }
 
     /// Process a VCC v2 response, converting RPC transactions to ZkTransactions
@@ -339,6 +351,7 @@ impl RollupProver {
         let leaf = perm_leaf_hash(&dest_spk_bytes[..spk_len], exit_amount);
         self.perm_builder.add_leaf(leaf);
         self.accumulated_perm_builder.add_leaf(leaf);
+        self.accumulated_exit_data.push((dest_spk_bytes[..spk_len].to_vec(), exit_amount));
 
         // Build prev_tx
         let prev_tx = build_prev_tx_for_action(tx, &source_pk);
