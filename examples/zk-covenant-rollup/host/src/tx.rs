@@ -1,3 +1,5 @@
+use kaspa_consensus_core::config::params::TESTNET12_PARAMS;
+use kaspa_consensus_core::mass::{Mass, MassCalculator};
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION},
     hashing::sighash::SigHashReusedValuesUnsync,
@@ -18,7 +20,7 @@ pub fn make_mock_transaction(lock_time: u64, input_spk: ScriptPublicKey, output_
     let cov_id = Hash::from_bytes([0xFF; 32]);
     let tx = Transaction::new(
         TX_VERSION + 1,
-        vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(1), 1), vec![], 10, u8::MAX)],
+        vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(1), 1), vec![], 10, 115)],
         vec![TransactionOutput::with_covenant(
             SOMPI_PER_KASPA,
             output_spk,
@@ -29,7 +31,7 @@ pub fn make_mock_transaction(lock_time: u64, input_spk: ScriptPublicKey, output_
         0,
         vec![],
     );
-    let utxo = UtxoEntry::new(0, input_spk, 0, false, Some(cov_id));
+    let utxo = UtxoEntry::new(SOMPI_PER_KASPA, input_spk, 0, false, Some(cov_id));
     (tx, utxo)
 }
 
@@ -45,7 +47,7 @@ pub fn make_mock_transaction_with_permission(
     let cov_id = Hash::from_bytes([0xFF; 32]);
     let tx = Transaction::new(
         TX_VERSION + 1,
-        vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(1), 1), vec![], 10, u8::MAX)],
+        vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(1), 1), vec![], 10, 115)],
         vec![
             TransactionOutput::with_covenant(
                 SOMPI_PER_KASPA,
@@ -63,17 +65,24 @@ pub fn make_mock_transaction_with_permission(
         0,
         vec![],
     );
-    let utxo = UtxoEntry::new(0, input_spk, 0, false, Some(cov_id));
+    let utxo = UtxoEntry::new(2 * SOMPI_PER_KASPA, input_spk, 0, false, Some(cov_id));
     (tx, utxo)
 }
 
 /// Verify a transaction using the script engine
 pub fn verify_tx(tx: &Transaction, utxo: &UtxoEntry, accessor: &dyn SeqCommitAccessor) {
+    let calc = MassCalculator::new_with_consensus_params(&TESTNET12_PARAMS);
     let sig_cache = Cache::new(10_000);
     let reused_values = SigHashReusedValuesUnsync::new();
     let flags = EngineFlags { covenants_enabled: true };
 
     let populated = PopulatedTransaction::new(tx, vec![utxo.clone()]);
+    let ctx_mass = calc.calc_contextual_masses(&populated).unwrap();
+    let non_ctx_mass = calc.calc_non_contextual_masses(populated.tx);
+    const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 1_000_000; // TODO(covpp-mainnet)
+    let norm_mass = Mass::new(non_ctx_mass, ctx_mass).normalized_max(&TESTNET12_PARAMS.block_mass_limits.cofactors());
+    assert!(dbg!(norm_mass) < MAXIMUM_STANDARD_TRANSACTION_MASS, "transaction mass is larger than max allowed size of 1000000");
+
     let cov_ctx = CovenantsContext::from_tx(&populated).unwrap();
     let exec_ctx =
         EngineContext::new(&sig_cache).with_reused(&reused_values).with_seq_commit_accessor(accessor).with_covenants_ctx(&cov_ctx);
@@ -92,9 +101,7 @@ pub fn make_multi_input_mock_transaction(
         inputs_spk
             .iter()
             .enumerate()
-            .map(|(i, _)| {
-                TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(i as u64 + 1), i as u32), vec![], 10, u8::MAX)
-            })
+            .map(|(i, _)| TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(i as u64 + 1), i as u32), vec![], 10, 1))
             .collect(),
         outputs.into_iter().map(|(value, spk, covenant)| TransactionOutput::with_covenant(value, spk, covenant)).collect(),
         0,

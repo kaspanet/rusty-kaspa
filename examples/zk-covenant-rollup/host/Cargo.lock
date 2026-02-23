@@ -2853,6 +2853,7 @@ dependencies = [
  "blake2b_simd",
  "borsh",
  "bytemuck",
+ "cc",
  "cfg-if",
  "faster-hex 0.9.0",
  "hexplay",
