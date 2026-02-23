@@ -102,6 +102,8 @@ pub enum InputMode {
     PromptAmount { action: ActionType, buffer: String, context: String },
     PromptText { target: TextInputTarget, buffer: String, context: String },
     Confirm { action: ActionType, amount: u64, summary: Vec<String> },
+    /// Confirmation popup before deleting a covenant (deployed or not).
+    ConfirmDelete { covenant_id: Hash, lines: Vec<String> },
     Processing { action: ActionType },
     ViewDetail { lines: Vec<String>, scroll: usize },
 }
@@ -804,13 +806,21 @@ impl App {
         }
 
         let (id, rec) = self.covenants[self.covenant_list_index].clone();
+        let id_short = { let s = id.to_string(); format!("{}...", &s[..16]) };
 
-        // Prevent deletion of deployed covenants — funds are locked on-chain.
+        let mut lines = vec![format!("Covenant: {id_short}")];
         if rec.deployment_tx_id.is_some() {
-            self.log(format!("Cannot delete covenant {id}: it is already deployed on-chain"));
-            return;
+            lines.push("WARNING: This covenant is deployed on-chain.".into());
+            lines.push("Deletes the local record only; on-chain state is unaffected.".into());
         }
+        lines.push(String::new());
+        lines.push("y / Enter: confirm delete    Esc: cancel".into());
 
+        self.input_mode = InputMode::ConfirmDelete { covenant_id: id, lines };
+    }
+
+    /// Performs the actual covenant deletion after confirmation.
+    fn do_delete_covenant(&mut self, id: Hash) {
         if let Err(e) = self.db.delete_covenant_all(id) {
             self.log(format!("Failed to delete covenant: {e}"));
             return;
@@ -1111,9 +1121,27 @@ impl App {
             return;
         }
 
+        // Handle ConfirmDelete separately to avoid borrow checker issues
+        if let InputMode::ConfirmDelete { covenant_id, .. } = &self.input_mode {
+            let id = *covenant_id;
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Enter => {
+                    self.input_mode = InputMode::Normal;
+                    self.do_delete_covenant(id);
+                }
+                KeyCode::Esc => {
+                    self.input_mode = InputMode::Normal;
+                    self.log("Delete cancelled".into());
+                }
+                _ => {}
+            }
+            return;
+        }
+
         match &mut self.input_mode {
             InputMode::Normal => {}
             InputMode::ViewDetail { .. } => unreachable!("handled above"),
+            InputMode::ConfirmDelete { .. } => unreachable!("handled above"),
             InputMode::PromptAmount { action, buffer, .. } => {
                 let action = *action;
                 match key.code {

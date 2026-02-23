@@ -164,6 +164,16 @@ fn draw_popup(frame: &mut Frame, app: &App) {
             let paragraph = Paragraph::new(lines).block(block);
             frame.render_widget(paragraph, area);
         }
+        InputMode::ConfirmDelete { lines, .. } => {
+            let is_deployed = lines.iter().any(|l| l.contains("WARNING"));
+            let color = if is_deployed { Color::Red } else { Color::Yellow };
+            let rendered: Vec<Line> = lines.iter().map(|l| Line::from(l.as_str())).collect();
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(color))
+                .title(" Delete Covenant ");
+            frame.render_widget(Paragraph::new(rendered).block(block), area);
+        }
         InputMode::Processing { action } => {
             let lines = vec![
                 Line::from(""),
