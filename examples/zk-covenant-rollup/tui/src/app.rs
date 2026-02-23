@@ -1193,8 +1193,8 @@ impl App {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => self.input_mode = InputMode::Normal,
             KeyCode::Down | KeyCode::Char('j') => {
-                if let InputMode::ViewDetail { ref mut scroll, ref lines } = self.input_mode {
-                    *scroll = scroll.saturating_add(1).min(lines.len().saturating_sub(1));
+                if let InputMode::ViewDetail { ref mut scroll, .. } = self.input_mode {
+                    *scroll = scroll.saturating_add(1);
                 }
             }
             KeyCode::Up | KeyCode::Char('k') => {

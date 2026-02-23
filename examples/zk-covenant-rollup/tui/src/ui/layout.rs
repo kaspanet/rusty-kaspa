@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::Frame;
 
 use crate::app::{App, InputMode, Tab};
@@ -108,17 +108,16 @@ fn draw_popup(frame: &mut Frame, app: &App) {
     if let InputMode::ViewDetail { lines, scroll } = &app.input_mode {
         let area = centered_rect(frame.area().width.saturating_sub(4), frame.area().height.saturating_sub(4), frame.area());
         frame.render_widget(Clear, area);
-        let visible = area.height.saturating_sub(2) as usize;
-        let start = (*scroll).min(lines.len().saturating_sub(1));
-        let end = lines.len().min(start + visible);
-        let shown: Vec<Line> = lines[start..end].iter().map(|l| Line::from(l.as_str())).collect();
-        let title = if lines.is_empty() {
-            " Detail  Esc:close ".to_string()
-        } else {
-            format!(" Detail [{}/{}]  j/k:scroll  Esc:close ", start + 1, lines.len())
-        };
+        let shown: Vec<Line> = lines.iter().map(|l| Line::from(l.as_str())).collect();
         let para = Paragraph::new(shown)
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan)).title(title));
+            .wrap(Wrap { trim: false })
+            .scroll((*scroll as u16, 0))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Detail  j/k:scroll  Esc:close "),
+            );
         frame.render_widget(para, area);
         return;
     }

@@ -8,7 +8,7 @@ use crate::app::{App, TxStatus};
 pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     if app.tx_history.is_empty() {
         let msg = Paragraph::new("No transactions yet")
-            .block(Block::default().borders(Borders::ALL).title("Tx History [j/k:navigate  c:copy ID  Enter/o:open in browser]"));
+            .block(Block::default().borders(Borders::ALL).title("Tx History [j/k:navigate  c:copy ID  Enter:detail  o:browser]"));
         frame.render_widget(msg, area);
         return;
     }
@@ -42,7 +42,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     let table = Table::new(rows, widths)
         .header(header)
-        .block(Block::default().borders(Borders::ALL).title("Tx History [j/k:navigate  c:copy ID  Enter/o:open in browser]"));
+        .block(Block::default().borders(Borders::ALL).title("Tx History [j/k:navigate  c:copy ID  Enter:detail  o:browser]"));
 
     frame.render_widget(table, area);
 }
