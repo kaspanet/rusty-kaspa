@@ -1,7 +1,7 @@
 use kaspa_consensus_core::config::params::TESTNET12_PARAMS;
 use kaspa_consensus_core::mass::{Mass, MassCalculator};
 use kaspa_consensus_core::{
-    constants::{SOMPI_PER_KASPA, TX_VERSION},
+    constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
     hashing::sighash::SigHashReusedValuesUnsync,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{
@@ -19,7 +19,7 @@ use kaspa_txscript::{
 pub fn make_mock_transaction(lock_time: u64, input_spk: ScriptPublicKey, output_spk: ScriptPublicKey) -> (Transaction, UtxoEntry) {
     let cov_id = Hash::from_bytes([0xFF; 32]);
     let tx = Transaction::new(
-        TX_VERSION + 1,
+        TX_VERSION_POST_COV_HF,
         vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(1), 1), vec![], 10, 115)],
         vec![TransactionOutput::with_covenant(
             SOMPI_PER_KASPA,
@@ -46,7 +46,7 @@ pub fn make_mock_transaction_with_permission(
 ) -> (Transaction, UtxoEntry) {
     let cov_id = Hash::from_bytes([0xFF; 32]);
     let tx = Transaction::new(
-        TX_VERSION + 1,
+        TX_VERSION_POST_COV_HF,
         vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(1), 1), vec![], 10, 115)],
         vec![
             TransactionOutput::with_covenant(
@@ -97,7 +97,7 @@ pub fn make_multi_input_mock_transaction(
     outputs: Vec<(u64, ScriptPublicKey, Option<CovenantBinding>)>,
 ) -> (Transaction, Vec<UtxoEntry>) {
     let tx = Transaction::new(
-        TX_VERSION + 1,
+        TX_VERSION_POST_COV_HF,
         inputs_spk
             .iter()
             .enumerate()
@@ -164,7 +164,7 @@ mod tests {
     use kaspa_hashes::Hash;
     use kaspa_txscript::covenants::CovenantsContext;
 
-    use super::TX_VERSION;
+    use super::TX_VERSION_POST_COV_HF;
 
     fn dummy_spk() -> ScriptPublicKey {
         ScriptPublicKey::default()
@@ -255,7 +255,7 @@ mod tests {
             dummy_spk(),
             Some(CovenantBinding { covenant_id: genesis_id, authorizing_input: 0 }),
         );
-        let tx = make_tx(proof_input_outpoint, vec![output], TX_VERSION + 1);
+        let tx = make_tx(proof_input_outpoint, vec![output], TX_VERSION_POST_COV_HF);
         let populated = PopulatedTransaction::new(&tx, vec![deploy_utxo]);
 
         // Must succeed: continuation case (no genesis validation triggered).
@@ -284,7 +284,7 @@ mod tests {
             dummy_spk(),
             Some(CovenantBinding { covenant_id: arbitrary_id, authorizing_input: 0 }),
         );
-        let tx = make_tx(proof_input_outpoint, vec![output], TX_VERSION + 1);
+        let tx = make_tx(proof_input_outpoint, vec![output], TX_VERSION_POST_COV_HF);
         let populated = PopulatedTransaction::new(&tx, vec![deploy_utxo]);
 
         // Must fail: genesis case with wrong hash.

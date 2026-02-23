@@ -4,7 +4,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus_core::constants::TX_VERSION;
+use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
@@ -738,7 +738,7 @@ impl App {
         )];
         let _ = total_input; // all consumed
 
-        let tx = Transaction::new(0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![record.proof_kind]);
+        let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![record.proof_kind]);
         let signable = SignableTransaction::with_entries(tx, utxo_entries);
 
         // Sign
@@ -1580,7 +1580,7 @@ impl App {
             ));
         }
 
-        let tx = Transaction::new(TX_VERSION + 1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         let tx_id = tx.id();
 
         // Save old UTXO info so we can revert on submission failure
@@ -1777,7 +1777,7 @@ impl App {
             outputs.push(TransactionOutput::new(change, delegate_spk));
         }
 
-        let tx = Transaction::new(TX_VERSION + 1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         let tx_id = tx.id();
 
         // Update perm_utxo state
