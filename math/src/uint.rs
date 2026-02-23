@@ -191,19 +191,24 @@ macro_rules! construct_uint {
 
             #[inline]
             pub fn overflowing_mul(self, other: Self) -> (Self, bool) {
-                // We should probably replace this with a Montgomery multiplication algorithm
                 let mut result = Self::ZERO;
                 let mut carry_out = false;
                 for j in 0..Self::LIMBS {
                     let mut carry = 0;
-                    let mut i = 0;
-                    while i + j < Self::LIMBS {
+                    // Accumulate all cross-terms a[i] * b[j] that fit within LIMBS
+                    for i in 0..Self::LIMBS - j {
+                        // Note: wide is at most (2^64-1)^2 + (2^64-1) + (2^64-1) = 2^128 - 1, so it fits within u128
                         let n = (self.0[i] as u128) * (other.0[j] as u128) + (result.0[i + j] as u128) + (carry as u128);
                         result.0[i + j] = n as u64;
                         carry = (n >> 64) as u64;
-                        i += 1;
                     }
+
+                    // Carry spilling out of the top limb means the result exceeds LIMBS limbs
                     carry_out |= carry != 0;
+                    // Any nonzero cross-term a[i] * b[j] with i+j >= LIMBS is a direct overflow
+                    for i in (Self::LIMBS - j)..Self::LIMBS {
+                        carry_out |= (self.0[i] != 0) & (other.0[j] != 0);
+                    }
                 }
                 (result, carry_out)
             }
