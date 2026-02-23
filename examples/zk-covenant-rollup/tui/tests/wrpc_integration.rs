@@ -467,7 +467,7 @@ async fn test_entry_action_flow() {
     kaspad.shutdown();
 }
 
-/// Test deleting an undeployed covenant.
+/// Test deleting an undeployed covenant (with confirmation popup).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_delete_undeployed_covenant() {
     kaspa_core::log::try_init_logger("INFO");
@@ -480,10 +480,16 @@ async fn test_delete_undeployed_covenant() {
     app.handle_key(key_event(KeyCode::Char('c')));
     assert_eq!(app.covenants.len(), 1);
 
-    // Delete it (press 'x')
+    // Press 'x' — opens confirmation popup
     app.covenant_list_index = 0;
     app.handle_key(key_event(KeyCode::Char('x')));
-    assert!(app.covenants.is_empty(), "Covenant list should be empty after deletion");
+    assert!(matches!(app.input_mode, InputMode::ConfirmDelete { .. }), "Should show ConfirmDelete popup");
+    assert_eq!(app.covenants.len(), 1, "Not deleted yet — waiting for confirmation");
+
+    // Press 'y' to confirm
+    app.handle_input_key(key_event(KeyCode::Char('y')));
+    assert!(app.input_mode.is_normal(), "Should return to Normal mode");
+    assert!(app.covenants.is_empty(), "Covenant list should be empty after confirmed deletion");
 
     app.node.stop().await.unwrap();
     grpc_client.disconnect().await.unwrap();
@@ -491,9 +497,9 @@ async fn test_delete_undeployed_covenant() {
     kaspad.shutdown();
 }
 
-/// Test that deleting a deployed covenant is rejected.
+/// Test deleting a deployed covenant: confirmation popup with WARNING, Esc cancels, 'y' deletes.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_delete_deployed_covenant_rejected() {
+async fn test_delete_deployed_covenant_confirm() {
     kaspa_core::log::try_init_logger("INFO");
 
     let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
@@ -519,13 +525,25 @@ async fn test_delete_deployed_covenant_rejected() {
     app.process_pending_ops().await;
     app.covenants = app.db.list_covenants();
 
-    // Try to delete — should be rejected
-    let log_len_before = app.log_messages.len();
+    // Press 'x' — should open ConfirmDelete popup with WARNING
     app.covenant_list_index = 0;
     app.handle_key(key_event(KeyCode::Char('x')));
+    if let InputMode::ConfirmDelete { ref lines, .. } = app.input_mode {
+        assert!(lines.iter().any(|l| l.contains("WARNING")), "Should show WARNING for deployed covenant");
+    } else {
+        panic!("Expected ConfirmDelete popup");
+    }
 
-    assert_eq!(app.covenants.len(), 1, "Deployed covenant should not be deleted");
-    assert!(app.log_messages[log_len_before..].iter().any(|m| m.contains("Cannot delete")), "Should log rejection message");
+    // Press Esc to cancel — covenant should survive
+    app.handle_input_key(key_event(KeyCode::Esc));
+    assert!(app.input_mode.is_normal());
+    assert_eq!(app.covenants.len(), 1, "Covenant should survive Esc cancel");
+
+    // Press 'x' again, then 'y' to actually delete
+    app.handle_key(key_event(KeyCode::Char('x')));
+    app.handle_input_key(key_event(KeyCode::Char('y')));
+    assert!(app.input_mode.is_normal());
+    assert!(app.covenants.is_empty(), "Deployed covenant should be deleted after confirmation");
 
     app.node.stop().await.unwrap();
     grpc_client.disconnect().await.unwrap();
@@ -696,6 +714,115 @@ async fn test_state_tab_refetch() {
     // Prover should have advanced
     let last_block_after = app.prover.as_ref().unwrap().last_processed_block;
     assert_ne!(last_block_before, last_block_after, "Prover should have advanced after refetch");
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
+/// Test that deploy fetches VCC + block header and records deploy_starting_block / deploy_initial_seq.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_deploy_sets_starting_block_and_seq() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
+    let (mut app, grpc_client, miner_address, _keypair) = setup_test_app(&mut kaspad).await;
+
+    // Create and select covenant
+    app.active_tab = Tab::Covenants;
+    app.handle_key(key_event(KeyCode::Char('c')));
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+
+    // Fund deployer
+    let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
+    let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
+
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Deploy
+    app.handle_key(key_event(KeyCode::Char('d')));
+    app.process_pending_ops().await;
+
+    // Reload from DB
+    let covenant_id = app.covenants[0].0;
+    let rec = app.db.get_covenant(covenant_id).unwrap().unwrap();
+    assert!(rec.deployment_tx_id.is_some(), "Should have deployment tx ID");
+    assert!(rec.deploy_starting_block.is_some(), "Should have deploy_starting_block");
+    assert!(rec.deploy_initial_seq.is_some(), "Should have deploy_initial_seq");
+
+    let starting_block = rec.deploy_starting_block.unwrap();
+    let initial_seq = rec.deploy_initial_seq.unwrap();
+
+    // Verify starting_block is NOT the pruning point (should be a recent confirmed block)
+    assert_ne!(starting_block, app.pruning_point, "deploy_starting_block should not be pruning point");
+
+    // Verify initial_seq matches the accepted_id_merkle_root of the starting block
+    let block = app.node.get_block(starting_block, false).await.unwrap();
+    assert_eq!(
+        initial_seq, block.header.accepted_id_merkle_root,
+        "deploy_initial_seq should equal block header accepted_id_merkle_root"
+    );
+
+    // Pressing 'd' again should be rejected (already deployed)
+    let log_len = app.log_messages.len();
+    app.covenants = app.db.list_covenants();
+    app.handle_key(key_event(KeyCode::Char('d')));
+    assert!(
+        app.log_messages[log_len..].iter().any(|m| m.contains("already deployed")),
+        "Second deploy should be rejected"
+    );
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
+/// Test that deploy_in_progress guard prevents duplicate deploys.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_deploy_duplicate_guard() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
+    let (mut app, grpc_client, miner_address, _keypair) = setup_test_app(&mut kaspad).await;
+
+    // Create and select covenant
+    app.active_tab = Tab::Covenants;
+    app.handle_key(key_event(KeyCode::Char('c')));
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+
+    // Fund deployer
+    let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
+    let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
+
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Press 'd' — starts deploy
+    app.handle_key(key_event(KeyCode::Char('d')));
+    assert!(app.deploy_in_progress, "deploy_in_progress should be true after pressing 'd'");
+
+    // Press 'd' again — should be rejected
+    let log_len = app.log_messages.len();
+    app.handle_key(key_event(KeyCode::Char('d')));
+    assert!(
+        app.log_messages[log_len..].iter().any(|m| m.contains("already in progress")),
+        "Second press should be rejected while deploy in progress"
+    );
+
+    // Let the deploy complete
+    app.process_pending_ops().await;
+    assert!(!app.deploy_in_progress, "deploy_in_progress should be false after completion");
 
     app.node.stop().await.unwrap();
     grpc_client.disconnect().await.unwrap();

@@ -114,6 +114,24 @@ impl KaspaNode {
         Ok(self.client().submit_transaction(tx, allow_orphan).await?)
     }
 
+    /// Query the virtual chain (v1) — returns block hashes and optional accepted tx IDs.
+    pub async fn get_virtual_chain_from_block(
+        &self,
+        start_hash: RpcHash,
+        include_accepted_transaction_ids: bool,
+        min_confirmations: Option<u32>,
+    ) -> Result<kaspa_rpc_core::GetVirtualChainFromBlockResponse> {
+        Ok(self
+            .client()
+            .get_virtual_chain_from_block(start_hash, include_accepted_transaction_ids, min_confirmations.map(|v| v as u64))
+            .await?)
+    }
+
+    /// Get a block by hash (header + optional transactions).
+    pub async fn get_block(&self, hash: RpcHash, include_transactions: bool) -> Result<kaspa_rpc_core::RpcBlock> {
+        Ok(self.client().get_block(hash, include_transactions).await?)
+    }
+
     /// Get block DAG info (useful for pruning point hash).
     pub async fn get_block_dag_info(&self) -> Result<kaspa_rpc_core::GetBlockDagInfoResponse> {
         Ok(self.client().get_block_dag_info().await?)

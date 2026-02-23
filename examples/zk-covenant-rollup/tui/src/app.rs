@@ -19,10 +19,9 @@ use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
 use kaspa_wrpc_client::prelude::Notification;
 use risc0_zkvm::sha::Digestible;
 use tokio::sync::mpsc;
-use zk_covenant_rollup_core::seq_commit::seq_commitment_leaf;
 use zk_covenant_rollup_core::state::empty_tree_root;
-use zk_covenant_rollup_core::{bytes_to_words_ref, PublicInput};
-use zk_covenant_rollup_host::mock_chain::{calc_accepted_id_merkle_root, from_bytes};
+use zk_covenant_rollup_core::PublicInput;
+use zk_covenant_rollup_host::mock_chain::from_bytes;
 use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
 
@@ -283,6 +282,9 @@ pub struct App {
     /// True while a FetchAndProcessChain task is in-flight (prevents double-firing).
     chain_sync_active: bool,
 
+    /// True while a FetchVccAndDeploy task is in-flight (prevents pressing 'd' twice).
+    pub deploy_in_progress: bool,
+
     /// Number of SubmitTransaction tasks currently in-flight.
     pending_submit_count: usize,
 
@@ -461,6 +463,7 @@ impl App {
             bg_tx,
             bg_rx,
             chain_sync_active: false,
+            deploy_in_progress: false,
             pending_submit_count: 0,
             pending_bg_count: 0,
             clipboard: None,
@@ -702,6 +705,11 @@ impl App {
     }
 
     fn deploy_covenant(&mut self) {
+        if self.deploy_in_progress {
+            self.log("Deploy already in progress".into());
+            return;
+        }
+
         // Must have a selected covenant
         let cov_idx = match self.selected_covenant {
             Some(i) => i,
@@ -761,7 +769,8 @@ impl App {
 
         // Optimistically mark the UTXO as spent so it won't be selected again while we wait
         self.utxo_tracker.mark_spent(first_utxo.tx_id, first_utxo.index);
-        self.log(format!("Deploying covenant {covenant_id} — fetching VCC to compute seq commitment at confirmed tip..."));
+        self.deploy_in_progress = true;
+        self.log(format!("Deploying covenant {covenant_id} — fetching confirmed tip..."));
         self.pending_bg_count += 1;
         // All tx building (redeem script, signing) happens in the async task after the VCC fetch,
         // because deploy_initial_seq (from VCC) is embedded in the redeem script.
@@ -1878,56 +1887,38 @@ impl App {
                     let node = self.node.clone();
                     let bg_tx = self.bg_tx.clone();
                     tokio::spawn(async move {
-                        // ── Phase 1: scan the VCC to compute seq_commitment at the confirmed tip ──
-                        // Loop through paginated VCC responses from pruning_point forward.
-                        // For each block, update the rolling seq_commitment using the same formula
-                        // as RollupProver::process_chain_response.
-                        let empty_seq = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-                        let mut seq_commitment = empty_seq;
-                        let mut deploy_starting_block = pruning_point;
-                        let mut cursor = pruning_point;
-
-                        loop {
-                            let resp = match node.get_virtual_chain_v2(cursor, Some(1000)).await {
-                                Ok(r) => r,
-                                Err(e) => {
-                                    let _ =
-                                        bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("VCC fetch failed: {e}") });
-                                    return;
-                                }
-                            };
-
-                            for (block_idx, block) in resp.chain_block_accepted_transactions.iter().enumerate() {
-                                let tx_digests: Vec<Hash> = block
-                                    .accepted_transactions
-                                    .iter()
-                                    .filter_map(|rpc_tx| {
-                                        let tx_id = rpc_tx.verbose_data.as_ref()?.transaction_id?;
-                                        let version = rpc_tx.version.unwrap_or(0);
-                                        let tx_id_words = bytes_to_words_ref(&tx_id.as_bytes());
-                                        let leaf = seq_commitment_leaf(&tx_id_words, version);
-                                        Some(Hash::from_bytes(bytemuck::cast_slice(&leaf).try_into().ok()?))
-                                    })
-                                    .collect();
-
-                                seq_commitment = calc_accepted_id_merkle_root(seq_commitment, tx_digests.into_iter());
-
-                                if block_idx < resp.added_chain_block_hashes.len() {
-                                    deploy_starting_block = resp.added_chain_block_hashes[block_idx];
-                                }
+                        // ── Phase 1: fetch VCC (v1) to get confirmed block hashes ──
+                        let resp = match node.get_virtual_chain_from_block(pruning_point, false, Some(1000)).await {
+                            Ok(r) => r,
+                            Err(e) => {
+                                let _ =
+                                    bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("VCC fetch failed: {e}") });
+                                return;
                             }
+                        };
 
-                            match resp.added_chain_block_hashes.last().copied() {
-                                Some(last) if last != cursor => cursor = last,
-                                _ => break,
+                        let deploy_starting_block = match resp.added_chain_block_hashes.last().copied() {
+                            Some(h) => h,
+                            None => {
+                                let _ = bg_tx
+                                    .send(BgResult::DeployFailed { covenant_id, error: "VCC returned no added blocks".into() });
+                                return;
                             }
-                        }
+                        };
 
-                        let deploy_initial_seq = seq_commitment;
+                        // ── Phase 2: get block header → accepted_id_merkle_root = seq_commitment ──
+                        let block = match node.get_block(deploy_starting_block, false).await {
+                            Ok(b) => b,
+                            Err(e) => {
+                                let _ =
+                                    bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("get_block failed: {e}") });
+                                return;
+                            }
+                        };
 
-                        // ── Phase 2: build and sign the deploy tx ──
-                        // The redeem script embeds deploy_initial_seq, so it must be built after
-                        // the VCC scan above.
+                        let deploy_initial_seq = block.header.accepted_id_merkle_root;
+
+                        // ── Phase 3: build and sign the deploy tx ──
                         let deployer_sk = match secp256k1::SecretKey::from_slice(&deployer_sk_bytes) {
                             Ok(sk) => sk,
                             Err(e) => {
@@ -2319,6 +2310,7 @@ impl App {
                 deploy_initial_seq,
             } => {
                 self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
+                self.deploy_in_progress = false;
                 let tx_id = tx.id();
                 self.log(format!("Genesis covenant ID (on-chain): {on_chain_covenant_id}"));
                 self.log(format!("Deploy starting block: {deploy_starting_block}  initial seq: {deploy_initial_seq}"));
@@ -2339,6 +2331,7 @@ impl App {
             }
             BgResult::DeployFailed { covenant_id, error } => {
                 self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
+                self.deploy_in_progress = false;
                 self.log(format!("Deploy failed for covenant {covenant_id}: {error}"));
                 // The UTXO was optimistically marked as spent in deploy_covenant(); un-mark it
                 // by clearing pending_spent for all UTXOs (tracker will re-sync on next update).
