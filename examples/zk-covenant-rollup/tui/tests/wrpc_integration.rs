@@ -315,11 +315,11 @@ async fn test_deploy_covenant() {
     let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
     let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
 
-    // Mine blocks to get mature coinbase UTXOs at the miner address
-    mine_blocks(&grpc_client, &miner_address, 120).await;
-
-    // Now we need to send funds to the deployer. For simplicity, mine blocks TO the deployer.
-    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+    // Fund deployer with 100 coinbase UTxOs (at DAA ~1-100), then advance DAA 1100 more
+    // blocks to a different address so ALL deployer coinbases satisfy the simnet coinbase
+    // maturity of 1000 (current DAA ~1200 >= 100 + 1000).
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
 
     // Subscribe and fetch UTXOs for the deployer
     app.subscribe_covenant_addresses();
@@ -361,10 +361,13 @@ async fn test_continuous_state_sync() {
     // Create covenant
     app.handle_key(key_event(KeyCode::Char('c')));
 
-    // Get deployer address and fund it
+    // Get deployer address and fund it.
+    // Mine 100 blocks to deployer (coinbases at DAA 1-100), then mine 1100 more blocks to miner
+    // to advance DAA to ~1200 so ALL deployer coinbases satisfy simnet maturity of 1000.
     let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
     let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
-    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
 
     // Select, subscribe, fetch UTXOs
     app.covenant_list_index = 0;
@@ -494,17 +497,19 @@ async fn test_delete_deployed_covenant_rejected() {
     kaspa_core::log::try_init_logger("INFO");
 
     let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
-    let (mut app, grpc_client, _miner_address, _keypair) = setup_test_app(&mut kaspad).await;
+    let (mut app, grpc_client, miner_address, _keypair) = setup_test_app(&mut kaspad).await;
 
     // Create and select covenant
     app.handle_key(key_event(KeyCode::Char('c')));
     app.covenant_list_index = 0;
     app.handle_key(key_event(KeyCode::Enter));
 
-    // Fund deployer
+    // Fund deployer — mine 100 blocks to deployer (coinbases at DAA 1-100), then 1100 to miner
+    // to advance DAA to ~1200 so ALL deployer coinbases satisfy simnet maturity of 1000.
     let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
     let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
-    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
     app.subscribe_covenant_addresses();
     app.process_pending_ops().await;
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -534,17 +539,19 @@ async fn test_tx_history_tracking() {
     kaspa_core::log::try_init_logger("INFO");
 
     let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
-    let (mut app, grpc_client, _miner_address, _keypair) = setup_test_app(&mut kaspad).await;
+    let (mut app, grpc_client, miner_address, _keypair) = setup_test_app(&mut kaspad).await;
 
     // Create and select covenant
     app.handle_key(key_event(KeyCode::Char('c')));
     app.covenant_list_index = 0;
     app.handle_key(key_event(KeyCode::Enter));
 
-    // Fund deployer
+    // Fund deployer — mine 100 blocks to deployer (coinbases at DAA 1-100), then 1100 to miner
+    // to advance DAA to ~1200 so ALL deployer coinbases satisfy simnet maturity of 1000.
     let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
     let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
-    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
     app.subscribe_covenant_addresses();
     app.process_pending_ops().await;
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -556,12 +563,13 @@ async fn test_tx_history_tracking() {
     assert_eq!(app.tx_history.len(), 1, "Should have deploy tx");
     assert_eq!(app.tx_history[0].action, "Deploy");
 
-    // Create account and fund it
+    // Create account and fund it — mine 100 to account then 1100 more to miner to mature.
     app.active_tab = Tab::Accounts;
     app.handle_key(key_event(KeyCode::Char('c')));
     let (pk, _) = app.accounts[0];
     let acct_addr = Address::new(Prefix::Simnet, Version::PubKey, &pk.as_bytes());
-    mine_blocks(&grpc_client, &acct_addr, 120).await;
+    mine_blocks(&grpc_client, &acct_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
     app.subscribe_covenant_addresses();
     app.process_pending_ops().await;
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -608,7 +616,7 @@ async fn test_import_covenant() {
     kaspa_core::log::try_init_logger("INFO");
 
     let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
-    let (mut app1, grpc_client, _miner_address, _keypair) = setup_test_app(&mut kaspad).await;
+    let (mut app1, grpc_client, miner_address, _keypair) = setup_test_app(&mut kaspad).await;
 
     // ── "Device A": create + deploy covenant ──
     app1.handle_key(key_event(KeyCode::Char('c')));
@@ -617,7 +625,10 @@ async fn test_import_covenant() {
 
     let deployer_addr_str = app1.deployer_address(&app1.covenants[0].1).unwrap();
     let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
-    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+    // Mine 100 blocks to deployer (coinbases at DAA 1-100), then 1100 to miner to advance DAA
+    // to ~1200 so ALL deployer coinbases satisfy simnet maturity of 1000.
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
 
     app1.subscribe_covenant_addresses();
     app1.process_pending_ops().await;
@@ -628,6 +639,7 @@ async fn test_import_covenant() {
     app1.covenants = app1.db.list_covenants();
 
     let covenant_id = app1.covenants[0].0;
+    assert!(app1.covenants[0].1.deployment_tx_id.is_some(), "App1 deploy must succeed before import test");
 
     // Mine blocks so deploy tx is confirmed
     mine_blocks(&grpc_client, &deployer_addr, 10).await;
@@ -641,9 +653,10 @@ async fn test_import_covenant() {
     node2.connect().await.unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let dag_info = node2.get_block_dag_info().await.unwrap();
     let mut app2 = App::new(db2, node2, Prefix::Simnet);
-    app2.pruning_point = dag_info.pruning_point_hash;
+    // Use app1's early pruning_point so the chain search covers all blocks including the deploy tx.
+    // (If we query dag_info now, the pruning_point may be past the deploy tx after 1200+ blocks.)
+    app2.pruning_point = app1.pruning_point;
     app2.connected = true;
 
     // Press 'i' to start import
@@ -737,7 +750,10 @@ async fn test_state_tab_refetch() {
     app.handle_key(key_event(KeyCode::Char('c')));
     let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
     let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
-    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+    // Mine 100 blocks to deployer (coinbases at DAA 1-100), then 1100 to miner to advance DAA
+    // to ~1200 so ALL deployer coinbases satisfy simnet maturity of 1000.
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
 
     // Select, subscribe, deploy
     app.covenant_list_index = 0;
@@ -821,7 +837,7 @@ async fn test_imported_covenant_no_deploy() {
     kaspa_core::log::try_init_logger("INFO");
 
     let mut kaspad = Daemon::new_random_with_args(simnet_args(), 10);
-    let (mut app1, grpc_client, _miner_address, _keypair) = setup_test_app(&mut kaspad).await;
+    let (mut app1, grpc_client, miner_address, _keypair) = setup_test_app(&mut kaspad).await;
 
     // Create and deploy a covenant on "device A"
     app1.handle_key(key_event(KeyCode::Char('c')));
@@ -830,7 +846,10 @@ async fn test_imported_covenant_no_deploy() {
 
     let deployer_addr_str = app1.deployer_address(&app1.covenants[0].1).unwrap();
     let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
-    mine_blocks(&grpc_client, &deployer_addr, 120).await;
+    // Mine 100 blocks to deployer (coinbases at DAA 1-100), then 1100 to miner to advance DAA
+    // to ~1200 so ALL deployer coinbases satisfy simnet maturity of 1000.
+    mine_blocks(&grpc_client, &deployer_addr, 100).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
 
     app1.subscribe_covenant_addresses();
     app1.process_pending_ops().await;
@@ -852,9 +871,9 @@ async fn test_imported_covenant_no_deploy() {
     node2.connect().await.unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let dag_info = node2.get_block_dag_info().await.unwrap();
     let mut app2 = App::new(db2, node2, Prefix::Simnet);
-    app2.pruning_point = dag_info.pruning_point_hash;
+    // Use app1's early pruning_point so the chain search covers all blocks including the deploy tx.
+    app2.pruning_point = app1.pruning_point;
     app2.connected = true;
 
     app2.active_tab = Tab::Covenants;

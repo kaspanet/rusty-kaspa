@@ -263,6 +263,13 @@ pub struct App {
     /// True while a FetchAndProcessChain task is in-flight (prevents double-firing).
     chain_sync_active: bool,
 
+    /// Number of SubmitTransaction tasks currently in-flight.
+    pending_submit_count: usize,
+
+    /// Number of ValidateImport (and SubscribeAndFetchUtxos) tasks currently in-flight.
+    /// Used by `process_pending_ops` to wait for all background tasks before returning.
+    pending_bg_count: usize,
+
     /// Persistent clipboard instance (Linux requires the owner to stay alive).
     clipboard: Option<arboard::Clipboard>,
 
@@ -313,7 +320,16 @@ enum PendingOp {
 #[allow(clippy::type_complexity)]
 enum PendingTxEffect {
     /// Deploy tx: only mark covenant as deployed when the node accepts the tx.
-    Deploy { covenant_id: CovenantId, deploy_tx_id: Hash, covenant_value: u64, on_chain_covenant_id: Hash },
+    Deploy {
+        covenant_id: CovenantId,
+        deploy_tx_id: Hash,
+        covenant_value: u64,
+        on_chain_covenant_id: Hash,
+        /// Chain block that was current when the deploy tx was built (prover start).
+        deploy_starting_block: Hash,
+        /// Sequence commitment embedded in the deploy redeem script (prover initial_seq).
+        deploy_initial_seq: Hash,
+    },
     /// Prove-submit tx: on failure, revert the covenant UTXO to its old value.
     /// On success, if perm_state is Some, set the permission UTXO state.
     ProveSubmit {
@@ -416,6 +432,8 @@ impl App {
             bg_tx,
             bg_rx,
             chain_sync_active: false,
+            pending_submit_count: 0,
+            pending_bg_count: 0,
             clipboard: None,
             status_flash: None,
             needs_full_redraw: false,
@@ -484,7 +502,7 @@ impl App {
                 self.dispatch_pending_ops();
                 continue;
             }
-            if !self.chain_sync_active {
+            if !self.chain_sync_active && self.pending_submit_count == 0 && self.pending_bg_count == 0 {
                 break;
             }
             if tokio::time::Instant::now() > deadline {
@@ -564,10 +582,21 @@ impl App {
 
                     // Auto-init prover if covenant is deployed
                     if is_deployed && self.prover.is_none() {
+                        let starting_block = self.covenants[self.covenant_list_index]
+                            .1
+                            .deploy_starting_block
+                            .unwrap_or(self.pruning_point);
+                        let initial_seq = self.covenants[self.covenant_list_index]
+                            .1
+                            .deploy_initial_seq
+                            .unwrap_or_else(|| {
+                                zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(
+                                    Hash::default(),
+                                    std::iter::empty(),
+                                )
+                            });
                         let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-                        let initial_seq =
-                            zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-                        self.prover = Some(RollupProver::new(id, initial_state_root, initial_seq, self.pruning_point));
+                        self.prover = Some(RollupProver::new(id, initial_state_root, initial_seq, starting_block));
                         self.log("Auto-initialized prover for deployed covenant".into());
                         self.pending_ops.push(PendingOp::FetchAndProcessChain);
                     }
@@ -597,6 +626,8 @@ impl App {
             covenant_value: None,
             proof_kind: 0,
             on_chain_covenant_id: None,
+            deploy_starting_block: None,
+            deploy_initial_seq: None,
         };
 
         if let Err(e) = self.db.put_covenant(covenant_id, &record) {
@@ -675,7 +706,6 @@ impl App {
         let (xonly_pk, _) = deployer_pk.x_only_public_key();
         let deployer_addr = Address::new(self.network_prefix, Version::PubKey, &xonly_pk.serialize());
         let deployer_addr_str = deployer_addr.to_string();
-        let deployer_spk = pay_to_address_script(&deployer_addr);
 
         // Take the first available UTXO; all value minus fee goes into the covenant
         let estimated_fee: u64 = 3000;
@@ -691,69 +721,77 @@ impl App {
             self.log(format!("UTXO too small ({} sompi) — need > {estimated_fee} sompi", first_utxo.amount));
             return;
         }
-        let covenant_value = first_utxo.amount - estimated_fee;
-        let selected_utxos = [first_utxo];
-        let total_input = covenant_value + estimated_fee;
 
-        // Build initial redeem script
+        let proof_kind = record.proof_kind;
+
+        // Record the current pruning point as the prover's starting block (set in main.rs
+        // from dag_info; defaults to Hash::default() if not yet initialized).
+        let deploy_starting_block = self.pruning_point;
+
+        // Use the empty sequence commitment as deploy_initial_seq — correct for a fresh
+        // rollup that has not yet processed any transactions.
+        let empty_seq = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
+        let deploy_initial_seq = empty_seq;
+
+        // Build the deploy redeem script using initial_seq.
         let prev_state_hash = empty_tree_root();
-        let prev_seq_commitment = from_bytes(calc_accepted_id_merkle_root(Hash::default(), std::iter::empty()).as_bytes());
+        let initial_seq_words = from_bytes(deploy_initial_seq.as_bytes());
         let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
-        let zk_tag = proof_kind_to_zk_tag(u8_to_proof_kind(record.proof_kind));
+        let zk_tag = proof_kind_to_zk_tag(u8_to_proof_kind(proof_kind));
 
-        // Convergence loop for script length
         let mut computed_len: i64 = 75;
         loop {
-            let script = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, &zk_tag);
+            let script = build_redeem_script(prev_state_hash, initial_seq_words, computed_len, &program_id, &zk_tag);
             let new_len = script.len() as i64;
             if new_len == computed_len {
                 break;
             }
             computed_len = new_len;
         }
-
-        let redeem_script = build_redeem_script(prev_state_hash, prev_seq_commitment, computed_len, &program_id, &zk_tag);
+        let redeem_script = build_redeem_script(prev_state_hash, initial_seq_words, computed_len, &program_id, &zk_tag);
         let covenant_spk = pay_to_script_hash_script(&redeem_script);
 
-        // Build inputs
-        let inputs: Vec<TransactionInput> =
-            selected_utxos.iter().map(|u| TransactionInput::new(TransactionOutpoint::new(u.tx_id, u.index), vec![], 0, 0)).collect();
+        let covenant_value = first_utxo.amount.saturating_sub(estimated_fee);
+        let deployer_spk = pay_to_address_script(&deployer_addr);
 
-        let utxo_entries: Vec<UtxoEntry> =
-            selected_utxos.iter().map(|u| UtxoEntry::new(u.amount, deployer_spk.clone(), 0, false, None)).collect();
-
-        // Compute genesis covenant_id: hash(deploy_input_outpoint, outputs).
-        // The covenant binding field is excluded from the hash, so we can compute it
-        // before attaching it to the output (no circular dependency).
-        let deploy_outpoint = TransactionOutpoint::new(selected_utxos[0].tx_id, selected_utxos[0].index);
+        // Compute the on-chain genesis covenant_id (excludes covenant binding field from hash).
+        let deploy_outpoint = TransactionOutpoint::new(first_utxo.tx_id, first_utxo.index);
         let plain_output = TransactionOutput::new(covenant_value, covenant_spk.clone());
-        let on_chain_covenant_id =
-            kaspa_consensus_core::hashing::covenant_id::covenant_id(deploy_outpoint, std::iter::once((0u32, &plain_output)));
+        let on_chain_covenant_id = kaspa_consensus_core::hashing::covenant_id::covenant_id(
+            deploy_outpoint,
+            std::iter::once((0u32, &plain_output)),
+        );
 
-        // Build outputs with the genesis covenant binding
+        let inputs = vec![TransactionInput::new(deploy_outpoint, vec![], 0, 0)];
+        let utxo_entries = vec![UtxoEntry::new(first_utxo.amount, deployer_spk, 0, false, None)];
         let outputs = vec![TransactionOutput::with_covenant(
             covenant_value,
             covenant_spk,
             Some(CovenantBinding { covenant_id: on_chain_covenant_id, authorizing_input: 0 }),
         )];
-        let _ = total_input; // all consumed
 
-        let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![record.proof_kind]);
+        let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![proof_kind]);
         let signable = SignableTransaction::with_entries(tx, utxo_entries);
-
-        // Sign
         let keypair = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &deployer_sk);
         let signed = sign(signable, keypair);
         let tx_id = signed.id();
 
         self.log(format!("Genesis covenant ID (on-chain): {on_chain_covenant_id}"));
+        self.log(format!("Deploy starting block: {deploy_starting_block}  initial seq: {deploy_initial_seq}"));
 
-        // Do NOT mark covenant as deployed yet — wait for TxSubmitted confirmation.
         self.pending_tx_effects.insert(
             tx_id,
-            PendingTxEffect::Deploy { covenant_id, deploy_tx_id: tx_id, covenant_value, on_chain_covenant_id },
+            PendingTxEffect::Deploy {
+                covenant_id,
+                deploy_tx_id: tx_id,
+                covenant_value,
+                on_chain_covenant_id,
+                deploy_starting_block,
+                deploy_initial_seq,
+            },
         );
 
+        self.utxo_tracker.mark_spent(first_utxo.tx_id, first_utxo.index);
         self.log(format!("Deploying covenant {covenant_id} — tx: {tx_id} (pending confirmation)"));
         self.record_tx(tx_id, "Deploy", covenant_value);
         self.pending_ops.push(PendingOp::SubmitTransaction(signed.tx));
@@ -765,7 +803,13 @@ impl App {
             return;
         }
 
-        let (id, _) = self.covenants[self.covenant_list_index];
+        let (id, rec) = self.covenants[self.covenant_list_index].clone();
+
+        // Prevent deletion of deployed covenants — funds are locked on-chain.
+        if rec.deployment_tx_id.is_some() {
+            self.log(format!("Cannot delete covenant {id}: it is already deployed on-chain"));
+            return;
+        }
 
         if let Err(e) = self.db.delete_covenant_all(id) {
             self.log(format!("Failed to delete covenant: {e}"));
@@ -1249,6 +1293,8 @@ impl App {
             covenant_value: None, // unknown for imported covenants
             proof_kind,
             on_chain_covenant_id: None, // populated when chain data arrives
+            deploy_starting_block: None,
+            deploy_initial_seq: None,
         };
 
         if let Err(e) = self.db.put_covenant(covenant_id, &record) {
@@ -1273,9 +1319,15 @@ impl App {
             self.subscribe_covenant_addresses();
 
             // Auto-init prover (deployed covenant)
+            let starting_block = self.covenants[idx].1.deploy_starting_block.unwrap_or(self.pruning_point);
+            let initial_seq = self.covenants[idx]
+                .1
+                .deploy_initial_seq
+                .unwrap_or_else(|| {
+                    zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty())
+                });
             let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-            let initial_seq = zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-            self.prover = Some(RollupProver::new(covenant_id, initial_state_root, initial_seq, self.pruning_point));
+            self.prover = Some(RollupProver::new(covenant_id, initial_state_root, initial_seq, starting_block));
             self.log("Auto-initialized prover for imported covenant".into());
             self.pending_ops.push(PendingOp::FetchAndProcessChain);
         }
@@ -1433,11 +1485,15 @@ impl App {
         if self.prover.is_none() {
             let cov_idx = self.selected_covenant.unwrap();
             let covenant_id = self.covenants[cov_idx].0;
-
+            let starting_block = self.covenants[cov_idx].1.deploy_starting_block.unwrap_or(self.pruning_point);
+            let initial_seq = self.covenants[cov_idx]
+                .1
+                .deploy_initial_seq
+                .unwrap_or_else(|| {
+                    zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty())
+                });
             let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-            let initial_seq = zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-
-            self.prover = Some(RollupProver::new(covenant_id, initial_state_root, initial_seq, self.pruning_point));
+            self.prover = Some(RollupProver::new(covenant_id, initial_state_root, initial_seq, starting_block));
             self.log("Initialized prover with empty state".into());
         }
 
@@ -1838,6 +1894,7 @@ impl App {
                     let node = self.node.clone();
                     let tx = self.bg_tx.clone();
                     let address_count = addresses.len();
+                    self.pending_bg_count += 1;
                     tokio::spawn(async move {
                         match node.get_utxos_by_addresses(addresses.clone()).await {
                             Ok(entries) => {
@@ -1882,6 +1939,7 @@ impl App {
                     let rpc_tx = tx_to_rpc(transaction);
                     let node = self.node.clone();
                     let tx = self.bg_tx.clone();
+                    self.pending_submit_count += 1;
                     tokio::spawn(async move {
                         match node.submit_transaction(rpc_tx, false).await {
                             Ok(_) => {
@@ -1930,6 +1988,7 @@ impl App {
                 PendingOp::ValidateImport { covenant_id, start_hash } => {
                     let node = self.node.clone();
                     let bg_tx = self.bg_tx.clone();
+                    self.pending_bg_count += 1;
 
                     // Build expected covenant SPKs for both proof types
                     let prev_state_hash = empty_tree_root();
@@ -1956,7 +2015,9 @@ impl App {
                     tokio::spawn(async move {
                         let mut cursor = start_hash;
                         loop {
-                            let resp = match node.get_virtual_chain_v2(cursor, Some(1000)).await {
+                            // No min_confirmations: we want to find the deploy tx even if it was
+                            // just recently submitted (may have only a handful of confirmations).
+                            let resp = match node.get_virtual_chain_v2(cursor, None).await {
                                 Ok(r) => r,
                                 Err(e) => {
                                     let _ = bg_tx.send(BgResult::ImportFailed { error: format!("Chain fetch error: {e}") });
@@ -2125,11 +2186,13 @@ impl App {
     fn handle_bg_result(&mut self, result: BgResult) {
         match result {
             BgResult::UtxosFetched { entries, address_count } => {
+                self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
                 self.utxo_tracker.clear();
                 self.utxo_tracker.load_initial(&entries);
                 self.log(format!("Loaded {} UTXOs for {} addresses", entries.len(), address_count));
             }
             BgResult::UtxosFetchFailed(e) => {
+                self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
                 self.log(format!("Failed to fetch UTXOs: {e}"));
             }
             BgResult::UtxoSubscribeFailed(e) => {
@@ -2164,6 +2227,7 @@ impl App {
                 self.log(format!("Failed to fetch chain data: {e}"));
             }
             BgResult::TxSubmitted { tx_id } => {
+                self.pending_submit_count = self.pending_submit_count.saturating_sub(1);
                 self.log(format!("Submitted tx: {tx_id}"));
                 self.copy_to_clipboard(&tx_id.to_string());
                 self.log("Tx ID copied to clipboard".into());
@@ -2173,12 +2237,21 @@ impl App {
                 // Apply deferred side-effects
                 if let Some(effect) = self.pending_tx_effects.remove(&tx_id) {
                     match effect {
-                        PendingTxEffect::Deploy { covenant_id, deploy_tx_id, covenant_value, on_chain_covenant_id } => {
+                        PendingTxEffect::Deploy {
+                            covenant_id,
+                            deploy_tx_id,
+                            covenant_value,
+                            on_chain_covenant_id,
+                            deploy_starting_block,
+                            deploy_initial_seq,
+                        } => {
                             if let Ok(Some(mut rec)) = self.db.get_covenant(covenant_id) {
                                 rec.deployment_tx_id = Some(deploy_tx_id);
                                 rec.covenant_utxo = Some((deploy_tx_id, 0));
                                 rec.covenant_value = Some(covenant_value);
                                 rec.on_chain_covenant_id = Some(on_chain_covenant_id);
+                                rec.deploy_starting_block = Some(deploy_starting_block);
+                                rec.deploy_initial_seq = Some(deploy_initial_seq);
                                 if let Err(e) = self.db.put_covenant(covenant_id, &rec) {
                                     self.log(format!("Failed to mark covenant as deployed: {e}"));
                                 } else {
@@ -2204,6 +2277,7 @@ impl App {
                 }
             }
             BgResult::TxSubmitFailed { tx_id, error } => {
+                self.pending_submit_count = self.pending_submit_count.saturating_sub(1);
                 self.log(format!("Failed to submit tx {tx_id}: {error}"));
 
                 // Update tx history status in memory and in DB
@@ -2221,6 +2295,7 @@ impl App {
                     match effect {
                         PendingTxEffect::Deploy { covenant_id, .. } => {
                             self.log(format!("Deploy tx failed — covenant {covenant_id} remains undeployed"));
+
                         }
                         PendingTxEffect::ProveSubmit { covenant_id, old_utxo, old_value, .. } => {
                             // Revert covenant UTXO to old values
@@ -2314,11 +2389,13 @@ impl App {
                 self.last_proof_result = Some(result_msg);
             }
             BgResult::ImportValidated { covenant_id, deploy_tx_id, proof_kind } => {
+                self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
                 let kind_label = u8_to_proof_kind(proof_kind).label();
                 self.log(format!("Found deployment tx {deploy_tx_id} on chain (proof type: {kind_label})"));
                 self.finish_import_covenant(covenant_id, deploy_tx_id, proof_kind);
             }
             BgResult::ImportFailed { error } => {
+                self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
                 self.log(error);
             }
         }
@@ -2546,9 +2623,15 @@ impl App {
         self.log(format!("Auto-selected covenant: {id}"));
 
         if is_deployed && self.prover.is_none() {
+            let starting_block = self.covenants[0].1.deploy_starting_block.unwrap_or(self.pruning_point);
+            let initial_seq = self.covenants[0]
+                .1
+                .deploy_initial_seq
+                .unwrap_or_else(|| {
+                    zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty())
+                });
             let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-            let initial_seq = zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
-            self.prover = Some(RollupProver::new(id, initial_state_root, initial_seq, self.pruning_point));
+            self.prover = Some(RollupProver::new(id, initial_state_root, initial_seq, starting_block));
             self.log("Auto-initialized prover for deployed covenant".into());
             self.pending_ops.push(PendingOp::FetchAndProcessChain);
         }
@@ -3020,6 +3103,8 @@ mod tests {
                 deploy_tx_id: fake_tx_id,
                 covenant_value: 100_000,
                 on_chain_covenant_id: fake_on_chain_id,
+                deploy_starting_block: Hash::default(),
+                deploy_initial_seq: Hash::default(),
             },
         );
         app.record_tx(fake_tx_id, "Deploy", 100_000);
@@ -3056,6 +3141,8 @@ mod tests {
                 deploy_tx_id: fake_tx_id,
                 covenant_value: 100_000,
                 on_chain_covenant_id: fake_on_chain_id,
+                deploy_starting_block: Hash::default(),
+                deploy_initial_seq: Hash::default(),
             },
         );
         app.record_tx(fake_tx_id, "Deploy", 100_000);

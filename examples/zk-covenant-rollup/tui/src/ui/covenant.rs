@@ -17,10 +17,15 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .covenants
         .iter()
         .enumerate()
-        .map(|(i, (id, rec))| {
-            // Hash Display gives full 64-char hex; truncate for the table
-            let id_str = id.to_string();
-            let id_short = &id_str[..16.min(id_str.len())];
+        .map(|(i, (_, rec))| {
+            // Show on-chain covenant ID if deployed, otherwise "Undeployed".
+            let id_label = rec
+                .on_chain_covenant_id
+                .map(|h| {
+                    let s = h.to_string();
+                    format!("{}...", &s[..16.min(s.len())])
+                })
+                .unwrap_or_else(|| "Undeployed".into());
             let deployed = if rec.deployment_tx_id.is_some() { "Yes" } else { "No" };
             let kind = if rec.proof_kind == 1 { "Groth16" } else { "Succinct" };
             let origin = if rec.deployer_privkey.len() == 32 { "Created" } else { "Imported" };
@@ -31,7 +36,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
             Row::new(vec![
                 Cell::from(selected_marker.to_string()),
-                Cell::from(format!("{id_short}...")),
+                Cell::from(id_label),
                 Cell::from(deployed.to_string()),
                 Cell::from(kind.to_string()),
                 Cell::from(origin.to_string()),

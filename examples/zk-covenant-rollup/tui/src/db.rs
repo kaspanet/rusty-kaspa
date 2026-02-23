@@ -54,6 +54,13 @@ pub struct CovenantRecord {
     /// on-chain `CovenantBinding` entries.  The internal DB key remains the randomly
     /// generated covenant_id; this field carries the consensus-level ID.
     pub on_chain_covenant_id: Option<Hash>,
+    /// Hash of the chain block that was current when the covenant was deployed.
+    /// Used as `starting_block` for prover initialization so the prover only
+    /// processes blocks from the deploy point forward.
+    pub deploy_starting_block: Option<Hash>,
+    /// Sequence commitment embedded in the deploy redeem script (and used as the
+    /// prover's `initial_seq`). Computed from the VCC at deploy time.
+    pub deploy_initial_seq: Option<Hash>,
 }
 
 /// Aggregate covenant state (state root + seq commitment).
@@ -458,6 +465,8 @@ mod tests {
             covenant_value: None,
             proof_kind: 0,
             on_chain_covenant_id: None,
+            deploy_starting_block: None,
+            deploy_initial_seq: None,
         };
 
         db.put_covenant(id, &record).unwrap();
@@ -595,6 +604,8 @@ mod tests {
             covenant_value: None,
             proof_kind: 0,
             on_chain_covenant_id: None,
+            deploy_starting_block: None,
+            deploy_initial_seq: None,
         };
 
         db.put_covenant(id, &record).unwrap();
@@ -625,6 +636,8 @@ mod tests {
             covenant_value: Some(100_000),
             proof_kind: 0,
             on_chain_covenant_id: None,
+            deploy_starting_block: None,
+            deploy_initial_seq: None,
         };
         db.put_covenant(id, &record).unwrap();
         db.put_covenant_meta(id, &CovenantMeta { state_root: Hash::from_bytes([1; 32]), seq_commitment: Hash::from_bytes([2; 32]) })

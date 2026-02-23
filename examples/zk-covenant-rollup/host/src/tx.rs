@@ -171,11 +171,7 @@ mod tests {
     }
 
     /// Build a minimal single-input transaction and finalize it.
-    fn make_tx(
-        outpoint: TransactionOutpoint,
-        outputs: Vec<TransactionOutput>,
-        version: u16,
-    ) -> Transaction {
+    fn make_tx(outpoint: TransactionOutpoint, outputs: Vec<TransactionOutput>, version: u16) -> Transaction {
         let input = TransactionInput::new(outpoint, vec![], 0, 0);
         let mut tx = Transaction::new(version, vec![input], outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         tx.finalize();

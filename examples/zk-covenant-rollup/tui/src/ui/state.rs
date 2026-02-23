@@ -18,28 +18,63 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn draw_state(frame: &mut Frame, app: &App, prover: &crate::prover::RollupProver, area: ratatui::layout::Rect) {
+    // Get on-chain covenant ID for display.
+    let covenant_id_label = app
+        .selected_covenant
+        .and_then(|i| app.covenants.get(i))
+        .map(|(_, rec)| {
+            rec.on_chain_covenant_id
+                .map(|h| {
+                    let s = h.to_string();
+                    format!("{}..{}", &s[..8], &s[s.len() - 8..])
+                })
+                .unwrap_or_else(|| "Undeployed".into())
+        })
+        .unwrap_or_else(|| "none".into());
+
+    // Load proven state from DB for the selected covenant.
+    let proven_state = app
+        .selected_covenant
+        .and_then(|i| app.covenants.get(i))
+        .and_then(|(id, _)| app.db.get_proving_state(*id).ok().flatten());
+
     let chunks = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .constraints([Constraint::Length(7), Constraint::Min(0)])
+        .constraints([
+            Constraint::Length(7),  // Current L2 state
+            Constraint::Length(7),  // Proven L2 state
+            Constraint::Min(0),     // Account balances
+        ])
         .split(area);
 
-    // Info section
+    // ── Current L2 state ──────────────────────────────────────────────────────
     let root_hex = faster_hex::hex_string(bytemuck::bytes_of(&prover.state_root));
-    let info_lines = vec![
-        Line::from(format!("State root:      {root_hex}")),
+    let current_lines = vec![
+        Line::from(format!("State root:      {}..{}", &root_hex[..8], &root_hex[root_hex.len() - 8..])),
         Line::from(format!("Seq commitment:  {}", prover.seq_commitment)),
         Line::from(format!("Last block:      {}", prover.last_processed_block)),
         Line::from(format!("Exit leaves:     {}", prover.perm_builder.leaf_count())),
-        Line::from(format!(
-            "Covenant:        {}",
-            app.selected_covenant.and_then(|i| app.covenants.get(i)).map(|(id, _)| id.to_string()).unwrap_or_else(|| "none".into())
-        )),
+        Line::from(format!("Covenant:        {covenant_id_label}")),
     ];
-    let info = Paragraph::new(info_lines).block(Block::default().borders(Borders::ALL).title("Chain State  r:refetch"));
-    frame.render_widget(info, chunks[0]);
+    let current_block = Block::default().borders(Borders::ALL).title("Current L2 State  r:refetch");
+    frame.render_widget(Paragraph::new(current_lines).block(current_block), chunks[0]);
 
-    // Account balances from SMT — iterate all 256 slots so chain-discovered
-    // accounts are visible even on prover-only instances without local keys.
+    // ── Proven L2 state (from DB) ─────────────────────────────────────────────
+    let proven_lines = if let Some(ps) = proven_state {
+        let root_str = ps.state_root.to_string();
+        vec![
+            Line::from(format!("State root:      {}..{}", &root_str[..8], &root_str[root_str.len() - 8..])),
+            Line::from(format!("Seq commitment:  {}", ps.seq_commitment)),
+            Line::from(format!("Last proved:     {}", ps.last_proved_block_hash)),
+            Line::from(format!("Proof count:     {}", ps.proof_count)),
+        ]
+    } else {
+        vec![Line::styled("No proof submitted yet", Style::default().fg(Color::DarkGray))]
+    };
+    let proven_block = Block::default().borders(Borders::ALL).title("Proven L2 State");
+    frame.render_widget(Paragraph::new(proven_lines).block(proven_block), chunks[1]);
+
+    // ── Account balances from SMT ─────────────────────────────────────────────
     let mut rows = Vec::new();
     for idx in 0u16..=255 {
         if let Some((pk_words, balance)) = prover.smt.get_by_index(idx as u8) {
@@ -71,5 +106,5 @@ fn draw_state(frame: &mut Frame, app: &App, prover: &crate::prover::RollupProver
         .row_highlight_style(Style::default().fg(Color::Yellow))
         .block(Block::default().borders(Borders::ALL).title("L2 Balances (derived from accepted txs)"));
 
-    frame.render_widget(table, chunks[1]);
+    frame.render_widget(table, chunks[2]);
 }
