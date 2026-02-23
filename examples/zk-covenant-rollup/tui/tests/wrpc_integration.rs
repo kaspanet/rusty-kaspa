@@ -702,4 +702,3 @@ async fn test_state_tab_refetch() {
     drop(grpc_client);
     kaspad.shutdown();
 }
-
