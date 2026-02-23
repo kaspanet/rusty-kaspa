@@ -655,8 +655,20 @@ impl App {
         self.log(format!("Created covenant {covenant_id} | deployer: {address}"));
 
         // Refresh list
+        let was_empty = self.covenants.is_empty();
         self.covenants = self.db.list_covenants();
         self.covenant_list_index = self.covenants.len().saturating_sub(1);
+
+        // Auto-select if this is the first covenant
+        if was_empty && !self.covenants.is_empty() {
+            let idx = self.covenants.len() - 1;
+            self.selected_covenant = Some(idx);
+            self.load_prover_key(covenant_id);
+            self.load_tx_history(covenant_id);
+            self.refresh_accounts();
+            self.subscribe_covenant_addresses();
+            self.log(format!("Auto-selected covenant {covenant_id}"));
+        }
     }
 
     fn toggle_proof_kind(&mut self) {
@@ -1999,7 +2011,7 @@ impl App {
                             0,
                             SUBNETWORK_ID_NATIVE,
                             0,
-                            vec![proof_kind],
+                            vec![],
                         );
                         let signable = SignableTransaction::with_entries(tx, utxo_entries);
                         let keypair = secp256k1::Keypair::from_secret_key(
@@ -3367,7 +3379,7 @@ mod tests {
     fn test_withdraw_requires_perm_utxo() {
         let mut app = test_app();
         app.create_covenant();
-        app.selected_covenant = Some(0);
+        app.pending_ops.clear(); // drain subscribe ops queued by auto-select
         app.perm_utxo = None;
         let log_count = app.log_messages.len();
         app.withdraw();
