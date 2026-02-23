@@ -1069,7 +1069,7 @@ impl ConsensusApi for Consensus {
 
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
-        pruning_meta_write.utxo_set.write_many(utxoset_chunk).unwrap();
+        pruning_meta_write.utxo_set.write_many_without_cache(utxoset_chunk).unwrap();
 
         // Parallelize processing using the context of an existing thread pool.
         let inner_multiset = self.virtual_processor.install(|| {
