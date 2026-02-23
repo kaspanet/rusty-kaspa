@@ -26,4 +26,6 @@ pub enum R0Error {
     VerificationFailed,
     #[error("Merkle proof verification failed")]
     Merkle,
+    #[error("Invalid BabyBearElem in seal")]
+    SealHasInvalidBabyBearElem,
 }
