@@ -8,11 +8,10 @@ use zk_covenant_rollup_core::{
     action::{ActionHeader, EntryAction, ExitAction, TransferAction, OP_ENTRY, OP_EXIT, OP_TRANSFER},
     bytes_to_words_ref, is_action_tx_id, pay_to_pubkey_spk, perm_leaf_hash,
     permission_tree::StreamingPermTreeBuilder,
-    seq_commit::seq_commitment_leaf,
     smt::Smt,
     state::{AccountWitness, StateRoot},
 };
-use zk_covenant_rollup_host::mock_chain::{calc_accepted_id_merkle_root, from_bytes};
+use zk_covenant_rollup_host::mock_chain::from_bytes;
 use zk_covenant_rollup_host::mock_tx::{ActionWitness, EntryWitnessData, ExitWitnessData, TransferWitnessData, ZkTransaction};
 use zk_covenant_rollup_host::prove::ProveInput;
 
@@ -177,16 +176,10 @@ impl RollupProver {
                 txs_processed += 1;
             }
 
-            // Update seq_commitment for this block
-            let tx_digests: Vec<Hash> = zk_txs
-                .iter()
-                .map(|ztx| {
-                    let leaf = seq_commitment_leaf(&ztx.tx_id(), ztx.version());
-                    Hash::from_bytes(bytemuck::cast_slice(&leaf).try_into().unwrap())
-                })
-                .collect();
-
-            self.seq_commitment = calc_accepted_id_merkle_root(self.seq_commitment, tx_digests.into_iter());
+            // Read seq_commitment from block header (no need to compute — OpSeqCommit reads it on-chain)
+            if let Some(air) = block.chain_block_header.accepted_id_merkle_root {
+                self.seq_commitment = air;
+            }
 
             // Update last processed block hash
             if block_idx < response.added_chain_block_hashes.len() {

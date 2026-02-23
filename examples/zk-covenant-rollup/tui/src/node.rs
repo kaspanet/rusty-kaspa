@@ -105,7 +105,7 @@ impl KaspaNode {
     ) -> Result<GetVirtualChainFromBlockV2Response> {
         Ok(self
             .client()
-            .get_virtual_chain_from_block_v2(start_hash, Some(RpcDataVerbosityLevel::High), min_confirmations.map(|v| v as u64))
+            .get_virtual_chain_from_block_v2(start_hash, Some(RpcDataVerbosityLevel::Full), min_confirmations.map(|v| v as u64))
             .await?)
     }
 

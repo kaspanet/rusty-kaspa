@@ -3,6 +3,7 @@
 //! These tests spin up real Kaspa daemons (simnet) and exercise the
 //! `KaspaNode` wrapper and related functionality over wRPC.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,6 +21,19 @@ use zk_covenant_rollup_tui::node::KaspaNode;
 
 fn simnet_args() -> Args {
     Args { simnet: true, unsafe_rpc: true, enable_unsynced_mining: true, utxoindex: true, disable_upnp: true, ..Default::default() }
+}
+
+fn zero_maturity_args() -> Args {
+    let params_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/zero_maturity_params.json");
+    Args {
+        simnet: true,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        utxoindex: true,
+        disable_upnp: true,
+        override_params_file: Some(params_path.to_string_lossy().to_string()),
+        ..Default::default()
+    }
 }
 
 fn key_event(code: KeyCode) -> KeyEvent {
@@ -823,6 +837,167 @@ async fn test_deploy_duplicate_guard() {
     // Let the deploy complete
     app.process_pending_ops().await;
     assert!(!app.deploy_in_progress, "deploy_in_progress should be false after completion");
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
+/// End-to-end test: deploy → mine → chain sync → prove (real ZK) → submit → mine → prove → submit.
+///
+/// Uses zero coinbase maturity so UTXOs are immediately spendable.
+/// The first run computes actual proofs (slow). Once passing, captured data can be hardcoded.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore] // Remove once proof constants are hardcoded — first run is slow (computes real ZK proofs)
+async fn test_deploy_prove_submit_cycle() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(zero_maturity_args(), 10);
+    let grpc_client = kaspad.start().await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let url = format!("ws://localhost:{}", kaspad.rpc_borsh_port);
+    let network_id = NetworkId::new(NetworkType::Simnet);
+    let node = KaspaNode::try_new(&url, network_id).unwrap();
+    node.connect().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let dag_info = node.get_block_dag_info().await.unwrap();
+    let tmpdir = tempfile::tempdir().unwrap();
+    let db = Arc::new(RollupDb::open(tmpdir.path()).unwrap());
+    let mut app = App::new(db, node, Prefix::Simnet);
+    app.pruning_point = dag_info.pruning_point_hash;
+    app.connected = true;
+
+    let keypair = secp256k1::Keypair::new(secp256k1::SECP256K1, &mut rand::thread_rng());
+    let miner_address = Address::new(Prefix::Simnet, Version::PubKey, &keypair.x_only_public_key().0.serialize());
+
+    // ── Create and select covenant ──
+    app.active_tab = Tab::Covenants;
+    app.handle_key(key_event(KeyCode::Char('c')));
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+
+    // ── Fund deployer (zero maturity = immediately spendable) ──
+    let deployer_addr_str = app.deployer_address(&app.covenants[0].1).unwrap();
+    let deployer_addr: Address = deployer_addr_str.clone().try_into().unwrap();
+    // With zero coinbase maturity, deployer UTXOs are immediately spendable.
+    // Still need ~1100 total blocks for VCC min_confirmations=1000.
+    mine_blocks(&grpc_client, &deployer_addr, 10).await;
+    mine_blocks(&grpc_client, &miner_address, 1100).await;
+
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let balance = app.utxo_tracker.balance(&deployer_addr_str);
+    assert!(balance > 0, "Deployer should have funds, got: {balance}");
+
+    // ── Deploy ──
+    app.handle_key(key_event(KeyCode::Char('d')));
+    app.process_pending_ops().await;
+
+    app.covenants = app.db.list_covenants();
+    let covenant_id = app.covenants[0].0;
+    let rec = app.db.get_covenant(covenant_id).unwrap().unwrap();
+    assert!(rec.deployment_tx_id.is_some(), "Covenant should be deployed");
+    assert!(rec.deploy_starting_block.is_some(), "Should have deploy_starting_block");
+    assert!(rec.deploy_initial_seq.is_some(), "Should have deploy_initial_seq");
+
+    let deploy_starting_block = rec.deploy_starting_block.unwrap();
+    let deploy_initial_seq = rec.deploy_initial_seq.unwrap();
+
+    // Verify initial_seq matches the block header
+    let block = app.node.get_block(deploy_starting_block, false).await.unwrap();
+    assert_eq!(deploy_initial_seq, block.header.accepted_id_merkle_root, "deploy_initial_seq mismatch");
+
+    // ── Re-select to init prover ──
+    app.prover = None;
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+    assert!(app.prover.is_some(), "Prover should be initialized");
+
+    // ── Mine blocks so chain sync has data ──
+    mine_blocks(&grpc_client, &miner_address, 10).await;
+
+    // ── Chain sync (fetches VCC v2, processes blocks) ──
+    app.active_tab = Tab::Proving;
+    app.handle_key(key_event(KeyCode::Char('p'))); // start_chain_processing
+    app.process_pending_ops().await;
+
+    let accumulated = app.prover.as_ref().unwrap().accumulated_blocks();
+    assert!(accumulated > 0, "Should have accumulated blocks for proving, got: {accumulated}");
+
+
+    // ── Proof 1: generate actual ZK proof (IPC backend → external r0vm) ──
+    app.prover_backend = zk_covenant_rollup_host::prove::ProverBackend::Ipc;
+    app.handle_key(key_event(KeyCode::Char('r'))); // start_proving
+    assert!(app.proof_in_progress, "Proof should be in progress");
+
+    // Wait for proof completion (real computation, may take minutes)
+    app.wait_for_proof(Duration::from_secs(600)).await;
+
+    assert!(!app.completed_proofs.is_empty(), "Should have a completed proof");
+    assert!(app.last_proof_result.as_ref().unwrap().contains("completed"), "Proof should have completed successfully");
+
+    // ── Submit proof 1 ──
+    app.handle_key(key_event(KeyCode::Char('s'))); // submit_proof
+    app.process_pending_ops().await;
+
+    let prove_txs: Vec<_> = app.tx_history.iter().filter(|t| t.action == "Prove").collect();
+    assert_eq!(prove_txs.len(), 1, "Should have one prove tx after first submission");
+
+    // Verify the covenant UTXO was updated
+    app.covenants = app.db.list_covenants();
+    let rec_after_proof1 = app.db.get_covenant(covenant_id).unwrap().unwrap();
+    assert_ne!(
+        rec_after_proof1.covenant_utxo, rec.covenant_utxo,
+        "Covenant UTXO should have changed after proof submission"
+    );
+
+    // ── Mine more blocks for second proving window ──
+    mine_blocks(&grpc_client, &miner_address, 10).await;
+
+    // ── Chain sync again ──
+    app.handle_key(key_event(KeyCode::Char('p')));
+    app.process_pending_ops().await;
+
+    let accumulated2 = app.prover.as_ref().unwrap().accumulated_blocks();
+    assert!(accumulated2 > 0, "Should have new accumulated blocks for second proof, got: {accumulated2}");
+
+    // ── Proof 2 ──
+    app.handle_key(key_event(KeyCode::Char('r')));
+    assert!(app.proof_in_progress, "Second proof should be in progress");
+    app.wait_for_proof(Duration::from_secs(600)).await;
+
+    assert!(!app.completed_proofs.is_empty(), "Should have second completed proof");
+
+    // ── Submit proof 2 ──
+    app.handle_key(key_event(KeyCode::Char('s')));
+    app.process_pending_ops().await;
+
+    let prove_txs: Vec<_> = app.tx_history.iter().filter(|t| t.action == "Prove").collect();
+    assert_eq!(prove_txs.len(), 2, "Should have two prove txs after second submission");
+
+    // Verify the covenant UTXO advanced again
+    app.covenants = app.db.list_covenants();
+    let rec_after_proof2 = app.db.get_covenant(covenant_id).unwrap().unwrap();
+    assert_ne!(
+        rec_after_proof2.covenant_utxo, rec_after_proof1.covenant_utxo,
+        "Covenant UTXO should have changed after second proof submission"
+    );
+
+    // Verify no failures in tx history
+    for tx in &app.tx_history {
+        assert!(
+            !matches!(tx.status, zk_covenant_rollup_tui::app::TxStatus::Failed(_)),
+            "Tx {} ({}) should not have failed: {:?}",
+            tx.tx_id,
+            tx.action,
+            tx.status
+        );
+    }
 
     app.node.stop().await.unwrap();
     grpc_client.disconnect().await.unwrap();

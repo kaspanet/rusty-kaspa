@@ -142,7 +142,7 @@ pub enum TxStatus {
 }
 
 /// A completed ZK proof ready for on-chain submission.
-pub(crate) struct CompletedProof {
+pub struct CompletedProof {
     receipt: risc0_zkvm::Receipt,
     public_input: PublicInput,
     block_prove_to: Hash,
@@ -267,7 +267,7 @@ pub struct App {
     pub prover_backend: ProverBackend,
     pub proof_in_progress: bool,
     pub last_proof_result: Option<String>,
-    pub(crate) completed_proofs: Vec<CompletedProof>,
+    pub completed_proofs: Vec<CompletedProof>,
     /// Monotonic counter — incremented on each prove start and on cancel.
     /// Results from older generations are discarded.
     proof_generation: u64,
@@ -543,6 +543,25 @@ impl App {
         }
     }
 
+    /// For tests: dispatch proof generation and wait for it to complete.
+    /// Unlike `process_pending_ops`, this waits for `proof_in_progress` to become false.
+    pub async fn wait_for_proof(&mut self, timeout: Duration) {
+        self.dispatch_pending_ops();
+        let deadline = tokio::time::Instant::now() + timeout;
+        while self.proof_in_progress {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            while let Ok(result) = self.bg_rx.try_recv() {
+                self.handle_bg_result(result);
+            }
+            if !self.pending_ops.is_empty() {
+                self.dispatch_pending_ops();
+            }
+            if tokio::time::Instant::now() > deadline {
+                panic!("wait_for_proof timed out after {:?}", timeout);
+            }
+        }
+    }
+
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         // If input mode is active, route to input handler first
         if !self.input_mode.is_normal() {
@@ -612,13 +631,14 @@ impl App {
 
                     // Auto-init prover if covenant is deployed
                     if is_deployed && self.prover.is_none() {
-                        let starting_block =
-                            self.covenants[self.covenant_list_index].1.deploy_starting_block.unwrap_or(self.pruning_point);
-                        let initial_seq = self.covenants[self.covenant_list_index].1.deploy_initial_seq.unwrap_or_else(|| {
+                        let rec = &self.covenants[self.covenant_list_index].1;
+                        let starting_block = rec.deploy_starting_block.unwrap_or(self.pruning_point);
+                        let initial_seq = rec.deploy_initial_seq.unwrap_or_else(|| {
                             zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty())
                         });
+                        let prover_cov_id = rec.on_chain_covenant_id.unwrap_or(id);
                         let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-                        self.prover = Some(RollupProver::new(id, initial_state_root, initial_seq, starting_block));
+                        self.prover = Some(RollupProver::new(prover_cov_id, initial_state_root, initial_seq, starting_block));
                         self.log("Auto-initialized prover for deployed covenant".into());
                         self.pending_ops.push(PendingOp::FetchAndProcessChain);
                     }
@@ -1376,13 +1396,14 @@ impl App {
         // Initialize prover if not already done
         if self.prover.is_none() {
             let cov_idx = self.selected_covenant.unwrap();
-            let covenant_id = self.covenants[cov_idx].0;
-            let starting_block = self.covenants[cov_idx].1.deploy_starting_block.unwrap_or(self.pruning_point);
-            let initial_seq = self.covenants[cov_idx].1.deploy_initial_seq.unwrap_or_else(|| {
+            let rec = &self.covenants[cov_idx].1;
+            let starting_block = rec.deploy_starting_block.unwrap_or(self.pruning_point);
+            let initial_seq = rec.deploy_initial_seq.unwrap_or_else(|| {
                 zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty())
             });
+            let prover_cov_id = rec.on_chain_covenant_id.unwrap_or(self.covenants[cov_idx].0);
             let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-            self.prover = Some(RollupProver::new(covenant_id, initial_state_root, initial_seq, starting_block));
+            self.prover = Some(RollupProver::new(prover_cov_id, initial_state_root, initial_seq, starting_block));
             self.log("Initialized prover with empty state".into());
         }
 
@@ -1486,31 +1507,18 @@ impl App {
             }
         };
 
-        // Build transaction
-        let estimated_fee: u64 = 3000;
+        // Build transaction — first pass with 0 fee to measure mass, then adjust.
         let has_permission = proof.perm_redeem_script.is_some();
         let perm_dust: u64 = 1000;
-        let output_value = if has_permission {
-            covenant_value.saturating_sub(estimated_fee).saturating_sub(perm_dust)
-        } else {
-            covenant_value.saturating_sub(estimated_fee)
-        };
-
-        if output_value == 0 {
-            self.log("Covenant UTXO value too low to cover fee".into());
-            return;
-        }
 
         // Use the genesis-derived on-chain covenant ID for all CovenantBindings.
-        // This ensures the proof tx is a continuation of the deploy tx UTXO, not a
-        // genesis tx (which would require the hash to match — and it won't).
         let covenant_id_hash =
             record.on_chain_covenant_id.unwrap_or_else(|| Hash::from_bytes(bytemuck::cast(proof.public_input.covenant_id)));
 
         let inputs = vec![TransactionInput::new(TransactionOutpoint::new(covenant_utxo.0, covenant_utxo.1), sig_script, 0, 115)];
 
         let mut outputs = vec![TransactionOutput::with_covenant(
-            output_value,
+            covenant_value, // placeholder — adjusted below after mass estimation
             output_spk,
             Some(CovenantBinding { authorizing_input: 0, covenant_id: covenant_id_hash }),
         )];
@@ -1523,6 +1531,18 @@ impl App {
                 Some(CovenantBinding { authorizing_input: 0, covenant_id: covenant_id_hash }),
             ));
         }
+
+        // Estimate fee from compute mass (mass_per_tx_byte=1, mass_per_spk_byte=10, mass_per_sig_op=1000).
+        let tmp_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs.clone(), outputs.clone(), 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let mass_calc = kaspa_consensus_core::mass::MassCalculator::new(1, 10, 1000, 0);
+        let estimated_fee = mass_calc.calc_non_contextual_masses(&tmp_tx).compute_mass + 1000;
+        let perm_cost = if has_permission { perm_dust } else { 0 };
+        let output_value = covenant_value.saturating_sub(estimated_fee).saturating_sub(perm_cost);
+        if output_value == 0 {
+            self.log("Covenant UTXO value too low to cover fee".into());
+            return;
+        }
+        outputs[0].value = output_value;
 
         let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         let tx_id = tx.id();
@@ -2564,12 +2584,14 @@ impl App {
         self.log(format!("Auto-selected covenant: {id}"));
 
         if is_deployed && self.prover.is_none() {
-            let starting_block = self.covenants[0].1.deploy_starting_block.unwrap_or(self.pruning_point);
-            let initial_seq = self.covenants[0].1.deploy_initial_seq.unwrap_or_else(|| {
+            let rec = &self.covenants[0].1;
+            let starting_block = rec.deploy_starting_block.unwrap_or(self.pruning_point);
+            let initial_seq = rec.deploy_initial_seq.unwrap_or_else(|| {
                 zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty())
             });
+            let prover_cov_id = rec.on_chain_covenant_id.unwrap_or(id);
             let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-            self.prover = Some(RollupProver::new(id, initial_state_root, initial_seq, starting_block));
+            self.prover = Some(RollupProver::new(prover_cov_id, initial_state_root, initial_seq, starting_block));
             self.log("Auto-initialized prover for deployed covenant".into());
             self.pending_ops.push(PendingOp::FetchAndProcessChain);
         }
