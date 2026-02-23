@@ -18,7 +18,7 @@ use crate::{
         auth::TokenAuthenticator,
         peer_directory::{Allowlist, PeerDirectory},
         tcp_control::{PeerDirection, runtime::ControlRuntime},
-        udp_transport::runtime::TransportRuntime,
+        udp_transport::{pipeline::reassembly::reassembly::BlockReassemblerBlockMessage, runtime::TransportRuntime},
     },
 };
 
@@ -34,6 +34,7 @@ pub struct FastTrustedRelay {
     params: TransportParams,
     fragmentation_config: FragmentationConfig,
     listen_address: SocketAddr,
+    block_receiver: Option<Arc<TokioMutex<tokio::sync::mpsc::UnboundedReceiver<BlockReassemblerBlockMessage>>>>,
     udp_active: Arc<AtomicBool>,
     receive_block_waker: Arc<tokio::sync::Notify>,
     udp_port: u16,
@@ -86,6 +87,7 @@ impl FastTrustedRelay {
             tcp_port: DEFAULT_TCP_PORT,
             udp_active: is_udp_active,
             receive_block_waker,
+            block_receiver: None,
         }
     }
 
@@ -100,12 +102,16 @@ impl FastTrustedRelay {
     /// use the relay instance afterwards.
     pub async fn stop_fast_relay(&mut self) {
         self.udp_runtime.lock().await.take();
+        self.block_receiver.take();
     }
 
     /// start or restart the UDP relay; takes `&mut self` to avoid moving the
     /// entire relay instance out of the caller.
     pub async fn start_fast_relay(&mut self) {
         let mut guard = self.udp_runtime.lock().await;
+        if guard.is_some() {
+            return;
+        }
         let udp_runtime = guard.get_or_insert(TransportRuntime::new(
             self.params,
             self.listen_address,
@@ -115,6 +121,7 @@ impl FastTrustedRelay {
             self.udp_active.clone(),
         ));
         udp_runtime.start();
+        self.block_receiver = Some(udp_runtime.block_receive());
         self.tcp_runtime.lock().await.signal_ready().await;
         info!("fast trusted relay UDP transport started");
     }
@@ -148,11 +155,7 @@ impl FastTrustedRelay {
     pub async fn recv_block(&self) -> (Hash, FtrBlock) {
         debug!("entering receive block loop from fast trusted relay...");
         loop {
-            let guard = self.udp_runtime.lock().await;
-            let udp_runtime = guard.clone();
-            drop(guard);
-            if let Some(udp_runtime) = udp_runtime {
-                let block_receiver_arc = udp_runtime.block_receive();
+            if let Some(block_receiver_arc) = self.block_receiver.clone() {
                 let mut block_receiver = block_receiver_arc.lock().await;
                 debug!("Waiting to receive block from UDP runtime...");
                 if let Some(msg) = block_receiver.recv().await {
