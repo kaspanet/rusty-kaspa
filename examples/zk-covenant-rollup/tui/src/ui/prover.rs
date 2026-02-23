@@ -50,11 +50,7 @@ fn draw_controls(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         first_line.push(ratatui::text::Span::raw(":cancel"));
     }
 
-    let lines = vec![
-        Line::from(first_line),
-        Line::from(""),
-        Line::from(format!("Sync status: {}", app.proving_status)),
-    ];
+    let lines = vec![Line::from(first_line), Line::from(""), Line::from(format!("Sync status: {}", app.proving_status))];
 
     let block = Block::default().borders(Borders::ALL).title("Proving Controls");
     let paragraph = Paragraph::new(lines).block(block);

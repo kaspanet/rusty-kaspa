@@ -44,13 +44,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         })
         .collect();
 
-    let widths = [
-        Constraint::Length(1),
-        Constraint::Length(20),
-        Constraint::Length(10),
-        Constraint::Length(10),
-        Constraint::Min(40),
-    ];
+    let widths = [Constraint::Length(1), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Min(40)];
     let header = Row::new(vec![" ", "Covenant ID", "Deployed", "Kind", "Deployer Address"])
         .style(Style::default().add_modifier(Modifier::BOLD));
 

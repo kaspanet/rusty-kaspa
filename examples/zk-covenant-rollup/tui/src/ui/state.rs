@@ -33,17 +33,15 @@ fn draw_state(frame: &mut Frame, app: &App, prover: &crate::prover::RollupProver
         .unwrap_or_else(|| "none".into());
 
     // Load proven state from DB for the selected covenant.
-    let proven_state = app
-        .selected_covenant
-        .and_then(|i| app.covenants.get(i))
-        .and_then(|(id, _)| app.db.get_proving_state(*id).ok().flatten());
+    let proven_state =
+        app.selected_covenant.and_then(|i| app.covenants.get(i)).and_then(|(id, _)| app.db.get_proving_state(*id).ok().flatten());
 
     let chunks = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
         .constraints([
-            Constraint::Length(7),  // Current L2 state
-            Constraint::Length(7),  // Proven L2 state
-            Constraint::Min(0),     // Account balances
+            Constraint::Length(7), // Current L2 state
+            Constraint::Length(7), // Proven L2 state
+            Constraint::Min(0),    // Account balances
         ])
         .split(area);
 

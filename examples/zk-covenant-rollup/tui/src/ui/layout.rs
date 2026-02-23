@@ -109,15 +109,12 @@ fn draw_popup(frame: &mut Frame, app: &App) {
         let area = centered_rect(frame.area().width.saturating_sub(4), frame.area().height.saturating_sub(4), frame.area());
         frame.render_widget(Clear, area);
         let shown: Vec<Line> = lines.iter().map(|l| Line::from(l.as_str())).collect();
-        let para = Paragraph::new(shown)
-            .wrap(Wrap { trim: false })
-            .scroll((*scroll as u16, 0))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan))
-                    .title(" Detail  j/k:scroll  Esc:close "),
-            );
+        let para = Paragraph::new(shown).wrap(Wrap { trim: false }).scroll((*scroll as u16, 0)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(" Detail  j/k:scroll  Esc:close "),
+        );
         frame.render_widget(para, area);
         return;
     }
@@ -156,10 +153,7 @@ fn draw_popup(frame: &mut Frame, app: &App) {
             let is_deployed = lines.iter().any(|l| l.contains("WARNING"));
             let color = if is_deployed { Color::Red } else { Color::Yellow };
             let rendered: Vec<Line> = lines.iter().map(|l| Line::from(l.as_str())).collect();
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(color))
-                .title(" Delete Covenant ");
+            let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(color)).title(" Delete Covenant ");
             frame.render_widget(Paragraph::new(rendered).block(block), area);
         }
         InputMode::Processing { action } => {
