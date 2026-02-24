@@ -40,11 +40,6 @@ fn draw_controls(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         ratatui::text::Span::raw(format!(":submit [{}]  ", app.completed_proofs.len())),
     ];
 
-    if app.perm_utxo.is_some() {
-        first_line.push(ratatui::text::Span::styled("w", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)));
-        first_line.push(ratatui::text::Span::raw(":withdraw  "));
-    }
-
     if app.proof_in_progress {
         first_line.push(ratatui::text::Span::styled("Esc", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)));
         first_line.push(ratatui::text::Span::raw(":cancel"));

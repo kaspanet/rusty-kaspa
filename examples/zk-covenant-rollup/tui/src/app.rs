@@ -43,6 +43,7 @@ pub enum Tab {
     Actions,
     State,
     Proving,
+    Permissions,
     TxHistory,
     Log,
 }
@@ -55,13 +56,14 @@ impl Tab {
             Tab::Actions => "3:Actions",
             Tab::State => "4:State",
             Tab::Proving => "5:Proving",
-            Tab::TxHistory => "6:TxHistory",
-            Tab::Log => "7:Log",
+            Tab::Permissions => "6:Permissions",
+            Tab::TxHistory => "7:TxHistory",
+            Tab::Log => "8:Log",
         }
     }
 
     pub fn all() -> &'static [Tab] {
-        &[Tab::Covenants, Tab::Accounts, Tab::Actions, Tab::State, Tab::Proving, Tab::TxHistory, Tab::Log]
+        &[Tab::Covenants, Tab::Accounts, Tab::Actions, Tab::State, Tab::Proving, Tab::Permissions, Tab::TxHistory, Tab::Log]
     }
 
     pub fn index(&self) -> usize {
@@ -310,6 +312,9 @@ pub struct App {
 
     /// State of the pending permission UTXO (set after a proof with exits is confirmed).
     pub perm_utxo: Option<PermUtxoState>,
+
+    /// Index of selected permission leaf (within current perm_utxo.exit_data).
+    pub perm_leaf_index: usize,
 }
 
 /// Deferred async operations triggered from sync key handlers.
@@ -472,6 +477,7 @@ impl App {
             pending_tx_effects: HashMap::new(),
             log_file,
             perm_utxo: None,
+            perm_leaf_index: 0,
         }
     }
 
@@ -580,8 +586,9 @@ impl App {
             KeyCode::Char('3') => self.active_tab = Tab::Actions,
             KeyCode::Char('4') => self.active_tab = Tab::State,
             KeyCode::Char('5') => self.active_tab = Tab::Proving,
-            KeyCode::Char('6') => self.active_tab = Tab::TxHistory,
-            KeyCode::Char('7') => self.active_tab = Tab::Log,
+            KeyCode::Char('6') => self.active_tab = Tab::Permissions,
+            KeyCode::Char('7') => self.active_tab = Tab::TxHistory,
+            KeyCode::Char('8') => self.active_tab = Tab::Log,
 
             // Tab-specific keys
             _ => self.handle_tab_key(key),
@@ -595,6 +602,7 @@ impl App {
             Tab::Actions => self.handle_action_key(key),
             Tab::State => self.handle_state_key(key),
             Tab::Proving => self.handle_proving_key(key),
+            Tab::Permissions => self.handle_permissions_key(key),
             Tab::TxHistory => self.handle_tx_history_key(key),
             Tab::Log => self.handle_log_key(key),
         }
@@ -1305,7 +1313,6 @@ impl App {
             }
             KeyCode::Char('r') => self.start_proving(),
             KeyCode::Char('s') => self.submit_proof(),
-            KeyCode::Char('w') => self.withdraw(),
             KeyCode::Esc => self.cancel_proving(),
             _ => {}
         }
@@ -1635,10 +1642,30 @@ impl App {
             .drain())
     }
 
+    // ── Permissions tab ──
+
+    fn handle_permissions_key(&mut self, key: crossterm::event::KeyEvent) {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.perm_leaf_index > 0 {
+                    self.perm_leaf_index -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                let max = self.perm_utxo.as_ref().map(|p| p.exit_data.len().saturating_sub(1)).unwrap_or(0);
+                if self.perm_leaf_index < max {
+                    self.perm_leaf_index += 1;
+                }
+            }
+            KeyCode::Char('w') | KeyCode::Enter => self.withdraw_selected_leaf(),
+            _ => {}
+        }
+    }
+
     // ── Withdraw ──
 
-    /// Redeem the first unclaimed exit from the permission UTXO.
-    fn withdraw(&mut self) {
+    /// Redeem the selected exit leaf from the permission UTXO.
+    fn withdraw_selected_leaf(&mut self) {
         let perm_state = match &self.perm_utxo {
             Some(p) => p,
             None => {
@@ -1661,11 +1688,16 @@ impl App {
         };
 
         let covenant_id = self.covenants[cov_idx].0;
-        let (spk, amount) = perm_state.exit_data[0].clone();
+        let leaf_idx = self.perm_leaf_index;
+        if leaf_idx >= perm_state.exit_data.len() {
+            self.log("Selected leaf index out of range".into());
+            return;
+        }
+        let (spk, amount) = perm_state.exit_data[leaf_idx].clone();
 
         // Build permission tree from all remaining exits
         let tree = PermissionTree::from_leaves(perm_state.exit_data.clone());
-        let proof = tree.prove(0);
+        let proof = tree.prove(leaf_idx);
         let perm_sig_script = build_permission_sig_script(&spk, amount, amount, &proof, &perm_state.redeem_script);
 
         // Build delegate entry script and address for gathering UTXOs
@@ -1721,7 +1753,8 @@ impl App {
         let covenant_id_hash = covenant_id;
         let unclaimed = perm_utxo_ref.unclaimed;
         if unclaimed > 1 {
-            let remaining: Vec<(Vec<u8>, u64)> = perm_utxo_ref.exit_data[1..].to_vec();
+            let mut remaining: Vec<(Vec<u8>, u64)> = perm_utxo_ref.exit_data.clone();
+            remaining.remove(leaf_idx);
             let new_unclaimed = remaining.len() as u64;
             let new_depth = required_depth(remaining.len());
             let new_tree = PermissionTree::from_leaves(remaining);
@@ -1746,12 +1779,16 @@ impl App {
 
         // Update perm_utxo state
         if let Some(ref mut perm) = self.perm_utxo {
-            perm.exit_data.remove(0);
+            perm.exit_data.remove(leaf_idx);
             perm.unclaimed = perm.unclaimed.saturating_sub(1);
             if perm.unclaimed == 0 {
                 self.perm_utxo = None;
+                self.perm_leaf_index = 0;
             } else {
                 perm.utxo = (tx_id, 1);
+                if self.perm_leaf_index >= perm.exit_data.len() {
+                    self.perm_leaf_index = perm.exit_data.len().saturating_sub(1);
+                }
             }
         }
 
@@ -2750,7 +2787,13 @@ mod tests {
         app.handle_key(key(KeyCode::Char('2')));
         assert_eq!(app.active_tab, Tab::Accounts);
 
+        app.handle_key(key(KeyCode::Char('6')));
+        assert_eq!(app.active_tab, Tab::Permissions);
+
         app.handle_key(key(KeyCode::Char('7')));
+        assert_eq!(app.active_tab, Tab::TxHistory);
+
+        app.handle_key(key(KeyCode::Char('8')));
         assert_eq!(app.active_tab, Tab::Log);
     }
 
@@ -3355,7 +3398,7 @@ mod tests {
         app.pending_ops.clear(); // drain subscribe ops queued by auto-select
         app.perm_utxo = None;
         let log_count = app.log_messages.len();
-        app.withdraw();
+        app.withdraw_selected_leaf();
         assert!(app.log_messages.len() > log_count, "withdraw without perm_utxo should log error");
         assert!(app.pending_ops.is_empty(), "no tx should be queued");
     }
@@ -3379,7 +3422,7 @@ mod tests {
         });
 
         let log_count = app.log_messages.len();
-        app.withdraw();
+        app.withdraw_selected_leaf();
 
         // Should log about insufficient UTXOs (no delegate UTXOs loaded)
         assert!(app.log_messages.len() > log_count, "withdraw should log a message");
@@ -3406,5 +3449,120 @@ mod tests {
         perm.unclaimed = perm.unclaimed.saturating_sub(1);
         assert_eq!(perm.unclaimed, 0);
         assert!(perm.exit_data.is_empty());
+    }
+
+    // ── Permissions tab tests ──
+
+    #[test]
+    fn test_permissions_tab_navigate_leaves() {
+        let mut app = test_app();
+        app.active_tab = Tab::Permissions;
+        app.perm_utxo = Some(PermUtxoState {
+            utxo: (Hash::from_bytes([0x01; 32]), 1),
+            value: 5000,
+            redeem_script: vec![0u8; 50],
+            exit_data: vec![(vec![0x20u8; 34], 1000), (vec![0x21u8; 34], 2000), (vec![0x22u8; 34], 3000)],
+            unclaimed: 3,
+        });
+        assert_eq!(app.perm_leaf_index, 0);
+
+        // j moves down
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.perm_leaf_index, 1);
+
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.perm_leaf_index, 2);
+
+        // Can't go past end
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.perm_leaf_index, 2);
+
+        // k moves up
+        app.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(app.perm_leaf_index, 1);
+
+        app.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(app.perm_leaf_index, 0);
+
+        // Can't go before 0
+        app.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(app.perm_leaf_index, 0);
+    }
+
+    #[test]
+    fn test_permissions_tab_navigate_no_perm_utxo() {
+        let mut app = test_app();
+        app.active_tab = Tab::Permissions;
+        app.perm_utxo = None;
+        assert_eq!(app.perm_leaf_index, 0);
+
+        // Navigation should not panic
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.perm_leaf_index, 0);
+        app.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(app.perm_leaf_index, 0);
+    }
+
+    #[test]
+    fn test_permissions_tab_withdraw_logs_without_perm() {
+        let mut app = test_app();
+        app.active_tab = Tab::Permissions;
+        app.create_covenant();
+        app.pending_ops.clear();
+        app.perm_utxo = None;
+
+        let log_count = app.log_messages.len();
+        app.handle_key(key(KeyCode::Char('w')));
+        assert!(app.log_messages.len() > log_count, "withdraw without perm_utxo should log");
+    }
+
+    #[test]
+    fn test_permissions_tab_renders() {
+        let mut app = test_app();
+        app.active_tab = Tab::Permissions;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Permission UTXO"), "should show permission UTXO section");
+        assert!(output.contains("No permission UTXO"), "should show empty message");
+    }
+
+    #[test]
+    fn test_permissions_tab_renders_with_data() {
+        let mut app = test_app();
+        app.active_tab = Tab::Permissions;
+        app.perm_utxo = Some(PermUtxoState {
+            utxo: (Hash::from_bytes([0x01; 32]), 1),
+            value: 5000,
+            redeem_script: vec![0u8; 50],
+            exit_data: vec![(vec![0x20u8; 34], 1000), (vec![0x21u8; 34], 2000)],
+            unclaimed: 2,
+        });
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("Claimable Leaves"), "should show claimable leaves section");
+        assert!(output.contains("Unclaimed"), "should show unclaimed status");
+    }
+
+    #[test]
+    fn test_withdraw_selected_leaf_uses_index() {
+        let mut app = test_app();
+        app.create_covenant();
+        app.selected_covenant = Some(0);
+
+        let spk0 = vec![0x20u8; 34];
+        let spk1 = vec![0x21u8; 34];
+        app.perm_utxo = Some(PermUtxoState {
+            utxo: (Hash::from_bytes([0x01; 32]), 1),
+            value: 5000,
+            redeem_script: vec![0u8; 50],
+            exit_data: vec![(spk0, 1000), (spk1, 2000)],
+            unclaimed: 2,
+        });
+
+        // Select second leaf
+        app.perm_leaf_index = 1;
+        let log_count = app.log_messages.len();
+        app.withdraw_selected_leaf();
+
+        // Should have logged something (either "built" or "Insufficient")
+        assert!(app.log_messages.len() > log_count, "withdraw should log a message");
     }
 }

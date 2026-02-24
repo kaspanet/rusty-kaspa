@@ -31,6 +31,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Tab::Actions => crate::ui::actions::draw(frame, app, chunks[1]),
         Tab::State => crate::ui::state::draw(frame, app, chunks[1]),
         Tab::Proving => crate::ui::prover::draw(frame, app, chunks[1]),
+        Tab::Permissions => crate::ui::permissions::draw(frame, app, chunks[1]),
         Tab::TxHistory => crate::ui::tx_history::draw(frame, app, chunks[1]),
         Tab::Log => draw_log(frame, app, chunks[1]),
     }

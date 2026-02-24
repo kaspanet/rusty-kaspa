@@ -1,12 +1,17 @@
+use std::num::NonZeroUsize;
 use std::time::Instant;
 
+use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use kaspa_consensus_core::tx::{CovenantBinding, ScriptPublicKey};
 use kaspa_hashes::Hash;
 use kaspa_txscript::{pay_to_script_hash_script, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag};
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts, SuccinctReceipt};
 use zk_covenant_common::{hashfn_str_to_id, seal_to_compressed_proof};
-use zk_covenant_rollup_core::PublicInput;
+use zk_covenant_rollup_core::permission_tree::PermissionTree;
+use zk_covenant_rollup_core::{pay_to_pubkey_spk, PublicInput};
 use zk_covenant_rollup_host::{
-    mock_chain::{self, build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes},
+    bridge::{build_delegate_entry_script, build_permission_redeem_converged, build_permission_sig_script},
+    mock_chain::{self, build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes, AccountName},
     redeem, tx,
 };
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
@@ -138,6 +143,74 @@ fn main() {
         println!("Groth16 on-chain verification passed!");
     } else {
         println!("Skipping Groth16 on-chain verification (dev mode)");
+    }
+
+    // === Permission Withdrawal Demo ===
+    // After proof submission, the permission UTXO exists on-chain.
+    // Demonstrate claiming one exit leaf (Eve's 100-token withdrawal).
+    if let Some(ref perm_redeem) = chain.permission_redeem {
+        println!("\n=== Permission Withdrawal Demo ===");
+
+        // The mock chain creates 2 exits: Eve(100), Dave(200)
+        let eve_dest_spk = pay_to_pubkey_spk(&AccountName::Eve.pubkey_bytes());
+        let dave_dest_spk = pay_to_pubkey_spk(&AccountName::Dave.pubkey_bytes());
+        let exit_leaves: Vec<(Vec<u8>, u64)> = vec![(eve_dest_spk.to_vec(), 100), (dave_dest_spk.to_vec(), 200)];
+
+        // Build permission tree and prove leaf 0 (Eve's exit)
+        let tree = PermissionTree::from_leaves(exit_leaves);
+        let leaf_idx = 0;
+        let (spk, amount) = tree.get_leaf(leaf_idx).unwrap();
+        let spk = spk.to_vec();
+        let deduct = amount; // full deduct
+        let proof = tree.prove(leaf_idx);
+
+        println!("  Withdrawing leaf {}: {} sompi to Eve's address", leaf_idx, deduct);
+
+        // Build the permission sig_script
+        let perm_sig_script = build_permission_sig_script(&spk, amount, deduct, &proof, perm_redeem);
+
+        // Build delegate entry script for gathering delegate UTXOs
+        let delegate_script = build_delegate_entry_script(&[0xFF; 32]);
+        let delegate_spk = pay_to_script_hash_script(&delegate_script);
+        let delegate_sig_script = ScriptBuilder::new().add_data(&delegate_script).unwrap().drain();
+
+        // Build the withdrawal transaction
+        let perm_input_spk = pay_to_script_hash_script(perm_redeem);
+        let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
+
+        // Continuation output (1 leaf remaining: Dave's 200)
+        let remaining = vec![(dave_dest_spk.to_vec(), 200)];
+        let new_tree = PermissionTree::from_leaves(remaining);
+        let new_depth = new_tree.depth();
+        let new_root = new_tree.root();
+        let new_unclaimed = new_tree.len() as u64;
+        let max_inputs = NonZeroUsize::new(zk_covenant_rollup_core::MAX_DELEGATE_INPUTS).unwrap();
+        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, new_depth, max_inputs);
+        let continuation_spk = pay_to_script_hash_script(&new_redeem);
+
+        let covenant_id = Hash::from_bytes([0xFF; 32]);
+
+        // Build using make_multi_input_mock_transaction for proper UTXO setup
+        let (mut withdraw_tx, withdraw_utxos) = tx::make_multi_input_mock_transaction(
+            vec![(0, perm_input_spk, Some(covenant_id)), (deduct, delegate_spk.clone(), None)],
+            vec![
+                (deduct, withdrawal_spk, None),
+                (SOMPI_PER_KASPA, continuation_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id })),
+            ],
+        );
+
+        withdraw_tx.inputs[0].signature_script = perm_sig_script;
+        withdraw_tx.inputs[1].signature_script = delegate_sig_script;
+
+        // Verify permission input (input 0)
+        tx::verify_tx_input(&withdraw_tx, &withdraw_utxos, 0, &chain.accessor);
+        println!("  Permission input verified!");
+
+        // Verify delegate input (input 1)
+        tx::verify_tx_input(&withdraw_tx, &withdraw_utxos, 1, &chain.accessor);
+        println!("  Delegate input verified!");
+
+        println!("  Withdrawal transaction built and verified successfully!");
     }
 
     println!("\n=== All verifications passed! ===");
