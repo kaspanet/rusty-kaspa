@@ -5,10 +5,11 @@ use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
-    CovenantBinding, SignableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    CovenantBinding, ScriptPublicKey, SignableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoEntry,
 };
 use kaspa_hashes::Hash;
-use kaspa_rpc_core::RpcTransaction;
+use kaspa_rpc_core::{GetBlockDagInfoResponse, RpcTransaction};
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
@@ -16,7 +17,7 @@ use kaspa_wrpc_client::prelude::{NetworkId, NetworkType, Notification};
 use risc0_zkvm::sha::Digestible;
 use zk_covenant_rollup_core::state::empty_tree_root;
 use zk_covenant_rollup_host::mock_chain::from_bytes;
-use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProverBackend};
+use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProveOutput, ProverBackend};
 use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
 
@@ -52,6 +53,31 @@ struct Args {
     covenant_value: u64,
 }
 
+// ── Data types passed between phases ──
+
+struct Keypair {
+    secret_key: secp256k1::SecretKey,
+    address: Address,
+    deployer_spk: ScriptPublicKey,
+}
+
+struct DeployResult {
+    tx_id: Hash,
+    on_chain_covenant_id: Hash,
+    starting_block: Hash,
+    initial_seq: Hash,
+    output_value: u64,
+}
+
+struct ProveResult {
+    output: ProveOutput,
+    block_prove_to: Hash,
+    prev_state_hash: [u32; 8],
+    prev_seq_commitment: [u32; 8],
+}
+
+// ── Arg parsing helpers ──
+
 fn parse_rpc(input: Option<&str>) -> String {
     match input {
         None | Some("") => "ws://127.0.0.1:17210".to_string(),
@@ -78,6 +104,8 @@ fn parse_backend(s: &str) -> Result<ProverBackend> {
     }
 }
 
+// ── Transaction / script helpers ──
+
 fn proof_kind_to_zk_tag(kind: ProofKind) -> ZkTag {
     match kind {
         ProofKind::Succinct => ZkTag::R0Succinct,
@@ -99,62 +127,6 @@ fn tx_to_rpc(tx: Transaction) -> RpcTransaction {
     }
 }
 
-fn build_succinct_sig_script(
-    receipt: &risc0_zkvm::Receipt,
-    block_prove_to: Hash,
-    new_state_hash: &[u32; 8],
-    input_redeem: &[u8],
-) -> Result<Vec<u8>> {
-    let succinct = receipt.inner.succinct().map_err(|e| anyhow::anyhow!("Not a succinct receipt: {e}"))?;
-
-    let seal_bytes: Vec<u8> = succinct.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
-    let claim_bytes: Vec<u8> = succinct.claim.digest().as_bytes().to_vec();
-    let hashfn_byte: Vec<u8> =
-        vec![zk_covenant_common::hashfn_str_to_id(&succinct.hashfn).ok_or_else(|| anyhow::anyhow!("invalid hashfn"))?];
-    let control_index_bytes: Vec<u8> = succinct.control_inclusion_proof.index.to_le_bytes().to_vec();
-    let control_digests_bytes: Vec<u8> = succinct.control_inclusion_proof.digests.iter().flat_map(|d| d.as_bytes()).copied().collect();
-
-    Ok(ScriptBuilder::new()
-        .add_data(&seal_bytes)
-        .unwrap()
-        .add_data(&claim_bytes)
-        .unwrap()
-        .add_data(&hashfn_byte)
-        .unwrap()
-        .add_data(&control_index_bytes)
-        .unwrap()
-        .add_data(&control_digests_bytes)
-        .unwrap()
-        .add_data(block_prove_to.as_bytes().as_slice())
-        .unwrap()
-        .add_data(bytemuck::bytes_of(new_state_hash))
-        .unwrap()
-        .add_data(input_redeem)
-        .unwrap()
-        .drain())
-}
-
-fn build_groth16_sig_script(
-    receipt: &risc0_zkvm::Receipt,
-    block_prove_to: Hash,
-    new_state_hash: &[u32; 8],
-    input_redeem: &[u8],
-) -> Result<Vec<u8>> {
-    let groth16 = receipt.inner.groth16().map_err(|e| anyhow::anyhow!("Not a groth16 receipt: {e}"))?;
-    let compressed_proof = zk_covenant_common::seal_to_compressed_proof(&groth16.seal);
-
-    Ok(ScriptBuilder::new()
-        .add_data(&compressed_proof)
-        .unwrap()
-        .add_data(block_prove_to.as_bytes().as_slice())
-        .unwrap()
-        .add_data(bytemuck::bytes_of(new_state_hash))
-        .unwrap()
-        .add_data(input_redeem)
-        .unwrap()
-        .drain())
-}
-
 /// Converge on redeem script length (it encodes its own length, so iterate).
 fn converged_redeem_script(
     prev_state_hash: [u32; 8],
@@ -173,41 +145,63 @@ fn converged_redeem_script(
     }
 }
 
-/// Wait for a specific tx_id to appear in VirtualChainChanged accepted tx IDs.
-async fn wait_for_tx_confirmation(node: &KaspaNode, tx_id: Hash) -> Result<()> {
-    let receiver = node.event_receiver();
-    loop {
-        let event = receiver.recv().await.context("Event channel closed while waiting for tx confirmation")?;
-        if let NodeEvent::Notification(Notification::VirtualChainChanged(n)) = event {
-            for atx in n.accepted_transaction_ids.iter() {
-                for id in &atx.accepted_transaction_ids {
-                    if *id == tx_id {
-                        return Ok(());
-                    }
-                }
-            }
+fn build_sig_script(
+    receipt: &risc0_zkvm::Receipt,
+    proof_kind: ProofKind,
+    block_prove_to: Hash,
+    new_state_hash: &[u32; 8],
+    input_redeem: &[u8],
+) -> Result<Vec<u8>> {
+    match proof_kind {
+        ProofKind::Succinct => {
+            let succinct = receipt.inner.succinct().map_err(|e| anyhow::anyhow!("Not a succinct receipt: {e}"))?;
+            let seal_bytes: Vec<u8> = succinct.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
+            let claim_bytes: Vec<u8> = succinct.claim.digest().as_bytes().to_vec();
+            let hashfn_byte: Vec<u8> =
+                vec![zk_covenant_common::hashfn_str_to_id(&succinct.hashfn).ok_or_else(|| anyhow::anyhow!("invalid hashfn"))?];
+            let control_index_bytes: Vec<u8> = succinct.control_inclusion_proof.index.to_le_bytes().to_vec();
+            let control_digests_bytes: Vec<u8> =
+                succinct.control_inclusion_proof.digests.iter().flat_map(|d| d.as_bytes()).copied().collect();
+            Ok(ScriptBuilder::new()
+                .add_data(&seal_bytes)
+                .unwrap()
+                .add_data(&claim_bytes)
+                .unwrap()
+                .add_data(&hashfn_byte)
+                .unwrap()
+                .add_data(&control_index_bytes)
+                .unwrap()
+                .add_data(&control_digests_bytes)
+                .unwrap()
+                .add_data(block_prove_to.as_bytes().as_slice())
+                .unwrap()
+                .add_data(bytemuck::bytes_of(new_state_hash))
+                .unwrap()
+                .add_data(input_redeem)
+                .unwrap()
+                .drain())
+        }
+        ProofKind::Groth16 => {
+            let groth16 = receipt.inner.groth16().map_err(|e| anyhow::anyhow!("Not a groth16 receipt: {e}"))?;
+            let compressed_proof = zk_covenant_common::seal_to_compressed_proof(&groth16.seal);
+            Ok(ScriptBuilder::new()
+                .add_data(&compressed_proof)
+                .unwrap()
+                .add_data(block_prove_to.as_bytes().as_slice())
+                .unwrap()
+                .add_data(bytemuck::bytes_of(new_state_hash))
+                .unwrap()
+                .add_data(input_redeem)
+                .unwrap()
+                .drain())
         }
     }
 }
 
-// ── Main ──
+// ── Phase functions ──
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let args = Args::parse();
-    let proof_kind = parse_proof_kind(&args.proof_kind)?;
-    let backend = parse_backend(&args.backend)?;
-    let covenant_value = args.covenant_value;
-    let network_id = NetworkId::with_suffix(NetworkType::Testnet, 12);
-    let prefix = Prefix::Testnet;
-
-    // ════════════════════════════════════════════
-    // Phase 1: Connect
-    // ════════════════════════════════════════════
-    let url = parse_rpc(args.rpc.as_deref());
-    println!("Phase 1: Connecting to {url} ...");
-
-    let node = KaspaNode::try_new(&url, network_id).context("Failed to create KaspaNode")?;
+async fn connect(url: &str, network_id: NetworkId) -> Result<(KaspaNode, GetBlockDagInfoResponse)> {
+    let node = KaspaNode::try_new(url, network_id).context("Failed to create KaspaNode")?;
     node.connect().await.context("Failed to connect to node")?;
 
     // Drain the Connected event so it doesn't confuse later listeners
@@ -224,13 +218,11 @@ async fn main() -> Result<()> {
         "  Connected. Network: {:?}, pruning_point: {}, DAA score: {}",
         dag_info.network, dag_info.pruning_point_hash, dag_info.virtual_daa_score
     );
+    Ok((node, dag_info))
+}
 
-    // ════════════════════════════════════════════
-    // Phase 2: Keypair
-    // ════════════════════════════════════════════
-    println!("\nPhase 2: Setting up keypair...");
-
-    let secret_key = if let Some(ref hex_str) = args.privkey {
+fn setup_keypair(privkey: Option<&str>, prefix: Prefix) -> Result<Keypair> {
+    let secret_key = if let Some(hex_str) = privkey {
         let mut buf = [0u8; 32];
         faster_hex::hex_decode(hex_str.as_bytes(), &mut buf).context("Invalid hex for --privkey")?;
         secp256k1::SecretKey::from_slice(&buf).context("Invalid private key")?
@@ -248,65 +240,63 @@ async fn main() -> Result<()> {
     println!("  Address:     {address}");
     println!("  Private key: {}", std::str::from_utf8(&sk_hex).unwrap());
 
-    // ════════════════════════════════════════════
-    // Phase 3: Fund & Wait for Maturity
-    // ════════════════════════════════════════════
-    println!("\nPhase 3: Checking for mature UTXOs...");
+    Ok(Keypair { secret_key, address, deployer_spk })
+}
 
-    let daa_score = dag_info.virtual_daa_score;
-    let min_value = covenant_value + 10_000; // need enough for covenant + fee
-
-    // Check existing UTXOs first
+async fn wait_for_mature_utxo(node: &KaspaNode, address: &Address, daa_score: u64, min_value: u64) -> Result<(Hash, u32, u64)> {
     let utxos = node.get_utxos_by_addresses(vec![address.clone()]).await.context("get_utxos_by_addresses failed")?;
 
-    let mature_utxo = utxos.iter().find(|u| {
+    if let Some(u) = utxos.iter().find(|u| {
         let age = daa_score.saturating_sub(u.utxo_entry.block_daa_score);
         age >= 10 && u.utxo_entry.amount >= min_value
-    });
-
-    let (gas_tx_id, gas_index, gas_amount) = if let Some(u) = mature_utxo {
+    }) {
         println!("  Found mature UTXO: {} sompi (age: {} DAA)", u.utxo_entry.amount, daa_score - u.utxo_entry.block_daa_score);
-        (u.outpoint.transaction_id, u.outpoint.index, u.utxo_entry.amount)
-    } else {
-        println!("  No mature UTXOs found. Waiting for mature UTXOs at {address} ...");
-        println!("  (need >= {min_value} sompi, maturity >= 10 DAA blocks)");
+        return Ok((u.outpoint.transaction_id, u.outpoint.index, u.utxo_entry.amount));
+    }
 
-        node.subscribe_utxos(vec![address.clone()]).await.context("subscribe_utxos failed")?;
+    println!("  No mature UTXOs found. Waiting for mature UTXOs at {address} ...");
+    println!("  (need >= {min_value} sompi, maturity >= 10 DAA blocks)");
 
-        let receiver = node.event_receiver();
-        let mut current_daa = daa_score;
-        loop {
-            let event = receiver.recv().await.context("Event channel closed while waiting for UTXOs")?;
-            match event {
-                NodeEvent::Notification(Notification::VirtualDaaScoreChanged(n)) => {
-                    current_daa = n.virtual_daa_score;
-                }
-                NodeEvent::Notification(Notification::UtxosChanged(_)) => {
-                    // Re-fetch UTXOs to check maturity
-                    let utxos = node.get_utxos_by_addresses(vec![address.clone()]).await.context("get_utxos_by_addresses failed")?;
-                    if let Some(u) = utxos.iter().find(|u| {
-                        let age = current_daa.saturating_sub(u.utxo_entry.block_daa_score);
-                        age >= 10 && u.utxo_entry.amount >= min_value
-                    }) {
-                        println!(
-                            "  Mature UTXO arrived: {} sompi (age: {} DAA)",
-                            u.utxo_entry.amount,
-                            current_daa - u.utxo_entry.block_daa_score
-                        );
-                        break (u.outpoint.transaction_id, u.outpoint.index, u.utxo_entry.amount);
-                    }
-                }
-                _ => {}
+    node.subscribe_utxos(vec![address.clone()]).await.context("subscribe_utxos failed")?;
+
+    let receiver = node.event_receiver();
+    let mut current_daa = daa_score;
+    loop {
+        let event = receiver.recv().await.context("Event channel closed while waiting for UTXOs")?;
+        match event {
+            NodeEvent::Notification(Notification::VirtualDaaScoreChanged(n)) => {
+                current_daa = n.virtual_daa_score;
             }
+            NodeEvent::Notification(Notification::UtxosChanged(_)) => {
+                let utxos = node.get_utxos_by_addresses(vec![address.clone()]).await.context("get_utxos_by_addresses failed")?;
+                if let Some(u) = utxos.iter().find(|u| {
+                    let age = current_daa.saturating_sub(u.utxo_entry.block_daa_score);
+                    age >= 10 && u.utxo_entry.amount >= min_value
+                }) {
+                    println!(
+                        "  Mature UTXO arrived: {} sompi (age: {} DAA)",
+                        u.utxo_entry.amount,
+                        current_daa - u.utxo_entry.block_daa_score
+                    );
+                    return Ok((u.outpoint.transaction_id, u.outpoint.index, u.utxo_entry.amount));
+                }
+            }
+            _ => {}
         }
-    };
+    }
+}
 
-    // ════════════════════════════════════════════
-    // Phase 4: Deploy Covenant
-    // ════════════════════════════════════════════
-    println!("\nPhase 4: Deploying covenant...");
+async fn deploy_covenant(
+    node: &KaspaNode,
+    dag_info: &GetBlockDagInfoResponse,
+    keypair: &Keypair,
+    proof_kind: ProofKind,
+    covenant_value: u64,
+    gas_utxo: (Hash, u32, u64),
+) -> Result<DeployResult> {
+    let (gas_tx_id, gas_index, gas_amount) = gas_utxo;
 
-    // 4a: Paginate VCC v1 to find the chain tip
+    // Paginate VCC v1 to find the chain tip
     println!("  Fetching confirmed chain tip from pruning point...");
     let mut current_hash = dag_info.pruning_point_hash;
     let mut last_added_block = None;
@@ -318,17 +308,17 @@ async fn main() -> Result<()> {
         last_added_block = resp.added_chain_block_hashes.last().copied();
         current_hash = last_added_block.unwrap();
     }
-    let deploy_starting_block = last_added_block.context("VCC returned no added blocks")?;
-    println!("  Deploy starting block: {deploy_starting_block}");
+    let starting_block = last_added_block.context("VCC returned no added blocks")?;
+    println!("  Deploy starting block: {starting_block}");
 
-    // 4b: Get block header for initial seq commitment
-    let block = node.get_block(deploy_starting_block, false).await.context("get_block failed")?;
-    let deploy_initial_seq = block.header.accepted_id_merkle_root;
-    println!("  Initial seq commitment: {deploy_initial_seq}");
+    // Get block header for initial seq commitment
+    let block = node.get_block(starting_block, false).await.context("get_block failed")?;
+    let initial_seq = block.header.accepted_id_merkle_root;
+    println!("  Initial seq commitment: {initial_seq}");
 
-    // 4c: Build redeem script (convergence loop)
+    // Build redeem script (convergence loop)
     let prev_state_hash = empty_tree_root();
-    let initial_seq_words = from_bytes(deploy_initial_seq.as_bytes());
+    let initial_seq_words = from_bytes(initial_seq.as_bytes());
     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
     let zk_tag = proof_kind_to_zk_tag(proof_kind);
 
@@ -336,14 +326,14 @@ async fn main() -> Result<()> {
     let covenant_spk = pay_to_script_hash_script(&redeem_script);
     println!("  Redeem script length: {} bytes", redeem_script.len());
 
-    // 4d: Compute on-chain covenant ID
+    // Compute on-chain covenant ID
     let deploy_outpoint = TransactionOutpoint::new(gas_tx_id, gas_index);
     let plain_output = TransactionOutput::new(covenant_value, covenant_spk.clone());
     let on_chain_covenant_id =
         kaspa_consensus_core::hashing::covenant_id::covenant_id(deploy_outpoint, std::iter::once((0u32, &plain_output)));
     println!("  On-chain covenant ID: {on_chain_covenant_id}");
 
-    // 4e: Estimate fee
+    // Estimate fee
     let fee_estimate = node.get_fee_estimate().await.context("get_fee_estimate failed")?;
     let priority_feerate = fee_estimate.priority_bucket.feerate;
     let deploy_fee = compute_fee(3000, priority_feerate);
@@ -353,9 +343,9 @@ async fn main() -> Result<()> {
         bail!("UTXO value {gas_amount} too small for covenant {covenant_value} + fee {deploy_fee}");
     }
 
-    // 4f: Build deploy tx
+    // Build deploy tx
     let inputs = vec![TransactionInput::new(deploy_outpoint, vec![], 0, 0)];
-    let utxo_entries = vec![UtxoEntry::new(gas_amount, deployer_spk.clone(), 0, false, None)];
+    let utxo_entries = vec![UtxoEntry::new(gas_amount, keypair.deployer_spk.clone(), 0, false, None)];
 
     let change = gas_amount - covenant_value - deploy_fee;
     let mut outputs = vec![TransactionOutput::with_covenant(
@@ -364,40 +354,47 @@ async fn main() -> Result<()> {
         Some(CovenantBinding { covenant_id: on_chain_covenant_id, authorizing_input: 0 }),
     )];
     if change > 0 {
-        outputs.push(TransactionOutput::new(change, pay_to_address_script(&address)));
+        outputs.push(TransactionOutput::new(change, pay_to_address_script(&keypair.address)));
     }
 
     let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let signable = SignableTransaction::with_entries(tx, utxo_entries);
-    let keypair = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &secret_key);
-    let signed = sign(signable, keypair);
+    let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &keypair.secret_key);
+    let signed = sign(signable, kp);
 
-    let deploy_tx_id = signed.tx.id();
-    println!("  Deploy tx ID: {deploy_tx_id}");
+    let tx_id = signed.tx.id();
+    println!("  Deploy tx ID: {tx_id}");
 
-    // 4g: Submit
+    // Submit
     let rpc_tx = tx_to_rpc(signed.tx);
     node.submit_transaction(rpc_tx, false).await.context("Failed to submit deploy tx")?;
     println!("  Deploy tx submitted.");
 
-    // ════════════════════════════════════════════
-    // Phase 5: Wait for Deploy Confirmation
-    // ════════════════════════════════════════════
-    println!("\nPhase 5: Waiting for deploy tx confirmation...");
-    wait_for_tx_confirmation(&node, deploy_tx_id).await?;
-    println!("  Deploy tx confirmed!");
+    Ok(DeployResult { tx_id, on_chain_covenant_id, starting_block, initial_seq, output_value: covenant_value })
+}
 
-    // ════════════════════════════════════════════
-    // Phase 6: Chain Sync
-    // ════════════════════════════════════════════
-    println!("\nPhase 6: Syncing chain for proving...");
+async fn wait_for_tx_confirmation(node: &KaspaNode, tx_id: Hash) -> Result<()> {
+    let receiver = node.event_receiver();
+    loop {
+        let event = receiver.recv().await.context("Event channel closed while waiting for tx confirmation")?;
+        if let NodeEvent::Notification(Notification::VirtualChainChanged(n)) = event {
+            for atx in n.accepted_transaction_ids.iter() {
+                for id in &atx.accepted_transaction_ids {
+                    if *id == tx_id {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+}
 
-    let mut prover = RollupProver::new(on_chain_covenant_id, empty_tree_root(), deploy_initial_seq, deploy_starting_block);
-
-    let mut sync_cursor = deploy_starting_block;
+async fn sync_chain(node: &KaspaNode, prover: &mut RollupProver) -> Result<()> {
+    let mut sync_cursor = prover.last_processed_block;
     let mut total_blocks = 0usize;
     let mut total_txs = 0usize;
     let mut total_actions = 0usize;
+
     loop {
         let resp = node.get_virtual_chain_v2(sync_cursor, Some(1000)).await.context("VCC v2 fetch failed")?;
         if resp.added_chain_block_hashes.is_empty() {
@@ -414,40 +411,36 @@ async fn main() -> Result<()> {
     println!("  State root: {:?}", prover.state_root);
     println!("  Seq commitment: {}", prover.seq_commitment);
     println!("  Accumulated blocks for proving: {}", prover.accumulated_blocks());
+    Ok(())
+}
 
-    // ════════════════════════════════════════════
-    // Phase 7: Prove
-    // ════════════════════════════════════════════
-    println!("\nPhase 7: Proving...");
-
+async fn run_prove(prover: &mut RollupProver, backend: ProverBackend, proof_kind: ProofKind) -> Result<ProveResult> {
     let block_prove_to = prover.last_processed_block;
     let snapshot = prover.take_prove_snapshot().context("No blocks accumulated for proving")?;
 
-    // Save public input fields before the closure moves snapshot
-    let prev_state_hash_for_redeem = snapshot.input.public_input.prev_state_hash;
-    let prev_seq_commitment_for_redeem = snapshot.input.public_input.prev_seq_commitment;
+    let prev_state_hash = snapshot.input.public_input.prev_state_hash;
+    let prev_seq_commitment = snapshot.input.public_input.prev_seq_commitment;
 
     println!("  Proving {} block(s) with backend={:?}, kind={:?}", snapshot.input.block_txs.len(), backend, proof_kind);
     println!("  block_prove_to: {block_prove_to}");
-    println!("  prev_state_hash: {:?}", prev_state_hash_for_redeem);
-    println!("  prev_seq_commitment: {:?}", prev_seq_commitment_for_redeem);
+    println!("  prev_state_hash: {:?}", prev_state_hash);
+    println!("  prev_seq_commitment: {:?}", prev_seq_commitment);
     println!("  covenant_id: {:?}", snapshot.input.public_input.covenant_id);
 
-    let prove_result = tokio::task::spawn_blocking(move || host_prove::prove(&snapshot.input, backend, proof_kind))
+    let output = tokio::task::spawn_blocking(move || host_prove::prove(&snapshot.input, backend, proof_kind))
         .await
         .context("Prove task panicked")?
         .map_err(|e| anyhow::anyhow!("Proving failed: {e}"))?;
 
-    println!("  Proof complete in {:.1}s", prove_result.elapsed_ms as f64 / 1000.0);
-    println!("  Stats: {} segments, {} cycles", prove_result.stats.segments, prove_result.stats.total_cycles);
-    println!("  Journal length: {} bytes", prove_result.receipt.journal.bytes.len());
+    println!("  Proof complete in {:.1}s", output.elapsed_ms as f64 / 1000.0);
+    println!("  Stats: {} segments, {} cycles", output.stats.segments, output.stats.total_cycles);
+    println!("  Journal length: {} bytes", output.receipt.journal.bytes.len());
 
-    // ════════════════════════════════════════════
-    // Phase 8: Build & Submit Proof Transaction
-    // ════════════════════════════════════════════
-    println!("\nPhase 8: Building proof transaction...");
+    Ok(ProveResult { output, block_prove_to, prev_state_hash, prev_seq_commitment })
+}
 
-    let journal = &prove_result.receipt.journal.bytes;
+async fn build_and_submit_proof(node: &KaspaNode, prove: &ProveResult, proof_kind: ProofKind, deploy: &DeployResult) -> Result<Hash> {
+    let journal = &prove.output.receipt.journal.bytes;
     if journal.len() < 128 {
         bail!("Invalid journal length: {} (need >= 128)", journal.len());
     }
@@ -457,25 +450,25 @@ async fn main() -> Result<()> {
     println!("  New state root:      {:?}", new_state_hash);
     println!("  New seq commitment:  {:?}", new_seq_commitment);
 
+    let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
+    let zk_tag = proof_kind_to_zk_tag(proof_kind);
+
     // Build input and output redeem scripts
-    let input_redeem = converged_redeem_script(prev_state_hash_for_redeem, prev_seq_commitment_for_redeem, &program_id, &zk_tag);
+    let input_redeem = converged_redeem_script(prove.prev_state_hash, prove.prev_seq_commitment, &program_id, &zk_tag);
     let output_redeem = converged_redeem_script(new_state_hash, new_seq_commitment, &program_id, &zk_tag);
     let output_spk = pay_to_script_hash_script(&output_redeem);
 
     // Build sig_script
-    let sig_script = match proof_kind {
-        ProofKind::Succinct => build_succinct_sig_script(&prove_result.receipt, block_prove_to, &new_state_hash, &input_redeem)?,
-        ProofKind::Groth16 => build_groth16_sig_script(&prove_result.receipt, block_prove_to, &new_state_hash, &input_redeem)?,
-    };
+    let sig_script = build_sig_script(&prove.output.receipt, proof_kind, prove.block_prove_to, &new_state_hash, &input_redeem)?;
     println!("  sig_script length: {} bytes", sig_script.len());
 
     // Build proof transaction
-    let covenant_utxo_outpoint = TransactionOutpoint::new(deploy_tx_id, 0);
+    let covenant_utxo_outpoint = TransactionOutpoint::new(deploy.tx_id, 0);
     let inputs = vec![TransactionInput::new(covenant_utxo_outpoint, sig_script, 0, 115)];
     let mut outputs = vec![TransactionOutput::with_covenant(
-        covenant_value, // placeholder — adjusted after fee estimation
+        deploy.output_value,
         output_spk,
-        Some(CovenantBinding { authorizing_input: 0, covenant_id: on_chain_covenant_id }),
+        Some(CovenantBinding { authorizing_input: 0, covenant_id: deploy.on_chain_covenant_id }),
     )];
 
     // Estimate fee
@@ -485,9 +478,9 @@ async fn main() -> Result<()> {
     let fee_estimate = node.get_fee_estimate().await.context("get_fee_estimate failed")?;
     let priority_feerate = fee_estimate.priority_bucket.feerate;
     let estimated_fee = compute_fee(mass, priority_feerate);
-    let output_value = covenant_value.saturating_sub(estimated_fee);
+    let output_value = deploy.output_value.saturating_sub(estimated_fee);
     if output_value == 0 {
-        bail!("Covenant UTXO value too low to cover fee (covenant={covenant_value}, fee={estimated_fee})");
+        bail!("Covenant UTXO value too low to cover fee (covenant={}, fee={estimated_fee})", deploy.output_value);
     }
     outputs[0].value = output_value;
     println!("  Proof tx fee: {estimated_fee} sompi (mass: {mass})");
@@ -501,22 +494,56 @@ async fn main() -> Result<()> {
     node.submit_transaction(rpc_tx, false).await.context("Failed to submit proof tx")?;
     println!("  Proof tx submitted.");
 
-    // ════════════════════════════════════════════
-    // Phase 9: Wait for Proof Confirmation
-    // ════════════════════════════════════════════
+    Ok(proof_tx_id)
+}
+
+// ── Main ──
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args = Args::parse();
+    let proof_kind = parse_proof_kind(&args.proof_kind)?;
+    let backend = parse_backend(&args.backend)?;
+    let url = parse_rpc(args.rpc.as_deref());
+
+    println!("Phase 1: Connecting to {url} ...");
+    let (node, dag_info) = connect(&url, NetworkId::with_suffix(NetworkType::Testnet, 12)).await?;
+
+    println!("\nPhase 2: Setting up keypair...");
+    let keypair = setup_keypair(args.privkey.as_deref(), Prefix::Testnet)?;
+
+    println!("\nPhase 3: Checking for mature UTXOs...");
+    let min_value = args.covenant_value + 10_000;
+    let gas_utxo = wait_for_mature_utxo(&node, &keypair.address, dag_info.virtual_daa_score, min_value).await?;
+
+    let dag_info = node.get_block_dag_info().await.context("get_block_dag_info failed")?;
+
+    println!("\nPhase 4: Deploying covenant...");
+    let deploy = deploy_covenant(&node, &dag_info, &keypair, proof_kind, args.covenant_value, gas_utxo).await?;
+
+    println!("\nPhase 5: Waiting for deploy tx confirmation...");
+    wait_for_tx_confirmation(&node, deploy.tx_id).await?;
+    println!("  Deploy tx confirmed!");
+
+    println!("\nPhase 6: Syncing chain for proving...");
+    let mut prover = RollupProver::new(deploy.on_chain_covenant_id, empty_tree_root(), deploy.initial_seq, deploy.starting_block);
+    sync_chain(&node, &mut prover).await?;
+
+    println!("\nPhase 7: Proving...");
+    let prove = run_prove(&mut prover, backend, proof_kind).await?;
+
+    println!("\nPhase 8: Building proof transaction...");
+    let proof_tx_id = build_and_submit_proof(&node, &prove, proof_kind, &deploy).await?;
+
     println!("\nPhase 9: Waiting for proof tx confirmation...");
     wait_for_tx_confirmation(&node, proof_tx_id).await?;
     println!("  Proof tx confirmed!");
 
     println!("\n=== SUCCESS ===");
-    println!("  Covenant ID:        {on_chain_covenant_id}");
-    println!("  Deploy tx:          {deploy_tx_id}");
-    println!("  Proof tx:           {proof_tx_id}");
-    println!("  Final state root:   {new_state_hash:?}");
-    println!("  Final seq commit:   {new_seq_commitment:?}");
-    println!("  Remaining value:    {output_value} sompi");
+    println!("  Covenant ID:  {}", deploy.on_chain_covenant_id);
+    println!("  Deploy tx:    {}", deploy.tx_id);
+    println!("  Proof tx:     {proof_tx_id}");
 
-    // Shutdown
     node.stop().await.context("Failed to stop node")?;
     Ok(())
 }
