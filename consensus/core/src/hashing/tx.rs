@@ -87,12 +87,12 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
         let mass = tx.mass();
         if tx.version < 1 {
             if mass > 0 {
-                hasher.update(mass.to_le_bytes());
+                hasher.write_u64(mass);
             }
         } else {
             // In order make the encoding unambiguous and invertible in case of future additional fields, for version >= 1 we always include the mass field
-            hasher.update(mass.to_le_bytes());
-            hasher.update(tx.compute_mass.to_le_bytes());
+            hasher.write_u64(mass);
+            hasher.write_u64(tx.compute_mass);
         }
     }
 }
