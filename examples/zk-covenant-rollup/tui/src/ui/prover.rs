@@ -32,8 +32,6 @@ fn draw_controls(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         ratatui::text::Span::styled("b", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         ratatui::text::Span::raw(format!(":backend [{}]  ", app.prover_backend.label())),
         ratatui::text::Span::raw(format!("kind: [{kind_label}]  ")),
-        ratatui::text::Span::styled("p", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ratatui::text::Span::raw(":sync  "),
         ratatui::text::Span::styled("r", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         ratatui::text::Span::raw(":prove  "),
         ratatui::text::Span::styled("s", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),

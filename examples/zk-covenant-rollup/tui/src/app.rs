@@ -1308,15 +1308,8 @@ impl App {
 
     // ── State tab ──
 
-    fn handle_state_key(&mut self, key: crossterm::event::KeyEvent) {
-        if let KeyCode::Char('r') = key.code {
-            if self.prover.is_some() {
-                self.pending_ops.push(PendingOp::FetchAndProcessChain);
-                self.log("Refetching chain data...".into());
-            } else {
-                self.log("No prover initialized — select a deployed covenant first".into());
-            }
-        }
+    fn handle_state_key(&mut self, _key: crossterm::event::KeyEvent) {
+        // Chain sync is driven by VirtualChainChanged notifications — no manual trigger needed.
     }
 
     // ── ViewDetail popup ──
@@ -1379,7 +1372,6 @@ impl App {
 
     fn handle_proving_key(&mut self, key: crossterm::event::KeyEvent) {
         match key.code {
-            KeyCode::Char('p') => self.start_chain_processing(),
             KeyCode::Char('b') => {
                 // Cycle prover backend: CPU -> CUDA -> IPC -> CPU
                 self.prover_backend = self.prover_backend.next();
@@ -1468,30 +1460,6 @@ impl App {
             perm_redeem_script: snapshot.perm_redeem_script,
             perm_exit_data: snapshot.perm_exit_data,
         });
-    }
-
-    pub fn start_chain_processing(&mut self) {
-        if self.selected_covenant.is_none() {
-            self.log("Select a covenant first".into());
-            return;
-        }
-
-        // Initialize prover if not already done
-        if self.prover.is_none() {
-            let cov_idx = self.selected_covenant.unwrap();
-            let rec = &self.covenants[cov_idx].1;
-            let starting_block = rec.deploy_starting_block.unwrap_or(self.pruning_point);
-            let initial_seq = rec.deploy_initial_seq.unwrap_or_else(|| {
-                zk_covenant_rollup_host::mock_chain::calc_accepted_id_merkle_root(Hash::default(), std::iter::empty())
-            });
-            let prover_cov_id = rec.on_chain_covenant_id.unwrap_or(self.covenants[cov_idx].0);
-            let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-            self.prover = Some(RollupProver::new(prover_cov_id, initial_state_root, initial_seq, starting_block));
-            self.log("Initialized prover with empty state".into());
-        }
-
-        self.proving_status = "Fetching chain data...".into();
-        self.pending_ops.push(PendingOp::FetchAndProcessChain);
     }
 
     fn submit_proof(&mut self) {

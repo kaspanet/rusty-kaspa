@@ -11,8 +11,8 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     if let Some(prover) = &app.prover {
         draw_state(frame, app, prover, area);
     } else {
-        let msg = Paragraph::new("No L2 state — select a deployed covenant (auto-syncs from VCC v2)")
-            .block(Block::default().borders(Borders::ALL).title("Live L2 State (unproven)  r:refetch"));
+        let msg = Paragraph::new("No L2 state — select a deployed covenant (auto-syncs via VCC)")
+            .block(Block::default().borders(Borders::ALL).title("Live L2 State (unproven)"));
         frame.render_widget(msg, area);
     }
 }
@@ -54,7 +54,7 @@ fn draw_state(frame: &mut Frame, app: &App, prover: &crate::prover::RollupProver
         Line::from(format!("Exit leaves:     {}", prover.perm_builder.leaf_count())),
         Line::from(format!("Covenant:        {covenant_id_label}")),
     ];
-    let current_block = Block::default().borders(Borders::ALL).title("Current L2 State  r:refetch");
+    let current_block = Block::default().borders(Borders::ALL).title("Current L2 State");
     frame.render_widget(Paragraph::new(current_lines).block(current_block), chunks[0]);
 
     // ── Proven L2 state (from DB) ─────────────────────────────────────────────
