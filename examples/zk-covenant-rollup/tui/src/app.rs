@@ -143,13 +143,13 @@ pub enum TxStatus {
 
 /// A completed ZK proof ready for on-chain submission.
 pub struct CompletedProof {
-    receipt: risc0_zkvm::Receipt,
-    public_input: PublicInput,
-    block_prove_to: Hash,
-    proof_kind: ProofKind,
-    perm_redeem_script: Option<Vec<u8>>,
+    pub receipt: risc0_zkvm::Receipt,
+    pub public_input: PublicInput,
+    pub block_prove_to: Hash,
+    pub proof_kind: ProofKind,
+    pub perm_redeem_script: Option<Vec<u8>>,
     /// (spk_bytes, amount) for each exit in this proof (empty if no exits).
-    perm_exit_data: Vec<(Vec<u8>, u64)>,
+    pub perm_exit_data: Vec<(Vec<u8>, u64)>,
 }
 
 /// Results delivered from background tasks back to the main event loop.
@@ -1911,8 +1911,7 @@ impl App {
                         let resp = match node.get_virtual_chain_from_block(pruning_point, false, Some(1000)).await {
                             Ok(r) => r,
                             Err(e) => {
-                                let _ =
-                                    bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("VCC fetch failed: {e}") });
+                                let _ = bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("VCC fetch failed: {e}") });
                                 return;
                             }
                         };
@@ -1920,8 +1919,8 @@ impl App {
                         let deploy_starting_block = match resp.added_chain_block_hashes.last().copied() {
                             Some(h) => h,
                             None => {
-                                let _ = bg_tx
-                                    .send(BgResult::DeployFailed { covenant_id, error: "VCC returned no added blocks".into() });
+                                let _ =
+                                    bg_tx.send(BgResult::DeployFailed { covenant_id, error: "VCC returned no added blocks".into() });
                                 return;
                             }
                         };
@@ -1930,8 +1929,7 @@ impl App {
                         let block = match node.get_block(deploy_starting_block, false).await {
                             Ok(b) => b,
                             Err(e) => {
-                                let _ =
-                                    bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("get_block failed: {e}") });
+                                let _ = bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("get_block failed: {e}") });
                                 return;
                             }
                         };

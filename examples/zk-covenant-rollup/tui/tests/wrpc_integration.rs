@@ -787,10 +787,7 @@ async fn test_deploy_sets_starting_block_and_seq() {
     let log_len = app.log_messages.len();
     app.covenants = app.db.list_covenants();
     app.handle_key(key_event(KeyCode::Char('d')));
-    assert!(
-        app.log_messages[log_len..].iter().any(|m| m.contains("already deployed")),
-        "Second deploy should be rejected"
-    );
+    assert!(app.log_messages[log_len..].iter().any(|m| m.contains("already deployed")), "Second deploy should be rejected");
 
     app.node.stop().await.unwrap();
     grpc_client.disconnect().await.unwrap();
@@ -849,7 +846,7 @@ async fn test_deploy_duplicate_guard() {
 /// Uses zero coinbase maturity so UTXOs are immediately spendable.
 /// The first run computes actual proofs (slow). Once passing, captured data can be hardcoded.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore] // Remove once proof constants are hardcoded — first run is slow (computes real ZK proofs)
+#[ignore] // requires r0vm to calculate proof via ipc
 async fn test_deploy_prove_submit_cycle() {
     kaspa_core::log::try_init_logger("INFO");
 
@@ -929,7 +926,6 @@ async fn test_deploy_prove_submit_cycle() {
     let accumulated = app.prover.as_ref().unwrap().accumulated_blocks();
     assert!(accumulated > 0, "Should have accumulated blocks for proving, got: {accumulated}");
 
-
     // ── Proof 1: generate actual ZK proof (IPC backend → external r0vm) ──
     app.prover_backend = zk_covenant_rollup_host::prove::ProverBackend::Ipc;
     app.handle_key(key_event(KeyCode::Char('r'))); // start_proving
@@ -951,10 +947,7 @@ async fn test_deploy_prove_submit_cycle() {
     // Verify the covenant UTXO was updated
     app.covenants = app.db.list_covenants();
     let rec_after_proof1 = app.db.get_covenant(covenant_id).unwrap().unwrap();
-    assert_ne!(
-        rec_after_proof1.covenant_utxo, rec.covenant_utxo,
-        "Covenant UTXO should have changed after proof submission"
-    );
+    assert_ne!(rec_after_proof1.covenant_utxo, rec.covenant_utxo, "Covenant UTXO should have changed after proof submission");
 
     // ── Mine more blocks for second proving window ──
     mine_blocks(&grpc_client, &miner_address, 10).await;
