@@ -828,8 +828,8 @@ opcode_list! {
             // Parse the ZK Precompile tag
             let tag = parse_tag(&mut vm.dstack)?;
 
-            // Consume sigop cost
-            vm.consume_sig_op_cost(tag.sigop_cost())?;
+            // Consume the tag cost
+            vm.consume_compute_mass_units(tag.cost())?;
 
             // Verify the ZK proof
             verify_zk(tag, &mut vm.dstack)?;

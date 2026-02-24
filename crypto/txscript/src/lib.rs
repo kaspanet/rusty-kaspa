@@ -24,7 +24,7 @@ use crate::caches::Cache;
 use crate::covenants::CovenantsContext;
 use crate::data_stack::{Stack, StackEntry};
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
-use crate::zk_precompiles::compute_zk_sigop_cost;
+use crate::zk_precompiles::compute_zk_script_cost;
 use crate::zk_precompiles::tags::ZkTag;
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{
@@ -231,8 +231,10 @@ pub fn get_sig_op_count_upper_bound<T: VerifiableTransaction, Reused: SigHashReu
         return get_sig_op_count_by_opcodes(&script_pub_key_ops);
     }
 
+    // For P2SH scripts, the signature script must be non-empty;
+    // otherwise there is no redeem script candidate and the conservative upper bound is zero.
     let signature_script_ops = parse_script::<T, Reused>(signature_script).collect_vec();
-    if signature_script_ops.is_empty() || signature_script_ops.iter().any(|op| op.is_err() || !op.as_ref().unwrap().is_push_opcode()) {
+    if signature_script_ops.is_empty() {
         return 0;
     }
 
@@ -240,6 +242,69 @@ pub fn get_sig_op_count_upper_bound<T: VerifiableTransaction, Reused: SigHashReu
     let p2sh_ops = parse_script::<T, Reused>(p2sh_script).collect_vec();
 
     get_sig_op_count_by_opcodes(&p2sh_ops)
+}
+
+pub fn estimate_script_units_upper_bound<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    signature_script: &[u8],
+    prev_script_public_key: &ScriptPublicKey,
+    mass_per_sig_op: u64,
+) -> u64 {
+    let sig_op_upper_bound = get_sig_op_count_upper_bound::<T, Reused>(signature_script, prev_script_public_key);
+    let sig_op_units = sig_op_upper_bound.saturating_mul(mass_per_sig_op).saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR);
+    let total_script_len = (signature_script.len() + prev_script_public_key.script().len()) as u64;
+    let zk_units = get_zk_script_units_upper_bound::<T, Reused>(signature_script, prev_script_public_key);
+
+    sig_op_units.saturating_add(total_script_len * 100) // Multiplying by 100 is a heuristic to estimate how costly the script is going to be.
+    .saturating_add(zk_units)
+}
+
+pub fn get_zk_script_units_upper_bound<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    signature_script: &[u8],
+    prev_script_public_key: &ScriptPublicKey,
+) -> u64 {
+    let is_p2sh = ScriptClass::is_pay_to_script_hash(prev_script_public_key.script());
+    let script_pub_key_ops = parse_script::<T, Reused>(prev_script_public_key.script()).collect_vec();
+    if !is_p2sh {
+        return get_zk_script_units_upper_bound_by_opcodes(&script_pub_key_ops);
+    }
+
+    // For P2SH scripts, the signature script must be non-empty;
+    // otherwise there is no redeem script candidate and the conservative upper bound is zero.
+    let signature_script_ops = parse_script::<T, Reused>(signature_script).collect_vec();
+    if signature_script_ops.is_empty() {
+        return 0;
+    }
+
+    let p2sh_script = signature_script_ops.last().expect("checked if empty above").as_ref().expect("checked if err above").get_data();
+    let p2sh_ops = parse_script::<T, Reused>(p2sh_script).collect_vec();
+
+    get_zk_script_units_upper_bound_by_opcodes(&p2sh_ops)
+}
+
+fn get_zk_script_units_upper_bound_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    opcodes: &[Result<DynOpcodeImplementation<T, Reused>, TxScriptError>],
+) -> u64 {
+    let mut zk_units: u64 = 0;
+
+    for (i, op) in opcodes.iter().enumerate() {
+        match op {
+            Ok(op) => {
+                if op.value() == codes::OpZkPrecompile {
+                    let cost = if i == 0 {
+                        ZkTag::max_cost()
+                    } else {
+                        let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
+                        let data = prev_opcode.get_data();
+                        data.first().copied().map_or_else(ZkTag::max_cost, compute_zk_script_cost)
+                    };
+                    zk_units = zk_units.saturating_add(cost);
+                }
+            }
+            Err(_) => return zk_units, // If there's an error in parsing an opcode, the script won't consume any more cost from this point.
+        }
+    }
+
+    zk_units
 }
 
 fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -263,21 +328,6 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                             num_sigs += to_small_int(prev_opcode) as u64;
                         } else {
                             num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
-                        }
-                    }
-                    codes::OpZkPrecompile => {
-                        if i == 0 {
-                            num_sigs += ZkTag::max_cost() as u64;
-                            continue;
-                        }
-
-                        let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
-                        if prev_opcode.is_push_opcode()
-                            && let Some(tag_byte) = prev_opcode.get_data().first()
-                        {
-                            num_sigs += compute_zk_sigop_cost(*tag_byte) as u64;
-                        } else {
-                            num_sigs += ZkTag::max_cost() as u64;
                         }
                     }
                     _ => {} // If the opcode is not sigop/zk, no need to increase the count
@@ -902,11 +952,8 @@ mod tests {
             sig_op_count: 0,
         };
 
-        let output = TransactionOutput {
-            value: 1,
-            script_public_key: ScriptPublicKey::new(0, vec![OpCheckSig].into()),
-            covenant: None,
-        };
+        let output =
+            TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpCheckSig].into()), covenant: None };
 
         let tx = Transaction::new(1, vec![input.clone()], vec![output.clone()], 0, Default::default(), 0, vec![]);
         let utxo_entry = UtxoEntry::new(output.value, output.script_public_key.clone(), 0, false, None);
