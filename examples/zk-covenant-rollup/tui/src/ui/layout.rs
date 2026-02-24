@@ -1,6 +1,6 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::Frame;
 
@@ -46,7 +46,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     let status_bar = if flash_active {
         let msg = &app.status_flash.as_ref().unwrap().0;
-        Line::from(format!(" {msg}")).style(Style::default().bg(Color::Green).fg(Color::Black))
+        let bg = app.status_flash_color;
+        Line::from(format!(" {msg}")).style(Style::default().bg(bg).fg(Color::Black))
     } else {
         let cov_label = app
             .selected_covenant
@@ -57,13 +58,33 @@ pub fn draw(frame: &mut Frame, app: &App) {
             })
             .unwrap_or_else(|| "none".into());
 
-        let status = format!(
-            " {} | DAA: {} | Covenant: {} | Ctrl+L:redraw  Ctrl+Q:quit",
-            if app.connected { "Connected" } else { "Disconnected" },
-            app.daa_score,
-            cov_label,
-        );
-        Line::from(status).style(Style::default().bg(Color::DarkGray).fg(Color::White))
+        let conn = if app.connected { "Connected" } else { "Disconnected" };
+        let mut spans: Vec<Span> = vec![Span::raw(format!(" {conn} | DAA: {} | Cov: {cov_label}", app.daa_score))];
+
+        // Active background task indicators
+        if app.deploy_in_progress {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled("[Deploying]", Style::default().fg(Color::Yellow)));
+        }
+        if app.proof_in_progress {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled("[Proving]", Style::default().fg(Color::Cyan)));
+        }
+        if app.chain_sync_active {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled("[Syncing]", Style::default().fg(Color::Blue)));
+        }
+        if app.pending_submit_count > 0 {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(
+                format!("[Submit({})]", app.pending_submit_count),
+                Style::default().fg(Color::Magenta),
+            ));
+        }
+
+        spans.push(Span::raw(" | Ctrl+L  Ctrl+Q"));
+
+        Line::from(spans).style(Style::default().bg(Color::DarkGray).fg(Color::White))
     };
     frame.render_widget(status_bar, chunks[2]);
 }
@@ -89,10 +110,11 @@ fn draw_log(frame: &mut Frame, app: &App, area: Rect) {
             }
         })
         .collect();
+    let (scroll_label, toggle_hint) = if app.log_auto_scroll { ("FOLLOWING", "f:pause") } else { ("PAUSED", "f:follow") };
     let title = if total == 0 {
-        " Log [0/0]  j/k:nav  Enter:expand ".to_string()
+        format!(" Log [0/0] {scroll_label}  {toggle_hint}  j/k:nav  Enter:expand ")
     } else {
-        format!(" Log [{}/{}]  j/k:nav  Enter:expand ", app.log_selected + 1, total)
+        format!(" Log [{}/{}] {scroll_label}  {toggle_hint}  j/k:nav  Enter:expand ", app.log_selected + 1, total)
     };
     frame.render_widget(Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title)), area);
 }

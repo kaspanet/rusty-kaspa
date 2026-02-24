@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use ratatui::style::Color;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
 use kaspa_consensus_core::sign::sign;
@@ -283,13 +284,13 @@ pub struct App {
     bg_rx: mpsc::UnboundedReceiver<BgResult>,
 
     /// True while a FetchAndProcessChain task is in-flight (prevents double-firing).
-    chain_sync_active: bool,
+    pub chain_sync_active: bool,
 
     /// True while a FetchVccAndDeploy task is in-flight (prevents pressing 'd' twice).
     pub deploy_in_progress: bool,
 
     /// Number of SubmitTransaction tasks currently in-flight.
-    pending_submit_count: usize,
+    pub pending_submit_count: usize,
 
     /// Number of background tasks (SubscribeAndFetchUtxos, FetchVccAndDeploy) currently in-flight.
     /// Used by `process_pending_ops` to wait for all background tasks before returning.
@@ -300,6 +301,9 @@ pub struct App {
 
     /// Temporary flash message shown in the status bar (e.g. "Copied!").
     pub status_flash: Option<(String, Instant)>,
+
+    /// Color for the flash message background (Green for success, Red for failure, Yellow for pending).
+    pub status_flash_color: Color,
 
     /// When true, the run-loop will call `terminal.clear()` before the next draw
     /// to force a full screen redraw (Ctrl+L).
@@ -475,6 +479,7 @@ impl App {
             pending_bg_count: 0,
             clipboard: None,
             status_flash: None,
+            status_flash_color: Color::Green,
             needs_full_redraw: false,
             pending_tx_effects: HashMap::new(),
             log_file,
@@ -2244,6 +2249,8 @@ impl App {
             }
             BgResult::TxSubmitFailed { tx_id, error } => {
                 self.pending_submit_count = self.pending_submit_count.saturating_sub(1);
+                let short = if error.len() > 60 { format!("{}...", &error[..60]) } else { error.clone() };
+                self.flash(format!("Tx failed: {short}"), Color::Red);
                 self.log(format!("Failed to submit tx {tx_id}: {error}"));
 
                 // Update tx history status in memory and in DB
@@ -2284,11 +2291,13 @@ impl App {
                     self.utxo_tracker.mark_spent(input.previous_outpoint.transaction_id, input.previous_outpoint.index);
                 }
                 self.record_tx(tx_id, action.label(), amount);
+                self.flash(format!("{} tx submitted", action.label()), Color::Green);
                 self.log(format!("{} tx built: {tx_id}", action.label()));
                 self.pending_ops.push(PendingOp::SubmitTransaction(tx));
                 self.input_mode = InputMode::Normal;
             }
             BgResult::ActionBuildFailed { action, error } => {
+                self.flash(format!("{} failed: {error}", action.label()), Color::Red);
                 self.log(format!("Failed to build {} tx: {error}", action.label()));
                 self.input_mode = InputMode::Normal;
             }
@@ -2311,6 +2320,7 @@ impl App {
                 self.proof_in_progress = false;
                 let result_msg =
                     format!("Proof completed in {:.1}s ({} segments, {} cycles)", elapsed_ms as f64 / 1000.0, segments, total_cycles);
+                self.flash(result_msg.clone(), Color::Green);
                 self.log(result_msg.clone());
                 self.last_proof_result = Some(result_msg);
 
@@ -2350,6 +2360,7 @@ impl App {
                 }
                 self.proof_in_progress = false;
                 let result_msg = format!("Proof failed: {error}");
+                self.flash(result_msg.clone(), Color::Red);
                 self.log(result_msg.clone());
                 self.last_proof_result = Some(result_msg);
             }
@@ -2364,6 +2375,7 @@ impl App {
                 self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
                 self.deploy_in_progress = false;
                 let tx_id = tx.id();
+                self.flash("Deploy tx submitted — pending confirmation".into(), Color::Yellow);
                 self.log(format!("Genesis covenant ID (on-chain): {on_chain_covenant_id}"));
                 self.log(format!("Deploy starting block: {deploy_starting_block}  initial seq: {deploy_initial_seq}"));
                 self.log(format!("Deploying covenant {covenant_id} — tx: {tx_id} (pending confirmation)"));
@@ -2384,6 +2396,7 @@ impl App {
             BgResult::DeployFailed { covenant_id, error } => {
                 self.pending_bg_count = self.pending_bg_count.saturating_sub(1);
                 self.deploy_in_progress = false;
+                self.flash(format!("Deploy failed: {error}"), Color::Red);
                 self.log(format!("Deploy failed for covenant {covenant_id}: {error}"));
                 // The UTXO was optimistically marked as spent in deploy_covenant(); un-mark it
                 // by clearing pending_spent for all UTXOs (tracker will re-sync on next update).
@@ -2679,6 +2692,12 @@ impl App {
         Some(Address::new(self.network_prefix, Version::PubKey, &xonly.serialize()))
     }
 
+    /// Show a temporary colored flash message in the status bar.
+    fn flash(&mut self, msg: String, color: Color) {
+        self.status_flash = Some((msg, Instant::now()));
+        self.status_flash_color = color;
+    }
+
     fn copy_to_clipboard(&mut self, content: &str) {
         if self.clipboard.is_none() {
             match arboard::Clipboard::new() {
@@ -2693,7 +2712,7 @@ impl App {
             match cb.set_text(content) {
                 Ok(()) => {
                     let preview = if content.len() > 20 { format!("{}...", &content[..20]) } else { content.to_string() };
-                    self.status_flash = Some((format!("Copied: {preview}"), Instant::now()));
+                    self.flash(format!("Copied: {preview}"), Color::Green);
                 }
                 Err(e) => self.log(format!("Clipboard error: {e}")),
             }
@@ -2887,7 +2906,7 @@ mod tests {
         let output = render_to_string(&app, 120, 30);
         assert!(output.contains("Connected"), "status bar should show Connected");
         assert!(output.contains("DAA: 42"), "status bar should show DAA score");
-        assert!(output.contains("Ctrl+Q:quit"), "status bar should show Ctrl+Q:quit");
+        assert!(output.contains("Ctrl+Q"), "status bar should show Ctrl+Q");
     }
 
     #[test]
@@ -2981,7 +3000,7 @@ mod tests {
         let output = render_to_string(&app, 120, 30);
         assert!(output.contains("Copied: kaspatest:abc123"), "flash message should appear in status bar");
         // The normal status bar content should NOT appear while flash is active
-        assert!(!output.contains("Ctrl+Q:quit"), "normal status bar hidden during flash");
+        assert!(!output.contains("Ctrl+Q"), "normal status bar hidden during flash");
     }
 
     #[test]
@@ -2993,8 +3012,44 @@ mod tests {
         app.status_flash = Some(("Copied: old".into(), std::time::Instant::now() - std::time::Duration::from_secs(3)));
         let output = render_to_string(&app, 120, 30);
         // Normal status bar should be back
-        assert!(output.contains("Ctrl+Q:quit"), "normal status bar should return after flash expires");
+        assert!(output.contains("Ctrl+Q"), "normal status bar should return after flash expires");
         assert!(!output.contains("Copied: old"), "expired flash should not appear");
+    }
+
+    #[test]
+    fn test_ui_status_bar_bg_indicators() {
+        let mut app = test_app();
+        app.connected = true;
+
+        // No indicators by default
+        let output = render_to_string(&app, 120, 30);
+        assert!(!output.contains("[Deploying]"), "no deploy indicator by default");
+        assert!(!output.contains("[Proving]"), "no proving indicator by default");
+
+        // Deploy indicator
+        app.deploy_in_progress = true;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("[Deploying]"), "should show deploy indicator");
+
+        // Proving indicator
+        app.deploy_in_progress = false;
+        app.proof_in_progress = true;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("[Proving]"), "should show proving indicator");
+
+        // Submit indicator
+        app.proof_in_progress = false;
+        app.pending_submit_count = 2;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("[Submit(2)]"), "should show submit count indicator");
+
+        // Multiple indicators at once
+        app.deploy_in_progress = true;
+        app.proof_in_progress = true;
+        let output = render_to_string(&app, 120, 30);
+        assert!(output.contains("[Deploying]"), "should show deploy indicator");
+        assert!(output.contains("[Proving]"), "should show proving indicator");
+        assert!(output.contains("[Submit(2)]"), "should show submit indicator");
     }
 
     #[test]
@@ -3036,7 +3091,7 @@ mod tests {
     fn test_ui_status_bar_shows_redraw_hint() {
         let app = test_app();
         let output = render_to_string(&app, 120, 30);
-        assert!(output.contains("Ctrl+L:redraw"), "status bar should show Ctrl+L:redraw hint");
+        assert!(output.contains("Ctrl+L"), "status bar should show Ctrl+L hint");
     }
 
     /// Verify that after a popup (Processing) appears and then disappears,
