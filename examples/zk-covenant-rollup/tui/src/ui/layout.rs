@@ -76,10 +76,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         }
         if app.pending_submit_count > 0 {
             spans.push(Span::raw(" "));
-            spans.push(Span::styled(
-                format!("[Submit({})]", app.pending_submit_count),
-                Style::default().fg(Color::Magenta),
-            ));
+            spans.push(Span::styled(format!("[Submit({})]", app.pending_submit_count), Style::default().fg(Color::Magenta)));
         }
 
         spans.push(Span::raw(" | Ctrl+L  Ctrl+Q"));

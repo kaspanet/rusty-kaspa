@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
-use ratatui::style::Color;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
 use kaspa_consensus_core::sign::sign;
@@ -18,6 +17,7 @@ use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
 use kaspa_wrpc_client::prelude::Notification;
+use ratatui::style::Color;
 use risc0_zkvm::sha::Digestible;
 use tokio::sync::mpsc;
 use zk_covenant_rollup_core::state::empty_tree_root;
@@ -275,6 +275,8 @@ pub struct App {
     /// Monotonic counter — incremented on each prove start and on cancel.
     /// Results from older generations are discarded.
     proof_generation: u64,
+    /// Handle to the background proof task — used to detect panics and abort on cancel.
+    proof_task: Option<tokio::task::JoinHandle<()>>,
 
     /// Pending operations queued by sync key handlers, dispatched to background tasks.
     pending_ops: Vec<PendingOp>,
@@ -465,11 +467,12 @@ impl App {
             prover: None,
             proving_status: "No covenant selected".into(),
             pruning_point: Hash::default(),
-            prover_backend: ProverBackend::Cpu,
+            prover_backend: ProverBackend::Local,
             proof_in_progress: false,
             last_proof_result: None,
             completed_proofs: Vec::new(),
             proof_generation: 0,
+            proof_task: None,
             pending_ops: Vec::new(),
             bg_tx,
             bg_rx,
@@ -514,6 +517,19 @@ impl App {
             // Drain background task results (non-blocking)
             while let Ok(result) = self.bg_rx.try_recv() {
                 self.handle_bg_result(result);
+            }
+
+            // Detect panicked/crashed proof task (no BgResult will ever arrive)
+            if let Some(handle) = &self.proof_task {
+                if handle.is_finished() {
+                    self.proof_task.take();
+                    if self.proof_in_progress {
+                        self.proof_in_progress = false;
+                        self.last_proof_result = Some("Proof task crashed".into());
+                        self.flash("Proof task crashed".into(), Color::Red);
+                        self.log("Proof task crashed (possible OOM or panic)".into());
+                    }
+                }
             }
 
             // Continuous chain sync: re-schedule when prover exists and no fetch in-flight
@@ -565,6 +581,17 @@ impl App {
             tokio::time::sleep(Duration::from_millis(100)).await;
             while let Ok(result) = self.bg_rx.try_recv() {
                 self.handle_bg_result(result);
+            }
+            // Detect panicked/crashed proof task
+            if let Some(handle) = &self.proof_task {
+                if handle.is_finished() {
+                    self.proof_task.take();
+                    if self.proof_in_progress {
+                        self.proof_in_progress = false;
+                        self.last_proof_result = Some("Proof task crashed".into());
+                        self.log("Proof task crashed (possible OOM or panic)".into());
+                    }
+                }
             }
             if !self.pending_ops.is_empty() {
                 self.dispatch_pending_ops();
@@ -1329,11 +1356,13 @@ impl App {
         if !self.proof_in_progress {
             return;
         }
-        // Bump generation so the stale result is discarded when it arrives
+        if let Some(handle) = self.proof_task.take() {
+            handle.abort();
+        }
         self.proof_generation += 1;
         self.proof_in_progress = false;
         self.last_proof_result = Some("Proof cancelled by user".into());
-        self.log("Proof cancelled (background thread will finish eventually)".into());
+        self.log("Proof cancelled (background thread may finish eventually)".into());
     }
 
     fn start_proving(&mut self) {
@@ -1917,7 +1946,7 @@ impl App {
                     perm_exit_data,
                 } => {
                     let bg_tx = self.bg_tx.clone();
-                    tokio::task::spawn_blocking(move || match host_prove::prove(&input, backend, kind) {
+                    let handle = tokio::task::spawn_blocking(move || match host_prove::prove(&input, backend, kind) {
                         Ok(output) => {
                             let _ = bg_tx.send(BgResult::ProofCompleted {
                                 gen,
@@ -1936,6 +1965,7 @@ impl App {
                             let _ = bg_tx.send(BgResult::ProofFailed { gen, error: e });
                         }
                     });
+                    self.proof_task = Some(handle);
                 }
                 PendingOp::FetchVccAndDeploy {
                     covenant_id,
@@ -2313,6 +2343,7 @@ impl App {
                 segments,
                 total_cycles,
             } => {
+                self.proof_task.take();
                 if gen != self.proof_generation {
                     self.log("Discarded stale proof result (cancelled)".to_string());
                     return;
@@ -2354,6 +2385,7 @@ impl App {
                 }
             }
             BgResult::ProofFailed { gen, error } => {
+                self.proof_task.take();
                 if gen != self.proof_generation {
                     self.log("Discarded stale proof failure (cancelled)".to_string());
                     return;
