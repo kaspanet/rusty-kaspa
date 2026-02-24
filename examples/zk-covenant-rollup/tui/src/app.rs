@@ -141,6 +141,8 @@ pub struct TxRecord {
 pub enum TxStatus {
     Submitted,
     Confirmed,
+    /// Tx is stuck in mempool — not confirmed within the expected timeframe.
+    Stale(String),
     Failed(String),
 }
 
@@ -424,6 +426,7 @@ fn tx_status_to_db(s: &TxStatus) -> TxStatusDb {
     match s {
         TxStatus::Submitted => TxStatusDb::Submitted,
         TxStatus::Confirmed => TxStatusDb::Confirmed,
+        TxStatus::Stale(msg) => TxStatusDb::Stale(msg.clone()),
         TxStatus::Failed(msg) => TxStatusDb::Failed(msg.clone()),
     }
 }
@@ -432,6 +435,7 @@ fn tx_status_from_db(s: TxStatusDb) -> TxStatus {
     match s {
         TxStatusDb::Submitted => TxStatus::Submitted,
         TxStatusDb::Confirmed => TxStatus::Confirmed,
+        TxStatusDb::Stale(msg) => TxStatus::Stale(msg),
         TxStatusDb::Failed(msg) => TxStatus::Failed(msg),
     }
 }
@@ -1937,7 +1941,9 @@ impl App {
         // Remove from stale tracking
         self.pending_tx_timestamps.remove(&tx_id);
 
-        if let Some(record) = self.tx_history.iter_mut().find(|r| r.tx_id == tx_id && r.status == TxStatus::Submitted) {
+        if let Some(record) =
+            self.tx_history.iter_mut().find(|r| r.tx_id == tx_id && matches!(r.status, TxStatus::Submitted | TxStatus::Stale(_)))
+        {
             record.status = TxStatus::Confirmed;
             if let Some(cov_id) = self.selected_covenant_id() {
                 if let Err(e) = self.db.update_tx_status(cov_id, tx_id, TxStatusDb::Confirmed) {
@@ -1961,12 +1967,11 @@ impl App {
             let elapsed = self.pending_tx_timestamps.get(&tx_id).map(|t| t.elapsed().as_secs()).unwrap_or(0);
             self.pending_tx_timestamps.remove(&tx_id);
             self.log(format!("Tx {tx_id} stale — not confirmed after {elapsed}s"));
-            // Mark as failed so user can retry
+            // Mark as stale (still in mempool, may need fee bump)
             if let Some(record) = self.tx_history.iter_mut().find(|r| r.tx_id == tx_id && r.status == TxStatus::Submitted) {
-                record.status = TxStatus::Failed(format!("Stale — not confirmed after {elapsed}s"));
+                record.status = TxStatus::Stale(format!("Not confirmed after {elapsed}s"));
                 if let Some(cov_id) = self.selected_covenant_id() {
-                    let _ =
-                        self.db.update_tx_status(cov_id, tx_id, TxStatusDb::Failed(format!("Stale — not confirmed after {elapsed}s")));
+                    let _ = self.db.update_tx_status(cov_id, tx_id, TxStatusDb::Stale(format!("Not confirmed after {elapsed}s")));
                 }
             }
         }
@@ -2734,7 +2739,7 @@ impl App {
         self.pending_tx_timestamps.remove(&tx_id);
 
         if let Some(existing) = self.tx_history.iter_mut().find(|r| r.tx_id == tx_id) {
-            if existing.status == TxStatus::Submitted {
+            if matches!(existing.status, TxStatus::Submitted | TxStatus::Stale(_)) {
                 existing.status = TxStatus::Confirmed;
                 if let Err(e) = self.db.update_tx_status(covenant_id, tx_id, TxStatusDb::Confirmed) {
                     self.log(format!("Failed to persist tx status update: {e}"));

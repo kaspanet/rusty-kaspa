@@ -96,6 +96,8 @@ pub struct ProvingState {
 pub enum TxStatusDb {
     Submitted,
     Confirmed,
+    /// Tx stuck in mempool — not confirmed within expected timeframe.
+    Stale(String),
     Failed(String),
 }
 

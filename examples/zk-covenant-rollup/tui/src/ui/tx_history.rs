@@ -24,6 +24,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             let (status_str, status_color) = match &record.status {
                 TxStatus::Submitted => ("Submitted".to_string(), Color::Yellow),
                 TxStatus::Confirmed => ("Confirmed".to_string(), Color::Green),
+                TxStatus::Stale(msg) => (format!("Stale: {msg}"), Color::Magenta),
                 TxStatus::Failed(msg) => (format!("Failed: {msg}"), Color::Red),
             };
             Row::new(vec![
