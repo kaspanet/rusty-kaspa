@@ -94,7 +94,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                     cache.clear();
                     let reused_values = SigHashReusedValuesUnsync::new();
                     let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
-                    check_scripts_sequential(black_box(&tx.as_verifiable()), ctx, flags).unwrap();
+                    check_scripts_sequential(black_box(&tx.as_verifiable()), ctx, flags, None).unwrap();
                 })
             });
 
@@ -105,7 +105,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                     cache.clear();
                     let reused_values = SigHashReusedValuesSync::new();
                     let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
-                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, flags).unwrap();
+                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, flags, None).unwrap();
                 })
             });
 
@@ -119,7 +119,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                             cache.clear();
                             let reused_values = SigHashReusedValuesSync::new();
                             let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
-                            check_scripts_par_iter_pool(black_box(&tx.as_verifiable()), ctx, flags, black_box(&pool)).unwrap();
+                            check_scripts_par_iter_pool(black_box(&tx.as_verifiable()), ctx, flags, None, black_box(&pool)).unwrap();
                         })
                     });
                 }
@@ -157,7 +157,7 @@ fn benchmark_check_scripts_with_payload(c: &mut Criterion) {
                     cache.clear();
                     let reused_values = SigHashReusedValuesSync::new();
                     let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
-                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, Default::default()).unwrap();
+                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, Default::default(), None).unwrap();
                 })
             });
         }
