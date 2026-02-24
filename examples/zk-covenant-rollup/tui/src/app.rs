@@ -237,6 +237,7 @@ pub struct App {
     pub log_messages: Vec<String>,
     pub log_scroll: usize,
     pub log_selected: usize,
+    pub log_auto_scroll: bool,
 
     // Covenant tab state
     pub covenants: Vec<(CovenantId, CovenantRecord)>,
@@ -444,6 +445,7 @@ impl App {
             log_messages: Vec::new(),
             log_scroll: 0,
             log_selected: 0,
+            log_auto_scroll: true,
             covenants,
             covenant_list_index: 0,
             selected_covenant: None,
@@ -1010,7 +1012,7 @@ impl App {
     }
 
     /// Subscribe to the permission P2SH address after a proof with exits is confirmed.
-    fn subscribe_perm_address(&mut self) {
+    pub fn subscribe_perm_address(&mut self) {
         if let Some(ref perm) = self.perm_utxo {
             let perm_spk = pay_to_script_hash_script(&perm.redeem_script);
             let script_bytes = perm_spk.script();
@@ -2090,45 +2092,10 @@ impl App {
 
         // Nonce grinding is CPU-bound — run on blocking thread pool
         tokio::task::spawn_blocking(move || {
-            let result: Result<Transaction, String> = match action {
+            let result: Result<Transaction, String> = (|| match action {
                 ActionType::Entry => {
                     let (signer_pk, signer_sk) = accounts[account_list_index];
-                    if amount > gas_utxo.amount {
-                        Err(format!("Deposit {} exceeds UTXO value {}", amount, gas_utxo.amount))
-                    } else {
-                        let tx = crate::actions::build_entry_tx(signer_pk, covenant_id, amount, &gas_utxo);
-                        let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
-                        let spk = pay_to_address_script(&signer_addr);
-                        let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
-                        let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
-                        let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
-                        let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
-                        let signed = sign(signable, kp);
-                        Ok(signed.tx)
-                    }
-                }
-                ActionType::Transfer => {
-                    if accounts.len() < 2 {
-                        Err("Need at least 2 accounts".into())
-                    } else {
-                        let (signer_pk, signer_sk) = accounts[0];
-                        let (dest_pk, _) = accounts[1];
-                        let dest_addr = Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes());
-                        let tx = crate::actions::build_transfer_tx(signer_pk, dest_pk, amount, &gas_utxo, &dest_addr);
-                        let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
-                        let spk = pay_to_address_script(&signer_addr);
-                        let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
-                        let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
-                        let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
-                        let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
-                        let signed = sign(signable, kp);
-                        Ok(signed.tx)
-                    }
-                }
-                ActionType::Exit => {
-                    let (signer_pk, signer_sk) = accounts[account_list_index];
-                    let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes()));
-                    let tx = crate::actions::build_exit_tx(signer_pk, amount, dest_spk.script(), &gas_utxo);
+                    let tx = crate::actions::build_entry_tx(signer_pk, covenant_id, amount, &gas_utxo)?;
                     let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
                     let spk = pay_to_address_script(&signer_addr);
                     let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
@@ -2138,7 +2105,37 @@ impl App {
                     let signed = sign(signable, kp);
                     Ok(signed.tx)
                 }
-            };
+                ActionType::Transfer => {
+                    if accounts.len() < 2 {
+                        return Err("Need at least 2 accounts".into());
+                    }
+                    let (signer_pk, signer_sk) = accounts[0];
+                    let (dest_pk, _) = accounts[1];
+                    let dest_addr = Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes());
+                    let tx = crate::actions::build_transfer_tx(signer_pk, dest_pk, amount, &gas_utxo, &dest_addr)?;
+                    let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
+                    let spk = pay_to_address_script(&signer_addr);
+                    let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
+                    let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
+                    let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
+                    let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
+                    let signed = sign(signable, kp);
+                    Ok(signed.tx)
+                }
+                ActionType::Exit => {
+                    let (signer_pk, signer_sk) = accounts[account_list_index];
+                    let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes()));
+                    let tx = crate::actions::build_exit_tx(signer_pk, amount, dest_spk.script(), &gas_utxo)?;
+                    let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
+                    let spk = pay_to_address_script(&signer_addr);
+                    let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
+                    let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
+                    let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
+                    let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
+                    let signed = sign(signable, kp);
+                    Ok(signed.tx)
+                }
+            })();
 
             match result {
                 Ok(tx) => {
@@ -2453,14 +2450,23 @@ impl App {
                 }
             }
             KeyCode::Up | KeyCode::Char('k') => {
+                self.log_auto_scroll = false;
                 self.log_selected = self.log_selected.saturating_sub(1);
             }
             KeyCode::Char('g') => {
+                self.log_auto_scroll = false;
                 self.log_selected = 0;
                 self.log_scroll = 0;
             }
             KeyCode::Char('G') => {
+                self.log_auto_scroll = true;
                 self.log_selected = total.saturating_sub(1);
+            }
+            KeyCode::Char('f') => {
+                self.log_auto_scroll = !self.log_auto_scroll;
+                if self.log_auto_scroll {
+                    self.log_selected = self.log_messages.len().saturating_sub(1);
+                }
             }
             KeyCode::Enter | KeyCode::Char('v') => {
                 if let Some(msg) = self.log_messages.get(self.log_selected) {
@@ -2639,7 +2645,9 @@ impl App {
             let _ = writeln!(file, "[{ts}] {msg}");
         }
         self.log_messages.push(msg);
-        self.log_selected = self.log_messages.len().saturating_sub(1);
+        if self.log_auto_scroll {
+            self.log_selected = self.log_messages.len().saturating_sub(1);
+        }
     }
 
     /// Get the deployer address for a covenant record.
@@ -3564,5 +3572,74 @@ mod tests {
 
         // Should have logged something (either "built" or "Insufficient")
         assert!(app.log_messages.len() > log_count, "withdraw should log a message");
+    }
+
+    // ── Log auto-scroll tests ──
+
+    #[test]
+    fn test_log_auto_scroll_default() {
+        let mut app = test_app();
+        assert!(app.log_auto_scroll);
+        app.log("a".into());
+        app.log("b".into());
+        app.log("c".into());
+        assert_eq!(app.log_selected, 2, "auto-scroll should advance to latest");
+    }
+
+    #[test]
+    fn test_log_pause_resume() {
+        let mut app = test_app();
+        app.active_tab = Tab::Log;
+        app.log("a".into());
+        app.log("b".into());
+        app.log("c".into());
+        assert_eq!(app.log_selected, 2);
+
+        // Press 'f' to pause
+        app.handle_key(key(KeyCode::Char('f')));
+        assert!(!app.log_auto_scroll);
+
+        // New logs should not advance selection
+        app.log("d".into());
+        app.log("e".into());
+        assert_eq!(app.log_selected, 2, "paused: selection should not move");
+
+        // Press 'f' to resume — should jump to latest
+        app.handle_key(key(KeyCode::Char('f')));
+        assert!(app.log_auto_scroll);
+        assert_eq!(app.log_selected, 4, "resume should jump to latest");
+    }
+
+    #[test]
+    fn test_log_scroll_up_pauses() {
+        let mut app = test_app();
+        app.active_tab = Tab::Log;
+        app.log("a".into());
+        app.log("b".into());
+        app.log("c".into());
+        assert!(app.log_auto_scroll);
+
+        // Pressing 'k' should pause auto-scroll
+        app.handle_key(key(KeyCode::Char('k')));
+        assert!(!app.log_auto_scroll, "scrolling up should pause auto-scroll");
+        assert_eq!(app.log_selected, 1);
+    }
+
+    #[test]
+    fn test_log_g_resumes() {
+        let mut app = test_app();
+        app.active_tab = Tab::Log;
+        app.log("a".into());
+        app.log("b".into());
+        app.log("c".into());
+
+        // Pause via 'k'
+        app.handle_key(key(KeyCode::Char('k')));
+        assert!(!app.log_auto_scroll);
+
+        // 'G' should re-enable auto-scroll
+        app.handle_key(key(KeyCode::Char('G')));
+        assert!(app.log_auto_scroll, "G should re-enable auto-scroll");
+        assert_eq!(app.log_selected, 2);
     }
 }

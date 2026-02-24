@@ -9,15 +9,41 @@ use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kaspa_addresses::{Address, Prefix, Version};
+use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_testing_integration::common::daemon::Daemon;
 use kaspa_wrpc_client::prelude::*;
 use kaspad_lib::args::Args;
 
-use zk_covenant_rollup_tui::app::{ActionType, App, InputMode, Tab};
+use zk_covenant_rollup_tui::app::{ActionType, App, InputMode, Tab, TxStatus};
 use zk_covenant_rollup_tui::db::RollupDb;
 use zk_covenant_rollup_tui::node::KaspaNode;
+
+/// Convert a KAS string like "1" or "2.5" to sompi (no float conversion).
+fn kas(s: &str) -> u64 {
+    if let Some(dot_idx) = s.find('.') {
+        let integer = s[..dot_idx].parse::<u64>().unwrap() * SOMPI_PER_KASPA;
+        let decimal = &s[dot_idx + 1..];
+        let decimal_len = decimal.len();
+        let frac = if decimal_len == 0 {
+            0
+        } else {
+            assert!(decimal_len <= 8, "max 8 decimal places");
+            decimal.parse::<u64>().unwrap() * 10u64.pow(8 - decimal_len as u32)
+        };
+        integer + frac
+    } else {
+        s.parse::<u64>().unwrap() * SOMPI_PER_KASPA
+    }
+}
+
+/// Type a sompi amount digit-by-digit into the app's input field.
+fn type_amount(app: &mut App, sompi: u64) {
+    for ch in sompi.to_string().chars() {
+        app.handle_input_key(key_event(KeyCode::Char(ch)));
+    }
+}
 
 fn simnet_args() -> Args {
     Args { simnet: true, unsafe_rpc: true, enable_unsynced_mining: true, utxoindex: true, disable_upnp: true, ..Default::default() }
@@ -62,6 +88,37 @@ async fn setup_test_app(kaspad: &mut Daemon) -> (App, kaspa_grpc_client::GrpcCli
     let address = Address::new(Prefix::Simnet, Version::PubKey, &keypair.x_only_public_key().0.serialize());
 
     (app, grpc_client, address, keypair)
+}
+
+/// Create an App connected to a zero-maturity daemon (UTXOs immediately spendable).
+async fn setup_zero_maturity_app(kaspad: &mut Daemon) -> (App, kaspa_grpc_client::GrpcClient, Address, secp256k1::Keypair) {
+    let grpc_client = kaspad.start().await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let url = format!("ws://localhost:{}", kaspad.rpc_borsh_port);
+    let network_id = NetworkId::new(NetworkType::Simnet);
+    let node = KaspaNode::try_new(&url, network_id).unwrap();
+    node.connect().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let dag_info = node.get_block_dag_info().await.unwrap();
+    let tmpdir = tempfile::tempdir().unwrap();
+    let db = Arc::new(RollupDb::open(tmpdir.path()).unwrap());
+    let mut app = App::new(db, node, Prefix::Simnet);
+    app.pruning_point = dag_info.pruning_point_hash;
+    app.connected = true;
+
+    let keypair = secp256k1::Keypair::new(secp256k1::SECP256K1, &mut rand::thread_rng());
+    let address = Address::new(Prefix::Simnet, Version::PubKey, &keypair.x_only_public_key().0.serialize());
+
+    (app, grpc_client, address, keypair)
+}
+
+/// Check that a given tx_id appears in the accepted transaction IDs of the virtual chain.
+async fn assert_tx_accepted(app: &App, tx_id: kaspa_hashes::Hash) {
+    let vcc = app.node.get_virtual_chain_from_block(app.pruning_point, true, None).await.expect("get_virtual_chain_from_block");
+    let accepted: Vec<_> = vcc.accepted_transaction_ids.iter().flat_map(|atx| &atx.accepted_transaction_ids).collect();
+    assert!(accepted.contains(&&tx_id), "tx {tx_id} should appear in accepted_transaction_ids");
 }
 
 /// Mine blocks via gRPC and wait for propagation.
@@ -453,11 +510,7 @@ async fn test_entry_action_flow() {
     app.start_action_input(ActionType::Entry);
     assert!(matches!(app.input_mode, InputMode::PromptAmount { .. }), "Should be in PromptAmount mode");
 
-    // Type "1000" (digit by digit)
-    app.handle_input_key(key_event(KeyCode::Char('1')));
-    app.handle_input_key(key_event(KeyCode::Char('0')));
-    app.handle_input_key(key_event(KeyCode::Char('0')));
-    app.handle_input_key(key_event(KeyCode::Char('0')));
+    type_amount(&mut app, 1000);
 
     // Press Enter to confirm
     app.handle_input_key(key_event(KeyCode::Enter));
@@ -474,6 +527,9 @@ async fn test_entry_action_flow() {
     assert!(app.input_mode.is_normal(), "Should be back to Normal mode");
     assert!(!app.tx_history.is_empty(), "Should have tx in history");
     assert_eq!(app.tx_history.last().unwrap().action, "Entry (Deposit)");
+    // Note: this test uses simnet_args (1000 coinbase maturity) so the tx may be
+    // rejected by the node for immature UTXOs. The UI flow is what we're testing here.
+    // See test_entry_action_accepted for acceptance verification with zero maturity.
 
     app.node.stop().await.unwrap();
     grpc_client.disconnect().await.unwrap();
@@ -609,9 +665,7 @@ async fn test_tx_history_tracking() {
     // Do an entry
     app.active_tab = Tab::Actions;
     app.start_action_input(ActionType::Entry);
-    app.handle_input_key(key_event(KeyCode::Char('5')));
-    app.handle_input_key(key_event(KeyCode::Char('0')));
-    app.handle_input_key(key_event(KeyCode::Char('0')));
+    type_amount(&mut app, 500);
     app.handle_input_key(key_event(KeyCode::Enter));
     app.handle_input_key(key_event(KeyCode::Enter));
     app.process_pending_ops().await;
@@ -841,6 +895,175 @@ async fn test_deploy_duplicate_guard() {
     kaspad.shutdown();
 }
 
+// ── Action acceptance tests (zero maturity) ──
+
+/// Test that an Entry (deposit) action tx is accepted by the node (non-zero fee).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_entry_action_accepted() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(zero_maturity_args(), 10);
+    let (mut app, grpc_client, miner_address, _keypair) = setup_zero_maturity_app(&mut kaspad).await;
+
+    // Create covenant and account
+    app.handle_key(key_event(KeyCode::Char('c')));
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+    app.active_tab = Tab::Accounts;
+    app.handle_key(key_event(KeyCode::Char('c')));
+
+    // Fund the account (zero maturity → immediately spendable)
+    let (pk, _) = app.accounts[0];
+    let acct_addr = Address::new(Prefix::Simnet, Version::PubKey, &pk.as_bytes());
+    mine_blocks(&grpc_client, &acct_addr, 5).await;
+
+    // Subscribe & fetch UTXOs
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let acct_addr_str = app.pubkey_to_address(&pk).unwrap();
+    let balance = app.utxo_tracker.balance(&acct_addr_str);
+    assert!(balance > 0, "Account should have funds, got: {balance}");
+
+    // Submit Entry(1 KAS) — must be large enough to avoid storage mass limit
+    app.active_tab = Tab::Actions;
+    app.start_action_input(ActionType::Entry);
+    type_amount(&mut app, kas("1"));
+    app.handle_input_key(key_event(KeyCode::Enter)); // confirm amount
+    app.handle_input_key(key_event(KeyCode::Enter)); // submit
+    app.process_pending_ops().await;
+
+    assert!(!app.tx_history.is_empty(), "Should have tx in history");
+    let last_tx = app.tx_history.last().unwrap();
+    assert_eq!(last_tx.action, "Entry (Deposit)");
+    assert!(!matches!(last_tx.status, TxStatus::Failed(_)), "Entry tx should not fail: {:?}", last_tx.status);
+    let tx_id = last_tx.tx_id;
+
+    // Mine blocks so the tx gets accepted
+    mine_blocks(&grpc_client, &miner_address, 10).await;
+
+    // Verify tx appears in accepted_transaction_ids
+    assert_tx_accepted(&app, tx_id).await;
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
+/// Test that a Transfer action tx is accepted by the node (non-zero fee).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_transfer_action_accepted() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(zero_maturity_args(), 10);
+    let (mut app, grpc_client, miner_address, _keypair) = setup_zero_maturity_app(&mut kaspad).await;
+
+    // Create covenant and two accounts
+    app.handle_key(key_event(KeyCode::Char('c')));
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+    app.active_tab = Tab::Accounts;
+    app.handle_key(key_event(KeyCode::Char('c'))); // account 0
+    app.handle_key(key_event(KeyCode::Char('c'))); // account 1
+    assert!(app.accounts.len() >= 2, "Need at least 2 accounts");
+
+    // Fund account 0 (source for transfer)
+    let (pk0, _) = app.accounts[0];
+    let acct0_addr = Address::new(Prefix::Simnet, Version::PubKey, &pk0.as_bytes());
+    mine_blocks(&grpc_client, &acct0_addr, 5).await;
+
+    // Subscribe & fetch UTXOs
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let acct0_addr_str = app.pubkey_to_address(&pk0).unwrap();
+    let balance = app.utxo_tracker.balance(&acct0_addr_str);
+    assert!(balance > 0, "Account 0 should have funds, got: {balance}");
+
+    // Submit Transfer(0.5 KAS)
+    app.active_tab = Tab::Actions;
+    app.start_action_input(ActionType::Transfer);
+    type_amount(&mut app, kas("0.5"));
+    app.handle_input_key(key_event(KeyCode::Enter)); // confirm amount
+    app.handle_input_key(key_event(KeyCode::Enter)); // submit
+    app.process_pending_ops().await;
+
+    assert!(!app.tx_history.is_empty(), "Should have tx in history");
+    let last_tx = app.tx_history.last().unwrap();
+    assert_eq!(last_tx.action, "Transfer");
+    assert!(!matches!(last_tx.status, TxStatus::Failed(_)), "Transfer tx should not fail: {:?}", last_tx.status);
+    let tx_id = last_tx.tx_id;
+
+    // Mine blocks so the tx gets accepted
+    mine_blocks(&grpc_client, &miner_address, 10).await;
+
+    // Verify tx appears in accepted_transaction_ids
+    assert_tx_accepted(&app, tx_id).await;
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
+/// Test that an Exit action tx is accepted by the node (non-zero fee).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_exit_action_accepted() {
+    kaspa_core::log::try_init_logger("INFO");
+
+    let mut kaspad = Daemon::new_random_with_args(zero_maturity_args(), 10);
+    let (mut app, grpc_client, miner_address, _keypair) = setup_zero_maturity_app(&mut kaspad).await;
+
+    // Create covenant and account
+    app.handle_key(key_event(KeyCode::Char('c')));
+    app.covenant_list_index = 0;
+    app.handle_key(key_event(KeyCode::Enter));
+    app.active_tab = Tab::Accounts;
+    app.handle_key(key_event(KeyCode::Char('c')));
+
+    // Fund the account
+    let (pk, _) = app.accounts[0];
+    let acct_addr = Address::new(Prefix::Simnet, Version::PubKey, &pk.as_bytes());
+    mine_blocks(&grpc_client, &acct_addr, 5).await;
+
+    // Subscribe & fetch UTXOs
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let acct_addr_str = app.pubkey_to_address(&pk).unwrap();
+    let balance = app.utxo_tracker.balance(&acct_addr_str);
+    assert!(balance > 0, "Account should have funds, got: {balance}");
+
+    // Submit Exit(0.5 KAS)
+    app.active_tab = Tab::Actions;
+    app.start_action_input(ActionType::Exit);
+    type_amount(&mut app, kas("0.5"));
+    app.handle_input_key(key_event(KeyCode::Enter)); // confirm amount
+    app.handle_input_key(key_event(KeyCode::Enter)); // submit
+    app.process_pending_ops().await;
+
+    assert!(!app.tx_history.is_empty(), "Should have tx in history");
+    let last_tx = app.tx_history.last().unwrap();
+    assert_eq!(last_tx.action, "Exit (Withdrawal)");
+    assert!(!matches!(last_tx.status, TxStatus::Failed(_)), "Exit tx should not fail: {:?}", last_tx.status);
+    let tx_id = last_tx.tx_id;
+
+    // Mine blocks so the tx gets accepted
+    mine_blocks(&grpc_client, &miner_address, 10).await;
+
+    // Verify tx appears in accepted_transaction_ids
+    assert_tx_accepted(&app, tx_id).await;
+
+    app.node.stop().await.unwrap();
+    grpc_client.disconnect().await.unwrap();
+    drop(grpc_client);
+    kaspad.shutdown();
+}
+
 /// End-to-end test: deploy → mine → chain sync → prove (real ZK) → submit → mine → prove → submit.
 ///
 /// Uses zero coinbase maturity so UTXOs are immediately spendable.
@@ -915,7 +1138,74 @@ async fn test_deploy_prove_submit_cycle() {
     app.handle_key(key_event(KeyCode::Enter));
     assert!(app.prover.is_some(), "Prover should be initialized");
 
-    // ── Mine blocks so chain sync has data ──
+    // ── Create accounts and fund them ──
+    app.active_tab = Tab::Accounts;
+    app.handle_key(key_event(KeyCode::Char('c'))); // account 0
+    app.handle_key(key_event(KeyCode::Char('c'))); // account 1
+    assert!(app.accounts.len() >= 2, "Should have at least 2 accounts");
+
+    let (pk0, _) = app.accounts[0];
+    let (pk1, _) = app.accounts[1];
+    let acct0_addr = Address::new(Prefix::Simnet, Version::PubKey, &pk0.as_bytes());
+    let acct1_addr = Address::new(Prefix::Simnet, Version::PubKey, &pk1.as_bytes());
+    mine_blocks(&grpc_client, &acct0_addr, 5).await;
+    mine_blocks(&grpc_client, &acct1_addr, 5).await;
+
+    // Refresh UTXO subscriptions
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // ── Entry (deposit) action ──
+    app.active_tab = Tab::Actions;
+    app.start_action_input(ActionType::Entry);
+    type_amount(&mut app, kas("1"));
+    app.handle_input_key(key_event(KeyCode::Enter));
+    app.handle_input_key(key_event(KeyCode::Enter));
+    app.process_pending_ops().await;
+    {
+        let last = app.tx_history.last().unwrap();
+        assert_eq!(last.action, "Entry (Deposit)");
+        assert!(!matches!(last.status, TxStatus::Failed(_)), "Entry tx failed: {:?}", last.status);
+    }
+
+    // Mine so the entry UTXO is available for the transfer source
+    mine_blocks(&grpc_client, &miner_address, 5).await;
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // ── Transfer action ──
+    app.start_action_input(ActionType::Transfer);
+    type_amount(&mut app, kas("0.5"));
+    app.handle_input_key(key_event(KeyCode::Enter));
+    app.handle_input_key(key_event(KeyCode::Enter));
+    app.process_pending_ops().await;
+    {
+        let last = app.tx_history.last().unwrap();
+        assert_eq!(last.action, "Transfer");
+        assert!(!matches!(last.status, TxStatus::Failed(_)), "Transfer tx failed: {:?}", last.status);
+    }
+
+    // Mine so the exit source UTXO is available
+    mine_blocks(&grpc_client, &miner_address, 5).await;
+    app.subscribe_covenant_addresses();
+    app.process_pending_ops().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // ── Exit action ──
+    app.start_action_input(ActionType::Exit);
+    type_amount(&mut app, kas("0.5"));
+    app.handle_input_key(key_event(KeyCode::Enter));
+    app.handle_input_key(key_event(KeyCode::Enter));
+    app.process_pending_ops().await;
+    {
+        let last = app.tx_history.last().unwrap();
+        assert_eq!(last.action, "Exit (Withdrawal)");
+        assert!(!matches!(last.status, TxStatus::Failed(_)), "Exit tx failed: {:?}", last.status);
+    }
+
+    // ── Mine blocks so the prover sees the actions ──
     mine_blocks(&grpc_client, &miner_address, 10).await;
 
     // ── Chain sync (fetches VCC v2, processes blocks) ──
@@ -981,15 +1271,32 @@ async fn test_deploy_prove_submit_cycle() {
         "Covenant UTXO should have changed after second proof submission"
     );
 
+    // ── Withdrawal (if exits created a permission tree) ──
+    if app.perm_utxo.is_some() {
+        // Subscribe to perm address so withdrawal can find delegate UTXOs
+        app.subscribe_perm_address();
+        mine_blocks(&grpc_client, &miner_address, 5).await;
+        app.subscribe_covenant_addresses();
+        app.process_pending_ops().await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let tx_count_before = app.tx_history.len();
+        app.active_tab = Tab::Permissions;
+        app.handle_key(key_event(KeyCode::Char('w'))); // withdraw_selected_leaf
+        app.process_pending_ops().await;
+
+        if app.tx_history.len() > tx_count_before {
+            let last = app.tx_history.last().unwrap();
+            assert!(!matches!(last.status, TxStatus::Failed(_)), "Withdrawal tx failed: {:?}", last.status);
+            let withdraw_tx_id = last.tx_id;
+            mine_blocks(&grpc_client, &miner_address, 10).await;
+            assert_tx_accepted(&app, withdraw_tx_id).await;
+        }
+    }
+
     // Verify no failures in tx history
     for tx in &app.tx_history {
-        assert!(
-            !matches!(tx.status, zk_covenant_rollup_tui::app::TxStatus::Failed(_)),
-            "Tx {} ({}) should not have failed: {:?}",
-            tx.tx_id,
-            tx.action,
-            tx.status
-        );
+        assert!(!matches!(tx.status, TxStatus::Failed(_)), "Tx {} ({}) should not have failed: {:?}", tx.tx_id, tx.action, tx.status);
     }
 
     app.node.stop().await.unwrap();
