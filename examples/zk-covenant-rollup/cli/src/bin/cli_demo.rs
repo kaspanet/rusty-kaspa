@@ -1,8 +1,10 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use kaspa_addresses::{Address, Prefix, Version};
+use kaspa_consensus_core::config::params::TESTNET12_PARAMS;
 use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
-use kaspa_consensus_core::sign::sign;
+use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+use kaspa_consensus_core::sign::{sign, sign_input};
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
     CovenantBinding, ScriptPublicKey, SignableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
@@ -20,7 +22,6 @@ use zk_covenant_rollup_host::mock_chain::from_bytes;
 use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProveOutput, ProverBackend};
 use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
-
 use zk_covenant_rollup_tui::actions::compute_fee;
 use zk_covenant_rollup_tui::node::{KaspaNode, NodeEvent};
 use zk_covenant_rollup_tui::prover::RollupProver;
@@ -49,7 +50,7 @@ struct Args {
     backend: String,
 
     /// Covenant value in sompi for the deploy transaction.
-    #[arg(long, default_value = "100000")]
+    #[arg(long, default_value = "100000000")]
     covenant_value: u64,
 }
 
@@ -215,7 +216,7 @@ async fn connect(url: &str, network_id: NetworkId) -> Result<(KaspaNode, GetBloc
 
     let dag_info = node.get_block_dag_info().await.context("get_block_dag_info failed")?;
     println!(
-        "  Connected. Network: {:?}, pruning_point: {}, DAA score: {}",
+        "  Connected. Network: {}, pruning_point: {}, DAA score: {}",
         dag_info.network, dag_info.pruning_point_hash, dag_info.virtual_daa_score
     );
     Ok((node, dag_info))
@@ -248,14 +249,14 @@ async fn wait_for_mature_utxo(node: &KaspaNode, address: &Address, daa_score: u6
 
     if let Some(u) = utxos.iter().find(|u| {
         let age = daa_score.saturating_sub(u.utxo_entry.block_daa_score);
-        age >= 10 && u.utxo_entry.amount >= min_value
+        age >= TESTNET12_PARAMS.coinbase_maturity && u.utxo_entry.amount >= min_value
     }) {
         println!("  Found mature UTXO: {} sompi (age: {} DAA)", u.utxo_entry.amount, daa_score - u.utxo_entry.block_daa_score);
         return Ok((u.outpoint.transaction_id, u.outpoint.index, u.utxo_entry.amount));
     }
 
     println!("  No mature UTXOs found. Waiting for mature UTXOs at {address} ...");
-    println!("  (need >= {min_value} sompi, maturity >= 10 DAA blocks)");
+    println!("  (need >= {min_value} sompi, maturity >= {} DAA blocks)", TESTNET12_PARAMS.coinbase_maturity());
 
     node.subscribe_utxos(vec![address.clone()]).await.context("subscribe_utxos failed")?;
 
@@ -271,7 +272,7 @@ async fn wait_for_mature_utxo(node: &KaspaNode, address: &Address, daa_score: u6
                 let utxos = node.get_utxos_by_addresses(vec![address.clone()]).await.context("get_utxos_by_addresses failed")?;
                 if let Some(u) = utxos.iter().find(|u| {
                     let age = current_daa.saturating_sub(u.utxo_entry.block_daa_score);
-                    age >= 10 && u.utxo_entry.amount >= min_value
+                    age >= TESTNET12_PARAMS.coinbase_maturity && u.utxo_entry.amount >= min_value
                 }) {
                     println!(
                         "  Mature UTXO arrived: {} sompi (age: {} DAA)",
@@ -408,7 +409,7 @@ async fn sync_chain(node: &KaspaNode, prover: &mut RollupProver) -> Result<()> {
     }
 
     println!("  Synced: {} blocks, {} txs, {} actions", total_blocks, total_txs, total_actions);
-    println!("  State root: {:?}", prover.state_root);
+    println!("  State root: {}", Hash::from_bytes(bytemuck::cast(prover.state_root)));
     println!("  Seq commitment: {}", prover.seq_commitment);
     println!("  Accumulated blocks for proving: {}", prover.accumulated_blocks());
     Ok(())
@@ -423,9 +424,9 @@ async fn run_prove(prover: &mut RollupProver, backend: ProverBackend, proof_kind
 
     println!("  Proving {} block(s) with backend={:?}, kind={:?}", snapshot.input.block_txs.len(), backend, proof_kind);
     println!("  block_prove_to: {block_prove_to}");
-    println!("  prev_state_hash: {:?}", prev_state_hash);
-    println!("  prev_seq_commitment: {:?}", prev_seq_commitment);
-    println!("  covenant_id: {:?}", snapshot.input.public_input.covenant_id);
+    println!("  prev_state_hash: {}", Hash::from_bytes(bytemuck::cast(prev_state_hash)));
+    println!("  prev_seq_commitment: {}", Hash::from_bytes(bytemuck::cast(prev_seq_commitment)));
+    println!("  covenant_id: {}", Hash::from_bytes(bytemuck::cast(snapshot.input.public_input.covenant_id)));
 
     let output = tokio::task::spawn_blocking(move || host_prove::prove(&snapshot.input, backend, proof_kind))
         .await
@@ -439,7 +440,13 @@ async fn run_prove(prover: &mut RollupProver, backend: ProverBackend, proof_kind
     Ok(ProveResult { output, block_prove_to, prev_state_hash, prev_seq_commitment })
 }
 
-async fn build_and_submit_proof(node: &KaspaNode, prove: &ProveResult, proof_kind: ProofKind, deploy: &DeployResult) -> Result<Hash> {
+async fn build_and_submit_proof(
+    node: &KaspaNode,
+    prove: &ProveResult,
+    proof_kind: ProofKind,
+    deploy: &DeployResult,
+    keypair: &Keypair,
+) -> Result<Hash> {
     let journal = &prove.output.receipt.journal.bytes;
     if journal.len() < 128 {
         bail!("Invalid journal length: {} (need >= 128)", journal.len());
@@ -447,8 +454,8 @@ async fn build_and_submit_proof(node: &KaspaNode, prove: &ProveResult, proof_kin
     let new_state_hash: [u32; 8] = bytemuck::pod_read_unaligned(&journal[64..96]);
     let new_seq_commitment: [u32; 8] = bytemuck::pod_read_unaligned(&journal[96..128]);
 
-    println!("  New state root:      {:?}", new_state_hash);
-    println!("  New seq commitment:  {:?}", new_seq_commitment);
+    println!("  New state root:      {}", Hash::from_bytes(bytemuck::cast(new_state_hash)));
+    println!("  New seq commitment:  {}", Hash::from_bytes(bytemuck::cast(new_seq_commitment)));
 
     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
     let zk_tag = proof_kind_to_zk_tag(proof_kind);
@@ -458,35 +465,67 @@ async fn build_and_submit_proof(node: &KaspaNode, prove: &ProveResult, proof_kin
     let output_redeem = converged_redeem_script(new_state_hash, new_seq_commitment, &program_id, &zk_tag);
     let output_spk = pay_to_script_hash_script(&output_redeem);
 
-    // Build sig_script
+    // Build sig_script for the covenant input
     let sig_script = build_sig_script(&prove.output.receipt, proof_kind, prove.block_prove_to, &new_state_hash, &input_redeem)?;
     println!("  sig_script length: {} bytes", sig_script.len());
 
-    // Build proof transaction
+    // Find a collateral UTXO from the deployer's address
+    let utxos = node.get_utxos_by_addresses(vec![keypair.address.clone()]).await.context("get_utxos_by_addresses failed")?;
+    let collateral = utxos
+        .iter()
+        .find(|u| u.utxo_entry.amount >= 10_000)
+        .context("No UTXO available for collateral — fund the deployer address")?;
+    let collateral_outpoint = TransactionOutpoint::new(collateral.outpoint.transaction_id, collateral.outpoint.index);
+    let collateral_amount = collateral.utxo_entry.amount;
+    let collateral_daa = collateral.utxo_entry.block_daa_score;
+    println!(
+        "  Collateral UTXO: {} sompi (tx: {}:{})",
+        collateral_amount, collateral_outpoint.transaction_id, collateral_outpoint.index
+    );
+
+    // Build proof transaction: input[0]=covenant, input[1]=collateral
     let covenant_utxo_outpoint = TransactionOutpoint::new(deploy.tx_id, 0);
-    let inputs = vec![TransactionInput::new(covenant_utxo_outpoint, sig_script, 0, 115)];
+    let inputs = vec![
+        TransactionInput::new(covenant_utxo_outpoint, sig_script, 0, 115),
+        TransactionInput::new(collateral_outpoint, vec![], 0, 1),
+    ];
+
+    // output[0]=covenant (full value preserved), output[1]=change back to deployer
     let mut outputs = vec![TransactionOutput::with_covenant(
         deploy.output_value,
         output_spk,
         Some(CovenantBinding { authorizing_input: 0, covenant_id: deploy.on_chain_covenant_id }),
     )];
+    // Placeholder change output — adjusted after fee estimation
+    outputs.push(TransactionOutput::new(collateral_amount, pay_to_address_script(&keypair.address)));
 
-    // Estimate fee
+    // Estimate fee from mass
     let tmp_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs.clone(), outputs.clone(), 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let mass_calc = kaspa_consensus_core::mass::MassCalculator::new(1, 10, 1000, 0);
     let mass = mass_calc.calc_non_contextual_masses(&tmp_tx).compute_mass;
     let fee_estimate = node.get_fee_estimate().await.context("get_fee_estimate failed")?;
     let priority_feerate = fee_estimate.priority_bucket.feerate;
     let estimated_fee = compute_fee(mass, priority_feerate);
-    let output_value = deploy.output_value.saturating_sub(estimated_fee);
-    if output_value == 0 {
-        bail!("Covenant UTXO value too low to cover fee (covenant={}, fee={estimated_fee})", deploy.output_value);
-    }
-    outputs[0].value = output_value;
-    println!("  Proof tx fee: {estimated_fee} sompi (mass: {mass})");
 
-    let proof_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+    let change = collateral_amount.checked_sub(estimated_fee).context("Collateral UTXO too small to cover fee")?;
+    if change > 0 {
+        outputs[1].value = change;
+    } else {
+        outputs.pop(); // no change output if exactly zero
+    }
+    println!("  Proof tx fee: {estimated_fee} sompi (mass: {mass}, change: {change})");
+
+    // Build the final transaction
+    let mut proof_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let proof_tx_id = proof_tx.id();
+
+    // Sign only input[1] (collateral) — input[0] already has the ZK sig_script
+    let covenant_entry = UtxoEntry::new(deploy.output_value, pay_to_script_hash_script(&input_redeem), 0, true, None);
+    let collateral_entry = UtxoEntry::new(collateral_amount, keypair.deployer_spk.clone(), collateral_daa, false, None);
+    let signable = SignableTransaction::with_entries(proof_tx.clone(), vec![covenant_entry, collateral_entry]);
+    let collateral_sig = sign_input(&signable.as_verifiable(), 1, &keypair.secret_key.secret_bytes(), SIG_HASH_ALL);
+    proof_tx.inputs[1].signature_script = collateral_sig;
+
     println!("  Proof tx ID: {proof_tx_id}");
 
     // Submit
@@ -533,7 +572,7 @@ async fn main() -> Result<()> {
     let prove = run_prove(&mut prover, backend, proof_kind).await?;
 
     println!("\nPhase 8: Building proof transaction...");
-    let proof_tx_id = build_and_submit_proof(&node, &prove, proof_kind, &deploy).await?;
+    let proof_tx_id = build_and_submit_proof(&node, &prove, proof_kind, &deploy, &keypair).await?;
 
     println!("\nPhase 9: Waiting for proof tx confirmation...");
     wait_for_tx_confirmation(&node, proof_tx_id).await?;
