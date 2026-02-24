@@ -5,7 +5,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
-use kaspa_consensus_core::sign::sign;
+use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+use kaspa_consensus_core::sign::{sign, sign_input};
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
     CovenantBinding, ScriptPublicKey, SignableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
@@ -1558,47 +1559,99 @@ impl App {
             }
         };
 
-        // Build transaction — first pass with 0 fee to measure mass, then adjust.
+        // Build transaction with collateral input for fees (matching CLI approach).
         let has_permission = proof.perm_redeem_script.is_some();
-        let perm_dust: u64 = 1000;
 
         // Use the genesis-derived on-chain covenant ID for all CovenantBindings.
         let covenant_id_hash =
             record.on_chain_covenant_id.unwrap_or_else(|| Hash::from_bytes(bytemuck::cast(proof.public_input.covenant_id)));
 
-        let inputs = vec![TransactionInput::new(TransactionOutpoint::new(covenant_utxo.0, covenant_utxo.1), sig_script, 0, 115)];
+        // Get deployer keypair for collateral signing
+        let deployer_sk = match secp256k1::SecretKey::from_slice(&record.deployer_privkey) {
+            Ok(sk) => sk,
+            Err(e) => {
+                self.log(format!("Invalid deployer key: {e}"));
+                return;
+            }
+        };
+        let deployer_pk = deployer_sk.public_key(secp256k1::SECP256K1);
+        let (xonly_pk, _) = deployer_pk.x_only_public_key();
+        let deployer_addr = Address::new(self.network_prefix, Version::PubKey, &xonly_pk.serialize());
+        let deployer_spk = pay_to_address_script(&deployer_addr);
 
+        // Find a collateral UTXO from deployer's address
+        let deployer_addr_str = deployer_addr.to_string();
+        let collateral_utxos = self.utxo_tracker.available_utxos(&deployer_addr_str);
+        let min_collateral = if has_permission { covenant_value + 10_000 } else { 10_000 };
+        let collateral = match collateral_utxos.iter().find(|u| u.amount >= min_collateral) {
+            Some(u) => (*u).clone(),
+            None => {
+                self.log(format!("No UTXO available for collateral (need >= {min_collateral})"));
+                return;
+            }
+        };
+
+        // 2 inputs: covenant + collateral
+        let inputs = vec![
+            TransactionInput::new(TransactionOutpoint::new(covenant_utxo.0, covenant_utxo.1), sig_script, 0, 115),
+            TransactionInput::new(TransactionOutpoint::new(collateral.tx_id, collateral.index), vec![], 0, 1),
+        ];
+
+        // Outputs: [0]=covenant (full value), [1]=permission if exists, [last]=change
         let mut outputs = vec![TransactionOutput::with_covenant(
-            covenant_value, // placeholder — adjusted below after mass estimation
+            covenant_value,
             output_spk,
             Some(CovenantBinding { authorizing_input: 0, covenant_id: covenant_id_hash }),
         )];
 
+        // Permission output at index 1 with covenant binding, same value as state
         if let Some(ref perm_redeem) = proof.perm_redeem_script {
             let perm_spk = pay_to_script_hash_script(perm_redeem);
             outputs.push(TransactionOutput::with_covenant(
-                perm_dust,
+                covenant_value,
                 perm_spk,
                 Some(CovenantBinding { authorizing_input: 0, covenant_id: covenant_id_hash }),
             ));
         }
 
-        // Estimate fee from compute mass using priority feerate
+        // Change output (no covenant binding) — placeholder, adjusted after fee estimation
+        outputs.push(TransactionOutput::new(collateral.amount, deployer_spk.clone()));
+
+        // Estimate fee from compute mass
         let tmp_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs.clone(), outputs.clone(), 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         let mass_calc = kaspa_consensus_core::mass::MassCalculator::new(1, 10, 1000, 0);
         let mass = mass_calc.calc_non_contextual_masses(&tmp_tx).compute_mass;
         let priority_feerate = self.cached_fee_estimate.as_ref().map(|e| e.priority_bucket.feerate).unwrap_or(1.0);
         let estimated_fee = crate::actions::compute_fee(mass, priority_feerate);
-        let perm_cost = if has_permission { perm_dust } else { 0 };
-        let output_value = covenant_value.saturating_sub(estimated_fee).saturating_sub(perm_cost);
-        if output_value == 0 {
-            self.log("Covenant UTXO value too low to cover fee".into());
-            return;
-        }
-        outputs[0].value = output_value;
+        let perm_cost = if has_permission { covenant_value } else { 0 };
 
-        let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        // Collateral covers fee + permission value; covenant value is fully preserved
+        let change = match collateral.amount.checked_sub(estimated_fee + perm_cost) {
+            Some(c) => c,
+            None => {
+                self.log("Collateral UTXO too small to cover fee + permission value".into());
+                return;
+            }
+        };
+        let change_idx = outputs.len() - 1;
+        if change > 0 {
+            outputs[change_idx].value = change;
+        } else {
+            outputs.pop();
+        }
+
+        // Build tx, then sign collateral input
+        let mut tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         let tx_id = tx.id();
+
+        // Sign only input[1] (collateral) — input[0] already has ZK sig_script
+        let covenant_entry = UtxoEntry::new(covenant_value, pay_to_script_hash_script(&input_redeem), 0, true, None);
+        let collateral_entry = UtxoEntry::new(collateral.amount, deployer_spk, 0, false, None);
+        let signable = SignableTransaction::with_entries(tx.clone(), vec![covenant_entry, collateral_entry]);
+        let collateral_sig = sign_input(&signable.as_verifiable(), 1, &deployer_sk.secret_bytes(), SIG_HASH_ALL);
+        tx.inputs[1].signature_script = collateral_sig;
+
+        self.utxo_tracker.mark_spent(collateral.tx_id, collateral.index);
 
         // Save old UTXO info so we can revert on submission failure
         let perm_state = if !proof.perm_exit_data.is_empty() {
@@ -1615,7 +1668,7 @@ impl App {
         // (reverted in handle_bg_result if TxSubmitFailed)
         let mut updated_record = record.clone();
         updated_record.covenant_utxo = Some((tx_id, 0));
-        updated_record.covenant_value = Some(output_value);
+        updated_record.covenant_value = Some(covenant_value);
         if let Err(e) = self.db.put_covenant(covenant_id, &updated_record) {
             self.log(format!("Failed to update covenant in DB: {e}"));
             return;
@@ -1623,7 +1676,7 @@ impl App {
 
         self.log(format!("Submitting prove tx: {tx_id}"));
         self.last_proof_result = Some(format!("Proof submitted — tx: {tx_id}"));
-        self.record_tx(tx_id, "Prove", output_value);
+        self.record_tx(tx_id, "Prove", covenant_value);
         self.pending_ops.push(PendingOp::SubmitTransaction(tx));
 
         // Refresh covenants list to pick up the updated record
