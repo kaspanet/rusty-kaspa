@@ -197,6 +197,15 @@ enum BgResult {
         gen: u64,
         error: String,
     },
+    /// All VCC pages fetched; chain sync complete.
+    ChainSyncComplete,
+    /// Block DAG info fetched on connect (pruning point, daa score).
+    BlockDagInfo {
+        pruning_point: Hash,
+        virtual_daa_score: u64,
+    },
+    /// Fee estimate fetched from the node.
+    FeeEstimate(kaspa_rpc_core::RpcFeeEstimate),
     /// VCC scan completed; deploy tx built with the correct seq_commitment.
     DeployTxBuilt {
         tx: Transaction,
@@ -322,6 +331,18 @@ pub struct App {
 
     /// Index of selected permission leaf (within current perm_utxo.exit_data).
     pub perm_leaf_index: usize,
+
+    /// Signal from VirtualChainChanged notification — triggers chain sync.
+    pub vcc_changed: bool,
+
+    /// Cached fee estimate from the node.
+    pub cached_fee_estimate: Option<kaspa_rpc_core::RpcFeeEstimate>,
+
+    /// Submitted tx IDs with their submission time, for stale detection.
+    pending_tx_timestamps: HashMap<Hash, Instant>,
+
+    /// Last time we checked for stale txs.
+    last_stale_check: Instant,
 }
 
 /// Deferred async operations triggered from sync key handlers.
@@ -488,6 +509,10 @@ impl App {
             log_file,
             perm_utxo: None,
             perm_leaf_index: 0,
+            vcc_changed: false,
+            cached_fee_estimate: None,
+            pending_tx_timestamps: HashMap::new(),
+            last_stale_check: Instant::now(),
         }
     }
 
@@ -532,9 +557,16 @@ impl App {
                 }
             }
 
-            // Continuous chain sync: re-schedule when prover exists and no fetch in-flight
-            if self.prover.is_some() && !self.chain_sync_active {
+            // Chain sync: only trigger when VCC changed notification received
+            if self.prover.is_some() && !self.chain_sync_active && self.vcc_changed {
+                self.vcc_changed = false;
                 self.pending_ops.push(PendingOp::FetchAndProcessChain);
+            }
+
+            // Periodic stale tx check (every 30s)
+            if self.last_stale_check.elapsed() > Duration::from_secs(30) {
+                self.last_stale_check = Instant::now();
+                self.check_stale_txs();
             }
 
             // Dispatch queued operations to background tasks
@@ -809,7 +841,6 @@ impl App {
         let deployer_addr_str = deployer_addr.to_string();
 
         // Take the first available UTXO; all value minus fee goes into the covenant
-        let estimated_fee: u64 = 3000;
         let utxos = self.utxo_tracker.available_utxos(&deployer_addr_str);
         let first_utxo = match utxos.first() {
             Some(u) => (*u).clone(),
@@ -818,6 +849,11 @@ impl App {
                 return;
             }
         };
+        // Estimate deploy fee from cached fee estimate (fallback to safe default)
+        let priority_feerate = self.cached_fee_estimate.as_ref().map(|e| e.priority_bucket.feerate).unwrap_or(1.0);
+        // Deploy tx is small (~250 bytes); estimate mass conservatively
+        let estimated_deploy_mass: u64 = 3000;
+        let estimated_fee = crate::actions::compute_fee(estimated_deploy_mass, priority_feerate);
         if first_utxo.amount <= estimated_fee {
             self.log(format!("UTXO too small ({} sompi) — need > {estimated_fee} sompi", first_utxo.amount));
             return;
@@ -1575,10 +1611,12 @@ impl App {
             ));
         }
 
-        // Estimate fee from compute mass (mass_per_tx_byte=1, mass_per_spk_byte=10, mass_per_sig_op=1000).
+        // Estimate fee from compute mass using priority feerate
         let tmp_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs.clone(), outputs.clone(), 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
         let mass_calc = kaspa_consensus_core::mass::MassCalculator::new(1, 10, 1000, 0);
-        let estimated_fee = mass_calc.calc_non_contextual_masses(&tmp_tx).compute_mass + 1000;
+        let mass = mass_calc.calc_non_contextual_masses(&tmp_tx).compute_mass;
+        let priority_feerate = self.cached_fee_estimate.as_ref().map(|e| e.priority_bucket.feerate).unwrap_or(1.0);
+        let estimated_fee = crate::actions::compute_fee(mass, priority_feerate);
         let perm_cost = if has_permission { perm_dust } else { 0 };
         let output_value = covenant_value.saturating_sub(estimated_fee).saturating_sub(perm_cost);
         if output_value == 0 {
@@ -1765,7 +1803,10 @@ impl App {
             return;
         }
 
-        let estimated_fee: u64 = 3000;
+        let priority_feerate = self.cached_fee_estimate.as_ref().map(|e| e.priority_bucket.feerate).unwrap_or(1.0);
+        // Estimate mass conservatively for withdraw tx
+        let estimated_withdraw_mass: u64 = 5000;
+        let estimated_fee = crate::actions::compute_fee(estimated_withdraw_mass, priority_feerate);
         let dest_value = amount.saturating_sub(estimated_fee);
         if dest_value == 0 {
             self.log("Amount too small to cover fee".into());
@@ -1840,6 +1881,17 @@ impl App {
             NodeEvent::Connected => {
                 self.connected = true;
                 self.log("Connected to Kaspa node".into());
+                // Fetch pruning point and DAA score
+                let node = self.node.clone();
+                let tx = self.bg_tx.clone();
+                tokio::spawn(async move {
+                    if let Ok(info) = node.get_block_dag_info().await {
+                        let _ = tx.send(BgResult::BlockDagInfo {
+                            pruning_point: info.pruning_point_hash,
+                            virtual_daa_score: info.virtual_daa_score,
+                        });
+                    }
+                });
             }
             NodeEvent::Disconnected => {
                 self.connected = false;
@@ -1859,7 +1911,64 @@ impl App {
             Notification::UtxosChanged(n) => {
                 self.utxo_tracker.apply_utxos_changed(&n.added, &n.removed);
             }
+            Notification::VirtualChainChanged(n) => {
+                self.vcc_changed = true;
+                // Check for confirmed txs from accepted transaction IDs
+                for atx in n.accepted_transaction_ids.iter() {
+                    for tx_id in &atx.accepted_transaction_ids {
+                        self.confirm_tx_by_id(*tx_id);
+                    }
+                }
+                // Refresh fee estimate
+                let node = self.node.clone();
+                let tx = self.bg_tx.clone();
+                tokio::spawn(async move {
+                    if let Ok(estimate) = node.get_fee_estimate().await {
+                        let _ = tx.send(BgResult::FeeEstimate(estimate));
+                    }
+                });
+            }
             _ => {}
+        }
+    }
+
+    /// Mark a tx as Confirmed if it matches a pending submitted tx.
+    fn confirm_tx_by_id(&mut self, tx_id: Hash) {
+        // Remove from stale tracking
+        self.pending_tx_timestamps.remove(&tx_id);
+
+        if let Some(record) = self.tx_history.iter_mut().find(|r| r.tx_id == tx_id && r.status == TxStatus::Submitted) {
+            record.status = TxStatus::Confirmed;
+            if let Some(cov_id) = self.selected_covenant_id() {
+                if let Err(e) = self.db.update_tx_status(cov_id, tx_id, TxStatusDb::Confirmed) {
+                    self.log(format!("Failed to persist tx confirmation: {e}"));
+                }
+            }
+        }
+    }
+
+    /// Check for stale transactions that haven't been confirmed within 120s.
+    fn check_stale_txs(&mut self) {
+        let stale_threshold = Duration::from_secs(120);
+        let stale: Vec<Hash> = self
+            .pending_tx_timestamps
+            .iter()
+            .filter(|(_, submitted_at)| submitted_at.elapsed() > stale_threshold)
+            .map(|(tx_id, _)| *tx_id)
+            .collect();
+
+        for tx_id in stale {
+            let elapsed = self.pending_tx_timestamps.get(&tx_id).map(|t| t.elapsed().as_secs()).unwrap_or(0);
+            self.pending_tx_timestamps.remove(&tx_id);
+            self.log(format!("Tx {tx_id} stale — not confirmed after {elapsed}s"));
+            // Mark as failed so user can retry
+            if let Some(record) = self.tx_history.iter_mut().find(|r| r.tx_id == tx_id && r.status == TxStatus::Submitted) {
+                record.status = TxStatus::Failed(format!("Stale — not confirmed after {elapsed}s"));
+                if let Some(cov_id) = self.selected_covenant_id() {
+                    let _ =
+                        self.db.update_tx_status(cov_id, tx_id, TxStatusDb::Failed(format!("Stale — not confirmed after {elapsed}s")));
+                }
+            }
         }
     }
 
@@ -1900,14 +2009,28 @@ impl App {
                         let start_hash = prover.last_processed_block;
                         let tx = self.bg_tx.clone();
                         tokio::spawn(async move {
-                            match node.get_virtual_chain_v2(start_hash, Some(1000)).await {
-                                Ok(resp) => {
-                                    let _ = tx.send(BgResult::ChainFetched(resp));
-                                }
-                                Err(e) => {
-                                    let _ = tx.send(BgResult::ChainFetchFailed(e.to_string()));
+                            let mut current_hash = start_hash;
+                            let mut all_responses = Vec::new();
+                            loop {
+                                match node.get_virtual_chain_v2(current_hash, Some(1000)).await {
+                                    Ok(resp) => {
+                                        let added = resp.added_chain_block_hashes.len();
+                                        if added == 0 {
+                                            break; // caught up
+                                        }
+                                        current_hash = *resp.added_chain_block_hashes.last().unwrap();
+                                        all_responses.push(resp);
+                                    }
+                                    Err(e) => {
+                                        let _ = tx.send(BgResult::ChainFetchFailed(e.to_string()));
+                                        return;
+                                    }
                                 }
                             }
+                            for resp in all_responses {
+                                let _ = tx.send(BgResult::ChainFetched(resp));
+                            }
+                            let _ = tx.send(BgResult::ChainSyncComplete);
                         });
                     }
                 }
@@ -1981,16 +2104,26 @@ impl App {
                     let node = self.node.clone();
                     let bg_tx = self.bg_tx.clone();
                     tokio::spawn(async move {
-                        // ── Phase 1: fetch VCC (v1) to get confirmed block hashes ──
-                        let resp = match node.get_virtual_chain_from_block(pruning_point, false, Some(1000)).await {
-                            Ok(r) => r,
-                            Err(e) => {
-                                let _ = bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("VCC fetch failed: {e}") });
-                                return;
+                        // ── Phase 1: fetch VCC (v1) pages until caught up ──
+                        let mut current_hash = pruning_point;
+                        let mut last_added_block = None;
+                        loop {
+                            let resp = match node.get_virtual_chain_from_block(current_hash, false, Some(1000)).await {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    let _ =
+                                        bg_tx.send(BgResult::DeployFailed { covenant_id, error: format!("VCC fetch failed: {e}") });
+                                    return;
+                                }
+                            };
+                            if resp.added_chain_block_hashes.is_empty() {
+                                break;
                             }
-                        };
+                            last_added_block = resp.added_chain_block_hashes.last().copied();
+                            current_hash = last_added_block.unwrap();
+                        }
 
-                        let deploy_starting_block = match resp.added_chain_block_hashes.last().copied() {
+                        let deploy_starting_block = match last_added_block {
                             Some(h) => h,
                             None => {
                                 let _ =
@@ -2124,52 +2257,80 @@ impl App {
         };
 
         let bg_tx = self.bg_tx.clone();
+        let priority_feerate = self.cached_fee_estimate.as_ref().map(|e| e.priority_bucket.feerate).unwrap_or(1.0);
 
         // Nonce grinding is CPU-bound — run on blocking thread pool
         tokio::task::spawn_blocking(move || {
-            let result: Result<Transaction, String> = (|| match action {
-                ActionType::Entry => {
-                    let (signer_pk, signer_sk) = accounts[account_list_index];
-                    let tx = crate::actions::build_entry_tx(signer_pk, covenant_id, amount, &gas_utxo)?;
-                    let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
-                    let spk = pay_to_address_script(&signer_addr);
-                    let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
-                    let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
-                    let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
-                    let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
-                    let signed = sign(signable, kp);
-                    Ok(signed.tx)
-                }
-                ActionType::Transfer => {
-                    if accounts.len() < 2 {
-                        return Err("Need at least 2 accounts".into());
+            let result: Result<Transaction, String> = (|| {
+                // Build a template tx with fee=0 to measure mass, then rebuild with correct fee
+                let template = match action {
+                    ActionType::Entry => {
+                        let (signer_pk, _) = accounts[account_list_index];
+                        crate::actions::build_entry_tx(signer_pk, covenant_id, amount, &gas_utxo, 0)?
                     }
-                    let (signer_pk, signer_sk) = accounts[0];
-                    let (dest_pk, _) = accounts[1];
-                    let dest_addr = Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes());
-                    let tx = crate::actions::build_transfer_tx(signer_pk, dest_pk, amount, &gas_utxo, &dest_addr)?;
-                    let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
-                    let spk = pay_to_address_script(&signer_addr);
-                    let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
-                    let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
-                    let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
-                    let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
-                    let signed = sign(signable, kp);
-                    Ok(signed.tx)
+                    ActionType::Transfer => {
+                        if accounts.len() < 2 {
+                            return Err("Need at least 2 accounts".into());
+                        }
+                        let (signer_pk, _) = accounts[0];
+                        let (dest_pk, _) = accounts[1];
+                        let dest_addr = Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes());
+                        crate::actions::build_transfer_tx(signer_pk, dest_pk, amount, &gas_utxo, &dest_addr, 0)?
+                    }
+                    ActionType::Exit => {
+                        let (signer_pk, _) = accounts[account_list_index];
+                        let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes()));
+                        crate::actions::build_exit_tx(signer_pk, amount, dest_spk.script(), &gas_utxo, 0)?
+                    }
+                };
+
+                let mass_calc = kaspa_consensus_core::mass::MassCalculator::new(1, 10, 1000, 0);
+                let mass = mass_calc.calc_non_contextual_masses(&template).compute_mass;
+                if mass > 100_000 {
+                    return Err(format!("Transaction mass {mass} exceeds max standard mass 100000"));
                 }
-                ActionType::Exit => {
-                    let (signer_pk, signer_sk) = accounts[account_list_index];
-                    let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes()));
-                    let tx = crate::actions::build_exit_tx(signer_pk, amount, dest_spk.script(), &gas_utxo)?;
-                    let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
-                    let spk = pay_to_address_script(&signer_addr);
-                    let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
-                    let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
-                    let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
-                    let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
-                    let signed = sign(signable, kp);
-                    Ok(signed.tx)
-                }
+                let fee = crate::actions::compute_fee(mass, priority_feerate);
+
+                // Rebuild with correct fee
+                let tx = match action {
+                    ActionType::Entry => {
+                        let (signer_pk, signer_sk) = accounts[account_list_index];
+                        let tx = crate::actions::build_entry_tx(signer_pk, covenant_id, amount, &gas_utxo, fee)?;
+                        let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
+                        let spk = pay_to_address_script(&signer_addr);
+                        let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
+                        let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
+                        let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
+                        let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
+                        sign(signable, kp).tx
+                    }
+                    ActionType::Transfer => {
+                        let (signer_pk, signer_sk) = accounts[0];
+                        let (dest_pk, _) = accounts[1];
+                        let dest_addr = Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes());
+                        let tx = crate::actions::build_transfer_tx(signer_pk, dest_pk, amount, &gas_utxo, &dest_addr, fee)?;
+                        let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
+                        let spk = pay_to_address_script(&signer_addr);
+                        let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
+                        let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
+                        let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
+                        let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
+                        sign(signable, kp).tx
+                    }
+                    ActionType::Exit => {
+                        let (signer_pk, signer_sk) = accounts[account_list_index];
+                        let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes()));
+                        let tx = crate::actions::build_exit_tx(signer_pk, amount, dest_spk.script(), &gas_utxo, fee)?;
+                        let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
+                        let spk = pay_to_address_script(&signer_addr);
+                        let utxo_entry = UtxoEntry::new(gas_utxo.amount, spk, 0, false, None);
+                        let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
+                        let sk = secp256k1::SecretKey::from_slice(&signer_sk).unwrap();
+                        let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &sk);
+                        sign(signable, kp).tx
+                    }
+                };
+                Ok(tx)
             })();
 
             match result {
@@ -2202,7 +2363,6 @@ impl App {
                 self.log(format!("Failed to subscribe UTXOs: {e}"));
             }
             BgResult::ChainFetched(response) => {
-                self.chain_sync_active = false;
                 if let Some(prover) = &mut self.prover {
                     let result = prover.process_chain_response(&response);
                     let root_hex = faster_hex::hex_string(bytemuck::bytes_of(&result.new_state_root));
@@ -2229,13 +2389,25 @@ impl App {
                 self.proving_status = format!("Error: {e}");
                 self.log(format!("Failed to fetch chain data: {e}"));
             }
+            BgResult::ChainSyncComplete => {
+                self.chain_sync_active = false;
+            }
+            BgResult::BlockDagInfo { pruning_point, virtual_daa_score } => {
+                self.pruning_point = pruning_point;
+                self.daa_score = virtual_daa_score;
+                self.log(format!("Pruning point: {pruning_point}"));
+            }
+            BgResult::FeeEstimate(estimate) => {
+                self.cached_fee_estimate = Some(estimate);
+            }
             BgResult::TxSubmitted { tx_id } => {
                 self.pending_submit_count = self.pending_submit_count.saturating_sub(1);
                 self.log(format!("Submitted tx: {tx_id}"));
                 self.copy_to_clipboard(&tx_id.to_string());
                 self.log("Tx ID copied to clipboard".into());
 
-                // Status stays Submitted — only chain confirmation would make it Confirmed.
+                // Track submission time for stale detection
+                self.pending_tx_timestamps.insert(tx_id, Instant::now());
 
                 // Apply deferred side-effects
                 if let Some(effect) = self.pending_tx_effects.remove(&tx_id) {
@@ -2260,6 +2432,21 @@ impl App {
                                 } else {
                                     self.log(format!("Covenant {covenant_id} deployed (on-chain ID: {on_chain_covenant_id})"));
                                     self.covenants = self.db.list_covenants();
+
+                                    // Auto-init prover and start chain sync after deploy
+                                    if self.selected_covenant.map(|i| self.covenants[i].0) == Some(covenant_id)
+                                        && self.prover.is_none()
+                                    {
+                                        let initial_state_root = empty_tree_root();
+                                        self.prover = Some(RollupProver::new(
+                                            on_chain_covenant_id,
+                                            initial_state_root,
+                                            deploy_initial_seq,
+                                            deploy_starting_block,
+                                        ));
+                                        self.log("Auto-initialized prover after deploy".into());
+                                        self.pending_ops.push(PendingOp::FetchAndProcessChain);
+                                    }
                                 }
                             }
                         }
@@ -2279,6 +2466,7 @@ impl App {
             }
             BgResult::TxSubmitFailed { tx_id, error } => {
                 self.pending_submit_count = self.pending_submit_count.saturating_sub(1);
+                self.pending_tx_timestamps.remove(&tx_id);
                 let short = if error.len() > 60 { format!("{}...", &error[..60]) } else { error.clone() };
                 self.flash(format!("Tx failed: {short}"), Color::Red);
                 self.log(format!("Failed to submit tx {tx_id}: {error}"));
@@ -2542,6 +2730,9 @@ impl App {
     /// If `tx_id` is already in history with Submitted status, upgrade it to Confirmed and
     /// persist. Otherwise insert a new Confirmed record (tx seen from another instance).
     fn confirm_or_record(&mut self, covenant_id: CovenantId, tx_id: Hash, label: &str, amount: u64) {
+        // Remove from stale tracking
+        self.pending_tx_timestamps.remove(&tx_id);
+
         if let Some(existing) = self.tx_history.iter_mut().find(|r| r.tx_id == tx_id) {
             if existing.status == TxStatus::Submitted {
                 existing.status = TxStatus::Confirmed;

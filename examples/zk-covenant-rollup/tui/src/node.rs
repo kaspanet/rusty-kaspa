@@ -137,6 +137,16 @@ impl KaspaNode {
         Ok(self.client().get_block_dag_info().await?)
     }
 
+    /// Get fee estimate from the node.
+    pub async fn get_fee_estimate(&self) -> Result<kaspa_rpc_core::RpcFeeEstimate> {
+        Ok(self.client().get_fee_estimate().await?)
+    }
+
+    /// Get the current sink (tip) block hash.
+    pub async fn get_sink(&self) -> Result<RpcHash> {
+        Ok(self.client().get_sink().await?.sink)
+    }
+
     // ── Internal ──
 
     async fn register_notification_listeners(&self) -> Result<()> {
@@ -149,6 +159,12 @@ impl KaspaNode {
 
         // Subscribe to virtual DAA score so we can track chain tip
         self.client().rpc_api().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+
+        // Subscribe to virtual chain changes for chain sync signaling and tx confirmation
+        self.client()
+            .rpc_api()
+            .start_notify(listener_id, Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: true }))
+            .await?;
 
         Ok(())
     }
