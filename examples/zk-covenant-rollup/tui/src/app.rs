@@ -1477,7 +1477,7 @@ impl App {
             }
         };
 
-        let (covenant_id, ref record) = self.covenants[cov_idx];
+        let (covenant_id, record) = self.covenants[cov_idx].clone();
         let covenant_utxo = match record.covenant_utxo {
             Some(utxo) => utxo,
             None => {
@@ -1645,11 +1645,49 @@ impl App {
         let tx_id = tx.id();
 
         // Sign only input[1] (collateral) — input[0] already has ZK sig_script
-        let covenant_entry = UtxoEntry::new(covenant_value, pay_to_script_hash_script(&input_redeem), 0, true, None);
+        let covenant_entry =
+            UtxoEntry::new(covenant_value, pay_to_script_hash_script(&input_redeem), 0, true, Some(covenant_id_hash));
         let collateral_entry = UtxoEntry::new(collateral.amount, deployer_spk, 0, false, None);
-        let signable = SignableTransaction::with_entries(tx.clone(), vec![covenant_entry, collateral_entry]);
+        let signable = SignableTransaction::with_entries(tx.clone(), vec![covenant_entry.clone(), collateral_entry.clone()]);
         let collateral_sig = sign_input(&signable.as_verifiable(), 1, &deployer_sk.secret_bytes(), SIG_HASH_ALL);
         tx.inputs[1].signature_script = collateral_sig;
+
+        // ── Local script verification before submitting ──
+        {
+            let new_seq_as_hash = Hash::from_slice(bytemuck::bytes_of(&new_seq_commitment));
+            let mut map = std::collections::HashMap::new();
+            map.insert(proof.block_prove_to, new_seq_as_hash);
+            let accessor = zk_covenant_rollup_host::mock_chain::MockSeqCommitAccessor(map);
+
+            // Log prover state for debugging
+            if let Some(prover) = &self.prover {
+                self.log(format!(
+                    "Prover state: prev_proved_block={} prev_proved_seq={} last_processed_block={} last_processed_seq={} current_state={}",
+                    Hash::from_bytes(bytemuck::cast(prover.prev_proved_state_root)),
+                    prover.prev_proved_seq_commitment,
+                    prover.last_processed_block,
+                    prover.seq_commitment,
+                    Hash::from_bytes(bytemuck::cast(prover.state_root)),
+                ));
+            }
+            self.log(format!(
+                "Proof data: block_prove_to={} prev_state={} prev_seq={} new_state={} new_seq={}",
+                proof.block_prove_to,
+                Hash::from_bytes(bytemuck::cast(proof.public_input.prev_state_hash)),
+                Hash::from_bytes(bytemuck::cast(proof.public_input.prev_seq_commitment)),
+                Hash::from_bytes(bytemuck::cast(new_state_hash)),
+                Hash::from_bytes(bytemuck::cast(new_seq_commitment)),
+            ));
+
+            let utxos = vec![covenant_entry.clone(), collateral_entry.clone()];
+            match zk_covenant_rollup_host::tx::try_verify_tx_input(&tx, &utxos, 0, &accessor) {
+                Ok(()) => self.log("Local script verification: PASSED".into()),
+                Err(e) => {
+                    self.log(format!("Local script verification FAILED: {e}"));
+                    return;
+                }
+            }
+        }
 
         self.utxo_tracker.mark_spent(collateral.tx_id, collateral.index);
 
