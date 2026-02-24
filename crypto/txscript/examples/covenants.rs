@@ -30,7 +30,7 @@ fn counter_example() -> ScriptBuilderResult<()> {
     // Shared engine state
     let sig_cache = Cache::new(10_000);
     let reused_values = SigHashReusedValuesUnsync::new();
-    let flags = EngineFlags { covenants_enabled: true };
+    let flags = EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 };
 
     // Create the initial UTXO with counter = 0
     let mut state = CovenantState::new(0, &spk);

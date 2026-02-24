@@ -1,6 +1,6 @@
 use crate::{
     config::params::Params,
-    constants::{TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
+    constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     subnets::SUBNETWORK_ID_SIZE,
     tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
 };
@@ -307,6 +307,24 @@ impl MassCalculator {
             return NonContextualMasses::new(0, 0);
         }
 
+        NonContextualMasses::new(self.calc_compute_mass(tx), self.calc_transient_mass(tx))
+    }
+
+    fn calc_compute_mass(&self, tx: &Transaction) -> u64 {
+        self.calc_compute_mass_excluding_sigops(tx).saturating_add(self.calc_sigops_compute_mass(tx))
+    }
+
+    fn calc_transient_mass(&self, tx: &Transaction) -> u64 {
+        let size = transaction_estimated_serialized_size(tx);
+        size * TRANSIENT_BYTE_TO_MASS_FACTOR
+    }
+
+    /// Calculates the compute mass contribution of all non-sigop transaction fields.
+    pub fn calc_compute_mass_excluding_sigops(&self, tx: &Transaction) -> u64 {
+        if tx.is_coinbase() {
+            return 0;
+        }
+
         let size = transaction_estimated_serialized_size(tx);
         let compute_mass_for_size = size * self.mass_per_tx_byte;
         let total_script_public_key_size: u64 = tx
@@ -316,13 +334,17 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let total_sigops: u64 = tx.inputs.iter().map(|input| decode_sig_op_count(input.sig_op_count, tx.version) as u64).sum();
-        let total_sigops_mass = total_sigops * self.mass_per_sig_op;
+        compute_mass_for_size.saturating_add(total_script_public_key_mass)
+    }
 
-        let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass;
-        let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
+    /// Calculates the compute mass contribution of sigops only.
+    pub fn calc_sigops_compute_mass(&self, tx: &Transaction) -> u64 {
+        if tx.is_coinbase() {
+            return 0;
+        }
 
-        NonContextualMasses::new(compute_mass, transient_mass)
+        let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
+        total_sigops.saturating_mul(self.mass_per_sig_op)
     }
 
     /// Calculates the contextual masses for this populated transaction.
@@ -339,60 +361,6 @@ impl MassCalculator {
             self.storage_mass_parameter,
         )
         .map(ContextualMasses::new)
-    }
-}
-
-/// Decodes a compressed signature operation count.
-///
-/// The encoding scheme:
-/// - Values 0-100: Direct mapping (no compression)
-/// - Values 101-255: Each value represents increments of 10
-///   - Formula: actual_sigops = 100 + (encoded - 100) * 10
-///   - Example: 104 → 140, 164 → 740, 255 → 1650
-///
-/// # Arguments
-/// * `encoded` - The compressed u8 value
-///
-/// # Returns
-/// The actual (decoded) signature operation count as u16
-pub fn decode_sig_op_count(encoded: u8, tx_version: u16) -> u16 {
-    match tx_version {
-        TX_VERSION => encoded as u16,
-        _ => {
-            if encoded <= 100 {
-                encoded as u16
-            } else {
-                100 + ((encoded as u16 - 100) * 10)
-            }
-        }
-    }
-}
-
-/// Encodes a signature operation count into its compressed representation.
-///
-/// The encoding scheme mirrors `decode_sig_op_count`:
-/// - Values 0-100: Direct mapping (no compression)
-/// - Values 101-1650: Rounded up to the nearest 10 and encoded into 101-255
-/// - Values above 1650: Saturate to 255
-///
-/// # Arguments
-/// * `decoded` - The actual (decoded) signature operation count
-///
-/// # Returns
-/// The compressed u8 value
-pub fn encode_sig_op_count(decoded: u16, tx_version: u16) -> u8 {
-    match tx_version {
-        TX_VERSION => decoded.min(u8::MAX as u16) as u8,
-        _ => {
-            if decoded <= 100 {
-                decoded as u8
-            } else {
-                let adjusted = decoded.saturating_sub(100);
-                let buckets = adjusted.div_ceil(10);
-                let encoded = 100u16 + buckets;
-                encoded.min(u8::MAX as u16) as u8
-            }
-        }
     }
 }
 
@@ -559,29 +527,6 @@ mod tests {
         assert!(
             utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE + 1) as usize]), false) == 2
         );
-    }
-
-    #[test]
-    fn test_sig_op_count_encode_decode() {
-        let other_version = TX_VERSION.saturating_add(1);
-        let cases = [
-            (0u16, 0u8, 0u16),
-            (1u16, 1u8, 1u16),
-            (100u16, 100u8, 100u16),
-            (101u16, 101u8, 110u16),
-            (109u16, 101u8, 110u16),
-            (110u16, 101u8, 110u16),
-            (111u16, 102u8, 120u16),
-            (1650u16, 255u8, 1650u16),
-            (1651u16, 255u8, 1650u16),
-        ];
-
-        for (decoded, expected_encoded, expected_decoded) in cases {
-            let encoded = encode_sig_op_count(decoded, other_version);
-            assert_eq!(encoded, expected_encoded, "encode mismatch for {decoded}");
-            let decoded_roundtrip = decode_sig_op_count(encoded, other_version);
-            assert_eq!(decoded_roundtrip, expected_decoded, "decode mismatch for {decoded}");
-        }
     }
 
     #[derive(Debug)]

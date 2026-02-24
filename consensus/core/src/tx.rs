@@ -10,6 +10,7 @@ mod script_public_key;
 
 use crate::mass::{ContextualMasses, Mass, MassCofactors, NonContextualMasses};
 use crate::{
+    constants::TX_VERSION_POST_COV_HF,
     hashing,
     subnets::{self, SubnetworkId},
 };
@@ -229,6 +230,12 @@ pub struct Transaction {
     #[serde(default)]
     mass: TransactionMass,
 
+    /// Holds the compute-mass commitment value.
+    ///
+    /// This field is not part of the transaction ID commitment, but for version >= 1 it is
+    /// committed by `tx::hash`.
+    pub compute_mass: u64,
+
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
     #[serde(with = "serde_bytes_fixed_ref")]
@@ -275,7 +282,18 @@ impl Transaction {
         gas: u64,
         payload: Vec<u8>,
     ) -> Self {
-        Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: Default::default(), id: Default::default() }
+        Self {
+            version,
+            inputs,
+            outputs,
+            lock_time,
+            subnetwork_id,
+            gas,
+            payload,
+            mass: Default::default(),
+            compute_mass: 0,
+            id: Default::default(),
+        }
     }
 }
 
@@ -307,6 +325,17 @@ impl Transaction {
     /// Read the storage mass commitment
     pub fn mass(&self) -> u64 {
         self.mass.0.load(SeqCst)
+    }
+
+    /// Set the transient compute mass field of the passed transaction.
+    pub fn with_compute_mass(mut self, compute_mass: u64) -> Self {
+        self.compute_mass = compute_mass;
+        self
+    }
+
+    /// Whether this tx version supports an explicit compute mass field in validation paths.
+    pub fn has_explicit_compute_mass(&self) -> bool {
+        self.version >= TX_VERSION_POST_COV_HF
     }
 
     /// Set the storage mass commitment of the passed transaction

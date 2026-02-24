@@ -69,16 +69,14 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
     };
 
     /*
-       Design principles (mostly related to the new mass commitment field; see KIP-0009):
-           1. The new mass field should not modify tx::id (since it is essentially a commitment by the miner re block space usage
+       Design principles (mostly related to mass commitments):
+           1. The mass fields should not modify tx::id (since it is essentially a commitment by the miner re block space usage
               so there is no need to modify the id definition which will require wide-spread changes in ecosystem software).
            2. Coinbase tx hash should ideally remain unchanged
-
        Solution:
            1. Hash the mass field only for tx::hash
            2. Hash the mass field only if mass > 0
            3. Require in consensus that coinbase mass == 0
-
        This way we have:
            - Unique commitment for tx::hash per any possible mass value (with only zero being a no-op)
            - tx::id remains unmodified
@@ -94,6 +92,7 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
         } else {
             // In order make the encoding unambiguous and invertible in case of future additional fields, for version >= 1 we always include the mass field
             hasher.update(mass.to_le_bytes());
+            hasher.update(tx.compute_mass.to_le_bytes());
         }
     }
 }
@@ -142,6 +141,7 @@ impl HasherBase for PreimageHasher {
 }
 
 /// Serializes the transaction for v0 TxID preimage (excluding signature scripts).
+// TODO: Remove this function since the covenant ID scheme makes it redundant.
 pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
     assert_eq!(tx.version, 0);
     let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
@@ -292,28 +292,52 @@ mod tests {
             expected_hash: "ced89bbf642cda42d29d9518d16e35cbbf85d10e1ab106b7dc2e0a821308ac91",
         });
 
-        // // Test #10, same as 9 with different version and checks it affects id and hash
-        // tests.push(Test {
-        //     tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
-        //     expected_id: "9ec65c816b495e7da8f88c6d261af00b7bca45e398a4373f92eb665e7d7cf79d",
-        //     expected_hash: "6c8fed2799b478667914748b9c76da576fc18b44ce87c6ebc01c01705f13f3e3",
-        // });
+        // Test #10, same as 9 with different version and checks it affects id and hash
+        tests.push(Test {
+            tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
+            expected_id: "a08a500b21be3e692c080b14e399fcfa2cfa01b25c08f2f8e7414d1c116e8d18",
+            expected_hash: "65c7c7c4c2b095afdee09c1ca2e7b4bc20781705eab28abe268e56327234fb5e",
+        });
+
+        // Version >= 1: tx::id excludes mass commitments while tx::hash commits to both mass and compute_mass
+        let mut tx_v1_a = Transaction::new(1, vec![], vec![], 0, subnets::SUBNETWORK_ID_NATIVE, 0, vec![]);
+        tx_v1_a.set_mass(0);
+        tx_v1_a.compute_mass = 111;
+
+        let mut tx_v1_b = tx_v1_a.clone();
+        tx_v1_b.compute_mass = 222;
+
+        // Test #11
+        tests.push(Test {
+            tx: tx_v1_a,
+            expected_id: "37c4c948013e0d5b9e80202038a9eafc3288dfe54a4a92c3c4c7c226b990550b",
+            expected_hash: "767cb6accd7fde1d702ca79204d2bdc6a6587efc5fdec88f2fc2ae045ca433ea",
+        });
+
+        // Test #12
+        tests.push(Test {
+            tx: tx_v1_b,
+            expected_id: "37c4c948013e0d5b9e80202038a9eafc3288dfe54a4a92c3c4c7c226b990550b",
+            expected_hash: "8971e74f249d26daacf93cc072350fc65ac289a347922c56c663fc3437e07dab",
+        });
 
         for (i, test) in tests.iter().enumerate() {
             assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
             assert_eq!(hash(&test.tx), Hash::from_str(test.expected_hash).unwrap(), "transaction hash failed for test {}", i + 1);
 
-            let preimage = transaction_v0_id_preimage(&test.tx);
-            let mut hasher = kaspa_hashes::TransactionID::new();
-            hasher.update(&preimage);
-            let preimage_hash = hasher.finalize();
-            assert_eq!(preimage_hash, test.tx.id(), "transaction id preimage failed for test {}", i + 1);
+            if test.tx.version == 0 {
+                let preimage = transaction_v0_id_preimage(&test.tx);
+                let mut hasher = kaspa_hashes::TransactionID::new();
+                hasher.update(&preimage);
+                let preimage_hash = hasher.finalize();
+                assert_eq!(preimage_hash, test.tx.id(), "transaction id preimage failed for test {}", i + 1);
+            }
         }
 
         // Avoid compiler warnings on the last clone
         drop(inputs);
         drop(outputs);
 
-        // TODO(pre-covpp) add tests for v1 hashes
+        // TODO(pre-covpp) add more tests for v1 hashes
     }
 }

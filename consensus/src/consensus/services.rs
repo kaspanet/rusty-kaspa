@@ -147,6 +147,7 @@ impl ConsensusServices {
             tx_script_cache_counters,
             mass_calculator.clone(),
             params.covenants_activation,
+            params.mass_per_sig_op,
         );
 
         let pruning_point_manager = PruningPointManager::new(

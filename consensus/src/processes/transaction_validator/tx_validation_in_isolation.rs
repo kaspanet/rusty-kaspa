@@ -159,9 +159,21 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
-    for (i, output) in tx.outputs.iter().enumerate() {
-        if tx.version < 1 && output.covenant.is_some() {
-            return Err(TxRuleError::CovenantBindingInPreCovTxVersion(i));
+    if tx.version >= 1 {
+        for (i, input) in tx.inputs.iter().enumerate() {
+            if input.sig_op_count != 0 {
+                return Err(TxRuleError::NonZeroSigOpCountInV1(i, input.sig_op_count));
+            }
+        }
+    } else {
+        if tx.compute_mass != 0 {
+            return Err(TxRuleError::NonZeroComputeMassInV0(tx.compute_mass));
+        }
+
+        for (i, output) in tx.outputs.iter().enumerate() {
+            if output.covenant.is_some() {
+                return Err(TxRuleError::CovenantBindingInPreCovTxVersion(i));
+            }
         }
     }
 
@@ -321,6 +333,16 @@ mod tests {
         let mut tx = valid_tx.clone();
         tx.payload = vec![0];
         assert_match!(tv.validate_tx_in_isolation(&tx), Ok(()));
+
+        let mut tx = valid_tx.clone();
+        tx.version = 1;
+        tx.inputs[0].sig_op_count = 1;
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonZeroSigOpCountInV1(_, _)));
+
+        let mut tx = valid_tx.clone();
+        tx.version = 0;
+        tx.compute_mass = 1;
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonZeroComputeMassInV0(_)));
 
         let mut tx = valid_tx.clone();
         tx.version = TX_VERSION_POST_COV_HF + 1;

@@ -4,12 +4,15 @@ use kaspa_consensus_core::{
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_txscript::{
-    EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine, covenants::CovenantsContext,
+    COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR, EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine,
+    covenants::CovenantsContext,
 };
 use kaspa_txscript_errors::TxScriptError;
 use rayon::ThreadPool;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::marker::Sync;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 use super::{
     TransactionValidator,
@@ -167,8 +170,21 @@ impl TransactionValidator {
         seq_commit_accessor: Option<&dyn SeqCommitAccessor>,
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
-        let flags = EngineFlags { covenants_enabled: self.covenants_activation.is_active(block_daa_score) };
-        check_scripts(tx, ctx, flags)
+        let covenants_enabled = self.covenants_activation.is_active(block_daa_score);
+        let flags: EngineFlags = EngineFlags { covenants_enabled, mass_per_sig_op: self.mass_per_sig_op };
+
+        let remaining_compute_mass_units = if tx.tx().has_explicit_compute_mass() {
+            let tx_compute_mass = tx.tx().compute_mass;
+            let current_compute_mass = self.mass_calculator.calc_compute_mass_excluding_sigops(tx.tx());
+            let remaining_compute_mass = tx_compute_mass
+                .checked_sub(current_compute_mass)
+                .ok_or(TxRuleError::InsufficientComputeMassCommitment(tx_compute_mass, current_compute_mass))?;
+            Some(Arc::new(AtomicU64::new(remaining_compute_mass.saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR))))
+        } else {
+            None
+        };
+
+        check_scripts(tx, ctx, flags, remaining_compute_mass_units)
     }
 
     fn check_covenant_info(&self, tx: &impl VerifiableTransaction, block_daa_score: u64) -> TxResult<CovenantsContext> {
@@ -180,27 +196,60 @@ impl TransactionValidator {
     }
 }
 
-pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_>, flags: EngineFlags) -> TxResult<()> {
+pub fn check_scripts(
+    tx: &(impl VerifiableTransaction + Sync),
+    ctx: EngineCtx<'_>,
+    flags: EngineFlags,
+    remaining_compute_mass_units: Option<Arc<AtomicU64>>,
+) -> TxResult<()> {
     if tx.inputs().len() > CHECK_SCRIPTS_PARALLELISM_THRESHOLD {
         let reused_values = SigHashReusedValuesSync::new();
-        check_scripts_par_iter(tx, ctx.with_reused(&reused_values), flags)
+        check_scripts_par_iter(tx, ctx.with_reused(&reused_values), flags, remaining_compute_mass_units)
     } else {
         let reused_values = SigHashReusedValuesUnsync::new();
-        check_scripts_sequential(tx, ctx.with_reused(&reused_values), flags)
+        check_scripts_sequential(tx, ctx.with_reused(&reused_values), flags, remaining_compute_mass_units)
     }
 }
 
-pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxUnsync<'_>, flags: EngineFlags) -> TxResult<()> {
+pub fn check_scripts_sequential(
+    tx: &impl VerifiableTransaction,
+    ctx: EngineCtxUnsync<'_>,
+    flags: EngineFlags,
+    remaining_compute_mass_units: Option<Arc<AtomicU64>>,
+) -> TxResult<()> {
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        TxScriptEngine::from_transaction_input(tx, input, i, entry, ctx, flags).execute().map_err(|err| map_script_err(err, input))?;
+        let mut vm = TxScriptEngine::from_transaction_input_with_remaining_compute_mass_units(
+            tx,
+            input,
+            i,
+            entry,
+            ctx,
+            flags,
+            remaining_compute_mass_units.clone(),
+        );
+        vm.execute().map_err(|err| map_script_err(err, input))?;
     }
     Ok(())
 }
 
-pub fn check_scripts_par_iter(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtxSync<'_>, flags: EngineFlags) -> TxResult<()> {
+pub fn check_scripts_par_iter(
+    tx: &(impl VerifiableTransaction + Sync),
+    ctx: EngineCtxSync<'_>,
+    flags: EngineFlags,
+    remaining_compute_mass_units: Option<Arc<AtomicU64>>,
+) -> TxResult<()> {
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        TxScriptEngine::from_transaction_input(tx, input, idx, utxo, ctx, flags).execute().map_err(|err| map_script_err(err, input))
+        let mut vm = TxScriptEngine::from_transaction_input_with_remaining_compute_mass_units(
+            tx,
+            input,
+            idx,
+            utxo,
+            ctx,
+            flags,
+            remaining_compute_mass_units.clone(),
+        );
+        vm.execute().map_err(|err| map_script_err(err, input))
     })
 }
 
@@ -208,9 +257,10 @@ pub fn check_scripts_par_iter_pool(
     tx: &(impl VerifiableTransaction + Sync),
     ctx: EngineCtxSync<'_>,
     flags: EngineFlags,
+    remaining_compute_mass_units: Option<Arc<AtomicU64>>,
     pool: &ThreadPool,
 ) -> TxResult<()> {
-    pool.install(|| check_scripts_par_iter(tx, ctx, flags))
+    pool.install(|| check_scripts_par_iter(tx, ctx, flags, remaining_compute_mass_units))
 }
 
 fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {
@@ -220,17 +270,20 @@ fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRule
 #[cfg(test)]
 mod tests {
     use super::super::errors::TxRuleError;
-    use super::CHECK_SCRIPTS_PARALLELISM_THRESHOLD;
+    use super::{CHECK_SCRIPTS_PARALLELISM_THRESHOLD, check_scripts};
     use core::str::FromStr;
     use itertools::Itertools;
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
     use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+    use kaspa_txscript::{EngineCtx, EngineFlags};
     use kaspa_txscript_errors::TxScriptError;
     use secp256k1::Secp256k1;
     use smallvec::SmallVec;
     use std::iter::once;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
 
@@ -241,6 +294,79 @@ mod tests {
         tx2.inputs.push(tx2.inputs.last().unwrap().clone());
         entries2.push(entries2.last().unwrap().clone());
         (tx2, entries2)
+    }
+
+    fn build_parallel_push_budget_test_tx(num_inputs: usize) -> (Transaction, Vec<UtxoEntry>) {
+        assert!(num_inputs > CHECK_SCRIPTS_PARALLELISM_THRESHOLD);
+
+        let script_public_key = ScriptPublicKey::new(0, SmallVec::from_slice(&[0x03, 0x01, 0x02, 0x03]));
+        let outputs = vec![TransactionOutput {
+            value: 1,
+            script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&[0x51])),
+            covenant: None,
+        }];
+
+        let inputs = (0..num_inputs)
+            .map(|i| TransactionInput {
+                previous_outpoint: TransactionOutpoint {
+                    transaction_id: TransactionId::from_bytes([(i as u8).wrapping_add(1); 32]),
+                    index: 0,
+                },
+                signature_script: vec![],
+                sequence: 0,
+                sig_op_count: 0,
+            })
+            .collect_vec();
+
+        let entries = (0..num_inputs)
+            .map(|_| UtxoEntry {
+                amount: 1,
+                script_public_key: script_public_key.clone(),
+                block_daa_score: 0,
+                is_coinbase: false,
+                covenant_id: None,
+            })
+            .collect_vec();
+
+        (Transaction::new(1, inputs, outputs, 0, SubnetworkId::default(), 0, vec![]), entries)
+    }
+
+    #[test]
+    fn check_scripts_parallel_shared_budget_behavior() {
+        let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
+        let flags = EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 };
+
+        // (a) One input alone is over budget: each input consumes 3 pushed-bytes units,
+        // so with budget=2 the very first input must fail.
+        let (tx, entries) = build_parallel_push_budget_test_tx(2);
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let remaining = Arc::new(AtomicU64::new(2));
+        let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags, Some(remaining.clone()));
+        assert_eq!(
+            result,
+            Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededComputeMassScriptUnitsLimit { used_units: 3, allowed_units: 2 }))
+        );
+        assert_eq!(remaining.load(Ordering::SeqCst), 2);
+
+        // (b) A few inputs together are over budget: 3 inputs need total budget 9,
+        // so budget=8 allows some progress but must fail once the shared remaining budget is exhausted.
+        let (tx, entries) = build_parallel_push_budget_test_tx(3);
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let remaining = Arc::new(AtomicU64::new(8));
+        let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags, Some(remaining.clone()));
+        assert_eq!(
+            result,
+            Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededComputeMassScriptUnitsLimit { used_units: 3, allowed_units: 2 }))
+        );
+        assert_eq!(remaining.load(Ordering::SeqCst), 2);
+
+        // (c) Everything is ok: 3 inputs with budget=9 should pass and consume the budget exactly.
+        let (tx, entries) = build_parallel_push_budget_test_tx(3);
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let remaining = Arc::new(AtomicU64::new(9));
+        let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags, Some(remaining.clone()));
+        assert!(result.is_ok());
+        assert_eq!(remaining.load(Ordering::SeqCst), 0);
     }
 
     #[test]

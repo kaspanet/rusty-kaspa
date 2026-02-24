@@ -829,7 +829,7 @@ opcode_list! {
             let tag = parse_tag(&mut vm.dstack)?;
 
             // Consume sigop cost
-            vm.runtime_sig_op_counter.consume_sig_ops(tag.sigop_cost())?;
+            vm.consume_sig_op_cost(tag.sigop_cost())?;
 
             // Verify the ZK proof
             verify_zk(tag, &mut vm.dstack)?;
@@ -4380,7 +4380,7 @@ mod test {
                 idx,
                 &populated_tx.entries[idx],
                 ctx,
-                EngineFlags { covenants_enabled: true },
+                EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
             );
             vm.execute()
         }
@@ -4776,7 +4776,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
                 );
 
                 vm.execute().unwrap_or_else(|_| panic!("input {} daa score", input_idx));
@@ -4809,7 +4809,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
                 );
 
                 let err = vm.execute().expect_err("should fail with negative index");
@@ -4854,7 +4854,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
                 );
 
                 let err = vm.execute().expect_err("should fail with out of bounds index");
@@ -4906,7 +4906,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
                 );
 
                 vm.execute().expect("compare daa scores");
@@ -4950,7 +4950,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     ctx,
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
                 );
                 assert_eq!(vm.execute(), Ok(()), "Should pass with DAA score 60000 >= 50000");
             }
@@ -4973,7 +4973,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     ctx,
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
                 );
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse), "Should fail with DAA score 40000 < 50000");
             }
