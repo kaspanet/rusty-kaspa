@@ -9,13 +9,13 @@ use workflow_wasm::prelude::*;
 
 /// Computes the covenant ID from the genesis outpoint and its authorized outputs.
 ///
-/// `genesis_outpoint` may be a [`TransactionOutpoint`] instance or a 
+/// `genesis_outpoint` may be a [`TransactionOutpoint`] instance or a
 /// compatible plain object: `{ transactionId: HexString, index: number }`.
 ///
 /// `auth_outputs` is a JS array of objects, each with:
 /// - `index: number` — position of this output in the transaction's output array
 /// - `output: TransactionOutput | ITransactionOutput` — the authorized output
-/// 
+///
 /// @category Consensus
 #[wasm_bindgen(js_name = covenantId)]
 pub fn covenant_id_js(genesis_outpoint: &TransactionOutpointT, auth_outputs: JsValue) -> Result<Hash> {
@@ -24,8 +24,7 @@ pub fn covenant_id_js(genesis_outpoint: &TransactionOutpointT, auth_outputs: JsV
     let outputs: Vec<(u32, cctx::TransactionOutput)> = Array::from(&auth_outputs)
         .iter()
         .map(|item| {
-            let obj = js_sys::Object::try_from(&item)
-                .ok_or_else(|| Error::custom("each auth_output must be an object"))?;
+            let obj = js_sys::Object::try_from(&item).ok_or_else(|| Error::custom("each auth_output must be an object"))?;
             let index = obj.get_u32("index")?;
             let output = TransactionOutput::try_owned_from(obj.get_value("output")?)?;
             Ok((index, cctx::TransactionOutput::from(&output)))
