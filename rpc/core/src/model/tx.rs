@@ -363,6 +363,7 @@ pub struct RpcTransaction {
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
     pub mass: u64,
+    pub compute_mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
 }
 
@@ -375,6 +376,7 @@ impl std::fmt::Debug for RpcTransaction {
             .field("gas", &self.gas)
             .field("payload", &self.payload.to_hex())
             .field("mass", &self.mass)
+            .field("compute_mass", &self.compute_mass)
             .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
@@ -393,6 +395,7 @@ impl Serializer for RpcTransaction {
         store!(u64, &self.gas, writer)?;
         store!(Vec<u8>, &self.payload, writer)?;
         store!(u64, &self.mass, writer)?;
+        store!(u64, &self.compute_mass, writer)?;
         serialize!(Option<RpcTransactionVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -410,9 +413,10 @@ impl Deserializer for RpcTransaction {
         let gas = load!(u64, reader)?;
         let payload = load!(Vec<u8>, reader)?;
         let mass = load!(u64, reader)?;
+        let compute_mass = load!(u64, reader)?;
         let verbose_data = deserialize!(Option<RpcTransactionVerboseData>, reader)?;
 
-        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data })
+        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, compute_mass, verbose_data })
     }
 }
 

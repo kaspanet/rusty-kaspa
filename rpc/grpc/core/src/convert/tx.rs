@@ -17,6 +17,7 @@ from!(item: &kaspa_rpc_core::RpcTransaction, protowire::RpcTransaction, {
         gas: item.gas,
         payload: item.payload.to_rpc_hex(),
         mass: item.mass,
+        compute_mass: item.compute_mass,
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
@@ -31,6 +32,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalTransaction, protowire::RpcTransaction, 
         gas: item.gas.unwrap_or_default(),
         payload: item.payload.as_ref().map(|x| x.to_rpc_hex()).unwrap_or_default(),
         mass: item.mass.unwrap_or_default(),
+        compute_mass: item.compute_mass.unwrap_or_default(),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
@@ -219,6 +221,7 @@ try_from!(item: &protowire::RpcTransaction, kaspa_rpc_core::RpcTransaction, {
         gas: item.gas,
         payload: Vec::from_rpc_hex(&item.payload)?,
         mass: item.mass,
+        compute_mass: item.compute_mass,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcTransactionVerboseData::try_from).transpose()?,
     }
 });
@@ -242,6 +245,7 @@ try_from!(item: &protowire::RpcTransaction, kaspa_rpc_core::RpcOptionalTransacti
         gas: Some(item.gas),
         payload: Some(Vec::from_rpc_hex(&item.payload)?),
         mass: Some(item.mass),
+        compute_mass: Some(item.compute_mass),
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionVerboseData::try_from).transpose()?,
     }
 });
@@ -445,3 +449,33 @@ try_from!(item: &protowire::RpcUtxosByAddressesEntry, kaspa_rpc_core::RpcUtxosBy
             .try_into()?,
     }
 });
+
+#[cfg(test)]
+mod tests {
+    use crate::protowire;
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use kaspa_rpc_core::RpcTransaction;
+
+    #[test]
+    fn test_rpc_transaction_compute_mass_roundtrip() {
+        let tx = RpcTransaction {
+            version: 1,
+            inputs: vec![],
+            outputs: vec![],
+            lock_time: 1,
+            subnetwork_id: SubnetworkId::from_bytes([4; 20]),
+            gas: 0,
+            payload: vec![0xaa, 0xbb],
+            mass: 111,
+            compute_mass: 222,
+            verbose_data: None,
+        };
+
+        let wire: protowire::RpcTransaction = (&tx).into();
+        assert_eq!(wire.compute_mass, 222);
+
+        let decoded = RpcTransaction::try_from(&wire).unwrap();
+        assert_eq!(decoded.compute_mass, 222);
+        assert_eq!(decoded.mass, 111);
+    }
+}

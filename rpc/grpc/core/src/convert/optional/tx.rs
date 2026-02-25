@@ -18,6 +18,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalTransaction, protowire::RpcOptionalTrans
         gas: item.gas,
         payload: item.payload.as_ref().map(|x| x.to_rpc_hex()),
         mass: item.mass,
+        compute_mass: item.compute_mass,
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
@@ -107,6 +108,7 @@ try_from!(item: &protowire::RpcOptionalTransaction, kaspa_rpc_core::RpcOptionalT
         gas: item.gas,
         payload: item.payload.as_ref().map(|x| Vec::from_rpc_hex(x)).transpose()?,
         mass: item.mass,
+        compute_mass: item.compute_mass,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionVerboseData::try_from).transpose()?,
     }
 });
@@ -185,3 +187,33 @@ try_from!(item: &protowire::RpcOptionalUtxoEntryVerboseData, kaspa_rpc_core::Rpc
         script_public_key_address: item.script_public_key_address.as_ref().map(|x| RpcAddress::try_from(x.as_str())).transpose()?,
     }
 });
+
+#[cfg(test)]
+mod tests {
+    use crate::protowire;
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use kaspa_rpc_core::RpcOptionalTransaction;
+
+    #[test]
+    fn test_rpc_optional_transaction_compute_mass_roundtrip() {
+        let tx = RpcOptionalTransaction {
+            version: Some(1),
+            inputs: vec![],
+            outputs: vec![],
+            lock_time: Some(1),
+            subnetwork_id: Some(SubnetworkId::from_bytes([5; 20])),
+            gas: Some(0),
+            payload: Some(vec![0x01, 0x02]),
+            mass: Some(333),
+            compute_mass: Some(444),
+            verbose_data: None,
+        };
+
+        let wire: protowire::RpcOptionalTransaction = (&tx).into();
+        assert_eq!(wire.compute_mass, Some(444));
+
+        let decoded = RpcOptionalTransaction::try_from(&wire).unwrap();
+        assert_eq!(decoded.compute_mass, Some(444));
+        assert_eq!(decoded.mass, Some(333));
+    }
+}

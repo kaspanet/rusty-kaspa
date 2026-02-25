@@ -112,6 +112,7 @@ cfg_if::cfg_if! {
                     gas: inner.gas,
                     payload: inner.payload.clone(),
                     mass: inner.mass,
+                    compute_mass: 0,
                     verbose_data: None,
                 }
             }
@@ -161,6 +162,7 @@ cfg_if::cfg_if! {
                     gas: Some(inner.gas),
                     payload: Some(inner.payload.clone()),
                     mass: Some(inner.mass),
+                    compute_mass: Some(0),
                     verbose_data: None,
                 }
             }

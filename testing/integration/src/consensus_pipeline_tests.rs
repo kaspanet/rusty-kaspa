@@ -13,6 +13,7 @@ use tokio::join;
 
 #[tokio::test]
 async fn test_concurrent_pipeline() {
+    let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis.hash = 1.into()).build();
     let consensus = TestConsensus::new(&config);
@@ -79,6 +80,7 @@ async fn test_concurrent_pipeline() {
 
 #[tokio::test]
 async fn test_concurrent_pipeline_random() {
+    let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     let genesis: Hash = blockhash::new_unique();
     let bps = 8;

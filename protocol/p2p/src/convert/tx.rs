@@ -81,6 +81,7 @@ impl From<&Transaction> for protowire::TransactionMessage {
             gas: tx.gas,
             payload: tx.payload.clone(),
             mass: tx.mass(),
+            compute_mass: tx.compute_mass,
         }
     }
 }
@@ -178,8 +179,28 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
             tx.subnetwork_id.try_into_ex()?,
             tx.gas,
             tx.payload,
-        );
+        )
+        .with_compute_mass(tx.compute_mass);
         transaction.set_mass(tx.mass);
         Ok(transaction)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transaction_message_compute_mass_roundtrip() {
+        let tx =
+            Transaction::new(1, vec![], vec![], 42, SubnetworkId::from_bytes([3; 20]), 7, vec![1, 2, 3]).with_compute_mass(12_345);
+        tx.set_mass(54_321);
+
+        let message: protowire::TransactionMessage = (&tx).into();
+        assert_eq!(message.compute_mass, 12_345);
+
+        let received = Transaction::try_from(message).unwrap();
+        assert_eq!(received.compute_mass, 12_345);
+        assert_eq!(received.mass(), 54_321);
     }
 }

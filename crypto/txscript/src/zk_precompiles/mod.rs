@@ -39,6 +39,6 @@ pub(crate) fn verify_zk(tag: ZkTag, dstack: &mut Stack) -> Result<(), TxScriptEr
 /**
  * A helper function to compute the cost (in script units) of a ZK proof based on its tag.
  */
-pub fn compute_zk_script_cost(tag: u8) -> u64 {
+pub fn compute_zk_cost(tag: u8) -> u64 {
     ZkTag::try_from(tag).map(|t| t.cost()).unwrap_or(ZkTag::max_cost()) // Default to max cost for unknown tags
 }

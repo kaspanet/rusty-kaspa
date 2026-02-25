@@ -24,7 +24,7 @@ use crate::caches::Cache;
 use crate::covenants::CovenantsContext;
 use crate::data_stack::{Stack, StackEntry};
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
-use crate::zk_precompiles::compute_zk_script_cost;
+use crate::zk_precompiles::compute_zk_cost;
 use crate::zk_precompiles::tags::ZkTag;
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{
@@ -295,7 +295,7 @@ fn get_zk_script_units_upper_bound_by_opcodes<T: VerifiableTransaction, Reused: 
                     } else {
                         let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
                         let data = prev_opcode.get_data();
-                        data.first().copied().map_or_else(ZkTag::max_cost, compute_zk_script_cost)
+                        data.first().copied().map_or_else(ZkTag::max_cost, compute_zk_cost)
                     };
                     zk_units = zk_units.saturating_add(cost);
                 }
