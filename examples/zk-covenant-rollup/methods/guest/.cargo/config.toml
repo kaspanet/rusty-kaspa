@@ -1,2 +1,5 @@
 [target.'cfg(target = "riscv32im-risc0-zkvm-elf")']
 rustflags = ['--cfg', 'getrandom_backend="custom"']
+
+[build]
+target = "riscv32im-risc0-zkvm-elf"

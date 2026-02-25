@@ -1,40 +1,31 @@
 use risc0_zkvm::serde::WordRead;
-use zk_covenant_rollup_core::{
-    prev_tx::{verify_output_in_tx, PrevTxV1Witness, PrevTxWitness},
-    state::AccountWitness,
-    AlignedBytes, OutputData,
-};
+use zk_covenant_rollup_core::{prev_tx::PrevTxV1Witness, state::AccountWitness};
 
 use crate::input;
 
-/// Witness data for verifying a previous V1 transaction output
+/// Witness for a previous V1 transaction (proves output content).
+///
+/// Does NOT include prev_tx_id or output_index — those are derived from
+/// the current action transaction's first input outpoint (committed via rest_preimage).
+/// This prevents the host from substituting a fake prev_tx.
 pub struct PrevTxV1WitnessData {
-    /// The previous transaction ID being spent
-    pub prev_tx_id: [u32; 8],
     /// V1 witness with rest_preimage and payload_digest
     pub witness: PrevTxV1Witness,
 }
 
 impl PrevTxV1WitnessData {
-    pub fn read_from_stdin(stdin: &mut impl WordRead) -> Self {
-        let prev_tx_id = input::read_hash(stdin);
-        let witness = Self::read_v1_witness(stdin);
-        Self { prev_tx_id, witness }
+    /// Read from stdin. The prev_tx_id and output_index are NOT read here —
+    /// they come from the current tx's first input (parsed from rest_preimage).
+    pub fn read_from_stdin(stdin: &mut impl WordRead, output_index: u32) -> Self {
+        let witness = Self::read_v1_witness(stdin, output_index);
+        Self { witness }
     }
 
-    fn read_v1_witness(stdin: &mut impl WordRead) -> PrevTxV1Witness {
-        let output_index = input::read_u32(stdin);
+    fn read_v1_witness(stdin: &mut impl WordRead, output_index: u32) -> PrevTxV1Witness {
         let rest_preimage = input::read_aligned_bytes(stdin);
         let payload_digest = input::read_hash(stdin);
 
         PrevTxV1Witness::new(output_index, rest_preimage, payload_digest)
-    }
-
-    /// Verify the output SPK is committed to the prev_tx_id
-    /// Returns the full output data if verification succeeds
-    pub fn verify_output(&self) -> Option<OutputData> {
-        let wrapped = PrevTxWitness::V1(self.witness.clone());
-        verify_output_in_tx(&self.prev_tx_id, &wrapped)
     }
 }
 
@@ -50,11 +41,11 @@ pub struct TransferWitness {
 }
 
 impl TransferWitness {
-    pub fn read_from_stdin(stdin: &mut impl WordRead) -> Self {
+    pub fn read_from_stdin(stdin: &mut impl WordRead, output_index: u32) -> Self {
         Self {
             source: input::read_account_witness(stdin),
             dest: input::read_account_witness(stdin),
-            prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin),
+            prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin, output_index),
         }
     }
 }
@@ -73,8 +64,8 @@ pub struct ExitWitness {
 }
 
 impl ExitWitness {
-    pub fn read_from_stdin(stdin: &mut impl WordRead) -> Self {
-        Self { source: input::read_account_witness(stdin), prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin) }
+    pub fn read_from_stdin(stdin: &mut impl WordRead, output_index: u32) -> Self {
+        Self { source: input::read_account_witness(stdin), prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin, output_index) }
     }
 }
 // ANCHOR_END: exit_witness
@@ -83,19 +74,16 @@ impl ExitWitness {
 /// Witness data for an entry (deposit) action.
 ///
 /// Entry deposits don't need source authorization (no source account).
-/// The deposit amount is always taken from the first output (index 0).
+/// The rest_preimage (for extracting deposit amount from output 0) is now
+/// provided via V1TxData — no longer part of this witness.
 pub struct EntryWitness {
     /// Destination account SMT proof (for crediting the deposit)
     pub dest: AccountWitness,
-    /// rest_preimage of the current entry transaction.
-    /// Used to parse output 0 and extract the deposit value.
-    /// Tamper-proof because rest_digest (committed via tx_id) is verified against this.
-    pub rest_preimage: AlignedBytes,
 }
 
 impl EntryWitness {
     pub fn read_from_stdin(stdin: &mut impl WordRead) -> Self {
-        Self { dest: input::read_account_witness(stdin), rest_preimage: input::read_aligned_bytes(stdin) }
+        Self { dest: input::read_account_witness(stdin) }
     }
 }
 // ANCHOR_END: entry_witness

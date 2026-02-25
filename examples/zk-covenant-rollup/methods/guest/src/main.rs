@@ -13,8 +13,8 @@ mod witness;
 
 use risc0_zkvm::guest::env;
 use zk_covenant_rollup_core::{
-    build_permission_redeem_bytes, bytes_to_words, p2sh::blake2b_script_hash, pad_to_depth, permission_tree::StreamingPermTreeBuilder,
-    required_depth, seq_commit::calc_accepted_id_merkle_root, MAX_DELEGATE_INPUTS,
+    MAX_DELEGATE_INPUTS, build_permission_redeem_bytes, bytes_to_words, p2sh::blake2b_script_hash, pad_to_depth,
+    permission_tree::StreamingPermTreeBuilder, required_depth, seq_commit::calc_accepted_id_merkle_root,
 };
 
 risc0_zkvm::guest::entry!(main);

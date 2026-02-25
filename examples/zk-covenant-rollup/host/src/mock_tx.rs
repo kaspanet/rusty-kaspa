@@ -8,7 +8,6 @@ use zk_covenant_rollup_core::{
     action::{ActionHeader, EntryAction, ExitAction, TransferAction, OP_ENTRY, OP_EXIT, OP_TRANSFER},
     bytes_to_words_ref, is_action_tx_id,
     prev_tx::PrevTxV1Witness,
-    rest_digest_bytes,
     state::AccountWitness,
     AlignedBytes,
 };
@@ -109,6 +108,7 @@ pub struct TransferWitnessData {
 
 /// Witness data for entry (deposit) actions.
 /// Deposit amount is always taken from output index 0.
+/// rest_preimage is no longer needed here — it comes from V1TxData.
 #[derive(Clone, Debug)]
 pub struct EntryWitnessData {
     /// Destination account witness
@@ -169,7 +169,7 @@ impl ZkTransaction {
             let tx_id = self.tx_id();
             builder.write_slice(bytemuck::cast_slice::<_, u8>(&tx_id));
         } else {
-            // V1+: write payload, rest_digest, and witness data if action tx
+            // V1+: write payload, rest_preimage (length-prefixed), and witness data if action tx
             let payload_bytes = &self.tx.payload;
             builder.write_slice(&(payload_bytes.len() as u32).to_le_bytes());
             if !payload_bytes.is_empty() {
@@ -180,10 +180,9 @@ impl ZkTransaction {
                 builder.write_slice(&padded);
             }
 
-            // Compute and write rest_digest
+            // Write full rest_preimage (length-prefixed) — guest computes rest_digest from it
             let rest_preimage = transaction_v1_rest_preimage(&self.tx);
-            let rd = rest_digest_bytes(&rest_preimage);
-            builder.write_slice(bytemuck::cast_slice::<_, u8>(&rd));
+            write_bytes(builder, &rest_preimage);
 
             // Check if this is a valid action tx and write witness data accordingly
             let tx_id = self.tx_id();
@@ -193,27 +192,24 @@ impl ZkTransaction {
 
                 match &self.witness {
                     Some(ActionWitness::Transfer(w)) if is_valid_transfer_payload(&payload_words) => {
-                        // Write transfer witness: source, dest, prev_tx_id, prev_tx_v1_witness
+                        // Write transfer witness: source, dest, prev_tx_v1_witness
+                        // (prev_tx_id and output_index are NOT sent — guest derives them
+                        //  from the current tx's first input outpoint)
                         builder.write_slice(w.source.as_bytes());
                         builder.write_slice(w.dest.as_bytes());
-
-                        let prev_tx_id = bytes_to_words_ref(&w.prev_tx.id().as_bytes());
-                        builder.write_slice(bytemuck::cast_slice::<_, u8>(&prev_tx_id));
 
                         let prev_tx_witness = create_prev_tx_v1_witness(&w.prev_tx, w.prev_output_index);
                         write_prev_tx_v1_witness(builder, &prev_tx_witness);
                     }
                     Some(ActionWitness::Entry(w)) if is_valid_entry_payload(&payload_words) => {
-                        // Write entry witness: dest, rest_preimage (length-prefixed)
+                        // Write entry witness: dest account only
+                        // (rest_preimage is already sent above for all V1 txs)
                         builder.write_slice(w.dest.as_bytes());
-                        write_bytes(builder, &rest_preimage);
                     }
                     Some(ActionWitness::Exit(w)) if is_valid_exit_payload(&payload_words) => {
-                        // Write exit witness: source account, prev_tx_id, prev_tx_v1_witness
+                        // Write exit witness: source account, prev_tx_v1_witness
+                        // (prev_tx_id and output_index are NOT sent — guest derives them)
                         builder.write_slice(w.source.as_bytes());
-
-                        let prev_tx_id = bytes_to_words_ref(&w.prev_tx.id().as_bytes());
-                        builder.write_slice(bytemuck::cast_slice::<_, u8>(&prev_tx_id));
 
                         let prev_tx_witness = create_prev_tx_v1_witness(&w.prev_tx, w.prev_output_index);
                         write_prev_tx_v1_witness(builder, &prev_tx_witness);
@@ -264,11 +260,11 @@ fn create_prev_tx_v1_witness(prev_tx: &Transaction, output_index: u32) -> PrevTx
     PrevTxV1Witness::new(output_index, AlignedBytes::from_bytes(&rest_preimage), payload_digest_words)
 }
 
-/// Write PrevTxV1Witness to executor env
+/// Write PrevTxV1Witness to executor env.
+///
+/// Does NOT write prev_tx_id or output_index — the guest derives those from
+/// the current action tx's first input outpoint (committed in rest_preimage).
 fn write_prev_tx_v1_witness(builder: &mut risc0_zkvm::ExecutorEnvBuilder<'_>, witness: &PrevTxV1Witness) {
-    // Write output_index
-    builder.write_slice(&witness.output_index.to_le_bytes());
-
     // Write rest_preimage with length prefix
     write_bytes(builder, witness.rest_preimage.as_bytes());
 
@@ -291,20 +287,17 @@ fn write_bytes(builder: &mut risc0_zkvm::ExecutorEnvBuilder<'_>, data: &[u8]) {
 }
 
 /// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX (for transfers)
-pub fn find_action_tx_nonce(source: [u32; 8], destination: [u32; 8], amount: u64, outputs: &[TransactionOutput]) -> TransferPayload {
+pub fn find_action_tx_nonce(
+    source: [u32; 8],
+    destination: [u32; 8],
+    amount: u64,
+    inputs: &[TransactionInput],
+    outputs: &[TransactionOutput],
+) -> TransferPayload {
     for nonce in 0u32.. {
         let payload = TransferPayload::new(source, destination, amount, nonce);
 
-        // Build a temporary transaction to compute the tx_id
-        let tx = Transaction::new(
-            1,
-            vec![], // inputs don't affect rest_digest for our purposes
-            outputs.to_vec(),
-            0,
-            SUBNETWORK_ID_NATIVE,
-            0,
-            payload.as_bytes(),
-        );
+        let tx = Transaction::new(1, inputs.to_vec(), outputs.to_vec(), 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
 
         let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
@@ -315,11 +308,11 @@ pub fn find_action_tx_nonce(source: [u32; 8], destination: [u32; 8], amount: u64
 }
 
 /// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX (for entry/deposits)
-pub fn find_entry_tx_nonce(destination: [u32; 8], outputs: &[TransactionOutput]) -> EntryPayload {
+pub fn find_entry_tx_nonce(destination: [u32; 8], inputs: &[TransactionInput], outputs: &[TransactionOutput]) -> EntryPayload {
     for nonce in 0u32.. {
         let payload = EntryPayload::new(destination, nonce);
 
-        let tx = Transaction::new(1, vec![], outputs.to_vec(), 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+        let tx = Transaction::new(1, inputs.to_vec(), outputs.to_vec(), 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
 
         let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
@@ -331,9 +324,6 @@ pub fn find_entry_tx_nonce(destination: [u32; 8], outputs: &[TransactionOutput])
 
 /// Create a V0 transaction (non-action)
 pub fn create_v0_tx(tx_id_bytes: [u32; 8]) -> ZkTransaction {
-    // For V0, we create a minimal transaction that will have the given tx_id
-    // In practice, for testing we just need any V0 tx - the actual tx_id
-    // is derived from the content. For this mock, we create a simple tx.
     let tx_id_hash = Hash::from_bytes(bytemuck::cast(tx_id_bytes));
     let tx = Transaction::new(
         0,
@@ -361,11 +351,17 @@ fn is_valid_exit_payload(payload_words: &[u32]) -> bool {
 }
 
 /// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX (for exit/withdrawals)
-pub fn find_exit_tx_nonce(source: [u32; 8], destination_spk: &[u8], amount: u64, outputs: &[TransactionOutput]) -> ExitPayload {
+pub fn find_exit_tx_nonce(
+    source: [u32; 8],
+    destination_spk: &[u8],
+    amount: u64,
+    inputs: &[TransactionInput],
+    outputs: &[TransactionOutput],
+) -> ExitPayload {
     for nonce in 0u32.. {
         let payload = ExitPayload::new(source, destination_spk, amount, nonce);
 
-        let tx = Transaction::new(1, vec![], outputs.to_vec(), 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+        let tx = Transaction::new(1, inputs.to_vec(), outputs.to_vec(), 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
 
         let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
@@ -385,9 +381,11 @@ pub fn create_exit_tx(
     prev_tx: Transaction,
     prev_output_index: u32,
 ) -> ZkTransaction {
-    let payload = find_exit_tx_nonce(source, destination_spk, amount, &outputs);
+    let input = TransactionInput::new(TransactionOutpoint::new(prev_tx.id(), prev_output_index), vec![], 0, 0);
 
-    let tx = Transaction::new(1, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+    let payload = find_exit_tx_nonce(source, destination_spk, amount, std::slice::from_ref(&input), &outputs);
+
+    let tx = Transaction::new(1, vec![input], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
 
     ZkTransaction::new(tx, Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index }))))
 }
@@ -417,11 +415,13 @@ pub fn create_transfer_tx(
     prev_tx: Transaction,
     prev_output_index: u32,
 ) -> ZkTransaction {
-    // Find nonce that makes tx_id an action
-    let payload = find_action_tx_nonce(source, destination, amount, &outputs);
+    let input = TransactionInput::new(TransactionOutpoint::new(prev_tx.id(), prev_output_index), vec![], 0, 0);
+
+    // Find nonce that makes tx_id an action (with the correct input)
+    let payload = find_action_tx_nonce(source, destination, amount, std::slice::from_ref(&input), &outputs);
 
     // Create the actual transaction
-    let tx = Transaction::new(1, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+    let tx = Transaction::new(1, vec![input], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
 
     ZkTransaction::new(
         tx,
@@ -437,8 +437,8 @@ pub fn create_transfer_tx(
 /// Create a V1 entry (deposit) action transaction with witness data.
 /// The deposit amount is always taken from output index 0.
 pub fn create_entry_tx(destination: [u32; 8], outputs: Vec<TransactionOutput>, dest_witness: AccountWitness) -> ZkTransaction {
-    // Find nonce that makes tx_id an action
-    let payload = find_entry_tx_nonce(destination, &outputs);
+    // Entry txs don't need a specific prev tx input for authorization
+    let payload = find_entry_tx_nonce(destination, &[], &outputs);
 
     // Create the actual transaction
     let tx = Transaction::new(1, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());

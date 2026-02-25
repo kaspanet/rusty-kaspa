@@ -93,7 +93,8 @@ pub use permission_tree::{
     perm_empty_leaf_hash, perm_empty_subtree_hash, perm_leaf_hash, required_depth,
 };
 pub use prev_tx::{
-    CovenantBinding, OutputData, PrevTxV0Witness, PrevTxV1Witness, PrevTxWitness, parse_output_at_index, verify_output_in_tx,
+    CovenantBinding, OutputData, PrevTxV0Witness, PrevTxV1Witness, PrevTxWitness, parse_first_input_outpoint, parse_output_at_index,
+    verify_output_in_tx,
 };
 pub use smt::{SMT_DEPTH, SmtProof, branch_hash, empty_leaf_hash, key_to_index, leaf_hash};
 pub use state::{Account, AccountWitness, StateRoot, empty_tree_root};

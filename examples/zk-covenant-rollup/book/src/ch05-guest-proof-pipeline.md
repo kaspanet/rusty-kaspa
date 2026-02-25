@@ -11,7 +11,7 @@ flowchart TD
     TXS["For each transaction"]
     CLASSIFY["Classify: V0 or V1?"]
     V0["V0: read tx_id directly"]
-    V1["V1: read payload + rest_digest<br/>compute tx_id"]
+    V1["V1: read payload + rest_preimage<br/>compute tx_id"]
     ACTION["Is action?<br/>(prefix + valid header)"]
     DISPATCH["Dispatch by opcode"]
     TRANSFER["Transfer"]
@@ -69,11 +69,14 @@ Each block contains a list of transactions. The guest processes them sequentiall
 
 For V1 transactions, the guest:
 
-1. Reads the payload bytes and `rest_digest` from stdin
-2. Computes `payload_digest` from the raw payload bytes
-3. Computes `tx_id = blake3(payload_digest || rest_digest)`
-4. Checks if the `tx_id` starts with `ACTION_TX_ID_PREFIX` (`0x41`)
-5. If so, parses the payload as an action header + data
+1. Reads the payload bytes from stdin
+2. Reads the full `rest_preimage` (length-prefixed) and computes `rest_digest = hash(rest_preimage)` — the guest never trusts a host-provided digest
+3. Computes `payload_digest` from the raw payload bytes
+4. Computes `tx_id = blake3(payload_digest || rest_digest)`
+5. Checks if the `tx_id` starts with `ACTION_TX_ID_PREFIX` (`0x41`)
+6. If so, parses the payload as an action header + data
+
+The `rest_preimage` is stored in `V1TxData` and passed to action handlers. For transfer/exit actions, it is used to extract the first input's outpoint (proving which UTXO the transaction actually spends). For entry actions, it is used to parse the deposit output.
 
 The action is only considered valid if the prefix matches **and** the header version and operation are recognized **and** the action-specific validity check passes (e.g., non-zero amount).
 
@@ -110,19 +113,23 @@ flowchart LR
     subgraph TransferWit["Transfer Witness"]
         TS["source AccountWitness"]
         TD["dest AccountWitness"]
-        TP["PrevTxV1WitnessData"]
+        TP["PrevTxV1WitnessData<br/>(rest_preimage + payload_digest)"]
     end
 
     subgraph EntryWit["Entry Witness"]
         ED["dest AccountWitness"]
-        ER["rest_preimage (AlignedBytes)"]
     end
 
     subgraph ExitWit["Exit Witness"]
         ES["source AccountWitness"]
-        EP["PrevTxV1WitnessData"]
+        EP["PrevTxV1WitnessData<br/>(rest_preimage + payload_digest)"]
     end
 ```
+
+**Key simplifications:**
+
+- **Entry witness** no longer includes `rest_preimage`. The current transaction's `rest_preimage` is already read at the `V1TxData` level and passed down.
+- **PrevTxV1WitnessData** no longer includes `prev_tx_id` or `output_index`. These are derived from the current action transaction's first input outpoint, which is committed via `rest_preimage` → `rest_digest` → `tx_id`. This prevents the host from substituting a fake previous transaction.
 
 ## Source authorization
 
@@ -133,13 +140,27 @@ For transfers and exits, the guest verifies that the action's `source` pubkey ma
 ```
 
 The verification chain is:
-1. Host provides `prev_tx_id` + `PrevTxV1Witness` (rest_preimage, payload_digest)
-2. Guest recomputes `tx_id` from the witness and checks it matches `prev_tx_id`
-3. Guest parses the output at the specified index from `rest_preimage`
-4. Guest checks the output SPK is Schnorr P2PK format (34 bytes)
-5. Guest extracts the 32-byte pubkey and compares with `action.source`
+1. Guest parses the current action transaction's `rest_preimage` to extract the first input's outpoint `(prev_tx_id, output_index)` — this is committed via `rest_digest` → `tx_id`, so tamper-proof
+2. Host provides `PrevTxV1Witness` (rest_preimage + payload_digest of the previous transaction)
+3. Guest recomputes the previous `tx_id` from the witness and **asserts** it matches the first input's `prev_tx_id` — mismatch means the host is cheating (proof fails)
+4. Guest parses the output at the first input's `output_index` from the previous tx's `rest_preimage`
+5. Guest checks the output SPK is Schnorr P2PK format (34 bytes) — if not, the action is **skipped** (user error)
+6. Guest extracts the 32-byte pubkey and compares with `action.source` — mismatch is a **skip** (user error)
 
 Only Schnorr P2PK sources are accepted — ECDSA and P2SH sources are rejected.
+
+### Assert vs skip
+
+The guest distinguishes between **host cheating** and **user error**:
+
+| Condition | Response | Rationale |
+|-----------|----------|-----------|
+| Prev tx witness doesn't hash to first input's tx_id | **Assert** (proof fails) | Host provided fake witness data |
+| SMT proof doesn't verify against root | **Assert** (proof fails) | Every pubkey has a valid proof (empty leaf by default) |
+| Witness pubkey doesn't match action source | **Assert** (proof fails) | Host should always provide matching witness |
+| SPK is not Schnorr P2PK | **Skip** (action rejected) | User submitted action with wrong SPK type |
+| SPK pubkey doesn't match action source | **Skip** (action rejected) | User made a mistake in the action payload |
+| Insufficient balance | **Skip** (action rejected) | User tried to spend more than they have |
 
 ## State updates
 
@@ -152,12 +173,14 @@ Only Schnorr P2PK sources are accepted — ECDSA and P2SH sources are rejected.
 ```
 
 For transfers, the state update is two-phase:
-1. **Debit source** — verify SMT proof, check balance, compute intermediate root
-2. **Credit destination** — verify SMT proof against intermediate root, compute final root
+1. **Debit source** — assert SMT proof verifies and witness pubkey matches (host cheating if not), check balance (skip if insufficient), compute intermediate root
+2. **Credit destination** — assert SMT proof verifies against intermediate root (host cheating if not), compute final root
 
 For entries, only the credit phase runs (no source debit).
 
 For exits, only the debit phase runs, and a permission leaf is added.
+
+All SMT proof verifications use `assert!` rather than returning `None`, because every pubkey has a valid proof in the sparse Merkle tree (empty leaf by default). If the host provides an invalid proof, it is provably cheating.
 
 ## Journal output
 

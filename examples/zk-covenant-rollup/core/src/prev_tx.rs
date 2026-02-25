@@ -329,6 +329,48 @@ pub fn input0_has_permission_suffix(tx_bytes: &[u8]) -> bool {
 }
 // ANCHOR_END: input0_has_permission_suffix
 
+// ANCHOR: parse_first_input_outpoint
+/// Parse the first input's outpoint (prev_tx_id, output_index) from transaction bytes.
+///
+/// Used by the guest to verify that the current action transaction's first input
+/// matches the host-provided previous transaction witness. If the host provides
+/// a different prev_tx_id than what the current tx actually spends, this is
+/// detected and treated as host cheating (assertion failure, not skip).
+///
+/// The transaction byte format is the same as documented on [`parse_output_at_index`].
+pub fn parse_first_input_outpoint(tx_bytes: &[u8]) -> Option<([u8; 32], u32)> {
+    let mut cursor = 0;
+
+    // Skip version (2 bytes)
+    cursor += 2;
+    if cursor > tx_bytes.len() {
+        return None;
+    }
+
+    // Read num_inputs (u64)
+    let num_inputs = read_u64(tx_bytes, &mut cursor)?;
+    if num_inputs == 0 {
+        return None;
+    }
+
+    // Read prev_tx_id (32 bytes)
+    if cursor + 32 > tx_bytes.len() {
+        return None;
+    }
+    let mut prev_tx_id = [0u8; 32];
+    prev_tx_id.copy_from_slice(&tx_bytes[cursor..cursor + 32]);
+    cursor += 32;
+
+    // Read prev_index (u32, 4 bytes little-endian)
+    if cursor + 4 > tx_bytes.len() {
+        return None;
+    }
+    let prev_index = u32::from_le_bytes(tx_bytes[cursor..cursor + 4].try_into().ok()?);
+
+    Some((prev_tx_id, prev_index))
+}
+// ANCHOR_END: parse_first_input_outpoint
+
 /// Verify an output is in a previous transaction.
 ///
 /// 1. Computes tx_id from the witness preimage
@@ -506,6 +548,32 @@ mod tests {
         tx.extend_from_slice(&1u16.to_le_bytes()); // version
         tx.extend_from_slice(&0u64.to_le_bytes()); // 0 inputs
         assert!(!input0_has_permission_suffix(&tx));
+    }
+
+    #[test]
+    fn test_parse_first_input_outpoint() {
+        let mut tx = Vec::new();
+        tx.extend_from_slice(&1u16.to_le_bytes()); // version
+        tx.extend_from_slice(&1u64.to_le_bytes()); // 1 input
+        let expected_tx_id = [0xAAu8; 32];
+        tx.extend_from_slice(&expected_tx_id); // prev_tx_id
+        tx.extend_from_slice(&7u32.to_le_bytes()); // prev_index = 7
+        tx.extend_from_slice(&0u64.to_le_bytes()); // sig_script_len = 0
+        tx.extend_from_slice(&0u64.to_le_bytes()); // sequence
+
+        let result = parse_first_input_outpoint(&tx);
+        assert!(result.is_some());
+        let (tx_id, index) = result.unwrap();
+        assert_eq!(tx_id, expected_tx_id);
+        assert_eq!(index, 7);
+    }
+
+    #[test]
+    fn test_parse_first_input_outpoint_no_inputs() {
+        let mut tx = Vec::new();
+        tx.extend_from_slice(&1u16.to_le_bytes()); // version
+        tx.extend_from_slice(&0u64.to_le_bytes()); // 0 inputs
+        assert!(parse_first_input_outpoint(&tx).is_none());
     }
 
     #[test]

@@ -8,7 +8,7 @@ use kaspa_txscript::{pay_to_script_hash_script, script_builder::ScriptBuilder, z
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts, SuccinctReceipt};
 use zk_covenant_common::{hashfn_str_to_id, seal_to_compressed_proof};
 use zk_covenant_rollup_core::permission_tree::PermissionTree;
-use zk_covenant_rollup_core::{pay_to_pubkey_spk, PublicInput};
+use zk_covenant_rollup_core::{pay_to_pubkey_spk, perm_empty_leaf_hash, PublicInput};
 use zk_covenant_rollup_host::{
     bridge::{build_delegate_entry_script, build_permission_redeem_converged, build_permission_sig_script},
     mock_chain::{self, build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes, AccountName},
@@ -178,14 +178,13 @@ fn main() {
         let perm_input_spk = pay_to_script_hash_script(perm_redeem);
         let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
 
-        // Continuation output (1 leaf remaining: Dave's 200)
-        let remaining = vec![(dave_dest_spk.to_vec(), 200)];
-        let new_tree = PermissionTree::from_leaves(remaining);
-        let new_depth = new_tree.depth();
-        let new_root = new_tree.root();
-        let new_unclaimed = new_tree.len() as u64;
+        // Continuation output: compute new root from merkle proof (preserves tree depth)
+        // Eve's leaf is fully consumed → replace with empty leaf hash
+        let new_leaf_hash = perm_empty_leaf_hash();
+        let new_root = proof.compute_new_root(&new_leaf_hash);
+        let new_unclaimed = (tree.len() - 1) as u64; // one leaf fully consumed
         let max_inputs = NonZeroUsize::new(zk_covenant_rollup_core::MAX_DELEGATE_INPUTS).unwrap();
-        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, new_depth, max_inputs);
+        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, tree.depth(), max_inputs);
         let continuation_spk = pay_to_script_hash_script(&new_redeem);
 
         let covenant_id = Hash::from_bytes([0xFF; 32]);

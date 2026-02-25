@@ -269,8 +269,8 @@ mod tests {
     /// Fast test that verifies a succinct proof using hardcoded data captured from a real
     /// proving run.  No ZK prover or kaspad node required — runs in ~0s.
     ///
-    /// To re-capture data: run `test_deploy_prove_submit_cycle` (ignored, slow) and copy
-    /// the `=== CAPTURED PROOF DATA ===` block printed to stderr into the constants below.
+    /// To re-capture data: run `capture_succinct_proof_data` (ignored, slow):
+    /// `cargo test --release capture_succinct_proof_data -- --ignored --nocapture`
     #[test]
     fn test_succinct_proof_verification_with_captured_data() {
         use std::collections::HashMap;
@@ -283,20 +283,22 @@ mod tests {
 
         // ── Hardcoded proof data (captured from a real proving run) ──
         // Seal is large (~222KB), stored as binary file; small fields inlined as hex.
-        // To re-capture: run `test_deploy_prove_submit_cycle` (ignored, slow) and copy
-        // the `=== CAPTURED PROOF DATA ===` stderr output.
+        // To re-capture: run `capture_succinct_proof_data` (ignored, slow).
         let seal_bytes: &[u8] = include_bytes!("../testdata/captured_seal.bin");
 
-        const CLAIM_HEX: &str = "747a2211007cd79d4e95677ca2dfb21b56d24e00b75496c74823578f30c65d93";
+        const CLAIM_HEX: &str = "867312181b730a3b1d4c9eaf8a0de028630d7cd4aad04b7007a894709b0f5fe8";
         const HASHFN: &str = "poseidon2";
-        const CONTROL_INDEX: u32 = 7;
-        const CONTROL_DIGESTS_HEX: &str = "c32b3627d2b3d60c64adf523a98bd16c0ff607471f3d6630d1f26d5e9406d841ef137012c7d687610b46ea637164a17058e46826deebde361bb4394411d3630e5a3e7b624bdbeb31b396fb3c0563c2105ff4f545991b600ca40b1e76ee7f36079b98b73af20fba33f5ae2204d2fecb16bf1b3618572b652103ac9c722ef47e5b977f9e2868d664458077ac35fa9050290c7db016c2750620c362da3c275cab67f765ab6e0cf5dc55c11d65688af0fe1428afc359c08b1656bbc4ba6b54c9746cc6b87a237165c549ef7ac614d762ec1ce4b97441c9bfef6fd8ac90378170d8162be97040fd0b390959c33114712a436382b2cd419665ee2fe801c158a9bbb155";
-        const BLOCK_PROVE_TO_HEX: &str = "b9aaea2e941fc66460aa081789ded9300b03b2d4f2663212b741de6d5cf78745";
-        const NEW_STATE_HEX: &str = "62b5943b7d2d7b723ffbebfd4c01d40d8ec2985583ffa5a87f52068952f9777b";
-        const NEW_SEQ_HEX: &str = "310367853f4dda6d4f6866baea852cae7664b799912453665b7cc76344bad8a2";
-        const PREV_STATE_HEX: &str = "62b5943b7d2d7b723ffbebfd4c01d40d8ec2985583ffa5a87f52068952f9777b";
-        const PREV_SEQ_HEX: &str = "c6b338938214fb72e18a395e7c55e40e1a697018ca9b79e052fddc84a9b54bf9";
-        const COVENANT_ID_HEX: &str = "2e2de8ff82c30dbcab149002f8a333ded06353861f781489e482064a6973775d";
+        const CONTROL_INDEX: u32 = 10;
+        const CONTROL_DIGESTS_HEX: &str = "fd84d83092a1e1244d423a26d89c892ab098b467c6d82229912deb26e37d2562dafe25646d370c28fe472176911d2c541ba6e243b1d9150fd67d6a055116f1690bb1e41c4f4912522725016e09358171398a9a6d44fe5d5c648eb8226e46ed50c64e2b5c7ffa46692f5939054290d36dd4b84477dbb78a3d3aaba251d43caf24977f9e2868d664458077ac35fa9050290c7db016c2750620c362da3c275cab67f765ab6e0cf5dc55c11d65688af0fe1428afc359c08b1656bbc4ba6b54c9746cc6b87a237165c549ef7ac614d762ec1ce4b97441c9bfef6fd8ac90378170d8162be97040fd0b390959c33114712a436382b2cd419665ee2fe801c158a9bbb155";
+        const BLOCK_PROVE_TO_HEX: &str = "0000000000000000000000000000000000000000000000000300000000000000";
+        const NEW_STATE_HEX: &str = "47345fa0e4e721619cdd7328fdfde5dd2d5a66a6a1a9d93d997d5f5637bda86e";
+        const NEW_SEQ_HEX: &str = "aa7781b6860fe3baa4f0b75e0a2dd90a1951c26f4e5a191ffcbb55b4818053fe";
+        const PREV_STATE_HEX: &str = "25f706375943a1eadc748b295b87372835b518300f9df52f95f2d980a2cd6e32";
+        const PREV_SEQ_HEX: &str = "73ccb9fdf73a01aa761c348c706b7b6cc9551fbba0ea00e1d84d8664cb81af90";
+        const COVENANT_ID_HEX: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        // Permission SPK (P2SH of permission redeem script) — present when exits occurred.
+        // Empty string means no exits / no permission output.
+        const PERM_SPK_HEX: &str = "aa20c1208076e385c63701b353c9c7c39cc669bcce3eacf9f818f589045b1be1298887";
 
         // ── Decode hex constants ──
         fn hex(s: &str) -> Vec<u8> {
@@ -341,22 +343,32 @@ mod tests {
         let output_redeem = build_redeem_script(new_state_hash, new_seq_commitment, computed_len, &program_id, &zk_tag);
 
         // ── Build mock transaction with the real covenant_id ──
-        // (Cannot use make_mock_transaction because it hardcodes covenant_id = 0xFF..FF;
-        //  the journal bakes in the real covenant_id, so CovInId must match.)
+        let mut outputs = vec![TransactionOutput::with_covenant(
+            super::SOMPI_PER_KASPA,
+            pay_to_script_hash_script(&output_redeem),
+            Some(CovenantBinding { authorizing_input: 0, covenant_id }),
+        )];
+        // Add permission output if exits occurred
+        if !PERM_SPK_HEX.is_empty() {
+            let perm_spk_bytes = hex(PERM_SPK_HEX);
+            let perm_spk = ScriptPublicKey::new(0, perm_spk_bytes.into());
+            outputs.push(TransactionOutput::with_covenant(
+                super::SOMPI_PER_KASPA,
+                perm_spk,
+                Some(CovenantBinding { authorizing_input: 0, covenant_id }),
+            ));
+        }
         let mut tx = Transaction::new(
             super::TX_VERSION_POST_COV_HF,
             vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(1), 1), vec![], 10, 115)],
-            vec![TransactionOutput::with_covenant(
-                super::SOMPI_PER_KASPA,
-                pay_to_script_hash_script(&output_redeem),
-                Some(CovenantBinding { authorizing_input: 0, covenant_id }),
-            )],
+            outputs,
             0,
             super::SUBNETWORK_ID_NATIVE,
             0,
             vec![],
         );
-        let utxo = UtxoEntry::new(super::SOMPI_PER_KASPA, pay_to_script_hash_script(&input_redeem), 0, false, Some(covenant_id));
+        let input_value = super::SOMPI_PER_KASPA * tx.outputs.len() as u64;
+        let utxos = vec![UtxoEntry::new(input_value, pay_to_script_hash_script(&input_redeem), 0, false, Some(covenant_id))];
 
         // ── Assemble sig_script from hardcoded proof components ──
         tx.inputs[0].signature_script = ScriptBuilder::new()
@@ -385,7 +397,108 @@ mod tests {
         let accessor = MockSeqCommitAccessor(map);
 
         // ── Verify — no real node, no ZK prover ──
-        super::verify_tx(&tx, &utxo, &accessor);
+        super::verify_tx_input(&tx, &utxos, 0, &accessor);
+    }
+
+    /// Capture proof data for `test_succinct_proof_verification_with_captured_data`.
+    ///
+    /// Runs the mock chain and proves with succinct proofs, then writes captured data:
+    /// - `testdata/captured_seal.bin` (binary seal)
+    /// - Hex constants printed to stderr for updating the hardcoded test
+    ///
+    /// Run with: `cargo test --release capture_succinct_proof_data -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn capture_succinct_proof_data() {
+        use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, ProverOpts};
+        use zk_covenant_rollup_core::PublicInput;
+        use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
+
+        use crate::mock_chain::{build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
+
+        // Build initial state
+        let initial_smt = build_initial_smt();
+        let prev_state_hash = initial_smt.root();
+        let prev_seq_commit_hash = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
+        let prev_seq_commitment = from_bytes(prev_seq_commit_hash.as_bytes());
+
+        // Build mock chain
+        let chain = build_mock_chain(prev_seq_commit_hash, &[0xFF; 32], 0);
+        let new_state_hash = chain.final_state_root;
+        let new_seq_commitment = from_bytes(chain.final_seq_commit.as_bytes());
+
+        let covenant_id = from_bytes([0xFF; 32]);
+        let public_input = PublicInput { prev_state_hash, prev_seq_commitment, covenant_id };
+
+        // Build executor env
+        let env = {
+            let mut binding = ExecutorEnv::builder();
+            let builder = binding
+                .write_slice(core::slice::from_ref(&public_input))
+                .write_slice(&(chain.block_txs.len() as u32).to_le_bytes());
+            for txs in &chain.block_txs {
+                builder.write_slice(&(txs.len() as u32).to_le_bytes());
+                for tx in txs {
+                    tx.write_to_env(builder);
+                }
+            }
+            if let Some(len) = chain.perm_redeem_script_len {
+                builder.write_slice(&(len as u32).to_le_bytes());
+            }
+            builder.build().unwrap()
+        };
+
+        // Prove
+        eprintln!("Proving (succinct)...");
+        let prover = default_prover();
+        let info = prover.prove_with_opts(env, ZK_COVENANT_ROLLUP_GUEST_ELF, &ProverOpts::succinct()).unwrap();
+        let receipt = info.receipt;
+        receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
+        eprintln!("Proof verified!");
+
+        let succinct = receipt.inner.succinct().expect("not a succinct receipt");
+        let block_prove_to = *chain.block_hashes.last().unwrap();
+
+        // Write seal binary
+        let seal_bytes: Vec<u8> = succinct.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let seal_path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata").join("captured_seal.bin");
+        std::fs::create_dir_all(seal_path.parent().unwrap()).unwrap();
+        std::fs::write(&seal_path, &seal_bytes).unwrap();
+        eprintln!("Wrote seal to {}", seal_path.display());
+
+        // Print hex constants
+        let claim_hex = faster_hex::hex_string(succinct.claim.digest().as_bytes());
+        let control_index = succinct.control_inclusion_proof.index;
+        let control_digests_hex = faster_hex::hex_string(
+            &succinct.control_inclusion_proof.digests.iter().flat_map(|d| d.as_bytes().iter().copied()).collect::<Vec<u8>>(),
+        );
+        let block_prove_to_hex = faster_hex::hex_string(block_prove_to.as_bytes().as_slice());
+        let new_state_hex = faster_hex::hex_string(bytemuck::bytes_of(&new_state_hash));
+        let new_seq_hex = faster_hex::hex_string(bytemuck::bytes_of(&new_seq_commitment));
+        let prev_state_hex = faster_hex::hex_string(bytemuck::bytes_of(&prev_state_hash));
+        let prev_seq_hex = faster_hex::hex_string(bytemuck::bytes_of(&prev_seq_commitment));
+        let covenant_id_hex = faster_hex::hex_string(bytemuck::bytes_of(&covenant_id));
+
+        eprintln!("\n=== CAPTURED PROOF DATA ===");
+        eprintln!("CLAIM_HEX: \"{}\"", claim_hex);
+        eprintln!("HASHFN: \"{}\"", succinct.hashfn);
+        eprintln!("CONTROL_INDEX: {}", control_index);
+        eprintln!("CONTROL_DIGESTS_HEX: \"{}\"", control_digests_hex);
+        eprintln!("BLOCK_PROVE_TO_HEX: \"{}\"", block_prove_to_hex);
+        eprintln!("NEW_STATE_HEX: \"{}\"", new_state_hex);
+        eprintln!("NEW_SEQ_HEX: \"{}\"", new_seq_hex);
+        eprintln!("PREV_STATE_HEX: \"{}\"", prev_state_hex);
+        eprintln!("PREV_SEQ_HEX: \"{}\"", prev_seq_hex);
+        eprintln!("COVENANT_ID_HEX: \"{}\"", covenant_id_hex);
+        if let Some(ref perm_redeem) = chain.permission_redeem {
+            use kaspa_txscript::pay_to_script_hash_script;
+            let perm_spk = pay_to_script_hash_script(perm_redeem);
+            eprintln!("PERM_SPK_HEX: \"{}\"", faster_hex::hex_string(perm_spk.script()));
+        } else {
+            eprintln!("PERM_SPK_HEX: (none — no exits)");
+        }
+        eprintln!("=== END CAPTURED PROOF DATA ===");
     }
 
     /// Regression: the *old* bug — deploy output had no CovenantBinding, so the deploy
