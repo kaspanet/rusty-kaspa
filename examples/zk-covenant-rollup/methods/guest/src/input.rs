@@ -1,7 +1,7 @@
 use alloc::vec;
 use bytemuck::Zeroable;
 use risc0_zkvm::serde::WordRead;
-use zk_covenant_rollup_core::{state::AccountWitness, AlignedBytes, PublicInput};
+use zk_covenant_rollup_core::{AlignedBytes, PublicInput, state::AccountWitness};
 
 /// Read a single u32 from stdin
 pub fn read_u32(stdin: &mut impl WordRead) -> u32 {

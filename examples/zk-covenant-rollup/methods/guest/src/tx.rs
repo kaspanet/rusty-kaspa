@@ -1,8 +1,9 @@
 use alloc::vec;
 use risc0_zkvm::serde::WordRead;
 use zk_covenant_rollup_core::{
-    action::{Action, ActionHeader, EntryAction, ExitAction, TransferAction, OP_ENTRY, OP_EXIT, OP_TRANSFER},
-    is_action_tx_id, payload_digest_bytes, tx_id_v1,
+    AlignedBytes,
+    action::{Action, ActionHeader, EntryAction, ExitAction, OP_ENTRY, OP_EXIT, OP_TRANSFER, TransferAction},
+    is_action_tx_id, payload_digest_bytes, rest_digest_bytes, tx_id_v1,
 };
 
 use crate::input;
@@ -18,9 +19,10 @@ pub struct V1TxData {
     pub tx_id: [u32; 8],
     /// Some if this is a valid action transaction (determined cryptographically)
     pub action: Option<Action>,
-    /// rest_digest for this transaction (always populated for V1 txs).
-    /// Needed by entry actions to verify output amounts via rest_preimage.
-    pub rest_digest: [u32; 8],
+    /// Full rest_preimage for this transaction.
+    /// The guest reads and hashes it (instead of trusting a host-provided rest_digest).
+    /// Used by actions to verify inputs, extract outputs, etc.
+    pub rest_preimage: AlignedBytes,
 }
 // ANCHOR_END: v1_tx_data
 
@@ -39,12 +41,17 @@ pub struct V1TxData {
 /// - We read ceil(payload_len/4) words (padded to word boundary)
 /// - Compute payload_digest from actual bytes (trimmed to payload_len)
 /// - Only parse as action if payload is 4-byte aligned (required for our format)
+///
+/// Rest preimage:
+/// - Host sends the full rest_preimage (length-prefixed).
+/// - Guest computes rest_digest = hash(rest_preimage) — never trusts host-provided digest.
+/// - rest_preimage is stored for use by action processing (input verification, output parsing).
 pub fn read_v1_tx_data(stdin: &mut impl WordRead) -> V1TxData {
     // Read payload length in BYTES
     let payload_byte_len = input::read_u32(stdin) as usize;
 
     // Calculate words needed (round up to word boundary)
-    let payload_word_len =payload_byte_len.div_ceil(4);
+    let payload_word_len = payload_byte_len.div_ceil(4);
 
     // Read as words (guaranteed 4-byte aligned)
     let mut payload_words = vec![0u32; payload_word_len];
@@ -54,9 +61,9 @@ pub fn read_v1_tx_data(stdin: &mut impl WordRead) -> V1TxData {
     let payload_bytes: &[u8] = bytemuck::cast_slice(&payload_words);
     let payload_bytes = &payload_bytes[..payload_byte_len]; // trim padding
 
-    // Read rest_digest directly (host pre-computes from arbitrary-length rest data)
-    let mut rest_digest = [0u32; 8];
-    stdin.read_words(&mut rest_digest).unwrap();
+    // Read rest_preimage (length-prefixed) and compute rest_digest
+    let rest_preimage = input::read_aligned_bytes(stdin);
+    let rest_digest = rest_digest_bytes(rest_preimage.as_bytes());
 
     // Compute tx_id from payload bytes and rest_digest
     let pd = payload_digest_bytes(payload_bytes);
@@ -72,7 +79,7 @@ pub fn read_v1_tx_data(stdin: &mut impl WordRead) -> V1TxData {
     // Only valid if tx_id has action prefix AND action parsed successfully AND is valid
     let valid_action = if is_action_tx_id(&tx_id) { action.filter(|a| a.is_valid()) } else { None };
 
-    V1TxData { tx_id, action: valid_action, rest_digest }
+    V1TxData { tx_id, action: valid_action, rest_preimage }
 }
 // ANCHOR_END: read_v1_tx_data
 

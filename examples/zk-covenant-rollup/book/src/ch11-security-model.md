@@ -43,8 +43,9 @@ The host provides private inputs (witnesses) to the guest. Some are trusted hint
 | Host input | Bound by | Attack if omitted |
 |------------|----------|-------------------|
 | Block transaction data | `OpChainblockSeqCommit` on-chain | Host could fabricate transactions |
-| Previous tx preimage | tx_id hash verification | Host could claim false output SPKs |
-| Account SMT witnesses | Root hash chain | Host could fabricate balances |
+| Current tx rest_preimage | `rest_digest` → `tx_id` (guest computes) | Host could hide inputs/outputs |
+| Previous tx preimage | First input outpoint (from current tx rest_preimage) | Host could claim false output SPKs |
+| Account SMT witnesses | Root hash chain + assert | Host could fabricate balances |
 | Permission redeem length | Assert in guest | Guest script wouldn't match on-chain hash |
 | Action ordering within block | Seq commitment leaf hash | Order inherited from L1 transaction order; host cannot reorder or skip actions |
 
@@ -52,23 +53,28 @@ The host provides private inputs (witnesses) to the guest. Some are trusted hint
 
 ### Guest-side checks
 
-| Check | Location | Attack prevented |
-|-------|----------|-----------------|
-| `is_action_tx_id(tx_id)` | `guest/src/block.rs` | Non-action transactions processed as actions |
-| `tx_id[0] == 0x41` | `core/src/lib.rs` | Random transactions misclassified |
-| Action version == `ACTION_VERSION` | `guest/src/tx.rs` | Future/incompatible action formats |
-| `deduct > 0` | `guest/src/state.rs` | Zero-value withdrawal claims |
-| `amount >= deduct` | `guest/src/state.rs` | Underflow in withdrawal amount |
-| Source pubkey matches input 0 SPK | `guest/src/auth.rs` | Unauthorized transfers/exits |
-| SMT proof verifies against root | `guest/src/state.rs` | Fabricated account balances |
-| Balance conservation (transfer) | `guest/src/state.rs` | Value creation from nothing |
-| Entry output SPK is P2SH(delegate) | `core/src/p2sh.rs` | Deposits to unrelated addresses credited as L2 entries |
-| Entry tx input 0 not permission suffix | `core/src/prev_tx.rs` | Delegate change output misinterpreted as deposit |
-| Prev tx_id matches computed hash | `core/src/prev_tx.rs` | Host claims false output SPK/amounts |
-| Exit SPK length <= `EXIT_SPK_MAX` | `core/src/action.rs` | Oversized SPK overflows |
-| Seq commitment matches chain | On-chain `OpChainblockSeqCommit` | Fabricated block data |
-| Permission root matches exits | `guest/src/journal.rs` | Incorrect withdrawal tree committed |
-| Redeem script length matches host hint | `guest/src/journal.rs` | Script hash mismatch |
+Checks are categorized as **assert** (host cheating — proof fails entirely) or **skip** (user error — action rejected but tx_id committed).
+
+| Check | Location | Response | Attack prevented |
+|-------|----------|----------|-----------------|
+| `is_action_tx_id(tx_id)` | `guest/src/block.rs` | gate | Non-action transactions processed as actions |
+| `tx_id[0] == 0x41` | `core/src/lib.rs` | gate | Random transactions misclassified |
+| Action version == `ACTION_VERSION` | `guest/src/tx.rs` | gate | Future/incompatible action formats |
+| `rest_digest == hash(rest_preimage)` | `guest/src/tx.rs` | computed | Host cannot forge rest_digest (guest computes it) |
+| First input outpoint matches prev_tx witness | `guest/src/auth.rs` | **assert** | Host substitutes fake prev_tx |
+| Prev tx witness hashes to first input's tx_id | `guest/src/auth.rs` | **assert** | Host claims false output SPK/amounts |
+| Witness pubkey matches action source | `guest/src/state.rs` | **assert** | Host provides wrong witness for action |
+| SMT proof verifies against root | `guest/src/state.rs` | **assert** | Fabricated account balances (every pubkey has valid proof) |
+| Source pubkey matches prev tx SPK | `guest/src/auth.rs` | **skip** | User submitted action with wrong SPK |
+| Insufficient balance | `guest/src/state.rs` | **skip** | User tried to spend more than they have |
+| `deduct > 0` | `guest/src/state.rs` | **skip** | Zero-value withdrawal claims |
+| Balance conservation (transfer) | `guest/src/state.rs` | enforced | Value creation from nothing |
+| Entry output SPK is P2SH(delegate) | `core/src/p2sh.rs` | **skip** | Deposits to unrelated addresses credited |
+| Entry tx input 0 not permission suffix | `core/src/prev_tx.rs` | **skip** | Delegate change output misinterpreted as deposit |
+| Exit SPK length <= `EXIT_SPK_MAX` | `core/src/action.rs` | enforced | Oversized SPK overflows |
+| Seq commitment matches chain | On-chain `OpChainblockSeqCommit` | on-chain | Fabricated block data |
+| Permission root matches exits | `guest/src/main.rs` | **assert** | Incorrect withdrawal tree committed |
+| Redeem script length matches host hint | `guest/src/main.rs` | **assert** | Script hash mismatch |
 
 ### On-chain checks (state verification script)
 
@@ -112,6 +118,18 @@ The host provides private inputs (witnesses) to the guest. Some are trusted hint
 | Input 0 suffix `[0x51, 0x75]` | Step 3 | Co-spent with state verification (not permission) |
 
 ## Attack scenarios and mitigations
+
+### Malicious host substitutes fake prev_tx
+
+**Attack:** The host provides a fabricated previous transaction witness with the "correct" pubkey in the output, but the action transaction doesn't actually spend that UTXO. This would let the host authorize transfers/exits from any account.
+
+**Mitigation:** The guest reads the current action transaction's `rest_preimage` at the `V1TxData` level and computes `rest_digest` from it (never trusting a host-provided digest). It then parses the first input's outpoint `(prev_tx_id, output_index)` from the `rest_preimage`. The host must provide a prev_tx witness that hashes to this exact `prev_tx_id`. Since the `rest_preimage` is committed via `rest_digest` → `tx_id`, and the `tx_id` is bound to the chain via sequence commitment, the host cannot forge the first input. Mismatch causes an assertion failure (proof cannot be generated).
+
+### Malicious host provides invalid SMT proof
+
+**Attack:** The host provides a fabricated SMT proof that claims a different balance for an account, enabling unauthorized spending.
+
+**Mitigation:** Every pubkey in the sparse Merkle tree has a valid proof — either for the account's actual leaf or for the empty leaf at that index. The guest asserts that every SMT proof verifies against the current root. Since a valid proof always exists, any verification failure means the host is provably lying. This is enforced with `assert!` (not skip), so the proof cannot be generated with invalid witnesses.
 
 ### Malicious host credits fake deposits
 

@@ -22,3 +22,6 @@ lto = true
 
 [patch.crates-io]
 sha2 = { git = "https://github.com/risc0/RustCrypto-hashes.git", package = "sha2", branch = "risczero"}
+
+[package.metadata.risc0]
+rustc-flags = ["--cfg", "getrandom_backend=\"custom\""]

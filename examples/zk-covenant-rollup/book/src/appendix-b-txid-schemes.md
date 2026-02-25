@@ -54,9 +54,9 @@ The host provides:
 
 The V1 split design benefits the ZK guest:
 
-1. **Smaller witness:** The guest only needs `payload_digest` (32 bytes) instead of the full payload (variable, potentially large). The payload contains the action data which the guest already has from block processing.
+1. **Smaller witness:** For previous transaction verification, the guest only needs `payload_digest` (32 bytes) instead of the full payload (variable, potentially large). The payload contains the action data which the guest already has from block processing.
 
-2. **Output extraction:** The `rest_preimage` contains the outputs, so the guest can extract the output SPK for deposit verification without needing the payload bytes.
+2. **Output and input extraction:** The `rest_preimage` contains both outputs and inputs. The guest extracts output SPKs for deposit verification and first-input outpoints for source authorization. Since the guest reads the full `rest_preimage` and computes `rest_digest` itself (never trusting a host-provided digest), all parsed data is tamper-proof.
 
 3. **Efficient hashing:** BLAKE3 is faster than BLAKE2b in the RISC-V guest, and the split allows partial preimage reuse.
 

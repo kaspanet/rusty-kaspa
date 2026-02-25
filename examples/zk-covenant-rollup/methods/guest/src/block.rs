@@ -1,9 +1,11 @@
 use risc0_zkvm::serde::WordRead;
 use zk_covenant_rollup_core::{
+    AlignedBytes,
     action::{Action, EntryAction, ExitAction, TransferAction},
-    perm_leaf_hash,
+    bytes_to_words_ref, perm_leaf_hash,
     permission_tree::StreamingPermTreeBuilder,
-    seq_commit::{seq_commitment_leaf, StreamingMerkleBuilder},
+    prev_tx::parse_first_input_outpoint,
+    seq_commit::{StreamingMerkleBuilder, seq_commitment_leaf},
 };
 
 use crate::{auth, input, state, tx, witness::EntryWitness, witness::ExitWitness, witness::TransferWitness};
@@ -58,7 +60,7 @@ fn process_v1_transaction(
     // Guest determines if this is an action based on cryptographic data
     // If it's a valid action, host MUST provide witness data
     if let Some(action) = tx_data.action {
-        process_action(stdin, state_root, action, &tx_data.rest_digest, covenant_id, perm_builder);
+        process_action(stdin, state_root, action, &tx_data.rest_preimage, covenant_id, perm_builder);
     }
 
     tx_data.tx_id
@@ -69,31 +71,41 @@ fn process_v1_transaction(
 ///
 /// Called only when guest has cryptographically determined this is a valid action.
 /// Host must provide witness data for verification.
+///
+/// The rest_preimage of the current transaction is used to:
+/// - Extract first input outpoint (for transfer/exit source verification)
+/// - Parse output data (for entry deposit amount)
 fn process_action(
     stdin: &mut impl WordRead,
     state_root: &mut [u32; 8],
     action: Action,
-    rest_digest: &[u32; 8],
+    rest_preimage: &AlignedBytes,
     covenant_id: &[u32; 8],
     perm_builder: &mut StreamingPermTreeBuilder,
 ) {
     match action {
-        Action::Transfer(transfer) => process_transfer(stdin, state_root, transfer),
-        Action::Entry(entry) => process_entry(stdin, state_root, entry, rest_digest, covenant_id),
-        Action::Exit(exit) => process_exit(stdin, state_root, exit, perm_builder),
+        Action::Transfer(transfer) => process_transfer(stdin, state_root, transfer, rest_preimage),
+        Action::Entry(entry) => process_entry(stdin, state_root, entry, rest_preimage, covenant_id),
+        Action::Exit(exit) => process_exit(stdin, state_root, exit, rest_preimage, perm_builder),
     }
 }
 // ANCHOR_END: process_action
 
 // ANCHOR: process_transfer
 /// Process a transfer action
-fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transfer: TransferAction) {
-    let witness = TransferWitness::read_from_stdin(stdin);
+fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transfer: TransferAction, rest_preimage: &AlignedBytes) {
+    // Extract first input outpoint from current tx's rest_preimage.
+    // This is committed via rest_digest → tx_id, so tamper-proof.
+    let (first_input_prev_tx_id, first_input_output_index) =
+        parse_first_input_outpoint(rest_preimage.as_bytes()).expect("action tx must have at least one input");
+    let first_input_prev_tx_id = bytes_to_words_ref(&first_input_prev_tx_id);
 
-    // Verify source authorization (prev tx output proves ownership).
-    // Only Schnorr P2PK sources are accepted — see auth::verify_source.
-    if auth::verify_source(&transfer.source, &witness.prev_tx).is_none() {
-        // Invalid authorization - action rejected but tx_id still committed
+    let witness = TransferWitness::read_from_stdin(stdin, first_input_output_index);
+
+    // Verify source authorization.
+    // Asserts prev_tx matches first input (host cheating → proof fails).
+    // Skips if pubkey mismatch (user error → action rejected).
+    if auth::verify_source(&transfer.source, &witness.prev_tx, &first_input_prev_tx_id).is_none() {
         return;
     }
 
@@ -108,33 +120,28 @@ fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transf
 /// Process an entry (deposit) action
 ///
 /// Entry actions credit a destination account with the deposit amount.
-/// The amount is extracted from the transaction output (verified via rest_digest).
+/// The amount is extracted from the transaction output (verified via rest_preimage
+/// which is now read at the V1TxData level, not as part of the entry witness).
 fn process_entry(
     stdin: &mut impl WordRead,
     state_root: &mut [u32; 8],
     entry: EntryAction,
-    rest_digest: &[u32; 8],
+    rest_preimage: &AlignedBytes,
     covenant_id: &[u32; 8],
 ) {
     let witness = EntryWitness::read_from_stdin(stdin);
 
-    // Verify rest_preimage matches the rest_digest committed in the tx_id.
-    // This ensures the output data (including deposit value) is tamper-proof.
-    let computed_rest_digest = zk_covenant_rollup_core::rest_digest_bytes(witness.rest_preimage.as_bytes());
-    if computed_rest_digest != *rest_digest {
-        // rest_preimage doesn't match — reject
-        return;
-    }
+    // rest_preimage is already verified (guest computed rest_digest from it in read_v1_tx_data).
 
     // Reject if input 0 is a permission script. This prevents delegate change
     // outputs (from withdrawal transactions) from being counted as new deposits.
-    if zk_covenant_rollup_core::prev_tx::input0_has_permission_suffix(witness.rest_preimage.as_bytes()) {
+    if zk_covenant_rollup_core::prev_tx::input0_has_permission_suffix(rest_preimage.as_bytes()) {
         return;
     }
 
     // Parse the first output (index 0) to extract the deposit value.
     // Deposit output is always at index 0. tx_version=1 because entry txs are always V1.
-    let output = match zk_covenant_rollup_core::prev_tx::parse_output_at_index(witness.rest_preimage.as_bytes(), 0, 1) {
+    let output = match zk_covenant_rollup_core::prev_tx::parse_output_at_index(rest_preimage.as_bytes(), 0, 1) {
         Some(o) => o,
         None => return, // Parse failure
     };
@@ -164,12 +171,18 @@ fn process_exit(
     stdin: &mut impl WordRead,
     state_root: &mut [u32; 8],
     exit: ExitAction,
+    rest_preimage: &AlignedBytes,
     perm_builder: &mut StreamingPermTreeBuilder,
 ) {
-    let witness = ExitWitness::read_from_stdin(stdin);
+    // Extract first input outpoint from current tx's rest_preimage.
+    let (first_input_prev_tx_id, first_input_output_index) =
+        parse_first_input_outpoint(rest_preimage.as_bytes()).expect("action tx must have at least one input");
+    let first_input_prev_tx_id = bytes_to_words_ref(&first_input_prev_tx_id);
 
-    // Verify source authorization (prev tx output proves ownership)
-    if auth::verify_source(&exit.source, &witness.prev_tx).is_none() {
+    let witness = ExitWitness::read_from_stdin(stdin, first_input_output_index);
+
+    // Verify source authorization (asserts on host cheating, skips on user error)
+    if auth::verify_source(&exit.source, &witness.prev_tx, &first_input_prev_tx_id).is_none() {
         return;
     }
 

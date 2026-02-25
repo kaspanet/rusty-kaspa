@@ -60,7 +60,7 @@ flowchart LR
     AMT -.-> CREDIT
 ```
 
-**Authorization:** The guest verifies the source pubkey by checking a previous transaction output. The host provides a `PrevTxV1Witness` containing the `rest_preimage` and `payload_digest`. The guest recomputes the `tx_id`, extracts the output SPK, and confirms it is a Schnorr P2PK matching `source`.
+**Authorization:** The guest verifies the source pubkey by checking the previous transaction output spent by the current action tx. The guest extracts the first input's outpoint `(prev_tx_id, output_index)` from the current transaction's `rest_preimage` (committed via `rest_digest` → `tx_id`). The host provides a `PrevTxV1Witness` containing the previous tx's `rest_preimage` and `payload_digest`. The guest asserts that the witness hashes to the committed `prev_tx_id`, then extracts the output SPK and confirms it is a Schnorr P2PK matching `source`.
 
 **State update:** The guest verifies the source's SMT proof against the current root, debits the balance, computes an intermediate root, then verifies the destination's proof against that intermediate root and credits the balance.
 
@@ -82,9 +82,8 @@ flowchart LR
     HDR --> DST
 
     subgraph Guest["Guest verification"]
-        REST["Verify rest_preimage<br/>matches rest_digest"]
         SUFFIX["Reject if input 0<br/>has permission suffix"]
-        OUTPUT["Parse output 0<br/>extract value"]
+        OUTPUT["Parse output 0<br/>from rest_preimage"]
         SPK["Verify output SPK<br/>is P2SH(delegate)"]
         CREDIT["Credit destination<br/>balance += value"]
     end
@@ -92,7 +91,7 @@ flowchart LR
     DST -.-> CREDIT
 ```
 
-**Key design:** The deposit amount is **not** in the payload. It comes from the transaction's first output value, verified via the `rest_preimage`. This prevents the host from inflating deposit amounts — the value is cryptographically committed via `rest_digest` → `tx_id`.
+**Key design:** The deposit amount is **not** in the payload. It comes from the transaction's first output value, parsed from the `rest_preimage`. The `rest_preimage` is read at the `V1TxData` level (shared by all action types) and its hash is verified by the guest as part of `tx_id` computation. This prevents the host from inflating deposit amounts — the value is cryptographically committed via `rest_digest` → `tx_id`.
 
 **SPK verification:** The guest verifies that output 0's SPK is `P2SH(delegate_script(covenant_id))`. This ensures the deposited funds are actually locked in the covenant, not sent to an arbitrary address.
 
