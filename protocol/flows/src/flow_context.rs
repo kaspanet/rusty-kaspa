@@ -713,7 +713,7 @@ impl ConnectionInitializer for FlowContext {
         let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: get number of live services
-        // TODO: disable_relay_tx from config/cmd
+        self_version_message.disable_relay_tx = self.config.disable_relay_tx;
 
         // Perform the handshake
         let peer_version_message = handshake.handshake(self_version_message.into()).await?;

@@ -155,6 +155,24 @@ impl Hub {
         }
     }
 
+    /// Broadcast a message to all peers matching a predicate
+    pub async fn broadcast_filtered(&self, msg: KaspadMessage, predicate: impl Fn(&Arc<Router>) -> bool) {
+        let peers = self.peers.read().values().filter(|r| predicate(r)).cloned().collect::<Vec<_>>();
+        for router in peers {
+            let _ = router.enqueue(msg.clone()).await;
+        }
+    }
+
+    /// Broadcast a message to some number of peers matching a predicate
+    pub async fn broadcast_to_some_peers_filtered(&self, msg: KaspadMessage, num_peers: usize, predicate: impl Fn(&Arc<Router>) -> bool) {
+        assert!(num_peers > 0);
+        let peers: Vec<_> = self.peers.read().values().filter(|r| predicate(r)).cloned().collect();
+        let selected = peers.into_iter().choose_multiple(&mut rand::thread_rng(), num_peers);
+        for router in selected {
+            let _ = router.enqueue(msg.clone()).await;
+        }
+    }
+
     /// Broadcast a vector of messages to all peers (except an optional filtered peer)
     pub async fn broadcast_many(&self, msgs: Vec<KaspadMessage>, filter_peer: Option<PeerKey>) {
         if msgs.is_empty() {
