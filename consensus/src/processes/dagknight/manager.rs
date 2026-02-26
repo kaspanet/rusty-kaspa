@@ -262,9 +262,14 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         }
     }
 
-    pub fn sort_blocks(&self, blocks: impl IntoIterator<Item = Hash>) -> Vec<Hash> {
+    fn sort_blocks(&self, blocks: impl IntoIterator<Item = Hash>) -> Vec<Hash> {
         let mut sorted_blocks: Vec<Hash> = blocks.into_iter().collect();
-        sorted_blocks.sort_by_cached_key(|block| SortableBlock { hash: *block, blue_work: self.get_blue_work(*block).unwrap() });
+        sorted_blocks.sort_by_cached_key(|block| SortableBlock {
+            hash: *block,
+            // Sort by blue work as calculated within the zone. For blocks not within the zone (or not in agreement), we prefer them to be added later.
+            // Using the header blue work will tend to order these blocks later.
+            blue_work: self.get_blue_work(*block).unwrap_or(self.headers_store.get_header(*block).unwrap().blue_work),
+        });
         sorted_blocks
     }
 
@@ -277,12 +282,21 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     }
 
     pub fn find_selected_parent(&self, parents: impl IntoIterator<Item = Hash>) -> Hash {
-        parents
+        let selected_parent = parents
             .into_iter()
-            .map(|parent| SortableBlock { hash: parent, blue_work: self.get_blue_work(parent).unwrap() })
+            .filter_map(|parent| self.get_blue_work(parent).map(|blue_work| SortableBlock { hash: parent, blue_work }).ok())
             .max()
             .unwrap()
-            .hash
+            .hash;
+
+        assert!(
+            self.reachability_service.is_chain_ancestor_of(self.root, selected_parent),
+            "conflict genesis {} not a chain ancestor of selected parent {}",
+            self.root,
+            selected_parent
+        );
+
+        selected_parent
     }
     // END Copied from GD Manager
 }
