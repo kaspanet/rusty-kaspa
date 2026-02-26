@@ -108,4 +108,20 @@ pub enum TxRuleError {
     CovenantsError(#[from] CovenantsError),
 }
 
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum PopulateGenesisCovenantsError {
+    #[error("outputs list is empty")]
+    EmptyOutputs,
+    #[error("authorizing input index {0} is out of bounds for {1} inputs")]
+    NoSuchInput(usize, usize),
+    #[error("output index {0} is out of bounds for {1} outputs")]
+    NoSuchOutput(usize, usize),
+    #[error("outputs are not strictly ordered")]
+    OutputsNotOrdered,
+    #[error("output index {0} appears in more than one group")]
+    OutputsNotDisjoint(usize),
+    #[error("output index {0} covenant field is already populated")]
+    CovenantAlreadyPopulated(usize),
+}
+
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
