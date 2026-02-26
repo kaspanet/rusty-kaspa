@@ -427,7 +427,10 @@ fn rpc_optional_to_transaction(rpc: &kaspa_rpc_core::RpcOptionalTransaction) -> 
         .filter_map(|out| {
             let value = out.value?;
             let spk = out.script_public_key.clone()?;
-            Some(TransactionOutput::new(value, spk))
+            // V1+ tx_id hash includes `covenant.is_some()` as a boolean; omitting covenant
+            // would produce a wrong tx_id for any output that carries a covenant binding.
+            let covenant = out.covenant.as_ref().and_then(|n| n.0).map(|c| c.0);
+            Some(TransactionOutput::with_covenant(value, spk, covenant))
         })
         .collect();
 
