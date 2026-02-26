@@ -17,6 +17,7 @@ use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
 use kaspa_wrpc_client::prelude::{NetworkId, NetworkType, Notification};
 use risc0_zkvm::sha::Digestible;
+use zk_covenant_rollup_core::seq_commit::{calc_accepted_id_merkle_root, seq_commitment_leaf, StreamingMerkleBuilder};
 use zk_covenant_rollup_core::state::empty_tree_root;
 use zk_covenant_rollup_host::mock_chain::{from_bytes, MockSeqCommitAccessor};
 use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProveOutput, ProverBackend};
@@ -404,20 +405,74 @@ async fn sync_chain(node: &KaspaNode, prover: &mut RollupProver) -> Result<()> {
     let mut total_blocks = 0usize;
     let mut total_txs = 0usize;
     let mut total_actions = 0usize;
+    let mut seq_mismatches = 0usize;
 
     loop {
         let resp = node.get_virtual_chain_v2(sync_cursor, Some(1000)).await.context("VCC v2 fetch failed")?;
         if resp.added_chain_block_hashes.is_empty() {
             break;
         }
+
+        // Capture seq commitment BEFORE this batch for independent re-computation.
+        let mut computed_seq: [u32; 8] = from_bytes(prover.seq_commitment.as_bytes());
+
         let result = prover.process_chain_response(&resp);
+
+        // Independently re-derive seq commitment per block using the same streaming merkle
+        // that the guest uses: seq_commitment_leaf(tx_id, version) for each ZkTransaction.
+        // If our computed AIR matches block header AIR → rollup impl is correct, guest needs debugging.
+        // If it doesn't match → tx_id reconstruction or tx filtering has a bug in the rollup impl.
+        for (i, (block_zk_txs, rpc_block)) in
+            prover.last_block_txs.iter().zip(resp.chain_block_accepted_transactions.iter()).enumerate()
+        {
+            let rpc_tx_count = rpc_block.accepted_transactions.len();
+            let zk_tx_count = block_zk_txs.len();
+            if rpc_tx_count != zk_tx_count {
+                eprintln!(
+                    "  [WARN] block[{i}]: RPC has {rpc_tx_count} txs but ZkTransactions has {zk_tx_count} \
+                     (some dropped by rpc_optional_to_transaction)"
+                );
+            }
+
+            let mut builder = StreamingMerkleBuilder::new();
+            for zk_tx in block_zk_txs {
+                builder.add_leaf(seq_commitment_leaf(&zk_tx.tx_id(), zk_tx.version()));
+            }
+            let block_root = builder.finalize();
+            computed_seq = calc_accepted_id_merkle_root(&computed_seq, &block_root);
+            let computed_hash = Hash::from_bytes(bytemuck::cast(computed_seq));
+
+            let block_hash = resp.added_chain_block_hashes.get(i).copied().unwrap_or_default();
+            match rpc_block.chain_block_header.accepted_id_merkle_root {
+                Some(header_air) if computed_hash != header_air => {
+                    seq_mismatches += 1;
+                    eprintln!(
+                        "  [SEQ MISMATCH] block[{i}] {block_hash} ({zk_tx_count}/{rpc_tx_count} ZkTxs/RPC)\n    \
+                         computed: {computed_hash}\n    header:   {header_air}"
+                    );
+                }
+                None => {
+                    eprintln!("  [WARN] block[{i}] {block_hash} has no AIR in header");
+                }
+                _ => {}
+            }
+        }
+
         total_blocks += result.blocks_processed;
         total_txs += result.txs_processed;
         total_actions += result.actions_found;
         sync_cursor = *resp.added_chain_block_hashes.last().unwrap();
     }
 
+    if seq_mismatches > 0 {
+        bail!(
+            "{seq_mismatches} seq commitment mismatch(es) during sync — \
+             tx_id reconstruction or tx filtering bug in rollup impl"
+        );
+    }
+
     println!("  Synced: {} blocks, {} txs, {} actions", total_blocks, total_txs, total_actions);
+    println!("  [ok] All {total_blocks} blocks verified: computed seq commitments match block headers");
     println!("  State root: {}", Hash::from_bytes(bytemuck::cast(prover.state_root)));
     println!("  Seq commitment: {}", prover.seq_commitment);
     println!("  Accumulated blocks for proving: {}", prover.accumulated_blocks());
