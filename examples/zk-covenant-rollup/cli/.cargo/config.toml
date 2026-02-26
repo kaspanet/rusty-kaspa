@@ -1,0 +1,9 @@
+[env]
+CUDA_PATH = "/usr/local/cuda"
+NVCC = "/usr/local/cuda/bin/nvcc"
+
+[build]
+rustc-wrapper = ""
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=native"]
