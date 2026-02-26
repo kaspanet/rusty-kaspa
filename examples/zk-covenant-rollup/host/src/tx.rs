@@ -272,7 +272,6 @@ mod tests {
     /// To re-capture data: run `capture_succinct_proof_data` (ignored, slow):
     /// `cargo test --release capture_succinct_proof_data -- --ignored --nocapture`
     #[test]
-    #[ignore = "captured seal is stale after guest code change — re-run capture_succinct_proof_data"]
     fn test_succinct_proof_verification_with_captured_data() {
         use std::collections::HashMap;
 
@@ -287,13 +286,13 @@ mod tests {
         // To re-capture: run `capture_succinct_proof_data` (ignored, slow).
         let seal_bytes: &[u8] = include_bytes!("../testdata/captured_seal.bin");
 
-        const CLAIM_HEX: &str = "867312181b730a3b1d4c9eaf8a0de028630d7cd4aad04b7007a894709b0f5fe8";
+        const CLAIM_HEX: &str = "66d77a344274c7bf7215936058f4620be4d477003f6d01bf86b843c034358ced";
         const HASHFN: &str = "poseidon2";
         const CONTROL_INDEX: u32 = 10;
         const CONTROL_DIGESTS_HEX: &str = "fd84d83092a1e1244d423a26d89c892ab098b467c6d82229912deb26e37d2562dafe25646d370c28fe472176911d2c541ba6e243b1d9150fd67d6a055116f1690bb1e41c4f4912522725016e09358171398a9a6d44fe5d5c648eb8226e46ed50c64e2b5c7ffa46692f5939054290d36dd4b84477dbb78a3d3aaba251d43caf24977f9e2868d664458077ac35fa9050290c7db016c2750620c362da3c275cab67f765ab6e0cf5dc55c11d65688af0fe1428afc359c08b1656bbc4ba6b54c9746cc6b87a237165c549ef7ac614d762ec1ce4b97441c9bfef6fd8ac90378170d8162be97040fd0b390959c33114712a436382b2cd419665ee2fe801c158a9bbb155";
         const BLOCK_PROVE_TO_HEX: &str = "0000000000000000000000000000000000000000000000000300000000000000";
         const NEW_STATE_HEX: &str = "47345fa0e4e721619cdd7328fdfde5dd2d5a66a6a1a9d93d997d5f5637bda86e";
-        const NEW_SEQ_HEX: &str = "aa7781b6860fe3baa4f0b75e0a2dd90a1951c26f4e5a191ffcbb55b4818053fe";
+        const NEW_SEQ_HEX: &str = "54c51a0910cbfa7c0b41ab0bfcf512a15919c718995f1c5fe5d437252df4d448";
         const PREV_STATE_HEX: &str = "25f706375943a1eadc748b295b87372835b518300f9df52f95f2d980a2cd6e32";
         const PREV_SEQ_HEX: &str = "73ccb9fdf73a01aa761c348c706b7b6cc9551fbba0ea00e1d84d8664cb81af90";
         const COVENANT_ID_HEX: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";

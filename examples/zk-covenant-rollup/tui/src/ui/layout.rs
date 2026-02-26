@@ -208,7 +208,7 @@ fn draw_popup(frame: &mut Frame, app: &App) {
 fn draw_pick_transfer_popup(frame: &mut Frame, app: &App, src_idx: usize, dst_idx: usize, picking_src: bool) {
     let n = app.accounts.len();
     // 2 border + 1 header + 1 blank + n accounts + 1 blank + 1 hint = n+6
-    let height = ((n + 6) as u16).max(8).min(20);
+    let height = ((n + 6) as u16).clamp(8, 20);
     let area = centered_rect(72, height, frame.area());
     frame.render_widget(Clear, area);
 
@@ -261,7 +261,7 @@ fn draw_pick_transfer_popup(frame: &mut Frame, app: &App, src_idx: usize, dst_id
 fn draw_pick_exit_dest_popup(frame: &mut Frame, app: &App, src_idx: usize, dst_idx: usize) {
     let n = app.accounts.len();
     // 2 border + 1 src header + 1 blank + n accounts + 1 blank + 1 hint
-    let height = ((n + 6) as u16).max(8).min(20);
+    let height = ((n + 6) as u16).clamp(8, 20);
     let area = centered_rect(72, height, frame.area());
     frame.render_widget(Clear, area);
 
