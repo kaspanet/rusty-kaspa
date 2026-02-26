@@ -18,7 +18,7 @@ use workflow_wasm::prelude::*;
 ///
 /// @category Consensus
 #[wasm_bindgen(js_name = covenantId)]
-pub fn covenant_id_js(genesis_outpoint: &TransactionOutpointT, auth_outputs: JsValue) -> Result<Hash> {
+pub fn js_covenant_id(genesis_outpoint: &TransactionOutpointT, auth_outputs: JsValue) -> Result<Hash> {
     let outpoint_client = TransactionOutpoint::try_from(genesis_outpoint.as_ref())?;
     let outpoint = cctx::TransactionOutpoint::from(&outpoint_client);
     let outputs: Vec<(u32, cctx::TransactionOutput)> = Array::from(&auth_outputs)
