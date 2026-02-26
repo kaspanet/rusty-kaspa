@@ -12,9 +12,10 @@ use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
+use kaspa_consensus_core::constants::INPUT_COMPUTE_MASS_SCALE_FACTOR;
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
-    mass::{MassCalculator, encode_sig_op_count},
+    mass::MassCalculator,
     network::NetworkType,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry},
@@ -458,12 +459,12 @@ async fn bench_bbt_latency_stark() {
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
     let output_spk = pay_to_address_script(&prealloc_address);
-    let sig_op_count = encode_sig_op_count(ZkTag::R0Succinct.sigop_cost(), TX_VERSION_POST_COV_HF);
+    let input_compute_mass = (ZkTag::R0Succinct.cost() * 2 / INPUT_COMPUTE_MASS_SCALE_FACTOR) as u16; // We take some safety margin.
     let txs = generate_stark_tx_dag(
         utxoset.clone(),
         stark_signature_script,
         output_spk,
-        sig_op_count,
+        input_compute_mass,
         TX_COUNT / TX_LEVEL_WIDTH,
         TX_LEVEL_WIDTH,
         &params,
@@ -499,7 +500,7 @@ fn generate_stark_tx_dag(
     mut utxoset: UtxoCollection,
     signature_script: Vec<u8>,
     output_spk: ScriptPublicKey,
-    sig_op_count: u8,
+    input_compute_mass: u16,
     target_levels: usize,
     target_width: usize,
     params: &Params,
@@ -521,7 +522,12 @@ fn generate_stark_tx_dag(
             .into_iter()
             .map(|c| {
                 c.into_iter()
-                    .map(|(o, e)| (TransactionInput::new(*o, signature_script.as_ref().clone(), 0, sig_op_count), e.clone()))
+                    .map(|(o, e)| {
+                        (
+                            TransactionInput::new_with_compute_mass(*o, signature_script.as_ref().clone(), 0, 0, input_compute_mass),
+                            e.clone(),
+                        )
+                    })
                     .unzip::<_, _, Vec<_>, Vec<UtxoEntry>>()
             })
             .collect::<Vec<(Vec<_>, Vec<UtxoEntry>)>>()
