@@ -4,10 +4,8 @@ pub mod error;
 
 cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
-        pub mod hashing;
         pub mod result;
         mod utils;
-        pub use hashing::*;
         pub use utils::*;
     }
 }
