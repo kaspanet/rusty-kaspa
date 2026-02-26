@@ -18,8 +18,8 @@ use zk_covenant_rollup_core::{
 use crate::bridge::build_delegate_entry_script;
 
 use crate::mock_tx::{
-    create_entry_tx, create_exit_tx, create_prev_tx, create_transfer_tx, create_unknown_action_tx, create_v0_tx,
-    create_v1_non_action_tx, ZkTransaction,
+    create_entry_tx, create_exit_tx, create_exit_tx_insufficient, create_prev_tx, create_transfer_tx, create_unknown_action_tx,
+    create_v0_tx, create_v1_non_action_tx, ZkTransaction,
 };
 
 /// Mock implementation of SeqCommitAccessor for testing
@@ -258,13 +258,22 @@ pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32], 
             let source_proof = smt.prove(&charlie_pk);
             let source_witness = AccountWitness::new(charlie_pk, charlie_balance, source_proof);
 
+            // Still need a prev_tx for the input outpoint (nonce finding), but rest=None
+            // because the guest will see insufficient balance and skip auth.
             let first_input_spk = pay_to_pubkey_spk(&AccountName::Charlie.pubkey_bytes());
             let first_input_spk_kaspa = ScriptPublicKey::new(0, first_input_spk.to_vec().into());
             let prev_tx = create_prev_tx(1000, first_input_spk_kaspa);
+            let input = kaspa_consensus_core::tx::TransactionInput::new(
+                kaspa_consensus_core::tx::TransactionOutpoint::new(prev_tx.id(), 0),
+                vec![],
+                0,
+                0,
+            );
 
             let outputs = vec![TransactionOutput::new(exit_amount, ScriptPublicKey::new(0, charlie_dest_spk.to_vec().into()))];
 
-            let exit_tx = create_exit_tx(charlie_pk, &charlie_dest_spk, exit_amount, outputs, source_witness, prev_tx, 0);
+            let exit_tx =
+                create_exit_tx_insufficient(charlie_pk, &charlie_dest_spk, exit_amount, vec![input], outputs, source_witness);
             txs.push(exit_tx);
             // Do NOT update SMT/balances/perm_builder — guest rejects (insufficient balance)
             println!("    (exit rejected: insufficient balance)");

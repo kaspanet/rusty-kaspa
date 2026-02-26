@@ -58,7 +58,7 @@ Checks are categorized as **assert** (host cheating — proof fails entirely) or
 | Check | Location | Response | Attack prevented |
 |-------|----------|----------|-----------------|
 | `is_action_tx_id(tx_id)` | `guest/src/block.rs` | gate | Non-action transactions processed as actions |
-| `tx_id[0] == 0x41` | `core/src/lib.rs` | gate | Random transactions misclassified |
+| `tx_id[0..2] == "AC"` | `core/src/lib.rs` | gate | Random transactions misclassified (~1/65536 collision) |
 | Action version == `ACTION_VERSION` | `guest/src/tx.rs` | gate | Future/incompatible action formats |
 | `rest_digest == hash(rest_preimage)` | `guest/src/tx.rs` | computed | Host cannot forge rest_digest (guest computes it) |
 | First input outpoint matches prev_tx witness | `guest/src/auth.rs` | **assert** | Host substitutes fake prev_tx |

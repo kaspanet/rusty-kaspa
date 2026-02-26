@@ -155,14 +155,14 @@ impl PublicInput {
 }
 
 // ANCHOR: is_action_tx_id
-/// Single byte prefix for action transaction IDs (0x41 = 'A')
-/// Using a single byte makes it ~256x easier to find valid nonces for testing
-pub const ACTION_TX_ID_PREFIX: u8 = b'A';
+/// Two-byte prefix for action transaction IDs (0x41 0x43 = "AC").
+/// Using two bytes reduces accidental collisions from ~1/256 to ~1/65536.
+pub const ACTION_TX_ID_PREFIX: &[u8; 2] = b"AC";
 
-/// Check if a tx_id represents an action transaction (first byte matches prefix)
+/// Check if a tx_id represents an action transaction (first two bytes match prefix)
 #[inline]
 pub fn is_action_tx_id(tx_id: &[u32; 8]) -> bool {
-    (tx_id[0] as u8) == ACTION_TX_ID_PREFIX
+    tx_id[0].to_le_bytes()[..2] == *ACTION_TX_ID_PREFIX
 }
 // ANCHOR_END: is_action_tx_id
 

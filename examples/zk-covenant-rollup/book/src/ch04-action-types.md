@@ -4,13 +4,13 @@ Actions are the state-transition primitives of the rollup. Each action is encode
 
 ## Action identification
 
-A transaction is recognized as an action when its `tx_id` starts with the magic prefix byte `0x41` (`'A'`):
+A transaction is recognized as an action when its `tx_id` starts with the two-byte prefix `0x41 0x43` (`"AC"`):
 
 ```rust
 {{#include ../../core/src/lib.rs:is_action_tx_id}}
 ```
 
-The host mines a `nonce` in the `ActionHeader` until the resulting `tx_id` starts with this prefix. Using a single byte means roughly 1 in 256 nonces will match — fast enough for testing.
+The host mines a `nonce` in the `ActionHeader` until the resulting `tx_id` starts with this prefix. Using two bytes means roughly 1 in 65,536 nonces will match — still fast enough for testing, while reducing accidental collisions from random testnet transactions (compared to 1 in 256 with a single-byte prefix).
 
 ## Action header
 
