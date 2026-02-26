@@ -139,6 +139,7 @@ mod tests {
                 signature_script: vec![],
                 sequence: 0,
                 sig_op_count: 4,
+                compute_mass: 0,
             }],
             vec![],
             0,

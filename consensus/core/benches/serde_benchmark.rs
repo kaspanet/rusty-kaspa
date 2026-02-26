@@ -28,6 +28,7 @@ fn serialize_benchmark(c: &mut Criterion) {
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
                 sig_op_count: 0,
+                compute_mass: 0,
             },
             TransactionInput {
                 previous_outpoint: TransactionOutpoint {
@@ -40,6 +41,7 @@ fn serialize_benchmark(c: &mut Criterion) {
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
                 sig_op_count: 0,
+                compute_mass: 0,
             },
         ],
         vec![
@@ -90,6 +92,7 @@ fn deserialize_benchmark(c: &mut Criterion) {
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
                 sig_op_count: 0,
+                compute_mass: 0,
             },
             TransactionInput {
                 previous_outpoint: TransactionOutpoint {
@@ -102,6 +105,7 @@ fn deserialize_benchmark(c: &mut Criterion) {
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
                 sig_op_count: 0,
+                compute_mass: 0,
             },
         ],
         vec![

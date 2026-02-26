@@ -204,18 +204,21 @@ mod tests {
                     signature_script: vec![],
                     sequence: 0,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
             ],
             vec![

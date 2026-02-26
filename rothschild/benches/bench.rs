@@ -14,6 +14,7 @@ fn constuct_tx() -> Transaction {
         signature_script: vec![],
         sequence: 0,
         sig_op_count: 1,
+        compute_mass: 0,
     }];
     let outputs =
         vec![TransactionOutput { value: 10000, script_public_key: ScriptPublicKey::from_vec(0, vec![0xff; 35]), covenant: None }];

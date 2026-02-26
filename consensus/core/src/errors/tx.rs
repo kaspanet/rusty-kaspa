@@ -93,9 +93,6 @@ pub enum TxRuleError {
     #[error("calculated contextual mass (including storage mass) {0} is not equal to the committed mass field {1}")]
     WrongMass(u64, u64),
 
-    #[error("transaction compute mass commitment {0} is below required non-sigop compute mass {1}")]
-    InsufficientComputeMassCommitment(u64, u64),
-
     #[error("transaction subnetwork id {0} is neither native nor coinbase")]
     SubnetworksDisabled(SubnetworkId),
 
@@ -110,8 +107,8 @@ pub enum TxRuleError {
     #[error("transaction input #{0} has non-zero sig op count {1} in version 1 transaction")]
     NonZeroSigOpCountInV1(usize, u8),
 
-    #[error("transaction has non-zero compute mass commitment {0} in version 0 transaction")]
-    NonZeroComputeMassInV0(u64),
+    #[error("transaction input #{0} has non-zero compute mass commitment {1} in version 0 transaction")]
+    NonZeroComputeMassInV0(usize, u16),
 
     #[error("covenants error: {0}")]
     CovenantsError(#[from] CovenantsError),

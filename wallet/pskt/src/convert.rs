@@ -21,7 +21,8 @@ impl TryFrom<Transaction> for Inner {
 impl TryFrom<TransactionInput> for Input {
     type Error = Error;
     fn try_from(input: TransactionInput) -> std::result::Result<Input, Self::Error> {
-        let TransactionInputInner { previous_outpoint, signature_script: _, sequence: _, sig_op_count, utxo } = &*input.inner();
+        let TransactionInputInner { previous_outpoint, signature_script: _, sequence: _, sig_op_count, compute_mass: _, utxo } =
+            &*input.inner();
 
         let input = InputBuilder::default()
         .utxo_entry(utxo.as_ref().ok_or(Error::MissingUtxoEntry)?.into())

@@ -10,7 +10,6 @@ mod script_public_key;
 
 use crate::mass::{ContextualMasses, Mass, MassCofactors, NonContextualMasses};
 use crate::{
-    constants::TX_VERSION_POST_COV_HF,
     hashing,
     subnets::{self, SubnetworkId},
 };
@@ -111,11 +110,22 @@ pub struct TransactionInput {
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
     pub sig_op_count: u8,
+    pub compute_mass: u16, // TODO(covpp-mainnet): Take care for DB compatibility.
 }
 
 impl TransactionInput {
     pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
-        Self { previous_outpoint, signature_script, sequence, sig_op_count }
+        Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_mass: 0 }
+    }
+
+    pub fn new_with_compute_mass(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        sig_op_count: u8,
+        compute_mass: u16,
+    ) -> Self {
+        Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_mass }
     }
 }
 
@@ -126,6 +136,7 @@ impl std::fmt::Debug for TransactionInput {
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.sig_op_count)
+            .field("compute_mass", &self.compute_mass)
             .finish()
     }
 }
@@ -230,12 +241,6 @@ pub struct Transaction {
     #[serde(default)]
     mass: TransactionMass,
 
-    /// Holds the compute-mass commitment value.
-    ///
-    /// This field is not part of the transaction ID commitment, but for version >= 1 it is
-    /// committed by `tx::hash`.
-    pub compute_mass: u64,
-
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
     #[serde(with = "serde_bytes_fixed_ref")]
@@ -282,18 +287,7 @@ impl Transaction {
         gas: u64,
         payload: Vec<u8>,
     ) -> Self {
-        Self {
-            version,
-            inputs,
-            outputs,
-            lock_time,
-            subnetwork_id,
-            gas,
-            payload,
-            mass: Default::default(),
-            compute_mass: 0,
-            id: Default::default(),
-        }
+        Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: Default::default(), id: Default::default() }
     }
 }
 
@@ -325,17 +319,6 @@ impl Transaction {
     /// Read the storage mass commitment
     pub fn mass(&self) -> u64 {
         self.mass.0.load(SeqCst)
-    }
-
-    /// Set the transient compute mass field of the passed transaction.
-    pub fn with_compute_mass(mut self, compute_mass: u64) -> Self {
-        self.compute_mass = compute_mass;
-        self
-    }
-
-    /// Whether this tx version supports an explicit compute mass field in validation paths.
-    pub fn has_explicit_compute_mass(&self) -> bool {
-        self.version >= TX_VERSION_POST_COV_HF
     }
 
     /// Set the storage mass commitment of the passed transaction
@@ -697,6 +680,7 @@ mod tests {
                     ],
                     sequence: 2,
                     sig_op_count: 3,
+                    compute_mass: 0,
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint {
@@ -712,6 +696,7 @@ mod tests {
                     ],
                     sequence: 4,
                     sig_op_count: 5,
+                    compute_mass: 0,
                 },
             ],
             vec![
@@ -740,20 +725,20 @@ mod tests {
         let expected_bts = vec![
             0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,
             130, 26, 104, 59, 122, 78, 222, 254, 44, 0, 0, 0, 250, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8,
-            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 3, 75,
-            176, 117, 53, 223, 213, 142, 11, 60, 214, 79, 215, 21, 82, 128, 135, 42, 4, 113, 188, 248, 48, 149, 82, 106, 206, 14, 56,
-            198, 0, 0, 0, 251, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-            48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 4, 0, 0, 0, 0, 0, 0, 0, 5, 2, 0, 0, 0, 0, 0, 0, 0, 6, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185,
-            117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185, 117, 220, 118, 217, 0,
-            59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
-            42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
-            72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 200, 4, 55, 147, 193, 14, 39, 3, 248, 207, 196, 68, 249, 136, 99, 48, 134, 161,
-            29, 52, 181, 205, 113, 128, 141, 219, 202, 72, 208, 223, 66,
+            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0,
+            0, 75, 176, 117, 53, 223, 213, 142, 11, 60, 214, 79, 215, 21, 82, 128, 135, 42, 4, 113, 188, 248, 48, 149, 82, 106, 206,
+            14, 56, 198, 0, 0, 0, 251, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+            46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 4, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 2, 0, 0, 0, 0, 0,
+            0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126,
+            132, 185, 117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 7, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185, 117, 220,
+            118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8,
+            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+            40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69,
+            70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0,
+            0, 0, 0, 0, 0, 0, 0, 50, 200, 4, 55, 147, 193, 14, 39, 3, 248, 207, 196, 68, 249, 136, 99, 48, 134, 161, 29, 52, 181, 205,
+            113, 128, 141, 219, 202, 72, 208, 223, 66,
         ];
         assert_eq!(expected_bts, bts);
         assert_eq!(tx, bincode::deserialize(&bts).unwrap());
@@ -773,7 +758,8 @@ mod tests {
       },
       "signatureScript": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
       "sequence": 2,
-      "sigOpCount": 3
+      "sigOpCount": 3,
+      "computeMass": 0
     },
     {
       "previousOutpoint": {
@@ -782,7 +768,8 @@ mod tests {
       },
       "signatureScript": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
       "sequence": 4,
-      "sigOpCount": 5
+      "sigOpCount": 5,
+      "computeMass": 0
     }
   ],
   "outputs": [
@@ -801,13 +788,10 @@ mod tests {
   "subnetworkId": "0000000000000000000000000000000000000000",
   "gas": 9,
   "payload": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263",
-    "mass": 0,
-    "computeMass": 0,
+  "mass": 0,
   "id": "32c8043793c10e2703f8cfc444f988633086a11d34b5cd71808ddbca48d0df42"
 }"#;
-        let expected_json: serde_json::Value = serde_json::from_str(expected_str).unwrap();
-        let actual_json: serde_json::Value = serde_json::from_str(&str).unwrap();
-        assert_eq!(expected_json, actual_json);
+        assert_eq!(expected_str, str);
         assert_eq!(tx, serde_json::from_str(&str).unwrap());
     }
 

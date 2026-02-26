@@ -166,8 +166,10 @@ fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
             }
         }
     } else {
-        if tx.compute_mass != 0 {
-            return Err(TxRuleError::NonZeroComputeMassInV0(tx.compute_mass));
+        for (i, input) in tx.inputs.iter().enumerate() {
+            if input.compute_mass != 0 {
+                return Err(TxRuleError::NonZeroComputeMassInV0(i, input.compute_mass));
+            }
         }
 
         for (i, output) in tx.outputs.iter().enumerate() {
@@ -257,6 +259,7 @@ mod tests {
                 ],
                 sequence: u64::MAX,
                 sig_op_count: 0,
+                compute_mass: 0,
             }],
             vec![
                 TransactionOutput {
@@ -341,8 +344,8 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.version = 0;
-        tx.compute_mass = 1;
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonZeroComputeMassInV0(_)));
+        tx.inputs[0].compute_mass = 1;
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonZeroComputeMassInV0(_, _)));
 
         let mut tx = valid_tx.clone();
         tx.version = TX_VERSION_POST_COV_HF + 1;

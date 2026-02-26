@@ -71,7 +71,6 @@ message RpcTransaction {
   string payload = 8;
   RpcTransactionVerboseData verboseData = 9;
   uint64 mass = 10;
-  uint64 computeMass = 11;
 }
 
 message RpcTransactionVerboseData {
@@ -88,6 +87,7 @@ message RpcTransactionInput {
   uint64 sequence = 3;
   uint32 sigOpCount = 5;
   RpcTransactionInputVerboseData verboseData = 4;
+  uint32 computeMass = 6;
 }
 
 message RpcTransactionInputVerboseData {
@@ -1033,6 +1033,7 @@ message RpcOptionalTransactionInput {
   optional uint64 sequence = 4;
   optional uint32 sigOpCount = 5;
   optional RpcOptionalTransactionInputVerboseData verboseData = 6;
+  optional uint32 computeMass = 7;
 }
 
 message RpcOptionalTransactionOutputVerboseData {
@@ -1069,7 +1070,6 @@ message RpcOptionalTransaction {
   optional string payload = 8;
   optional uint64 mass = 9;
   optional RpcOptionalTransactionVerboseData verboseData = 10;
-  optional uint64 computeMass = 11;
 }
 
 message RpcChainBlockAcceptedTransactions {

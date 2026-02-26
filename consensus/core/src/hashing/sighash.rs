@@ -317,18 +317,21 @@ mod tests {
                     signature_script: vec![],
                     sequence: 0,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
             ],
             vec![
@@ -403,6 +406,7 @@ mod tests {
             NoAction,
             Output(usize),
             Input(usize),
+            ComputeMass(usize),
             AmountSpent(usize),
             PrevScriptPublicKey(usize),
             Sequence(usize),
@@ -441,6 +445,14 @@ mod tests {
                 input_index: 0,
                 action: ModifyAction::Input(1),
                 expected_hash: "a9f563d86c0ef19ec2e4f483901d202e90150580b6123c3d492e26e7965f488c", // should change the hash
+            },
+            TestVector {
+                name: "native-all-0-modify-compute-mass-1",
+                populated_tx: &native_populated_tx,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::ComputeMass(1),
+                expected_hash: "03b7ac6927b2b67100734c3cc313ff8c2e8b3ce3e746d46dd660b706a916b1f5", // shouldn't change the hash
             },
             TestVector {
                 name: "native-all-0-modify-output-1",
@@ -673,6 +685,9 @@ mod tests {
                 }
                 ModifyAction::Input(i) => {
                     tx.inputs[i].previous_outpoint.index = 2;
+                }
+                ModifyAction::ComputeMass(i) => {
+                    tx.inputs[i].compute_mass = 1234;
                 }
                 ModifyAction::AmountSpent(i) => {
                     entries[i].amount = 666;

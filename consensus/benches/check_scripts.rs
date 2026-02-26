@@ -33,7 +33,13 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
 
     for _ in 0..inputs_count - non_uniq_signatures {
         let kp = Keypair::new(secp256k1::SECP256K1, &mut thread_rng());
-        tx.inputs.push(TransactionInput { previous_outpoint: dummy_prev_out, signature_script: vec![], sequence: 0, sig_op_count: 1 });
+        tx.inputs.push(TransactionInput {
+            previous_outpoint: dummy_prev_out,
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 1,
+            compute_mass: 0,
+        });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {
             amount: thread_rng().r#gen::<u32>() as u64,
@@ -47,7 +53,13 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
 
     for _ in 0..non_uniq_signatures {
         let kp = kps.last().unwrap();
-        tx.inputs.push(TransactionInput { previous_outpoint: dummy_prev_out, signature_script: vec![], sequence: 0, sig_op_count: 1 });
+        tx.inputs.push(TransactionInput {
+            previous_outpoint: dummy_prev_out,
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 1,
+            compute_mass: 0,
+        });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {
             amount: thread_rng().r#gen::<u32>() as u64,
@@ -94,7 +106,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                     cache.clear();
                     let reused_values = SigHashReusedValuesUnsync::new();
                     let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
-                    check_scripts_sequential(black_box(&tx.as_verifiable()), ctx, flags, None).unwrap();
+                    check_scripts_sequential(black_box(&tx.as_verifiable()), ctx, flags).unwrap();
                 })
             });
 
@@ -105,7 +117,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                     cache.clear();
                     let reused_values = SigHashReusedValuesSync::new();
                     let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
-                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, flags, None).unwrap();
+                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, flags).unwrap();
                 })
             });
 
@@ -119,7 +131,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                             cache.clear();
                             let reused_values = SigHashReusedValuesSync::new();
                             let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
-                            check_scripts_par_iter_pool(black_box(&tx.as_verifiable()), ctx, flags, None, black_box(&pool)).unwrap();
+                            check_scripts_par_iter_pool(black_box(&tx.as_verifiable()), ctx, flags, black_box(&pool)).unwrap();
                         })
                     });
                 }
@@ -157,7 +169,7 @@ fn benchmark_check_scripts_with_payload(c: &mut Criterion) {
                     cache.clear();
                     let reused_values = SigHashReusedValuesSync::new();
                     let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
-                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, Default::default(), None).unwrap();
+                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, Default::default()).unwrap();
                 })
             });
         }

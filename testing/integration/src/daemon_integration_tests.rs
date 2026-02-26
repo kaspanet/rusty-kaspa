@@ -2,16 +2,15 @@ use crate::common::{
     client::ListeningClient,
     client_notify::ChannelNotify,
     daemon::Daemon,
-    utils::{fetch_spendable_utxos, generate_tx, mine_block, required_fee, wait_for},
+    utils::{fetch_spendable_utxos, mine_block, required_fee, wait_for},
 };
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::params::{Params, SIMNET_GENESIS, SIMNET_PARAMS, TESTNET12_PARAMS};
+use kaspa_consensus::params::{Params, SIMNET_GENESIS, SIMNET_PARAMS};
 use kaspa_consensus_core::{
     config::params::OverrideParams,
     constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
     header::Header,
-    mass::MassCalculator,
     sign::{sign, sign_with_multiple_v2},
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
@@ -219,7 +218,6 @@ async fn daemon_utxos_propagation_test() {
     let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let miner_address =
         Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
-    let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
     let miner_spk = pay_to_address_script(&miner_address);
 
     // User key and address
@@ -326,7 +324,34 @@ async fn daemon_utxos_propagation_test() {
     const NUMBER_INPUTS: u64 = 2;
     const NUMBER_OUTPUTS: u64 = 2;
     const TX_AMOUNT: u64 = SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * (NUMBER_INPUTS * 5 - 1) / 5;
-    let transaction = generate_tx(miner_schnorr_key, &utxos[0..NUMBER_INPUTS as usize], TX_AMOUNT, NUMBER_OUTPUTS, &user_address);
+    let selected_utxos = &utxos[0..NUMBER_INPUTS as usize];
+    let tx_script_public_key = pay_to_address_script(&user_address);
+    let inputs = selected_utxos
+        .iter()
+        .map(|(op, _)| TransactionInput {
+            previous_outpoint: *op,
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 0,
+            compute_mass: 0,
+        })
+        .collect();
+    let outputs = (0..NUMBER_OUTPUTS)
+        .map(|_| TransactionOutput {
+            value: TX_AMOUNT / NUMBER_OUTPUTS,
+            script_public_key: tx_script_public_key.clone(),
+            covenant: None,
+        })
+        .collect();
+    let unsigned_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+    let signed_tx = sign_with_multiple_v2(
+        MutableTransaction::with_entries(unsigned_tx, selected_utxos.iter().map(|(_, entry)| entry.clone()).collect()),
+        &[miner_sk.secret_bytes()],
+    )
+    .unwrap();
+    let mut transaction = signed_tx.tx;
+    let per_input_compute_mass_commitment: u16 = 3000; // Some upper bound
+    transaction.inputs.iter_mut().for_each(|input| input.compute_mass = per_input_compute_mass_commitment);
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -529,18 +554,25 @@ async fn daemon_compute_mass_relay_test() {
     let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), coinbase_maturity).await;
     const NUMBER_INPUTS: u64 = 2;
     const NUMBER_OUTPUTS: u64 = 2;
-    const TX_AMOUNT: u64 = TESTNET12_PARAMS.pre_deflationary_phase_base_subsidy * (NUMBER_INPUTS * 5 - 1) / 5;
+    const EXTRA_FEE: u64 = 10_000;
     let oldest_utxos_start = utxos.len() - NUMBER_INPUTS as usize;
     let selected_utxos = &utxos[oldest_utxos_start..];
     let total_in = selected_utxos.iter().map(|x| x.1.amount).sum::<u64>();
-    assert!(TX_AMOUNT <= total_in - required_fee(selected_utxos.len(), NUMBER_OUTPUTS));
+    let tx_fee = required_fee(selected_utxos.len(), NUMBER_OUTPUTS).saturating_add(EXTRA_FEE);
+    let tx_amount = total_in.checked_sub(tx_fee).expect("expected enough input value for test transaction fee");
     let script_public_key = pay_to_address_script(&user_address);
     let inputs = selected_utxos
         .iter()
-        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 0 })
+        .map(|(op, _)| TransactionInput {
+            previous_outpoint: *op,
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 0,
+            compute_mass: 0,
+        })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
-        .map(|_| TransactionOutput { value: TX_AMOUNT / NUMBER_OUTPUTS, script_public_key: script_public_key.clone(), covenant: None })
+        .map(|_| TransactionOutput { value: tx_amount / NUMBER_OUTPUTS, script_public_key: script_public_key.clone(), covenant: None })
         .collect();
     let unsigned_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let signed_tx = sign_with_multiple_v2(
@@ -549,9 +581,11 @@ async fn daemon_compute_mass_relay_test() {
     )
     .unwrap();
     let mut transaction = signed_tx.tx;
-    let mass_calculator = MassCalculator::new_with_consensus_params(&TESTNET12_PARAMS);
-    transaction.compute_mass = mass_calculator.calc_compute_mass_excluding_sigops(&transaction).saturating_add(20_000);
-    assert!(transaction.compute_mass > 0, "expected non-zero compute_mass commitment for v1 transaction");
+    transaction.inputs.iter_mut().for_each(|input| input.compute_mass = 300);
+    assert!(
+        transaction.inputs.iter().any(|input| input.compute_mass > 0),
+        "expected non-zero compute_mass commitment for v1 transaction"
+    );
     let transaction_id = transaction.id();
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
@@ -571,7 +605,8 @@ async fn daemon_compute_mass_relay_test() {
 
     let node1_entry = rpc_client1.get_mempool_entry(transaction_id, false, false).await.unwrap();
     assert_eq!(node1_entry.transaction.version, TX_VERSION_POST_COV_HF);
-    assert!(node1_entry.transaction.compute_mass > 0, "expected non-zero compute_mass on node #1 mempool tx");
+    let node1_compute_mass = node1_entry.transaction.inputs[0].compute_mass;
+    assert!(node1_compute_mass > 0, "expected non-zero compute_mass on node #1 mempool tx");
 
     let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
     let mined_header: Header = (&template.block.header).try_into().unwrap();
@@ -600,8 +635,9 @@ async fn daemon_compute_mass_relay_test() {
         .expect("node #2 block does not include the submitted transaction");
 
     assert_eq!(included_tx.version, TX_VERSION_POST_COV_HF);
-    assert!(included_tx.compute_mass > 0, "expected non-zero compute_mass on propagated block tx");
-    assert_eq!(included_tx.compute_mass, node1_entry.transaction.compute_mass);
+    let included_compute_mass = included_tx.inputs[0].compute_mass;
+    assert!(included_compute_mass > 0, "expected non-zero compute_mass on propagated block tx");
+    assert_eq!(included_compute_mass, node1_compute_mass);
 
     rpc_client1.disconnect().await.unwrap();
     rpc_client2.disconnect().await.unwrap();
@@ -611,7 +647,6 @@ async fn daemon_compute_mass_relay_test() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_pruning_seqcommit_sync_test() {
-    let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO,kaspa_testing_integration=trace,kaspa_rpc_core=debug");
 

@@ -102,9 +102,6 @@ pub enum RuleError {
     #[error("block compute mass {0} exceeds limit of {1}")]
     ExceedsComputeMassLimit(u64, u64),
 
-    #[error("transaction {0} compute mass commitment {1} is below required non-sigop compute mass {2}")]
-    InsufficientTxComputeMassCommitment(TransactionId, u64, u64),
-
     #[error("block transient storage mass {0} exceeds limit of {1}")]
     ExceedsTransientMassLimit(u64, u64),
 

@@ -66,17 +66,7 @@ impl BlockBodyProcessor {
         let mut total_storage_mass: u64 = 0;
         for tx in block.transactions.iter() {
             // Calculate the non-contextual masses
-            let NonContextualMasses { compute_mass: calculated_compute_mass, transient_mass } =
-                self.mass_calculator.calc_non_contextual_masses(tx);
-            let compute_mass = if tx.has_explicit_compute_mass() {
-                let compute_mass_lower_bound = self.mass_calculator.calc_compute_mass_excluding_sigops(tx);
-                if tx.compute_mass < compute_mass_lower_bound {
-                    return Err(RuleError::InsufficientTxComputeMassCommitment(tx.id(), tx.compute_mass, compute_mass_lower_bound));
-                }
-                tx.compute_mass
-            } else {
-                calculated_compute_mass
-            };
+            let NonContextualMasses { compute_mass, transient_mass } = self.mass_calculator.calc_non_contextual_masses(tx);
 
             // Read the storage mass commitment. This value cannot be computed here w/o UTXO context
             // so we use the commitment. Later on, when the transaction is verified in context, we use
@@ -145,7 +135,6 @@ mod tests {
     use crate::{
         config::{Config, ConfigBuilder},
         consensus::test_consensus::TestConsensus,
-        constants::TX_VERSION_POST_COV_HF,
         errors::RuleError,
         params::MAINNET_PARAMS,
     };
@@ -229,6 +218,7 @@ mod tests {
                             signature_script: vec![],
                             sequence: u64::MAX,
                             sig_op_count: 0,
+                            compute_mass: 0,
                         },
                         TransactionInput {
                             previous_outpoint: TransactionOutpoint {
@@ -241,6 +231,7 @@ mod tests {
                             signature_script: vec![],
                             sequence: u64::MAX,
                             sig_op_count: 0,
+                            compute_mass: 0,
                         },
                     ],
                     vec![],
@@ -274,6 +265,7 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
+                        compute_mass: 0,
                     }],
                     vec![
                         TransactionOutput {
@@ -336,6 +328,7 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
+                        compute_mass: 0,
                     }],
                     vec![
                         TransactionOutput {
@@ -399,6 +392,7 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
+                        compute_mass: 0,
                     }],
                     vec![TransactionOutput {
                         value: 0xf4240,
@@ -436,16 +430,6 @@ mod tests {
         txs[1].inputs[1].sig_op_count = 255;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsComputeMassLimit(_, _)));
-
-        let mut block = example_block.clone();
-        let txs = &mut block.transactions;
-        txs[1].version = TX_VERSION_POST_COV_HF;
-        txs[1].compute_mass = 0;
-        block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(
-            body_processor.validate_body_in_isolation(&block.to_immutable()),
-            Err(RuleError::InsufficientTxComputeMassCommitment(_, _, _))
-        );
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;

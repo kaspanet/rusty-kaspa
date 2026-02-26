@@ -60,6 +60,7 @@ mod tests {
                         signature_script: vec![],
                         sequence: u64::MAX,
                         sig_op_count: 0,
+                        compute_mass: 0,
                     },
                     TransactionInput {
                         previous_outpoint: TransactionOutpoint {
@@ -72,6 +73,7 @@ mod tests {
                         signature_script: vec![],
                         sequence: u64::MAX,
                         sig_op_count: 0,
+                        compute_mass: 0,
                     },
                 ],
                 vec![],
@@ -105,6 +107,7 @@ mod tests {
                     ],
                     sequence: u64::MAX,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 }],
                 vec![
                     TransactionOutput {
@@ -167,6 +170,7 @@ mod tests {
                     ],
                     sequence: u64::MAX,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 }],
                 vec![
                     TransactionOutput {
@@ -230,6 +234,7 @@ mod tests {
                     ],
                     sequence: u64::MAX,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 }],
                 vec![TransactionOutput {
                     value: 0xf4240,

@@ -52,7 +52,7 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
     hasher.update(tx.version.to_le_bytes()).write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
-        write_input(hasher, input, encoding_flags);
+        write_input(hasher, input, tx.version, encoding_flags);
     }
 
     hasher.write_len(tx.outputs.len());
@@ -92,13 +92,12 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
         } else {
             // In order make the encoding unambiguous and invertible in case of future additional fields, for version >= 1 we always include the mass field
             hasher.write_u64(mass);
-            hasher.write_u64(tx.compute_mass);
         }
     }
 }
 
 #[inline(always)]
-fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
+fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, version: u16, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
         hasher.write_var_bytes(input.signature_script.as_slice()).update([input.sig_op_count]);
@@ -106,6 +105,10 @@ fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, encoding
         hasher.write_var_bytes(&[]);
     }
     hasher.update(input.sequence.to_le_bytes());
+
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && version >= 1 {
+        hasher.write_u16(input.compute_mass);
+    }
 }
 
 #[inline(always)]
@@ -296,29 +299,36 @@ mod tests {
         tests.push(Test {
             tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
             expected_id: "a08a500b21be3e692c080b14e399fcfa2cfa01b25c08f2f8e7414d1c116e8d18",
-            expected_hash: "65c7c7c4c2b095afdee09c1ca2e7b4bc20781705eab28abe268e56327234fb5e",
+            expected_hash: "35cd215d90bca0781507f183d9ad8f27927c82857cf9fd8f38bf78570ba95f2c",
         });
 
         // Version >= 1: tx::id excludes mass commitments while tx::hash commits to both mass and compute_mass
-        let mut tx_v1_a = Transaction::new(1, vec![], vec![], 0, subnets::SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let tx_v1_a = Transaction::new(
+            1,
+            vec![TransactionInput::new_with_compute_mass(TransactionOutpoint::default(), vec![], 0, 0, 111)],
+            vec![],
+            0,
+            subnets::SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        );
         tx_v1_a.set_mass(0);
-        tx_v1_a.compute_mass = 111;
 
         let mut tx_v1_b = tx_v1_a.clone();
-        tx_v1_b.compute_mass = 222;
+        tx_v1_b.inputs[0].compute_mass = 222;
 
         // Test #11
         tests.push(Test {
             tx: tx_v1_a,
-            expected_id: "37c4c948013e0d5b9e80202038a9eafc3288dfe54a4a92c3c4c7c226b990550b",
-            expected_hash: "767cb6accd7fde1d702ca79204d2bdc6a6587efc5fdec88f2fc2ae045ca433ea",
+            expected_id: "5978e7aa1a9ba8fdf12dae6aa39aa198a91985e91192b291e207d4d6246349e6",
+            expected_hash: "8623bdfc46773b6894cf74018fdd95b7464c1d0e72bc90d798957be0580e0b5d",
         });
 
         // Test #12
         tests.push(Test {
             tx: tx_v1_b,
-            expected_id: "37c4c948013e0d5b9e80202038a9eafc3288dfe54a4a92c3c4c7c226b990550b",
-            expected_hash: "8971e74f249d26daacf93cc072350fc65ac289a347922c56c663fc3437e07dab",
+            expected_id: "5978e7aa1a9ba8fdf12dae6aa39aa198a91985e91192b291e207d4d6246349e6",
+            expected_hash: "44cd46eed352ac60633a55128d075053c2c1c7ecef10d9b6db85cf355e1b8f1d",
         });
 
         for (i, test) in tests.iter().enumerate() {

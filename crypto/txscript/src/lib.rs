@@ -17,8 +17,6 @@ pub mod zk_precompiles;
 pub mod runtime_sig_op_counter;
 
 use std::ops::Deref;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::caches::Cache;
 use crate::covenants::CovenantsContext;
@@ -125,7 +123,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     accounted_pushed_bytes: u64,
     runtime_sig_op_counter: RuntimeSigOpCounter,
     sigop_compute_mass_units: u64,
-    remaining_compute_mass_units: Arc<AtomicU64>,
+    allowed_script_units: u64,
     flags: EngineFlags,
 }
 
@@ -359,7 +357,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             accounted_pushed_bytes: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
             sigop_compute_mass_units: flags.mass_per_sig_op.saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR),
-            remaining_compute_mass_units: Arc::new(AtomicU64::new(u64::MAX)),
+            allowed_script_units: u64::MAX,
             flags,
         }
     }
@@ -407,17 +405,17 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         ctx: EngineContext<'a, Reused>,
         flags: EngineFlags,
     ) -> Self {
-        Self::from_transaction_input_with_remaining_compute_mass_units(tx, input, input_idx, utxo_entry, ctx, flags, None)
+        Self::from_transaction_input_with_allowed_script_units(tx, input, input_idx, utxo_entry, ctx, flags, u64::MAX)
     }
 
-    pub fn from_transaction_input_with_remaining_compute_mass_units(
+    pub fn from_transaction_input_with_allowed_script_units(
         tx: &'a T,
         input: &'a TransactionInput,
         input_idx: usize,
         utxo_entry: &'a UtxoEntry,
         ctx: EngineContext<'a, Reused>,
         flags: EngineFlags,
-        remaining_compute_mass_units: Option<Arc<AtomicU64>>,
+        allowed_script_units: u64,
     ) -> Self {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -435,7 +433,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             accounted_pushed_bytes: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
             sigop_compute_mass_units: flags.mass_per_sig_op.saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR),
-            remaining_compute_mass_units: remaining_compute_mass_units.unwrap_or_else(|| Arc::new(AtomicU64::new(u64::MAX))),
+            allowed_script_units,
             flags,
         }
     }
@@ -444,6 +442,16 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         script: &'a [u8],
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
+        flags: EngineFlags,
+    ) -> Self {
+        Self::from_script_with_allowed_script_units(script, reused_values, sig_cache, u64::MAX, flags)
+    }
+
+    pub fn from_script_with_allowed_script_units(
+        script: &'a [u8],
+        reused_values: &'a Reused,
+        sig_cache: &'a Cache<SigCacheKey, bool>,
+        allowed_script_units: u64,
         flags: EngineFlags,
     ) -> Self {
         Self {
@@ -457,23 +465,19 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             accounted_pushed_bytes: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
             sigop_compute_mass_units: flags.mass_per_sig_op.saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR),
-            remaining_compute_mass_units: Arc::new(AtomicU64::new(u64::MAX)),
+            allowed_script_units,
             flags,
         }
     }
 
-    pub fn set_remaining_compute_mass_units(&mut self, remaining_compute_mass_units: Option<Arc<AtomicU64>>) {
-        self.remaining_compute_mass_units = remaining_compute_mass_units.unwrap_or_else(|| Arc::new(AtomicU64::new(u64::MAX)));
-    }
-
-    fn consume_compute_mass_units(&self, units: u64) -> Result<(), TxScriptError> {
-        if units == 0 {
-            return Ok(());
+    fn consume_compute_mass_units(&mut self, units: u64) -> Result<(), TxScriptError> {
+        match self.allowed_script_units.checked_sub(units) {
+            Some(new_remaining) => {
+                self.allowed_script_units = new_remaining;
+                Ok(())
+            }
+            None => Err(TxScriptError::ExceededScriptUnitsLimit { used_units: units, allowed_units: self.allowed_script_units }),
         }
-        self.remaining_compute_mass_units
-            .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| current.checked_sub(units))
-            .map(|_| ())
-            .map_err(|allowed_units| TxScriptError::ExceededComputeMassScriptUnitsLimit { used_units: units, allowed_units })
     }
 
     fn consume_sig_op_cost(&mut self, count: u16) -> Result<(), TxScriptError> {
@@ -885,6 +889,7 @@ mod tests {
                 signature_script: vec![],
                 sequence: 4294967295,
                 sig_op_count: 0,
+                compute_mass: 0,
             };
             let output = TransactionOutput {
                 value: 1000000000,
@@ -914,28 +919,27 @@ mod tests {
         let sig_cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         let script = ScriptBuilder::new().add_data(&[1u8, 2u8, 3u8]).unwrap().drain();
-        let tight_budget = Arc::new(AtomicU64::new(2));
-        let exact_budget = Arc::new(AtomicU64::new(3));
+        let tight_budget = 2;
+        let exact_budget = 3;
 
-        let mut vm_tight_budget = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
-            &script,
-            &reused_values,
-            &sig_cache,
-            EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
-        );
-        vm_tight_budget.set_remaining_compute_mass_units(Some(tight_budget));
-        assert_eq!(
-            vm_tight_budget.execute(),
-            Err(TxScriptError::ExceededComputeMassScriptUnitsLimit { used_units: 3, allowed_units: 2 })
-        );
+        let mut vm_tight_budget =
+            TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_allowed_script_units(
+                &script,
+                &reused_values,
+                &sig_cache,
+                tight_budget,
+                EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
+            );
+        assert_eq!(vm_tight_budget.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 3, allowed_units: 2 }));
 
-        let mut vm_exact_budget = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
-            &script,
-            &reused_values,
-            &sig_cache,
-            EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
-        );
-        vm_exact_budget.set_remaining_compute_mass_units(Some(exact_budget));
+        let mut vm_exact_budget =
+            TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_allowed_script_units(
+                &script,
+                &reused_values,
+                &sig_cache,
+                exact_budget,
+                EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
+            );
         assert!(vm_exact_budget.execute().is_ok());
         assert_eq!(vm_exact_budget.total_pushed_bytes(), 3);
     }
@@ -950,6 +954,7 @@ mod tests {
             signature_script: vec![OpTrue, OpTrue],
             sequence: 0,
             sig_op_count: 0,
+            compute_mass: 0,
         };
 
         let output =
@@ -959,36 +964,30 @@ mod tests {
         let utxo_entry = UtxoEntry::new(output.value, output.script_public_key.clone(), 0, false, None);
         let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
-        let too_tight_budget = Arc::new(AtomicU64::new(9_999));
-        let mut vm_too_tight = TxScriptEngine::from_transaction_input_with_remaining_compute_mass_units(
+        let too_tight_budget = 9_999;
+        let mut vm_too_tight = TxScriptEngine::from_transaction_input_with_allowed_script_units(
             &populated_tx,
             &input,
             0,
             &utxo_entry,
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
             EngineFlags { covenants_enabled: true, mass_per_sig_op: 1_000 },
-            Some(too_tight_budget.clone()),
+            too_tight_budget,
         );
 
-        assert_eq!(
-            vm_too_tight.execute(),
-            Err(TxScriptError::ExceededComputeMassScriptUnitsLimit { used_units: 10_000, allowed_units: 9_997 })
-        );
-        assert_eq!(too_tight_budget.load(Ordering::SeqCst), 9_997);
-
-        let exact_budget = Arc::new(AtomicU64::new(10_002));
-        let mut vm_exact = TxScriptEngine::from_transaction_input_with_remaining_compute_mass_units(
+        assert_eq!(vm_too_tight.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 10_000, allowed_units: 9_997 }));
+        let exact_budget = 10_002;
+        let mut vm_exact = TxScriptEngine::from_transaction_input_with_allowed_script_units(
             &populated_tx,
             &input,
             0,
             &utxo_entry,
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
             EngineFlags { covenants_enabled: true, mass_per_sig_op: 1_000 },
-            Some(exact_budget.clone()),
+            exact_budget,
         );
 
         assert_eq!(vm_exact.execute(), Err(TxScriptError::SigLength(0)));
-        assert_eq!(exact_budget.load(Ordering::SeqCst), 0);
     }
 
     #[test]
@@ -1528,6 +1527,7 @@ mod tests {
                     signature_script: vec![],
                     sequence: 0,
                     sig_op_count: test.sig_op_limit,
+                    compute_mass: 0,
                 }],
                 vec![],
                 0,

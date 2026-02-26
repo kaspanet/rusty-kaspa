@@ -154,6 +154,8 @@ pub struct RpcTransactionInput {
     pub signature_script: Vec<u8>,
     pub sequence: u64,
     pub sig_op_count: u8,
+    #[serde(default)]
+    pub compute_mass: u16,
     pub verbose_data: Option<RpcTransactionInputVerboseData>,
 }
 
@@ -164,6 +166,7 @@ impl std::fmt::Debug for RpcTransactionInput {
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.sig_op_count)
+            .field("compute_mass", &self.compute_mass)
             .field("verbose_data", &self.verbose_data)
             .finish()
     }
@@ -176,6 +179,7 @@ impl From<TransactionInput> for RpcTransactionInput {
             signature_script: input.signature_script,
             sequence: input.sequence,
             sig_op_count: input.sig_op_count,
+            compute_mass: input.compute_mass,
             verbose_data: None,
         }
     }
@@ -189,11 +193,12 @@ impl RpcTransactionInput {
 
 impl Serializer for RpcTransactionInput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?; // TODO(before merge): Check if it's correct
         serialize!(RpcTransactionOutpoint, &self.previous_outpoint, writer)?;
         store!(Vec<u8>, &self.signature_script, writer)?;
         store!(u64, &self.sequence, writer)?;
         store!(u8, &self.sig_op_count, writer)?;
+        store!(u16, &self.compute_mass, writer)?;
         serialize!(Option<RpcTransactionInputVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -202,14 +207,15 @@ impl Serializer for RpcTransactionInput {
 
 impl Deserializer for RpcTransactionInput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let previous_outpoint = deserialize!(RpcTransactionOutpoint, reader)?;
         let signature_script = load!(Vec<u8>, reader)?;
         let sequence = load!(u64, reader)?;
         let sig_op_count = load!(u8, reader)?;
+        let compute_mass = if version > 1 { load!(u16, reader)? } else { 0 }; // TODO(before merge): Check if it's correct
         let verbose_data = deserialize!(Option<RpcTransactionInputVerboseData>, reader)?;
 
-        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data })
+        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, verbose_data })
     }
 }
 
@@ -363,7 +369,6 @@ pub struct RpcTransaction {
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
     pub mass: u64,
-    pub compute_mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
 }
 
@@ -376,7 +381,6 @@ impl std::fmt::Debug for RpcTransaction {
             .field("gas", &self.gas)
             .field("payload", &self.payload.to_hex())
             .field("mass", &self.mass)
-            .field("compute_mass", &self.compute_mass)
             .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
@@ -386,7 +390,7 @@ impl std::fmt::Debug for RpcTransaction {
 
 impl Serializer for RpcTransaction {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &1, writer)?; // TODO(before merge): Check if a version upgrade is needed here.
         store!(u16, &self.version, writer)?;
         serialize!(Vec<RpcTransactionInput>, &self.inputs, writer)?;
         serialize!(Vec<RpcTransactionOutput>, &self.outputs, writer)?;
@@ -395,7 +399,6 @@ impl Serializer for RpcTransaction {
         store!(u64, &self.gas, writer)?;
         store!(Vec<u8>, &self.payload, writer)?;
         store!(u64, &self.mass, writer)?;
-        store!(u64, &self.compute_mass, writer)?;
         serialize!(Option<RpcTransactionVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -413,10 +416,9 @@ impl Deserializer for RpcTransaction {
         let gas = load!(u64, reader)?;
         let payload = load!(Vec<u8>, reader)?;
         let mass = load!(u64, reader)?;
-        let compute_mass = load!(u64, reader)?;
         let verbose_data = deserialize!(Option<RpcTransactionVerboseData>, reader)?;
 
-        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, compute_mass, verbose_data })
+        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data })
     }
 }
 

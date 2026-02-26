@@ -77,6 +77,7 @@ cfg_if::cfg_if! {
                     signature_script: inner.signature_script.clone().unwrap_or_default(),
                     sequence: inner.sequence,
                     sig_op_count: inner.sig_op_count,
+                    compute_mass: 0,
                     verbose_data: None,
                 }
             }
@@ -112,7 +113,6 @@ cfg_if::cfg_if! {
                     gas: inner.gas,
                     payload: inner.payload.clone(),
                     mass: inner.mass,
-                    compute_mass: 0,
                     verbose_data: None,
                 }
             }
@@ -126,6 +126,7 @@ cfg_if::cfg_if! {
                     signature_script: Some(inner.signature_script.clone().unwrap_or_default()),
                     sequence: Some(inner.sequence),
                     sig_op_count: Some(inner.sig_op_count),
+                    compute_mass: Some(0),
                     verbose_data: None,
                 }
             }
@@ -162,7 +163,6 @@ cfg_if::cfg_if! {
                     gas: Some(inner.gas),
                     payload: Some(inner.payload.clone()),
                     mass: Some(inner.mass),
-                    compute_mass: Some(0),
                     verbose_data: None,
                 }
             }

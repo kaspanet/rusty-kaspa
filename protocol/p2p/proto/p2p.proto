@@ -31,7 +31,6 @@ message TransactionMessage{
   uint64 gas = 6;
   bytes payload = 8;
   uint64 mass = 9;
-  uint64 computeMass = 10;
 }
 
 message TransactionInput{
@@ -39,6 +38,7 @@ message TransactionInput{
   bytes signatureScript = 2;
   uint64 sequence = 3;
   uint32 sigOpCount = 4;
+  uint32 computeMass = 5;
 }
 
 message Outpoint{

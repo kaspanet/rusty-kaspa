@@ -21,7 +21,6 @@ impl From<&Transaction> for RpcTransaction {
             gas: item.gas,
             payload: item.payload.clone(),
             mass: item.mass(),
-            compute_mass: item.compute_mass,
             verbose_data: None,
         }
     }
@@ -45,6 +44,7 @@ impl From<&TransactionInput> for RpcTransactionInput {
             signature_script: item.signature_script.clone(),
             sequence: item.sequence,
             sig_op_count: item.sig_op_count,
+            compute_mass: item.compute_mass,
             verbose_data: None,
         }
     }
@@ -71,8 +71,7 @@ impl TryFrom<RpcTransaction> for Transaction {
             item.subnetwork_id,
             item.gas,
             item.payload.clone(),
-        )
-        .with_compute_mass(item.compute_mass);
+        );
         transaction.set_mass(item.mass);
         Ok(transaction)
     }
@@ -88,7 +87,9 @@ impl TryFrom<RpcTransactionOutput> for TransactionOutput {
 impl TryFrom<RpcTransactionInput> for TransactionInput {
     type Error = RpcError;
     fn try_from(item: RpcTransactionInput) -> RpcResult<Self> {
-        Ok(Self::new(item.previous_outpoint.into(), item.signature_script, item.sequence, item.sig_op_count))
+        let mut input = Self::new(item.previous_outpoint.into(), item.signature_script, item.sequence, item.sig_op_count);
+        input.compute_mass = item.compute_mass;
+        Ok(input)
     }
 }
 
@@ -107,7 +108,6 @@ impl From<&Transaction> for RpcOptionalTransaction {
             gas: Some(item.gas),
             payload: Some(item.payload.clone()),
             mass: Some(item.mass()),
-            compute_mass: Some(item.compute_mass),
             verbose_data: None,
         }
     }
@@ -131,6 +131,7 @@ impl From<&TransactionInput> for RpcOptionalTransactionInput {
             signature_script: Some(item.signature_script.clone()),
             sequence: Some(item.sequence),
             sig_op_count: Some(item.sig_op_count),
+            compute_mass: Some(item.compute_mass),
             verbose_data: None,
         }
     }
@@ -157,9 +158,6 @@ impl TryFrom<RpcOptionalTransaction> for Transaction {
             item.subnetwork_id.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "subnetwork_id".to_owned()))?,
             item.gas.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "gas".to_owned()))?,
             item.payload.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "payload".to_owned()))?,
-        )
-        .with_compute_mass(
-            item.compute_mass.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "compute_mass".to_owned()))?,
         );
         transaction.set_mass(item.mass.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "mass".to_owned()))?);
         Ok(transaction)
@@ -180,7 +178,7 @@ impl TryFrom<RpcOptionalTransactionOutput> for TransactionOutput {
 impl TryFrom<RpcOptionalTransactionInput> for TransactionInput {
     type Error = RpcError;
     fn try_from(item: RpcOptionalTransactionInput) -> RpcResult<Self> {
-        Ok(Self::new(
+        let mut input = Self::new(
             item.previous_outpoint
                 .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "previous_outpoint".to_owned()))?
                 .try_into()?,
@@ -188,6 +186,8 @@ impl TryFrom<RpcOptionalTransactionInput> for TransactionInput {
                 .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "signature_script".to_owned()))?,
             item.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?,
             item.sig_op_count.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sig_op_count".to_owned()))?,
-        ))
+        );
+        input.compute_mass = item.compute_mass.unwrap_or_default();
+        Ok(input)
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     config::params::Params,
-    constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
+    constants::{INPUT_COMPUTE_MASS_SCALE_FACTOR, TRANSIENT_BYTE_TO_MASS_FACTOR},
     subnets::SUBNETWORK_ID_SIZE,
     tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
 };
@@ -14,7 +14,7 @@ pub fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     let mut size: u64 = 0;
     size += 2; // Tx version (u16)
     size += 8; // Number of inputs (u64)
-    let inputs_size: u64 = tx.inputs.iter().map(transaction_input_estimated_serialized_size).sum();
+    let inputs_size: u64 = tx.inputs.iter().map(|input| transaction_input_estimated_serialized_size(input, tx.version)).sum();
     size += inputs_size;
 
     size += 8; // number of outputs (u64)
@@ -31,7 +31,7 @@ pub fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     size
 }
 
-fn transaction_input_estimated_serialized_size(input: &TransactionInput) -> u64 {
+fn transaction_input_estimated_serialized_size(input: &TransactionInput, version: u16) -> u64 {
     let mut size = 0;
     size += outpoint_estimated_serialized_size();
 
@@ -39,6 +39,11 @@ fn transaction_input_estimated_serialized_size(input: &TransactionInput) -> u64 
     size += input.signature_script.len() as u64;
 
     size += 8; // sequence (uint64)
+
+    if version >= 1 {
+        size += 2; // compute_mass (u16)
+    }
+
     size
 }
 
@@ -55,6 +60,12 @@ pub fn transaction_output_estimated_serialized_size(output: &TransactionOutput) 
     size += 2; // output.ScriptPublicKey.Version (u16)
     size += 8; // length of script public key (u64)
     size += output.script_public_key.script().len() as u64;
+
+    if output.covenant.is_some() {
+        size += 2; // authorizing_input (u16)
+        size += HASH_SIZE as u64; // covenant_id
+    }
+
     size
 }
 
@@ -307,24 +318,6 @@ impl MassCalculator {
             return NonContextualMasses::new(0, 0);
         }
 
-        NonContextualMasses::new(self.calc_compute_mass(tx), self.calc_transient_mass(tx))
-    }
-
-    fn calc_compute_mass(&self, tx: &Transaction) -> u64 {
-        self.calc_compute_mass_excluding_sigops(tx).saturating_add(self.calc_sigops_compute_mass(tx))
-    }
-
-    fn calc_transient_mass(&self, tx: &Transaction) -> u64 {
-        let size = transaction_estimated_serialized_size(tx);
-        size * TRANSIENT_BYTE_TO_MASS_FACTOR
-    }
-
-    /// Calculates the compute mass contribution of all non-sigop transaction fields.
-    pub fn calc_compute_mass_excluding_sigops(&self, tx: &Transaction) -> u64 {
-        if tx.is_coinbase() {
-            return 0;
-        }
-
         let size = transaction_estimated_serialized_size(tx);
         let compute_mass_for_size = size * self.mass_per_tx_byte;
         let total_script_public_key_size: u64 = tx
@@ -334,17 +327,16 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        compute_mass_for_size.saturating_add(total_script_public_key_mass)
-    }
-
-    /// Calculates the compute mass contribution of sigops only.
-    pub fn calc_sigops_compute_mass(&self, tx: &Transaction) -> u64 {
-        if tx.is_coinbase() {
-            return 0;
-        }
-
         let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
-        total_sigops.saturating_mul(self.mass_per_sig_op)
+        let total_sigops_mass = total_sigops * self.mass_per_sig_op;
+
+        let total_input_compute_mass =
+            INPUT_COMPUTE_MASS_SCALE_FACTOR * tx.inputs.iter().map(|input| input.compute_mass as u64).sum::<u64>();
+
+        let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass + total_input_compute_mass;
+        let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
+
+        NonContextualMasses::new(compute_mass, transient_mass)
     }
 
     /// Calculates the contextual masses for this populated transaction.
@@ -781,6 +773,7 @@ mod tests {
                     signature_script: vec![],
                     sequence: 0,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 })
                 .collect(),
             outs.iter()
