@@ -2735,6 +2735,9 @@ impl App {
                     return;
                 }
                 self.proof_in_progress = false;
+                if let Some(prover) = &mut self.prover {
+                    prover.commit_prove_window();
+                }
                 let result_msg =
                     format!("Proof completed in {:.1}s ({} segments, {} cycles)", elapsed_ms as f64 / 1000.0, segments, total_cycles);
                 self.flash(result_msg.clone(), Color::Green);
@@ -2777,6 +2780,11 @@ impl App {
                     return;
                 }
                 self.proof_in_progress = false;
+                // Restore accumulated blocks + exit/perm-tree data so the window can be retried.
+                if let Some(prover) = &mut self.prover {
+                    prover.rollback_prove_window();
+                    self.log("Proof window rolled back — accumulated data preserved for retry".to_string());
+                }
                 let result_msg = format!("Proof failed: {error}");
                 self.flash(result_msg.clone(), Color::Red);
                 self.log(result_msg.clone());

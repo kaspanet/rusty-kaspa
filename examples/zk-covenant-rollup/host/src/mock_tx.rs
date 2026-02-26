@@ -215,7 +215,38 @@ impl ZkTransaction {
                         write_prev_tx_v1_witness(builder, &prev_tx_witness);
                     }
                     _ => {
-                        // Not a recognized action or no witness — guest will handle
+                        // We must always have a witness for a valid action tx.
+                        // If we reach here the prover missed storing a prev_tx for this
+                        // transfer/exit — panic with enough context to diagnose why.
+                        let action_type = if is_valid_transfer_payload(&payload_words) {
+                            "Transfer"
+                        } else if is_valid_entry_payload(&payload_words) {
+                            "Entry"
+                        } else if is_valid_exit_payload(&payload_words) {
+                            "Exit"
+                        } else {
+                            "Unknown"
+                        };
+                        let tx_hash = self.tx.id();
+                        let prev_info = self.tx.inputs.first().map_or_else(
+                            || "no inputs".to_string(),
+                            |inp| {
+                                format!(
+                                    "needs prev_tx={} output_idx={}",
+                                    inp.previous_outpoint.transaction_id, inp.previous_outpoint.index
+                                )
+                            },
+                        );
+                        let witness_desc = match &self.witness {
+                            None => "witness=None (prev_tx not found in DB)".to_string(),
+                            Some(ActionWitness::Transfer(_)) => "wrong type: have Transfer witness".to_string(),
+                            Some(ActionWitness::Entry(_)) => "wrong type: have Entry witness".to_string(),
+                            Some(ActionWitness::Exit(_)) => "wrong type: have Exit witness".to_string(),
+                        };
+                        panic!(
+                            "host has no witness for {} action tx {} | {} | {}",
+                            action_type, tx_hash, prev_info, witness_desc
+                        );
                     }
                 }
             }

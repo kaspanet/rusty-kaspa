@@ -18,6 +18,14 @@ use zk_covenant_rollup_host::prove::ProveInput;
 
 use crate::db::RollupDb;
 
+/// State saved before a proof attempt so it can be restored if the proof fails.
+struct RollbackState {
+    accumulated_block_txs: Vec<Vec<ZkTransaction>>,
+    accumulated_exit_data: Vec<(Vec<u8>, u64)>,
+    prev_proved_state_root: StateRoot,
+    prev_proved_seq_commitment: Hash,
+}
+
 /// Tracks L2 state and processes chain data for proving.
 pub struct RollupProver {
     /// Sparse Merkle Tree holding account balances.
@@ -32,7 +40,8 @@ pub struct RollupProver {
     pub covenant_id_bytes: [u8; 32],
     /// Hash of the last block we have processed.
     pub last_processed_block: Hash,
-    /// Permission tree builder for exits.
+    /// Permission tree builder for exits — mirrors accumulated_perm_builder within a window.
+    /// Shown in UI as "Exit leaves"; reset together with accumulated_perm_builder on snapshot.
     pub perm_builder: StreamingPermTreeBuilder,
     /// Persistent tx store: transactions whose outputs pay to known L2 accounts.
     /// Keyed by tx hash so process_transfer/process_exit can retrieve the actual prev_tx.
@@ -53,6 +62,9 @@ pub struct RollupProver {
     pub accumulated_perm_builder: StreamingPermTreeBuilder,
     /// (spk_bytes, amount) for each exit in the current proving window.
     pub accumulated_exit_data: Vec<(Vec<u8>, u64)>,
+
+    /// Snapshot saved before the last proof attempt; used to roll back on failure.
+    pending_rollback: Option<RollbackState>,
 }
 
 /// Data returned by `take_prove_snapshot`, combining the prove input
@@ -98,6 +110,7 @@ impl RollupProver {
             accumulated_block_txs: Vec::new(),
             accumulated_perm_builder: StreamingPermTreeBuilder::new(),
             accumulated_exit_data: Vec::new(),
+            pending_rollback: None,
         }
     }
 
@@ -109,11 +122,22 @@ impl RollupProver {
     /// Take a snapshot of the accumulated data for proving, then reset the
     /// accumulator so new chain data can continue flowing in.
     ///
+    /// The previous accumulator state is saved internally. Call `commit_prove_window()`
+    /// after a successful proof, or `rollback_prove_window()` after a failure, to restore it.
+    ///
     /// Returns `None` if there are no blocks to prove.
     pub fn take_prove_snapshot(&mut self) -> Option<ProveSnapshot> {
         if self.accumulated_block_txs.is_empty() {
             return None;
         }
+
+        // Save rollback state before consuming anything.
+        self.pending_rollback = Some(RollbackState {
+            accumulated_block_txs: self.accumulated_block_txs.clone(),
+            accumulated_exit_data: self.accumulated_exit_data.clone(),
+            prev_proved_state_root: self.prev_proved_state_root,
+            prev_proved_seq_commitment: self.prev_proved_seq_commitment,
+        });
 
         let public_input = PublicInput {
             prev_state_hash: self.prev_proved_state_root,
@@ -145,6 +169,9 @@ impl RollupProver {
         // Take exit data for this proving window
         let perm_exit_data = std::mem::take(&mut self.accumulated_exit_data);
 
+        // Reset per-window perm_builder (shown in UI) so its count stays in sync.
+        self.perm_builder = StreamingPermTreeBuilder::new();
+
         // Advance the proving window start to current state
         self.prev_proved_state_root = self.state_root;
         self.prev_proved_seq_commitment = self.seq_commitment;
@@ -154,6 +181,35 @@ impl RollupProver {
             perm_redeem_script,
             perm_exit_data,
         })
+    }
+
+    /// Call after a successful proof. Drops the saved rollback state.
+    pub fn commit_prove_window(&mut self) {
+        self.pending_rollback = None;
+    }
+
+    /// Call after a failed proof. Restores accumulated blocks, exit data, and perm trees
+    /// to what they were before `take_prove_snapshot()`, so the window can be retried.
+    pub fn rollback_prove_window(&mut self) {
+        let rb = match self.pending_rollback.take() {
+            Some(rb) => rb,
+            None => return,
+        };
+        self.accumulated_block_txs = rb.accumulated_block_txs;
+        self.accumulated_exit_data = rb.accumulated_exit_data.clone();
+        self.prev_proved_state_root = rb.prev_proved_state_root;
+        self.prev_proved_seq_commitment = rb.prev_proved_seq_commitment;
+
+        // Reconstruct both perm builders from the saved exit data.
+        let mut acc = StreamingPermTreeBuilder::new();
+        let mut per_window = StreamingPermTreeBuilder::new();
+        for (spk_bytes, amount) in &rb.accumulated_exit_data {
+            let leaf = perm_leaf_hash(spk_bytes, *amount);
+            acc.add_leaf(leaf);
+            per_window.add_leaf(leaf);
+        }
+        self.accumulated_perm_builder = acc;
+        self.perm_builder = per_window;
     }
 
     /// Process a VCC v2 response, converting RPC transactions to ZkTransactions
