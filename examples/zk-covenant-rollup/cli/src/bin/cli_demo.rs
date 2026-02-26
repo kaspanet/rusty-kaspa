@@ -23,6 +23,7 @@ use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProveOutput,
 use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
 use zk_covenant_rollup_tui::actions::compute_fee;
+use zk_covenant_rollup_tui::db::RollupDb;
 use zk_covenant_rollup_tui::node::{KaspaNode, NodeEvent};
 use zk_covenant_rollup_tui::prover::RollupProver;
 
@@ -100,7 +101,13 @@ fn parse_proof_kind(s: &str) -> Result<ProofKind> {
 fn parse_backend(s: &str) -> Result<ProverBackend> {
     match s.to_lowercase().as_str() {
         "ipc" => Ok(ProverBackend::Ipc),
-        "local" => Ok(ProverBackend::Local),
+        "local" => {
+            #[cfg(feature = "cuda")] {
+                Ok(ProverBackend::Local)
+            }
+            #[cfg(not(feature = "cuda"))]
+            bail!("Local prover backend requires CUDA support")
+        }
         _ => bail!("Unknown backend: {s} (expected 'ipc' or 'local')"),
     }
 }
@@ -565,7 +572,9 @@ async fn main() -> Result<()> {
     println!("  Deploy tx confirmed!");
 
     println!("\nPhase 6: Syncing chain for proving...");
-    let mut prover = RollupProver::new(deploy.on_chain_covenant_id, empty_tree_root(), deploy.initial_seq, deploy.starting_block);
+    let db_path = std::env::temp_dir().join(format!("cli-demo-rollup-db-{}", deploy.on_chain_covenant_id));
+    let db = std::sync::Arc::new(RollupDb::open(&db_path).context("open rollup db")?);
+    let mut prover = RollupProver::new(deploy.on_chain_covenant_id, empty_tree_root(), deploy.initial_seq, deploy.starting_block, db);
     sync_chain(&node, &mut prover).await?;
 
     println!("\nPhase 7: Proving...");

@@ -1,12 +1,13 @@
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::GetVirtualChainFromBlockV2Response;
+use std::sync::Arc;
 use zk_covenant_rollup_core::permission_tree::required_depth;
 use zk_covenant_rollup_core::PublicInput;
 use zk_covenant_rollup_core::{
     action::{ActionHeader, EntryAction, ExitAction, TransferAction, OP_ENTRY, OP_EXIT, OP_TRANSFER},
-    bytes_to_words_ref, is_action_tx_id, pay_to_pubkey_spk, perm_leaf_hash,
+    bytes_to_words_ref, extract_pubkey_from_spk, is_action_tx_id, is_p2pk_spk, perm_leaf_hash,
     permission_tree::StreamingPermTreeBuilder,
     smt::Smt,
     state::{AccountWitness, StateRoot},
@@ -14,6 +15,8 @@ use zk_covenant_rollup_core::{
 use zk_covenant_rollup_host::mock_chain::from_bytes;
 use zk_covenant_rollup_host::mock_tx::{ActionWitness, EntryWitnessData, ExitWitnessData, TransferWitnessData, ZkTransaction};
 use zk_covenant_rollup_host::prove::ProveInput;
+
+use crate::db::RollupDb;
 
 /// Tracks L2 state and processes chain data for proving.
 pub struct RollupProver {
@@ -31,6 +34,10 @@ pub struct RollupProver {
     pub last_processed_block: Hash,
     /// Permission tree builder for exits.
     pub perm_builder: StreamingPermTreeBuilder,
+    /// Persistent tx store: transactions whose outputs pay to known L2 accounts.
+    /// Keyed by tx hash so process_transfer/process_exit can retrieve the actual prev_tx.
+    /// Temporary — will be removed when seq_commitment commits spk+amount of UTXO input.
+    db: Arc<RollupDb>,
     /// All ZkTransactions from the last processing run (grouped by block).
     pub last_block_txs: Vec<Vec<ZkTransaction>>,
 
@@ -68,7 +75,13 @@ pub struct ProcessResult {
 }
 
 impl RollupProver {
-    pub fn new(covenant_id: Hash, initial_state_root: StateRoot, initial_seq_commitment: Hash, starting_block: Hash) -> Self {
+    pub fn new(
+        covenant_id: Hash,
+        initial_state_root: StateRoot,
+        initial_seq_commitment: Hash,
+        starting_block: Hash,
+        db: Arc<RollupDb>,
+    ) -> Self {
         let covenant_id_words = from_bytes(covenant_id.as_bytes());
         Self {
             smt: Smt::new(),
@@ -78,6 +91,7 @@ impl RollupProver {
             covenant_id_bytes: covenant_id.as_bytes(),
             last_processed_block: starting_block,
             perm_builder: StreamingPermTreeBuilder::new(),
+            db,
             last_block_txs: Vec::new(),
             prev_proved_state_root: initial_state_root,
             prev_proved_seq_commitment: initial_seq_commitment,
@@ -171,6 +185,28 @@ impl RollupProver {
                 } else {
                     None
                 };
+
+                // Scan outputs: persist txs that pay to known L2 accounts so they can later
+                // be retrieved as auth witnesses for transfer/exit actions.
+                let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
+                let has_matching_output = tx.outputs.iter().any(|out| {
+                    let spk = out.script_public_key.script();
+                    if !is_p2pk_spk(spk) {
+                        return false;
+                    }
+                    if let Some(pk_words) = extract_pubkey_from_spk(spk) {
+                        self.smt.get(&pk_words).is_some()
+                    } else {
+                        false
+                    }
+                });
+                if has_matching_output {
+                    let tx_hash = tx.id();
+                    if let Err(e) = self.db.put_prev_tx(cov_hash, tx_hash, &tx) {
+                        // Non-fatal: log and continue; proof will fail later if this tx is needed
+                        eprintln!("[prover] failed to persist prev_tx {tx_hash}: {e}");
+                    }
+                }
 
                 zk_txs.push(ZkTransaction { tx, witness });
                 txs_processed += 1;
@@ -271,14 +307,18 @@ impl RollupProver {
         let new_dest_balance = dest_balance + amount;
         self.smt.upsert(dest_pk, new_dest_balance);
 
-        // Build prev_tx from the transaction's first input
-        let prev_tx = build_prev_tx_for_action(tx, &source_pk);
+        // Look up the actual prev_tx from the persistent store.
+        let first_input = tx.inputs.first()?;
+        let prev_tx_id = first_input.previous_outpoint.transaction_id;
+        let prev_output_index = first_input.previous_outpoint.index;
+        let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
+        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok()??;
 
         Some(ActionWitness::Transfer(Box::new(TransferWitnessData {
             source: source_witness,
             dest: dest_witness,
             prev_tx,
-            prev_output_index: 0,
+            prev_output_index,
         })))
     }
 
@@ -346,10 +386,14 @@ impl RollupProver {
         self.accumulated_perm_builder.add_leaf(leaf);
         self.accumulated_exit_data.push((dest_spk_bytes[..spk_len].to_vec(), exit_amount));
 
-        // Build prev_tx
-        let prev_tx = build_prev_tx_for_action(tx, &source_pk);
+        // Look up the actual prev_tx from the persistent store.
+        let first_input = tx.inputs.first()?;
+        let prev_tx_id = first_input.previous_outpoint.transaction_id;
+        let prev_output_index = first_input.previous_outpoint.index;
+        let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
+        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok()??;
 
-        Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index: 0 })))
+        Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index })))
     }
 }
 
@@ -388,16 +432,4 @@ fn rpc_optional_to_transaction(rpc: &kaspa_rpc_core::RpcOptionalTransaction) -> 
         .collect();
 
     Some(Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload))
-}
-
-/// Build a synthetic prev_tx for action auth verification.
-///
-/// In a real scenario, we'd fetch the actual previous transaction.
-/// For now, we create a minimal V1 tx with the source account's P2PK SPK.
-fn build_prev_tx_for_action(_tx: &Transaction, source_pk: &[u32; 8]) -> Transaction {
-    let source_spk_bytes = pay_to_pubkey_spk(&bytemuck::cast::<[u32; 8], [u8; 32]>(*source_pk));
-    let spk = ScriptPublicKey::new(0, source_spk_bytes.to_vec().into());
-
-    // Create a minimal V1 transaction that has an output with the source's SPK
-    Transaction::new(1, vec![], vec![TransactionOutput::new(1000, spk)], 0, SUBNETWORK_ID_NATIVE, 0, vec![])
 }

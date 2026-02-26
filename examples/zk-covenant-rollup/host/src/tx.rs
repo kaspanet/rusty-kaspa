@@ -433,9 +433,8 @@ mod tests {
         // Build executor env
         let env = {
             let mut binding = ExecutorEnv::builder();
-            let builder = binding
-                .write_slice(core::slice::from_ref(&public_input))
-                .write_slice(&(chain.block_txs.len() as u32).to_le_bytes());
+            let builder =
+                binding.write_slice(core::slice::from_ref(&public_input)).write_slice(&(chain.block_txs.len() as u32).to_le_bytes());
             for txs in &chain.block_txs {
                 builder.write_slice(&(txs.len() as u32).to_le_bytes());
                 for tx in txs {
@@ -461,8 +460,7 @@ mod tests {
 
         // Write seal binary
         let seal_bytes: Vec<u8> = succinct.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
-        let seal_path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata").join("captured_seal.bin");
+        let seal_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata").join("captured_seal.bin");
         std::fs::create_dir_all(seal_path.parent().unwrap()).unwrap();
         std::fs::write(&seal_path, &seal_bytes).unwrap();
         eprintln!("Wrote seal to {}", seal_path.display());

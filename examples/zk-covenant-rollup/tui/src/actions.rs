@@ -57,11 +57,12 @@ pub fn build_entry_tx(
     }
 
     // Find nonce that produces entry-prefix tx_id
-    let payload = find_entry_tx_nonce(dest, &outputs);
+    let inputs = vec![TransactionInput::new(TransactionOutpoint::new(gas_utxo.tx_id, gas_utxo.index), vec![], 0, 0)];
+    let payload = find_entry_tx_nonce(dest, &inputs, &outputs);
 
     Ok(Transaction::new(
         1, // V1
-        vec![TransactionInput::new(TransactionOutpoint::new(gas_utxo.tx_id, gas_utxo.index), vec![], 0, 0)],
+        inputs,
         outputs,
         0,
         SUBNETWORK_ID_NATIVE,
@@ -88,18 +89,11 @@ pub fn build_transfer_tx(
     let dest = hash_to_u32x8(dest_pk);
 
     let outputs = vec![TransactionOutput::new(output_value, pay_to_address_script(dest_address))];
+    let inputs = vec![TransactionInput::new(TransactionOutpoint::new(gas_utxo.tx_id, gas_utxo.index), vec![], 0, 0)];
 
-    let payload = find_action_tx_nonce(source, dest, amount, &outputs);
+    let payload = find_action_tx_nonce(source, dest, amount, &inputs, &outputs);
 
-    Ok(Transaction::new(
-        1,
-        vec![TransactionInput::new(TransactionOutpoint::new(gas_utxo.tx_id, gas_utxo.index), vec![], 0, 0)],
-        outputs,
-        0,
-        SUBNETWORK_ID_NATIVE,
-        0,
-        payload.as_bytes(),
-    ))
+    Ok(Transaction::new(1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes()))
 }
 
 /// Build an unsigned V1 exit (withdrawal) transaction.
@@ -118,16 +112,9 @@ pub fn build_exit_tx(
     let source = hash_to_u32x8(source_pk);
 
     let outputs = vec![TransactionOutput::new(output_value, kaspa_consensus_core::tx::ScriptPublicKey::new(0, dest_spk_bytes.into()))];
+    let inputs = vec![TransactionInput::new(TransactionOutpoint::new(gas_utxo.tx_id, gas_utxo.index), vec![], 0, 0)];
 
-    let payload = find_exit_tx_nonce(source, dest_spk_bytes, exit_amount, &outputs);
+    let payload = find_exit_tx_nonce(source, dest_spk_bytes, exit_amount, &inputs, &outputs);
 
-    Ok(Transaction::new(
-        1,
-        vec![TransactionInput::new(TransactionOutpoint::new(gas_utxo.tx_id, gas_utxo.index), vec![], 0, 0)],
-        outputs,
-        0,
-        SUBNETWORK_ID_NATIVE,
-        0,
-        payload.as_bytes(),
-    ))
+    Ok(Transaction::new(1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes()))
 }

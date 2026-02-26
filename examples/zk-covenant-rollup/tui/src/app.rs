@@ -717,7 +717,8 @@ impl App {
                         });
                         let prover_cov_id = rec.on_chain_covenant_id.unwrap_or(id);
                         let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-                        self.prover = Some(RollupProver::new(prover_cov_id, initial_state_root, initial_seq, starting_block));
+                        self.prover =
+                            Some(RollupProver::new(prover_cov_id, initial_state_root, initial_seq, starting_block, self.db.clone()));
                         self.log("Auto-initialized prover for deployed covenant".into());
                         self.pending_ops.push(PendingOp::FetchAndProcessChain);
                     }
@@ -1645,8 +1646,7 @@ impl App {
         let tx_id = tx.id();
 
         // Sign only input[1] (collateral) — input[0] already has ZK sig_script
-        let covenant_entry =
-            UtxoEntry::new(covenant_value, pay_to_script_hash_script(&input_redeem), 0, true, Some(covenant_id_hash));
+        let covenant_entry = UtxoEntry::new(covenant_value, pay_to_script_hash_script(&input_redeem), 0, true, Some(covenant_id_hash));
         let collateral_entry = UtxoEntry::new(collateral.amount, deployer_spk, 0, false, None);
         let signable = SignableTransaction::with_entries(tx.clone(), vec![covenant_entry.clone(), collateral_entry.clone()]);
         let collateral_sig = sign_input(&signable.as_verifiable(), 1, &deployer_sk.secret_bytes(), SIG_HASH_ALL);
@@ -2507,6 +2507,7 @@ impl App {
                                             initial_state_root,
                                             deploy_initial_seq,
                                             deploy_starting_block,
+                                            self.db.clone(),
                                         ));
                                         self.log("Auto-initialized prover after deploy".into());
                                         self.pending_ops.push(PendingOp::FetchAndProcessChain);
@@ -2932,7 +2933,7 @@ impl App {
             });
             let prover_cov_id = rec.on_chain_covenant_id.unwrap_or(id);
             let initial_state_root = zk_covenant_rollup_core::state::empty_tree_root();
-            self.prover = Some(RollupProver::new(prover_cov_id, initial_state_root, initial_seq, starting_block));
+            self.prover = Some(RollupProver::new(prover_cov_id, initial_state_root, initial_seq, starting_block, self.db.clone()));
             self.log("Auto-initialized prover for deployed covenant".into());
             self.pending_ops.push(PendingOp::FetchAndProcessChain);
         }

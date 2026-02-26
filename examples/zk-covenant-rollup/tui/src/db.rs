@@ -1,4 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use kaspa_consensus_core::tx::Transaction;
 use kaspa_hashes::Hash;
 use rocksdb::{Options, DB};
 use std::path::Path;
@@ -23,6 +24,7 @@ pub type Pubkey = Hash;
 /// | `proving/` | covenant_id (32B)                   | `ProvingState`               |
 /// | `provkey/` | covenant_id (32B)                   | privkey (32B raw)            |
 /// | `txhist/`  | covenant_id (32B) + index (8B LE)   | `TxRecordDb`                 |
+/// | `ptx/`     | covenant_id (32B) + tx_hash (32B)   | `Transaction` (borsh)        |
 ///
 /// Balance keys inherit the first-byte index from the pubkey, so:
 /// - Lookup by covenant + pubkey: exact 64-byte key
@@ -121,6 +123,7 @@ const PREFIX_UTXO: &[u8] = b"utxo/";
 const PREFIX_PROVING: &[u8] = b"proving/";
 const PREFIX_PROVER_KEY: &[u8] = b"provkey/";
 const PREFIX_TX_HISTORY: &[u8] = b"txhist/";
+const PREFIX_PREV_TX: &[u8] = b"ptx/";
 
 impl RollupDb {
     /// Open (or create) the database at the given path.
@@ -416,6 +419,22 @@ impl RollupDb {
         }
         Ok(())
     }
+
+    // ── Prev-tx store (temporary; for auth witness lookup) ──
+
+    /// Persist a transaction so it can be retrieved by hash for auth witness building.
+    /// Key = `ptx/` + covenant_id (32B) + tx_hash (32B).
+    pub fn put_prev_tx(&self, covenant_id: CovenantId, tx_hash: Hash, tx: &Transaction) -> Result<(), rocksdb::Error> {
+        let key = prev_tx_key(covenant_id, tx_hash);
+        let val = borsh::to_vec(tx).expect("borsh serialize");
+        self.db.put(key, val)
+    }
+
+    /// Look up a previously-stored transaction by hash.
+    pub fn get_prev_tx(&self, covenant_id: CovenantId, tx_hash: Hash) -> Result<Option<Transaction>, rocksdb::Error> {
+        let key = prev_tx_key(covenant_id, tx_hash);
+        Ok(self.db.get(key)?.map(|v| Transaction::try_from_slice(&v).expect("borsh deserialize")))
+    }
 }
 
 fn prefix_key(prefix: &[u8], suffix: &[u8]) -> Vec<u8> {
@@ -446,6 +465,14 @@ fn tx_history_key(id: CovenantId, index: u64) -> Vec<u8> {
     key.extend_from_slice(PREFIX_TX_HISTORY);
     key.extend_from_slice(&id.as_bytes());
     key.extend_from_slice(&index.to_le_bytes());
+    key
+}
+
+fn prev_tx_key(id: CovenantId, tx_hash: Hash) -> Vec<u8> {
+    let mut key = Vec::with_capacity(PREFIX_PREV_TX.len() + 64);
+    key.extend_from_slice(PREFIX_PREV_TX);
+    key.extend_from_slice(&id.as_bytes());
+    key.extend_from_slice(&tx_hash.as_bytes());
     key
 }
 
