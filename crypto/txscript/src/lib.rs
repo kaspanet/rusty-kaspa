@@ -1033,7 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn test_v0_and_v1_sigop_budget_enforced_with_covenants_enabled() {
+    fn test_sigop_budget_enforced_with_covenants_enabled() {
         let sig_cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
 
@@ -1095,6 +1095,17 @@ mod tests {
             budget_allows_one_sigop_only,
         );
         assert_match!(vm.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { .. }), "expected sigop budget enforcement for tx");
+
+        let mut vm_with_doubled_budget = TxScriptEngine::from_transaction_input_with_allowed_script_units(
+            &verifiable_tx,
+            &verifiable_tx.inputs()[0],
+            0,
+            verifiable_tx.utxo(0).unwrap(),
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            EngineFlags { covenants_enabled: true, mass_per_sig_op },
+            budget_allows_one_sigop_only * 2,
+        );
+        assert_eq!(vm_with_doubled_budget.execute(), Ok(()), "expected tx to pass when budget is doubled");
     }
 
     #[test]
