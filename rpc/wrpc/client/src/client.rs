@@ -200,6 +200,29 @@ impl Inner {
     }
 }
 
+impl Drop for Inner {
+    fn drop(&mut self) {
+        if self.background_services_running.load(Ordering::SeqCst) {
+            log_warn!("KaspaRpcClient: dropped without calling disconnect() — cleaning up resources");
+
+            // Close channels synchronously to signal background tasks to stop
+            self.notification_relay_channel.sender.close();
+            if let Ok(intake) = self.notification_intake_channel.lock() {
+                intake.sender.close();
+            }
+            self.service_ctl.request.sender.close();
+
+            // Fire-and-forget async WebSocket shutdown (only works if a runtime is still alive)
+            let rpc_client = self.rpc_client.clone();
+            workflow_core::task::spawn(async move {
+                let _ = rpc_client.shutdown().await;
+            });
+
+            self.background_services_running.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
 impl Debug for Inner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KaspaRpcClient")
