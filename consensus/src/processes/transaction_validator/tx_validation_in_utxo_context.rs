@@ -201,8 +201,8 @@ fn input_allowed_script_units(tx: &impl VerifiableTransaction, input: &Transacti
     } else {
         (input.sig_op_count as u64).saturating_mul(flags.mass_per_sig_op)
     }
-    .saturating_add(flags.mass_per_sig_op - 1) // To preserve backward compatility with the scheme that only took the number of sigops into account, we add (mass_per_sig_op-1)*COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR to the allowed
-                                                  // units, so most transactions that were previously allowed will still be allowed.
+    .saturating_add(flags.mass_per_sig_op.saturating_sub(1)) // To preserve backward compatility with the scheme that only took the number of sigops into account, we add (mass_per_sig_op-1)*COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR to the allowed
+                                                                // units, so most transactions that were previously allowed will still be allowed.
     .saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR)
 }
 
@@ -242,7 +242,7 @@ fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRule
 #[cfg(test)]
 mod tests {
     use super::super::errors::TxRuleError;
-    use super::{CHECK_SCRIPTS_PARALLELISM_THRESHOLD, check_scripts};
+    use super::{CHECK_SCRIPTS_PARALLELISM_THRESHOLD, TxValidationFlags, check_scripts};
     use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
     use core::str::FromStr;
     use itertools::Itertools;
@@ -250,7 +250,14 @@ mod tests {
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
     use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-    use kaspa_txscript::{EngineCtx, EngineFlags};
+    use kaspa_consensus_core::{config::params::ForkActivation, constants::INPUT_COMPUTE_MASS_SCALE_FACTOR, mass::MassCalculator};
+    use kaspa_core::assert_match;
+    use kaspa_txscript::opcodes::codes::OpDup;
+    use kaspa_txscript::{
+        EngineCtx, EngineFlags,
+        opcodes::codes::{OpCheckSig, OpDrop},
+        script_builder::ScriptBuilder,
+    };
     use kaspa_txscript_errors::TxScriptError;
     use secp256k1::Secp256k1;
     use smallvec::SmallVec;
@@ -331,6 +338,87 @@ mod tests {
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_populated_transaction_sigop_budget_enforced_for_v0_and_v1_with_covenants_enabled() {
+        let params = MAINNET_PARAMS.clone();
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity(),
+            params.ghostdag_k,
+            Default::default(),
+            MassCalculator::new(0, 0, 0, 0),
+            ForkActivation::always(),
+            params.mass_per_sig_op,
+        );
+
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &[7u8; 32]).unwrap();
+        let (x_only_pubkey, _) = schnorr_key.x_only_public_key();
+        let two_sigops_script = ScriptBuilder::new()
+            .add_op(OpDup) // We duplicate the signature
+            .unwrap()
+            .add_data(&x_only_pubkey.serialize())
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .add_op(OpDrop)
+            .unwrap()
+            .add_data(&x_only_pubkey.serialize())
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .drain();
+
+        for version in [0u16, 1u16] {
+            let sig_op_count = if version == 0 { 1 } else { 0 };
+            let compute_mass = if version == 1 { (params.mass_per_sig_op / INPUT_COMPUTE_MASS_SCALE_FACTOR) as u16 } else { 0 };
+
+            let input = TransactionInput {
+                previous_outpoint: TransactionOutpoint {
+                    transaction_id: TransactionId::from_bytes([version as u8 + 1; 32]),
+                    index: 0,
+                },
+                signature_script: vec![],
+                sequence: 0,
+                sig_op_count,
+                compute_mass,
+            };
+            let output = TransactionOutput {
+                value: 1,
+                script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&[0x51])),
+                covenant: None,
+            };
+            let tx = Transaction::new(version, vec![input], vec![output], 0, SubnetworkId::default(), 0, vec![]);
+
+            let utxo_entry = UtxoEntry {
+                amount: 1,
+                script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&two_sigops_script)),
+                block_daa_score: 0,
+                is_coinbase: false,
+                covenant_id: None,
+            };
+
+            let signed_tx = sign(MutableTransaction::with_entries(tx, vec![utxo_entry]), schnorr_key);
+
+            // Verify that `sign` didn't change the sig_op_count and compute_mass values.
+            assert_eq!(signed_tx.tx.inputs[0].sig_op_count, sig_op_count);
+            assert_eq!(signed_tx.tx.inputs[0].compute_mass, compute_mass);
+
+            let verifiable_tx = signed_tx.as_verifiable();
+
+            let result =
+                tv.validate_populated_transaction_and_get_fee(&verifiable_tx, 0, 0, TxValidationFlags::SkipMassCheck, None, None);
+            assert_match!(
+                result,
+                Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { .. })),
+                "expected sigop budget enforcement for tx version {version}"
+            );
+        }
     }
 
     #[test]

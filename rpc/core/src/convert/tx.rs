@@ -178,7 +178,7 @@ impl TryFrom<RpcOptionalTransactionOutput> for TransactionOutput {
 impl TryFrom<RpcOptionalTransactionInput> for TransactionInput {
     type Error = RpcError;
     fn try_from(item: RpcOptionalTransactionInput) -> RpcResult<Self> {
-        let mut input = Self::new(
+        Ok(Self::new_with_compute_mass(
             item.previous_outpoint
                 .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "previous_outpoint".to_owned()))?
                 .try_into()?,
@@ -186,8 +186,7 @@ impl TryFrom<RpcOptionalTransactionInput> for TransactionInput {
                 .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "signature_script".to_owned()))?,
             item.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?,
             item.sig_op_count.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sig_op_count".to_owned()))?,
-        );
-        input.compute_mass = item.compute_mass.unwrap_or_default();
-        Ok(input)
+            item.compute_mass.unwrap_or_default(),
+        ))
     }
 }

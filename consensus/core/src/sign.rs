@@ -81,7 +81,11 @@ impl Signed {
 /// Sign a transaction using schnorr
 pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::Keypair) -> SignableTransaction {
     for i in 0..signable_tx.tx.inputs.len() {
-        signable_tx.tx.inputs[i].sig_op_count = 1;
+        if signable_tx.tx.version < 1 {
+            signable_tx.tx.inputs[i].sig_op_count = 1;
+        } else {
+            signable_tx.tx.inputs[i].compute_mass = 100;
+        }
     }
 
     let reused_values = SigHashReusedValuesUnsync::new();

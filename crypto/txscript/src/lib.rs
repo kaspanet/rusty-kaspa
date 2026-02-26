@@ -124,6 +124,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     runtime_sig_op_counter: RuntimeSigOpCounter,
     sigop_compute_mass_units: u64,
     allowed_script_units: u64,
+    remaining_script_units: u64,
     flags: EngineFlags,
 }
 
@@ -358,6 +359,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
             sigop_compute_mass_units: flags.mass_per_sig_op.saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR),
             allowed_script_units: u64::MAX,
+            remaining_script_units: u64::MAX,
             flags,
         }
     }
@@ -417,6 +419,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         flags: EngineFlags,
         allowed_script_units: u64,
     ) -> Self {
+        let allowed_script_units = if flags.covenants_enabled { allowed_script_units } else { u64::MAX };
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
@@ -434,6 +437,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
             sigop_compute_mass_units: flags.mass_per_sig_op.saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR),
             allowed_script_units,
+            remaining_script_units: allowed_script_units,
             flags,
         }
     }
@@ -466,17 +470,22 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
             sigop_compute_mass_units: flags.mass_per_sig_op.saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR),
             allowed_script_units,
+            remaining_script_units: allowed_script_units,
             flags,
         }
     }
 
     fn consume_compute_mass_units(&mut self, units: u64) -> Result<(), TxScriptError> {
-        match self.allowed_script_units.checked_sub(units) {
+        match self.remaining_script_units.checked_sub(units) {
             Some(new_remaining) => {
-                self.allowed_script_units = new_remaining;
+                self.remaining_script_units = new_remaining;
                 Ok(())
             }
-            None => Err(TxScriptError::ExceededScriptUnitsLimit { used_units: units, allowed_units: self.allowed_script_units }),
+            None => {
+                let overflow = units - self.remaining_script_units;
+                let used_units = self.allowed_script_units + overflow;
+                Err(TxScriptError::ExceededScriptUnitsLimit { used_units, allowed_units: self.allowed_script_units })
+            }
         }
     }
 
@@ -832,7 +841,7 @@ mod tests {
 
     use crate::hex;
     use crate::opcodes::codes::{
-        OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDup, OpEndIf,
+        OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDrop, OpDup, OpEndIf,
         OpEqual, OpFalse, OpIf, OpPushData1, OpTrue, OpVerify,
     };
 
@@ -843,6 +852,7 @@ mod tests {
     use kaspa_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
+    use kaspa_core::assert_match;
     use smallvec::SmallVec;
 
     struct ScriptTestCase {
@@ -945,6 +955,38 @@ mod tests {
     }
 
     #[test]
+    fn test_push_units_enforced_only_when_covenants_enabled() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let long_push = vec![42u8; 128];
+        let script = ScriptBuilder::new().add_data(&long_push).unwrap().drain();
+        let tight_budget = 64;
+
+        let mut vm_covenants_disabled =
+            TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_allowed_script_units(
+                &script,
+                &reused_values,
+                &sig_cache,
+                tight_budget,
+                EngineFlags { covenants_enabled: false, mass_per_sig_op: 0 },
+            );
+        assert!(vm_covenants_disabled.execute().is_ok());
+
+        let mut vm_covenants_enabled =
+            TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_allowed_script_units(
+                &script,
+                &reused_values,
+                &sig_cache,
+                tight_budget,
+                EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
+            );
+        assert_eq!(
+            vm_covenants_enabled.execute(),
+            Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 128, allowed_units: 64 })
+        );
+    }
+
+    #[test]
     fn test_v1_sigop_budget_enforced_with_mass_per_sigop() {
         let sig_cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
@@ -988,6 +1030,71 @@ mod tests {
         );
 
         assert_eq!(vm_exact.execute(), Err(TxScriptError::SigLength(0)));
+    }
+
+    #[test]
+    fn test_v0_and_v1_sigop_budget_enforced_with_covenants_enabled() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        let mass_per_sig_op = 1_000u64;
+        let budget_allows_one_sigop_only = 15_000;
+
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &[7u8; 32]).unwrap();
+        let (x_only_pubkey, _) = schnorr_key.x_only_public_key();
+        let x_only_pubkey = x_only_pubkey.serialize();
+
+        let two_sigops_script = ScriptBuilder::new()
+            .add_op(OpDup)
+            .unwrap()
+            .add_data(&x_only_pubkey)
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .add_op(OpDrop)
+            .unwrap()
+            .add_data(&x_only_pubkey)
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .drain();
+
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([9u8; 32]), index: 0 },
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 0, // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_mass.
+            compute_mass: 0,
+        };
+
+        let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
+
+        let tx = Transaction::new(1, vec![input], vec![output], 0, Default::default(), 0, vec![]);
+        let utxo_entry = UtxoEntry::new(1, ScriptPublicKey::new(0, two_sigops_script.clone().into()), 0, false, None);
+        let mut mutable_tx = MutableTransaction::with_entries(tx, vec![utxo_entry]);
+        let sighash_reused = SigHashReusedValuesUnsync::new();
+        let sig_hash = kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash(
+            &mutable_tx.as_verifiable(),
+            0,
+            SIG_HASH_ALL,
+            &sighash_reused,
+        );
+        let message = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
+        let signature: [u8; 64] = *schnorr_key.sign_schnorr(message).as_ref();
+        let sig_with_hash_type: Vec<u8> = signature.into_iter().chain([SIG_HASH_ALL.to_u8()]).collect();
+        mutable_tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&sig_with_hash_type).unwrap().drain();
+
+        let verifiable_tx = mutable_tx.as_verifiable();
+        let mut vm = TxScriptEngine::from_transaction_input_with_allowed_script_units(
+            &verifiable_tx,
+            &verifiable_tx.inputs()[0],
+            0,
+            verifiable_tx.utxo(0).unwrap(),
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            EngineFlags { covenants_enabled: true, mass_per_sig_op },
+            budget_allows_one_sigop_only,
+        );
+        assert_match!(vm.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { .. }), "expected sigop budget enforcement for tx");
     }
 
     #[test]
