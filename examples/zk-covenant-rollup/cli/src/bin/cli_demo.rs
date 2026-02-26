@@ -18,9 +18,10 @@ use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
 use kaspa_wrpc_client::prelude::{NetworkId, NetworkType, Notification};
 use risc0_zkvm::sha::Digestible;
 use zk_covenant_rollup_core::state::empty_tree_root;
-use zk_covenant_rollup_host::mock_chain::from_bytes;
+use zk_covenant_rollup_host::mock_chain::{from_bytes, MockSeqCommitAccessor};
 use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProveOutput, ProverBackend};
 use zk_covenant_rollup_host::redeem::build_redeem_script;
+use zk_covenant_rollup_host::tx::try_verify_tx_input;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
 use zk_covenant_rollup_tui::actions::compute_fee;
 use zk_covenant_rollup_tui::db::RollupDb;
@@ -102,7 +103,8 @@ fn parse_backend(s: &str) -> Result<ProverBackend> {
     match s.to_lowercase().as_str() {
         "ipc" => Ok(ProverBackend::Ipc),
         "local" => {
-            #[cfg(feature = "cuda")] {
+            #[cfg(feature = "cuda")]
+            {
                 Ok(ProverBackend::Local)
             }
             #[cfg(not(feature = "cuda"))]
@@ -455,14 +457,57 @@ async fn build_and_submit_proof(
     keypair: &Keypair,
 ) -> Result<Hash> {
     let journal = &prove.output.receipt.journal.bytes;
-    if journal.len() < 128 {
-        bail!("Invalid journal length: {} (need >= 128)", journal.len());
+    if journal.len() < 160 {
+        bail!("Invalid journal length: {} (need >= 160)", journal.len());
     }
+
+    // Extract all journal fields
+    let journal_prev_seq: [u32; 8] = bytemuck::pod_read_unaligned(&journal[32..64]);
     let new_state_hash: [u32; 8] = bytemuck::pod_read_unaligned(&journal[64..96]);
     let new_seq_commitment: [u32; 8] = bytemuck::pod_read_unaligned(&journal[96..128]);
+    let journal_covenant_id: [u32; 8] = bytemuck::pod_read_unaligned(&journal[128..160]);
+    let new_seq_hash = Hash::from_bytes(bytemuck::cast(new_seq_commitment));
 
     println!("  New state root:      {}", Hash::from_bytes(bytemuck::cast(new_state_hash)));
-    println!("  New seq commitment:  {}", Hash::from_bytes(bytemuck::cast(new_seq_commitment)));
+    println!("  New seq commitment:  {new_seq_hash}");
+
+    // ── Journal field verification ───────────────────────────────────────────
+    // 1. prev_seq_commitment must match what was passed to the prover
+    if journal_prev_seq != prove.prev_seq_commitment {
+        bail!(
+            "Journal prev_seq_commitment mismatch\n  journal:  {}\n  expected: {}",
+            Hash::from_bytes(bytemuck::cast(journal_prev_seq)),
+            Hash::from_bytes(bytemuck::cast(prove.prev_seq_commitment)),
+        );
+    }
+    println!("  [ok] prev_seq_commitment matches");
+
+    // 2. covenant_id in journal must match deploy
+    let expected_cov_id: [u32; 8] = from_bytes(deploy.on_chain_covenant_id.as_bytes());
+    if journal_covenant_id != expected_cov_id {
+        bail!(
+            "Journal covenant_id mismatch\n  journal:  {}\n  expected: {}",
+            Hash::from_bytes(bytemuck::cast(journal_covenant_id)),
+            deploy.on_chain_covenant_id,
+        );
+    }
+    println!("  [ok] covenant_id matches");
+
+    // 3. new_seq_commitment must equal block_prove_to.accepted_id_merkle_root
+    //    (OpSeqCommit checks this exact equality on-chain)
+    let block_prove_block =
+        node.get_block(prove.block_prove_to, false).await.context("get block_prove_to for seq verification failed")?;
+    let block_air = block_prove_block.header.accepted_id_merkle_root;
+    if new_seq_hash != block_air {
+        bail!(
+            "Journal new_seq_commitment != block_prove_to.accepted_id_merkle_root\n  journal:        {}\n  block AIR:      {}\n  block_prove_to: {}",
+            new_seq_hash,
+            block_air,
+            prove.block_prove_to,
+        );
+    }
+    println!("  [ok] new_seq_commitment matches block_prove_to accepted_id_merkle_root");
+    // ────────────────────────────────────────────────────────────────────────
 
     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
     let zk_tag = proof_kind_to_zk_tag(proof_kind);
@@ -477,8 +522,8 @@ async fn build_and_submit_proof(
     println!("  sig_script length: {} bytes", sig_script.len());
 
     // Find a collateral UTXO from the deployer's address
-    let utxos = node.get_utxos_by_addresses(vec![keypair.address.clone()]).await.context("get_utxos_by_addresses failed")?;
-    let collateral = utxos
+    let rpc_utxos = node.get_utxos_by_addresses(vec![keypair.address.clone()]).await.context("get_utxos_by_addresses failed")?;
+    let collateral = rpc_utxos
         .iter()
         .find(|u| u.utxo_entry.amount >= 10_000)
         .context("No UTXO available for collateral — fund the deployer address")?;
@@ -527,11 +572,20 @@ async fn build_and_submit_proof(
     let proof_tx_id = proof_tx.id();
 
     // Sign only input[1] (collateral) — input[0] already has the ZK sig_script
-    let covenant_entry = UtxoEntry::new(deploy.output_value, pay_to_script_hash_script(&input_redeem), 0, true, None);
+    let covenant_entry =
+        UtxoEntry::new(deploy.output_value, pay_to_script_hash_script(&input_redeem), 0, false, Some(deploy.on_chain_covenant_id));
     let collateral_entry = UtxoEntry::new(collateral_amount, keypair.deployer_spk.clone(), collateral_daa, false, None);
-    let signable = SignableTransaction::with_entries(proof_tx.clone(), vec![covenant_entry, collateral_entry]);
+    let signable = SignableTransaction::with_entries(proof_tx.clone(), vec![covenant_entry.clone(), collateral_entry.clone()]);
     let collateral_sig = sign_input(&signable.as_verifiable(), 1, &keypair.secret_key.secret_bytes(), SIG_HASH_ALL);
     proof_tx.inputs[1].signature_script = collateral_sig;
+
+    // ── Local script verification (same path as on-chain) ───────────────────
+    let accessor = MockSeqCommitAccessor(std::collections::HashMap::from([(prove.block_prove_to, new_seq_hash)]));
+    match try_verify_tx_input(&proof_tx, &[covenant_entry, collateral_entry], 0, &accessor) {
+        Ok(()) => println!("  [ok] Local script verification passed"),
+        Err(e) => bail!("Local script verification failed: {e}\n  (the on-chain script will also reject this tx)"),
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     println!("  Proof tx ID: {proof_tx_id}");
 
