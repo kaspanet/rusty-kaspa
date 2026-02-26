@@ -97,39 +97,40 @@ The action is only considered valid if the prefix matches **and** the header ver
 Each action type requires different witness data from the host:
 
 ```rust
-{{#include ../../methods/guest/src/witness.rs:transfer_witness}}
-```
-
-```rust
 {{#include ../../methods/guest/src/witness.rs:entry_witness}}
-```
-
-```rust
-{{#include ../../methods/guest/src/witness.rs:exit_witness}}
-```
-
-```mermaid
-flowchart LR
-    subgraph TransferWit["Transfer Witness"]
-        TS["source AccountWitness"]
-        TD["dest AccountWitness"]
-        TP["PrevTxV1WitnessData<br/>(rest_preimage + payload_digest)"]
-    end
-
-    subgraph EntryWit["Entry Witness"]
-        ED["dest AccountWitness"]
-    end
-
-    subgraph ExitWit["Exit Witness"]
-        ES["source AccountWitness"]
-        EP["PrevTxV1WitnessData<br/>(rest_preimage + payload_digest)"]
-    end
 ```
 
 **Key simplifications:**
 
 - **Entry witness** no longer includes `rest_preimage`. The current transaction's `rest_preimage` is already read at the `V1TxData` level and passed down.
 - **PrevTxV1WitnessData** no longer includes `prev_tx_id` or `output_index`. These are derived from the current action transaction's first input outpoint, which is committed via `rest_preimage` → `rest_digest` → `tx_id`. This prevents the host from substituting a fake previous transaction.
+
+## Conditional witness reading
+
+For transfer and exit actions, the guest reads witness data **conditionally** based on the source account's balance:
+
+```
+Host writes:                    Guest reads:
+───────────                     ───────────
+source AccountWitness           source AccountWitness
+  (always)                        verify SMT proof
+                                  check balance >= amount?
+                                  ├─ NO  → return (nothing more to read)
+                                  └─ YES ↓
+PrevTxV1Witness                 PrevTxV1Witness
+  (if balance sufficient)         verify auth
+                                  ├─ FAIL → return (nothing more to read)
+                                  └─ OK   ↓
+dest AccountWitness             dest AccountWitness     [transfer only]
+  (if balance sufficient)         verify SMT proof
+                                  update state_root
+```
+
+This conditional reading reduces the witness data the host must provide for transactions that fail the balance check. Unknown accounts are represented as empty leaves in the SMT — the guest verifies the empty-leaf proof against the current root, confirms the account has zero balance, and skips the action without needing auth or destination witnesses.
+
+```rust
+{{#include ../../methods/guest/src/state.rs:verify_and_debit_source}}
+```
 
 ## Source authorization
 

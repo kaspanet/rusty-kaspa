@@ -13,7 +13,9 @@ use zk_covenant_rollup_core::{
     state::{AccountWitness, StateRoot},
 };
 use zk_covenant_rollup_host::mock_chain::from_bytes;
-use zk_covenant_rollup_host::mock_tx::{ActionWitness, EntryWitnessData, ExitWitnessData, TransferWitnessData, ZkTransaction};
+use zk_covenant_rollup_host::mock_tx::{
+    ActionWitness, EntryWitnessData, ExitWitnessData, ExitWitnessRest, TransferWitnessData, TransferWitnessRest, ZkTransaction,
+};
 use zk_covenant_rollup_host::prove::ProveInput;
 
 use crate::db::RollupDb;
@@ -335,23 +337,37 @@ impl RollupProver {
         let dest_pk = action.destination;
         let amount = action.amount;
 
-        // Check source balance
-        let source_balance = self.smt.get(&source_pk)?;
+        // Always build source witness (works for both existing and unknown accounts)
+        let source_balance = self.smt.get(&source_pk).unwrap_or(0);
+        let source_proof = self.smt.prove(&source_pk);
+        let source_exists = self.smt.get(&source_pk).is_some();
+        let source_witness = if source_exists {
+            AccountWitness::new(source_pk, source_balance, source_proof)
+        } else {
+            AccountWitness::new([0u32; 8], 0, source_proof)
+        };
+
+        // If balance insufficient, provide source-only witness (guest reads source, skips rest)
         if source_balance < amount {
-            return None; // Insufficient balance
+            return Some(ActionWitness::Transfer(Box::new(TransferWitnessData { source: source_witness, rest: None })));
         }
 
+        // Balance sufficient — need auth + dest.
         // Look up the actual prev_tx BEFORE modifying any state.
-        // If the lookup fails we must not corrupt the SMT.
-        let first_input = tx.inputs.first()?;
+        let first_input = tx.inputs.first().expect("action tx must have at least one input");
         let prev_tx_id = first_input.previous_outpoint.transaction_id;
         let prev_output_index = first_input.previous_outpoint.index;
         let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
-        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok()??;
-
-        // Build source witness from current state
-        let source_proof = self.smt.prove(&source_pk);
-        let source_witness = AccountWitness::new(source_pk, source_balance, source_proof);
+        // TODO(covpp-mainnet): prev_tx lookup will be replaced by txindex or by a
+        // seq_commitment change that commits spk+amount per input. With the 2-byte
+        // prefix (~1/65536 collision) and the SMT balance check above, a collision tx
+        // reaching this point is extremely unlikely — panicking is acceptable for now.
+        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok().flatten().unwrap_or_else(|| {
+            panic!(
+                "prev_tx {} not found in DB for transfer action (source={:?})",
+                prev_tx_id, source_pk
+            )
+        });
 
         // Update source balance (intermediate state)
         let new_source_balance = source_balance - amount;
@@ -373,9 +389,7 @@ impl RollupProver {
 
         Some(ActionWitness::Transfer(Box::new(TransferWitnessData {
             source: source_witness,
-            dest: dest_witness,
-            prev_tx,
-            prev_output_index,
+            rest: Some(TransferWitnessRest { dest: dest_witness, prev_tx, prev_output_index }),
         })))
     }
 
@@ -421,23 +435,37 @@ impl RollupProver {
         let source_pk = action.source;
         let exit_amount = action.amount;
 
-        // Check source balance
-        let source_balance = self.smt.get(&source_pk)?;
+        // Always build source witness (works for both existing and unknown accounts)
+        let source_balance = self.smt.get(&source_pk).unwrap_or(0);
+        let source_proof = self.smt.prove(&source_pk);
+        let source_exists = self.smt.get(&source_pk).is_some();
+        let source_witness = if source_exists {
+            AccountWitness::new(source_pk, source_balance, source_proof)
+        } else {
+            AccountWitness::new([0u32; 8], 0, source_proof)
+        };
+
+        // If balance insufficient, provide source-only witness (guest reads source, skips rest)
         if source_balance < exit_amount {
-            return None; // Insufficient balance
+            return Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, rest: None })));
         }
 
+        // Balance sufficient — need auth.
         // Look up the actual prev_tx BEFORE modifying any state.
-        // If the lookup fails we must not corrupt the SMT or permission tree.
-        let first_input = tx.inputs.first()?;
+        let first_input = tx.inputs.first().expect("action tx must have at least one input");
         let prev_tx_id = first_input.previous_outpoint.transaction_id;
         let prev_output_index = first_input.previous_outpoint.index;
         let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
-        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok()??;
-
-        // Build source witness
-        let source_proof = self.smt.prove(&source_pk);
-        let source_witness = AccountWitness::new(source_pk, source_balance, source_proof);
+        // TODO(covpp-mainnet): prev_tx lookup will be replaced by txindex or by a
+        // seq_commitment change that commits spk+amount per input. With the 2-byte
+        // prefix (~1/65536 collision) and the SMT balance check above, a collision tx
+        // reaching this point is extremely unlikely — panicking is acceptable for now.
+        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok().flatten().unwrap_or_else(|| {
+            panic!(
+                "prev_tx {} not found in DB for exit action (source={:?})",
+                prev_tx_id, source_pk
+            )
+        });
 
         // Update source balance
         let new_balance = source_balance - exit_amount;
@@ -451,7 +479,10 @@ impl RollupProver {
         self.accumulated_perm_builder.add_leaf(leaf);
         self.accumulated_exit_data.push((dest_spk_bytes[..spk_len].to_vec(), exit_amount));
 
-        Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index })))
+        Some(ActionWitness::Exit(Box::new(ExitWitnessData {
+            source: source_witness,
+            rest: Some(ExitWitnessRest { prev_tx, prev_output_index }),
+        })))
     }
 }
 

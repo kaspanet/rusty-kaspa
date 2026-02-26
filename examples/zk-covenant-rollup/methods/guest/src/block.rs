@@ -8,7 +8,7 @@ use zk_covenant_rollup_core::{
     seq_commit::{StreamingMerkleBuilder, seq_commitment_leaf},
 };
 
-use crate::{auth, input, state, tx, witness::EntryWitness, witness::ExitWitness, witness::TransferWitness};
+use crate::{auth, input, state, tx, witness::EntryWitness, witness::PrevTxV1WitnessData};
 
 // ANCHOR: process_block
 /// Process all transactions in a block, updating state and building merkle tree
@@ -92,26 +92,36 @@ fn process_action(
 // ANCHOR_END: process_action
 
 // ANCHOR: process_transfer
-/// Process a transfer action
+/// Process a transfer action with conditional witness reading.
+///
+/// 1. Always reads the source AccountWitness.
+/// 2. Checks balance — if insufficient (or empty leaf), returns immediately.
+/// 3. Only reads auth (PrevTxV1Witness) and dest AccountWitness when balance is sufficient.
 fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transfer: TransferAction, rest_preimage: &AlignedBytes) {
-    // Extract first input outpoint from current tx's rest_preimage.
-    // This is committed via rest_digest → tx_id, so tamper-proof.
-    let (first_input_prev_tx_id, first_input_output_index) =
+    // 1. Always read source witness
+    let source_witness = input::read_account_witness(stdin);
+    let intermediate_root = match state::verify_and_debit_source(
+        &transfer.source, &source_witness, transfer.amount, state_root,
+    ) {
+        Some(root) => root,
+        None => return, // Insufficient balance — no auth/dest to read
+    };
+
+    // 2. Read auth (host only writes when balance sufficient)
+    let (prev_tx_id, output_index) =
         parse_first_input_outpoint(rest_preimage.as_bytes()).expect("action tx must have at least one input");
-    let first_input_prev_tx_id = bytes_to_words_ref(&first_input_prev_tx_id);
-
-    let witness = TransferWitness::read_from_stdin(stdin, first_input_output_index);
-
-    // Verify source authorization.
-    // Asserts prev_tx matches first input (host cheating → proof fails).
-    // Skips if pubkey mismatch (user error → action rejected).
-    if auth::verify_source(&transfer.source, &witness.prev_tx, &first_input_prev_tx_id).is_none() {
+    let first_input_prev_tx_id = bytes_to_words_ref(&prev_tx_id);
+    let prev_tx = PrevTxV1WitnessData::read_from_stdin(stdin, output_index);
+    if auth::verify_source(&transfer.source, &prev_tx, &first_input_prev_tx_id).is_none() {
         return;
     }
 
-    // Process the transfer and update state if successful
-    if let Some(new_root) = state::process_transfer(&transfer, &witness, state_root) {
-        *state_root = new_root;
+    // 3. Read dest and update state
+    let dest_witness = input::read_account_witness(stdin);
+    if let Some(final_root) = state::verify_and_update_dest(
+        &transfer.destination, &dest_witness, transfer.amount, &intermediate_root,
+    ) {
+        *state_root = final_root;
     }
 }
 // ANCHOR_END: process_transfer
@@ -164,9 +174,11 @@ fn process_entry(
 // ANCHOR_END: process_entry
 
 // ANCHOR: process_exit
-/// Process an exit (withdrawal) action
+/// Process an exit (withdrawal) action with conditional witness reading.
 ///
-/// Exits debit the source account and accumulate a permission tree leaf.
+/// 1. Always reads the source AccountWitness.
+/// 2. Checks balance — if insufficient (or empty leaf), returns immediately.
+/// 3. Only reads auth (PrevTxV1Witness) when balance is sufficient.
 fn process_exit(
     stdin: &mut impl WordRead,
     state_root: &mut [u32; 8],
@@ -174,22 +186,26 @@ fn process_exit(
     rest_preimage: &AlignedBytes,
     perm_builder: &mut StreamingPermTreeBuilder,
 ) {
-    // Extract first input outpoint from current tx's rest_preimage.
-    let (first_input_prev_tx_id, first_input_output_index) =
+    // 1. Always read source witness
+    let source_witness = input::read_account_witness(stdin);
+    let intermediate_root = match state::verify_and_debit_source(
+        &exit.source, &source_witness, exit.amount, state_root,
+    ) {
+        Some(root) => root,
+        None => return, // Insufficient balance — no auth to read
+    };
+
+    // 2. Read auth (host only writes when balance sufficient)
+    let (prev_tx_id, output_index) =
         parse_first_input_outpoint(rest_preimage.as_bytes()).expect("action tx must have at least one input");
-    let first_input_prev_tx_id = bytes_to_words_ref(&first_input_prev_tx_id);
-
-    let witness = ExitWitness::read_from_stdin(stdin, first_input_output_index);
-
-    // Verify source authorization (asserts on host cheating, skips on user error)
-    if auth::verify_source(&exit.source, &witness.prev_tx, &first_input_prev_tx_id).is_none() {
+    let first_input_prev_tx_id = bytes_to_words_ref(&prev_tx_id);
+    let prev_tx = PrevTxV1WitnessData::read_from_stdin(stdin, output_index);
+    if auth::verify_source(&exit.source, &prev_tx, &first_input_prev_tx_id).is_none() {
         return;
     }
 
-    // Debit source account and add permission leaf
-    if let Some(new_root) = state::process_exit(&exit, &witness.source, state_root) {
-        *state_root = new_root;
-        perm_builder.add_leaf(perm_leaf_hash(exit.destination_spk_bytes(), exit.amount));
-    }
+    // 3. Update state and add permission leaf
+    *state_root = intermediate_root;
+    perm_builder.add_leaf(perm_leaf_hash(exit.destination_spk_bytes(), exit.amount));
 }
 // ANCHOR_END: process_exit

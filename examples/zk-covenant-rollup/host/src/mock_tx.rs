@@ -93,11 +93,22 @@ impl ExitPayload {
     }
 }
 
-/// Witness data for transfer actions
+/// Witness data for transfer actions.
+///
+/// Always includes `source` (for the balance check).
+/// `rest` is `Some` only when the source balance is sufficient —
+/// the guest reads auth + dest conditionally.
 #[derive(Clone, Debug)]
 pub struct TransferWitnessData {
-    /// Source account witness
+    /// Source account witness (always provided)
     pub source: AccountWitness,
+    /// Auth + dest witness (only when balance sufficient)
+    pub rest: Option<TransferWitnessRest>,
+}
+
+/// Auth + destination witness for a transfer (written only when balance is sufficient).
+#[derive(Clone, Debug)]
+pub struct TransferWitnessRest {
     /// Destination account witness
     pub dest: AccountWitness,
     /// Previous transaction (the UTXO being spent)
@@ -116,10 +127,21 @@ pub struct EntryWitnessData {
 }
 
 /// Witness data for exit (withdrawal) actions.
+///
+/// Always includes `source` (for the balance check).
+/// `rest` is `Some` only when the source balance is sufficient —
+/// the guest reads auth conditionally.
 #[derive(Clone, Debug)]
 pub struct ExitWitnessData {
-    /// Source account witness
+    /// Source account witness (always provided)
     pub source: AccountWitness,
+    /// Auth witness (only when balance sufficient)
+    pub rest: Option<ExitWitnessRest>,
+}
+
+/// Auth witness for an exit (written only when balance is sufficient).
+#[derive(Clone, Debug)]
+pub struct ExitWitnessRest {
     /// Previous transaction (the UTXO being spent, proves source ownership)
     pub prev_tx: Transaction,
     /// Output index in the previous transaction
@@ -192,14 +214,14 @@ impl ZkTransaction {
 
                 match &self.witness {
                     Some(ActionWitness::Transfer(w)) if is_valid_transfer_payload(&payload_words) => {
-                        // Write transfer witness: source, dest, prev_tx_v1_witness
-                        // (prev_tx_id and output_index are NOT sent — guest derives them
-                        //  from the current tx's first input outpoint)
+                        // Always write source witness
                         builder.write_slice(w.source.as_bytes());
-                        builder.write_slice(w.dest.as_bytes());
-
-                        let prev_tx_witness = create_prev_tx_v1_witness(&w.prev_tx, w.prev_output_index);
-                        write_prev_tx_v1_witness(builder, &prev_tx_witness);
+                        // Conditionally write auth + dest (only when balance sufficient)
+                        if let Some(rest) = &w.rest {
+                            let prev_tx_witness = create_prev_tx_v1_witness(&rest.prev_tx, rest.prev_output_index);
+                            write_prev_tx_v1_witness(builder, &prev_tx_witness);
+                            builder.write_slice(rest.dest.as_bytes());
+                        }
                     }
                     Some(ActionWitness::Entry(w)) if is_valid_entry_payload(&payload_words) => {
                         // Write entry witness: dest account only
@@ -207,12 +229,13 @@ impl ZkTransaction {
                         builder.write_slice(w.dest.as_bytes());
                     }
                     Some(ActionWitness::Exit(w)) if is_valid_exit_payload(&payload_words) => {
-                        // Write exit witness: source account, prev_tx_v1_witness
-                        // (prev_tx_id and output_index are NOT sent — guest derives them)
+                        // Always write source witness
                         builder.write_slice(w.source.as_bytes());
-
-                        let prev_tx_witness = create_prev_tx_v1_witness(&w.prev_tx, w.prev_output_index);
-                        write_prev_tx_v1_witness(builder, &prev_tx_witness);
+                        // Conditionally write auth (only when balance sufficient)
+                        if let Some(rest) = &w.rest {
+                            let prev_tx_witness = create_prev_tx_v1_witness(&rest.prev_tx, rest.prev_output_index);
+                            write_prev_tx_v1_witness(builder, &prev_tx_witness);
+                        }
                     }
                     _ => {
                         // Panic only if this is a *known* action type — the host must always
@@ -231,11 +254,12 @@ impl ZkTransaction {
                             let tx_hash = self.tx.id();
                             let prev_info = self.tx.inputs.first().map_or_else(
                                 || "no inputs".to_string(),
-                                |inp| format!(
-                                    "needs prev_tx={} output_idx={}",
-                                    inp.previous_outpoint.transaction_id,
-                                    inp.previous_outpoint.index
-                                ),
+                                |inp| {
+                                    format!(
+                                        "needs prev_tx={} output_idx={}",
+                                        inp.previous_outpoint.transaction_id, inp.previous_outpoint.index
+                                    )
+                                },
                             );
                             let witness_desc = match &self.witness {
                                 None => "witness=None (prev_tx not found in DB)",
@@ -243,10 +267,7 @@ impl ZkTransaction {
                                 Some(ActionWitness::Entry(_)) => "wrong type: have Entry",
                                 Some(ActionWitness::Exit(_)) => "wrong type: have Exit",
                             };
-                            panic!(
-                                "host has no witness for {} action tx {} | {} | {}",
-                                action_type, tx_hash, prev_info, witness_desc
-                            );
+                            panic!("host has no witness for {} action tx {} | {} | {}", action_type, tx_hash, prev_info, witness_desc);
                         }
                         // Unknown opcode — write nothing; guest will skip.
                     }
@@ -420,7 +441,30 @@ pub fn create_exit_tx(
 
     let tx = Transaction::new(1, vec![input], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
 
-    ZkTransaction::new(tx, Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index }))))
+    ZkTransaction::new(
+        tx,
+        Some(ActionWitness::Exit(Box::new(ExitWitnessData {
+            source: source_witness,
+            rest: Some(ExitWitnessRest { prev_tx, prev_output_index }),
+        }))),
+    )
+}
+
+/// Create a V1 exit action transaction where the source has insufficient balance.
+/// The witness has `rest: None` — the guest reads source, sees insufficient balance, and skips.
+pub fn create_exit_tx_insufficient(
+    source: [u32; 8],
+    destination_spk: &[u8],
+    amount: u64,
+    inputs: Vec<TransactionInput>,
+    outputs: Vec<TransactionOutput>,
+    source_witness: AccountWitness,
+) -> ZkTransaction {
+    let payload = find_exit_tx_nonce(source, destination_spk, amount, &inputs, &outputs);
+
+    let tx = Transaction::new(1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+
+    ZkTransaction::new(tx, Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, rest: None }))))
 }
 
 /// Create a "previous transaction" for use as UTXO source.
@@ -460,9 +504,7 @@ pub fn create_transfer_tx(
         tx,
         Some(ActionWitness::Transfer(Box::new(TransferWitnessData {
             source: source_witness,
-            dest: dest_witness,
-            prev_tx,
-            prev_output_index,
+            rest: Some(TransferWitnessRest { dest: dest_witness, prev_tx, prev_output_index }),
         }))),
     )
 }
