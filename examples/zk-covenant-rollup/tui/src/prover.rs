@@ -285,6 +285,14 @@ impl RollupProver {
             return None; // Insufficient balance
         }
 
+        // Look up the actual prev_tx BEFORE modifying any state.
+        // If the lookup fails we must not corrupt the SMT.
+        let first_input = tx.inputs.first()?;
+        let prev_tx_id = first_input.previous_outpoint.transaction_id;
+        let prev_output_index = first_input.previous_outpoint.index;
+        let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
+        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok()??;
+
         // Build source witness from current state
         let source_proof = self.smt.prove(&source_pk);
         let source_witness = AccountWitness::new(source_pk, source_balance, source_proof);
@@ -306,13 +314,6 @@ impl RollupProver {
         // Update dest balance
         let new_dest_balance = dest_balance + amount;
         self.smt.upsert(dest_pk, new_dest_balance);
-
-        // Look up the actual prev_tx from the persistent store.
-        let first_input = tx.inputs.first()?;
-        let prev_tx_id = first_input.previous_outpoint.transaction_id;
-        let prev_output_index = first_input.previous_outpoint.index;
-        let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
-        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok()??;
 
         Some(ActionWitness::Transfer(Box::new(TransferWitnessData {
             source: source_witness,
@@ -370,6 +371,14 @@ impl RollupProver {
             return None; // Insufficient balance
         }
 
+        // Look up the actual prev_tx BEFORE modifying any state.
+        // If the lookup fails we must not corrupt the SMT or permission tree.
+        let first_input = tx.inputs.first()?;
+        let prev_tx_id = first_input.previous_outpoint.transaction_id;
+        let prev_output_index = first_input.previous_outpoint.index;
+        let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
+        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok()??;
+
         // Build source witness
         let source_proof = self.smt.prove(&source_pk);
         let source_witness = AccountWitness::new(source_pk, source_balance, source_proof);
@@ -385,13 +394,6 @@ impl RollupProver {
         self.perm_builder.add_leaf(leaf);
         self.accumulated_perm_builder.add_leaf(leaf);
         self.accumulated_exit_data.push((dest_spk_bytes[..spk_len].to_vec(), exit_amount));
-
-        // Look up the actual prev_tx from the persistent store.
-        let first_input = tx.inputs.first()?;
-        let prev_tx_id = first_input.previous_outpoint.transaction_id;
-        let prev_output_index = first_input.previous_outpoint.index;
-        let cov_hash = Hash::from_bytes(self.covenant_id_bytes);
-        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok()??;
 
         Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index })))
     }
