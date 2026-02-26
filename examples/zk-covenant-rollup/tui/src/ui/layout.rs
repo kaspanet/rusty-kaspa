@@ -139,12 +139,23 @@ fn draw_popup(frame: &mut Frame, app: &App) {
         return;
     }
 
+    // Account pickers use a taller popup to fit the account list.
+    if let InputMode::PickTransferAccounts { src_idx, dst_idx, picking_src } = &app.input_mode {
+        draw_pick_transfer_popup(frame, app, *src_idx, *dst_idx, *picking_src);
+        return;
+    }
+    if let InputMode::PickExitDest { src_idx, dst_idx } = &app.input_mode {
+        draw_pick_exit_dest_popup(frame, app, *src_idx, *dst_idx);
+        return;
+    }
+
     let area = centered_rect(70, 12, frame.area());
     frame.render_widget(Clear, area);
 
     match &app.input_mode {
         InputMode::Normal => {}
         InputMode::ViewDetail { .. } => unreachable!("handled above"),
+        InputMode::PickTransferAccounts { .. } | InputMode::PickExitDest { .. } => unreachable!("handled above"),
         InputMode::PromptAmount { action, buffer, context } => {
             let mut lines: Vec<Line> = context.lines().map(|l| Line::from(l.to_string())).collect();
             lines.push(Line::from(""));
@@ -192,4 +203,103 @@ fn draw_popup(frame: &mut Frame, app: &App) {
             frame.render_widget(paragraph, area);
         }
     }
+}
+
+fn draw_pick_transfer_popup(frame: &mut Frame, app: &App, src_idx: usize, dst_idx: usize, picking_src: bool) {
+    let n = app.accounts.len();
+    // 2 border + 1 header + 1 blank + n accounts + 1 blank + 1 hint = n+6
+    let height = ((n + 6) as u16).max(8).min(20);
+    let area = centered_rect(72, height, frame.area());
+    frame.render_widget(Clear, area);
+
+    let (title, hint) = if picking_src {
+        (" Transfer: Choose Source Account ", "  Enter/Tab: confirm source  Esc: cancel")
+    } else {
+        (" Transfer: Choose Destination Account ", "  Enter: confirm  Tab: back to source  Esc: cancel")
+    };
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    if !picking_src {
+        if let Some((src_pk, _)) = app.accounts.get(src_idx) {
+            lines.push(Line::styled(
+                format!(" Source: idx=0x{:02x}", src_pk.as_bytes()[0]),
+                Style::default().fg(Color::Cyan),
+            ));
+        }
+    }
+    lines.push(Line::from(""));
+
+    for (i, (pk, _)) in app.accounts.iter().enumerate() {
+        let active_idx = if picking_src { src_idx } else { dst_idx };
+        let is_highlighted = i == active_idx;
+        let is_other_fixed = !picking_src && i == src_idx;
+        let prefix = if is_highlighted { ">" } else { " " };
+        let suffix = if is_other_fixed { " (source)" } else { "" };
+        let addr = app.pubkey_to_address(pk).unwrap_or_else(|| "???".into());
+        let text = format!("{prefix} [0x{:02x}] {}{}", pk.as_bytes()[0], addr, suffix);
+        let style = if is_highlighted {
+            Style::default().bg(Color::DarkGray)
+        } else if is_other_fixed {
+            Style::default().fg(Color::DarkGray)
+        } else {
+            Style::default()
+        };
+        lines.push(Line::styled(text, style));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::styled(hint, Style::default().fg(Color::DarkGray)));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(title);
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+fn draw_pick_exit_dest_popup(frame: &mut Frame, app: &App, src_idx: usize, dst_idx: usize) {
+    let n = app.accounts.len();
+    // 2 border + 1 src header + 1 blank + n accounts + 1 blank + 1 hint
+    let height = ((n + 6) as u16).max(8).min(20);
+    let area = centered_rect(72, height, frame.area());
+    frame.render_widget(Clear, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    if let Some((src_pk, _)) = app.accounts.get(src_idx) {
+        let src_l2 = app
+            .prover
+            .as_ref()
+            .map(|p| {
+                let w = zk_covenant_rollup_host::mock_chain::from_bytes(src_pk.as_bytes());
+                p.smt.get(&w).unwrap_or(0)
+            })
+            .unwrap_or(0);
+        lines.push(Line::styled(
+            format!(" Source: idx=0x{:02x}  L2 balance: {} units", src_pk.as_bytes()[0], src_l2),
+            Style::default().fg(Color::Cyan),
+        ));
+    }
+    lines.push(Line::from(""));
+
+    for (i, (pk, _)) in app.accounts.iter().enumerate() {
+        let is_highlighted = i == dst_idx;
+        let is_src = i == src_idx;
+        let prefix = if is_highlighted { ">" } else { " " };
+        let suffix = if is_src { " (same as source)" } else { "" };
+        let addr = app.pubkey_to_address(pk).unwrap_or_else(|| "???".into());
+        let text = format!("{prefix} [0x{:02x}] {}{}", pk.as_bytes()[0], addr, suffix);
+        let style = if is_highlighted { Style::default().bg(Color::DarkGray) } else { Style::default() };
+        lines.push(Line::styled(text, style));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::styled("  Enter: confirm  Esc: cancel  j/k: navigate", Style::default().fg(Color::DarkGray)));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(" Exit: Choose Destination Address ");
+    frame.render_widget(Paragraph::new(lines).block(block), area);
 }

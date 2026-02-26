@@ -73,16 +73,19 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             let addr = app.pubkey_to_address(pubkey).unwrap_or_else(|| "???".into());
             let balance = app.utxo_tracker.balance(&addr);
             let bal_str = format_sompi(balance);
+            let is_selected = !app.role_focused && i == app.account_list_index;
 
-            let style =
-                if !app.role_focused && i == app.account_list_index { Style::default().bg(Color::DarkGray) } else { Style::default() };
+            let style = if is_selected { Style::default().bg(Color::DarkGray) } else { Style::default() };
+            // Show "*" in the first column for the currently selected account.
+            let sel_cell = Cell::from(if is_selected { "*" } else { " " })
+                .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
 
-            Row::new(vec![Cell::from(format!("0x{index:02x}")), Cell::from(addr), Cell::from(bal_str)]).style(style)
+            Row::new(vec![sel_cell, Cell::from(format!("0x{index:02x}")), Cell::from(addr), Cell::from(bal_str)]).style(style)
         })
         .collect();
 
-    let widths = [Constraint::Length(6), Constraint::Min(40), Constraint::Length(18)];
-    let header = Row::new(vec!["Index", "Address", "L1 Balance"]).style(Style::default().add_modifier(Modifier::BOLD));
+    let widths = [Constraint::Length(2), Constraint::Length(6), Constraint::Min(40), Constraint::Length(18)];
+    let header = Row::new(vec![" ", "Index", "Address", "L1 Balance"]).style(Style::default().add_modifier(Modifier::BOLD));
 
     let table = Table::new(rows, widths)
         .header(header)

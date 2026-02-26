@@ -121,6 +121,20 @@ pub enum InputMode {
         lines: Vec<String>,
         scroll: usize,
     },
+    /// Account picker for Transfer: first choose source, then destination.
+    PickTransferAccounts {
+        src_idx: usize,
+        dst_idx: usize,
+        /// True while selecting source; false while selecting destination.
+        picking_src: bool,
+    },
+    /// Account picker for Exit: choose which L1 address receives the withdrawal.
+    PickExitDest {
+        /// Source L2 account index (the one being withdrawn from).
+        src_idx: usize,
+        /// Destination L1 account index (receives L1 funds; defaults to src).
+        dst_idx: usize,
+    },
 }
 
 impl InputMode {
@@ -268,6 +282,10 @@ pub struct App {
     // Actions tab state
     pub action_menu_index: usize,
     pub input_mode: InputMode,
+    /// Chosen source account index for the current Transfer/Exit action.
+    pub action_src_idx: usize,
+    /// Chosen destination account index for the current Transfer/Exit action.
+    pub action_dst_idx: usize,
 
     // Transaction history
     pub tx_history: Vec<TxRecord>,
@@ -487,6 +505,8 @@ impl App {
             prover_key: None,
             action_menu_index: 0,
             input_mode: InputMode::Normal,
+            action_src_idx: 0,
+            action_dst_idx: 0,
             tx_history: Vec::new(),
             tx_history_index: 0,
             utxo_tracker: UtxoTracker::new(),
@@ -1105,6 +1125,14 @@ impl App {
             KeyCode::Char('e') => self.start_action_input(ActionType::Entry),
             KeyCode::Char('t') => self.start_action_input(ActionType::Transfer),
             KeyCode::Char('x') => self.start_action_input(ActionType::Exit),
+            KeyCode::Enter => {
+                let action = match self.action_menu_index {
+                    0 => ActionType::Entry,
+                    1 => ActionType::Transfer,
+                    _ => ActionType::Exit,
+                };
+                self.start_action_input(action);
+            }
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.action_menu_index > 0 {
                     self.action_menu_index -= 1;
@@ -1121,13 +1149,10 @@ impl App {
 
     pub fn start_action_input(&mut self, action: ActionType) {
         // Validate prerequisites
-        let cov_idx = match self.selected_covenant {
-            Some(i) => i,
-            None => {
-                self.log("Select a covenant first".into());
-                return;
-            }
-        };
+        if self.selected_covenant.is_none() {
+            self.log("Select a covenant first".into());
+            return;
+        }
         if self.accounts.is_empty() {
             self.log("Create an account first".into());
             return;
@@ -1141,72 +1166,127 @@ impl App {
         let addr_str = self.pubkey_to_address(&pk).unwrap_or_default();
         let l1_balance = self.utxo_tracker.balance(&addr_str);
 
-        // Check gas UTXOs
-        let utxos = self.utxo_tracker.available_utxos(&addr_str);
-        if utxos.is_empty() && action == ActionType::Entry {
-            self.log(format!("No UTXOs available for {addr_str} — fund this address first"));
-            return;
-        }
-        if action == ActionType::Transfer || action == ActionType::Exit {
-            let source_addr = self.pubkey_to_address(&self.accounts[0].0).unwrap_or_default();
-            let source_utxos = self.utxo_tracker.available_utxos(&source_addr);
-            if source_utxos.is_empty() {
-                self.log(format!("No UTXOs for source account {source_addr}"));
-                return;
-            }
-        }
-
-        // Build L2 balance context
-        let l2_balance = self
-            .prover
-            .as_ref()
-            .map(|p| {
-                let pk_words = zk_covenant_rollup_host::mock_chain::from_bytes(pk.as_bytes());
-                p.smt.get(&pk_words).unwrap_or(0)
-            })
-            .unwrap_or(0);
-
-        let _cov_id = self.covenants[cov_idx].0;
-
-        let context = match action {
-            ActionType::Entry => format!(
-                "Account idx=0x{:02x} | L1: {} sompi | L2: {}\nEnter deposit amount in {}:",
-                pk.as_bytes()[0],
-                l1_balance,
-                l2_balance,
-                action.unit()
-            ),
-            ActionType::Transfer => {
-                let (src_pk, _) = self.accounts[0];
-                let (dst_pk, _) = self.accounts[1];
-                let src_l2 = self
+        // For Transfer and Exit: open account picker first (UTXO checks happen in spawn_build_action).
+        // For Entry: validate gas UTXOs immediately since the account is already known.
+        match action {
+            ActionType::Entry => {
+                let utxos = self.utxo_tracker.available_utxos(&addr_str);
+                if utxos.is_empty() {
+                    self.log(format!("No UTXOs available for {addr_str} — fund this address first"));
+                    return;
+                }
+                let l2_balance = self
                     .prover
                     .as_ref()
                     .map(|p| {
-                        let w = zk_covenant_rollup_host::mock_chain::from_bytes(src_pk.as_bytes());
-                        p.smt.get(&w).unwrap_or(0)
+                        let pk_words = zk_covenant_rollup_host::mock_chain::from_bytes(pk.as_bytes());
+                        p.smt.get(&pk_words).unwrap_or(0)
                     })
                     .unwrap_or(0);
-                format!(
-                    "From idx=0x{:02x} (L2: {}) → To idx=0x{:02x}\nEnter transfer amount in {}:",
-                    src_pk.as_bytes()[0],
-                    src_l2,
-                    dst_pk.as_bytes()[0],
+                let context = format!(
+                    "Account idx=0x{:02x} | L1: {} sompi | L2: {}\nEnter deposit amount in {}:",
+                    pk.as_bytes()[0],
+                    l1_balance,
+                    l2_balance,
                     action.unit()
-                )
+                );
+                self.input_mode = InputMode::PromptAmount { action, buffer: String::new(), context };
+            }
+            ActionType::Transfer => {
+                // Open the account picker: default src = account_list_index, dst = next account.
+                let n = self.accounts.len();
+                let src_idx = self.account_list_index.min(n - 1);
+                let dst_idx = if src_idx + 1 < n { src_idx + 1 } else { 0 };
+                self.input_mode = InputMode::PickTransferAccounts { src_idx, dst_idx, picking_src: true };
             }
             ActionType::Exit => {
-                format!("Account idx=0x{:02x} | L2: {}\nEnter withdrawal amount in {}:", pk.as_bytes()[0], l2_balance, action.unit())
+                // Open the destination picker: default both src and dst = account_list_index.
+                let src_idx = self.account_list_index;
+                let dst_idx = self.account_list_index;
+                self.input_mode = InputMode::PickExitDest { src_idx, dst_idx };
             }
-        };
-
-        self.input_mode = InputMode::PromptAmount { action, buffer: String::new(), context };
+        }
     }
 
     pub fn handle_input_key(&mut self, key: crossterm::event::KeyEvent) {
         // Handle ViewDetail separately to avoid borrow checker issues
         if matches!(self.input_mode, InputMode::ViewDetail { .. }) {
             self.handle_view_detail_key(key);
+            return;
+        }
+
+        // Handle PickTransferAccounts separately to avoid borrow checker issues.
+        if let InputMode::PickTransferAccounts { src_idx, dst_idx, picking_src } = self.input_mode {
+            let n = self.accounts.len();
+            match key.code {
+                KeyCode::Esc => {
+                    self.input_mode = InputMode::Normal;
+                    self.log("Action cancelled".into());
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if picking_src {
+                        let new_src = (src_idx + n - 1) % n;
+                        self.input_mode = InputMode::PickTransferAccounts { src_idx: new_src, dst_idx, picking_src };
+                    } else {
+                        let new_dst = (dst_idx + n - 1) % n;
+                        self.input_mode = InputMode::PickTransferAccounts { src_idx, dst_idx: new_dst, picking_src };
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if picking_src {
+                        let new_src = (src_idx + 1) % n;
+                        self.input_mode = InputMode::PickTransferAccounts { src_idx: new_src, dst_idx, picking_src };
+                    } else {
+                        let new_dst = (dst_idx + 1) % n;
+                        self.input_mode = InputMode::PickTransferAccounts { src_idx, dst_idx: new_dst, picking_src };
+                    }
+                }
+                KeyCode::Tab => {
+                    self.input_mode = InputMode::PickTransferAccounts { src_idx, dst_idx, picking_src: !picking_src };
+                }
+                KeyCode::Enter => {
+                    if picking_src {
+                        // Advance to choosing destination.
+                        self.input_mode = InputMode::PickTransferAccounts { src_idx, dst_idx, picking_src: false };
+                    } else if src_idx != dst_idx {
+                        // Confirm selection → go to amount prompt.
+                        self.action_src_idx = src_idx;
+                        self.action_dst_idx = dst_idx;
+                        let context = self.build_transfer_prompt_context(src_idx, dst_idx);
+                        self.input_mode = InputMode::PromptAmount { action: ActionType::Transfer, buffer: String::new(), context };
+                    } else {
+                        self.log("Source and destination must be different accounts".into());
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        // Handle PickExitDest separately to avoid borrow checker issues.
+        if let InputMode::PickExitDest { src_idx, dst_idx } = self.input_mode {
+            let n = self.accounts.len();
+            match key.code {
+                KeyCode::Esc => {
+                    self.input_mode = InputMode::Normal;
+                    self.log("Action cancelled".into());
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    let new_dst = (dst_idx + n - 1) % n;
+                    self.input_mode = InputMode::PickExitDest { src_idx, dst_idx: new_dst };
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let new_dst = (dst_idx + 1) % n;
+                    self.input_mode = InputMode::PickExitDest { src_idx, dst_idx: new_dst };
+                }
+                KeyCode::Enter => {
+                    self.action_src_idx = src_idx;
+                    self.action_dst_idx = dst_idx;
+                    let context = self.build_exit_prompt_context(src_idx, dst_idx);
+                    self.input_mode = InputMode::PromptAmount { action: ActionType::Exit, buffer: String::new(), context };
+                }
+                _ => {}
+            }
             return;
         }
 
@@ -1274,6 +1354,9 @@ impl App {
             InputMode::Processing { .. } => {
                 // Ignore keys while processing
             }
+            InputMode::PickTransferAccounts { .. } | InputMode::PickExitDest { .. } => {
+                unreachable!("handled above")
+            }
         }
     }
 
@@ -1284,21 +1367,24 @@ impl App {
 
         match action {
             ActionType::Entry => {
-                if let Some(idx) = self.account_list_index.checked_add(0) {
-                    if let Some((pk, _)) = self.accounts.get(idx) {
-                        lines.push(format!("Destination: idx=0x{:02x}", pk.as_bytes()[0]));
-                    }
+                if let Some((pk, _)) = self.accounts.get(self.account_list_index) {
+                    lines.push(format!("Destination: idx=0x{:02x}", pk.as_bytes()[0]));
                 }
             }
             ActionType::Transfer => {
-                if self.accounts.len() >= 2 {
-                    lines.push(format!("From: idx=0x{:02x}", self.accounts[0].0.as_bytes()[0]));
-                    lines.push(format!("To:   idx=0x{:02x}", self.accounts[1].0.as_bytes()[0]));
+                if let Some((src_pk, _)) = self.accounts.get(self.action_src_idx) {
+                    lines.push(format!("From: idx=0x{:02x}", src_pk.as_bytes()[0]));
+                }
+                if let Some((dst_pk, _)) = self.accounts.get(self.action_dst_idx) {
+                    lines.push(format!("To:   idx=0x{:02x}", dst_pk.as_bytes()[0]));
                 }
             }
             ActionType::Exit => {
-                if let Some((pk, _)) = self.accounts.get(self.account_list_index) {
-                    lines.push(format!("Source: idx=0x{:02x}", pk.as_bytes()[0]));
+                if let Some((src_pk, _)) = self.accounts.get(self.action_src_idx) {
+                    lines.push(format!("Source:      idx=0x{:02x}", src_pk.as_bytes()[0]));
+                }
+                if let Some((dst_pk, _)) = self.accounts.get(self.action_dst_idx) {
+                    lines.push(format!("Destination: idx=0x{:02x}", dst_pk.as_bytes()[0]));
                 }
             }
         }
@@ -1306,6 +1392,56 @@ impl App {
         lines.push(String::new());
         lines.push("Enter: submit | Esc: cancel".into());
         lines
+    }
+
+    /// Build the PromptAmount context string for a Transfer (after picker confirms src/dst).
+    fn build_transfer_prompt_context(&self, src_idx: usize, dst_idx: usize) -> String {
+        let (src_pk, _) = self.accounts[src_idx];
+        let (dst_pk, _) = self.accounts[dst_idx];
+        let src_l2 = self
+            .prover
+            .as_ref()
+            .map(|p| {
+                let w = zk_covenant_rollup_host::mock_chain::from_bytes(src_pk.as_bytes());
+                p.smt.get(&w).unwrap_or(0)
+            })
+            .unwrap_or(0);
+        let dst_l2 = self
+            .prover
+            .as_ref()
+            .map(|p| {
+                let w = zk_covenant_rollup_host::mock_chain::from_bytes(dst_pk.as_bytes());
+                p.smt.get(&w).unwrap_or(0)
+            })
+            .unwrap_or(0);
+        format!(
+            "From idx=0x{:02x} (L2: {}) → To idx=0x{:02x} (L2: {})\nEnter transfer amount in L2 units:",
+            src_pk.as_bytes()[0],
+            src_l2,
+            dst_pk.as_bytes()[0],
+            dst_l2,
+        )
+    }
+
+    /// Build the PromptAmount context string for an Exit (after picker confirms src/dst).
+    fn build_exit_prompt_context(&self, src_idx: usize, dst_idx: usize) -> String {
+        let (src_pk, _) = self.accounts[src_idx];
+        let (dst_pk, _) = self.accounts[dst_idx];
+        let src_l2 = self
+            .prover
+            .as_ref()
+            .map(|p| {
+                let w = zk_covenant_rollup_host::mock_chain::from_bytes(src_pk.as_bytes());
+                p.smt.get(&w).unwrap_or(0)
+            })
+            .unwrap_or(0);
+        let dst_addr = self.pubkey_to_address(&dst_pk).unwrap_or_default();
+        format!(
+            "Source idx=0x{:02x} (L2: {}) → L1: {}\nEnter withdrawal amount in L2 units:",
+            src_pk.as_bytes()[0],
+            src_l2,
+            dst_addr,
+        )
     }
 
     // ── State tab ──
@@ -2288,8 +2424,11 @@ impl App {
         let network_prefix = self.network_prefix;
         let accounts = self.accounts.clone();
         let account_list_index = self.account_list_index;
+        let action_src_idx = self.action_src_idx;
+        let action_dst_idx = self.action_dst_idx;
 
-        // Select gas UTXO synchronously from current tracker state
+        // Select gas UTXO synchronously from current tracker state.
+        // Transfer and Exit use action_src_idx (chosen in the account picker).
         let gas_utxo = match action {
             ActionType::Entry => {
                 let (dest_pk, _) = accounts[account_list_index];
@@ -2297,14 +2436,8 @@ impl App {
                 let utxos = self.utxo_tracker.available_utxos(&dest_addr_str);
                 utxos.first().map(|u| (*u).clone())
             }
-            ActionType::Transfer => {
-                let (source_pk, _) = accounts[0];
-                let source_addr = self.pubkey_to_address(&source_pk).unwrap_or_default();
-                let utxos = self.utxo_tracker.available_utxos(&source_addr);
-                utxos.first().map(|u| (*u).clone())
-            }
-            ActionType::Exit => {
-                let (source_pk, _) = accounts[account_list_index];
+            ActionType::Transfer | ActionType::Exit => {
+                let (source_pk, _) = accounts[action_src_idx];
                 let source_addr = self.pubkey_to_address(&source_pk).unwrap_or_default();
                 let utxos = self.utxo_tracker.available_utxos(&source_addr);
                 utxos.first().map(|u| (*u).clone())
@@ -2326,24 +2459,23 @@ impl App {
         // Nonce grinding is CPU-bound — run on blocking thread pool
         tokio::task::spawn_blocking(move || {
             let result: Result<Transaction, String> = (|| {
-                // Build a template tx with fee=0 to measure mass, then rebuild with correct fee
+                // Build a template tx with fee=0 to measure mass, then rebuild with correct fee.
+                // Transfer and Exit use action_src_idx / action_dst_idx (chosen in account picker).
                 let template = match action {
                     ActionType::Entry => {
                         let (signer_pk, _) = accounts[account_list_index];
                         crate::actions::build_entry_tx(signer_pk, covenant_id, amount, &gas_utxo, 0)?
                     }
                     ActionType::Transfer => {
-                        if accounts.len() < 2 {
-                            return Err("Need at least 2 accounts".into());
-                        }
-                        let (signer_pk, _) = accounts[0];
-                        let (dest_pk, _) = accounts[1];
+                        let (signer_pk, _) = accounts[action_src_idx];
+                        let (dest_pk, _) = accounts[action_dst_idx];
                         let dest_addr = Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes());
                         crate::actions::build_transfer_tx(signer_pk, dest_pk, amount, &gas_utxo, &dest_addr, 0)?
                     }
                     ActionType::Exit => {
-                        let (signer_pk, _) = accounts[account_list_index];
-                        let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes()));
+                        let (signer_pk, _) = accounts[action_src_idx];
+                        let (dest_pk, _) = accounts[action_dst_idx];
+                        let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes()));
                         crate::actions::build_exit_tx(signer_pk, amount, dest_spk.script(), &gas_utxo, 0)?
                     }
                 };
@@ -2369,8 +2501,8 @@ impl App {
                         sign(signable, kp).tx
                     }
                     ActionType::Transfer => {
-                        let (signer_pk, signer_sk) = accounts[0];
-                        let (dest_pk, _) = accounts[1];
+                        let (signer_pk, signer_sk) = accounts[action_src_idx];
+                        let (dest_pk, _) = accounts[action_dst_idx];
                         let dest_addr = Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes());
                         let tx = crate::actions::build_transfer_tx(signer_pk, dest_pk, amount, &gas_utxo, &dest_addr, fee)?;
                         let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
@@ -2382,8 +2514,9 @@ impl App {
                         sign(signable, kp).tx
                     }
                     ActionType::Exit => {
-                        let (signer_pk, signer_sk) = accounts[account_list_index];
-                        let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes()));
+                        let (signer_pk, signer_sk) = accounts[action_src_idx];
+                        let (dest_pk, _) = accounts[action_dst_idx];
+                        let dest_spk = pay_to_address_script(&Address::new(network_prefix, Version::PubKey, &dest_pk.as_bytes()));
                         let tx = crate::actions::build_exit_tx(signer_pk, amount, dest_spk.script(), &gas_utxo, fee)?;
                         let signer_addr = Address::new(network_prefix, Version::PubKey, &signer_pk.as_bytes());
                         let spk = pay_to_address_script(&signer_addr);

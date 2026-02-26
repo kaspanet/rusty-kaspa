@@ -37,7 +37,10 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         ("e", format!("Entry (Deposit) — L1: {} sompi available", l1_balance)),
         ("t", {
             if app.accounts.len() >= 2 {
-                let (src_pk, _) = app.accounts[0];
+                let src_idx = app.action_src_idx.min(app.accounts.len() - 1);
+                let dst_idx = app.action_dst_idx.min(app.accounts.len() - 1);
+                let (src_pk, _) = app.accounts[src_idx];
+                let (dst_pk, _) = app.accounts[dst_idx];
                 let src_l2 = app
                     .prover
                     .as_ref()
@@ -46,7 +49,12 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                         p.smt.get(&w).unwrap_or(0)
                     })
                     .unwrap_or(0);
-                format!("Transfer — source L2: {} units", src_l2)
+                format!(
+                    "Transfer — from idx=0x{:02x} (L2: {}) → to idx=0x{:02x}",
+                    src_pk.as_bytes()[0],
+                    src_l2,
+                    dst_pk.as_bytes()[0],
+                )
             } else {
                 "Transfer — need 2+ accounts".into()
             }
@@ -69,7 +77,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     let table = Table::new(rows, widths)
         .header(header)
-        .block(Block::default().borders(Borders::ALL).title("Actions [e:entry  t:transfer  x:exit]"));
+        .block(Block::default().borders(Borders::ALL).title("Actions [e:entry  t:transfer  x:exit  Enter:select  j/k:navigate]"));
 
     frame.render_widget(table, area);
 }
