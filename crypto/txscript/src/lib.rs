@@ -1017,7 +1017,10 @@ mod tests {
             too_tight_budget,
         );
 
-        assert_eq!(vm_too_tight.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 10_000, allowed_units: 9_997 }));
+        assert_eq!(
+            vm_too_tight.execute(),
+            Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 10_002, allowed_units: too_tight_budget })
+        );
         let exact_budget = 10_002;
         let mut vm_exact = TxScriptEngine::from_transaction_input_with_allowed_script_units(
             &populated_tx,
