@@ -127,7 +127,7 @@ fn check_minimal_data_encoding(v: &[u8]) -> Result<(), TxScriptError> {
 }
 
 #[inline]
-pub(crate) fn serialize_i64(from: i64, size: Option<usize>) -> Result<Vec<u8>, SerializationError> {
+pub fn serialize_i64(from: i64, size: Option<usize>) -> Result<Vec<u8>, SerializationError> {
     let sign = from.signum();
     let mut positive = from.unsigned_abs();
     let mut last_saturated = false;
@@ -164,7 +164,7 @@ pub(crate) fn serialize_i64(from: i64, size: Option<usize>) -> Result<Vec<u8>, S
     Ok(number_vec)
 }
 
-fn deserialize_i64(v: &[u8], enforce_minimal: bool) -> Result<i64, TxScriptError> {
+pub fn deserialize_i64(v: &[u8], enforce_minimal: bool) -> Result<i64, TxScriptError> {
     match v.len() {
         l if l > size_of::<i64>() => {
             // Even when `enforce_minimal` is false, we limit
