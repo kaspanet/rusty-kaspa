@@ -471,13 +471,14 @@ impl RollupProver {
         let new_balance = source_balance - exit_amount;
         self.smt.upsert(source_pk, new_balance);
 
-        // Add to permission tree (destination_spk is [u32; 10], first 35 bytes are the SPK)
-        let dest_spk_bytes: &[u8] = bytemuck::cast_slice(&action.destination_spk);
-        let spk_len = 35.min(dest_spk_bytes.len());
-        let leaf = perm_leaf_hash(&dest_spk_bytes[..spk_len], exit_amount);
+        // Add to permission tree — use action.destination_spk_bytes() which infers
+        // the correct SPK length (34 for Schnorr P2PK, 35 for ECDSA/P2SH), matching
+        // the guest's perm_leaf_hash(exit.destination_spk_bytes(), exit.amount).
+        let dest_spk = action.destination_spk_bytes();
+        let leaf = perm_leaf_hash(dest_spk, exit_amount);
         self.perm_builder.add_leaf(leaf);
         self.accumulated_perm_builder.add_leaf(leaf);
-        self.accumulated_exit_data.push((dest_spk_bytes[..spk_len].to_vec(), exit_amount));
+        self.accumulated_exit_data.push((dest_spk.to_vec(), exit_amount));
 
         Some(ActionWitness::Exit(Box::new(ExitWitnessData {
             source: source_witness,
