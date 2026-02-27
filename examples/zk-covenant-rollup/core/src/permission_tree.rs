@@ -269,7 +269,10 @@ impl PermissionTree {
         // Build leaf level
         let mut leaf_level = vec![empty; capacity];
         for (i, (spk, amount)) in self.leaves.iter().enumerate() {
-            leaf_level[i] = perm_leaf_hash(spk, *amount);
+            if !spk.is_empty() {
+                leaf_level[i] = perm_leaf_hash(spk, *amount);
+            }
+            // else: withdrawn leaf — stays as perm_empty_leaf_hash()
         }
 
         let mut nodes = vec![leaf_level];
