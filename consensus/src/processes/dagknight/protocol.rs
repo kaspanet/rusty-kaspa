@@ -29,8 +29,8 @@ use crate::{
         },
     },
     processes::{
-        dagknight::manager::ConflictZoneManager, difficulty::calc_work, ghostdag::ordering::SortableBlock,
-        reachability::relations::FutureIntersectRelations,
+        dagknight::manager::ConflictZoneManager, dagknight::rank_search::RankSearcher, difficulty::calc_work,
+        ghostdag::ordering::SortableBlock, reachability::relations::FutureIntersectRelations,
     },
 };
 
@@ -306,80 +306,19 @@ impl<
     /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
     /// in the caller is simply using blue_work + hash to break ties between subgroups
     /// TODO[DK]: Remove selected_parent from the RankValue and properly implement Tie-Breaking
-    ///
-    /// K-searching logic:
-    /// 1. Search for an upper bound using powers of 2
-    ///    1.1 For each unsuccessful step along the way, move the lower bound k up as well
-    ///    1.2 Also exits if lkg_k is a max
-    /// 2. Binary search between lower bound k and lkg_k
     fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], all_tips: &[Hash], best_rank_value: &Option<RankValue>) -> RankValue {
-        // for k in 0, 1, ..., infinity:
-        // tie breaking is assumed to be by comparing selected_parent
-        let mut selected_parent = None;
+        let best_k = best_rank_value.as_ref().map(|r| r.k);
+        let subgroup_first = subgroup[0];
 
-        // The steps through which we'll check for the upper bound.
-        // This will cover the powers of 2, starting from 2^0
-        let mut increments = 1;
+        let evaluate =
+            |k: KType| -> Option<SortableBlock> { self.select_parent_from_k_colouring(conflict_genesis, subgroup, all_tips, k) };
 
-        // Find upper bound k (good k value that satisfies the condition):
-        let mut lkg_k = 0;
-        // binary search lower bound. upper bound is lkg_k
-        let mut lower_k: KType = 0;
-        let mut found_lkg = false;
+        let search_result = RankSearcher::search(evaluate, best_k);
 
-        let mut steps = 0;
-
-        while !found_lkg && lkg_k != u16::MAX {
-            if let Some(best_rank) = &best_rank_value {
-                if lower_k > best_rank.k {
-                    debug!("Aborting upper bound search since lkg_k = {} > best known k = {}", lkg_k, best_rank.k);
-                    // TODO[DK]: sortable block value doesn't matter. Do something about making this cleaner
-                    return RankValue { k: u16::MAX, selected_parent: SortableBlock { hash: subgroup[0], blue_work: 0.into() } };
-                }
-            }
-            steps += 1;
-            debug!("Finding upper bound k = {}", lkg_k);
-            let curr_selected_parent = self.select_parent_from_k_colouring(conflict_genesis, subgroup, all_tips, lkg_k);
-
-            if curr_selected_parent.is_some() {
-                debug!("Found a valid sp at upper bound k = {}", lkg_k);
-                selected_parent = curr_selected_parent;
-                found_lkg = true;
-            } else {
-                // Move the lower bound up to start the binary search further later
-                lower_k = lkg_k;
-                // increment is powers of 2: 1, 2, 4, 8, 16...
-                lkg_k = increments;
-                increments = increments.saturating_mul(2);
-            }
+        match search_result {
+            Some(result) => RankValue { k: result.k, selected_parent: result.result },
+            None => RankValue { k: u16::MAX, selected_parent: SortableBlock { hash: subgroup_first, blue_work: 0.into() } },
         }
-
-        while lower_k < lkg_k {
-            if let Some(best_rank) = &best_rank_value {
-                if lower_k > best_rank.k {
-                    debug!("Aborting lower bound search since lower_k = {} > best known k = {}", lower_k, best_rank.k);
-                    // TODO[DK]: sortable block value doesn't matter. Do something about making this cleaner
-                    return RankValue { k: u16::MAX, selected_parent: SortableBlock { hash: subgroup[0], blue_work: 0.into() } };
-                }
-            }
-            steps += 1;
-            let k_to_check = lower_k + ((lkg_k - lower_k) / 2);
-
-            let curr_selected_parent = self.select_parent_from_k_colouring(conflict_genesis, subgroup, all_tips, k_to_check);
-            let sp_found = curr_selected_parent.is_some();
-
-            if sp_found {
-                debug!("Found a valid sp at mid k = {} | low = {} | hi = {}", k_to_check, lower_k, lkg_k);
-                lkg_k = k_to_check;
-                selected_parent = curr_selected_parent;
-            } else {
-                lower_k = k_to_check + 1;
-            }
-        }
-
-        debug!("Steps taken: {steps}");
-
-        RankValue { k: lkg_k, selected_parent: selected_parent.unwrap() }
     }
 
     /// Applies a coloring to the conflict zone, and determines if the
