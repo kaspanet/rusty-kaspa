@@ -300,7 +300,14 @@ impl<
         panic!("")
     }
 
-    fn _umc_cascade_voting(&self) {
+    fn umc_cascade_voting(
+        &self,
+        conflict_genesis: Hash,
+        subgroup: &[Hash],
+        virtual_gd: GhostdagData,
+        k: KType,
+        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+    ) -> bool {
         /*
             inputs: G, U, d
             output: does U have a subset U' s.t. U' is d-UMC of G
@@ -315,6 +322,38 @@ impl<
 
 
         */
+        let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+        let deficit = Uint192::from_u64(k.isqrt() as u64) * deficit_work_basis;
+
+        let blue_block_work = virtual_gd.blue_work;
+        let mut gray_block_work = Uint192::ZERO;
+        let mut red_block_work = Uint192::ZERO;
+        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
+
+        // Iterate through the VSPC red mergeset to determine red/gray work
+        let mut curr_gd = Arc::new(virtual_gd);
+
+        while curr_gd.selected_parent != conflict_genesis {
+            for &red_block in curr_gd.mergeset_reds.iter() {
+                let red_block_bits = self.headers_store.get_bits(red_block).unwrap();
+                let red_work = calc_work(red_block_bits);
+
+                if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
+                    gray_block_work = gray_block_work + red_work;
+                } else {
+                    red_block_work = red_block_work + red_work;
+                }
+            }
+
+            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
+        }
+
+        debug!(
+            "k = {} | blue work = {} | gray work = {} | red work = {} | deficit = {}",
+            k, blue_block_work, gray_block_work, red_block_work, deficit
+        );
+
+        blue_block_work + deficit > red_block_work
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
@@ -360,42 +399,7 @@ impl<
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
         let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
-        // Add deficit logic here => sqrt(k) * work_of_some_block
-        // TODO[DK]: Right now deficit logic uses conflict genesis. Maybe there's a better value to use like an average.
-        // Figure it out
-        let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-        let deficit = Uint192::from_u64(k_to_check.isqrt() as u64) * deficit_work_basis;
-
-        let blue_block_work = virtual_gd.blue_work;
-        let mut gray_block_work = Uint192::ZERO;
-        let mut red_block_work = Uint192::ZERO;
-        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-
-        // TODO[DK]: Iterate through the VSPC red mergeset to determine red/gray work
-        let mut curr_gd = Arc::new(virtual_gd);
-
-        while curr_gd.selected_parent != conflict_genesis {
-            for &red_block in curr_gd.mergeset_reds.iter() {
-                let red_block_bits = self.headers_store.get_bits(red_block).unwrap();
-                let red_work = calc_work(red_block_bits);
-
-                if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
-                    gray_block_work = gray_block_work + red_work;
-                } else {
-                    red_block_work = red_block_work + red_work;
-                }
-            }
-
-            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
-        }
-
-        trace!(
-            "k = {} | blue work = {} | gray work = {} | red work = {} | deficit = {}",
-            k_to_check, blue_block_work, gray_block_work, red_block_work, deficit
-        );
-        if blue_block_work + deficit > red_block_work {
-            // Michael: here is where cascade voting eventually belongs
-            // With this "k" value, our selected parent covers at least half the total region's work (minus some deficit)
+        if self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd, k_to_check, &conflict_zone_manager) {
             Some(SortableBlock {
                 hash: subgroup_virtual_sp,
                 blue_work: self.headers_store.get_header(subgroup_virtual_sp).unwrap().blue_work,
