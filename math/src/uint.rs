@@ -349,10 +349,14 @@ macro_rules! construct_uint {
                 use $crate::uint::malachite_nz::platform::Limb;
                 use $crate::uint::malachite_base::num::arithmetic::traits::ModInverse;
 
+                // Malachite's Limb is u64 on 64-bit platforms but u32 on 32-bit
+                // (e.g. risc0 riscv32im). Convert our u64 words to limbs, splitting
+                // each word into two 32-bit halves when necessary.
                 let to_limbs = |words: &[u64]| -> Vec<Limb> {
                     if core::mem::size_of::<Limb>() == 8 {
                         words.iter().map(|&w| w as Limb).collect()
                     } else {
+                        // Split each u64 into [low_u32, high_u32] (little-endian limb order).
                         words.iter().flat_map(|&w| {
                             [(w & 0xFFFF_FFFF) as Limb, ((w >> 32) & 0xFFFF_FFFF) as Limb]
                         }).collect()
@@ -365,11 +369,13 @@ macro_rules! construct_uint {
                 x.mod_inverse(p).map(|n| {
                     let limbs = n.into_limbs_asc();
                     let mut res = [0u64; Self::LIMBS];
+                    // Reassemble limbs back into u64 words.
                     if core::mem::size_of::<Limb>() == 8 {
                         for (r, &l) in res.iter_mut().zip(limbs.iter()) {
                             *r = l as u64;
                         }
                     } else {
+                        // Combine pairs of u32 limbs into u64: low | (high << 32).
                         for (i, chunk) in limbs.chunks(2).enumerate() {
                             if i < Self::LIMBS {
                                 res[i] = chunk[0] as u64
