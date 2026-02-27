@@ -129,6 +129,12 @@ pub fn cleanup_conflict_locks() {
     }
 }
 
+struct GroupMetadata<'a> {
+    conflict_genesis: Hash,
+    subgroup: &'a Vec<Hash>,
+    rank_value: RankValue,
+}
+
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 #[derive(Clone)]
 pub struct DagknightExecutor<
@@ -201,9 +207,7 @@ impl<
 
             // Pick a "winner" among these subgroups
             let (winning_conflict_genesis, winning_subgroup) = {
-                let mut best_rank_value = None;
-                let mut best_conflict_genesis = None;
-                let mut best_subgroup = None;
+                let mut best_groups: Vec<GroupMetadata> = vec![];
 
                 // TODO[DK]: Process groups from highest blue score first to improve chances of getting the best group
                 // on the first try
@@ -217,28 +221,40 @@ impl<
 
                 for (curr_conflict_genesis, subgroup) in filtered_group_iter {
                     debug!("Subgroup under conflict genesis {:#?} has members: {:#?}", curr_conflict_genesis, subgroup);
-                    let rank_value = self.rank(conflict_genesis, subgroup, &curr_subgroup, &best_rank_value);
+                    let best_k = best_groups.get(0).map(|g| g.rank_value.k);
+                    let rank_value = self.rank(conflict_genesis, subgroup, &curr_subgroup, best_k);
+                    let curr_k = rank_value.k;
+                    let group_metadata = GroupMetadata { rank_value, conflict_genesis: *curr_conflict_genesis, subgroup };
 
-                    if let Some(inner_best_rank) = &best_rank_value {
-                        if rank_value.cmp(inner_best_rank) == Ordering::Less {
-                            // Tie breaking by hash
-                            best_rank_value = Some(rank_value);
-                            best_conflict_genesis = Some(curr_conflict_genesis);
-                            best_subgroup = Some(subgroup);
+                    if let Some(inner_best_rank) = best_k {
+                        match curr_k.cmp(&inner_best_rank) {
+                            Ordering::Less => {
+                                // Tie breaking by hash
+                                best_groups = vec![group_metadata];
+                            }
+                            Ordering::Equal => {
+                                best_groups.push(group_metadata);
+                            }
+                            _ => {}
                         }
                     } else {
-                        best_rank_value = Some(rank_value);
-                        best_conflict_genesis = Some(curr_conflict_genesis);
-                        best_subgroup = Some(subgroup);
+                        best_groups = vec![group_metadata];
                     }
                 }
 
+                let final_winner = if best_groups.len() > 1 {
+                    self.tie_breaking(&best_groups)
+                } else {
+                    let single_winner = best_groups.first().expect("best_groups is non-empty");
+                    (single_winner.conflict_genesis, single_winner.subgroup)
+                };
+
                 // This will always be Some since curr_subgroup.len() > 1 and thus there is at least one subgroup
-                (best_conflict_genesis.unwrap(), best_subgroup.unwrap())
+                final_winner
             };
 
             // Add the non-winners to the ordered parents
-            group_map.iter().for_each(|(conflict_genesis, subgroup)| {
+            group_map.iter().for_each(|(&conflict_genesis, subgroup)| {
                 // TODO[DK]: Asserting here that order of the non-winning parents within a conflict hierarchy doesn't matter
                 if conflict_genesis != winning_conflict_genesis {
                     conflict_ordered_parents.extend(subgroup);
@@ -301,13 +317,20 @@ impl<
         */
     }
 
+    /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
+    /// TODO[DK]: This tie breaking rule only compares RankValue right now. Implement a proper one
+    /// according to the paper
+    fn tie_breaking<'a>(&self, subgroups: &[GroupMetadata<'a>]) -> (Hash, &'a Vec<Hash>) {
+        let winning_subgroup = subgroups.iter().min_by_key(|g| &g.rank_value).expect("subgroups is non-empty");
+        (winning_subgroup.conflict_genesis, winning_subgroup.subgroup)
+    }
+
     /// Follows the Calculate-Rank algorithm in the DK paper
     ///
     /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
     /// in the caller is simply using blue_work + hash to break ties between subgroups
     /// TODO[DK]: Remove selected_parent from the RankValue and properly implement Tie-Breaking
-    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], all_tips: &[Hash], best_rank_value: &Option<RankValue>) -> RankValue {
-        let best_k = best_rank_value.as_ref().map(|r| r.k);
+    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], all_tips: &[Hash], best_k: Option<KType>) -> RankValue {
         let subgroup_first = subgroup[0];
 
         let evaluate =
