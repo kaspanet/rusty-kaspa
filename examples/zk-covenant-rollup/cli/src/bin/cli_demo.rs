@@ -1,7 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus_core::config::params::TESTNET12_PARAMS;
 use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::sign::{sign, sign_input};
@@ -58,6 +57,11 @@ struct Args {
     /// Covenant value in sompi for the deploy transaction.
     #[arg(long, default_value = "100000000")]
     covenant_value: u64,
+
+    /// Minimum UTXO maturity in DAA blocks (coinbase maturity).
+    /// Lower values speed up the demo but may cause issues on mainnet.
+    #[arg(long, default_value = "1000")]
+    maturity: u64,
 }
 
 // ── Data types passed between phases ──
@@ -270,19 +274,25 @@ fn setup_keypair(privkey: Option<&str>, prefix: Prefix) -> Result<Keypair> {
     Ok(Keypair { secret_key, address, deployer_spk })
 }
 
-async fn wait_for_mature_utxo(node: &KaspaNode, address: &Address, daa_score: u64, min_value: u64) -> Result<(Hash, u32, u64)> {
+async fn wait_for_mature_utxo(
+    node: &KaspaNode,
+    address: &Address,
+    daa_score: u64,
+    min_value: u64,
+    maturity: u64,
+) -> Result<(Hash, u32, u64)> {
     let utxos = node.get_utxos_by_addresses(vec![address.clone()]).await.context("get_utxos_by_addresses failed")?;
 
     if let Some(u) = utxos.iter().find(|u| {
         let age = daa_score.saturating_sub(u.utxo_entry.block_daa_score);
-        age >= TESTNET12_PARAMS.coinbase_maturity && u.utxo_entry.amount >= min_value
+        age >= maturity && u.utxo_entry.amount >= min_value
     }) {
         println!("  Found mature UTXO: {} sompi (age: {} DAA)", u.utxo_entry.amount, daa_score - u.utxo_entry.block_daa_score);
         return Ok((u.outpoint.transaction_id, u.outpoint.index, u.utxo_entry.amount));
     }
 
     println!("  No mature UTXOs found. Waiting for mature UTXOs at {address} ...");
-    println!("  (need >= {min_value} sompi, maturity >= {} DAA blocks)", TESTNET12_PARAMS.coinbase_maturity());
+    println!("  (need >= {min_value} sompi, maturity >= {maturity} DAA blocks)");
 
     node.subscribe_utxos(vec![address.clone()]).await.context("subscribe_utxos failed")?;
 
@@ -298,7 +308,7 @@ async fn wait_for_mature_utxo(node: &KaspaNode, address: &Address, daa_score: u6
                 let utxos = node.get_utxos_by_addresses(vec![address.clone()]).await.context("get_utxos_by_addresses failed")?;
                 if let Some(u) = utxos.iter().find(|u| {
                     let age = current_daa.saturating_sub(u.utxo_entry.block_daa_score);
-                    age >= TESTNET12_PARAMS.coinbase_maturity && u.utxo_entry.amount >= min_value
+                    age >= maturity && u.utxo_entry.amount >= min_value
                 }) {
                     println!(
                         "  Mature UTXO arrived: {} sompi (age: {} DAA)",
@@ -835,7 +845,7 @@ async fn main() -> Result<()> {
     println!("\nPhase 3: Checking for mature UTXOs...");
     // Need: covenant_value*2 (deploy covenant + permission output) + deposit + headroom for fees
     let min_value = args.covenant_value * 2 + deposit_amount + 1_000_000;
-    let gas_utxo = wait_for_mature_utxo(&node, &keypair.address, dag_info.virtual_daa_score, min_value).await?;
+    let gas_utxo = wait_for_mature_utxo(&node, &keypair.address, dag_info.virtual_daa_score, min_value, args.maturity).await?;
 
     let dag_info = node.get_block_dag_info().await.context("get_block_dag_info failed")?;
 
