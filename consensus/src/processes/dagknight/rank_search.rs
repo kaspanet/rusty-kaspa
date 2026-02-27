@@ -21,15 +21,16 @@ impl RankSearcher {
     {
         let mut result = None;
 
+        let starting_k = best_k.unwrap_or(0);
         let mut increments: KType = 1;
-        let mut lkg_k: KType = 0;
+        let mut lkg_k: KType = starting_k;
         let mut lower_k: KType = 0;
         let mut found_lkg = false;
 
         while !found_lkg && lkg_k != u16::MAX {
             if let Some(best) = best_k {
                 if lower_k > best {
-                    debug!("Aborting upper bound search since lkg_k = {} > best known k = {}", lkg_k, best);
+                    debug!("Aborting upper bound search since lower_k = {} > best known k = {}", lower_k, best);
                     return None;
                 }
             }
@@ -40,7 +41,7 @@ impl RankSearcher {
                 result = Some(r);
                 found_lkg = true;
             } else {
-                lower_k = lkg_k;
+                lower_k = lkg_k + 1;
                 lkg_k = increments;
                 increments = increments.saturating_mul(2);
             }
