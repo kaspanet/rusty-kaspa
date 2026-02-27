@@ -594,6 +594,56 @@ async fn build_and_submit_proof(
         );
     }
     println!("  [ok] new_seq_commitment matches block_prove_to accepted_id_merkle_root");
+
+    // ── On-chain journal preimage verification ──────────────────────────────
+    // Reconstruct the preimage exactly as the on-chain script would build it
+    // via OpFromAltStack + OpInputCovenantId + OpCovOutCount introspection,
+    // then compare with the guest's actual journal bytes.
+    {
+        let journal_prev_state: [u32; 8] = bytemuck::pod_read_unaligned(&journal[0..32]);
+        let mut onchain_preimage = Vec::with_capacity(192);
+        onchain_preimage.extend_from_slice(bytemuck::bytes_of(&journal_prev_state)); // prev_state
+        onchain_preimage.extend_from_slice(bytemuck::bytes_of(&journal_prev_seq)); // prev_seq
+        onchain_preimage.extend_from_slice(bytemuck::bytes_of(&new_state_hash)); // new_state
+        onchain_preimage.extend_from_slice(bytemuck::bytes_of(&new_seq_commitment)); // new_seq
+        onchain_preimage.extend_from_slice(&deploy.on_chain_covenant_id.as_bytes()); // covenant_id
+
+        if let Some(ref perm_redeem) = prove.perm_redeem_script {
+            // On-chain: extracts blake2b hash from output[1] P2SH SPK to_bytes()[4..36]
+            // to_bytes() = version_u16_le(2) || script(35), so [4..36] = script[2..34] = the hash
+            let perm_spk = pay_to_script_hash_script(perm_redeem);
+            let perm_hash = &perm_spk.script()[2..34];
+            onchain_preimage.extend_from_slice(perm_hash);
+
+            // Also check what the guest committed at journal[160..192]
+            if journal.len() >= 192 {
+                let journal_perm_hash = &journal[160..192];
+                if perm_hash != journal_perm_hash {
+                    println!("  [MISMATCH] permission_spk_hash:");
+                    println!("    on-chain SPK[4..36]: {}", faster_hex::hex_string(perm_hash));
+                    println!("    journal[160..192]:   {}", faster_hex::hex_string(journal_perm_hash));
+                } else {
+                    println!("  [ok] permission_spk_hash matches ({} bytes)", perm_hash.len());
+                }
+            } else {
+                println!("  [MISMATCH] permission output present but journal only {} bytes (expected 192)", journal.len());
+            }
+        }
+
+        if onchain_preimage.as_slice() != journal.as_slice() {
+            println!("  [FAIL] On-chain preimage != journal bytes!");
+            println!("    on-chain preimage len: {}", onchain_preimage.len());
+            println!("    journal len:           {}", journal.len());
+            for (i, (a, b)) in onchain_preimage.iter().zip(journal.iter()).enumerate() {
+                if a != b {
+                    println!("    first diff at byte {i}: on-chain=0x{a:02x} journal=0x{b:02x}");
+                    break;
+                }
+            }
+            bail!("On-chain journal preimage does not match guest journal — ZK verification will fail");
+        }
+        println!("  [ok] on-chain journal preimage matches guest journal ({} bytes)", journal.len());
+    }
     // ────────────────────────────────────────────────────────────────────────
 
     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
