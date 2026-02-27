@@ -189,11 +189,11 @@ impl CovenantBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenesisCovenantGroup {
     pub authorizing_input: u16,
-    pub outputs: Vec<usize>,
+    pub outputs: Vec<u32>,
 }
 
 impl GenesisCovenantGroup {
-    pub fn new(authorizing_input: u16, outputs: Vec<usize>) -> Self {
+    pub fn new(authorizing_input: u16, outputs: Vec<u32>) -> Self {
         Self { authorizing_input, outputs }
     }
 }
@@ -328,17 +328,17 @@ impl Transaction {
 
             // Because indices are sorted ascending, bound-checking the last (max) index is sufficient.
             let last = *outs.last().expect("checked non-empty above");
-            if last >= self.outputs.len() {
+            if (last as usize) >= self.outputs.len() {
                 return Err(PopulateGenesisCovenantsError::NoSuchOutput(last, self.outputs.len()));
             }
 
             for &out in outs {
-                if seen_outs[out] {
+                if seen_outs[out as usize] {
                     return Err(PopulateGenesisCovenantsError::OutputsNotDisjoint(out));
                 }
-                seen_outs[out] = true;
+                seen_outs[out as usize] = true;
 
-                if self.outputs[out].covenant.is_some() {
+                if self.outputs[out as usize].covenant.is_some() {
                     return Err(PopulateGenesisCovenantsError::CovenantAlreadyPopulated(out));
                 }
             }
@@ -349,10 +349,10 @@ impl Transaction {
             let auth_input = group.authorizing_input as usize;
             let input_outpoint = self.inputs[auth_input].previous_outpoint;
             let covenant_id =
-                hashing::covenant_id::covenant_id(input_outpoint, group.outputs.iter().map(|&out| (out as u32, &self.outputs[out])));
+                hashing::covenant_id::covenant_id(input_outpoint, group.outputs.iter().map(|&out| (out, &self.outputs[out as usize])));
             let binding = CovenantBinding::new(group.authorizing_input, covenant_id);
             for &out in &group.outputs {
-                self.outputs[out].covenant = Some(binding);
+                self.outputs[out as usize].covenant = Some(binding);
             }
         }
 
@@ -904,23 +904,23 @@ mod tests {
     fn test_populate_genesis_covenants() {
         // Success case
         let mut tx = tx_for_genesis_covenant_population(1, 8);
-        let group_a_outputs = [1usize, 3, 7];
-        let group_b_outputs = [2usize, 4, 5];
+        let group_a_outputs = [1u32, 3, 7];
+        let group_b_outputs = [2u32, 4, 5];
         let expected_group_a = hashing::covenant_id::covenant_id(
             tx.inputs[0].previous_outpoint,
-            group_a_outputs.into_iter().map(|i| (i as u32, &tx.outputs[i])),
+            group_a_outputs.into_iter().map(|i| (i, &tx.outputs[i as usize])),
         );
         let expected_group_b = hashing::covenant_id::covenant_id(
             tx.inputs[0].previous_outpoint,
-            group_b_outputs.into_iter().map(|i| (i as u32, &tx.outputs[i])),
+            group_b_outputs.into_iter().map(|i| (i, &tx.outputs[i as usize])),
         );
         tx.populate_genesis_covenants(&[GenesisCovenantGroup::new(0, vec![1, 3, 7]), GenesisCovenantGroup::new(0, vec![2, 4, 5])])
             .unwrap();
-        for &i in &[1usize, 3, 7] {
-            assert_eq!(tx.outputs[i].covenant, Some(CovenantBinding::new(0, expected_group_a)));
+        for &i in &[1u32, 3, 7] {
+            assert_eq!(tx.outputs[i as usize].covenant, Some(CovenantBinding::new(0, expected_group_a)));
         }
-        for &i in &[2usize, 4, 5] {
-            assert_eq!(tx.outputs[i].covenant, Some(CovenantBinding::new(0, expected_group_b)));
+        for &i in &[2u32, 4, 5] {
+            assert_eq!(tx.outputs[i as usize].covenant, Some(CovenantBinding::new(0, expected_group_b)));
         }
         assert!(tx.outputs[0].covenant.is_none());
         assert!(tx.outputs[6].covenant.is_none());

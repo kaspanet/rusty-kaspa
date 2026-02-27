@@ -115,13 +115,13 @@ pub enum PopulateGenesisCovenantsError {
     #[error("authorizing input index {0} is out of bounds for {1} inputs")]
     NoSuchInput(usize, usize),
     #[error("output index {0} is out of bounds for {1} outputs")]
-    NoSuchOutput(usize, usize),
+    NoSuchOutput(u32, usize),
     #[error("outputs are not strictly ordered")]
     OutputsNotOrdered,
     #[error("output index {0} appears in more than one group")]
-    OutputsNotDisjoint(usize),
+    OutputsNotDisjoint(u32),
     #[error("output index {0} covenant field is already populated")]
-    CovenantAlreadyPopulated(usize),
+    CovenantAlreadyPopulated(u32),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
