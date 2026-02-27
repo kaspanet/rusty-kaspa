@@ -28,7 +28,7 @@ use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
 
 use zk_covenant_rollup_core::action::{ActionHeader, ExitAction, TransferAction};
-use zk_covenant_rollup_core::permission_tree::{required_depth, PermissionTree};
+use zk_covenant_rollup_core::permission_tree::{perm_empty_leaf_hash, PermissionTree};
 use zk_covenant_rollup_host::bridge::{build_delegate_entry_script, build_permission_redeem_converged, build_permission_sig_script};
 use zk_covenant_rollup_host::mock_tx::ActionWitness;
 use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProveInput, ProverBackend};
@@ -1963,6 +1963,10 @@ impl App {
             return;
         }
         let (spk, amount) = perm_state.exit_data[leaf_idx].clone();
+        if spk.is_empty() || amount == 0 {
+            self.log("This exit has already been withdrawn".into());
+            return;
+        }
 
         // Build permission tree from all remaining exits
         let tree = PermissionTree::from_leaves(perm_state.exit_data.clone());
@@ -2047,14 +2051,11 @@ impl App {
         let covenant_id_hash = covenant_id;
         let unclaimed = perm_utxo_ref.unclaimed;
         if unclaimed > 1 {
-            let mut remaining: Vec<(Vec<u8>, u64)> = perm_utxo_ref.exit_data.clone();
-            remaining.remove(leaf_idx);
-            let new_unclaimed = remaining.len() as u64;
-            let new_depth = required_depth(remaining.len());
-            let new_tree = PermissionTree::from_leaves(remaining);
-            let new_root = new_tree.root();
+            let new_unclaimed = unclaimed - 1;
+            let depth = tree.depth();
+            let new_root = proof.compute_new_root(&perm_empty_leaf_hash());
             let max_inputs = std::num::NonZeroUsize::new(zk_covenant_rollup_core::MAX_DELEGATE_INPUTS).unwrap();
-            let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, new_depth, max_inputs);
+            let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_inputs);
             let new_perm_spk = pay_to_script_hash_script(&new_redeem);
             outputs.push(TransactionOutput::with_covenant(
                 perm_utxo_ref.value,
@@ -2095,18 +2096,20 @@ impl App {
         // Mark collateral as spent
         self.utxo_tracker.mark_spent(collateral.tx_id, collateral.index);
 
-        // Update perm_utxo state
+        // Update perm_utxo state — mark leaf as withdrawn (preserve tree structure)
         if let Some(ref mut perm) = self.perm_utxo {
-            perm.exit_data.remove(leaf_idx);
+            perm.exit_data[leaf_idx] = (vec![], 0); // mark withdrawn
             perm.unclaimed = perm.unclaimed.saturating_sub(1);
             if perm.unclaimed == 0 {
                 self.perm_utxo = None;
                 self.perm_leaf_index = 0;
             } else {
                 perm.utxo = (tx_id, 1);
-                if self.perm_leaf_index >= perm.exit_data.len() {
-                    self.perm_leaf_index = perm.exit_data.len().saturating_sub(1);
-                }
+                let new_unclaimed = perm.unclaimed;
+                let depth = tree.depth();
+                let new_root = proof.compute_new_root(&perm_empty_leaf_hash());
+                let max_inputs = std::num::NonZeroUsize::new(zk_covenant_rollup_core::MAX_DELEGATE_INPUTS).unwrap();
+                perm.redeem_script = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_inputs);
             }
         }
 

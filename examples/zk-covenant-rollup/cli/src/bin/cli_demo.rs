@@ -16,7 +16,7 @@ use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
 use kaspa_wrpc_client::prelude::{NetworkId, NetworkType, Notification};
 use risc0_zkvm::sha::Digestible;
-use zk_covenant_rollup_core::permission_tree::{required_depth, PermissionTree};
+use zk_covenant_rollup_core::permission_tree::{perm_empty_leaf_hash, PermissionTree};
 use zk_covenant_rollup_core::seq_commit::{calc_accepted_id_merkle_root, seq_commitment_leaf, StreamingMerkleBuilder};
 use zk_covenant_rollup_core::state::empty_tree_root;
 use zk_covenant_rollup_host::bridge::{build_delegate_entry_script, build_permission_redeem_converged, build_permission_sig_script};
@@ -844,20 +844,19 @@ async fn withdraw_exit(
 
     // Continuation permission output (if more exits remain)
     let continuation = if unclaimed > 1 {
-        let mut remaining = exit_data.to_vec();
-        remaining.remove(leaf_idx);
-        let new_unclaimed = remaining.len() as u64;
-        let new_depth = required_depth(remaining.len());
-        let new_tree = PermissionTree::from_leaves(remaining.clone());
-        let new_root = new_tree.root();
+        let new_unclaimed = unclaimed - 1;
+        let depth = tree.depth();
+        let new_root = proof.compute_new_root(&perm_empty_leaf_hash());
         let max_inputs = std::num::NonZeroUsize::new(zk_covenant_rollup_core::MAX_DELEGATE_INPUTS).unwrap();
-        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, new_depth, max_inputs);
+        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_inputs);
         let new_perm_spk = pay_to_script_hash_script(&new_redeem);
         outputs.push(TransactionOutput::with_covenant(
             perm_value,
             new_perm_spk,
             Some(CovenantBinding { authorizing_input: 0, covenant_id }),
         ));
+        let mut remaining = exit_data.to_vec();
+        remaining[leaf_idx] = (vec![], 0); // mark withdrawn, preserve tree structure
         Some(WithdrawContinuation { perm_redeem: new_redeem, exit_data: remaining })
     } else {
         None
@@ -886,13 +885,31 @@ async fn withdraw_exit(
     all_entries.push(UtxoEntry::new(collateral_amount, keypair.deployer_spk.clone(), collateral_daa, false, None));
 
     let collateral_input_idx = tx.inputs.len() - 1;
-    let signable = SignableTransaction::with_entries(tx.clone(), all_entries);
+    let signable = SignableTransaction::with_entries(tx.clone(), all_entries.clone());
     let sig = sign_input(&signable.as_verifiable(), collateral_input_idx, &keypair.secret_key.secret_bytes(), SIG_HASH_ALL);
     tx.inputs[collateral_input_idx].signature_script = sig;
 
     let tx_id = tx.id();
     println!("  Withdraw tx ID: {tx_id}");
     println!("  Destination: {dest_value} sompi (fee: {estimated_fee})");
+
+    // ── Local script verification ────────────────────────────────────────
+    {
+        println!("  [diag] inputs: {} (perm + {} delegates + collateral)", tx.inputs.len(), selected_delegates.len());
+        println!("  [diag] outputs: {}", tx.outputs.len());
+        for (i, out) in tx.outputs.iter().enumerate() {
+            println!("    output[{i}]: {} sompi, spk_len={}", out.value, out.script_public_key.script().len());
+        }
+        println!("  [diag] perm_utxo SPK hash: {}", faster_hex::hex_string(&all_entries[0].script_public_key.script()[2..34]));
+        println!("  [diag] delegate_total={delegate_total} deduct={amount} change={}", delegate_total - amount);
+
+        let accessor = MockSeqCommitAccessor(std::collections::HashMap::new());
+        match try_verify_tx_input(&tx, &all_entries, 0, &accessor) {
+            Ok(()) => println!("  [ok] Local permission script verification passed"),
+            Err(e) => bail!("Local permission script verification FAILED: {e}\n  (the on-chain script will also reject this tx)"),
+        }
+    }
+    // ────────────────────────────────────────────────────────────────────
 
     let rpc_tx = tx_to_rpc(tx);
     node.submit_transaction(rpc_tx, false).await.context("Failed to submit withdraw tx")?;
@@ -1107,7 +1124,7 @@ async fn main() -> Result<()> {
         deploy.output_value,
         &w1_cont.perm_redeem,
         &w1_cont.exit_data,
-        0, // leaf index 0 = exit #2 (only remaining exit)
+        1, // leaf index 1 = exit #2 (leaf 0 already withdrawn)
         &delegate_addr,
         &keypair,
     )
