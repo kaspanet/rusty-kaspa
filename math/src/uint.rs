@@ -349,40 +349,42 @@ macro_rules! construct_uint {
                 use $crate::uint::malachite_nz::platform::Limb;
                 use $crate::uint::malachite_base::num::arithmetic::traits::ModInverse;
 
-                // Malachite's Limb is u64 on 64-bit platforms but u32 on 32-bit
-                // (e.g. risc0 riscv32im). Convert our u64 words to limbs, splitting
-                // each word into two 32-bit halves when necessary.
-                let to_limbs = |words: &[u64]| -> Vec<Limb> {
-                    if core::mem::size_of::<Limb>() == 8 {
-                        words.iter().map(|&w| w as Limb).collect()
-                    } else {
-                        // Split each u64 into [low_u32, high_u32] (little-endian limb order).
-                        words.iter().flat_map(|&w| {
-                            [(w & 0xFFFF_FFFF) as Limb, ((w >> 32) & 0xFFFF_FFFF) as Limb]
-                        }).collect()
+                // Malachite's Limb type changes from u64 to u32 when the `32_bit_limbs`
+                // feature is enabled (e.g. by risc0 via Cargo feature unification).
+                // On little-endian, [u64; N] and [Limb; N * 8/sizeof(Limb)] have
+                // identical byte layouts, so we reinterpret directly without copying.
+                #[cfg(not(target_endian = "little"))]
+                compile_error!("mod_inverse assumes little-endian byte order");
+
+                const LIMBS_PER_WORD: usize =
+                    core::mem::size_of::<u64>() / core::mem::size_of::<Limb>();
+
+                // SAFETY: On LE, a u64 in memory [b0..b7] is read identically as
+                // one u64 limb or two u32 limbs [b0..b3, b4..b7]. Alignment is
+                // satisfied since align_of::<u64>() >= align_of::<Limb>().
+                let as_limbs = |words: &[u64; $n_words]| -> &[Limb] {
+                    unsafe {
+                        core::slice::from_raw_parts(
+                            words.as_ptr() as *const Limb,
+                            $n_words * LIMBS_PER_WORD,
+                        )
                     }
                 };
 
-                let x = Natural::from_limbs_asc(&to_limbs(&self.0));
-                let p = Natural::from_limbs_asc(&to_limbs(&prime.0));
+                let x = Natural::from_limbs_asc(as_limbs(&self.0));
+                let p = Natural::from_limbs_asc(as_limbs(&prime.0));
 
                 x.mod_inverse(p).map(|n| {
                     let limbs = n.into_limbs_asc();
-                    let mut res = [0u64; Self::LIMBS];
-                    // Reassemble limbs back into u64 words.
-                    if core::mem::size_of::<Limb>() == 8 {
-                        for (r, &l) in res.iter_mut().zip(limbs.iter()) {
-                            *r = l as u64;
-                        }
-                    } else {
-                        // Combine pairs of u32 limbs into u64: low | (high << 32).
-                        for (i, chunk) in limbs.chunks(2).enumerate() {
-                            if i < Self::LIMBS {
-                                res[i] = chunk[0] as u64
-                                    | ((chunk.get(1).copied().unwrap_or(0 as Limb) as u64) << 32);
-                            }
-                        }
-                    }
+                    let mut res = [0u64; $n_words];
+                    // SAFETY: Same LE byte-layout argument, in reverse.
+                    let res_limbs: &mut [Limb] = unsafe {
+                        core::slice::from_raw_parts_mut(
+                            res.as_mut_ptr() as *mut Limb,
+                            $n_words * LIMBS_PER_WORD,
+                        )
+                    };
+                    res_limbs[..limbs.len()].copy_from_slice(&limbs);
                     Self(res)
                 })
             }
