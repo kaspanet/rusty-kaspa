@@ -778,6 +778,7 @@ async fn withdraw_exit(
     exit_data: &[(Vec<u8>, u64)],
     leaf_idx: usize,
     delegate_address: &Address,
+    keypair: &Keypair,
 ) -> Result<WithdrawResult> {
     let (ref spk, amount) = exit_data[leaf_idx];
     let unclaimed = exit_data.len() as u64;
@@ -808,17 +809,34 @@ async fn withdraw_exit(
     }
     println!("  Delegate UTXOs: {} covering {delegate_total} sompi", selected_delegates.len());
 
+    // Find collateral UTXO for fee payment
+    let rpc_collateral = node.get_utxos_by_addresses(vec![keypair.address.clone()]).await.context("get collateral UTXOs")?;
+    let collateral = rpc_collateral
+        .iter()
+        .find(|u| u.utxo_entry.amount >= 10_000)
+        .context("No collateral UTXO for withdrawal fee — fund the deployer address")?;
+    let collateral_outpoint = TransactionOutpoint::new(collateral.outpoint.transaction_id, collateral.outpoint.index);
+    let collateral_amount = collateral.utxo_entry.amount;
+    let collateral_daa = collateral.utxo_entry.block_daa_score;
+    println!(
+        "  Collateral UTXO: {collateral_amount} sompi (tx: {}:{})",
+        collateral.outpoint.transaction_id, collateral.outpoint.index
+    );
+
     // Estimate fee
     let fee_estimate = node.get_fee_estimate().await.context("get_fee_estimate failed")?;
     let priority_feerate = fee_estimate.priority_bucket.feerate;
     let estimated_fee = compute_fee(5000, priority_feerate);
-    let dest_value = amount.checked_sub(estimated_fee).context("Exit amount too small to cover fee")?;
 
-    // Build inputs: permission + delegates
-    let mut inputs = vec![TransactionInput::new(TransactionOutpoint::new(perm_outpoint.0, perm_outpoint.1), perm_sig_script, 0, 115)];
+    // Full withdrawal amount goes to destination — fee paid by collateral
+    let dest_value = amount;
+
+    // Build inputs: permission (seq=0) + delegates (seq=0) + collateral (seq=1)
+    let mut inputs = vec![TransactionInput::new(TransactionOutpoint::new(perm_outpoint.0, perm_outpoint.1), perm_sig_script, 0, 0)];
     for &(tx_id, index, _) in &selected_delegates {
         inputs.push(TransactionInput::new(TransactionOutpoint::new(tx_id, index), delegate_sig_script.clone(), 0, 0));
     }
+    inputs.push(TransactionInput::new(collateral_outpoint, vec![], 0, 1));
 
     // Build outputs: withdrawal destination
     let dest_spk = ScriptPublicKey::new(0, spk.clone().into());
@@ -848,12 +866,31 @@ async fn withdraw_exit(
     // Delegate change
     if delegate_total > amount {
         let delegate_change = delegate_total - amount;
-        outputs.push(TransactionOutput::new(delegate_change, delegate_spk));
+        outputs.push(TransactionOutput::new(delegate_change, delegate_spk.clone()));
     }
 
-    let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
-    let tx_id = tx.id();
+    // Collateral change
+    let collateral_change = collateral_amount.checked_sub(estimated_fee).context("Collateral too small for fee")?;
+    if collateral_change > 0 {
+        outputs.push(TransactionOutput::new(collateral_change, keypair.deployer_spk.clone()));
+    }
 
+    let mut tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+    // Sign collateral input
+    let perm_entry = UtxoEntry::new(perm_value, pay_to_script_hash_script(perm_redeem), 0, true, Some(covenant_id));
+    let mut all_entries: Vec<UtxoEntry> = vec![perm_entry];
+    for &(_, _, amt) in &selected_delegates {
+        all_entries.push(UtxoEntry::new(amt, delegate_spk.clone(), 0, false, None));
+    }
+    all_entries.push(UtxoEntry::new(collateral_amount, keypair.deployer_spk.clone(), collateral_daa, false, None));
+
+    let collateral_input_idx = tx.inputs.len() - 1;
+    let signable = SignableTransaction::with_entries(tx.clone(), all_entries);
+    let sig = sign_input(&signable.as_verifiable(), collateral_input_idx, &keypair.secret_key.secret_bytes(), SIG_HASH_ALL);
+    tx.inputs[collateral_input_idx].signature_script = sig;
+
+    let tx_id = tx.id();
     println!("  Withdraw tx ID: {tx_id}");
     println!("  Destination: {dest_value} sompi (fee: {estimated_fee})");
 
@@ -1050,6 +1087,7 @@ async fn main() -> Result<()> {
         &prove.perm_exit_data,
         0, // leaf index 0 = exit #1
         &delegate_addr,
+        &keypair,
     )
     .await?;
 
@@ -1071,6 +1109,7 @@ async fn main() -> Result<()> {
         &w1_cont.exit_data,
         0, // leaf index 0 = exit #2 (only remaining exit)
         &delegate_addr,
+        &keypair,
     )
     .await?;
 

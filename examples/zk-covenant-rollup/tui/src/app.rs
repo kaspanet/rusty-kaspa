@@ -1956,6 +1956,7 @@ impl App {
         };
 
         let covenant_id = self.covenants[cov_idx].0;
+        let record = &self.covenants[cov_idx].1;
         let leaf_idx = self.perm_leaf_index;
         if leaf_idx >= perm_state.exit_data.len() {
             self.log("Selected leaf index out of range".into());
@@ -1997,25 +1998,47 @@ impl App {
             return;
         }
 
+        // Get deployer keypair for collateral signing
+        let deployer_sk = match secp256k1::SecretKey::from_slice(&record.deployer_privkey) {
+            Ok(sk) => sk,
+            Err(e) => {
+                self.log(format!("Invalid deployer key: {e}"));
+                return;
+            }
+        };
+        let deployer_pk = deployer_sk.public_key(secp256k1::SECP256K1);
+        let (xonly_pk, _) = deployer_pk.x_only_public_key();
+        let deployer_addr = Address::new(self.network_prefix, Version::PubKey, &xonly_pk.serialize());
+        let deployer_spk = pay_to_address_script(&deployer_addr);
+        let deployer_addr_str = deployer_addr.to_string();
+
+        // Find collateral UTXO for fee payment
+        let collateral_utxos = self.utxo_tracker.available_utxos(&deployer_addr_str);
+        let collateral = match collateral_utxos.iter().find(|u| u.amount >= 10_000) {
+            Some(u) => (*u).clone(),
+            None => {
+                self.log("No collateral UTXO for withdrawal fee".into());
+                return;
+            }
+        };
+
         let priority_feerate = self.cached_fee_estimate.as_ref().map(|e| e.priority_bucket.feerate).unwrap_or(1.0);
-        // Estimate mass conservatively for withdraw tx
         let estimated_withdraw_mass: u64 = 5000;
         let estimated_fee = crate::actions::compute_fee(estimated_withdraw_mass, priority_feerate);
-        let dest_value = amount.saturating_sub(estimated_fee);
-        if dest_value == 0 {
-            self.log("Amount too small to cover fee".into());
-            return;
-        }
+
+        // Full withdrawal amount goes to destination — fee paid by collateral
+        let dest_value = amount;
 
         let delegate_sig_script = ScriptBuilder::new().add_data(&delegate_script).unwrap().drain();
 
-        // Build inputs
+        // Build inputs: permission (seq=0) + delegates (seq=0) + collateral (seq=1)
         let perm_utxo_ref = self.perm_utxo.as_ref().unwrap();
         let mut inputs =
-            vec![TransactionInput::new(TransactionOutpoint::new(perm_utxo_ref.utxo.0, perm_utxo_ref.utxo.1), perm_sig_script, 0, 115)];
+            vec![TransactionInput::new(TransactionOutpoint::new(perm_utxo_ref.utxo.0, perm_utxo_ref.utxo.1), perm_sig_script, 0, 0)];
         for utxo in &selected_delegates {
             inputs.push(TransactionInput::new(TransactionOutpoint::new(utxo.tx_id, utxo.index), delegate_sig_script.clone(), 0, 0));
         }
+        inputs.push(TransactionInput::new(TransactionOutpoint::new(collateral.tx_id, collateral.index), vec![], 0, 1));
 
         // Build outputs
         let dest_spk = ScriptPublicKey::new(0, spk.into());
@@ -2042,11 +2065,35 @@ impl App {
 
         if delegate_total > amount {
             let change = delegate_total - amount;
-            outputs.push(TransactionOutput::new(change, delegate_spk));
+            outputs.push(TransactionOutput::new(change, delegate_spk.clone()));
         }
 
-        let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        // Collateral change
+        let collateral_change = collateral.amount.saturating_sub(estimated_fee);
+        if collateral_change > 0 {
+            outputs.push(TransactionOutput::new(collateral_change, deployer_spk.clone()));
+        }
+
+        let mut tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+        // Sign collateral input
+        let perm_entry =
+            UtxoEntry::new(perm_utxo_ref.value, pay_to_script_hash_script(&perm_state.redeem_script), 0, true, Some(covenant_id_hash));
+        let mut all_entries: Vec<UtxoEntry> = vec![perm_entry];
+        for utxo in &selected_delegates {
+            all_entries.push(UtxoEntry::new(utxo.amount, delegate_spk.clone(), 0, false, None));
+        }
+        all_entries.push(UtxoEntry::new(collateral.amount, deployer_spk, 0, false, None));
+
+        let collateral_idx = tx.inputs.len() - 1;
+        let signable = SignableTransaction::with_entries(tx.clone(), all_entries);
+        let sig = sign_input(&signable.as_verifiable(), collateral_idx, &deployer_sk.secret_bytes(), SIG_HASH_ALL);
+        tx.inputs[collateral_idx].signature_script = sig;
+
         let tx_id = tx.id();
+
+        // Mark collateral as spent
+        self.utxo_tracker.mark_spent(collateral.tx_id, collateral.index);
 
         // Update perm_utxo state
         if let Some(ref mut perm) = self.perm_utxo {
