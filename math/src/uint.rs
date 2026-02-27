@@ -346,16 +346,37 @@ macro_rules! construct_uint {
             #[inline]
             pub fn mod_inverse(self, prime: Self) -> Option<Self> {
                 use $crate::uint::malachite_nz::natural::Natural;
+                use $crate::uint::malachite_nz::platform::Limb;
                 use $crate::uint::malachite_base::num::arithmetic::traits::ModInverse;
 
-                let x = Natural::from_limbs_asc(&self.0);
-                let p = Natural::from_limbs_asc(&prime.0);
-                let mod_inv = x.mod_inverse(p);
+                let to_limbs = |words: &[u64]| -> Vec<Limb> {
+                    if core::mem::size_of::<Limb>() == 8 {
+                        words.iter().map(|&w| w as Limb).collect()
+                    } else {
+                        words.iter().flat_map(|&w| {
+                            [(w & 0xFFFF_FFFF) as Limb, ((w >> 32) & 0xFFFF_FFFF) as Limb]
+                        }).collect()
+                    }
+                };
 
-                mod_inv.map(|n| {
-                    let mut res = [0u64; Self::LIMBS];
+                let x = Natural::from_limbs_asc(&to_limbs(&self.0));
+                let p = Natural::from_limbs_asc(&to_limbs(&prime.0));
+
+                x.mod_inverse(p).map(|n| {
                     let limbs = n.into_limbs_asc();
-                    res[..limbs.len()].copy_from_slice(&limbs);
+                    let mut res = [0u64; Self::LIMBS];
+                    if core::mem::size_of::<Limb>() == 8 {
+                        for (r, &l) in res.iter_mut().zip(limbs.iter()) {
+                            *r = l as u64;
+                        }
+                    } else {
+                        for (i, chunk) in limbs.chunks(2).enumerate() {
+                            if i < Self::LIMBS {
+                                res[i] = chunk[0] as u64
+                                    | ((chunk.get(1).copied().unwrap_or(0 as Limb) as u64) << 32);
+                            }
+                        }
+                    }
                     Self(res)
                 })
             }
