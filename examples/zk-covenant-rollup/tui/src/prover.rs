@@ -362,12 +362,12 @@ impl RollupProver {
         // seq_commitment change that commits spk+amount per input. With the 2-byte
         // prefix (~1/65536 collision) and the SMT balance check above, a collision tx
         // reaching this point is extremely unlikely — panicking is acceptable for now.
-        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok().flatten().unwrap_or_else(|| {
-            panic!(
-                "prev_tx {} not found in DB for transfer action (source={:?})",
-                prev_tx_id, source_pk
-            )
-        });
+        let prev_tx = self
+            .db
+            .get_prev_tx(cov_hash, prev_tx_id)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| panic!("prev_tx {} not found in DB for transfer action (source={:?})", prev_tx_id, source_pk));
 
         // Update source balance (intermediate state)
         let new_source_balance = source_balance - amount;
@@ -460,12 +460,12 @@ impl RollupProver {
         // seq_commitment change that commits spk+amount per input. With the 2-byte
         // prefix (~1/65536 collision) and the SMT balance check above, a collision tx
         // reaching this point is extremely unlikely — panicking is acceptable for now.
-        let prev_tx = self.db.get_prev_tx(cov_hash, prev_tx_id).ok().flatten().unwrap_or_else(|| {
-            panic!(
-                "prev_tx {} not found in DB for exit action (source={:?})",
-                prev_tx_id, source_pk
-            )
-        });
+        let prev_tx = self
+            .db
+            .get_prev_tx(cov_hash, prev_tx_id)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| panic!("prev_tx {} not found in DB for exit action (source={:?})", prev_tx_id, source_pk));
 
         // Update source balance
         let new_balance = source_balance - exit_amount;

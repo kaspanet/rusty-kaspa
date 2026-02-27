@@ -77,8 +77,8 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
             let style = if is_selected { Style::default().bg(Color::DarkGray) } else { Style::default() };
             // Show "*" in the first column for the currently selected account.
-            let sel_cell = Cell::from(if is_selected { "*" } else { " " })
-                .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+            let sel_cell =
+                Cell::from(if is_selected { "*" } else { " " }).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
 
             Row::new(vec![sel_cell, Cell::from(format!("0x{index:02x}")), Cell::from(addr), Cell::from(bal_str)]).style(style)
         })

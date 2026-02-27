@@ -49,12 +49,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                         p.smt.get(&w).unwrap_or(0)
                     })
                     .unwrap_or(0);
-                format!(
-                    "Transfer — from idx=0x{:02x} (L2: {}) → to idx=0x{:02x}",
-                    src_pk.as_bytes()[0],
-                    src_l2,
-                    dst_pk.as_bytes()[0],
-                )
+                format!("Transfer — from idx=0x{:02x} (L2: {}) → to idx=0x{:02x}", src_pk.as_bytes()[0], src_l2, dst_pk.as_bytes()[0],)
             } else {
                 "Transfer — need 2+ accounts".into()
             }

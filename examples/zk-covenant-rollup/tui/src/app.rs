@@ -1436,12 +1436,7 @@ impl App {
             })
             .unwrap_or(0);
         let dst_addr = self.pubkey_to_address(&dst_pk).unwrap_or_default();
-        format!(
-            "Source idx=0x{:02x} (L2: {}) → L1: {}\nEnter withdrawal amount in L2 units:",
-            src_pk.as_bytes()[0],
-            src_l2,
-            dst_addr,
-        )
+        format!("Source idx=0x{:02x} (L2: {}) → L1: {}\nEnter withdrawal amount in L2 units:", src_pk.as_bytes()[0], src_l2, dst_addr,)
     }
 
     // ── State tab ──

@@ -222,10 +222,7 @@ fn draw_pick_transfer_popup(frame: &mut Frame, app: &App, src_idx: usize, dst_id
 
     if !picking_src {
         if let Some((src_pk, _)) = app.accounts.get(src_idx) {
-            lines.push(Line::styled(
-                format!(" Source: idx=0x{:02x}", src_pk.as_bytes()[0]),
-                Style::default().fg(Color::Cyan),
-            ));
+            lines.push(Line::styled(format!(" Source: idx=0x{:02x}", src_pk.as_bytes()[0]), Style::default().fg(Color::Cyan)));
         }
     }
     lines.push(Line::from(""));
@@ -251,10 +248,7 @@ fn draw_pick_transfer_popup(frame: &mut Frame, app: &App, src_idx: usize, dst_id
     lines.push(Line::from(""));
     lines.push(Line::styled(hint, Style::default().fg(Color::DarkGray)));
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow))
-        .title(title);
+    let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)).title(title);
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
