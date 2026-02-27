@@ -17,14 +17,17 @@ use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script};
 use kaspa_wrpc_client::prelude::{NetworkId, NetworkType, Notification};
 use risc0_zkvm::sha::Digestible;
+use zk_covenant_rollup_core::permission_tree::{required_depth, PermissionTree};
 use zk_covenant_rollup_core::seq_commit::{calc_accepted_id_merkle_root, seq_commitment_leaf, StreamingMerkleBuilder};
 use zk_covenant_rollup_core::state::empty_tree_root;
+use zk_covenant_rollup_host::bridge::{build_delegate_entry_script, build_permission_redeem_converged, build_permission_sig_script};
 use zk_covenant_rollup_host::mock_chain::{from_bytes, MockSeqCommitAccessor};
 use zk_covenant_rollup_host::prove::{self as host_prove, ProofKind, ProveOutput, ProverBackend};
 use zk_covenant_rollup_host::redeem::build_redeem_script;
 use zk_covenant_rollup_host::tx::try_verify_tx_input;
 use zk_covenant_rollup_methods::ZK_COVENANT_ROLLUP_GUEST_ID;
-use zk_covenant_rollup_tui::actions::compute_fee;
+use zk_covenant_rollup_tui::actions::{build_entry_tx, build_exit_tx, build_transfer_tx, compute_fee};
+use zk_covenant_rollup_tui::balance::Utxo;
 use zk_covenant_rollup_tui::db::RollupDb;
 use zk_covenant_rollup_tui::node::{KaspaNode, NodeEvent};
 use zk_covenant_rollup_tui::prover::RollupProver;
@@ -71,6 +74,7 @@ struct DeployResult {
     starting_block: Hash,
     initial_seq: Hash,
     output_value: u64,
+    deploy_change: u64,
 }
 
 struct ProveResult {
@@ -78,6 +82,18 @@ struct ProveResult {
     block_prove_to: Hash,
     prev_state_hash: [u32; 8],
     prev_seq_commitment: [u32; 8],
+    perm_redeem_script: Option<Vec<u8>>,
+    perm_exit_data: Vec<(Vec<u8>, u64)>,
+}
+
+struct WithdrawResult {
+    tx_id: Hash,
+    continuation: Option<WithdrawContinuation>,
+}
+
+struct WithdrawContinuation {
+    perm_redeem: Vec<u8>,
+    exit_data: Vec<(Vec<u8>, u64)>,
 }
 
 // ── Arg parsing helpers ──
@@ -381,7 +397,7 @@ async fn deploy_covenant(
     node.submit_transaction(rpc_tx, false).await.context("Failed to submit deploy tx")?;
     println!("  Deploy tx submitted.");
 
-    Ok(DeployResult { tx_id, on_chain_covenant_id, starting_block, initial_seq, output_value: covenant_value })
+    Ok(DeployResult { tx_id, on_chain_covenant_id, starting_block, initial_seq, output_value: covenant_value, deploy_change: change })
 }
 
 async fn wait_for_tx_confirmation(node: &KaspaNode, tx_id: Hash) -> Result<()> {
@@ -400,7 +416,7 @@ async fn wait_for_tx_confirmation(node: &KaspaNode, tx_id: Hash) -> Result<()> {
     }
 }
 
-async fn sync_chain(node: &KaspaNode, prover: &mut RollupProver) -> Result<()> {
+async fn sync_chain(node: &KaspaNode, prover: &mut RollupProver) -> Result<usize> {
     let mut sync_cursor = prover.last_processed_block;
     let mut total_blocks = 0usize;
     let mut total_txs = 0usize;
@@ -476,7 +492,7 @@ async fn sync_chain(node: &KaspaNode, prover: &mut RollupProver) -> Result<()> {
     println!("  State root: {}", Hash::from_bytes(bytemuck::cast(prover.state_root)));
     println!("  Seq commitment: {}", prover.seq_commitment);
     println!("  Accumulated blocks for proving: {}", prover.accumulated_blocks());
-    Ok(())
+    Ok(total_actions)
 }
 
 async fn run_prove(prover: &mut RollupProver, backend: ProverBackend, proof_kind: ProofKind) -> Result<ProveResult> {
@@ -485,14 +501,20 @@ async fn run_prove(prover: &mut RollupProver, backend: ProverBackend, proof_kind
 
     let prev_state_hash = snapshot.input.public_input.prev_state_hash;
     let prev_seq_commitment = snapshot.input.public_input.prev_seq_commitment;
+    let perm_redeem_script = snapshot.perm_redeem_script;
+    let perm_exit_data = snapshot.perm_exit_data;
+    let input = snapshot.input;
 
-    println!("  Proving {} block(s) with backend={:?}, kind={:?}", snapshot.input.block_txs.len(), backend, proof_kind);
+    println!("  Proving {} block(s) with backend={:?}, kind={:?}", input.block_txs.len(), backend, proof_kind);
     println!("  block_prove_to: {block_prove_to}");
     println!("  prev_state_hash: {}", Hash::from_bytes(bytemuck::cast(prev_state_hash)));
     println!("  prev_seq_commitment: {}", Hash::from_bytes(bytemuck::cast(prev_seq_commitment)));
-    println!("  covenant_id: {}", Hash::from_bytes(bytemuck::cast(snapshot.input.public_input.covenant_id)));
+    println!("  covenant_id: {}", Hash::from_bytes(bytemuck::cast(input.public_input.covenant_id)));
+    if perm_redeem_script.is_some() {
+        println!("  Permission tree: {} exit leaves", perm_exit_data.len());
+    }
 
-    let output = tokio::task::spawn_blocking(move || host_prove::prove(&snapshot.input, backend, proof_kind))
+    let output = tokio::task::spawn_blocking(move || host_prove::prove(&input, backend, proof_kind))
         .await
         .context("Prove task panicked")?
         .map_err(|e| anyhow::anyhow!("Proving failed: {e}"))?;
@@ -501,7 +523,7 @@ async fn run_prove(prover: &mut RollupProver, backend: ProverBackend, proof_kind
     println!("  Stats: {} segments, {} cycles", output.stats.segments, output.stats.total_cycles);
     println!("  Journal length: {} bytes", output.receipt.journal.bytes.len());
 
-    Ok(ProveResult { output, block_prove_to, prev_state_hash, prev_seq_commitment })
+    Ok(ProveResult { output, block_prove_to, prev_state_hash, prev_seq_commitment, perm_redeem_script, perm_exit_data })
 }
 
 async fn build_and_submit_proof(
@@ -577,10 +599,12 @@ async fn build_and_submit_proof(
     println!("  sig_script length: {} bytes", sig_script.len());
 
     // Find a collateral UTXO from the deployer's address
+    let has_permission = prove.perm_redeem_script.is_some();
+    let min_collateral = if has_permission { deploy.output_value + 10_000 } else { 10_000 };
     let rpc_utxos = node.get_utxos_by_addresses(vec![keypair.address.clone()]).await.context("get_utxos_by_addresses failed")?;
     let collateral = rpc_utxos
         .iter()
-        .find(|u| u.utxo_entry.amount >= 10_000)
+        .find(|u| u.utxo_entry.amount >= min_collateral)
         .context("No UTXO available for collateral — fund the deployer address")?;
     let collateral_outpoint = TransactionOutpoint::new(collateral.outpoint.transaction_id, collateral.outpoint.index);
     let collateral_amount = collateral.utxo_entry.amount;
@@ -597,12 +621,24 @@ async fn build_and_submit_proof(
         TransactionInput::new(collateral_outpoint, vec![], 0, 1),
     ];
 
-    // output[0]=covenant (full value preserved), output[1]=change back to deployer
+    // output[0]=covenant (full value preserved)
     let mut outputs = vec![TransactionOutput::with_covenant(
         deploy.output_value,
         output_spk,
         Some(CovenantBinding { authorizing_input: 0, covenant_id: deploy.on_chain_covenant_id }),
     )];
+
+    // output[1]=permission (if exits occurred in this batch)
+    if let Some(ref perm_redeem) = prove.perm_redeem_script {
+        let perm_spk = pay_to_script_hash_script(perm_redeem);
+        outputs.push(TransactionOutput::with_covenant(
+            deploy.output_value,
+            perm_spk,
+            Some(CovenantBinding { authorizing_input: 0, covenant_id: deploy.on_chain_covenant_id }),
+        ));
+        println!("  Permission output: {} sompi ({} exit leaves)", deploy.output_value, prove.perm_exit_data.len());
+    }
+
     // Placeholder change output — adjusted after fee estimation
     outputs.push(TransactionOutput::new(collateral_amount, pay_to_address_script(&keypair.address)));
 
@@ -614,13 +650,17 @@ async fn build_and_submit_proof(
     let priority_feerate = fee_estimate.priority_bucket.feerate;
     let estimated_fee = compute_fee(mass, priority_feerate);
 
-    let change = collateral_amount.checked_sub(estimated_fee).context("Collateral UTXO too small to cover fee")?;
+    let perm_cost = if has_permission { deploy.output_value } else { 0 };
+    let change = collateral_amount
+        .checked_sub(estimated_fee + perm_cost)
+        .context("Collateral UTXO too small to cover fee + permission value")?;
+    let change_idx = outputs.len() - 1;
     if change > 0 {
-        outputs[1].value = change;
+        outputs[change_idx].value = change;
     } else {
         outputs.pop(); // no change output if exactly zero
     }
-    println!("  Proof tx fee: {estimated_fee} sompi (mass: {mass}, change: {change})");
+    println!("  Proof tx fee: {estimated_fee} sompi (mass: {mass}, perm_cost: {perm_cost}, change: {change})");
 
     // Build the final transaction
     let mut proof_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
@@ -652,6 +692,118 @@ async fn build_and_submit_proof(
     Ok(proof_tx_id)
 }
 
+// ── Action / withdrawal helpers ──
+
+fn sign_action_tx(tx: Transaction, secret_key: &secp256k1::SecretKey, sender_spk: &ScriptPublicKey, gas_amount: u64) -> Transaction {
+    let utxo_entry = UtxoEntry::new(gas_amount, sender_spk.clone(), 0, false, None);
+    let signable = SignableTransaction::with_entries(tx, vec![utxo_entry]);
+    let kp = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, secret_key);
+    sign(signable, kp).tx
+}
+
+fn derive_delegate_address(covenant_id: Hash, prefix: Prefix) -> Address {
+    let delegate_script = build_delegate_entry_script(&covenant_id.as_bytes());
+    let delegate_spk = pay_to_script_hash_script(&delegate_script);
+    let script_bytes = delegate_spk.script();
+    let hash_bytes: [u8; 32] = script_bytes[2..34].try_into().unwrap();
+    Address::new(prefix, Version::ScriptHash, &hash_bytes)
+}
+
+async fn withdraw_exit(
+    node: &KaspaNode,
+    covenant_id: Hash,
+    perm_outpoint: (Hash, u32),
+    perm_value: u64,
+    perm_redeem: &[u8],
+    exit_data: &[(Vec<u8>, u64)],
+    leaf_idx: usize,
+    delegate_address: &Address,
+) -> Result<WithdrawResult> {
+    let (ref spk, amount) = exit_data[leaf_idx];
+    let unclaimed = exit_data.len() as u64;
+
+    // Build permission tree and proof
+    let tree = PermissionTree::from_leaves(exit_data.to_vec());
+    let proof = tree.prove(leaf_idx);
+    let perm_sig_script = build_permission_sig_script(spk, amount, amount, &proof, perm_redeem);
+
+    // Build delegate entry script and sig_script
+    let delegate_script = build_delegate_entry_script(&covenant_id.as_bytes());
+    let delegate_spk = pay_to_script_hash_script(&delegate_script);
+    let delegate_sig_script = ScriptBuilder::new().add_data(&delegate_script).unwrap().drain();
+
+    // Find delegate UTXOs covering amount
+    let rpc_utxos = node.get_utxos_by_addresses(vec![delegate_address.clone()]).await.context("get delegate UTXOs")?;
+    let mut selected_delegates: Vec<(Hash, u32, u64)> = Vec::new();
+    let mut delegate_total: u64 = 0;
+    for u in &rpc_utxos {
+        selected_delegates.push((u.outpoint.transaction_id, u.outpoint.index, u.utxo_entry.amount));
+        delegate_total += u.utxo_entry.amount;
+        if delegate_total >= amount {
+            break;
+        }
+    }
+    if delegate_total < amount {
+        bail!("Insufficient delegate UTXOs ({delegate_total} < {amount} sompi)");
+    }
+    println!("  Delegate UTXOs: {} covering {delegate_total} sompi", selected_delegates.len());
+
+    // Estimate fee
+    let fee_estimate = node.get_fee_estimate().await.context("get_fee_estimate failed")?;
+    let priority_feerate = fee_estimate.priority_bucket.feerate;
+    let estimated_fee = compute_fee(5000, priority_feerate);
+    let dest_value = amount.checked_sub(estimated_fee).context("Exit amount too small to cover fee")?;
+
+    // Build inputs: permission + delegates
+    let mut inputs = vec![TransactionInput::new(TransactionOutpoint::new(perm_outpoint.0, perm_outpoint.1), perm_sig_script, 0, 115)];
+    for &(tx_id, index, _) in &selected_delegates {
+        inputs.push(TransactionInput::new(TransactionOutpoint::new(tx_id, index), delegate_sig_script.clone(), 0, 0));
+    }
+
+    // Build outputs: withdrawal destination
+    let dest_spk = ScriptPublicKey::new(0, spk.clone().into());
+    let mut outputs = vec![TransactionOutput::new(dest_value, dest_spk)];
+
+    // Continuation permission output (if more exits remain)
+    let continuation = if unclaimed > 1 {
+        let mut remaining = exit_data.to_vec();
+        remaining.remove(leaf_idx);
+        let new_unclaimed = remaining.len() as u64;
+        let new_depth = required_depth(remaining.len());
+        let new_tree = PermissionTree::from_leaves(remaining.clone());
+        let new_root = new_tree.root();
+        let max_inputs = std::num::NonZeroUsize::new(zk_covenant_rollup_core::MAX_DELEGATE_INPUTS).unwrap();
+        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, new_depth, max_inputs);
+        let new_perm_spk = pay_to_script_hash_script(&new_redeem);
+        outputs.push(TransactionOutput::with_covenant(
+            perm_value,
+            new_perm_spk,
+            Some(CovenantBinding { authorizing_input: 0, covenant_id }),
+        ));
+        Some(WithdrawContinuation { perm_redeem: new_redeem, exit_data: remaining })
+    } else {
+        None
+    };
+
+    // Delegate change
+    if delegate_total > amount {
+        let delegate_change = delegate_total - amount;
+        outputs.push(TransactionOutput::new(delegate_change, delegate_spk));
+    }
+
+    let tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+    let tx_id = tx.id();
+
+    println!("  Withdraw tx ID: {tx_id}");
+    println!("  Destination: {dest_value} sompi (fee: {estimated_fee})");
+
+    let rpc_tx = tx_to_rpc(tx);
+    node.submit_transaction(rpc_tx, false).await.context("Failed to submit withdraw tx")?;
+    println!("  Withdraw tx submitted.");
+
+    Ok(WithdrawResult { tx_id, continuation })
+}
+
 // ── Main ──
 
 #[tokio::main]
@@ -667,8 +819,22 @@ async fn main() -> Result<()> {
     println!("\nPhase 2: Setting up keypair...");
     let keypair = setup_keypair(args.privkey.as_deref(), Prefix::Testnet)?;
 
+    // L2 operation amounts
+    let deposit_amount: u64 = 50_000_000;
+    let transfer_amount: u64 = 20_000_000;
+    let exit1_amount: u64 = 15_000_000;
+    let exit2_amount: u64 = 20_000_000;
+
+    // Derive deployer's public key hash (Pubkey = Hash in this codebase)
+    let deployer_pk = {
+        let pk = keypair.secret_key.public_key(secp256k1::SECP256K1);
+        let (xonly, _) = pk.x_only_public_key();
+        Hash::from_bytes(xonly.serialize())
+    };
+
     println!("\nPhase 3: Checking for mature UTXOs...");
-    let min_value = args.covenant_value + 10_000;
+    // Need: covenant_value*2 (deploy covenant + permission output) + deposit + headroom for fees
+    let min_value = args.covenant_value * 2 + deposit_amount + 1_000_000;
     let gas_utxo = wait_for_mature_utxo(&node, &keypair.address, dag_info.virtual_daa_score, min_value).await?;
 
     let dag_info = node.get_block_dag_info().await.context("get_block_dag_info failed")?;
@@ -680,26 +846,191 @@ async fn main() -> Result<()> {
     wait_for_tx_confirmation(&node, deploy.tx_id).await?;
     println!("  Deploy tx confirmed!");
 
-    println!("\nPhase 6: Syncing chain for proving...");
+    // Get fee estimate for action transactions
+    let fee_estimate = node.get_fee_estimate().await.context("get_fee_estimate failed")?;
+    let priority_feerate = fee_estimate.priority_bucket.feerate;
+    let action_fee = compute_fee(2000, priority_feerate);
+    println!("  Action fee: {action_fee} sompi (feerate: {priority_feerate:.2})");
+
+    // ── Phase 6: Init prover ──────────────────────────────────────────────
+
+    println!("\nPhase 6: Initializing prover...");
     let db_path = std::env::temp_dir().join(format!("cli-demo-rollup-db-{}", deploy.on_chain_covenant_id));
     let db = std::sync::Arc::new(RollupDb::open(&db_path).context("open rollup db")?);
     let mut prover = RollupProver::new(deploy.on_chain_covenant_id, empty_tree_root(), deploy.initial_seq, deploy.starting_block, db);
-    sync_chain(&node, &mut prover).await?;
+    println!("  Prover initialized. Starting block: {}", deploy.starting_block);
 
-    println!("\nPhase 7: Proving...");
+    // ── Phase 7: Entry deposit ────────────────────────────────────────────
+
+    println!("\nPhase 7: Entry deposit ({deposit_amount} sompi to deployer L2 account)...");
+    let entry_gas = Utxo { tx_id: deploy.tx_id, index: 1, amount: deploy.deploy_change };
+    let entry_tx = build_entry_tx(deployer_pk, deploy.on_chain_covenant_id, deposit_amount, &entry_gas, action_fee)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let entry_tx_id = {
+        let signed = sign_action_tx(entry_tx, &keypair.secret_key, &keypair.deployer_spk, entry_gas.amount);
+        let tx_id = signed.id();
+        println!("  Entry tx ID: {tx_id}");
+        node.submit_transaction(tx_to_rpc(signed), false).await.context("submit entry tx")?;
+        println!("  Waiting for confirmation...");
+        wait_for_tx_confirmation(&node, tx_id).await?;
+        println!("  Entry tx confirmed!");
+        tx_id
+    };
+    let entry_change_amount = entry_gas.amount - deposit_amount - action_fee;
+
+    // ── Phase 8: Exit #1 ─────────────────────────────────────────────────
+
+    println!("\nPhase 8: Exit #1 ({exit1_amount} L2 sompi from deployer, dest=deployer)...");
+    let exit1_gas = Utxo { tx_id: entry_tx_id, index: 1, amount: entry_change_amount };
+    let exit1_dest_spk_bytes = keypair.deployer_spk.script().to_vec();
+    let exit1_tx =
+        build_exit_tx(deployer_pk, exit1_amount, &exit1_dest_spk_bytes, &exit1_gas, action_fee).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let exit1_tx_id = {
+        let signed = sign_action_tx(exit1_tx, &keypair.secret_key, &keypair.deployer_spk, exit1_gas.amount);
+        let tx_id = signed.id();
+        println!("  Exit #1 tx ID: {tx_id}");
+        node.submit_transaction(tx_to_rpc(signed), false).await.context("submit exit #1 tx")?;
+        println!("  Waiting for confirmation...");
+        wait_for_tx_confirmation(&node, tx_id).await?;
+        println!("  Exit #1 tx confirmed!");
+        tx_id
+    };
+    let exit1_output_amount = exit1_gas.amount - action_fee;
+
+    // ── Phase 9: Generate keypair #2 ─────────────────────────────────────
+
+    println!("\nPhase 9: Generating keypair #2...");
+    let sk2 = secp256k1::SecretKey::new(&mut rand::thread_rng());
+    let pk2_full = sk2.public_key(secp256k1::SECP256K1);
+    let (xonly_pk2, _) = pk2_full.x_only_public_key();
+    let addr2 = Address::new(Prefix::Testnet, Version::PubKey, &xonly_pk2.serialize());
+    let spk2 = pay_to_address_script(&addr2);
+    let pk2_hash = Hash::from_bytes(xonly_pk2.serialize());
+    println!("  Address #2: {addr2}");
+
+    // ── Phase 10: L2 Transfer ────────────────────────────────────────────
+
+    println!("\nPhase 10: Transfer ({transfer_amount} L2 sompi, deployer -> account #2)...");
+    let transfer_gas = Utxo { tx_id: exit1_tx_id, index: 0, amount: exit1_output_amount };
+    let transfer_tx = build_transfer_tx(deployer_pk, pk2_hash, transfer_amount, &transfer_gas, &addr2, action_fee)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let transfer_tx_id = {
+        let signed = sign_action_tx(transfer_tx, &keypair.secret_key, &keypair.deployer_spk, transfer_gas.amount);
+        let tx_id = signed.id();
+        println!("  Transfer tx ID: {tx_id}");
+        node.submit_transaction(tx_to_rpc(signed), false).await.context("submit transfer tx")?;
+        println!("  Waiting for confirmation...");
+        wait_for_tx_confirmation(&node, tx_id).await?;
+        println!("  Transfer tx confirmed!");
+        tx_id
+    };
+    let transfer_output_amount = transfer_gas.amount - action_fee;
+
+    // ── Phase 11: Exit #2 ────────────────────────────────────────────────
+
+    // Exit #2 destination is deployer's address so the output serves as proof collateral
+    println!("\nPhase 11: Exit #2 ({exit2_amount} L2 sompi from account #2, dest=deployer)...");
+    let exit2_gas = Utxo { tx_id: transfer_tx_id, index: 0, amount: transfer_output_amount };
+    let exit2_tx =
+        build_exit_tx(pk2_hash, exit2_amount, &exit1_dest_spk_bytes, &exit2_gas, action_fee).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let exit2_tx_id = {
+        let signed = sign_action_tx(exit2_tx, &sk2, &spk2, exit2_gas.amount);
+        let tx_id = signed.id();
+        println!("  Exit #2 tx ID: {tx_id}");
+        node.submit_transaction(tx_to_rpc(signed), false).await.context("submit exit #2 tx")?;
+        println!("  Waiting for confirmation...");
+        wait_for_tx_confirmation(&node, tx_id).await?;
+        println!("  Exit #2 tx confirmed!");
+        tx_id
+    };
+
+    // ── Phase 12: Sync chain (retry until all actions found) ─────────────
+
+    println!("\nPhase 12: Syncing chain...");
+    let expected_actions = 4; // entry + exit1 + transfer + exit2
+    let mut cumulative_actions = 0usize;
+    loop {
+        let actions = sync_chain(&node, &mut prover).await?;
+        cumulative_actions += actions;
+        if cumulative_actions >= expected_actions {
+            println!("  All {expected_actions} actions found.");
+            break;
+        }
+        println!("  Found {cumulative_actions}/{expected_actions} actions so far, waiting for more blocks...");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+
+    // ── Phase 13: Prove ──────────────────────────────────────────────────
+
+    println!("\nPhase 13: Proving...");
     let prove = run_prove(&mut prover, backend, proof_kind).await?;
 
-    println!("\nPhase 8: Building proof transaction...");
+    // ── Phase 14: Submit proof with permission output ────────────────────
+
+    println!("\nPhase 14: Building and submitting proof...");
     let proof_tx_id = build_and_submit_proof(&node, &prove, proof_kind, &deploy, &keypair).await?;
 
-    println!("\nPhase 9: Waiting for proof tx confirmation...");
+    println!("  Waiting for proof tx confirmation...");
     wait_for_tx_confirmation(&node, proof_tx_id).await?;
     println!("  Proof tx confirmed!");
 
+    // ── Phase 15: Withdraw #1 ────────────────────────────────────────────
+
+    println!("\nPhase 15: Withdraw exit #1 ({exit1_amount} sompi)...");
+    let delegate_addr = derive_delegate_address(deploy.on_chain_covenant_id, Prefix::Testnet);
+    println!("  Delegate address: {delegate_addr}");
+
+    let perm_redeem = prove.perm_redeem_script.as_ref().context("No permission redeem script — batch had no exits?")?;
+    let w1 = withdraw_exit(
+        &node,
+        deploy.on_chain_covenant_id,
+        (proof_tx_id, 1), // permission UTXO at proof tx output[1]
+        deploy.output_value,
+        perm_redeem,
+        &prove.perm_exit_data,
+        0, // leaf index 0 = exit #1
+        &delegate_addr,
+    )
+    .await?;
+
+    println!("  Waiting for withdraw #1 confirmation...");
+    wait_for_tx_confirmation(&node, w1.tx_id).await?;
+    println!("  Withdraw #1 confirmed!");
+
+    // ── Phase 16: Withdraw #2 ────────────────────────────────────────────
+
+    println!("\nPhase 16: Withdraw exit #2 ({exit2_amount} sompi)...");
+    let w1_cont = w1.continuation.context("Expected continuation permission after withdraw #1")?;
+
+    let w2 = withdraw_exit(
+        &node,
+        deploy.on_chain_covenant_id,
+        (w1.tx_id, 1), // continuation permission UTXO at withdraw #1 output[1]
+        deploy.output_value,
+        &w1_cont.perm_redeem,
+        &w1_cont.exit_data,
+        0, // leaf index 0 = exit #2 (only remaining exit)
+        &delegate_addr,
+    )
+    .await?;
+
+    println!("  Waiting for withdraw #2 confirmation...");
+    wait_for_tx_confirmation(&node, w2.tx_id).await?;
+    println!("  Withdraw #2 confirmed!");
+
+    // ── Summary ──────────────────────────────────────────────────────────
+
     println!("\n=== SUCCESS ===");
-    println!("  Covenant ID:  {}", deploy.on_chain_covenant_id);
-    println!("  Deploy tx:    {}", deploy.tx_id);
-    println!("  Proof tx:     {proof_tx_id}");
+    println!("  Covenant ID:    {}", deploy.on_chain_covenant_id);
+    println!("  Deploy tx:      {}", deploy.tx_id);
+    println!("  Entry tx:       {entry_tx_id}");
+    println!("  Exit #1 tx:     {exit1_tx_id}");
+    println!("  Transfer tx:    {transfer_tx_id}");
+    println!("  Exit #2 tx:     {exit2_tx_id}");
+    println!("  Proof tx:       {proof_tx_id}");
+    println!("  Withdraw #1 tx: {}", w1.tx_id);
+    println!("  Withdraw #2 tx: {}", w2.tx_id);
+    println!("  L2 operations:  entry({deposit_amount}), exit({exit1_amount}), transfer({transfer_amount}), exit({exit2_amount})");
 
     node.stop().await.context("Failed to stop node")?;
     Ok(())
