@@ -112,6 +112,15 @@ use self::{services::ConsensusServices, storage::ConsensusStorage};
 
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
 
+// --- IMPORTS  ---
+use crate::model::stores::{
+    selected_chain::DbSelectedChainStore,
+    tips::DbTipsStore, // HeadersStore used to be here
+    virtual_state::VirtualStores,
+};
+use parking_lot::RwLock;
+// -----------------------------
+
 pub struct Consensus {
     // DB
     db: Arc<DB>,
@@ -483,25 +492,37 @@ impl Consensus {
 
         // Update virtual state based to the new pruning point
         // Updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
+
+        // IMPORTANT: This must be active; we need the object!
         let virtual_parents = vec![new_pruning_point];
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
             ghostdag_data: self.services.ghostdag_manager.ghostdag(&virtual_parents),
             ..VirtualState::default()
         });
-        self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
-        // Remove old body tips and insert pruning point as the current tip
+
+        // Remove old body tips (specific to intrusive update)
         self.body_tips_store.write().delete_all_tips(&mut batch).unwrap();
-        self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
-        // Update selected_chain
-        self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
+
+        // Call the new standalone helper to do the common DB updates
+        write_common_pruning_point_db_updates(
+            &self.virtual_stores,
+            &self.body_tips_store,
+            &self.selected_chain_store,
+            &mut batch,
+            new_pruning_point,
+            virtual_state, // Wir übergeben das oben berechnete Objekt
+        )?;
+
         // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
         self.pruning_meta_stores.write().set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+
         // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
         let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
         // Add the pruning point itself which is also missing a body
         anticone.push(new_pruning_point);
         self.pruning_meta_stores.write().set_body_missing_anticone(&mut batch, anticone).unwrap();
+
         self.db.write(batch).unwrap();
         drop(pruning_point_write);
         Ok(())
@@ -1420,4 +1441,26 @@ impl ConsensusApi for Consensus {
         let (_pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
         (0..=pruning_index).rev().take(n).map(|ind| self.past_pruning_points_store.get(ind).unwrap()).collect_vec()
     }
+}
+
+pub fn write_common_pruning_point_db_updates(
+    virtual_stores: &Arc<RwLock<VirtualStores>>,
+    body_tips_store: &Arc<RwLock<DbTipsStore>>,
+    selected_chain_store: &Arc<RwLock<DbSelectedChainStore>>,
+    batch: &mut WriteBatch,
+    new_pruning_point: Hash,
+    virtual_state: Arc<VirtualState>,
+) -> ConsensusResult<()> {
+    // 1. write virtual state
+    virtual_stores.write().state.set_batch(batch, virtual_state).unwrap();
+
+    // 2. reset body tips
+    let virtual_parents = vec![new_pruning_point];
+    // now that we have the correct type (TipsStore), it also recognizes “init_batch” again.
+    body_tips_store.write().init_batch(batch, &virtual_parents).unwrap();
+
+    // 3. update Selected Chain
+    selected_chain_store.write().init_with_pruning_point(batch, new_pruning_point).unwrap();
+
+    Ok(())
 }
