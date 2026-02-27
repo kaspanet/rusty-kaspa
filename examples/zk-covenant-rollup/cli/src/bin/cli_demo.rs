@@ -781,7 +781,7 @@ async fn withdraw_exit(
     keypair: &Keypair,
 ) -> Result<WithdrawResult> {
     let (ref spk, amount) = exit_data[leaf_idx];
-    let unclaimed = exit_data.len() as u64;
+    let unclaimed = exit_data.iter().filter(|(spk, _)| !spk.is_empty()).count() as u64;
 
     // Build permission tree and proof
     let tree = PermissionTree::from_leaves(exit_data.to_vec());
