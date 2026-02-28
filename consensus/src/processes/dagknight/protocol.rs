@@ -1,17 +1,12 @@
 use std::{
-    cmp::{Ordering, Reverse},
-    collections::{BinaryHeap, VecDeque},
+    cmp::Ordering,
     sync::{Arc, OnceLock},
 };
 
 use dashmap::DashMap;
 use itertools::Itertools;
-use kaspa_consensus_core::{
-    BlockHashMap, BlockHashSet, HashKTypeMap, HashMapCustomHasher, KType,
-    blockhash::{self, BlockHashes},
-};
+use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
 use kaspa_core::{debug, trace};
-use kaspa_database::prelude::StoreResultUnitExt;
 use kaspa_hashes::Hash;
 use kaspa_math::Uint192;
 use parking_lot::RwLock;
@@ -393,7 +388,24 @@ impl<
         all_tips: &[Hash],
         k_to_check: KType,
     ) -> Option<SortableBlock> {
-        let conflict_zone_manager = self.fill_conflict_zone_data(conflict_genesis, all_tips, k_to_check);
+        let reachability_service = self.reachability_service.clone();
+        let relations_store = self.relations_store.read();
+        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
+        let conflict_zone_manager = ConflictZoneManager::new(
+            k_to_check,
+            conflict_genesis,
+            self.dagknight_store.clone(),
+            self.headers_store.clone(),
+            relations_service,
+            reachability_service.clone(),
+        );
+
+        // Acquire a lock for this conflict_genesis to prevent concurrent writes
+        let locks = get_conflict_locks();
+        let lock_arc = locks.entry(conflict_genesis).or_insert_with(|| Arc::new(RwLock::new(()))).clone();
+        let _lock = lock_arc.write();
+
+        conflict_zone_manager.fill_zone_data(all_tips);
 
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
@@ -407,184 +419,6 @@ impl<
         } else {
             None
         }
-    }
-
-    // Calculates the rank of the subgroup over the region: <root, tips>
-    // root = conflict genesis
-    // subgroup = the current subgroup
-    // tips = all tips in this conflict. part of which is the subgroup
-    //
-    // Returns the conflict zone manager which gives access to the coloring data of the conflict zone
-    fn fill_conflict_zone_data(&self, root: Hash, tips: &[Hash], ghostdag_k: KType) -> ConflictZoneManager<C, O, D, R> {
-        let reachability_service = self.reachability_service.clone();
-        let relations_store = self.relations_store.read();
-        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), root);
-        let conflict_manager = ConflictZoneManager::new(
-            ghostdag_k,
-            root,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
-            relations_service.clone(),
-            reachability_service.clone(),
-        );
-
-        // Note there is no need to initialize origin since we have a single root
-        if !conflict_manager.has(root) {
-            conflict_manager
-                .insert(
-                    root,
-                    Arc::new(GhostdagData::new(
-                        0,
-                        Default::default(),
-                        blockhash::ORIGIN,
-                        BlockHashes::new(Vec::new()),
-                        BlockHashes::new(Vec::new()),
-                        HashKTypeMap::new(BlockHashMap::new()),
-                    )),
-                )
-                .idempotent()
-                .unwrap();
-        }
-
-        let mut topological_heap: BinaryHeap<_> = Default::default();
-
-        // Acquire a read lock for this conflict_genesis to prevent concurrent writes
-        let locks = get_conflict_locks();
-        // Get or create the lock Arc, then acquire the read lock
-        let lock_arc = locks.entry(root).or_insert_with(|| Arc::new(RwLock::new(()))).clone();
-        // This lock ensures that only a single thread will write through a conflict zone rooted at conflict_genesis
-        let _lock = lock_arc.write();
-
-        // Determine last known tips by backward iterating from subgroup tips to root
-        // and stopping at the latest blocks with GD data to proceed from there.
-        // Guaranteed to return at least one entry since the conflict_genesis is initialized above
-        let (last_known_tips, visited_subdag) = self.find_last_known_tips(root, tips, &conflict_manager);
-
-        if last_known_tips.len() == 1 && last_known_tips[0] == root {
-            trace!("fill_conflict_zone_data from root: {}", root);
-        } else {
-            trace!("fill_conflict_zone_data from {} last known tips", last_known_tips.len());
-        }
-
-        last_known_tips.iter().for_each(|current_root| {
-            topological_heap.push(Reverse(SortableBlock {
-                hash: *current_root,
-                blue_work: self.headers_store.get_header(*current_root).unwrap().blue_work,
-            }));
-        });
-
-        let mut visited = BlockHashSet::new();
-
-        loop {
-            let Some(current) = topological_heap.pop() else {
-                break;
-            };
-            let current_hash = current.0.hash;
-            if !visited.insert(current_hash) {
-                continue;
-            }
-
-            if !reachability_service.is_dag_ancestor_of_any(current_hash, &mut tips.iter().copied()) {
-                // We don't care about blocks in the antipast of tips
-                continue;
-            }
-
-            if !conflict_manager.has(current_hash) {
-                // TODO[DK]: Impement proper k-colouring lines 9-10 from DK paper if still needed
-
-                // Implements k-colouring assuming free_search is always false
-                let parents = &relations_service.get_parents(current_hash).unwrap();
-                let next_chain_ancestor_of_current = reachability_service.get_next_chain_ancestor(current_hash, root);
-                let agreeing_parents = parents
-                    .iter()
-                    .copied()
-                    .filter(|&p| {
-                        next_chain_ancestor_of_current == current_hash
-                            || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
-                    })
-                    .collect::<Vec<_>>();
-                assert!(
-                    !agreeing_parents.is_empty(),
-                    "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
-                    current_hash,
-                    parents
-                );
-
-                let selected_parent = conflict_manager.find_selected_parent(agreeing_parents.iter().copied());
-                let current_gd = conflict_manager.k_colouring(parents, ghostdag_k, Some(selected_parent));
-
-                conflict_manager.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
-            }
-
-            for child in relations_service.get_children(current_hash).unwrap().read().iter().copied() {
-                if let Ok(is_chain_ancestor) = self.reachability_service.try_is_chain_ancestor_of(root, child) {
-                    if !is_chain_ancestor {
-                        debug!("Skipping child not a chain descendant of root | root: {:#?} | child: {:#?}", root, child);
-                        continue;
-                    }
-                    topological_heap.push(Reverse(SortableBlock {
-                        hash: child,
-                        blue_work: self.headers_store.get_header(child).unwrap().blue_work,
-                    }));
-                } else {
-                    debug!(
-                        "reachability has | {}: {} | {}: {}",
-                        root,
-                        self.reachability_service.has_reachability_data(root),
-                        child,
-                        self.reachability_service.has_reachability_data(child)
-                    );
-                    if visited_subdag.contains(&child) {
-                        panic!("root: {} | Unexpected missing reachability data for {} | tips: {:?}", child, root, tips);
-                    } else {
-                        debug!(
-                            "root: {} | Child block was in relations but is not a member of the conflict zone. Skip: {}",
-                            root, child
-                        )
-                    }
-                }
-            }
-        }
-
-        conflict_manager
-    }
-
-    fn find_last_known_tips(
-        &self,
-        conflict_genesis: Hash,
-        tips: &[Hash],
-        conflict_manager: &ConflictZoneManager<C, O, D, R>,
-    ) -> (Vec<Hash>, BlockHashSet) {
-        let mut visited = BlockHashSet::new();
-        let mut queue: VecDeque<Hash> = VecDeque::from_iter(tips.iter().copied());
-
-        let mut roots = vec![];
-
-        while !queue.is_empty() {
-            let curr = queue.pop_front().unwrap();
-
-            if !visited.insert(curr) {
-                continue;
-            }
-
-            // We only care about blocks that have conflict genesis as it's chain ancestor.
-            // This means search is always free_search = false
-            // TODO[DK]: Fix this to dag ancestry if we need to support free_search = true
-            if !self.reachability_service.is_chain_ancestor_of(conflict_genesis, curr) {
-                continue;
-            }
-
-            if conflict_manager.has(curr) {
-                // This is a tip we can start from
-                roots.push(curr);
-            }
-
-            for parent in self.relations_store.read().get_parents(curr).unwrap().iter() {
-                queue.push_back(*parent);
-            }
-        }
-
-        (roots, visited)
     }
 }
 
@@ -846,6 +680,7 @@ mod tests {
     use std::collections::HashMap;
     use std::{cell::RefCell, fs::File};
 
+    use kaspa_consensus_core::HashMapCustomHasher;
     use kaspa_consensus_core::blockhash::ORIGIN;
     use kaspa_consensus_core::header::Header;
     use parking_lot::lock_api::RwLock;
