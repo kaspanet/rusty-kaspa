@@ -1,9 +1,14 @@
-use std::sync::Arc;
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, VecDeque},
+    sync::Arc,
+};
 
 use kaspa_consensus_core::{
-    BlockHashMap, BlockHashSet, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType, blockhash::BlockHashExtensions,
+    BlockHashMap, BlockHashSet, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType,
+    blockhash::{self, BlockHashExtensions, BlockHashes},
 };
-use kaspa_database::prelude::StoreError;
+use kaspa_database::prelude::{StoreError, StoreResultUnitExt};
 use kaspa_hashes::Hash;
 
 use crate::{
@@ -297,6 +302,129 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         );
 
         selected_parent
+    }
+
+    pub fn init_root(&self) {
+        if !self.has(self.root) {
+            self.insert(
+                self.root,
+                Arc::new(GhostdagData::new(
+                    0,
+                    Default::default(),
+                    blockhash::ORIGIN,
+                    BlockHashes::new(Vec::new()),
+                    BlockHashes::new(Vec::new()),
+                    HashKTypeMap::new(BlockHashMap::new()),
+                )),
+            )
+            .idempotent()
+            .unwrap();
+        }
+    }
+
+    pub fn find_last_known_tips(&self, tips: &[Hash]) -> (Vec<Hash>, BlockHashSet) {
+        let mut visited = BlockHashSet::new();
+        let mut queue: VecDeque<Hash> = VecDeque::from_iter(tips.iter().copied());
+
+        let mut roots = vec![];
+
+        while let Some(curr) = queue.pop_front() {
+            if !visited.insert(curr) {
+                continue;
+            }
+
+            // We only care about blocks that have conflict genesis as it's chain ancestor.
+            // This means search is always free_search = false
+            // TODO[DK]: Fix this to dag ancestry if we need to support free_search = true
+            if !self.reachability_service.is_chain_ancestor_of(self.root, curr) {
+                continue;
+            }
+
+            if self.has(curr) {
+                roots.push(curr);
+            }
+
+            for parent in self.relations_store.get_parents(curr).unwrap().iter() {
+                queue.push_back(*parent);
+            }
+        }
+
+        (roots, visited)
+    }
+
+    // Calculates the rank of the subgroup over the region: <root, tips>
+    // root = conflict genesis
+    // subgroup = the current subgroup
+    // tips = all tips in this conflict. part of which is the subgroup
+    //
+    // Returns the conflict zone manager which gives access to the coloring data of the conflict zone
+    pub fn fill_zone_data(&self, tips: &[Hash]) -> BlockHashSet {
+        self.init_root();
+
+        let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips);
+
+        let mut topological_heap: BinaryHeap<_> = Default::default();
+
+        last_known_tips.iter().for_each(|current_root| {
+            topological_heap.push(Reverse(SortableBlock {
+                hash: *current_root,
+                blue_work: self.headers_store.get_header(*current_root).unwrap().blue_work,
+            }));
+        });
+
+        let mut visited = BlockHashSet::new();
+
+        loop {
+            let Some(current) = topological_heap.pop() else {
+                break;
+            };
+            let current_hash = current.0.hash;
+            if !visited.insert(current_hash) {
+                continue;
+            }
+
+            if !self.reachability_service.is_dag_ancestor_of_any(current_hash, &mut tips.iter().copied()) {
+                continue;
+            }
+
+            if !self.has(current_hash) {
+                let parents = &self.relations_store.get_parents(current_hash).unwrap();
+                let next_chain_ancestor_of_current = self.reachability_service.get_next_chain_ancestor(current_hash, self.root);
+                let agreeing_parents = parents
+                    .iter()
+                    .copied()
+                    .filter(|&p| {
+                        next_chain_ancestor_of_current == current_hash
+                            || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
+                    })
+                    .collect::<Vec<_>>();
+                assert!(
+                    !agreeing_parents.is_empty(),
+                    "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
+                    current_hash,
+                    parents
+                );
+
+                let selected_parent = self.find_selected_parent(agreeing_parents.iter().copied());
+                let current_gd = self.k_colouring(parents, self.k, Some(selected_parent));
+
+                self.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
+            }
+
+            for child in self.relations_store.get_children(current_hash).unwrap().read().iter().copied() {
+                if let Ok(is_chain_ancestor) = self.reachability_service.try_is_chain_ancestor_of(self.root, child) {
+                    if !is_chain_ancestor {
+                        continue;
+                    }
+                    topological_heap.push(Reverse(SortableBlock {
+                        hash: child,
+                        blue_work: self.headers_store.get_header(child).unwrap().blue_work,
+                    }));
+                }
+            }
+        }
+
+        visited_subdag
     }
     // END Copied from GD Manager
 }
