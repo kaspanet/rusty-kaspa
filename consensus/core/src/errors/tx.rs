@@ -122,6 +122,16 @@ pub enum PopulateGenesisCovenantsError {
     OutputsNotDisjoint(u32),
     #[error("output index {0} covenant field is already populated")]
     CovenantAlreadyPopulated(u32),
+    #[error("The genesis covenant group array is invalid")]
+    InvalidGenesisCovenantGroupArray,
+    #[error("{0}")]
+    WASM(String),
+}
+
+impl From<workflow_wasm::error::Error> for PopulateGenesisCovenantsError {
+    fn from(e: workflow_wasm::error::Error) -> Self {
+        PopulateGenesisCovenantsError::WASM(e.to_string())
+    }
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
