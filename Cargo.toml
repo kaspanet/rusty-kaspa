@@ -341,6 +341,49 @@ inherits = "release"
 debug = true
 strip = false
 
+# CI optimization: Keep debug fast to compile, but optimize hot-path crates
+# so tests run at reasonable speed without full release builds.
+
+[profile.dev.package.kaspa-consensus]
+opt-level = 2
+
+[profile.dev.package.kaspa-consensus-core]
+opt-level = 2
+
+[profile.dev.package.kaspa-hashes]
+opt-level = 2
+
+[profile.dev.package.kaspa-math]
+opt-level = 2
+
+[profile.dev.package.kaspa-muhash]
+opt-level = 2
+
+[profile.dev.package.kaspa-pow]
+opt-level = 2
+
+[profile.dev.package.kaspa-txscript]
+opt-level = 2
+
+# External crates used heavily by consensus/crypto
+[profile.dev.package.blake2b_simd]
+opt-level = 2
+
+[profile.dev.package.rand_chacha]
+opt-level = 2
+
+[profile.dev.package.malachite-base]
+opt-level = 2
+
+[profile.dev.package.malachite-nz]
+opt-level = 2
+
+[profile.dev.package.secp256k1]
+opt-level = 2
+
+[profile.dev.package.sha2]
+opt-level = 2
+
 [workspace.lints.clippy]
 empty_docs = "allow"
 uninlined_format_args = "allow"
