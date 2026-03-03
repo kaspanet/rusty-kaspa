@@ -898,3 +898,92 @@ fn permission_script_cross_validation_various_roots() {
         assert_eq!(from_builder, from_raw, "permission script mismatch for root seed {:#04x}", seed);
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Withdraw every leaf: verify each leaf index is independently claimable
+// ═══════════════════════════════════════════════════════════════════
+
+/// Withdraw every leaf from a 4-leaf tree (depth 2) by fully deducting each one
+/// independently. Each withdrawal is verified against the original tree — this
+/// proves every leaf index is reachable via merkle proof.
+#[test]
+fn withdraw_every_leaf_depth2() {
+    let leaves: Vec<(Vec<u8>, u64)> =
+        vec![(test_spk_p2pk(1), 1000), (test_spk_p2pk(2), 2000), (test_spk_p2pk(3), 3000), (test_spk_p2pk(4), 4000)];
+
+    for leaf_idx in 0..leaves.len() {
+        let deduct = leaves[leaf_idx].1; // full deduct
+        let (tx, utxos, _) = build_perm_test_tx(leaves.clone(), leaf_idx, deduct);
+        let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+        if let Err(ref e) = result {
+            panic!("withdraw_every_leaf_depth2 failed at leaf {leaf_idx}: {e}");
+        }
+    }
+}
+
+/// Withdraw every leaf from an 8-leaf depth-3 tree.
+#[test]
+fn withdraw_every_leaf_depth3() {
+    let leaves: Vec<(Vec<u8>, u64)> = (0..8).map(|i| (test_spk_p2pk(i as u8 + 10), 1000 * (i as u64 + 1))).collect();
+
+    for leaf_idx in 0..leaves.len() {
+        let deduct = leaves[leaf_idx].1;
+        let (tx, utxos, _) = build_perm_test_tx(leaves.clone(), leaf_idx, deduct);
+        let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+        if let Err(ref e) = result {
+            panic!("withdraw_every_leaf_depth3 failed at leaf {leaf_idx}: {e}");
+        }
+    }
+}
+
+/// Withdraw every leaf with partial deducts (half amount each).
+#[test]
+fn withdraw_every_leaf_partial() {
+    let leaves: Vec<(Vec<u8>, u64)> =
+        vec![(test_spk_p2pk(1), 1000), (test_spk_p2pk(2), 2000), (test_spk_p2pk(3), 4000), (test_spk_p2pk(4), 8000)];
+
+    for leaf_idx in 0..leaves.len() {
+        let deduct = leaves[leaf_idx].1 / 2; // half deduct
+        let (tx, utxos, _) = build_perm_test_tx(leaves.clone(), leaf_idx, deduct);
+        let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+        if let Err(ref e) = result {
+            panic!("withdraw_every_leaf_partial failed at leaf {leaf_idx} (deduct {deduct}): {e}");
+        }
+    }
+}
+
+/// Withdraw every leaf from a 3-leaf tree (non-power-of-2 count).
+#[test]
+fn withdraw_every_leaf_non_power_of_2() {
+    let leaves: Vec<(Vec<u8>, u64)> = vec![(test_spk_p2pk(20), 500), (test_spk_p2pk(21), 1500), (test_spk_p2pk(22), 2500)];
+
+    for leaf_idx in 0..leaves.len() {
+        let deduct = leaves[leaf_idx].1;
+        let (tx, utxos, _) = build_perm_test_tx(leaves.clone(), leaf_idx, deduct);
+        let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+        if let Err(ref e) = result {
+            panic!("withdraw_every_leaf_non_power_of_2 failed at leaf {leaf_idx}: {e}");
+        }
+    }
+}
+
+/// Verify delegate input also passes for every leaf index.
+#[test]
+fn withdraw_every_leaf_delegate_verified() {
+    let leaves: Vec<(Vec<u8>, u64)> =
+        vec![(test_spk_p2pk(1), 1000), (test_spk_p2pk(2), 2000), (test_spk_p2pk(3), 3000), (test_spk_p2pk(4), 4000)];
+
+    for leaf_idx in 0..leaves.len() {
+        let deduct = leaves[leaf_idx].1;
+        let (tx, utxos) = build_delegate_test_tx(cov_id(), &COV_ID_BYTES, leaves.clone(), leaf_idx, deduct);
+        // Verify both permission (input 0) and delegate (input 1)
+        let result0 = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+        if let Err(ref e) = result0 {
+            panic!("delegate test input 0 failed at leaf {leaf_idx}: {e}");
+        }
+        let result1 = try_verify_tx_input(&tx, &utxos, 1, &NullAccessor);
+        if let Err(ref e) = result1 {
+            panic!("delegate test input 1 failed at leaf {leaf_idx}: {e}");
+        }
+    }
+}

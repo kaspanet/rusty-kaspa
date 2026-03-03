@@ -1,0 +1,712 @@
+use borsh::{BorshDeserialize, BorshSerialize};
+use kaspa_consensus_core::tx::Transaction;
+use kaspa_hashes::Hash;
+use rocksdb::{Options, DB};
+use std::path::Path;
+
+/// Semantic aliases.
+pub type CovenantId = Hash;
+pub type Pubkey = Hash;
+
+/// Persistent storage for the rollup TUI backed by RocksDB.
+///
+/// Keys are raw byte prefixes (no string encoding for hot-path data).
+///
+/// ## Schema
+///
+/// | Prefix     | Key suffix                          | Value                        |
+/// |------------|-------------------------------------|------------------------------|
+/// | `cov/`     | covenant_id (32B)                   | `CovenantRecord`             |
+/// | `meta/`    | covenant_id (32B)                   | `CovenantMeta`               |
+/// | `bal/`     | covenant_id (32B) + pubkey (32B)    | u64 balance (8B LE)          |
+/// | `acct/`    | covenant_id (32B) + pubkey (32B)    | privkey (32B raw)            |
+/// | `utxo/`    | address string bytes                | `Vec<UtxoRecord>` (borsh)    |
+/// | `proving/` | covenant_id (32B)                   | `ProvingState`               |
+/// | `provkey/` | covenant_id (32B)                   | privkey (32B raw)            |
+/// | `txhist/`  | covenant_id (32B) + index (8B LE)   | `TxRecordDb`                 |
+/// | `ptx/`     | covenant_id (32B) + tx_hash (32B)   | `Transaction` (borsh)        |
+///
+/// Balance keys inherit the first-byte index from the pubkey, so:
+/// - Lookup by covenant + pubkey: exact 64-byte key
+/// - Lookup by covenant + index:  prefix scan on covenant_id(32B) + index(1B)
+pub struct RollupDb {
+    db: DB,
+}
+
+// ── Record types ──
+
+/// Covenant deployment info.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct CovenantRecord {
+    /// Deployer private key bytes (POC only — not production-secure).
+    pub deployer_privkey: Vec<u8>,
+    /// Transaction ID of the deployment tx (None if not yet deployed).
+    pub deployment_tx_id: Option<Hash>,
+    /// Outpoint of the live covenant UTXO (tx_id, index).
+    pub covenant_utxo: Option<(Hash, u32)>,
+    /// Unix timestamp of creation.
+    pub created_at: u64,
+    /// Value (in sompi) held by the live covenant UTXO.
+    pub covenant_value: Option<u64>,
+    /// Proof type: 0 = Succinct (STARK), 1 = Groth16 (SNARK).
+    pub proof_kind: u8,
+    /// Genesis-derived on-chain covenant ID (None until the deploy tx is accepted).
+    ///
+    /// Computed as `hash(deploy_input_outpoint, deploy_outputs)` and used for all
+    /// on-chain `CovenantBinding` entries.  The internal DB key remains the randomly
+    /// generated covenant_id; this field carries the consensus-level ID.
+    pub on_chain_covenant_id: Option<Hash>,
+    /// Hash of the chain block that was current when the covenant was deployed.
+    /// Used as `starting_block` for prover initialization so the prover only
+    /// processes blocks from the deploy point forward.
+    pub deploy_starting_block: Option<Hash>,
+    /// Sequence commitment embedded in the deploy redeem script (and used as the
+    /// prover's `initial_seq`). Computed from the VCC at deploy time.
+    pub deploy_initial_seq: Option<Hash>,
+}
+
+/// Aggregate covenant state (state root + seq commitment).
+/// Individual balances are stored separately under `bal/`.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct CovenantMeta {
+    pub state_root: Hash,
+    pub seq_commitment: Hash,
+}
+
+/// Serialisable UTXO record.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct UtxoRecord {
+    /// Outpoint: (tx_id, output_index).
+    pub outpoint: (Hash, u32),
+    /// Amount in sompi.
+    pub amount: u64,
+    /// Script public key bytes.
+    pub spk: Vec<u8>,
+}
+
+/// Proving progress for a covenant.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct ProvingState {
+    pub last_proved_block_hash: Hash,
+    pub state_root: Hash,
+    pub seq_commitment: Hash,
+    pub proof_count: u64,
+}
+
+/// Transaction status stored in DB.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+pub enum TxStatusDb {
+    Submitted,
+    Confirmed,
+    /// Tx stuck in mempool — not confirmed within expected timeframe.
+    Stale(String),
+    Failed(String),
+}
+
+/// Persistent transaction history record.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct TxRecordDb {
+    pub tx_id: Hash,
+    pub action: String,
+    pub amount: u64,
+    pub timestamp: u64,
+    pub status: TxStatusDb,
+}
+
+// ── Prefix constants ──
+
+const PREFIX_COVENANT: &[u8] = b"cov/";
+const PREFIX_META: &[u8] = b"meta/";
+const PREFIX_BALANCE: &[u8] = b"bal/";
+const PREFIX_ACCOUNT: &[u8] = b"acct/";
+const PREFIX_UTXO: &[u8] = b"utxo/";
+const PREFIX_PROVING: &[u8] = b"proving/";
+const PREFIX_PROVER_KEY: &[u8] = b"provkey/";
+const PREFIX_TX_HISTORY: &[u8] = b"txhist/";
+const PREFIX_PREV_TX: &[u8] = b"ptx/";
+
+impl RollupDb {
+    /// Open (or create) the database at the given path.
+    pub fn open(path: &Path) -> Result<Self, rocksdb::Error> {
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        let db = DB::open(&opts, path)?;
+        Ok(Self { db })
+    }
+
+    // ── Covenant records ──
+
+    pub fn put_covenant(&self, id: CovenantId, record: &CovenantRecord) -> Result<(), rocksdb::Error> {
+        let key = prefix_key(PREFIX_COVENANT, &id.as_bytes());
+        let val = borsh::to_vec(record).expect("borsh serialize");
+        self.db.put(key, val)
+    }
+
+    pub fn get_covenant(&self, id: CovenantId) -> Result<Option<CovenantRecord>, rocksdb::Error> {
+        let key = prefix_key(PREFIX_COVENANT, &id.as_bytes());
+        Ok(self.db.get(key)?.map(|v| CovenantRecord::try_from_slice(&v).expect("borsh deserialize")))
+    }
+
+    pub fn delete_covenant(&self, id: CovenantId) -> Result<(), rocksdb::Error> {
+        let key = prefix_key(PREFIX_COVENANT, &id.as_bytes());
+        self.db.delete(key)
+    }
+
+    /// Delete a covenant and ALL related data (meta, balances, accounts, proving state, prover key).
+    pub fn delete_covenant_all(&self, id: CovenantId) -> Result<(), rocksdb::Error> {
+        // Fixed-key entries
+        self.db.delete(prefix_key(PREFIX_COVENANT, &id.as_bytes()))?;
+        self.db.delete(prefix_key(PREFIX_META, &id.as_bytes()))?;
+        self.db.delete(prefix_key(PREFIX_PROVING, &id.as_bytes()))?;
+        self.db.delete(prefix_key(PREFIX_PROVER_KEY, &id.as_bytes()))?;
+
+        // Prefix-scanned entries: balances
+        let bal_prefix = prefix_key(PREFIX_BALANCE, &id.as_bytes());
+        for item in self.db.prefix_iterator(&bal_prefix) {
+            let (k, _) = item?;
+            if !k.starts_with(&bal_prefix) {
+                break;
+            }
+            self.db.delete(&*k)?;
+        }
+
+        // Prefix-scanned entries: account keys
+        let acct_prefix = prefix_key(PREFIX_ACCOUNT, &id.as_bytes());
+        for item in self.db.prefix_iterator(&acct_prefix) {
+            let (k, _) = item?;
+            if !k.starts_with(&acct_prefix) {
+                break;
+            }
+            self.db.delete(&*k)?;
+        }
+
+        // Prefix-scanned entries: tx history
+        self.delete_tx_history(id)?;
+
+        Ok(())
+    }
+
+    /// List all covenants. Returns (covenant_id, record) pairs.
+    pub fn list_covenants(&self) -> Vec<(CovenantId, CovenantRecord)> {
+        let iter = self.db.prefix_iterator(PREFIX_COVENANT);
+        let mut results = Vec::new();
+        for item in iter {
+            let (k, v) = item.expect("db iterator");
+            if !k.starts_with(PREFIX_COVENANT) {
+                break;
+            }
+            let id = Hash::from_slice(&k[PREFIX_COVENANT.len()..]);
+            let record = CovenantRecord::try_from_slice(&v).expect("borsh deserialize");
+            results.push((id, record));
+        }
+        results
+    }
+
+    // ── Covenant metadata (state root + seq commitment) ──
+
+    pub fn put_covenant_meta(&self, id: CovenantId, meta: &CovenantMeta) -> Result<(), rocksdb::Error> {
+        let key = prefix_key(PREFIX_META, &id.as_bytes());
+        let val = borsh::to_vec(meta).expect("borsh serialize");
+        self.db.put(key, val)
+    }
+
+    pub fn get_covenant_meta(&self, id: CovenantId) -> Result<Option<CovenantMeta>, rocksdb::Error> {
+        let key = prefix_key(PREFIX_META, &id.as_bytes());
+        Ok(self.db.get(key)?.map(|v| CovenantMeta::try_from_slice(&v).expect("borsh deserialize")))
+    }
+
+    // ── Balances (individual SMT leaves) ──
+
+    /// Store a single account balance. Key = covenant_id(32) + pubkey(32).
+    pub fn put_balance(&self, id: CovenantId, pubkey: Pubkey, balance: u64) -> Result<(), rocksdb::Error> {
+        let key = balance_key(id, pubkey);
+        self.db.put(key, balance.to_le_bytes())
+    }
+
+    /// Get a single account balance. Returns 0 if not found.
+    pub fn get_balance(&self, id: CovenantId, pubkey: Pubkey) -> Result<u64, rocksdb::Error> {
+        let key = balance_key(id, pubkey);
+        Ok(self.db.get(key)?.map(|v| u64::from_le_bytes(v[..8].try_into().expect("8 bytes"))).unwrap_or(0))
+    }
+
+    /// Find account by first-byte index. Prefix scan on covenant_id(32) + index(1).
+    /// Returns the first match as (pubkey, balance).
+    pub fn get_balance_by_index(&self, id: CovenantId, index: u8) -> Result<Option<(Pubkey, u64)>, rocksdb::Error> {
+        let mut scan = Vec::with_capacity(PREFIX_BALANCE.len() + 33);
+        scan.extend_from_slice(PREFIX_BALANCE);
+        scan.extend_from_slice(&id.as_bytes());
+        scan.push(index);
+
+        let mut iter = self.db.prefix_iterator(&scan);
+        if let Some(item) = iter.next() {
+            let (k, v) = item.expect("db iterator");
+            if k.starts_with(&scan) {
+                let pubkey = Hash::from_slice(&k[PREFIX_BALANCE.len() + 32..]);
+                let balance = u64::from_le_bytes(v.as_ref().try_into().expect("8 bytes"));
+                return Ok(Some((pubkey, balance)));
+            }
+        }
+        Ok(None)
+    }
+
+    /// List all balances for a covenant. Returns (pubkey, balance) pairs.
+    pub fn list_balances(&self, id: CovenantId) -> Vec<(Pubkey, u64)> {
+        let scan = prefix_key(PREFIX_BALANCE, &id.as_bytes());
+        let iter = self.db.prefix_iterator(&scan);
+        let mut results = Vec::new();
+        for item in iter {
+            let (k, v) = item.expect("db iterator");
+            if !k.starts_with(&scan) {
+                break;
+            }
+            let pubkey = Hash::from_slice(&k[scan.len()..]);
+            let balance = u64::from_le_bytes(v.as_ref().try_into().expect("8 bytes"));
+            results.push((pubkey, balance));
+        }
+        results
+    }
+
+    // ── Account private keys ──
+
+    /// Store an account's private key. Key = covenant_id(32) + pubkey(32).
+    /// Value = raw private key bytes (32B).
+    pub fn put_account_key(&self, id: CovenantId, pubkey: Pubkey, privkey: &[u8; 32]) -> Result<(), rocksdb::Error> {
+        let key = account_key(id, pubkey);
+        self.db.put(key, privkey)
+    }
+
+    /// Get an account's private key by covenant + pubkey.
+    pub fn get_account_key(&self, id: CovenantId, pubkey: Pubkey) -> Result<Option<[u8; 32]>, rocksdb::Error> {
+        let key = account_key(id, pubkey);
+        Ok(self.db.get(key)?.map(|v| <[u8; 32]>::try_from(&v[..32]).expect("32-byte privkey")))
+    }
+
+    /// Find account private key by first-byte index.
+    /// Returns (pubkey, privkey) if found.
+    #[allow(clippy::type_complexity)]
+    pub fn get_account_key_by_index(&self, id: CovenantId, index: u8) -> Result<Option<(Pubkey, [u8; 32])>, rocksdb::Error> {
+        let mut scan = Vec::with_capacity(PREFIX_ACCOUNT.len() + 33);
+        scan.extend_from_slice(PREFIX_ACCOUNT);
+        scan.extend_from_slice(&id.as_bytes());
+        scan.push(index);
+
+        let mut iter = self.db.prefix_iterator(&scan);
+        if let Some(item) = iter.next() {
+            let (k, v) = item.expect("db iterator");
+            if k.starts_with(&scan) {
+                let pubkey = Hash::from_slice(&k[PREFIX_ACCOUNT.len() + 32..]);
+                let privkey: [u8; 32] = v.as_ref().try_into().expect("32-byte privkey");
+                return Ok(Some((pubkey, privkey)));
+            }
+        }
+        Ok(None)
+    }
+
+    /// List all accounts for a covenant. Returns (pubkey, privkey) pairs.
+    pub fn list_accounts(&self, id: CovenantId) -> Vec<(Pubkey, [u8; 32])> {
+        let scan = prefix_key(PREFIX_ACCOUNT, &id.as_bytes());
+        let iter = self.db.prefix_iterator(&scan);
+        let mut results = Vec::new();
+        for item in iter {
+            let (k, v) = item.expect("db iterator");
+            if !k.starts_with(&scan) {
+                break;
+            }
+            let pubkey = Hash::from_slice(&k[scan.len()..]);
+            let privkey: [u8; 32] = v.as_ref().try_into().expect("32-byte privkey");
+            results.push((pubkey, privkey));
+        }
+        results
+    }
+
+    // ── UTXO records ──
+
+    pub fn put_utxos(&self, address: &str, utxos: &[UtxoRecord]) -> Result<(), rocksdb::Error> {
+        let key = prefix_key(PREFIX_UTXO, address.as_bytes());
+        let val = borsh::to_vec(utxos).expect("borsh serialize");
+        self.db.put(key, val)
+    }
+
+    pub fn get_utxos(&self, address: &str) -> Result<Vec<UtxoRecord>, rocksdb::Error> {
+        let key = prefix_key(PREFIX_UTXO, address.as_bytes());
+        Ok(self.db.get(key)?.map(|v| Vec::<UtxoRecord>::try_from_slice(&v).expect("borsh deserialize")).unwrap_or_default())
+    }
+
+    // ── Proving state ──
+
+    pub fn put_proving_state(&self, id: CovenantId, state: &ProvingState) -> Result<(), rocksdb::Error> {
+        let key = prefix_key(PREFIX_PROVING, &id.as_bytes());
+        let val = borsh::to_vec(state).expect("borsh serialize");
+        self.db.put(key, val)
+    }
+
+    pub fn get_proving_state(&self, id: CovenantId) -> Result<Option<ProvingState>, rocksdb::Error> {
+        let key = prefix_key(PREFIX_PROVING, &id.as_bytes());
+        Ok(self.db.get(key)?.map(|v| ProvingState::try_from_slice(&v).expect("borsh deserialize")))
+    }
+
+    // ── Prover key ──
+
+    /// Store the prover's private key for a covenant (separate from deployer).
+    pub fn put_prover_key(&self, id: CovenantId, privkey: &[u8; 32]) -> Result<(), rocksdb::Error> {
+        let key = prefix_key(PREFIX_PROVER_KEY, &id.as_bytes());
+        self.db.put(key, privkey)
+    }
+
+    /// Get the prover's private key for a covenant.
+    pub fn get_prover_key(&self, id: CovenantId) -> Result<Option<[u8; 32]>, rocksdb::Error> {
+        let key = prefix_key(PREFIX_PROVER_KEY, &id.as_bytes());
+        Ok(self.db.get(key)?.map(|v| <[u8; 32]>::try_from(&v[..32]).expect("32-byte prover key")))
+    }
+
+    // ── Transaction history ──
+
+    /// Append a transaction record to the history for a covenant.
+    /// Key = `txhist/` + covenant_id (32B) + sequential index (8B LE).
+    pub fn append_tx(&self, id: CovenantId, record: &TxRecordDb) -> Result<(), rocksdb::Error> {
+        // Count existing entries to get the next index
+        let scan = prefix_key(PREFIX_TX_HISTORY, &id.as_bytes());
+        let count =
+            self.db.prefix_iterator(&scan).filter(|item| item.as_ref().map(|(k, _)| k.starts_with(&scan)).unwrap_or(false)).count()
+                as u64;
+        let key = tx_history_key(id, count);
+        let val = borsh::to_vec(record).expect("borsh serialize");
+        self.db.put(key, val)
+    }
+
+    /// Update an existing transaction record (matched by tx_id) for a covenant.
+    pub fn update_tx_status(&self, id: CovenantId, tx_id: Hash, status: TxStatusDb) -> Result<(), rocksdb::Error> {
+        let scan = prefix_key(PREFIX_TX_HISTORY, &id.as_bytes());
+        for item in self.db.prefix_iterator(&scan) {
+            let (k, v) = item?;
+            if !k.starts_with(&scan) {
+                break;
+            }
+            let mut rec = TxRecordDb::try_from_slice(&v).expect("borsh deserialize");
+            if rec.tx_id == tx_id {
+                rec.status = status;
+                let val = borsh::to_vec(&rec).expect("borsh serialize");
+                self.db.put(&*k, val)?;
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// Load all transaction records for a covenant, in insertion order.
+    pub fn list_txs(&self, id: CovenantId) -> Vec<TxRecordDb> {
+        let scan = prefix_key(PREFIX_TX_HISTORY, &id.as_bytes());
+        let mut results = Vec::new();
+        for item in self.db.prefix_iterator(&scan) {
+            let (k, v) = item.expect("db iterator");
+            if !k.starts_with(&scan) {
+                break;
+            }
+            results.push(TxRecordDb::try_from_slice(&v).expect("borsh deserialize"));
+        }
+        results
+    }
+
+    /// Delete all transaction history for a covenant (used in delete_covenant_all).
+    fn delete_tx_history(&self, id: CovenantId) -> Result<(), rocksdb::Error> {
+        let scan = prefix_key(PREFIX_TX_HISTORY, &id.as_bytes());
+        for item in self.db.prefix_iterator(&scan) {
+            let (k, _) = item?;
+            if !k.starts_with(&scan) {
+                break;
+            }
+            self.db.delete(&*k)?;
+        }
+        Ok(())
+    }
+
+    // ── Prev-tx store (temporary; for auth witness lookup) ──
+
+    /// Persist a transaction so it can be retrieved by hash for auth witness building.
+    /// Key = `ptx/` + covenant_id (32B) + tx_hash (32B).
+    pub fn put_prev_tx(&self, covenant_id: CovenantId, tx_hash: Hash, tx: &Transaction) -> Result<(), rocksdb::Error> {
+        let key = prev_tx_key(covenant_id, tx_hash);
+        let val = borsh::to_vec(tx).expect("borsh serialize");
+        self.db.put(key, val)
+    }
+
+    /// Look up a previously-stored transaction by hash.
+    pub fn get_prev_tx(&self, covenant_id: CovenantId, tx_hash: Hash) -> Result<Option<Transaction>, rocksdb::Error> {
+        let key = prev_tx_key(covenant_id, tx_hash);
+        Ok(self.db.get(key)?.map(|v| Transaction::try_from_slice(&v).expect("borsh deserialize")))
+    }
+}
+
+fn prefix_key(prefix: &[u8], suffix: &[u8]) -> Vec<u8> {
+    let mut key = Vec::with_capacity(prefix.len() + suffix.len());
+    key.extend_from_slice(prefix);
+    key.extend_from_slice(suffix);
+    key
+}
+
+fn balance_key(id: CovenantId, pubkey: Pubkey) -> Vec<u8> {
+    let mut key = Vec::with_capacity(PREFIX_BALANCE.len() + 64);
+    key.extend_from_slice(PREFIX_BALANCE);
+    key.extend_from_slice(&id.as_bytes());
+    key.extend_from_slice(&pubkey.as_bytes());
+    key
+}
+
+fn account_key(id: CovenantId, pubkey: Pubkey) -> Vec<u8> {
+    let mut key = Vec::with_capacity(PREFIX_ACCOUNT.len() + 64);
+    key.extend_from_slice(PREFIX_ACCOUNT);
+    key.extend_from_slice(&id.as_bytes());
+    key.extend_from_slice(&pubkey.as_bytes());
+    key
+}
+
+fn tx_history_key(id: CovenantId, index: u64) -> Vec<u8> {
+    let mut key = Vec::with_capacity(PREFIX_TX_HISTORY.len() + 40);
+    key.extend_from_slice(PREFIX_TX_HISTORY);
+    key.extend_from_slice(&id.as_bytes());
+    key.extend_from_slice(&index.to_le_bytes());
+    key
+}
+
+fn prev_tx_key(id: CovenantId, tx_hash: Hash) -> Vec<u8> {
+    let mut key = Vec::with_capacity(PREFIX_PREV_TX.len() + 64);
+    key.extend_from_slice(PREFIX_PREV_TX);
+    key.extend_from_slice(&id.as_bytes());
+    key.extend_from_slice(&tx_hash.as_bytes());
+    key
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roundtrip_covenant_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let id = Hash::from_bytes([0xAA; 32]);
+        let record = CovenantRecord {
+            deployer_privkey: vec![1, 2, 3],
+            deployment_tx_id: None,
+            covenant_utxo: None,
+            created_at: 1234567890,
+            covenant_value: None,
+            proof_kind: 0,
+            on_chain_covenant_id: None,
+            deploy_starting_block: None,
+            deploy_initial_seq: None,
+        };
+
+        db.put_covenant(id, &record).unwrap();
+        let loaded = db.get_covenant(id).unwrap().unwrap();
+        assert_eq!(loaded.deployer_privkey, record.deployer_privkey);
+        assert_eq!(loaded.created_at, 1234567890);
+    }
+
+    #[test]
+    fn balance_put_get() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let cov = Hash::from_bytes([0xFF; 32]);
+        let mut pk_bytes = [0u8; 32];
+        pk_bytes[0] = 42; // index byte = 42
+        let pubkey = Hash::from_bytes(pk_bytes);
+
+        db.put_balance(cov, pubkey, 1000).unwrap();
+        assert_eq!(db.get_balance(cov, pubkey).unwrap(), 1000);
+
+        // Missing key returns 0
+        assert_eq!(db.get_balance(cov, Hash::from_bytes([0x99; 32])).unwrap(), 0);
+    }
+
+    #[test]
+    fn balance_lookup_by_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let cov = Hash::from_bytes([0xFF; 32]);
+
+        let mut bytes_a = [0u8; 32];
+        bytes_a[0] = 10; // index 10
+        bytes_a[1] = 0xAA;
+        let pk_a = Hash::from_bytes(bytes_a);
+
+        let mut bytes_b = [0u8; 32];
+        bytes_b[0] = 20; // index 20
+        bytes_b[1] = 0xBB;
+        let pk_b = Hash::from_bytes(bytes_b);
+
+        db.put_balance(cov, pk_a, 500).unwrap();
+        db.put_balance(cov, pk_b, 700).unwrap();
+
+        // Find by index
+        let (found_pk, found_bal) = db.get_balance_by_index(cov, 10).unwrap().unwrap();
+        assert_eq!(found_pk, pk_a);
+        assert_eq!(found_bal, 500);
+
+        let (found_pk, found_bal) = db.get_balance_by_index(cov, 20).unwrap().unwrap();
+        assert_eq!(found_pk, pk_b);
+        assert_eq!(found_bal, 700);
+
+        // Missing index
+        assert!(db.get_balance_by_index(cov, 99).unwrap().is_none());
+    }
+
+    #[test]
+    fn account_key_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let cov = Hash::from_bytes([0xFF; 32]);
+        let mut pk_bytes = [0u8; 32];
+        pk_bytes[0] = 42;
+        pk_bytes[1] = 0xDE;
+        let pubkey = Hash::from_bytes(pk_bytes);
+        let privkey = [0xAB; 32];
+
+        db.put_account_key(cov, pubkey, &privkey).unwrap();
+        let loaded = db.get_account_key(cov, pubkey).unwrap().unwrap();
+        assert_eq!(loaded, privkey);
+
+        // By index
+        let (found_pk, found_sk) = db.get_account_key_by_index(cov, 42).unwrap().unwrap();
+        assert_eq!(found_pk, pubkey);
+        assert_eq!(found_sk, privkey);
+    }
+
+    #[test]
+    fn list_balances_and_accounts() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let cov = Hash::from_bytes([0xFF; 32]);
+
+        let mut bytes1 = [0u8; 32];
+        bytes1[0] = 10;
+        let pk1 = Hash::from_bytes(bytes1);
+        let mut bytes2 = [0u8; 32];
+        bytes2[0] = 20;
+        let pk2 = Hash::from_bytes(bytes2);
+
+        db.put_balance(cov, pk1, 100).unwrap();
+        db.put_balance(cov, pk2, 200).unwrap();
+        db.put_account_key(cov, pk1, &[0x11; 32]).unwrap();
+        db.put_account_key(cov, pk2, &[0x22; 32]).unwrap();
+
+        let balances = db.list_balances(cov);
+        assert_eq!(balances.len(), 2);
+
+        let accounts = db.list_accounts(cov);
+        assert_eq!(accounts.len(), 2);
+    }
+
+    #[test]
+    fn roundtrip_utxos() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let utxos = vec![
+            UtxoRecord { outpoint: (Hash::from_bytes([0x11; 32]), 0), amount: 100_000, spk: vec![0u8; 34] },
+            UtxoRecord { outpoint: (Hash::from_bytes([0x22; 32]), 1), amount: 200_000, spk: vec![0u8; 34] },
+        ];
+
+        db.put_utxos("kaspatest:qqtest", &utxos).unwrap();
+        let loaded = db.get_utxos("kaspatest:qqtest").unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].amount, 100_000);
+        assert_eq!(loaded[1].amount, 200_000);
+    }
+
+    #[test]
+    fn delete_covenant() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let id = Hash::from_bytes([0xBB; 32]);
+        let record = CovenantRecord {
+            deployer_privkey: vec![1, 2, 3],
+            deployment_tx_id: None,
+            covenant_utxo: None,
+            created_at: 1234567890,
+            covenant_value: None,
+            proof_kind: 0,
+            on_chain_covenant_id: None,
+            deploy_starting_block: None,
+            deploy_initial_seq: None,
+        };
+
+        db.put_covenant(id, &record).unwrap();
+        assert!(db.get_covenant(id).unwrap().is_some());
+
+        db.delete_covenant(id).unwrap();
+        assert!(db.get_covenant(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn list_covenants_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+        assert!(db.list_covenants().is_empty());
+    }
+
+    #[test]
+    fn delete_covenant_all_removes_everything() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RollupDb::open(dir.path()).unwrap();
+
+        let id = Hash::from_bytes([0xCC; 32]);
+        let record = CovenantRecord {
+            deployer_privkey: vec![0x01; 32],
+            deployment_tx_id: Some(Hash::from_bytes([0xDD; 32])),
+            covenant_utxo: Some((Hash::from_bytes([0xDD; 32]), 0)),
+            created_at: 100,
+            covenant_value: Some(100_000),
+            proof_kind: 0,
+            on_chain_covenant_id: None,
+            deploy_starting_block: None,
+            deploy_initial_seq: None,
+        };
+        db.put_covenant(id, &record).unwrap();
+        db.put_covenant_meta(id, &CovenantMeta { state_root: Hash::from_bytes([1; 32]), seq_commitment: Hash::from_bytes([2; 32]) })
+            .unwrap();
+        db.put_prover_key(id, &[0xAA; 32]).unwrap();
+        db.put_proving_state(
+            id,
+            &ProvingState {
+                last_proved_block_hash: Hash::default(),
+                state_root: Hash::default(),
+                seq_commitment: Hash::default(),
+                proof_count: 5,
+            },
+        )
+        .unwrap();
+
+        let pk1 = Hash::from_bytes([10; 32]);
+        let pk2 = Hash::from_bytes([20; 32]);
+        db.put_balance(id, pk1, 500).unwrap();
+        db.put_balance(id, pk2, 700).unwrap();
+        db.put_account_key(id, pk1, &[0x11; 32]).unwrap();
+        db.put_account_key(id, pk2, &[0x22; 32]).unwrap();
+
+        // Verify everything exists
+        assert!(db.get_covenant(id).unwrap().is_some());
+        assert!(db.get_covenant_meta(id).unwrap().is_some());
+        assert!(db.get_prover_key(id).unwrap().is_some());
+        assert!(db.get_proving_state(id).unwrap().is_some());
+        assert_eq!(db.list_balances(id).len(), 2);
+        assert_eq!(db.list_accounts(id).len(), 2);
+
+        // Delete all
+        db.delete_covenant_all(id).unwrap();
+
+        // Verify everything is gone
+        assert!(db.get_covenant(id).unwrap().is_none());
+        assert!(db.get_covenant_meta(id).unwrap().is_none());
+        assert!(db.get_prover_key(id).unwrap().is_none());
+        assert!(db.get_proving_state(id).unwrap().is_none());
+        assert!(db.list_balances(id).is_empty());
+        assert!(db.list_accounts(id).is_empty());
+    }
+}

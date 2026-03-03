@@ -18,3 +18,4 @@ package-sizes.js
 rustbridge_*.log
 **/CLAUDE.md
 **/claude.md
+/examples/zk-covenant-rollup/tui/rollup-db/

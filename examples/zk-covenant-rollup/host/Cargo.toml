@@ -5,6 +5,14 @@ edition = "2021"
 
 [workspace]
 
+[lib]
+name = "zk_covenant_rollup_host"
+path = "src/lib.rs"
+
+[[bin]]
+name = "demo"
+path = "src/bin/demo.rs"
+
 [features]
 cuda = ["risc0-zkvm/cuda"]
 
@@ -21,7 +29,7 @@ faster-hex = { version = "0.10.0" }
 #risc0-circuit-keccak = "4.0.5"
 #risc0-circuit-keccak-sys = "4.0.2"
 #risc0-zkvm = { version = "3.0.5", default-features = true, features = ["cuda"] }
-risc0-zkvm = { version = "3.0.5", default-features = true }
+risc0-zkvm = { version = "3.0.5", default-features = true, features = ["prove"] }
 
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
