@@ -26,6 +26,7 @@ members = [
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
+    "crypto/smt",
     "notify",
     "indexes/core",
     "indexes/processor",
@@ -106,6 +107,7 @@ kaspa-index-core = { version = "1.1.0-rc.3", path = "indexes/core" }
 kaspa-index-processor = { version = "1.1.0-rc.3", path = "indexes/processor" }
 kaspa-math = { version = "1.1.0-rc.3", path = "math" }
 kaspa-merkle = { version = "1.1.0-rc.3", path = "crypto/merkle" }
+kaspa-smt = { version = "1.1.0-rc.3", path = "crypto/smt" }
 kaspa-metrics-core = { version = "1.1.0-rc.3", path = "metrics/core" }
 kaspa-mining = { version = "1.1.0-rc.3", path = "mining" }
 kaspa-mining-errors = { version = "1.1.0-rc.3", path = "mining/errors" }

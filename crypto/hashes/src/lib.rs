@@ -70,6 +70,11 @@ impl Hash {
     }
 
     #[inline(always)]
+    pub const fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+
+    #[inline(always)]
     /// # Panics
     /// Panics if `bytes` length is not exactly `HASH_SIZE`.
     pub fn from_slice(bytes: &[u8]) -> Self {
