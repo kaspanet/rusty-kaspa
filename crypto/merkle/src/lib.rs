@@ -1,3 +1,9 @@
+#![no_std]
+
+extern crate alloc;
+extern crate core;
+
+use alloc::vec;
 use kaspa_hashes::{Hash, Hasher, MerkleBranchHash, ZERO_HASH};
 
 pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
@@ -49,8 +55,9 @@ fn cold_path_empty() -> Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
+    use core::iter;
     use kaspa_hashes::{HasherBase, SeqCommitmentMerkleBranchHash, TransactionHash};
-    use std::iter;
     fn seq_comm_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
         calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, true>(hashes)
     }
@@ -61,10 +68,10 @@ mod tests {
     }
     #[test]
     fn test_empty_returns_zero_hash() {
-        let root = calc_merkle_root(std::iter::empty());
+        let root = calc_merkle_root(core::iter::empty());
         assert_eq!(root, ZERO_HASH, "Empty input should return ZERO_HASH");
 
-        let seq_root = seq_comm_merkle_root(std::iter::empty());
+        let seq_root = seq_comm_merkle_root(core::iter::empty());
         assert_eq!(seq_root, ZERO_HASH, "Empty input should return ZERO_HASH for seq_comm");
     }
 

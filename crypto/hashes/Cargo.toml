@@ -10,22 +10,25 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["keccak?/asm"]
+default = ["keccak?/asm", "mem_size", "std", "workflow"]
 no-asm = ["keccak"]
+mem_size = ["kaspa-utils/mem_size"]
+std = ["blake2b_simd/std", "blake3/std", "borsh/std", "faster-hex/std", "js-sys?/std", "kaspa-utils/std", "serde/std", "sha2/std", "wasm-bindgen/std"]
+workflow = ["std", "dep:workflow-wasm", "dep:js-sys"]
 
 [dependencies]
 blake2b_simd.workspace = true
-blake3 = { workspace = true, features = ["default"] }
+blake3 = { workspace = true }
 borsh.workspace = true
 faster-hex.workspace = true
-js-sys.workspace = true
-kaspa-utils.workspace = true
+js-sys = { workspace = true, optional = true }
+kaspa-utils = { workspace = true, default-features = false }
 keccak = { workspace = true, optional = true }
-once_cell.workspace = true
 serde.workspace = true
 sha2.workspace = true
+sha2-const-stable.workspace = true
 wasm-bindgen.workspace = true
-workflow-wasm.workspace = true
+workflow-wasm = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "x86_64"))'.dependencies]
 keccak.workspace = true

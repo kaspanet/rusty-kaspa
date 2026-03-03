@@ -1,5 +1,4 @@
 // use sha3::CShake256;
-use once_cell::sync::Lazy;
 
 pub trait HasherBase {
     fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self;
@@ -34,7 +33,7 @@ blake2b_hasher! {
 }
 
 sha256_hasher! {
-    struct TransactionSigningHashECDSA => "TransactionSigningHashECDSA",
+    struct TransactionSigningHashECDSA => b"TransactionSigningHashECDSA",
 }
 
 blake3_hasher! {
@@ -45,55 +44,48 @@ blake3_hasher! {
     struct TransactionV1Id => b"TransactionV1Id",
 }
 
+#[macro_export]
 macro_rules! sha256_hasher {
     ($(struct $name:ident => $domain_sep:literal),+ $(,)? ) => {$(
         #[derive(Clone)]
-        pub struct $name(sha2::Sha256);
+        pub struct $name($crate::sha2::Sha256);
 
         impl $name {
             #[inline]
             pub fn new() -> Self {
-                use sha2::{Sha256, Digest};
-                // We use Lazy in order to avoid rehashing it
-                // in the future we can replace this with the correct initial state.
-                static HASHER: Lazy<$name> = Lazy::new(|| {
-                    // SHA256 doesn't natively support domain separation, so we hash it to make it constant size.
-                    // TODO: replace with Sha256::new_with_prefix() that does exactly this.
-                    let mut tmp_state = Sha256::new();
-                    tmp_state.update($domain_sep);
-                    let mut out = $name(Sha256::new());
-                    out.write(tmp_state.finalize());
-
-                    out
-                });
-                (*HASHER).clone()
+                use $crate::sha2::{Digest as _};
+                const DOMAIN_HASH: [u8; 32] =  {
+                    $crate::sha2_const_stable::Sha256::new().update($domain_sep).finalize()
+                };
+                Self($crate::sha2::Sha256::new_with_prefix(DOMAIN_HASH))
             }
 
             pub fn write<A: AsRef<[u8]>>(&mut self, data: A) {
-                sha2::Digest::update(&mut self.0, data.as_ref());
+                $crate::sha2::Digest::update(&mut self.0, data.as_ref());
             }
 
             #[inline(always)]
-            pub fn finalize(self) -> crate::Hash {
+            pub fn finalize(self) -> $crate::Hash {
                 let mut out = [0u8; 32];
-                out.copy_from_slice(sha2::Digest::finalize(self.0).as_slice());
-                crate::Hash(out)
+                out.copy_from_slice($crate::sha2::Digest::finalize(self.0).as_slice());
+                $crate::Hash::from_bytes(out)
             }
         }
-    impl_hasher!{ struct $name }
+    $crate::impl_hasher!{ struct $name }
     )*};
 }
 
+#[macro_export]
 macro_rules! blake2b_hasher {
     ($(struct $name:ident => $domain_sep:literal),+ $(,)? ) => {$(
         #[derive(Clone)]
-        pub struct $name(blake2b_simd::State);
+        pub struct $name($crate::blake2b_simd::State);
 
         impl $name {
             #[inline(always)]
             pub fn new() -> Self {
                 Self(
-                    blake2b_simd::Params::new()
+                    $crate::blake2b_simd::Params::new()
                         .hash_length(32)
                         .key($domain_sep)
                         .to_state(),
@@ -105,26 +97,27 @@ macro_rules! blake2b_hasher {
             }
 
             #[inline(always)]
-            pub fn finalize(self) -> crate::Hash {
+            pub fn finalize(self) -> $crate::Hash {
                 let mut out = [0u8; 32];
                 out.copy_from_slice(self.0.finalize().as_bytes());
-                crate::Hash(out)
+                $crate::Hash::from_bytes(out)
             }
         }
-    impl_hasher!{ struct $name }
+    $crate::impl_hasher!{ struct $name }
     )*};
 }
 
+#[macro_export]
 macro_rules! blake3_hasher {
     ($(struct $name:ident => $domain_sep:literal),+ $(,)? ) => {$(
         #[derive(Clone)]
-        pub struct $name(blake3::Hasher);
+        pub struct $name($crate::blake3::Hasher);
 
         impl $name {
             #[inline(always)]
             pub fn new() -> Self {
-                const KEY: [u8; blake3::KEY_LEN] = {
-                    let mut key = [0u8; blake3::KEY_LEN];
+                const KEY: [u8; $crate::blake3::KEY_LEN] = {
+                    let mut key = [0u8; $crate::blake3::KEY_LEN];
                     let mut i = 0usize;
                     while i < $domain_sep.len() {
                         key[i] = $domain_sep[i];
@@ -133,7 +126,7 @@ macro_rules! blake3_hasher {
                     key
                 };
 
-                Self(blake3::Hasher::new_keyed(&KEY))
+                Self($crate::blake3::Hasher::new_keyed(&KEY))
             }
 
             pub fn write<A: AsRef<[u8]>>(&mut self, data: A) {
@@ -141,28 +134,29 @@ macro_rules! blake3_hasher {
             }
 
             #[inline(always)]
-            pub fn finalize(self) -> crate::Hash {
+            pub fn finalize(self) -> $crate::Hash {
                 let mut out = [0u8; 32];
                 out.copy_from_slice(self.0.finalize().as_bytes());
-                crate::Hash(out)
+                $crate::Hash::from_bytes(out)
             }
         }
-    impl_hasher!{ struct $name }
+    $crate::impl_hasher!{ struct $name }
     )*};
 }
 
+#[macro_export]
 macro_rules! impl_hasher {
     (struct $name:ident) => {
-        impl HasherBase for $name {
+        impl $crate::HasherBase for $name {
             #[inline(always)]
             fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
                 self.write(data);
                 self
             }
         }
-        impl Hasher for $name {
+        impl $crate::Hasher for $name {
             #[inline(always)]
-            fn finalize(self) -> crate::Hash {
+            fn finalize(self) -> $crate::Hash {
                 // Call the method
                 $name::finalize(self)
             }
@@ -180,11 +174,13 @@ macro_rules! impl_hasher {
     };
 }
 
-use {blake2b_hasher, blake3_hasher, impl_hasher, sha256_hasher};
+use {blake2b_hasher, blake3_hasher, sha256_hasher};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::println;
+    use std::string::ToString;
 
     #[test]
     fn test_vectors() {
