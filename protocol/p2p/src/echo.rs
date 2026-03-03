@@ -148,7 +148,7 @@ mod tests {
     use std::{str::FromStr, time::Duration};
 
     use super::*;
-    use crate::{Adaptor, Hub};
+    use crate::{Adaptor, Hub, PeerOutboundType};
     use kaspa_core::debug;
     use kaspa_utils::networking::NetAddress;
 
@@ -164,15 +164,15 @@ mod tests {
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         let peer2_id = adaptor1
-            .connect_peer_with_retries(String::from("[::1]:50054"), 16, Duration::from_secs(1))
+            .connect_peer_with_retries(String::from("[::1]:50054"), 16, Duration::from_secs(1), PeerOutboundType::UserSupplied)
             .await
             .expect("peer connection failed");
 
         // Wait for handshake completion
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-        let adaptor1_initial_peers = adaptor1.active_peers();
-        let adaptor2_initial_peers = adaptor2.active_peers();
+        let adaptor1_initial_peers = adaptor1.active_peers(false);
+        let adaptor2_initial_peers = adaptor2.active_peers(false);
 
         // For now assert the handshake by checking the peer exists (since peer is removed on handshake error)
         assert_eq!(adaptor1_initial_peers.len(), 1, "handshake failed -- outbound peer is missing");
@@ -185,8 +185,8 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
         // Make sure the peers are cleaned-up on both sides
-        assert_eq!(adaptor1.active_peers().len(), 0, "peer termination failed -- outbound peer was not removed");
-        assert_eq!(adaptor2.active_peers().len(), 0, "peer termination failed -- inbound peer was not removed");
+        assert_eq!(adaptor1.active_peers(false).len(), 0, "peer termination failed -- outbound peer was not removed");
+        assert_eq!(adaptor2.active_peers(false).len(), 0, "peer termination failed -- inbound peer was not removed");
 
         adaptor1.close().await;
         adaptor2.close().await;

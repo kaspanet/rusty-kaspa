@@ -19,6 +19,7 @@ kaspa-alloc.workspace = true # This changes the global allocator for all of the 
 
 kaspa-addresses.workspace = true
 kaspa-addressmanager.workspace = true
+kaspa-connectionmanager.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
@@ -33,6 +34,7 @@ kaspa-notify.workspace = true
 kaspa-p2p-flows.workspace = true
 kaspa-p2p-lib.workspace = true
 kaspa-p2p-mining.workspace = true
+kaspa-perigeemanager.workspace = true
 kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
