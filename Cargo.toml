@@ -16,6 +16,7 @@ members = [
     "consensus/client",
     "consensus/notify",
     "consensus/pow",
+    "consensus/seq-commit",
     "consensus/wasm",
     "kaspad",
     "simpa",
@@ -119,6 +120,7 @@ kaspa-p2p-mining = { version = "1.1.0-rc.3", path = "protocol/mining" }
 kaspa-perf-monitor = { version = "1.1.0-rc.3", path = "metrics/perf_monitor" }
 kaspa-pow = { version = "1.1.0-rc.3", path = "consensus/pow" }
 kaspa-rpc-core = { version = "1.1.0-rc.3", path = "rpc/core" }
+kaspa-seq-commit = { version = "1.1.0-rc.3", path = "consensus/seq-commit" }
 kaspa-rpc-macros = { version = "1.1.0-rc.3", path = "rpc/macros" }
 kaspa-rpc-service = { version = "1.1.0-rc.3", path = "rpc/service" }
 kaspa-txscript = { version = "1.1.0-rc.3", path = "crypto/txscript" }

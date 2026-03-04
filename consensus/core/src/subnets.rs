@@ -11,6 +11,7 @@ pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
 #[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, Copy)]
+#[repr(transparent)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
 impl Debug for SubnetworkId {
@@ -55,6 +56,14 @@ impl SubnetworkId {
 
     pub const fn from_bytes(bytes: [u8; SUBNETWORK_ID_SIZE]) -> SubnetworkId {
         SubnetworkId(bytes)
+    }
+
+    pub const fn into_bytes(self) -> [u8; SUBNETWORK_ID_SIZE] {
+        self.0
+    }
+
+    pub const fn as_bytes(&self) -> &[u8; SUBNETWORK_ID_SIZE] {
+        &self.0
     }
 
     /// Returns true if the subnetwork is a built-in subnetwork, which
