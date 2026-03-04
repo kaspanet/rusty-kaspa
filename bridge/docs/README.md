@@ -20,20 +20,20 @@ If you are running from GitHub Releases (without `cargo run`):
 
 1. Download and extract the release archive for your OS.
 2. Prepare a config file (for example `bridge/config.yaml` from this repository).
-3. Run the bridge binary directly:
+3. Run the bridge binary directly (in-process mode first):
 
 ```bash
 # Linux/macOS
-./stratum-bridge --config bridge/config.yaml --node-mode external
+./stratum-bridge --config bridge/config.yaml --node-mode inprocess -- --utxoindex --rpclisten=127.0.0.1:16110
 
 # Windows (PowerShell)
-.\stratum-bridge.exe --config bridge/config.yaml --node-mode external
+.\stratum-bridge.exe --config bridge/config.yaml --node-mode inprocess -- --utxoindex --rpclisten=127.0.0.1:16110
 ```
 
-To run in-process mode, pass kaspad args after `--`:
+Then run in external mode:
 
 ```bash
-./stratum-bridge --config bridge/config.yaml --node-mode inprocess -- --utxoindex --rpclisten=127.0.0.1:16110
+./stratum-bridge --config bridge/config.yaml --node-mode external
 ```
 
 ### CLI Help
