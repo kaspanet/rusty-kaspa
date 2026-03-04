@@ -15,7 +15,7 @@ use ahash::AHashMap;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::network::NetworkTypeT;
 use kaspa_consensus_core::subnets::{self, SubnetworkId};
-use kaspa_consensus_core::tx::UtxoEntry;
+use kaspa_consensus_core::tx::{GenesisCovenantGroup, GenesisCovenantGroupArrayT, UtxoEntry};
 use kaspa_txscript::extract_script_pub_key_address;
 use kaspa_utils::hex::*;
 
@@ -275,6 +275,15 @@ impl Transaction {
     #[wasm_bindgen(setter = mass)]
     pub fn set_mass(&self, v: u64) {
         self.inner().mass = v;
+    }
+
+    #[wasm_bindgen(js_name = populateGenesisCovenants)]
+    pub fn populate_genesis_covenants(&self, groups: &GenesisCovenantGroupArrayT) -> Result<()> {
+        let groups: Vec<GenesisCovenantGroup> = groups.try_into()?;
+        let mut tx: cctx::Transaction = self.into();
+        tx.populate_genesis_covenants(groups.as_slice())?;
+        self.inner().outputs = tx.outputs.iter().map(TransactionOutput::from).collect::<Vec<TransactionOutput>>();
+        Ok(())
     }
 }
 
