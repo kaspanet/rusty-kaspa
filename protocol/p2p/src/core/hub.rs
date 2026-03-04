@@ -164,7 +164,12 @@ impl Hub {
     }
 
     /// Broadcast a message to some number of peers matching a predicate
-    pub async fn broadcast_to_some_peers_filtered(&self, msg: KaspadMessage, num_peers: usize, predicate: impl Fn(&Arc<Router>) -> bool) {
+    pub async fn broadcast_to_some_peers_filtered(
+        &self,
+        msg: KaspadMessage,
+        num_peers: usize,
+        predicate: impl Fn(&Arc<Router>) -> bool,
+    ) {
         assert!(num_peers > 0);
         let peers: Vec<_> = self.peers.read().values().filter(|r| predicate(r)).cloned().collect();
         let selected = peers.into_iter().choose_multiple(&mut rand::thread_rng(), num_peers);
