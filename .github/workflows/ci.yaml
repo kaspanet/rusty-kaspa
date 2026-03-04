@@ -247,6 +247,74 @@ jobs:
 
       - name: Run cargo check of kaspa-wasm for wasm32 target
         run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
+  
+  test-wasm32:
+    name: Test WASM32
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install llvm
+        id: install_llvm
+        continue-on-error: true
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo apt-get install -y clang-15 lldb-15 lld-15 clangd-15 clang-tidy-15 clang-format-15 clang-tools-15 llvm-15-dev lld-15 lldb-15 llvm-15-tools libomp-15-dev libc++-15-dev libc++abi-15-dev libclang-common-15-dev libclang-15-dev libclang-cpp15-dev libunwind-15-dev
+          # Make Clang 15 default
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/lib/llvm-15/bin/clang++ 100
+          sudo update-alternatives --install /usr/bin/clang clang /usr/lib/llvm-15/bin/clang 100
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/lib/llvm-15/bin/clang-format 100
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/lib/llvm-15/bin/clang-tidy 100
+          sudo update-alternatives --install /usr/bin/run-clang-tidy run-clang-tidy /usr/lib/llvm-15/bin/run-clang-tidy 100
+          # Alias cc to clang
+          sudo update-alternatives --install /usr/bin/cc cc /usr/lib/llvm-15/bin/clang 0
+          sudo update-alternatives --install /usr/bin/c++ c++ /usr/lib/llvm-15/bin/clang++ 0
+
+      - name: Install gcc-multilib
+        # gcc-multilib allows clang to find gnu libraries properly
+        run: |
+          sudo apt-get update
+          sudo apt install -y gcc-multilib
+
+      - name: Install stable toolchain
+        if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+        
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Install NodeJS dependencies
+        run: npm install --global typedoc typescript
+
+      # append here any new crates that contains wasm test suites (and aren't already covered)
+      - name: Run wasm tests for consensus/core
+        run: wasm-pack test --node consensus/core
+
+      - name: Run wasm tests for crypto/addresses
+        run: wasm-pack test --node crypto/addresses
+
+      - name: Run wasm tests for wallet/pskt
+        run: wasm-pack test --node wallet/pskt
+
 
   build-wasm32:
     name: Build WASM32 SDK
