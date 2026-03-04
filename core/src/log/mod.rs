@@ -52,8 +52,7 @@ pub fn init_logger(log_dir: Option<&str>, filters: &str) {
         )
         .unwrap();
 
-    // Logger may already be set by an embedding host (e.g., LogTracer); ignore if so.
-    let _ = log4rs::init_config(config);
+    let _handle = log4rs::init_config(config).unwrap();
 
     set_log_level(level);
 }

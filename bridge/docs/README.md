@@ -72,23 +72,17 @@ Scrape format: `http://<bridge_host>:<prom_port>/metrics`.
 | `:5557` | Stratum listener for high-difficulty workers (`min_share_diff: 8192`), with metrics on Prometheus `:2116`. |
 | `:5558` | Stratum listener for highest-difficulty workers (`min_share_diff: 16384`), with metrics on Prometheus `:2117`. |
 
-### Run (external node)
+### Run (in-process node, default)
 
-**Note:** If `--node-mode` is not specified, the bridge defaults to **in-process** mode.
+If `--node-mode` is not specified, the bridge defaults to **in-process** mode.
 
-Terminal A (node):
-
-```bash
-cargo run --release --bin kaspad -- --utxoindex --rpclisten=127.0.0.1:16110
-```
-
-Terminal B (bridge):
+Minimal run (sane defaults, no config file):
 
 ```bash
-cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bridge/config.yaml --node-mode external
+cargo run --bin stratum-bridge --release
 ```
 
-### Run (in-process node)
+Run in-process with explicit config and kaspad args:
 
 ```bash
 cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bridge/config.yaml --node-mode inprocess -- --utxoindex --rpclisten=127.0.0.1:16110
@@ -112,6 +106,20 @@ If you want to override it, pass `--appdir` to the bridge (before the `--` separ
 
 ```bash
 cargo run --release --bin stratum-bridge -- --config bridge/config.yaml --node-mode inprocess --appdir "C:\path\to\custom\datadir" -- --utxoindex --rpclisten=127.0.0.1:16110
+```
+
+### Run (external node)
+
+Terminal A (node):
+
+```bash
+cargo run --release --bin kaspad -- --utxoindex --rpclisten=127.0.0.1:16110
+```
+
+Terminal B (bridge):
+
+```bash
+cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bridge/config.yaml --node-mode external
 ```
 
 ### Running two bridges at once (two dashboards)
