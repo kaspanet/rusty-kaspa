@@ -423,7 +423,9 @@ jobs:
         run: |
           # Run build script for musl toolchain
           source musl-toolchain/build.sh
-          # Build all binaries for musl.
-          # The allow-multiple-definition linker arg is already configured in .cargo/config.toml
-          # for target x86_64-unknown-linux-musl, so no per-step RUSTFLAGS override is needed here.
-          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --bin stratum-bridge --release --target x86_64-unknown-linux-musl
+          # Build non-bridge binaries first.
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          # Build bridge with allow-multiple-definition to resolve mimalloc/libstdc++ symbol collisions.
+          # musl-toolchain/build.sh sets RUSTFLAGS directly, so we append this flag here explicitly.
+          export RUSTFLAGS="$RUSTFLAGS -C link-arg=-Wl,--allow-multiple-definition"
+          cargo --verbose build --bin stratum-bridge --release --target x86_64-unknown-linux-musl
