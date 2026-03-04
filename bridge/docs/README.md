@@ -14,25 +14,27 @@ The bridge can run against:
 - **In-process** node (the bridge starts `kaspad` in the same process)
 
 
-### Default config / ports
+### Running from a release
 
-The sample configuration file is:
+If you are running from GitHub Releases (without `cargo run`):
 
-`bridge/config.yaml`
+1. Download and extract the release archive for your OS.
+2. Prepare a config file (for example `bridge/config.yaml` from this repository).
+3. Run the bridge binary directly:
 
-When running from the repository root, pass the config path explicitly:
+```bash
+# Linux/macOS
+./stratum-bridge --config bridge/config.yaml --node-mode external
 
-**Note:** If no config file is found, the bridge uses code defaults:
-- Default `kaspad_address`: `localhost:16110` (code default) or `127.0.0.1:16110` (as in `config.yaml`)
-- Default `node_mode`: `inprocess` (if `--node-mode` is not specified)
-- Default `web_dashboard_port`: empty (dashboard disabled unless configured)
+# Windows (PowerShell)
+.\stratum-bridge.exe --config bridge/config.yaml --node-mode external
+```
 
-The sample `config.yaml` exposes these Stratum ports:
+To run in-process mode, pass kaspad args after `--`:
 
-- `:5555`
-- `:5556`
-- `:5557`
-- `:5558`
+```bash
+./stratum-bridge --config bridge/config.yaml --node-mode inprocess -- --utxoindex --rpclisten=127.0.0.1:16110
+```
 
 ### CLI Help
 
@@ -43,6 +45,32 @@ cargo run --release --bin stratum-bridge -- --help
 ```
 
 This will show all available bridge options and guidance for kaspad arguments.
+
+### Default config / ports
+
+The sample configuration file is:
+
+`bridge/config.yaml`
+
+**Note:** If no config file is found, the bridge uses code defaults:
+- Default `kaspad_address`: `localhost:16110` (code default) or `127.0.0.1:16110` (as in `config.yaml`)
+- Default `node_mode`: `inprocess` (if `--node-mode` is not specified)
+- Default `web_dashboard_port`: empty (dashboard disabled unless configured)
+
+The sample `config.yaml` exposes these Stratum ports:
+
+Each instance also sets a `prom_port`, which is a per-instance Prometheus HTTP endpoint.  
+Scrape format: `http://<bridge_host>:<prom_port>/metrics`.
+
+| Port | Purpose |
+| --- | --- |
+| `:5559` | Stratum listener for very low-difficulty workers (`min_share_diff: 4`), with metrics on Prometheus `:2118`. |
+| `:5560` | Stratum listener for low-difficulty workers (`min_share_diff: 512`), with metrics on Prometheus `:2119`. |
+| `:5561` | Stratum listener for medium-difficulty workers (`min_share_diff: 1024`), with metrics on Prometheus `:2120`. |
+| `:5555` | Stratum listener for higher-difficulty workers (`min_share_diff: 2048`), with metrics on Prometheus `:2114`. |
+| `:5556` | Stratum listener for higher-difficulty workers (`min_share_diff: 4096`), with metrics on Prometheus `:2115`. |
+| `:5557` | Stratum listener for high-difficulty workers (`min_share_diff: 8192`), with metrics on Prometheus `:2116`. |
+| `:5558` | Stratum listener for highest-difficulty workers (`min_share_diff: 16384`), with metrics on Prometheus `:2117`. |
 
 ### Run (external node)
 
