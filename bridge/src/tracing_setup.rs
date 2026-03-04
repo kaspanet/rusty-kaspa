@@ -374,9 +374,11 @@ pub(crate) fn init_tracing(
         None
     };
 
-    // In inprocess mode, the embedded node primarily uses the `log` crate (via kaspa_core::* macros).
-    // Forward those events into our tracing subscriber so users can see node startup/performance logs.
-    if inprocess_mode && let Err(e) = tracing_log::LogTracer::init() {
+    // IMPORTANT: Do not initialize LogTracer in in-process mode.
+    // The embedded kaspad runtime initializes the global `log` logger via
+    // `kaspa_core::log::init_logger(...).unwrap()`. If LogTracer grabs the
+    // global logger first, kaspad panics with SetLoggerError.
+    if !inprocess_mode && let Err(e) = tracing_log::LogTracer::init() {
         eprintln!("Failed to initialize log tracer: {}", e);
     }
 
