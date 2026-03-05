@@ -919,9 +919,13 @@ impl Generator {
                 absorb_change_to_fees = true;
                 self.calc_storage_mass(data, self.inner.final_transaction_outputs_harmonic)
             } else {
-                let output_harmonic_with_change =
-                    calc.calc_storage_mass_output_harmonic_single(change_value) + self.inner.final_transaction_outputs_harmonic;
-                let storage_mass_with_change = self.calc_storage_mass(data, output_harmonic_with_change);
+                let mut outputs_with_change = self.inner.final_transaction_outputs.clone();
+                outputs_with_change.push(TransactionOutput::new(change_value, pay_to_address_script(&self.inner.change_address)));
+                let storage_mass_with_change = self
+                    .inner
+                    .mass_calculator
+                    .calc_storage_mass_for_transaction_parts(&data.utxo_entry_references, &outputs_with_change)
+                    .ok_or(Error::MassCalculationError)?;
 
                 // TODO - review and potentially simplify:
                 // this profiles the storage mass with change and without change
@@ -930,7 +934,10 @@ impl Generator {
                     0
                 } else {
                     let storage_mass_no_change = self.calc_storage_mass(data, self.inner.final_transaction_outputs_harmonic);
-                    if storage_mass_with_change < storage_mass_no_change {
+                    if storage_mass_with_change > MAXIMUM_STANDARD_TRANSACTION_MASS {
+                        absorb_change_to_fees = true;
+                        storage_mass_no_change
+                    } else if storage_mass_with_change < storage_mass_no_change {
                         storage_mass_with_change
                     } else {
                         let fees_with_change = calc.calc_fee_for_mass(storage_mass_with_change);
