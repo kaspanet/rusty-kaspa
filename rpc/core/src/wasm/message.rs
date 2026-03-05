@@ -669,13 +669,17 @@ declare! {
 
 try_from! ( args: IGetBalanceByAddressRequest, GetBalanceByAddressRequest, {
     let js_value = JsValue::from(args);
-    let request = if let Ok(address) = Address::try_owned_from(js_value.clone()) {
-        GetBalanceByAddressRequest { address }
+    let address = if let Ok(address) = Address::try_owned_from(js_value.clone()) {
+        address
+    } else if let Ok(address_prop) = js_sys::Reflect::get(&js_value, &JsValue::from_str("address")) {
+        if address_prop.is_undefined() || address_prop.is_null() {
+            return Err("invalid GetBalanceByAddressRequest argument".into());
+        }
+        Address::try_owned_from(address_prop)?
     } else {
-        // TODO - evaluate Object property
-        from_value::<GetBalanceByAddressRequest>(js_value)?
+        return Err("invalid GetBalanceByAddressRequest argument".into());
     };
-    Ok(request)
+    Ok(GetBalanceByAddressRequest { address })
 });
 
 declare! {
@@ -715,7 +719,7 @@ declare! {
 
 try_from! ( args: IGetBalancesByAddressesRequest, GetBalancesByAddressesRequest, {
     let js_value = JsValue::from(args);
-    let request = if let Ok(addresses) = Vec::<Address>::try_from(AddressOrStringArrayT::from(js_value.clone())) {
+    let request = if let Some(addresses) = try_parse_address_array(&js_value) {
         GetBalancesByAddressesRequest { addresses }
     } else {
         from_value::<GetBalancesByAddressesRequest>(js_value)?
@@ -749,6 +753,14 @@ declare! {
 try_from! ( args: GetBalancesByAddressesResponse, IGetBalancesByAddressesResponse, {
     Ok(to_value(&args)?.into())
 });
+
+fn try_parse_address_array(js_value: &JsValue) -> Option<Vec<Address>> {
+    Vec::<Address>::try_from(AddressOrStringArrayT::from(js_value.clone())).ok().or_else(|| {
+        let object = Object::try_from(js_value)?;
+        let addresses = object.get_value("addresses").ok()?;
+        Vec::<Address>::try_from(AddressOrStringArrayT::from(addresses)).ok()
+    })
+}
 
 // ---
 
@@ -1213,7 +1225,7 @@ declare! {
 
 try_from! ( args: IGetUtxosByAddressesRequest, GetUtxosByAddressesRequest, {
     let js_value = JsValue::from(args);
-    let request = if let Ok(addresses) = Vec::<Address>::try_from(AddressOrStringArrayT::from(js_value.clone())) {
+    let request = if let Some(addresses) = try_parse_address_array(&js_value) {
         GetUtxosByAddressesRequest { addresses }
     } else {
         from_value::<GetUtxosByAddressesRequest>(js_value)?
@@ -1856,3 +1868,33 @@ try_from!(args: GetUtxoReturnAddressResponse, IGetUtxoReturnAddressResponse, {
 });
 
 // ---
+
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm32-sdk"))]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn test_get_utxos_by_addresses_request_from_address_array() {
+        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+        let js_array = js_sys::Array::new();
+        js_array.push(&JsValue::from(expected.clone()));
+        let js_value = JsValue::from(js_array);
+
+        let request = GetUtxosByAddressesRequest::try_from(IGetUtxosByAddressesRequest::from(js_value)).unwrap();
+        assert_eq!(request.addresses, vec![expected]);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_get_utxos_by_addresses_request_from_object_with_address_array() {
+        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+        let js_array = js_sys::Array::new();
+        js_array.push(&JsValue::from(expected.clone()));
+
+        let args = IGetUtxosByAddressesRequest::default();
+        args.set("addresses", js_array.as_ref()).unwrap();
+
+        let request = GetUtxosByAddressesRequest::try_from(args).unwrap();
+        assert_eq!(request.addresses, vec![expected]);
+    }
+}
