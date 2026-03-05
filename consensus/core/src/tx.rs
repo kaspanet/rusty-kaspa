@@ -181,6 +181,34 @@ impl CovenantBinding {
     pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
         Self { authorizing_input, covenant_id }
     }
+
+    #[wasm_bindgen(setter, js_name = authorizingInput)]
+    pub fn set_authorizing_input(&mut self, v: u16) {
+        self.authorizing_input = v;
+    }
+
+    #[wasm_bindgen(getter, js_name = authorizingInput)]
+    pub fn get_authorizing_input(&self) -> u16 {
+        self.authorizing_input
+    }
+
+    #[wasm_bindgen(setter, js_name = covenantId)]
+    pub fn set_covenant_id(&mut self, v: Hash) {
+        self.covenant_id = v;
+    }
+
+    #[wasm_bindgen(getter, js_name = covenantId)]
+    pub fn get_covenant_id(&self) -> Hash {
+        self.covenant_id
+    }
+
+    #[wasm_bindgen(js_name = "toJSON")]
+    pub fn to_js_object(&self) -> Result<Object, CastErr> {
+        let obj = Object::new();
+        obj.set("authorizingInput", &self.authorizing_input.into())?;
+        obj.set("covenantId", &self.covenant_id.to_string().into())?;
+        Ok(obj)
+    }
 }
 
 #[wasm_bindgen]

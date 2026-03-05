@@ -63,16 +63,16 @@ function expectError(label, fn, expectedSubstring) {
 
     for (let i = 0; i < tx.outputs.length; i++) {
         const cov = tx.outputs[i].covenant;
-        console.log(`  output[${i}] covenant id: ${cov.covenant_id}, authorizingInput: ${cov.authorizing_input}`);
+        console.log(`  output[${i}] covenant id: ${cov.covenantId}, authorizingInput: ${cov.authorizingInput}`);
     }
 
     // Outputs in the same group share the same covenant id.
-    const covId0 = tx.outputs[0].covenant.covenant_id;
-    const covId2 = tx.outputs[2].covenant.covenant_id;
+    const covId0 = tx.outputs[0].covenant.covenantId;
+    const covId2 = tx.outputs[2].covenant.covenantId;
     console.log('\nGroup A output covenant ids match:', covId0.toString() === covId2.toString());
 
-    const covId1 = tx.outputs[1].covenant.covenant_id;
-    const covId3 = tx.outputs[3].covenant.covenant_id;
+    const covId1 = tx.outputs[1].covenant.covenantId;
+    const covId3 = tx.outputs[3].covenant.covenantId;
     console.log('Group B output covenant ids match:', covId1.toString() === covId3.toString());
 
     // Different groups produce different covenant ids.
@@ -90,14 +90,14 @@ function expectError(label, fn, expectedSubstring) {
 
     for (let i = 0; i < tx2.outputs.length; i++) {
         const cov = tx2.outputs[i].covenant;
-        console.log(`  output[${i}] covenant id: ${cov.covenant_id}, authorizingInput: ${cov.authorizing_input}`);
+        console.log(`  output[${i}] covenant id: ${cov.covenantId}, authorizingInput: ${cov.authorizingInput}`);
     }
 
     // Both approaches must produce the same covenant ids.
     console.log('\n--- Consistency check ---');
     const allMatch =
-        tx.outputs[0].covenant.covenant_id.toString() === tx2.outputs[0].covenant.covenant_id.toString() &&
-        tx.outputs[1].covenant.covenant_id.toString() === tx2.outputs[1].covenant.covenant_id.toString();
+        tx.outputs[0].covenant.covenantId.toString() === tx2.outputs[0].covenant.covenantId.toString() &&
+        tx.outputs[1].covenant.covenantId.toString() === tx2.outputs[1].covenant.covenantId.toString();
     console.log('Covenant IDs from instance & plain objects match:', allMatch);
 
     // --- Success case: verify bound and unbound outputs ---
@@ -122,13 +122,13 @@ function expectError(label, fn, expectedSubstring) {
     for (const i of groupAOutputs) {
         const cov = tx3.outputs[i].covenant;
         console.log(`  output[${i}] bound to group A:`,
-            cov.covenant_id.toString() === expectedA.toString() && cov.authorizing_input === 0);
+            cov.covenantId.toString() === expectedA.toString() && cov.authorizingInput === 0);
     }
     // Outputs in group B should all share expectedB.
     for (const i of groupBOutputs) {
         const cov = tx3.outputs[i].covenant;
         console.log(`  output[${i}] bound to group B:`,
-            cov.covenant_id.toString() === expectedB.toString() && cov.authorizing_input === 0);
+            cov.covenantId.toString() === expectedB.toString() && cov.authorizingInput === 0);
     }
     // Outputs 0 and 6 must remain unbound.
     console.log('  output[0] unbound:', tx3.outputs[0].covenant === undefined);
