@@ -350,6 +350,46 @@ impl TransactionRecord {
             .map(|progress| format!("{}", (progress * 100.) as usize))
             .unwrap_or_default()
     }
+
+    #[wasm_bindgen(js_name = "toCsvRow")]
+    pub fn to_csv_row_js(&self) -> String {
+        self.to_csv_row()
+    }
+
+    #[wasm_bindgen(js_name = "csvHeader")]
+    pub fn csv_header_js() -> String {
+        Self::csv_header().to_string()
+    }
+}
+
+fn unixtime_msec_to_iso8601(msec: u64) -> String {
+    let total_secs = msec / 1000;
+    let frac_ms = msec % 1000;
+    let secs_of_day = total_secs % 86400;
+    let days_since_epoch = (total_secs / 86400) as i64;
+    // Howard Hinnant's civil_from_days algorithm
+    let z = days_since_epoch + 719_468;
+    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let hour = secs_of_day / 3600;
+    let minute = (secs_of_day % 3600) / 60;
+    let second = secs_of_day % 60;
+    format!("{y:04}-{m:02}-{d:02}T{hour:02}:{minute:02}:{second:02}.{frac_ms:03}Z")
+}
+
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
 }
 
 impl TransactionRecord {
@@ -473,6 +513,32 @@ impl TransactionRecord {
 
     pub fn value(&self) -> u64 {
         self.value
+    }
+
+    pub fn csv_header() -> &'static str {
+        "id,timestamp,type,value_sompi,fees_sompi,block_daa_score,is_coinbase,note,metadata"
+    }
+
+    pub fn to_csv_row(&self) -> String {
+        let fees = match &self.transaction_data {
+            TransactionData::Outgoing { fees, .. }
+            | TransactionData::Batch { fees, .. }
+            | TransactionData::TransferIncoming { fees, .. }
+            | TransactionData::TransferOutgoing { fees, .. } => *fees,
+            _ => 0,
+        };
+        format!(
+            "{},{},{},{},{},{},{},{},{}",
+            self.id,
+            self.unixtime_msec.map(unixtime_msec_to_iso8601).unwrap_or_default(),
+            self.kind(),
+            self.value,
+            fees,
+            self.block_daa_score,
+            self.is_coinbase(),
+            self.note.as_deref().map(csv_escape).unwrap_or_default(),
+            self.metadata.as_deref().map(csv_escape).unwrap_or_default(),
+        )
     }
 }
 
@@ -888,5 +954,52 @@ impl BorshDeserialize for TransactionRecord {
 impl From<TransactionRecord> for TransactionRecordT {
     fn from(record: TransactionRecord) -> Self {
         JsValue::from(record).unchecked_into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unixtime_msec_to_iso8601_epoch() {
+        assert_eq!(unixtime_msec_to_iso8601(0), "1970-01-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn test_unixtime_msec_to_iso8601_known_date() {
+        // 1_000_000_000_000 ms = 1_000_000_000 s = 2001-09-09T01:46:40Z
+        assert_eq!(unixtime_msec_to_iso8601(1_000_000_000_000), "2001-09-09T01:46:40.000Z");
+    }
+
+    #[test]
+    fn test_unixtime_msec_to_iso8601_with_millis() {
+        assert_eq!(unixtime_msec_to_iso8601(1_000_000_000_123), "2001-09-09T01:46:40.123Z");
+    }
+
+    #[test]
+    fn test_csv_escape_plain() {
+        assert_eq!(csv_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn test_csv_escape_comma() {
+        assert_eq!(csv_escape("hello,world"), "\"hello,world\"");
+    }
+
+    #[test]
+    fn test_csv_escape_quote() {
+        assert_eq!(csv_escape("say \"hi\""), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn test_csv_escape_newline() {
+        assert_eq!(csv_escape("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn test_csv_header_column_count() {
+        let header = TransactionRecord::csv_header();
+        assert_eq!(header.split(',').count(), 9);
     }
 }
