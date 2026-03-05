@@ -161,6 +161,11 @@ impl UtxoEntryReference {
         self.as_ref().clone()
     }
 
+    #[wasm_bindgen(getter, js_name = "utxoEntry")]
+    pub fn utxo_entry(&self) -> UtxoEntry {
+        self.as_ref().clone()
+    }
+
     #[wasm_bindgen(getter)]
     pub fn outpoint(&self) -> TransactionOutpoint {
         self.utxo.outpoint.clone()
