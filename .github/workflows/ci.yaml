@@ -11,9 +11,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Protoc
+        id: install_protoc_check
         uses: arduino/setup-protoc@v3
+        continue-on-error: true
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fallback Install Protoc (apt)
+        if: steps.install_protoc_check.outcome == 'failure'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -81,9 +88,16 @@ jobs:
         run: git config --global core.autocrlf false
 
       - name: Install Protoc
+        id: install_protoc_test
         uses: arduino/setup-protoc@v3
+        continue-on-error: true
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fallback Install Protoc (apt)
+        if: steps.install_protoc_test.outcome == 'failure'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -174,9 +188,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Protoc
+        id: install_protoc_lints
         uses: arduino/setup-protoc@v3
+        continue-on-error: true
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fallback Install Protoc (apt)
+        if: steps.install_protoc_lints.outcome == 'failure'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
