@@ -2,14 +2,15 @@
 
 use crate::error::Error;
 use crate::result::Result;
-use crate::tx::{Fees, MassCalculator, PaymentDestination};
+use crate::tx::{Fees, MassCalculator, PaymentDestination, PaymentOutput, PaymentOutputs};
+use crate::utils::kaspa_to_sompi;
 use crate::utxo::UtxoEntryReference;
-use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::mass::UtxoCell;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
-use kaspa_consensus_core::tx::Transaction;
+use kaspa_consensus_core::tx::{CovenantBinding, Transaction};
+use kaspa_hashes::Hash;
 use rand::prelude::*;
 use std::cell::RefCell;
 use std::fmt::Debug;
@@ -820,6 +821,23 @@ fn test_generator_fan_out_1() -> Result<()> {
     //         // priority_fees: FeesExpected::None,
     //     })
     //     .finalize();
+
+    Ok(())
+}
+
+#[test]
+fn test_generator_preserves_output_covenant_binding() -> Result<()> {
+    let network_id = test_network_id();
+    let covenant = CovenantBinding::new(0, Hash::from_u64_word(1));
+    let output = PaymentOutput::with_covenant(output_address(network_id.into()), kaspa_to_sompi(10.0), covenant);
+    let destination = PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![output] });
+
+    let generator = make_generator(network_id, &[20.0], &[], None, Fees::sender(Kaspa(0.0)), change_address, destination)?;
+    let pending = generator.generate_transaction()?.expect("expected transaction");
+    let tx = pending.transaction();
+
+    assert_eq!(tx.outputs.first().and_then(|output| output.covenant), Some(covenant));
+    assert!(generator.generate_transaction()?.is_none(), "expected no additional transactions");
 
     Ok(())
 }
