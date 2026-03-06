@@ -243,13 +243,13 @@ impl Account {
 
                 // Show account info
                 tprintln!(ctx, "Removing account: {}", account.name_with_id());
-                if let Some(balance) = account.balance() {
-                    if balance.mature > 0 || balance.pending > 0 {
-                        tprintln!(ctx, "");
-                        tprintln!(ctx, "This account has a non-zero balance.");
-                        tprintln!(ctx, "Please transfer funds to another account before removing.");
-                        return Ok(());
-                    }
+                if let Some(balance) = account.balance()
+                    && (balance.mature > 0 || balance.pending > 0)
+                {
+                    tprintln!(ctx, "");
+                    tprintln!(ctx, "This account has a non-zero balance.");
+                    tprintln!(ctx, "Please transfer funds to another account before removing.");
+                    return Ok(());
                 }
 
                 // Confirm
