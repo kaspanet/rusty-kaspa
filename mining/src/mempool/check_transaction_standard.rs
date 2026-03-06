@@ -167,9 +167,15 @@ impl Mempool {
     /// context of this function is one whose referenced public key script is of a
     /// standard form and, for pay-to-script-hash, does not have more than
     /// maxStandardP2SHSigOps signature operations.
-    /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
-    /// into the mempool and relay.
-    pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
+    /// In addition, when `check_fee` is true, makes sure that the transaction's fee is above
+    /// the minimum for acceptance into the mempool and relay. When `check_fee` is false
+    /// (used by `SubmitLocalTransaction`), the relay fee check is skipped while all other
+    /// standard checks (storage mass, input script class, P2SH sig ops) are still enforced.
+    pub(crate) fn check_transaction_standard_in_context(
+        &self,
+        transaction: &MutableTransaction,
+        check_fee: bool,
+    ) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
         let contextual_mass = transaction.tx.mass();
         if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
@@ -198,12 +204,18 @@ impl Mempool {
                 }
             }
 
-            // TODO: For now, until wallets adapt, we only require minimum fee as function of compute mass (but the fee/mass ratio will
-            // use the max over all masses and will affect tx selection to block template)
-            let minimum_fee =
-                self.minimum_required_transaction_relay_fee(transaction.calculated_non_contextual_masses.unwrap().compute_mass);
-            if transaction.calculated_fee.unwrap() < minimum_fee {
-                return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
+            if check_fee {
+                // TODO: For now, until wallets adapt, we only require minimum fee as function of compute mass (but the fee/mass ratio will
+                // use the max over all masses and will affect tx selection to block template)
+                let minimum_fee =
+                    self.minimum_required_transaction_relay_fee(transaction.calculated_non_contextual_masses.unwrap().compute_mass);
+                if transaction.calculated_fee.unwrap() < minimum_fee {
+                    return Err(NonStandardError::RejectInsufficientFee(
+                        transaction_id,
+                        transaction.calculated_fee.unwrap(),
+                        minimum_fee,
+                    ));
+                }
             }
         }
 
