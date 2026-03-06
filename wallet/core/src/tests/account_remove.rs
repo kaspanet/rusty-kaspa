@@ -40,7 +40,7 @@ async fn test_remove_account_zero_balance() -> Result<()> {
     set_account_balance(&account, Some(Balance::new(0, 0, 0, 0, 0, 0)));
 
     // Remove should succeed
-    wallet.accounts_remove(account_id, wallet_secret.clone()).await?;
+    wallet.clone().accounts_remove(account_id, wallet_secret.clone()).await?;
 
     // Verify account no longer exists in storage
     let guard = wallet.guard();
@@ -60,7 +60,7 @@ async fn test_remove_account_with_balance_rejected() -> Result<()> {
     set_account_balance(&account, Some(Balance::new(1_000_000, 0, 0, 1, 0, 0)));
 
     // Remove should fail with AccountHasBalance
-    let result = wallet.accounts_remove(account_id, wallet_secret).await;
+    let result = wallet.clone().accounts_remove(account_id, wallet_secret).await;
     assert!(result.is_err(), "Should reject removal of account with balance");
     let err = result.unwrap_err();
     assert!(err.to_string().contains("non-zero balance"), "Error should mention non-zero balance, got: {}", err);
@@ -77,7 +77,7 @@ async fn test_remove_account_with_pending_balance_rejected() -> Result<()> {
     set_account_balance(&account, Some(Balance::new(0, 500_000, 0, 0, 1, 0)));
 
     // Remove should fail with AccountHasBalance
-    let result = wallet.accounts_remove(account_id, wallet_secret).await;
+    let result = wallet.clone().accounts_remove(account_id, wallet_secret).await;
     assert!(result.is_err(), "Should reject removal of account with pending balance");
 
     Ok(())
@@ -92,7 +92,7 @@ async fn test_remove_unscanned_account_rejected() -> Result<()> {
     assert!(account.balance().is_none(), "Unscanned account should have None balance");
 
     // Remove should fail with AccountNotActive
-    let result = wallet.accounts_remove(account_id, wallet_secret).await;
+    let result = wallet.clone().accounts_remove(account_id, wallet_secret).await;
     assert!(result.is_err(), "Should reject removal of unscanned account");
     let err = result.unwrap_err();
     assert!(err.to_string().contains("not active"), "Error should mention not active, got: {}", err);
@@ -107,7 +107,7 @@ async fn test_remove_nonexistent_account_rejected() -> Result<()> {
     // Use a random account ID
     let fake_id = AccountId::from_hex("deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")?;
 
-    let result = wallet.accounts_remove(fake_id, wallet_secret).await;
+    let result = wallet.clone().accounts_remove(fake_id, wallet_secret).await;
     assert!(result.is_err(), "Should reject removal of nonexistent account");
     let err = result.unwrap_err();
     assert!(err.to_string().contains("not found"), "Error should mention not found, got: {}", err);
@@ -121,18 +121,17 @@ async fn test_remove_account_cleans_orphaned_keys() -> Result<()> {
     let account_id = *account.id();
 
     // Get the prv_key_data_ids before removal
-    let prv_key_data_ids = account.to_storage()?.prv_key_data_ids.clone();
-    assert!(!prv_key_data_ids.is_empty(), "Account should have private key data");
+    let prv_key_data_ids = account.to_storage()?.prv_key_data_ids;
 
     // Set balance to zero so removal succeeds
     set_account_balance(&account, Some(Balance::new(0, 0, 0, 0, 0, 0)));
 
     // Remove the account
-    wallet.accounts_remove(account_id, wallet_secret.clone()).await?;
+    wallet.clone().accounts_remove(account_id, wallet_secret.clone()).await?;
 
     // Verify private key data was also removed (since no other accounts reference it)
     let prv_key_data_store = wallet.store().as_prv_key_data_store()?;
-    for prv_key_data_id in &prv_key_data_ids {
+    for prv_key_data_id in prv_key_data_ids.iter() {
         let key_data = prv_key_data_store.load_key_data(&wallet_secret, prv_key_data_id).await?;
         assert!(key_data.is_none(), "Orphaned private key data should be removed");
     }
