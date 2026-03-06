@@ -846,10 +846,7 @@ async fn block_header_added_notification_test() {
     let GetBlockTemplateResponse { block, .. } = client
         .get_block_template_call(
             None,
-            GetBlockTemplateRequest {
-                pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]),
-                extra_data: Vec::new(),
-            },
+            GetBlockTemplateRequest { pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]), extra_data: Vec::new() },
         )
         .await
         .unwrap();
