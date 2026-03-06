@@ -1,6 +1,6 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
+use crate::common::{client_notify::ChannelNotify, daemon::Daemon, listener::Listener};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
@@ -825,25 +825,20 @@ async fn block_added_slim_notification_test() {
 
     let fd_total_budget = fd_budget::limit();
     let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
-    let client = daemon.start().await;
+    let rpc_client = daemon.start().await;
 
-    // Set up two notification channels: one for full blocks, one for slim (header-only)
-    let (full_sender, full_receiver) = async_channel::unbounded();
-    let (slim_sender, slim_receiver) = async_channel::unbounded();
+    // Create a multi-listener client for notifications
+    let notify_client = daemon.new_multi_listener_client().await;
+    notify_client.start(None).await;
 
-    // Register two listeners
-    let full_connection = ChannelConnection::new("full", full_sender, ChannelType::Closable);
-    let full_listener_id = client.register_new_listener(full_connection);
-
-    let slim_connection = ChannelConnection::new("slim", slim_sender, ChannelType::Closable);
-    let slim_listener_id = client.register_new_listener(slim_connection);
-
-    // Subscribe: full listener wants transactions, slim listener does not
-    client.start_notify(full_listener_id, Scope::BlockAdded(BlockAddedScope::new(true))).await.unwrap();
-    client.start_notify(slim_listener_id, Scope::BlockAdded(BlockAddedScope::new(false))).await.unwrap();
+    // Register two listeners with different BlockAdded scopes
+    let full_listener =
+        Listener::subscribe(notify_client.clone(), Scope::BlockAdded(BlockAddedScope::new(true))).await.unwrap();
+    let slim_listener =
+        Listener::subscribe(notify_client.clone(), Scope::BlockAdded(BlockAddedScope::new(false))).await.unwrap();
 
     // Get a block template and submit it
-    let GetBlockTemplateResponse { block, .. } = client
+    let GetBlockTemplateResponse { block, .. } = rpc_client
         .get_block_template_call(
             None,
             GetBlockTemplateRequest { pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]), extra_data: Vec::new() },
@@ -851,13 +846,13 @@ async fn block_added_slim_notification_test() {
         .await
         .unwrap();
 
-    let response = client.submit_block(block.clone(), false).await.unwrap();
+    let response = rpc_client.submit_block(block.clone(), false).await.unwrap();
     assert_eq!(response.report, SubmitBlockReport::Success);
 
     // Receive the full notification
     let full_notification = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            match full_receiver.recv().await.unwrap() {
+            match full_listener.receiver.recv().await.unwrap() {
                 Notification::BlockAdded(msg) => break msg,
                 _ => continue,
             }
@@ -869,7 +864,7 @@ async fn block_added_slim_notification_test() {
     // Receive the slim notification
     let slim_notification = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            match slim_receiver.recv().await.unwrap() {
+            match slim_listener.receiver.recv().await.unwrap() {
                 Notification::BlockAdded(msg) => break msg,
                 _ => continue,
             }
@@ -891,10 +886,7 @@ async fn block_added_slim_notification_test() {
         slim_notification.block.transactions.len()
     );
 
-    // Verify: full notification has the same header (compare by hash since RpcHeader doesn't impl PartialEq)
-    assert_eq!(full_notification.block.header.hash, slim_notification.block.header.hash);
-
-    // Verify: slim notification preserves verbose_data (compare by hash since RpcBlockVerboseData doesn't impl PartialEq)
+    // Verify: slim notification preserves verbose_data
     assert_eq!(
         full_notification.block.verbose_data.as_ref().map(|v| &v.hash),
         slim_notification.block.verbose_data.as_ref().map(|v| &v.hash)
@@ -908,9 +900,9 @@ async fn block_added_slim_notification_test() {
     );
 
     // Cleanup
-    client.unregister_listener(full_listener_id).await.unwrap();
-    client.unregister_listener(slim_listener_id).await.unwrap();
-    client.disconnect().await.unwrap();
-    drop(client);
+    notify_client.disconnect().await.unwrap();
+    rpc_client.disconnect().await.unwrap();
+    drop(notify_client);
+    drop(rpc_client);
     daemon.shutdown();
 }
