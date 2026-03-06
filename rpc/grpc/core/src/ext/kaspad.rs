@@ -20,12 +20,10 @@ impl KaspadRequest {
 impl kaspad_request::Payload {
     pub fn from_notification_type(scope: &Scope, command: Command) -> Self {
         match scope {
-            Scope::BlockAdded(scope) => {
-                kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage {
-                    include_transactions: scope.include_transactions,
-                    command: command.into(),
-                })
-            }
+            Scope::BlockAdded(scope) => kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage {
+                include_transactions: scope.include_transactions,
+                command: command.into(),
+            }),
             Scope::NewBlockTemplate(_) => {
                 kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {
                     command: command.into(),

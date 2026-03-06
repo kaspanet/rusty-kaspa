@@ -98,7 +98,7 @@ impl std::fmt::Display for BlockAddedScope {
 }
 
 impl BorshSerialize for BlockAddedScope {
-    fn serialize(&self, writer: &mut impl std::io::Write) -> std::io::Result<()> {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         BorshSerialize::serialize(&self.include_transactions, writer)
     }
 }

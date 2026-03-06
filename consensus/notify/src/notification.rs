@@ -53,20 +53,16 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_block_added_subscription(
-        &self,
-        subscription: &BlockAddedSubscription,
-        _context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_block_added_subscription(&self, subscription: &BlockAddedSubscription, _context: &SubscriptionContext) -> Option<Self> {
         match subscription.active() {
             true => {
                 if let Notification::BlockAdded(payload) = self
                     && !subscription.include_transactions()
                     && !payload.block.transactions.is_empty()
                 {
-                    return Some(Notification::BlockAdded(BlockAddedNotification::new(
-                        Block::from_header_arc(payload.block.header.clone()),
-                    )));
+                    return Some(Notification::BlockAdded(BlockAddedNotification::new(Block::from_header_arc(
+                        payload.block.header.clone(),
+                    ))));
                 }
                 Some(self.clone())
             }

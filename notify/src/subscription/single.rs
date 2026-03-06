@@ -122,10 +122,7 @@ impl Single for BlockAddedSubscription {
                 } else {
                     // Mutation All
                     let mutated = Self::new(true, true);
-                    Some((
-                        Arc::new(mutated),
-                        vec![Mutation::new(Command::Stop, BlockAddedScope::new(false).into()), mutation],
-                    ))
+                    Some((Arc::new(mutated), vec![Mutation::new(Command::Stop, BlockAddedScope::new(false).into()), mutation]))
                 }
             } else {
                 // State All
@@ -682,7 +679,10 @@ impl BroadcastingSingle for DynSubscription {
 mod tests {
     use super::super::*;
     use super::*;
-    use crate::{address::test_helpers::get_3_addresses, scope::{BlockAddedScope, NewBlockTemplateScope}};
+    use crate::{
+        address::test_helpers::get_3_addresses,
+        scope::{BlockAddedScope, NewBlockTemplateScope},
+    };
     use std::collections::hash_map::DefaultHasher;
 
     #[test]

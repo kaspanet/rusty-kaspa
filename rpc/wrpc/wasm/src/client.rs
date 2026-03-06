@@ -850,10 +850,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = subscribeBlockAdded)]
     pub async fn subscribe_block_added(&self, include_transactions: bool) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
-            self.inner
-                .client
-                .start_notify(listener_id, Scope::BlockAdded(BlockAddedScope { include_transactions }))
-                .await?;
+            self.inner.client.start_notify(listener_id, Scope::BlockAdded(BlockAddedScope { include_transactions })).await?;
         } else {
             log_error!("RPC subscribe on a closed connection");
         }
@@ -866,10 +863,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = unsubscribeBlockAdded)]
     pub async fn unsubscribe_block_added(&self, include_transactions: bool) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
-            self.inner
-                .client
-                .stop_notify(listener_id, Scope::BlockAdded(BlockAddedScope { include_transactions }))
-                .await?;
+            self.inner.client.stop_notify(listener_id, Scope::BlockAdded(BlockAddedScope { include_transactions })).await?;
         } else {
             log_error!("RPC unsubscribe on a closed connection");
         }

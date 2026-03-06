@@ -839,23 +839,14 @@ async fn block_added_slim_notification_test() {
     let slim_listener_id = client.register_new_listener(slim_connection);
 
     // Subscribe: full listener wants transactions, slim listener does not
-    client
-        .start_notify(full_listener_id, Scope::BlockAdded(BlockAddedScope::new(true)))
-        .await
-        .unwrap();
-    client
-        .start_notify(slim_listener_id, Scope::BlockAdded(BlockAddedScope::new(false)))
-        .await
-        .unwrap();
+    client.start_notify(full_listener_id, Scope::BlockAdded(BlockAddedScope::new(true))).await.unwrap();
+    client.start_notify(slim_listener_id, Scope::BlockAdded(BlockAddedScope::new(false))).await.unwrap();
 
     // Get a block template and submit it
     let GetBlockTemplateResponse { block, .. } = client
         .get_block_template_call(
             None,
-            GetBlockTemplateRequest {
-                pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]),
-                extra_data: Vec::new(),
-            },
+            GetBlockTemplateRequest { pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]), extra_data: Vec::new() },
         )
         .await
         .unwrap();

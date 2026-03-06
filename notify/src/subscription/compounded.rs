@@ -118,10 +118,7 @@ impl Compounded for BlockAddedSubscription {
                         *self.all_mut() -= 1;
                         if self.all() == 0 {
                             if self.reduced() > 0 {
-                                return Some(Mutation::new(
-                                    Command::Start,
-                                    Scope::BlockAdded(BlockAddedScope::new(false)),
-                                ));
+                                return Some(Mutation::new(Command::Start, Scope::BlockAdded(BlockAddedScope::new(false))));
                             } else {
                                 return Some(mutation);
                             }

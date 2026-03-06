@@ -600,7 +600,10 @@ pub mod test_helpers {
             Some(Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) })
         }
         let s = |command: Command| -> Option<SubscriptionMessage> {
-            Some(SubscriptionMessage { listener_id, mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) } })
+            Some(SubscriptionMessage {
+                listener_id,
+                mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) },
+            })
         };
         fn n() -> TestNotification {
             TestNotification::BlockAdded(BlockAddedNotification::default())
@@ -650,18 +653,12 @@ pub mod test_helpers {
 
     pub fn block_added_test_steps(listener_id: ListenerId) -> Vec<Step> {
         fn m(command: Command, include_transactions: bool) -> Option<Mutation> {
-            Some(Mutation {
-                command,
-                scope: Scope::BlockAdded(BlockAddedScope::new(include_transactions)),
-            })
+            Some(Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::new(include_transactions)) })
         }
         let s = |command: Command, include_transactions: bool| -> Option<SubscriptionMessage> {
             Some(SubscriptionMessage {
                 listener_id,
-                mutation: Mutation {
-                    command,
-                    scope: Scope::BlockAdded(BlockAddedScope::new(include_transactions)),
-                },
+                mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::new(include_transactions)) },
             })
         };
         fn n(transactions: Option<u64>) -> TestNotification {

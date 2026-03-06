@@ -76,11 +76,7 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_block_added_subscription(
-        &self,
-        subscription: &BlockAddedSubscription,
-        _context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_block_added_subscription(&self, subscription: &BlockAddedSubscription, _context: &SubscriptionContext) -> Option<Self> {
         match subscription.active() {
             true => {
                 if let Notification::BlockAdded(payload) = self
