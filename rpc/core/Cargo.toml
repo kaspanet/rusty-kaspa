@@ -56,6 +56,7 @@ workflow-wasm.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+wasm-bindgen-test.workspace = true
 
 [lints]
 workspace = true
