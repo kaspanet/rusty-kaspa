@@ -1858,4 +1858,3 @@ try_from!(args: GetUtxoReturnAddressResponse, IGetUtxoReturnAddressResponse, {
 });
 
 // ---
-
