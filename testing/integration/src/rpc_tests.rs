@@ -803,3 +803,120 @@ async fn sanity_test() {
     drop(client);
     daemon.shutdown();
 }
+
+/// Test that BlockAdded notifications with `include_transactions: false`
+/// actually strip transactions from the delivered block.
+///
+/// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::block_added_slim_notification_test`
+#[tokio::test]
+async fn block_added_slim_notification_test() {
+    kaspa_core::log::try_init_logger("info");
+    kaspa_core::panic::configure_panic();
+
+    let args = Args {
+        simnet: true,
+        disable_upnp: true,
+        enable_unsynced_mining: true,
+        block_template_cache_lifetime: Some(0),
+        utxoindex: false,
+        unsafe_rpc: true,
+        ..Default::default()
+    };
+
+    let fd_total_budget = fd_budget::limit();
+    let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
+    let client = daemon.start().await;
+
+    // Set up two notification channels: one for full blocks, one for slim (header-only)
+    let (full_sender, full_receiver) = async_channel::unbounded();
+    let (slim_sender, slim_receiver) = async_channel::unbounded();
+
+    // Register two listeners
+    let full_connection = ChannelConnection::new("full", full_sender, ChannelType::Closable);
+    let full_listener_id = client.register_new_listener(full_connection);
+
+    let slim_connection = ChannelConnection::new("slim", slim_sender, ChannelType::Closable);
+    let slim_listener_id = client.register_new_listener(slim_connection);
+
+    // Subscribe: full listener wants transactions, slim listener does not
+    client
+        .start_notify(full_listener_id, Scope::BlockAdded(BlockAddedScope::new(true)))
+        .await
+        .unwrap();
+    client
+        .start_notify(slim_listener_id, Scope::BlockAdded(BlockAddedScope::new(false)))
+        .await
+        .unwrap();
+
+    // Get a block template and submit it
+    let GetBlockTemplateResponse { block, .. } = client
+        .get_block_template_call(
+            None,
+            GetBlockTemplateRequest {
+                pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]),
+                extra_data: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let response = client.submit_block(block.clone(), false).await.unwrap();
+    assert_eq!(response.report, SubmitBlockReport::Success);
+
+    // Receive the full notification
+    let full_notification = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match full_receiver.recv().await.unwrap() {
+                Notification::BlockAdded(msg) => break msg,
+                _ => continue,
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for full BlockAdded notification");
+
+    // Receive the slim notification
+    let slim_notification = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match slim_receiver.recv().await.unwrap() {
+                Notification::BlockAdded(msg) => break msg,
+                _ => continue,
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for slim BlockAdded notification");
+
+    // Verify: both notifications refer to the same block
+    assert_eq!(
+        full_notification.block.header.hash, slim_notification.block.header.hash,
+        "full and slim notifications should be for the same block"
+    );
+
+    // Verify: slim notification has NO transactions
+    assert!(
+        slim_notification.block.transactions.is_empty(),
+        "slim notification should have no transactions, got {}",
+        slim_notification.block.transactions.len()
+    );
+
+    // Verify: full notification has the same header
+    assert_eq!(full_notification.block.header, slim_notification.block.header);
+
+    // Verify: slim notification preserves verbose_data
+    assert_eq!(full_notification.block.verbose_data, slim_notification.block.verbose_data);
+
+    info!(
+        "BlockAdded slim notification test passed: full={} txs, slim={} txs, hash={}",
+        full_notification.block.transactions.len(),
+        slim_notification.block.transactions.len(),
+        full_notification.block.header.hash
+    );
+
+    // Cleanup
+    client.unregister_listener(full_listener_id).await.unwrap();
+    client.unregister_listener(slim_listener_id).await.unwrap();
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
