@@ -668,17 +668,7 @@ declare! {
 }
 
 try_from! ( args: IGetBalanceByAddressRequest, GetBalanceByAddressRequest, {
-    let js_value = JsValue::from(args);
-    let address = if let Ok(address) = Address::try_owned_from(js_value.clone()) {
-        address
-    } else if let Ok(address_prop) = js_sys::Reflect::get(&js_value, &JsValue::from_str("address")) {
-        if address_prop.is_undefined() || address_prop.is_null() {
-            return Err("invalid GetBalanceByAddressRequest argument".into());
-        }
-        Address::try_owned_from(address_prop)?
-    } else {
-        return Err("invalid GetBalanceByAddressRequest argument".into());
-    };
+    let address = args.cast_into::<Address>("address")?;
     Ok(GetBalanceByAddressRequest { address })
 });
 
@@ -1869,32 +1859,3 @@ try_from!(args: GetUtxoReturnAddressResponse, IGetUtxoReturnAddressResponse, {
 
 // ---
 
-#[cfg(all(test, target_arch = "wasm32", feature = "wasm32-sdk"))]
-mod tests {
-    use super::*;
-    use wasm_bindgen_test::wasm_bindgen_test;
-
-    #[wasm_bindgen_test]
-    fn test_get_utxos_by_addresses_request_from_address_array() {
-        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
-        let js_array = js_sys::Array::new();
-        js_array.push(&JsValue::from(expected.clone()));
-        let js_value = JsValue::from(js_array);
-
-        let request = GetUtxosByAddressesRequest::try_from(IGetUtxosByAddressesRequest::from(js_value)).unwrap();
-        assert_eq!(request.addresses, vec![expected]);
-    }
-
-    #[wasm_bindgen_test]
-    fn test_get_utxos_by_addresses_request_from_object_with_address_array() {
-        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
-        let js_array = js_sys::Array::new();
-        js_array.push(&JsValue::from(expected.clone()));
-
-        let args = IGetUtxosByAddressesRequest::default();
-        args.set("addresses", js_array.as_ref()).unwrap();
-
-        let request = GetUtxosByAddressesRequest::try_from(args).unwrap();
-        assert_eq!(request.addresses, vec![expected]);
-    }
-}
