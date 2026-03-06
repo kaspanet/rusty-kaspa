@@ -232,9 +232,11 @@ impl WalletApi for super::Wallet {
         Ok(PrvKeyDataCreateResponse { prv_key_data_id })
     }
 
-    async fn prv_key_data_remove_call(self: Arc<Self>, _request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse> {
-        // TODO handle key removal
-        return Err(Error::NotImplemented);
+    async fn prv_key_data_remove_call(self: Arc<Self>, request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse> {
+        let PrvKeyDataRemoveRequest { wallet_secret, prv_key_data_id } = request;
+        self.store().as_prv_key_data_store()?.remove(&wallet_secret, &prv_key_data_id).await?;
+        self.store().commit(&wallet_secret).await?;
+        Ok(PrvKeyDataRemoveResponse {})
     }
 
     async fn prv_key_data_get_call(self: Arc<Self>, request: PrvKeyDataGetRequest) -> Result<PrvKeyDataGetResponse> {
@@ -255,6 +257,57 @@ impl WalletApi for super::Wallet {
         account.rename(&wallet_secret, name.as_deref()).await?;
 
         Ok(AccountsRenameResponse {})
+    }
+
+    async fn accounts_remove_call(self: Arc<Self>, request: AccountsRemoveRequest) -> Result<AccountsRemoveResponse> {
+        let AccountsRemoveRequest { account_id, wallet_secret } = request;
+
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        // 1. Find the account (active or from storage)
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+
+        // 2. Balance check — reject if active account has funds
+        if let Some(balance) = account.balance() {
+            if balance.mature > 0 || balance.pending > 0 {
+                return Err(Error::AccountHasBalance(account_id));
+            }
+        }
+
+        // 3. Deselect if currently selected
+        let is_selected = self.inner.selected_account.lock().unwrap().as_ref().map(|a| *a.id()) == Some(account_id);
+        if is_selected {
+            self.select(None).await?;
+        }
+
+        // 4. Deactivate if active
+        if self.active_accounts().contains(&account_id) {
+            self.deactivate_accounts(Some(&[account_id]), &guard).await?;
+        }
+
+        // 5. Remove account from storage
+        let account_store = self.store().as_account_store()?;
+        account_store.remove(&[&account_id]).await?;
+
+        // 6. Clean up orphaned private key data
+        let prv_key_data_ids = account.to_storage()?.prv_key_data_ids;
+        let prv_key_data_store = self.store().as_prv_key_data_store()?;
+        for prv_key_data_id in &prv_key_data_ids {
+            // Check if any other accounts still reference this key
+            let remaining = account_store.len(Some(prv_key_data_id)).await?;
+            if remaining == 0 {
+                prv_key_data_store.remove(&wallet_secret, &prv_key_data_id).await?;
+            }
+        }
+
+        // 7. Commit to disk
+        self.store().commit(&wallet_secret).await?;
+
+        // 8. Notify
+        self.notify(Events::AccountRemove { id: account_id }).await?;
+
+        Ok(AccountsRemoveResponse {})
     }
 
     async fn accounts_select_call(self: Arc<Self>, request: AccountsSelectRequest) -> Result<AccountsSelectResponse> {
