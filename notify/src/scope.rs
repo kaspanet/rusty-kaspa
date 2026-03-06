@@ -37,6 +37,7 @@ scope_enum! {
 #[derive(Clone, Display, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Scope {
     BlockAdded,
+    BlockHeaderAdded,
     VirtualChainChanged,
     FinalityConflict,
     FinalityConflictResolved,
@@ -80,6 +81,23 @@ impl Serializer for BlockAddedScope {
 }
 
 impl Deserializer for BlockAddedScope {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct BlockHeaderAddedScope {}
+
+impl Serializer for BlockHeaderAddedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for BlockHeaderAddedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})

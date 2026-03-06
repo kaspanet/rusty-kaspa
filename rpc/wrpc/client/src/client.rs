@@ -68,6 +68,7 @@ impl Inner {
 
         [
             RpcApiOps::BlockAddedNotification,
+            RpcApiOps::BlockHeaderAddedNotification,
             RpcApiOps::VirtualChainChangedNotification,
             RpcApiOps::FinalityConflictNotification,
             RpcApiOps::FinalityConflictResolvedNotification,

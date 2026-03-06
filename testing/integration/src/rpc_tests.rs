@@ -11,7 +11,7 @@ use kaspa_hashes::Hash;
 use kaspa_notify::{
     connection::{ChannelConnection, ChannelType},
     scope::{
-        BlockAddedScope, FinalityConflictScope, NewBlockTemplateScope, PruningPointUtxoSetOverrideScope, Scope,
+        BlockAddedScope, BlockHeaderAddedScope, FinalityConflictScope, NewBlockTemplateScope, PruningPointUtxoSetOverrideScope, Scope,
         SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
     },
 };
@@ -716,6 +716,14 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::NotifyBlockHeaderAdded => {
+                let rpc_client = client.clone();
+                let id = listener_id;
+                tst!(op, {
+                    rpc_client.start_notify(id, BlockHeaderAddedScope {}.into()).await.unwrap();
+                })
+            }
+
             KaspadPayloadOps::NotifyNewBlockTemplate => {
                 let rpc_client = client.clone();
                 let id = listener_id;
@@ -799,6 +807,89 @@ async fn sanity_test() {
     //
     // Fold-up
     //
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
+
+/// Test that subscribing to BlockHeaderAdded produces header-only notifications
+/// when a block is submitted, and that no transaction data is included.
+///
+/// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::block_header_added_notification_test`
+#[tokio::test]
+async fn block_header_added_notification_test() {
+    kaspa_core::log::try_init_logger("info");
+    kaspa_core::panic::configure_panic();
+
+    let args = Args {
+        simnet: true,
+        disable_upnp: true,
+        enable_unsynced_mining: true,
+        block_template_cache_lifetime: Some(0),
+        utxoindex: false,
+        ..Default::default()
+    };
+
+    let fd_total_budget = fd_budget::limit();
+    let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
+    let client = daemon.start().await;
+
+    // Set up notification channel and subscribe to BlockHeaderAdded
+    let (sender, event_receiver) = async_channel::unbounded();
+    client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
+    client.start_notify(Default::default(), Scope::BlockHeaderAdded(BlockHeaderAddedScope {})).await.unwrap();
+
+    // Also subscribe to VirtualDaaScoreChanged so we know when the block is fully processed
+    client.start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await.unwrap();
+
+    // Get a block template and submit it
+    let GetBlockTemplateResponse { block, .. } = client
+        .get_block_template_call(
+            None,
+            GetBlockTemplateRequest {
+                pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]),
+                extra_data: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let expected_header: Header = (&block.header).try_into().unwrap();
+    let expected_hash = expected_header.hash;
+
+    let response = client.submit_block(block, false).await.unwrap();
+    assert_eq!(response.report, SubmitBlockReport::Success);
+
+    // Collect notifications until we see the VirtualDaaScoreChanged indicating block was processed
+    let mut got_block_header_added = false;
+    while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(5), event_receiver.recv()).await {
+        Ok(res) => res,
+        Err(elapsed) => panic!("expected notifications before {}", elapsed),
+    } {
+        match notification {
+            Notification::BlockHeaderAdded(msg) => {
+                // Verify the header hash matches our submitted block
+                assert_eq!(msg.header.hash, expected_hash, "BlockHeaderAdded notification hash mismatch");
+                // Verify header fields are populated
+                assert_eq!(msg.header.version, expected_header.version);
+                assert_eq!(msg.header.daa_score, expected_header.daa_score);
+                assert_eq!(msg.header.blue_score, expected_header.blue_score);
+                assert_eq!(msg.header.timestamp, expected_header.timestamp);
+                assert_eq!(msg.header.bits, expected_header.bits);
+                assert_eq!(msg.header.nonce, expected_header.nonce);
+                got_block_header_added = true;
+            }
+            Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score >= 1 => {
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(got_block_header_added, "Expected to receive a BlockHeaderAdded notification");
+
+    // Clean up
+    client.stop_notify(Default::default(), Scope::BlockHeaderAdded(BlockHeaderAddedScope {})).await.unwrap();
+    client.stop_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await.unwrap();
     client.disconnect().await.unwrap();
     drop(client);
     daemon.shutdown();
