@@ -243,9 +243,16 @@ impl Account {
 
                 // Show account info
                 tprintln!(ctx, "Removing account: {}", account.name_with_id());
-                if let Some(balance) = account.balance()
-                    && (balance.mature > 0 || balance.pending > 0)
-                {
+                let balance = match account.balance() {
+                    Some(balance) => balance,
+                    None => {
+                        tprintln!(ctx, "");
+                        tprintln!(ctx, "Account balance is not available (account not active).");
+                        tprintln!(ctx, "Please activate the account first before removing.");
+                        return Ok(());
+                    }
+                };
+                if balance.mature > 0 || balance.pending > 0 {
                     tprintln!(ctx, "");
                     tprintln!(ctx, "This account has a non-zero balance.");
                     tprintln!(ctx, "Please transfer funds to another account before removing.");

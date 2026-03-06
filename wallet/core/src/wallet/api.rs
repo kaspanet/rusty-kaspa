@@ -268,10 +268,9 @@ impl WalletApi for super::Wallet {
         // 1. Find the account (active or from storage)
         let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
 
-        // 2. Balance check — reject if active account has funds
-        if let Some(balance) = account.balance()
-            && (balance.mature > 0 || balance.pending > 0)
-        {
+        // 2. Balance check — reject if account is not scanned or has funds
+        let balance = account.balance().ok_or(Error::AccountNotActive(account_id))?;
+        if balance.mature > 0 || balance.pending > 0 {
             return Err(Error::AccountHasBalance(account_id));
         }
 
