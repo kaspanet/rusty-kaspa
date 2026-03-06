@@ -131,8 +131,8 @@ async fn test_remove_account_cleans_orphaned_keys() -> Result<()> {
 
     // Verify private key data was also removed (since no other accounts reference it)
     let prv_key_data_store = wallet.store().as_prv_key_data_store()?;
-    for prv_key_data_id in prv_key_data_ids.iter() {
-        let key_data = prv_key_data_store.load_key_data(&wallet_secret, prv_key_data_id).await?;
+    for prv_key_data_id in &prv_key_data_ids {
+        let key_data = prv_key_data_store.load_key_data(&wallet_secret, &prv_key_data_id).await?;
         assert!(key_data.is_none(), "Orphaned private key data should be removed");
     }
 
