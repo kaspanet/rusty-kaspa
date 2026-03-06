@@ -891,11 +891,14 @@ async fn block_added_slim_notification_test() {
         slim_notification.block.transactions.len()
     );
 
-    // Verify: full notification has the same header
-    assert_eq!(full_notification.block.header, slim_notification.block.header);
+    // Verify: full notification has the same header (compare by hash since RpcHeader doesn't impl PartialEq)
+    assert_eq!(full_notification.block.header.hash, slim_notification.block.header.hash);
 
-    // Verify: slim notification preserves verbose_data
-    assert_eq!(full_notification.block.verbose_data, slim_notification.block.verbose_data);
+    // Verify: slim notification preserves verbose_data (compare by hash since RpcBlockVerboseData doesn't impl PartialEq)
+    assert_eq!(
+        full_notification.block.verbose_data.as_ref().map(|v| &v.hash),
+        slim_notification.block.verbose_data.as_ref().map(|v| &v.hash)
+    );
 
     info!(
         "BlockAdded slim notification test passed: full={} txs, slim={} txs, hash={}",
