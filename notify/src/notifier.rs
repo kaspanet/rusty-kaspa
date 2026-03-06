@@ -597,10 +597,10 @@ pub mod test_helpers {
 
     pub fn overall_test_steps(listener_id: ListenerId) -> Vec<Step> {
         fn m(command: Command) -> Option<Mutation> {
-            Some(Mutation { command, scope: Scope::BlockAdded(BlockAddedScope {}) })
+            Some(Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) })
         }
         let s = |command: Command| -> Option<SubscriptionMessage> {
-            Some(SubscriptionMessage { listener_id, mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope {}) } })
+            Some(SubscriptionMessage { listener_id, mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) } })
         };
         fn n() -> TestNotification {
             TestNotification::BlockAdded(BlockAddedNotification::default())

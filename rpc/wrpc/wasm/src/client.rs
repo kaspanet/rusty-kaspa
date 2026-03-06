@@ -844,6 +844,38 @@ impl RpcClient {
 
     // TODO: scope variant with field functions
 
+    /// Manage subscription for a block added notification event.
+    /// Block added notification event is produced when a new
+    /// block is added to the Kaspa BlockDAG.
+    #[wasm_bindgen(js_name = subscribeBlockAdded)]
+    pub async fn subscribe_block_added(&self, include_transactions: bool) -> Result<()> {
+        if let Some(listener_id) = self.listener_id() {
+            self.inner
+                .client
+                .start_notify(listener_id, Scope::BlockAdded(BlockAddedScope { include_transactions }))
+                .await?;
+        } else {
+            log_error!("RPC subscribe on a closed connection");
+        }
+        Ok(())
+    }
+
+    /// Manage subscription for a block added notification event.
+    /// Block added notification event is produced when a new
+    /// block is added to the Kaspa BlockDAG.
+    #[wasm_bindgen(js_name = unsubscribeBlockAdded)]
+    pub async fn unsubscribe_block_added(&self, include_transactions: bool) -> Result<()> {
+        if let Some(listener_id) = self.listener_id() {
+            self.inner
+                .client
+                .stop_notify(listener_id, Scope::BlockAdded(BlockAddedScope { include_transactions }))
+                .await?;
+        } else {
+            log_error!("RPC unsubscribe on a closed connection");
+        }
+        Ok(())
+    }
+
     /// Manage subscription for a virtual chain changed notification event.
     /// Virtual chain changed notification event is produced when the virtual
     /// chain changes in the Kaspa BlockDAG.
@@ -880,13 +912,10 @@ impl RpcClient {
 // Build subscribe functions
 build_wrpc_wasm_bindgen_subscriptions!([
     // Manually implemented subscriptions (above)
+    // - BlockAdded, // can't use this here due to non-C-style enum variant
     // - VirtualChainChanged, // can't used this here due to non-C-style enum variant
     // - UtxosChanged, // can't used this here due to non-C-style enum variant
     // - VirtualDaaScoreChanged,
-    /// Manage subscription for a block added notification event.
-    /// Block added notification event is produced when a new
-    /// block is added to the Kaspa BlockDAG.
-    BlockAdded,
     /// Manage subscription for a finality conflict notification event.
     /// Finality conflict notification event is produced when a finality
     /// conflict occurs in the Kaspa BlockDAG.

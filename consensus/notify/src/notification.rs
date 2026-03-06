@@ -8,7 +8,7 @@ use kaspa_notify::{
     subscription::{
         Subscription,
         context::SubscriptionContext,
-        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        single::{BlockAddedSubscription, OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
 use std::sync::Arc;
@@ -49,6 +49,27 @@ impl NotificationTrait for Notification {
     fn apply_overall_subscription(&self, subscription: &OverallSubscription, _context: &SubscriptionContext) -> Option<Self> {
         match subscription.active() {
             true => Some(self.clone()),
+            false => None,
+        }
+    }
+
+    fn apply_block_added_subscription(
+        &self,
+        subscription: &BlockAddedSubscription,
+        _context: &SubscriptionContext,
+    ) -> Option<Self> {
+        match subscription.active() {
+            true => {
+                if let Notification::BlockAdded(payload) = self
+                    && !subscription.include_transactions()
+                    && !payload.block.transactions.is_empty()
+                {
+                    return Some(Notification::BlockAdded(BlockAddedNotification::new(
+                        Block::from_header_arc(payload.block.header.clone()),
+                    )));
+                }
+                Some(self.clone())
+            }
             false => None,
         }
     }

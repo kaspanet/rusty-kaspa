@@ -712,7 +712,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 let id = listener_id;
                 tst!(op, {
-                    rpc_client.start_notify(id, BlockAddedScope {}.into()).await.unwrap();
+                    rpc_client.start_notify(id, BlockAddedScope::default().into()).await.unwrap();
                 })
             }
 
