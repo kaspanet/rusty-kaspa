@@ -648,6 +648,75 @@ pub mod test_helpers {
         ])
     }
 
+    pub fn block_added_test_steps(listener_id: ListenerId) -> Vec<Step> {
+        fn m(command: Command, include_transactions: bool) -> Option<Mutation> {
+            Some(Mutation {
+                command,
+                scope: Scope::BlockAdded(BlockAddedScope::new(include_transactions)),
+            })
+        }
+        let s = |command: Command, include_transactions: bool| -> Option<SubscriptionMessage> {
+            Some(SubscriptionMessage {
+                listener_id,
+                mutation: Mutation {
+                    command,
+                    scope: Scope::BlockAdded(BlockAddedScope::new(include_transactions)),
+                },
+            })
+        };
+        fn n(transactions: Option<u64>) -> TestNotification {
+            TestNotification::BlockAdded(BlockAddedNotification { data: 0, transactions })
+        }
+        fn e(transactions: Option<u64>) -> Option<TestNotification> {
+            Some(TestNotification::BlockAdded(BlockAddedNotification { data: 0, transactions }))
+        }
+
+        set_steps_data(vec![
+            Step {
+                name: "do nothing",
+                mutations: vec![],
+                expected_subscriptions: vec![],
+                notification: n(None),
+                expected_notifications: vec![None, None],
+            },
+            Step {
+                name: "L0+ (all) on",
+                mutations: vec![m(Command::Start, true), None],
+                expected_subscriptions: vec![s(Command::Start, true), None],
+                notification: n(Some(21)),
+                expected_notifications: vec![e(Some(21)), None],
+            },
+            Step {
+                name: "L0+ & L1- (reduced) on",
+                mutations: vec![None, m(Command::Start, false)],
+                expected_subscriptions: vec![None, None],
+                notification: n(Some(42)),
+                expected_notifications: vec![e(Some(42)), e(None)],
+            },
+            Step {
+                name: "L0- (reduced) & L1+ (all) on",
+                mutations: vec![m(Command::Start, false), m(Command::Start, true)],
+                expected_subscriptions: vec![s(Command::Start, false), s(Command::Start, true)],
+                notification: n(Some(63)),
+                expected_notifications: vec![e(None), e(Some(63))],
+            },
+            Step {
+                name: "L1+ on",
+                mutations: vec![m(Command::Stop, false), None],
+                expected_subscriptions: vec![None, None],
+                notification: n(Some(84)),
+                expected_notifications: vec![None, e(Some(84))],
+            },
+            Step {
+                name: "all off",
+                mutations: vec![None, m(Command::Stop, true)],
+                expected_subscriptions: vec![None, s(Command::Stop, true)],
+                notification: n(Some(21)),
+                expected_notifications: vec![None, None],
+            },
+        ])
+    }
+
     pub fn virtual_chain_changed_test_steps(listener_id: ListenerId) -> Vec<Step> {
         fn m(command: Command, include_accepted_transaction_ids: bool) -> Option<Mutation> {
             Some(Mutation {
@@ -988,6 +1057,13 @@ mod tests {
     async fn test_overall() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
         let test = Test::new("BlockAdded broadcast (OverallSubscription type)", 2, overall_test_steps(SUBSCRIPTION_MANAGER_ID));
+        test.run().await;
+    }
+
+    #[tokio::test]
+    async fn test_block_added() {
+        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        let test = Test::new("BlockAdded broadcast (scoped)", 2, block_added_test_steps(SUBSCRIPTION_MANAGER_ID));
         test.run().await;
     }
 
