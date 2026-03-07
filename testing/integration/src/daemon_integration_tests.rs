@@ -381,8 +381,10 @@ async fn daemon_cleaning_test() {
 }
 
 /// Tests that KaspaRpcClient properly cleans up resources when dropped without
-/// explicitly calling disconnect(). This validates the Drop implementation
-/// which performs fire-and-forget async cleanup.
+/// explicitly calling disconnect(). Verifies that:
+/// 1. The Drop implementation breaks the internal reference cycle
+/// 2. Inner is actually freed (strong_count drops to 0)
+/// 3. Best-effort async cleanup is initiated
 ///
 /// See: https://github.com/kaspanet/rusty-kaspa/issues/683
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -404,12 +406,15 @@ async fn daemon_wrpc_client_drop_test() {
     let wrpc_client = kaspad.new_wrpc_client();
     wrpc_client.connect(None).await.expect("wRPC client should connect");
 
-    // Verify the client is connected by making an RPC call
+    // Verify the client is connected
     let server_info = wrpc_client.get_server_info().await.expect("Should get server info");
     assert!(!server_info.server_version.is_empty(), "Server version should not be empty");
 
-    // Drop the client WITHOUT calling disconnect() - this tests the Drop implementation
-    // The Drop impl should log a warning and initiate cleanup
+    // Before drop: strong_count should be 2 (our Arc + the reference cycle)
+    assert_eq!(wrpc_client.inner_arc_strong_count(), 2, "Expected 2 refs: client + notifier cycle");
+
+    // Drop the client WITHOUT calling disconnect()
+    // The Drop impl should break the cycle and initiate cleanup
     drop(wrpc_client);
 
     // Give the fire-and-forget cleanup task time to run

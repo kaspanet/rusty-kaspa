@@ -35,9 +35,6 @@ struct Inner {
     service_ctl: DuplexChannel<()>,
     connect_guard: AsyncMutex<()>,
     disconnect_guard: AsyncMutex<()>,
-    /// When true (default), dropping the client while still connected will
-    /// attempt best-effort cleanup. Set to false for explicit lifecycle control.
-    auto_cleanup_on_drop: bool,
     // ---
     // The permanent url passed in the constructor
     // (dominant, overrides Resolver if supplied).
@@ -54,13 +51,7 @@ struct Inner {
 }
 
 impl Inner {
-    pub fn new(
-        encoding: Encoding,
-        url: Option<&str>,
-        resolver: Option<Resolver>,
-        network_id: Option<NetworkId>,
-        auto_cleanup_on_drop: bool,
-    ) -> Result<Inner> {
+    pub fn new(encoding: Encoding, url: Option<&str>, resolver: Option<Resolver>, network_id: Option<NetworkId>) -> Result<Inner> {
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
         let rpc_ctl = RpcCtl::with_descriptor(url);
         let wrpc_ctl_multiplexer = Multiplexer::<WrpcCtl>::new();
@@ -121,7 +112,6 @@ impl Inner {
             background_services_running: Arc::new(AtomicBool::new(false)),
             connect_guard: async_std::sync::Mutex::new(()),
             disconnect_guard: async_std::sync::Mutex::new(()),
-            auto_cleanup_on_drop,
             // ---
             ctor_url: Mutex::new(url.map(|s| s.to_string())),
             default_url: Mutex::new(None),
@@ -208,48 +198,6 @@ impl Inner {
         *self.notifier.lock().unwrap() = Some(notifier.clone());
         Ok(notifier)
     }
-
-    /// Initiates cleanup of resources without blocking. Called from Drop.
-    ///
-    /// This method performs best-effort cleanup when the client is dropped
-    /// while still connected. For guaranteed cleanup, call
-    /// [`KaspaRpcClient::disconnect()`] before dropping.
-    fn initiate_cleanup(&self) {
-        // Skip if auto-cleanup is disabled
-        if !self.auto_cleanup_on_drop {
-            return;
-        }
-
-        // Skip if services are already stopped
-        if !self.background_services_running.load(Ordering::SeqCst) {
-            return;
-        }
-
-        log_warn!(
-            "KaspaRpcClient dropped while still connected. \
-             Call disconnect() before dropping for clean shutdown."
-        );
-
-        // Close notification channels synchronously (safe, non-blocking)
-        self.notification_relay_channel.sender.close();
-        if let Ok(channel) = self.notification_intake_channel.lock() {
-            channel.sender.close();
-        }
-
-        // Spawn fire-and-forget cleanup task for async operations
-        let rpc_client = self.rpc_client.clone();
-        let service_ctl = self.service_ctl.clone();
-        let background_services_running = self.background_services_running.clone();
-
-        spawn(async move {
-            // Signal background service to stop
-            let _ = service_ctl.signal(()).await;
-            // Shutdown the underlying RPC client connection
-            let _ = rpc_client.shutdown().await;
-            // Mark services as stopped
-            background_services_running.store(false, Ordering::SeqCst);
-        });
-    }
 }
 
 impl Debug for Inner {
@@ -259,12 +207,6 @@ impl Debug for Inner {
             // .field("notification_channel", &self.notification_channel)
             .field("encoding", &self.encoding)
             .finish()
-    }
-}
-
-impl Drop for Inner {
-    fn drop(&mut self) {
-        self.initiate_cleanup();
     }
 }
 
@@ -321,11 +263,9 @@ const WRPC_CLIENT: &str = "wrpc-client";
 /// // client can now be safely dropped
 /// ```
 ///
-/// **Auto-cleanup:** By default, if the client is dropped while still connected,
+/// **Auto-cleanup:** If the client is dropped while still connected,
 /// a warning will be logged and best-effort background cleanup will be attempted.
 /// This cleanup is not guaranteed to complete if the runtime exits immediately.
-/// For applications requiring explicit lifecycle control, auto-cleanup can be
-/// disabled at construction time via internal configuration.
 ///
 /// ## Architecture
 ///
@@ -347,6 +287,47 @@ pub struct KaspaRpcClient {
 impl Debug for KaspaRpcClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KaspaRpcClient").field("url", &self.url()).field("connected", &self.is_connected()).finish()
+    }
+}
+
+impl Drop for KaspaRpcClient {
+    fn drop(&mut self) {
+        // Only act when this is the last user-held clone.
+        // strong_count == 2 means: this Arc + the internal reference cycle
+        // (Inner → Notifier → Subscriber → Arc<Inner>).
+        // strong_count == 1 means: cycle was already broken (e.g. via disconnect()).
+        let count = Arc::strong_count(&self.inner);
+        if count > 2 {
+            return;
+        }
+
+        // Break the reference cycle so Inner can be freed.
+        if let Ok(mut notifier) = self.inner.notifier.lock() {
+            *notifier = None;
+        }
+
+        // If services are still running, perform best-effort cleanup.
+        if self.inner.background_services_running.load(Ordering::SeqCst) {
+            log_warn!(
+                "KaspaRpcClient dropped while still connected. \
+                 Call disconnect() before dropping for clean shutdown."
+            );
+
+            self.inner.notification_relay_channel.sender.close();
+            if let Ok(channel) = self.inner.notification_intake_channel.lock() {
+                channel.sender.close();
+            }
+
+            let rpc_client = self.inner.rpc_client.clone();
+            let service_ctl = self.inner.service_ctl.clone();
+            let background_services_running = self.inner.background_services_running.clone();
+
+            spawn(async move {
+                let _ = service_ctl.signal(()).await;
+                let _ = rpc_client.shutdown().await;
+                background_services_running.store(false, Ordering::SeqCst);
+            });
+        }
     }
 }
 
@@ -377,8 +358,7 @@ impl KaspaRpcClient {
         network_id: Option<NetworkId>,
         subscription_context: Option<SubscriptionContext>,
     ) -> Result<KaspaRpcClient> {
-        // auto_cleanup_on_drop defaults to true for safety
-        let inner = Arc::new(Inner::new(encoding, url, resolver, network_id, true)?);
+        let inner = Arc::new(Inner::new(encoding, url, resolver, network_id)?);
         inner.build_notifier(subscription_context)?;
         let client = KaspaRpcClient { inner };
         //     notification_mode: NotificationMode,
@@ -420,9 +400,8 @@ impl KaspaRpcClient {
         self.inner.reset_notification_intake_channel();
         self.notifier().join().await?;
 
-        // Clear the notifier to break the reference cycle:
-        // Inner → Notifier → Subscriber → Arc<Inner>
-        // This allows Inner::drop() to fire when all external references are dropped.
+        // Break the reference cycle (Inner → Notifier → Subscriber → Arc<Inner>)
+        // so that Inner is freed when the last KaspaRpcClient clone is dropped.
         *self.inner.notifier.lock().unwrap() = None;
 
         Ok(())
@@ -443,6 +422,12 @@ impl KaspaRpcClient {
 
     pub fn is_connected(&self) -> bool {
         self.inner.rpc_client.is_connected()
+    }
+
+    /// Returns the strong reference count of the internal client state.
+    /// Useful for verifying resource cleanup in tests.
+    pub fn inner_arc_strong_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
     }
 
     pub fn encoding(&self) -> Encoding {
