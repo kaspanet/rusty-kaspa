@@ -2804,6 +2804,73 @@ impl Deserializer for GetVirtualChainFromBlockV2Response {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlocksV2Request {
+    pub low_hash: Option<RpcHash>,
+    pub include_blocks: bool,
+    pub data_verbosity_level: Option<RpcDataVerbosityLevel>,
+}
+
+impl GetBlocksV2Request {
+    pub fn new(low_hash: Option<RpcHash>, include_blocks: bool, data_verbosity_level: Option<RpcDataVerbosityLevel>) -> Self {
+        Self { low_hash, include_blocks, data_verbosity_level }
+    }
+}
+
+impl Serializer for GetBlocksV2Request {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Option<RpcHash>, &self.low_hash, writer)?;
+        store!(bool, &self.include_blocks, writer)?;
+        serialize!(Option<RpcDataVerbosityLevel>, &self.data_verbosity_level, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetBlocksV2Request {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let low_hash = load!(Option<RpcHash>, reader)?;
+        let include_blocks = load!(bool, reader)?;
+        let data_verbosity_level = deserialize!(Option<RpcDataVerbosityLevel>, reader)?;
+        Ok(Self { low_hash, include_blocks, data_verbosity_level })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlocksV2Response {
+    pub block_hashes: Vec<RpcHash>,
+    pub blocks: Vec<RpcOptionalBlock>,
+}
+
+impl GetBlocksV2Response {
+    pub fn new(block_hashes: Vec<RpcHash>, blocks: Vec<RpcOptionalBlock>) -> Self {
+        Self { block_hashes, blocks }
+    }
+}
+
+impl Serializer for GetBlocksV2Response {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHash>, &self.block_hashes, writer)?;
+        serialize!(Vec<RpcOptionalBlock>, &self.blocks, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetBlocksV2Response {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block_hashes = load!(Vec<RpcHash>, reader)?;
+        let blocks = deserialize!(Vec<RpcOptionalBlock>, reader)?;
+        Ok(Self { block_hashes, blocks })
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------
