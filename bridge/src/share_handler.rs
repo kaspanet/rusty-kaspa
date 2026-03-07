@@ -267,6 +267,12 @@ impl ShareHandler {
         }
 
         let stats = WorkStats::new(worker_id.clone());
+        // Seed per-worker displayed diff from current mining state so recreated
+        // entries do not start at 0.0 and get stuck in terminal/UI.
+        let seeded_diff = GetMiningState(ctx).stratum_diff().map(|d| d.diff_value).unwrap_or(0.0);
+        if seeded_diff > 0.0 {
+            *stats.min_diff.lock() = seeded_diff;
+        }
         stats_map.insert(worker_id.clone(), stats.clone());
         drop(stats_map);
 

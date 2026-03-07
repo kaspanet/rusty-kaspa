@@ -669,10 +669,19 @@ impl ClientHandler {
                     share_handler.set_client_vardiff(&client_clone, min_diff);
                 } else {
                     // Check for vardiff update
-                    let var_diff = share_handler.get_client_vardiff(&client_clone);
                     if let Some(mut stratum_diff) = state.stratum_diff() {
                         let current_diff = stratum_diff.diff_value;
-                        if var_diff != current_diff && var_diff != 0.0 {
+                        let mut var_diff = share_handler.get_client_vardiff(&client_clone);
+
+                        // Recover from stale/recreated stats entries that can report 0.0 diff.
+                        // Seed back to current state diff so UI/terminal does not stick at zero.
+                        if var_diff <= 0.0 && current_diff > 0.0 {
+                            share_handler.set_client_vardiff(&client_clone, current_diff);
+                            share_handler.start_client_vardiff(&client_clone);
+                            var_diff = current_diff;
+                        }
+
+                        if var_diff != current_diff {
                             debug!("changing diff from {} to {}", current_diff, var_diff);
                             // Use miner-specific calculation (IceRiver uses different formula)
                             let remote_app = client_clone.remote_app.lock().clone();
