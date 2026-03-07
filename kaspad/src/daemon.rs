@@ -113,6 +113,14 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
         return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
+    if let Some(ref auth) = args.auth {
+        kaspa_rpc_core::auth::AuthMode::parse(auth).map_err(|e| ConfigError::General(e))?;
+        if auth.starts_with("admin") && !args.unsafe_rpc {
+            return Err(ConfigError::General(
+                "--auth=admin requires --unsaferpc. Admin methods are already disabled without it.".into(),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -360,6 +368,28 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
+
+    // Generate RPC auth cookie file if --auth is specified
+    let auth_config = if let Some(ref auth_str) = args.auth {
+        use kaspa_rpc_core::auth::{AuthMode, RpcAuthConfig};
+        use rand::RngCore;
+
+        let mode = AuthMode::parse(auth_str).expect("auth mode already validated");
+        let mut secret = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut secret);
+        let cookie_path = app_dir.join(network.to_prefixed()).join("rpc.cookie");
+        let hex_secret = faster_hex::hex_string(&secret);
+        fs::write(&cookie_path, &hex_secret).expect("failed to write rpc.cookie");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&cookie_path, fs::Permissions::from_mode(0o600)).expect("failed to set cookie permissions");
+        }
+        info!("RPC auth cookie written to {}", cookie_path.display());
+        Some(Arc::new(RpcAuthConfig::new(mode, secret, cookie_path)))
+    } else {
+        None
+    };
 
     if !args.archival
         && let Some(retention_period_days) = args.retention_period_days
@@ -684,6 +714,7 @@ Do you confirm? (y/n)";
         grpc_tower_counters.clone(),
         system_info,
         mining_rule_engine.clone(),
+        auth_config,
     ));
     let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
     let grpc_service = if !args.disable_grpc {
