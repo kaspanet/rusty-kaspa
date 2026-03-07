@@ -233,12 +233,12 @@ impl RpcCoreService {
         }
     }
 
-    pub fn require_admin(&self, method: &str, connection: Option<&DynRpcConnection>) -> RpcResult<()> {
+    pub fn require_unsafe(&self, method: &str, connection: Option<&DynRpcConnection>) -> RpcResult<()> {
         if !self.config.unsafe_rpc {
             return Err(RpcError::UnavailableInSafeMode);
         }
         if let Some(ref auth) = self.auth_config {
-            if auth.requires_auth_for_admin(method) {
+            if auth.requires_auth_for_unsafe(method) {
                 let authenticated = connection.map_or(false, |c| c.is_authenticated());
                 if !authenticated {
                     return Err(RpcError::AuthenticationRequired);
@@ -1014,7 +1014,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 
     async fn add_peer_call(&self, connection: Option<&DynRpcConnection>, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        self.require_admin("AddPeer", connection)?;
+        self.require_unsafe("AddPeer", connection)?;
         let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
         if let Some(connection_manager) = self.flow_context.connection_manager() {
             connection_manager.add_connection_request(peer_address.into(), request.is_permanent).await;
@@ -1034,7 +1034,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 
     async fn ban_call(&self, connection: Option<&DynRpcConnection>, request: BanRequest) -> RpcResult<BanResponse> {
-        self.require_admin("Ban", connection)?;
+        self.require_unsafe("Ban", connection)?;
         if let Some(connection_manager) = self.flow_context.connection_manager() {
             let ip = request.ip.into();
             if connection_manager.ip_has_permanent_connection(ip).await {
@@ -1048,7 +1048,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 
     async fn unban_call(&self, connection: Option<&DynRpcConnection>, request: UnbanRequest) -> RpcResult<UnbanResponse> {
-        self.require_admin("Unban", connection)?;
+        self.require_unsafe("Unban", connection)?;
         let mut address_manager = self.flow_context.address_manager.lock();
         if address_manager.is_banned(request.ip) {
             address_manager.unban(request.ip)
@@ -1069,7 +1069,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 
     async fn shutdown_call(&self, connection: Option<&DynRpcConnection>, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
-        self.require_admin("Shutdown", connection)?;
+        self.require_unsafe("Shutdown", connection)?;
         warn!("Shutdown RPC command was called, shutting down in 1 second...");
 
         // Signal the shutdown request
@@ -1093,7 +1093,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<ResolveFinalityConflictResponse> {
         // TODO(Relaxed): implement this functionality
         // When implementing, make sure to consider transitional IBD state
-        self.require_admin("ResolveFinalityConflict", connection)?;
+        self.require_unsafe("ResolveFinalityConflict", connection)?;
         Err(RpcError::NotImplemented)
     }
 

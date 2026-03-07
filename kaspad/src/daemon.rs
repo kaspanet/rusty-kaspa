@@ -115,9 +115,9 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     }
     if let Some(ref auth) = args.auth {
         kaspa_rpc_core::auth::AuthMode::parse(auth).map_err(|e| ConfigError::General(e))?;
-        if auth.starts_with("admin") && !args.unsafe_rpc {
+        if auth.starts_with("unsafe") && !args.unsafe_rpc {
             return Err(ConfigError::General(
-                "--auth=admin requires --unsaferpc. Admin methods are already disabled without it.".into(),
+                "--auth=unsafe requires --unsaferpc. Unsafe methods are already disabled without it.".into(),
             ));
         }
     }

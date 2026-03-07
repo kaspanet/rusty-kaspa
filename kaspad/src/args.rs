@@ -277,7 +277,7 @@ pub fn cli() -> Command {
                 .env("KASPAD_AUTH")
                 .value_name("MODE")
                 .require_equals(true)
-                .help("Enable RPC authentication. MODE: admin, all, or admin,-Method1,-Method2"),
+                .help("Enable RPC authentication. MODE: unsafe, all, or unsafe,-Method1,-Method2"),
         )
         .arg(
             Arg::new("connect-peers")

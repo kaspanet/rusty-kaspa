@@ -5,7 +5,7 @@ use std::path::PathBuf;
 pub enum AuthMode {
     #[default]
     Disabled,
-    Admin {
+    Unsafe {
         exclusions: HashSet<String>,
     },
     All,
@@ -16,11 +16,11 @@ impl AuthMode {
         let parts: Vec<&str> = value.split(',').collect();
         match parts[0].trim() {
             "all" => Ok(AuthMode::All),
-            "admin" => {
+            "unsafe" => {
                 let exclusions = parts[1..].iter().map(|s| s.trim().trim_start_matches('-').to_string()).collect();
-                Ok(AuthMode::Admin { exclusions })
+                Ok(AuthMode::Unsafe { exclusions })
             }
-            other => Err(format!("Invalid auth mode: '{other}'. Expected 'admin', 'all', or 'admin,-Method1,-Method2'")),
+            other => Err(format!("Invalid auth mode: '{other}'. Expected 'unsafe', 'all', or 'unsafe,-Method1,-Method2'")),
         }
     }
 }
@@ -48,11 +48,11 @@ impl RpcAuthConfig {
         self.expected_token == provided
     }
 
-    pub fn requires_auth_for_admin(&self, method_name: &str) -> bool {
+    pub fn requires_auth_for_unsafe(&self, method_name: &str) -> bool {
         match &self.mode {
             AuthMode::Disabled => false,
             AuthMode::All => true,
-            AuthMode::Admin { exclusions } => !exclusions.contains(method_name),
+            AuthMode::Unsafe { exclusions } => !exclusions.contains(method_name),
         }
     }
 
@@ -66,9 +66,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_admin() {
-        let mode = AuthMode::parse("admin").unwrap();
-        assert!(matches!(mode, AuthMode::Admin { exclusions } if exclusions.is_empty()));
+    fn test_parse_unsafe() {
+        let mode = AuthMode::parse("unsafe").unwrap();
+        assert!(matches!(mode, AuthMode::Unsafe { exclusions } if exclusions.is_empty()));
     }
 
     #[test]
@@ -78,9 +78,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_admin_with_exclusions() {
-        let mode = AuthMode::parse("admin,-Ban,-Unban").unwrap();
-        if let AuthMode::Admin { exclusions } = mode {
+    fn test_parse_unsafe_with_exclusions() {
+        let mode = AuthMode::parse("unsafe,-Ban,-Unban").unwrap();
+        if let AuthMode::Unsafe { exclusions } = mode {
             assert!(exclusions.contains("Ban"));
             assert!(exclusions.contains("Unban"));
             assert!(!exclusions.contains("Shutdown"));
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn test_verify_token() {
         let secret = [0xABu8; 32];
-        let config = RpcAuthConfig::new(AuthMode::Admin { exclusions: HashSet::new() }, secret, PathBuf::new());
+        let config = RpcAuthConfig::new(AuthMode::Unsafe { exclusions: HashSet::new() }, secret, PathBuf::new());
         let hex = faster_hex::hex_string(&secret);
         assert!(config.verify_token(&hex));
         assert!(!config.verify_token("0000000000000000000000000000000000000000000000000000000000000000"));
@@ -105,25 +105,25 @@ mod tests {
     }
 
     #[test]
-    fn test_requires_auth_for_admin() {
+    fn test_requires_auth_for_unsafe() {
         let mut exclusions = HashSet::new();
         exclusions.insert("Ban".to_string());
-        let config = RpcAuthConfig::new(AuthMode::Admin { exclusions }, [0u8; 32], PathBuf::new());
-        assert!(config.requires_auth_for_admin("Shutdown"));
-        assert!(!config.requires_auth_for_admin("Ban"));
+        let config = RpcAuthConfig::new(AuthMode::Unsafe { exclusions }, [0u8; 32], PathBuf::new());
+        assert!(config.requires_auth_for_unsafe("Shutdown"));
+        assert!(!config.requires_auth_for_unsafe("Ban"));
     }
 
     #[test]
     fn test_requires_auth_disabled() {
         let config = RpcAuthConfig::new(AuthMode::Disabled, [0u8; 32], PathBuf::new());
-        assert!(!config.requires_auth_for_admin("Shutdown"));
+        assert!(!config.requires_auth_for_unsafe("Shutdown"));
         assert!(!config.requires_auth_for_any());
     }
 
     #[test]
     fn test_requires_auth_all() {
         let config = RpcAuthConfig::new(AuthMode::All, [0u8; 32], PathBuf::new());
-        assert!(config.requires_auth_for_admin("Shutdown"));
+        assert!(config.requires_auth_for_unsafe("Shutdown"));
         assert!(config.requires_auth_for_any());
     }
 }
