@@ -820,7 +820,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = subscribeUtxosChanged)]
     pub async fn subscribe_utxos_changed(&self, addresses: AddressOrStringArrayT) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
-            let addresses: Vec<Address> = addresses.try_into()?;
+            let addresses = Vec::<Address>::try_from(AddressOrStringArrayT::from(JsValue::from(addresses)))?;
             self.inner.client.start_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         } else {
             log_error!("RPC subscribe on a closed connection");
@@ -834,7 +834,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
     pub async fn unsubscribe_utxos_changed(&self, addresses: AddressOrStringArrayT) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
-            let addresses: Vec<Address> = addresses.try_into()?;
+            let addresses = Vec::<Address>::try_from(AddressOrStringArrayT::from(JsValue::from(addresses)))?;
             self.inner.client.stop_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         } else {
             log_error!("RPC unsubscribe on a closed connection");
