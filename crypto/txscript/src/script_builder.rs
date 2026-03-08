@@ -3,7 +3,7 @@ use std::iter::once;
 use crate::{
     MAX_SCRIPT_ELEMENT_SIZE, MAX_SCRIPTS_SIZE,
     data_stack::OpcodeData,
-    opcodes::{OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL, codes::*},
+    opcodes::{OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL, OP_SMALL_INT_MIN_VAL, codes::*},
 };
 use hexplay::{HexView, HexViewBuilder};
 use kaspa_txscript_errors::SerializationError;
@@ -147,7 +147,7 @@ impl ScriptBuilder {
         if data_len == 0 {
             self.script.push(Op0);
             return self;
-        } else if data_len == 1 && data[0] > 0 && data[0] <= OP_SMALL_INT_MAX_VAL {
+        } else if data_len == 1 && data[0] >= OP_SMALL_INT_MIN_VAL && data[0] <= OP_SMALL_INT_MAX_VAL {
             self.script.push((Op1 - 1) + data[0]);
             return self;
         } else if data_len == 1 && data[0] == OP_1_NEGATE_VAL {
