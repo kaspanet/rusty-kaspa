@@ -90,6 +90,13 @@ impl RelayTransactionsFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        // If our node has disabled transaction relay, drain inv messages without acting on them
+        if self.ctx.config.disable_relay_tx {
+            loop {
+                let _ = dequeue!(self.invs_route, Payload::InvTransactions)?;
+            }
+        }
+
         // trace!("Starting relay transactions flow with {}", self.router.identity());
         let mut throttling_state = ThrottlingState {
             should_throttle: false,
