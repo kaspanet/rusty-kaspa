@@ -94,8 +94,9 @@ impl Processor {
     ) -> IndexResult<UtxosChangedNotification> {
         trace!("[{IDENT}]: processing {:?}", notification);
         if let Some(utxoindex) = self.utxoindex.clone() {
-            let converted_notification: UtxosChangedNotification =
+            let mut converted_notification: UtxosChangedNotification =
                 utxoindex.update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents).await?.into();
+            converted_notification.accepting_blue_score_upper_bound = notification.accepting_blue_score_upper_bound;
             debug!(
                 "IDXPRC, Creating UtxosChanged notifications with {} added and {} removed utxos",
                 converted_notification.added.len(),

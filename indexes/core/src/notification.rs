@@ -65,17 +65,18 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 pub struct UtxosChangedNotification {
     pub added: Arc<UtxoSetByScriptPublicKey>,
     pub removed: Arc<UtxoSetByScriptPublicKey>,
+    pub accepting_blue_score_upper_bound: u64,
 }
 
 impl From<UtxoChanges> for UtxosChangedNotification {
     fn from(item: UtxoChanges) -> Self {
-        Self { added: Arc::new(item.added), removed: Arc::new(item.removed) }
+        Self { added: Arc::new(item.added), removed: Arc::new(item.removed), accepting_blue_score_upper_bound: 0 }
     }
 }
 
 impl UtxosChangedNotification {
     pub fn from_utxos_changed(utxos_changed: UtxoChanges) -> Self {
-        Self { added: Arc::new(utxos_changed.added), removed: Arc::new(utxos_changed.removed) }
+        Self { added: Arc::new(utxos_changed.added), removed: Arc::new(utxos_changed.removed), accepting_blue_score_upper_bound: 0 }
     }
 
     pub(crate) fn apply_utxos_changed_subscription(
@@ -91,7 +92,7 @@ impl UtxosChangedNotification {
             if added.is_empty() && removed.is_empty() {
                 None
             } else {
-                Some(Self { added: Arc::new(added), removed: Arc::new(removed) })
+                Some(Self { added: Arc::new(added), removed: Arc::new(removed), accepting_blue_score_upper_bound: self.accepting_blue_score_upper_bound })
             }
         }
     }

@@ -700,12 +700,13 @@ impl RpcClient {
                                     let notification_event = NotificationEvent::Notification(event_type);
                                     if let Some(handlers) = this.inner.notification_callbacks(notification_event) {
 
-                                        let UtxosChangedNotification { added, removed } = utxos_changed_notification;
+                                        let UtxosChangedNotification { added, removed, accepting_blue_score_upper_bound } = utxos_changed_notification;
                                         let added = js_sys::Array::from_iter(added.iter().map(UtxoEntryReference::from).map(JsValue::from));
                                         let removed = js_sys::Array::from_iter(removed.iter().map(UtxoEntryReference::from).map(JsValue::from));
                                         let notification = Object::new();
                                         notification.set("added", &added).unwrap();
                                         notification.set("removed", &removed).unwrap();
+                                        notification.set("acceptingBlueScoreUpperBound", &JsValue::from(*accepting_blue_score_upper_bound)).unwrap();
 
                                         for handler in handlers.into_iter() {
                                             let event = Object::new();
