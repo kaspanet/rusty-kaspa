@@ -3206,7 +3206,11 @@ impl UtxosChangedNotification {
                 None
             } else {
                 debug!("CRPC, Creating UtxosChanged notifications with {} added and {} removed utxos", added.len(), removed.len());
-                Some(Self { added: Arc::new(added), removed: Arc::new(removed), accepting_blue_score_upper_bound: self.accepting_blue_score_upper_bound })
+                Some(Self {
+                    added: Arc::new(added),
+                    removed: Arc::new(removed),
+                    accepting_blue_score_upper_bound: self.accepting_blue_score_upper_bound,
+                })
             }
         }
     }
