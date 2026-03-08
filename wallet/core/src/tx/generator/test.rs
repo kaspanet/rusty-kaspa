@@ -823,3 +823,28 @@ fn test_generator_fan_out_1() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_generator_storage_mass_exceed_accumulates() -> Result<()> {
+    // Issue #701: Generator should accumulate more UTXOs when storage mass
+    // exceeds the limit, not fail immediately.
+    //
+    // With only the first UTXO (0.296 KAS), sending 0.2 KAS produces
+    // storage_mass ≈ 120,383 > 100,000 limit. Adding the second UTXO
+    // (4.0 KAS) reduces storage_mass to ≈ 43,130 via KIP-9 input arithmetic.
+    let generator = generator(
+        test_network_id(),
+        &[0.296],
+        &[4.0],
+        None,
+        Fees::sender(Kaspa(0.0)),
+        [(output_address, Kaspa(0.2))].as_slice(),
+    )?;
+    let pt = generator.generate_transaction()?.expect("transaction should succeed with accumulated UTXOs");
+    let tx = pt.transaction();
+    assert_eq!(tx.inputs.len(), 2, "should accumulate both UTXOs to reduce storage mass");
+    assert_eq!(tx.outputs.len(), 2, "destination + change");
+    assert!(pt.is_final(), "should be a final transaction");
+    assert!(generator.generate_transaction()?.is_none(), "no more transactions expected");
+    Ok(())
+}

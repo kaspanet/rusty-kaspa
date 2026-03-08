@@ -801,7 +801,13 @@ impl Generator {
 
         // calculate storage mass
         let MassDisposition { transaction_mass, storage_mass, transaction_fees, absorb_change_to_fees } =
-            self.calculate_mass(stage, data, final_transaction.value_with_priority_fee)?;
+            match self.calculate_mass(stage, data, final_transaction.value_with_priority_fee) {
+                Ok(disp) => disp,
+                // Storage mass exceeds the limit — continue accumulating more inputs
+                // to reduce storage mass via KIP-9 input arithmetic (issue #701)
+                Err(Error::StorageMassExceedsMaximumTransactionMass { .. }) => return Ok(None),
+                Err(e) => return Err(e),
+            };
 
         let total_stage_value_needed = if self.inner.final_transaction_priority_fee.sender_pays() {
             final_transaction.value_with_priority_fee + stage.aggregate_fees + transaction_fees
