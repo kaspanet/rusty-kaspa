@@ -172,10 +172,8 @@ mod tests {
 
         // Simulate JS passing [new Address("..."), new Address("...")] to WASM
         let array = js_sys::Array::new();
-        let wasm_val1: JsValue = addr1.clone().into_abi().into();
-        let wasm_val2: JsValue = addr2.clone().into_abi().into();
-        array.push(&wasm_val1);
-        array.push(&wasm_val2);
+        array.push(&JsValue::from(addr1.clone()));
+        array.push(&JsValue::from(addr2.clone()));
 
         // The fix pattern: JsValue::from() roundtrip for proper marshalling
         let addresses = Vec::<Address>::try_from(AddressOrStringArrayT::from(JsValue::from(array)))
