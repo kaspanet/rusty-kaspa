@@ -158,4 +158,31 @@ mod tests {
         let actual = from_value(wasm_js_value).unwrap();
         assert_eq!(expected, actual);
     }
+
+    /// Issue #443: Verify that an array of WASM Address objects can be
+    /// converted to `Vec<Address>` via `JsValue::from()` roundtrip.
+    /// This is the conversion pattern used by `subscribeUtxosChanged` /
+    /// `unsubscribeUtxosChanged` to handle JS Address objects properly.
+    #[wasm_bindgen_test]
+    fn test_wasm_address_array_js_value_roundtrip() {
+        use super::AddressOrStringArrayT;
+
+        let addr1 = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+        let addr2 = Address::constructor("kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e");
+
+        // Simulate JS passing [new Address("..."), new Address("...")] to WASM
+        let array = js_sys::Array::new();
+        let wasm_val1: JsValue = addr1.clone().into_abi().into();
+        let wasm_val2: JsValue = addr2.clone().into_abi().into();
+        array.push(&wasm_val1);
+        array.push(&wasm_val2);
+
+        // The fix pattern: JsValue::from() roundtrip for proper marshalling
+        let addresses = Vec::<Address>::try_from(AddressOrStringArrayT::from(JsValue::from(array)))
+            .expect("should convert WASM Address objects via JsValue roundtrip");
+
+        assert_eq!(addresses.len(), 2);
+        assert_eq!(addresses[0], addr1);
+        assert_eq!(addresses[1], addr2);
+    }
 }
