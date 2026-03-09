@@ -42,18 +42,18 @@ The [Crescendo Hardfork](docs/crescendo-guide.md) took place on May 5, 2025, at 
       lld lldb llvm-dev llvm-runtime \
       llvm python3-clang
       ```
-  3. Install the [rust toolchain](https://rustup.rs/)
+  4. Install the [rust toolchain](https://rustup.rs/)
 
      If you already have rust installed, update it by running: `rustup update`
-  4. Install wasm-pack
+  5. Install wasm-pack
       ```bash
       cargo install wasm-pack
       ```
-  4. Install wasm32 target
+  6. Install wasm32 target
       ```bash
       rustup target add wasm32-unknown-unknown
       ```
-  5. Clone the repo
+  7. Clone the repo
       ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
@@ -146,11 +146,11 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
       ```bash
       cargo install wasm-pack
       ```
-  4. Install wasm32 target
+  5. Install wasm32 target
       ```bash
       rustup target add wasm32-unknown-unknown
       ```
-  5. Clone the repo
+  6. Clone the repo
       ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa

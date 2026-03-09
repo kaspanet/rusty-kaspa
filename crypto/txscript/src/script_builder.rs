@@ -3,7 +3,7 @@ use std::iter::once;
 use crate::{
     MAX_SCRIPT_ELEMENT_SIZE, MAX_SCRIPTS_SIZE,
     data_stack::OpcodeData,
-    opcodes::{OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL, codes::*},
+    opcodes::{OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL, OP_SMALL_INT_MIN_VAL, codes::*},
 };
 use hexplay::{HexView, HexViewBuilder};
 use kaspa_txscript_errors::SerializationError;
@@ -144,10 +144,10 @@ impl ScriptBuilder {
         // When the data consists of a single number that can be represented
         // by one of the "small integer" opcodes, use that opcode instead of
         // a data push opcode followed by the number.
-        if data_len == 0 || (data_len == 1 && data[0] == 0) {
+        if data_len == 0 {
             self.script.push(Op0);
             return self;
-        } else if data_len == 1 && data[0] <= OP_SMALL_INT_MAX_VAL {
+        } else if data_len == 1 && data[0] >= OP_SMALL_INT_MIN_VAL && data[0] <= OP_SMALL_INT_MAX_VAL {
             self.script.push((Op1 - 1) + data[0]);
             return self;
         } else if data_len == 1 && data[0] == OP_1_NEGATE_VAL {
@@ -402,7 +402,6 @@ mod tests {
         let tests = vec![
             // BIP0062: Pushing an empty byte sequence must use OP_0.
             Test { name: "push empty byte sequence", data: vec![], expected: Ok(vec![Op0]), unchecked: false },
-            Test { name: "push 1 byte 0x00", data: vec![0x00], expected: Ok(vec![Op0]), unchecked: false },
             // BIP0062: Pushing a 1-byte sequence of byte 0x01 through 0x10 must use OP_n.
             Test { name: "push 1 byte 0x01", data: vec![0x01], expected: Ok(vec![Op1]), unchecked: false },
             Test { name: "push 1 byte 0x02", data: vec![0x02], expected: Ok(vec![Op2]), unchecked: false },
@@ -425,6 +424,7 @@ mod tests {
             // BIP0062: Pushing any other byte sequence up to 75 bytes must
             // use the normal data push (opcode byte n, with n the number of
             // bytes, followed n bytes of data being pushed).
+            Test { name: "push 1 byte 0x00", data: vec![0x00], expected: Ok(vec![OpData1, 0x00]), unchecked: false },
             Test { name: "push 1 byte 0x11", data: vec![0x11], expected: Ok(vec![OpData1, 0x11]), unchecked: false },
             Test { name: "push 1 byte 0x80", data: vec![0x80], expected: Ok(vec![OpData1, 0x80]), unchecked: false },
             Test { name: "push 1 byte 0x82", data: vec![0x82], expected: Ok(vec![OpData1, 0x82]), unchecked: false },
