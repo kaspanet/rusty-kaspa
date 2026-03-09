@@ -1,0 +1,248 @@
+{
+  "tips": ["f65ac9", "2c026c", "01d3fe", "715571", "b11117", "2255a4"],
+  "blocks": [
+    {
+      "id": "e89ebc",
+      "parents": [],
+      "blue_work": "843081024",
+      "bits": "1e217aaa",
+      "blue_score": 1657,
+      "daa_score": 1656,
+      "selected_parent": null
+    },
+    {
+      "id": "8174b6",
+      "parents": [],
+      "blue_work": "843081024",
+      "bits": "1e217aaa",
+      "blue_score": 1657,
+      "daa_score": 1656,
+      "selected_parent": null
+    },
+    {
+      "id": "201544",
+      "parents": [],
+      "blue_work": "843081024",
+      "bits": "1e217aaa",
+      "blue_score": 1657,
+      "daa_score": 1656,
+      "selected_parent": null
+    },
+    {
+      "id": "6a7e5c",
+      "parents": [],
+      "blue_work": "842579924",
+      "bits": "1e218628",
+      "blue_score": 1656,
+      "daa_score": 1655,
+      "selected_parent": null
+    },
+    {
+      "id": "580592",
+      "parents": [],
+      "blue_work": "843081024",
+      "bits": "1e217aaa",
+      "blue_score": 1657,
+      "daa_score": 1656,
+      "selected_parent": null
+    },
+    {
+      "id": "dd4f81",
+      "parents": [],
+      "blue_work": "843081024",
+      "bits": "1e217aaa",
+      "blue_score": 1657,
+      "daa_score": 1656,
+      "selected_parent": null
+    },
+    {
+      "id": "86c4ff",
+      "parents": ["e89ebc", "580592", "201544", "6a7e5c"],
+      "blue_work": "845084849",
+      "bits": "1e216a52",
+      "blue_score": 1661,
+      "daa_score": 1660,
+      "selected_parent": "e89ebc"
+    },
+    {
+      "id": "97a14e",
+      "parents": ["e89ebc", "580592", "dd4f81", "201544", "6a7e5c"],
+      "blue_work": "845585973",
+      "bits": "1e216bd8",
+      "blue_score": 1662,
+      "daa_score": 1661,
+      "selected_parent": "e89ebc"
+    },
+    {
+      "id": "29552f",
+      "parents": ["e89ebc", "6a7e5c"],
+      "blue_work": "844082601",
+      "bits": "1e217dd8",
+      "blue_score": 1659,
+      "daa_score": 1658,
+      "selected_parent": "e89ebc"
+    },
+    {
+      "id": "08db74",
+      "parents": ["97a14e", "86c4ff", "8174b6", "29552f"],
+      "blue_work": "847592108",
+      "bits": "1e2169a2",
+      "blue_score": 1666,
+      "daa_score": 1665,
+      "selected_parent": "97a14e"
+    },
+    {
+      "id": "01d3fe",
+      "parents": ["3a7b96", "6994eb", "c62de5", "fd4f24"],
+      "blue_work": "851610005",
+      "bits": "1e217441",
+      "blue_score": 1674,
+      "daa_score": 1673,
+      "selected_parent": "3a7b96"
+    },
+    {
+      "id": "715571",
+      "parents": ["f0f11f", "5bc45a", "6994eb", "c62de5", "3a7b96"],
+      "blue_work": "852614139",
+      "bits": "1e21750d",
+      "blue_score": 1676,
+      "daa_score": 1675,
+      "selected_parent": "f0f11f"
+    },
+    {
+      "id": "f65ac9",
+      "parents": ["f0f11f", "5bc45a", "6994eb", "c62de5", "3a7b96"],
+      "blue_work": "852614139",
+      "bits": "1e21750d",
+      "blue_score": 1676,
+      "daa_score": 1675,
+      "selected_parent": "f0f11f"
+    },
+    {
+      "id": "5bc45a",
+      "parents": ["08db74", "34fd9d", "fffb5a", "fd4f24"],
+      "blue_work": "850103750",
+      "bits": "1e216a8e",
+      "blue_score": 1671,
+      "daa_score": 1670,
+      "selected_parent": "08db74"
+    },
+    {
+      "id": "34fd9d",
+      "parents": ["86c4ff", "dd4f81", "8174b6", "29552f"],
+      "blue_work": "847090116",
+      "bits": "1e21630f",
+      "blue_score": 1665,
+      "daa_score": 1664,
+      "selected_parent": "86c4ff"
+    },
+    {
+      "id": "f0f11f",
+      "parents": ["08db74", "34fd9d", "fffb5a", "fd4f24"],
+      "blue_work": "850103750",
+      "bits": "1e216a8e",
+      "blue_score": 1671,
+      "daa_score": 1670,
+      "selected_parent": "08db74"
+    },
+    {
+      "id": "3a7b96",
+      "parents": ["fffb5a", "34fd9d", "97a14e", "557671"],
+      "blue_work": "849099082",
+      "bits": "1e2169d2",
+      "blue_score": 1669,
+      "daa_score": 1668,
+      "selected_parent": "fffb5a"
+    },
+    {
+      "id": "fd4f24",
+      "parents": ["557671", "97a14e", "86c4ff", "29552f"],
+      "blue_work": "848094066",
+      "bits": "1e216267",
+      "blue_score": 1667,
+      "daa_score": 1666,
+      "selected_parent": "557671"
+    },
+    {
+      "id": "b11117",
+      "parents": ["f0f11f", "5bc45a", "6994eb", "c62de5", "3a7b96"],
+      "blue_work": "852614139",
+      "bits": "1e21750d",
+      "blue_score": 1676,
+      "daa_score": 1675,
+      "selected_parent": "f0f11f"
+    },
+    {
+      "id": "2c026c",
+      "parents": ["e37fb7", "5bc45a", "c6fcaf", "f0f11f"],
+      "blue_work": "853617137",
+      "bits": "1e216697",
+      "blue_score": 1678,
+      "daa_score": 1677,
+      "selected_parent": "e37fb7"
+    },
+    {
+      "id": "c6fcaf",
+      "parents": ["3a7b96", "6994eb", "c62de5", "fd4f24"],
+      "blue_work": "851610005",
+      "bits": "1e217441",
+      "blue_score": 1674,
+      "daa_score": 1673,
+      "selected_parent": "3a7b96"
+    },
+    {
+      "id": "c62de5",
+      "parents": ["08db74", "34fd9d", "fffb5a", "557671"],
+      "blue_work": "849601204",
+      "bits": "1e216d6a",
+      "blue_score": 1670,
+      "daa_score": 1669,
+      "selected_parent": "08db74"
+    },
+    {
+      "id": "2255a4",
+      "parents": ["f0f11f", "5bc45a", "6994eb", "c62de5", "3a7b96"],
+      "blue_work": "852614139",
+      "bits": "1e21750d",
+      "blue_score": 1676,
+      "daa_score": 1675,
+      "selected_parent": "f0f11f"
+    },
+    {
+      "id": "557671",
+      "parents": ["e89ebc", "580592", "dd4f81", "8174b6", "201544", "6a7e5c"],
+      "blue_work": "846087097",
+      "bits": "1e216c6d",
+      "blue_score": 1663,
+      "daa_score": 1662,
+      "selected_parent": "e89ebc"
+    },
+    {
+      "id": "6994eb",
+      "parents": ["34fd9d", "97a14e", "557671"],
+      "blue_work": "848596574",
+      "bits": "1e21678b",
+      "blue_score": 1668,
+      "daa_score": 1667,
+      "selected_parent": "34fd9d"
+    },
+    {
+      "id": "e37fb7",
+      "parents": ["3a7b96", "6994eb", "c62de5", "fd4f24"],
+      "blue_work": "851610005",
+      "bits": "1e217441",
+      "blue_score": 1674,
+      "daa_score": 1673,
+      "selected_parent": "3a7b96"
+    },
+    {
+      "id": "fffb5a",
+      "parents": ["86c4ff", "dd4f81", "8174b6", "29552f"],
+      "blue_work": "847090116",
+      "bits": "1e21630f",
+      "blue_score": 1665,
+      "daa_score": 1664,
+      "selected_parent": "86c4ff"
+    }
+  ]
+}
