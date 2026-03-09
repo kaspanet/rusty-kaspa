@@ -4,6 +4,7 @@
 
 #![allow(non_snake_case)]
 
+use crate::covenant::GenesisCovenantGroupArrayT;
 use crate::imports::*;
 use crate::input::{TransactionInput, TransactionInputArrayAsArgT, TransactionInputArrayAsResultT};
 use crate::outpoint::TransactionOutpoint;
@@ -15,7 +16,7 @@ use ahash::AHashMap;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::network::NetworkTypeT;
 use kaspa_consensus_core::subnets::{self, SubnetworkId};
-use kaspa_consensus_core::tx::{GenesisCovenantGroup, GenesisCovenantGroupArrayT, UtxoEntry};
+use kaspa_consensus_core::tx::{GenesisCovenantGroup, UtxoEntry};
 use kaspa_txscript::extract_script_pub_key_address;
 use kaspa_utils::hex::*;
 

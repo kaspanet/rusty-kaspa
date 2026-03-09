@@ -16,7 +16,6 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use js_sys::Object;
-use kaspa_math::wasm::JsValueExtension;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
@@ -211,93 +210,20 @@ impl CovenantBinding {
     }
 }
 
-#[wasm_bindgen]
-extern "C" {
-    /// WASM (TypeScript) type representing an array of [`GenesisCovenantGroup`] objects: `GenesisCovenantGroup[]`.
-    ///
-    /// @category Consensus
-    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "GenesisCovenantGroup[]")]
-    pub type GenesisCovenantGroupArrayT;
-}
-
-impl TryFrom<&GenesisCovenantGroupArrayT> for Vec<GenesisCovenantGroup> {
-    type Error = PopulateGenesisCovenantsError;
-    fn try_from(value: &GenesisCovenantGroupArrayT) -> Result<Self, Self::Error> {
-        if value.is_array() {
-            value
-                .iter()
-                .map(GenesisCovenantGroup::try_owned_from)
-                .map(|r| r.map_err(PopulateGenesisCovenantsError::from))
-                .collect::<Result<Vec<GenesisCovenantGroup>, PopulateGenesisCovenantsError>>()
-        } else {
-            Err(PopulateGenesisCovenantsError::InvalidGenesisCovenantGroupArray)
-        }
-    }
-}
-
 /// A genesis covenant group for bulk covenant binding population.
 ///
 /// All listed outputs are bound to the same covenant id, derived from the
 /// authorizing input outpoint and this exact ordered output list.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, CastFromJs)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
 pub struct GenesisCovenantGroup {
     pub authorizing_input: u16,
-    #[wasm_bindgen(skip)]
     pub outputs: Vec<u32>,
 }
 
 impl GenesisCovenantGroup {
     pub fn new(authorizing_input: u16, outputs: Vec<u32>) -> Self {
         Self { authorizing_input, outputs }
-    }
-}
-
-#[wasm_bindgen]
-impl GenesisCovenantGroup {
-    #[wasm_bindgen(constructor)]
-    pub fn ctor(authorizing_input: u16, outputs: Vec<u32>) -> Self {
-        Self { authorizing_input, outputs }
-    }
-
-    #[wasm_bindgen(setter = outputs)]
-    pub fn set_outputs(&mut self, outputs: Vec<u32>) {
-        self.outputs = outputs;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn outputs(&self) -> Vec<u32> {
-        self.outputs.clone()
-    }
-
-    #[wasm_bindgen(js_name = "toJSON")]
-    pub fn to_js_object(&self) -> Result<Object, CastErr> {
-        let obj = Object::new();
-        obj.set("authorizingInput", &self.authorizing_input.into())?;
-        obj.set("outputs", &js_sys::Array::from_iter(self.outputs.iter().map(|&v| JsValue::from(v))))?;
-        Ok(obj)
-    }
-
-    #[wasm_bindgen(js_name = "toString")]
-    pub fn js_to_string(&self) -> Result<js_sys::JsString, CastErr> {
-        Ok(js_sys::JSON::stringify(&self.to_js_object()?.into())?)
-    }
-}
-
-impl TryCastFromJs for GenesisCovenantGroup {
-    type Error = CastErr;
-
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
-    where
-        R: AsRef<JsValue> + 'a,
-    {
-        Self::resolve(value, || {
-            let Some(object) = Object::try_from(value.as_ref()) else { return Err(CastErr::NotAnObject) };
-            let authorizing_input = object.get_u16("authorizingInput")?;
-            let outputs = object.get_vec("outputs")?.iter().map(|idx| idx.try_as_u32()).collect::<Result<Vec<u32>, CastErr>>()?;
-            Ok(Self { authorizing_input, outputs })
-        })
     }
 }
 
