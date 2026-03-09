@@ -3,7 +3,7 @@ use crate::{
     error::Result,
     events::EventType,
     listener::ListenerId,
-    scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
+    scope::{BlockAddedScope, Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{
         BroadcastingSingle, Command, DynSubscription, Mutation, MutationOutcome, MutationPolicies, Single, Subscription,
         UtxosChangedMutationPolicy, context::SubscriptionContext,
@@ -70,6 +70,99 @@ impl Subscription for OverallSubscription {
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
         self.event_type.into()
+    }
+}
+
+/// Subscription to BlockAdded notifications
+#[derive(Eq, PartialEq, Hash, Clone, Debug, Default)]
+pub struct BlockAddedSubscription {
+    active: bool,
+    include_transactions: bool,
+}
+
+impl BlockAddedSubscription {
+    pub fn new(active: bool, include_transactions: bool) -> Self {
+        Self { active, include_transactions }
+    }
+    pub fn include_transactions(&self) -> bool {
+        self.include_transactions
+    }
+}
+
+impl Single for BlockAddedSubscription {
+    fn apply_mutation(
+        &self,
+        _: &Arc<dyn Single>,
+        mutation: Mutation,
+        _: MutationPolicies,
+        _: &SubscriptionContext,
+    ) -> Result<MutationOutcome> {
+        assert_eq!(self.event_type(), mutation.event_type());
+        let result = if let Scope::BlockAdded(ref scope) = mutation.scope {
+            #[allow(clippy::collapsible_else_if)]
+            if !self.active {
+                // State None
+                if !mutation.active() {
+                    // Mutation None
+                    None
+                } else {
+                    // Mutations Reduced and All
+                    let mutated = Self::new(true, scope.include_transactions);
+                    Some((Arc::new(mutated), vec![mutation]))
+                }
+            } else if !self.include_transactions {
+                // State Reduced
+                if !mutation.active() {
+                    // Mutation None
+                    let mutated = Self::new(false, false);
+                    Some((Arc::new(mutated), vec![Mutation::new(Command::Stop, BlockAddedScope::new(false).into())]))
+                } else if !scope.include_transactions {
+                    // Mutation Reduced
+                    None
+                } else {
+                    // Mutation All
+                    let mutated = Self::new(true, true);
+                    Some((Arc::new(mutated), vec![Mutation::new(Command::Stop, BlockAddedScope::new(false).into()), mutation]))
+                }
+            } else {
+                // State All
+                if !mutation.active() {
+                    // Mutation None
+                    let mutated = Self::new(false, false);
+                    Some((Arc::new(mutated), vec![Mutation::new(Command::Stop, BlockAddedScope::new(true).into())]))
+                } else if !scope.include_transactions {
+                    // Mutation Reduced
+                    let mutated = Self::new(true, false);
+                    Some((Arc::new(mutated), vec![mutation, Mutation::new(Command::Stop, BlockAddedScope::new(true).into())]))
+                } else {
+                    // Mutation All
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let outcome = match result {
+            Some((mutated, mutations)) => MutationOutcome::with_mutated(mutated, mutations),
+            None => MutationOutcome::new(),
+        };
+        Ok(outcome)
+    }
+}
+
+impl Subscription for BlockAddedSubscription {
+    #[inline(always)]
+    fn event_type(&self) -> EventType {
+        EventType::BlockAdded
+    }
+
+    #[inline(always)]
+    fn active(&self) -> bool {
+        self.active
+    }
+
+    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+        BlockAddedScope::new(self.include_transactions).into()
     }
 }
 
@@ -586,7 +679,10 @@ impl BroadcastingSingle for DynSubscription {
 mod tests {
     use super::super::*;
     use super::*;
-    use crate::{address::test_helpers::get_3_addresses, scope::BlockAddedScope};
+    use crate::{
+        address::test_helpers::get_3_addresses,
+        scope::{BlockAddedScope, NewBlockTemplateScope},
+    };
     use std::collections::hash_map::DefaultHasher;
 
     #[test]
@@ -656,9 +752,9 @@ mod tests {
             Test {
                 name: "test basic overall subscription",
                 subscriptions: vec![
-                    Arc::new(OverallSubscription::new(EventType::BlockAdded, false)),
-                    Arc::new(OverallSubscription::new(EventType::BlockAdded, true)),
-                    Arc::new(OverallSubscription::new(EventType::BlockAdded, true)),
+                    Arc::new(OverallSubscription::new(EventType::NewBlockTemplate, false)),
+                    Arc::new(OverallSubscription::new(EventType::NewBlockTemplate, true)),
+                    Arc::new(OverallSubscription::new(EventType::NewBlockTemplate, true)),
                 ],
                 comparisons: vec![Comparison::new(0, 1, false), Comparison::new(0, 2, false), Comparison::new(1, 2, true)],
             },
@@ -764,10 +860,10 @@ mod tests {
         let context = SubscriptionContext::new();
 
         fn s(active: bool) -> DynSubscription {
-            Arc::new(OverallSubscription { event_type: EventType::BlockAdded, active })
+            Arc::new(OverallSubscription { event_type: EventType::NewBlockTemplate, active })
         }
         fn m(command: Command) -> Mutation {
-            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope {}) }
+            Mutation { command, scope: Scope::NewBlockTemplate(NewBlockTemplateScope {}) }
         }
 
         // Subscriptions
