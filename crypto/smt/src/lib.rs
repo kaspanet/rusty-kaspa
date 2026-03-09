@@ -30,6 +30,8 @@ extern crate std;
 
 pub mod proof;
 #[cfg(feature = "std")]
+pub mod store;
+#[cfg(feature = "std")]
 pub mod tree;
 
 use alloc::boxed::Box;
