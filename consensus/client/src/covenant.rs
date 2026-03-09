@@ -23,10 +23,10 @@ impl TryFrom<&GenesisCovenantGroupArrayT> for Vec<CoreGenesisCovenantGroup> {
         if value.is_array() {
             value
                 .iter()
-                .map(GenesisCovenantGroup::try_owned_from)
-                .map(|r| r.map(|g| g.into_inner()))
-                .map(|r| r.map_err(PopulateGenesisCovenantsError::from))
-                .collect::<Result<Vec<CoreGenesisCovenantGroup>, PopulateGenesisCovenantsError>>()
+                .map(|v| {
+                    GenesisCovenantGroup::try_owned_from(v).map(|gcp| gcp.inner().clone()).map_err(PopulateGenesisCovenantsError::from)
+                })
+                .collect()
         } else {
             Err(PopulateGenesisCovenantsError::InvalidGenesisCovenantGroupArray)
         }
@@ -46,10 +46,6 @@ pub struct GenesisCovenantGroup {
 }
 
 impl GenesisCovenantGroup {
-    pub fn into_inner(self) -> CoreGenesisCovenantGroup {
-        self.inner
-    }
-
     pub fn inner(&self) -> &CoreGenesisCovenantGroup {
         &self.inner
     }
