@@ -142,6 +142,10 @@ pub enum Events {
     AccountUpdate {
         account_descriptor: AccountDescriptor,
     },
+    /// Account has been removed
+    AccountRemove {
+        id: AccountId,
+    },
     /// Emitted after successful RPC connection
     /// after the initial state negotiation.
     #[serde(rename_all = "camelCase")]
@@ -287,6 +291,7 @@ pub enum EventKind {
     AccountSelection,
     AccountCreate,
     AccountUpdate,
+    AccountRemove,
     ServerStatus,
     UtxoProcStart,
     UtxoProcStop,
@@ -325,6 +330,7 @@ impl From<&Events> for EventKind {
             Events::AccountSelection { .. } => EventKind::AccountSelection,
             Events::AccountCreate { .. } => EventKind::AccountCreate,
             Events::AccountUpdate { .. } => EventKind::AccountUpdate,
+            Events::AccountRemove { .. } => EventKind::AccountRemove,
             Events::ServerStatus { .. } => EventKind::ServerStatus,
             Events::UtxoProcStart => EventKind::UtxoProcStart,
             Events::UtxoProcStop => EventKind::UtxoProcStop,
@@ -366,6 +372,7 @@ impl FromStr for EventKind {
             "account-selection" => Ok(EventKind::AccountSelection),
             "account-create" => Ok(EventKind::AccountCreate),
             "account-update" => Ok(EventKind::AccountUpdate),
+            "account-remove" => Ok(EventKind::AccountRemove),
             "server-status" => Ok(EventKind::ServerStatus),
             "utxo-proc-start" => Ok(EventKind::UtxoProcStart),
             "utxo-proc-stop" => Ok(EventKind::UtxoProcStop),
@@ -415,6 +422,7 @@ impl std::fmt::Display for EventKind {
             EventKind::AccountSelection => "account-selection",
             EventKind::AccountCreate => "account-create",
             EventKind::AccountUpdate => "account-update",
+            EventKind::AccountRemove => "account-remove",
             EventKind::ServerStatus => "server-status",
             EventKind::UtxoProcStart => "utxo-proc-start",
             EventKind::UtxoProcStop => "utxo-proc-stop",

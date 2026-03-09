@@ -378,6 +378,7 @@ impl KaspaCli {
                                 },
                                 Events::AccountCreate { .. } => { },
                                 Events::AccountUpdate { .. } => { },
+                                Events::AccountRemove { .. } => { },
                                 Events::DaaScoreChange { current_daa_score } => {
                                     if this.is_mutted() && this.flags.get(Track::Daa) {
                                         tprintln!(this, "{NOTIFY} DAA: {current_daa_score}");

@@ -337,6 +337,17 @@ pub struct AccountsRenameRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AccountsRenameResponse {}
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsRemoveRequest {
+    pub account_id: AccountId,
+    pub wallet_secret: Secret,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsRemoveResponse {}
+
 /// @category Wallet API
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
