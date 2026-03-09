@@ -1,10 +1,10 @@
 use kaspa_notify::{scope::Scope, subscription::Command};
 
 use crate::protowire::{
-    KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage, NotifyFinalityConflictRequestMessage,
-    NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage, NotifySinkBlueScoreChangedRequestMessage,
-    NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage, NotifyVirtualDaaScoreChangedRequestMessage,
-    kaspad_request, kaspad_response,
+    KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage, NotifyBlockHeaderAddedRequestMessage,
+    NotifyFinalityConflictRequestMessage, NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
+    NotifySinkBlueScoreChangedRequestMessage, NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage,
+    NotifyVirtualDaaScoreChangedRequestMessage, kaspad_request, kaspad_response,
 };
 
 impl KaspadRequest {
@@ -22,6 +22,11 @@ impl kaspad_request::Payload {
         match scope {
             Scope::BlockAdded(_) => {
                 kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage { command: command.into() })
+            }
+            Scope::BlockHeaderAdded(_) => {
+                kaspad_request::Payload::NotifyBlockHeaderAddedRequest(NotifyBlockHeaderAddedRequestMessage {
+                    command: command.into(),
+                })
             }
             Scope::NewBlockTemplate(_) => {
                 kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {
@@ -72,6 +77,7 @@ impl kaspad_request::Payload {
         matches!(
             self,
             Payload::NotifyBlockAddedRequest(_)
+                | Payload::NotifyBlockHeaderAddedRequest(_)
                 | Payload::NotifyVirtualChainChangedRequest(_)
                 | Payload::NotifyFinalityConflictRequest(_)
                 | Payload::NotifyUtxosChangedRequest(_)
@@ -100,6 +106,7 @@ impl kaspad_response::Payload {
         use crate::protowire::kaspad_response::Payload;
         match self {
             Payload::BlockAddedNotification(_) => true,
+            Payload::BlockHeaderAddedNotification(_) => true,
             Payload::VirtualChainChangedNotification(_) => true,
             Payload::FinalityConflictNotification(_) => true,
             Payload::FinalityConflictResolvedNotification(_) => true,

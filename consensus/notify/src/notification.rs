@@ -1,5 +1,5 @@
 use derive_more::Display;
-use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff};
+use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, header::Header, utxo::utxo_diff::UtxoDiff};
 use kaspa_hashes::Hash;
 use kaspa_notify::{
     events::EventType,
@@ -18,6 +18,9 @@ full_featured! {
 pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
+
+    #[display(fmt = "BlockHeaderAdded notification: header hash {}", "_0.header.hash")]
+    BlockHeaderAdded(BlockHeaderAddedNotification),
 
     #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_chain_blocks_acceptance_data.len()")]
     VirtualChainChanged(VirtualChainChangedNotification),
@@ -101,6 +104,17 @@ pub struct BlockAddedNotification {
 impl BlockAddedNotification {
     pub fn new(block: Block) -> Self {
         Self { block }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockHeaderAddedNotification {
+    pub header: Arc<Header>,
+}
+
+impl BlockHeaderAddedNotification {
+    pub fn new(header: Arc<Header>) -> Self {
+        Self { header }
     }
 }
 

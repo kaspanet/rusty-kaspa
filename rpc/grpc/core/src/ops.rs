@@ -92,6 +92,7 @@ pub enum KaspadPayloadOps {
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
+    NotifyBlockHeaderAdded,
     NotifyNewBlockTemplate,
     NotifyFinalityConflict,
     NotifyUtxosChanged,

@@ -25,6 +25,9 @@ pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
 
+    #[display(fmt = "BlockHeaderAdded notification: header hash {}", "_0.header.hash")]
+    BlockHeaderAdded(BlockHeaderAddedNotification),
+
     #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.accepted_transaction_ids.len()")]
     VirtualChainChanged(VirtualChainChangedNotification),
 
@@ -56,6 +59,7 @@ impl Notification {
     pub fn to_value(&self) -> std::result::Result<JsValue, serde_wasm_bindgen::Error> {
         match self {
             Notification::BlockAdded(v) => to_value(&v),
+            Notification::BlockHeaderAdded(v) => to_value(&v),
             Notification::FinalityConflict(v) => to_value(&v),
             Notification::FinalityConflictResolved(v) => to_value(&v),
             Notification::NewBlockTemplate(v) => to_value(&v),
@@ -158,6 +162,10 @@ impl Serializer for Notification {
                 store!(u16, &8, writer)?;
                 serialize!(NewBlockTemplateNotification, notification, writer)?;
             }
+            Notification::BlockHeaderAdded(notification) => {
+                store!(u16, &9, writer)?;
+                serialize!(BlockHeaderAddedNotification, notification, writer)?;
+            }
         }
         Ok(())
     }
@@ -202,6 +210,10 @@ impl Deserializer for Notification {
             8 => {
                 let notification = deserialize!(NewBlockTemplateNotification, reader)?;
                 Ok(Notification::NewBlockTemplate(notification))
+            }
+            9 => {
+                let notification = deserialize!(BlockHeaderAddedNotification, reader)?;
+                Ok(Notification::BlockHeaderAdded(notification))
             }
             _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid variant")),
         }

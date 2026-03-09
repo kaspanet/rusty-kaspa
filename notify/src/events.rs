@@ -43,6 +43,7 @@ event_type_enum! {
     #[serde(rename_all = "kebab-case")]
     pub enum EventType {
         BlockAdded = 0,
+        BlockHeaderAdded,
         VirtualChainChanged,
         FinalityConflict,
         FinalityConflictResolved,
@@ -54,7 +55,7 @@ event_type_enum! {
     }
 }
 
-pub const EVENT_COUNT: usize = 9;
+pub const EVENT_COUNT: usize = 10;
 
 impl FromStr for EventType {
     type Err = Error;
@@ -62,6 +63,7 @@ impl FromStr for EventType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "block-added" => Ok(EventType::BlockAdded),
+            "block-header-added" => Ok(EventType::BlockHeaderAdded),
             "virtual-chain-changed" => Ok(EventType::VirtualChainChanged),
             "finality-conflict" => Ok(EventType::FinalityConflict),
             "finality-conflict-resolved" => Ok(EventType::FinalityConflictResolved),
