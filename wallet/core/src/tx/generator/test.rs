@@ -878,15 +878,12 @@ fn test_generator_rejects_large_change_absorption_at_storage_mass_limit() -> Res
 #[test]
 fn test_generator_absorbs_change_only_when_fee_difference_exceeds_change() -> Result<()> {
     let network_id = test_network_id();
-    let input_value = 10_999_999_u64;
-    let output_value = 10_000_000_u64;
 
     let generator =
         generator(network_id, &[0.10999999], &[], None, Fees::sender(Sompi(0)), [(output_address, Kaspa(0.1))].as_slice())?;
 
     let pending = generator.generate_transaction()?.expect("expected final transaction");
     let tx = pending.transaction();
-    let actual_fee = pending.aggregate_input_value() - pending.aggregate_output_value();
 
     assert!(pending.is_final(), "expected final transaction");
     assert_eq!(tx.outputs.len(), 1, "expected the change output to be absorbed");
