@@ -188,6 +188,7 @@ message GetBlockTemplateResponseMessage {
 // See: BlockAddedNotificationMessage
 message NotifyBlockAddedRequestMessage {
   RpcNotifyCommand command = 101;
+  repeated bytes payload_prefixes = 102;
 }
 
 message NotifyBlockAddedResponseMessage {
@@ -365,6 +366,8 @@ message GetBlockRequestMessage {
 
   // Whether to include transaction data in the response
   bool includeTransactions = 3;
+  bytes tx_payload_prefixes_flattened = 4;
+  repeated fixed32 tx_payload_prefixes_lengths = 5;
 }
 
 message GetBlockResponseMessage {
@@ -422,6 +425,8 @@ message GetBlocksRequestMessage {
   string lowHash = 1;
   bool includeBlocks = 2;
   bool includeTransactions = 3;
+  bytes tx_payload_prefixes_flattened = 4;
+  repeated fixed32 tx_payload_prefixes_lengths = 5;
 }
 
 message GetBlocksResponseMessage {

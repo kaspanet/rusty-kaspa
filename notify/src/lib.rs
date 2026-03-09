@@ -10,6 +10,7 @@ pub mod events;
 pub mod listener;
 pub mod notification;
 pub mod notifier;
+pub mod payload_prefix_filter;
 pub mod root;
 pub mod scope;
 pub mod subscriber;

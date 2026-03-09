@@ -3,7 +3,7 @@ use crate::{
     listener::ListenerId,
     subscription::{
         DynSubscription,
-        single::{UtxosChangedState, UtxosChangedSubscription},
+        single::{BlockAddedState, BlockAddedSubscription, UtxosChangedState, UtxosChangedSubscription},
     },
 };
 use std::{ops::Deref, sync::Arc};
@@ -14,6 +14,7 @@ use kaspa_addresses::Address;
 #[derive(Debug)]
 pub struct SubscriptionContextInner {
     pub address_tracker: Tracker,
+    pub block_added_subscription_to_all: DynSubscription,
     pub utxos_changed_subscription_to_all: DynSubscription,
 }
 
@@ -26,17 +27,27 @@ impl SubscriptionContextInner {
 
     pub fn with_options(max_addresses: Option<usize>) -> Self {
         let address_tracker = Tracker::new(max_addresses);
+        let block_added_subscription_all = Arc::new(BlockAddedSubscription::new(BlockAddedState::All, Self::CONTEXT_LISTENER_ID));
         let utxos_changed_subscription_all =
             Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
-        Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
+        Self {
+            address_tracker,
+            block_added_subscription_to_all: block_added_subscription_all,
+            utxos_changed_subscription_to_all: utxos_changed_subscription_all,
+        }
     }
 
     #[cfg(test)]
     pub fn with_addresses(addresses: &[Address]) -> Self {
         let address_tracker = Tracker::with_addresses(addresses);
+        let block_added_subscription_all = Arc::new(BlockAddedSubscription::new(BlockAddedState::All, Self::CONTEXT_LISTENER_ID));
         let utxos_changed_subscription_all =
             Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
-        Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
+        Self {
+            address_tracker,
+            block_added_subscription_to_all: block_added_subscription_all,
+            utxos_changed_subscription_to_all: utxos_changed_subscription_all,
+        }
     }
 }
 

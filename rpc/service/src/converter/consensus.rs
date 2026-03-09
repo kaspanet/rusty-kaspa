@@ -30,6 +30,7 @@ use kaspa_rpc_core::{
     RpcUtxoEntryVerbosity,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
+use kaspa_utils::flattened_slice::FlattenedSliceHolder;
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 /// Conversion of consensus_core to rpc_core structures
 pub struct ConsensusConverter {
@@ -62,6 +63,7 @@ impl ConsensusConverter {
         block: &Block,
         include_transactions: bool,
         include_transaction_verbose_data: bool,
+        flattened_slice_holder: FlattenedSliceHolder<'_>,
     ) -> RpcResult<RpcBlock> {
         let hash = block.hash();
         let ghostdag_data = consensus.async_get_ghostdag_data(hash).await?;
@@ -81,10 +83,17 @@ impl ConsensusConverter {
             is_chain_block,
         });
 
-        let transactions = if include_transactions {
+        let transactions = if include_transactions && flattened_slice_holder.is_empty() {
             block
                 .transactions
                 .iter()
+                .map(|x| self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data))
+                .collect::<Vec<_>>()
+        } else if include_transactions {
+            block
+                .transactions
+                .iter()
+                .filter(|tx| flattened_slice_holder.iter().any(|prefix| tx.payload.starts_with(prefix)))
                 .map(|x| self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data))
                 .collect::<Vec<_>>()
         } else {
@@ -667,7 +676,12 @@ impl Converter for ConsensusConverter {
             consensus_notify::Notification::BlockAdded(msg) => {
                 let session = self.consensus_manager.consensus().unguarded_session();
                 // If get_block fails, rely on the infallible From implementation which will lack verbose data
-                let block = Arc::new(self.get_block(&session, &msg.block, true, true).await.unwrap_or_else(|_| (&msg.block).into()));
+                // todo is it intentional override? what if scope has different payload filter???
+                let block = Arc::new(
+                    self.get_block(&session, &msg.block, true, true, FlattenedSliceHolder::new(&[], &[]))
+                        .await
+                        .unwrap_or_else(|_| (&msg.block).into()),
+                );
                 Notification::BlockAdded(BlockAddedNotification { block })
             }
             _ => (&incoming).into(),

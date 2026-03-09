@@ -158,6 +158,31 @@ pub fn generate_tx(
     signed_tx.tx
 }
 
+pub fn generate_tx_with_payload(
+    schnorr_key: Keypair,
+    utxos: &[(TransactionOutpoint, UtxoEntry)],
+    amount: u64,
+    num_outputs: u64,
+    address: &Address,
+    payload: Vec<u8>,
+) -> Transaction {
+    let total_in = utxos.iter().map(|x| x.1.amount).sum::<u64>();
+    assert!(amount <= total_in - required_fee(utxos.len(), num_outputs));
+    let script_public_key = pay_to_address_script(address);
+    let inputs = utxos
+        .iter()
+        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
+        .collect_vec();
+
+    let outputs = (0..num_outputs)
+        .map(|_| TransactionOutput { value: amount / num_outputs, script_public_key: script_public_key.clone() })
+        .collect_vec();
+    let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload);
+    let signed_tx =
+        sign(MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec()), schnorr_key);
+    signed_tx.tx
+}
+
 pub async fn fetch_spendable_utxos(
     client: &GrpcClient,
     address: Address,
