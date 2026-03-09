@@ -38,6 +38,10 @@ pub struct MerkleProof {
 }
 
 impl MerkleProof {
+    pub fn new(index: u32, digests: Vec<Digest>) -> Self {
+        Self { index, digests }
+    }
+
     /// Verify the Merkle inclusion proof against the given leaf and root.
     pub fn verify(&self, leaf: &Digest, root: &Digest, hashfn: &dyn HashFn<BabyBear>) -> Result<(), R0Error> {
         if self.root(leaf, hashfn) == *root {
