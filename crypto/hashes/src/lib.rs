@@ -37,6 +37,10 @@ pub use hashers::*;
 /// @category General
 #[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(feature = "workflow", derive(CastFromJs))]
+#[cfg_attr(
+    feature = "zerocopy",
+    derive(zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable, zerocopy::KnownLayout, zerocopy::Unaligned)
+)]
 #[wasm_bindgen]
 #[repr(transparent)]
 pub struct Hash([u8; HASH_SIZE]);

@@ -17,6 +17,7 @@ members = [
     "consensus/notify",
     "consensus/pow",
     "consensus/seq-commit",
+    "consensus/smt-store",
     "consensus/wasm",
     "kaspad",
     "simpa",
@@ -109,6 +110,7 @@ kaspa-index-processor = { version = "1.1.0-rc.3", path = "indexes/processor" }
 kaspa-math = { version = "1.1.0-rc.3", path = "math" }
 kaspa-merkle = { version = "1.1.0-rc.3", path = "crypto/merkle" }
 kaspa-smt = { version = "1.1.0-rc.3", path = "crypto/smt" }
+kaspa-smt-store = { version = "1.1.0-rc.3", path = "consensus/smt-store" }
 kaspa-metrics-core = { version = "1.1.0-rc.3", path = "metrics/core" }
 kaspa-mining = { version = "1.1.0-rc.3", path = "mining" }
 kaspa-mining-errors = { version = "1.1.0-rc.3", path = "mining/errors" }
@@ -286,6 +288,7 @@ wasm-bindgen-futures = "0.4.43"
 wasm-bindgen-test = "0.3.50"
 web-sys = "0.3.70"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
+zerocopy = { version = "0.8", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
 pin-project-lite = "0.2.13"
 tower-http = { version = "0.5.2", features = [

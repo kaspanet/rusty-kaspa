@@ -1,0 +1,23 @@
+[package]
+name = "kaspa-smt-store"
+description = "KIP-0021 SMT versioned store — persistent linked-list DB layer"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+kaspa-database.workspace = true
+kaspa-hashes = { workspace = true, features = ["zerocopy"] }
+kaspa-utils = { workspace = true, features = ["sysinfo"] }
+zerocopy = { workspace = true }
+
+[dev-dependencies]
+kaspa-database.workspace = true
+rocksdb.workspace = true
+
+[lints]
+workspace = true

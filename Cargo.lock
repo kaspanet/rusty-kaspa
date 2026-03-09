@@ -60,7 +60,7 @@ dependencies = [
  "getrandom 0.2.15",
  "once_cell",
  "version_check",
- "zerocopy",
+ "zerocopy 0.7.35",
 ]
 
 [[package]]
@@ -3201,6 +3201,7 @@ dependencies = [
  "sha3",
  "wasm-bindgen",
  "workflow-wasm",
+ "zerocopy 0.8.41",
 ]
 
 [[package]]
@@ -3589,6 +3590,17 @@ dependencies = [
  "kaspa-hashes",
  "rand 0.8.5",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "kaspa-smt-store"
+version = "1.1.0-rc.3"
+dependencies = [
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-utils",
+ "rocksdb",
+ "zerocopy 0.8.41",
 ]
 
 [[package]]
@@ -5272,7 +5284,7 @@ version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
 dependencies = [
- "zerocopy",
+ "zerocopy 0.7.35",
 ]
 
 [[package]]
@@ -8152,7 +8164,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
 dependencies = [
  "byteorder",
- "zerocopy-derive",
+ "zerocopy-derive 0.7.35",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.41"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96e13bc581734df6250836c59a5f44f3c57db9f9acb9dc8e3eaabdaf6170254d"
+dependencies = [
+ "zerocopy-derive 0.8.41",
 ]
 
 [[package]]
@@ -8160,6 +8181,17 @@ name = "zerocopy-derive"
 version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.110",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.41"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3545ea9e86d12ab9bba9fcd99b54c1556fd3199007def5a03c375623d05fac1c"
 dependencies = [
  "proc-macro2",
  "quote",

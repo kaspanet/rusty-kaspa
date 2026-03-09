@@ -15,6 +15,7 @@ no-asm = ["keccak"]
 mem_size = ["kaspa-utils/mem_size"]
 std = ["blake2b_simd/std", "blake3/std", "borsh/std", "faster-hex/std", "js-sys?/std", "kaspa-utils/std", "serde/std", "sha2/std", "wasm-bindgen/std"]
 workflow = ["std", "dep:workflow-wasm", "dep:js-sys"]
+zerocopy = ["dep:zerocopy"]
 
 [dependencies]
 blake2b_simd.workspace = true
@@ -29,6 +30,7 @@ sha2.workspace = true
 sha2-const-stable.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm = { workspace = true, optional = true }
+zerocopy = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "x86_64"))'.dependencies]
 keccak.workspace = true
