@@ -15,7 +15,7 @@ use kaspa_p2p_lib::{
     pb::{InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage, kaspad_message::Payload},
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Instant};
 
 pub struct RelayInvMessage {
     hash: Hash,
@@ -129,7 +129,8 @@ impl HandleRelayInvsFlow {
             }
 
             // We keep the request scope alive until consensus processes the block
-            let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id(), self.header_format).await? else {
+            let Some((block, request_scope, last_block_transfer_instant)) = self.request_block(inv.hash, self.msg_route.id()).await?
+            else {
                 debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
                 continue;
             };
@@ -222,8 +223,10 @@ impl HandleRelayInvsFlow {
 
             // We spawn post-processing as a separate task so that this loop
             // can continue processing the following relay blocks
+            let router = self.router.clone();
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
+                router.set_last_block_transfer(last_block_transfer_instant);
                 ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
                 ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
             });
@@ -238,8 +241,7 @@ impl HandleRelayInvsFlow {
         &mut self,
         requested_hash: Hash,
         request_id: u32,
-        header_format: HeaderFormat,
-    ) -> Result<Option<(Block, RequestScope<Hash>)>, ProtocolError> {
+    ) -> Result<Option<(Block, RequestScope<Hash>, Instant)>, ProtocolError> {
         // Note: the request scope is returned and should be captured until block processing is completed
         let Some(request_scope) = self.ctx.try_adding_block_request(requested_hash) else {
             return Ok(None);
@@ -252,11 +254,12 @@ impl HandleRelayInvsFlow {
             ))
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::Block)?;
-        let block: Block = Versioned(header_format, msg).try_into()?;
+        let last_block_transfer_instant = Instant::now();
+        let block: Block = Versioned(self.header_format, msg).try_into()?;
         if block.hash() != requested_hash {
             Err(ProtocolError::OtherOwned(format!("requested block hash {} but got block {}", requested_hash, block.hash())))
         } else {
-            Ok(Some((block, request_scope)))
+            Ok(Some((block, request_scope, last_block_transfer_instant)))
         }
     }
 

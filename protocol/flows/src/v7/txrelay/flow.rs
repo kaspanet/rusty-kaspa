@@ -21,7 +21,7 @@ use kaspa_p2p_lib::{
     dequeue, make_message,
     pb::{RequestTransactionsMessage, TransactionNotFoundMessage, kaspad_message::Payload},
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 use tokio::time::timeout;
 
 pub(crate) const MAX_TPS_THRESHOLD: u64 = 3000;
@@ -201,6 +201,7 @@ impl RelayTransactionsFlow {
         requests: Vec<RequestScope<TransactionId>>,
         should_throttle: bool,
     ) -> Result<(), ProtocolError> {
+        let last_transactions_transfer = Instant::now();
         let mut transactions: Vec<Transaction> = Vec::with_capacity(requests.len());
         for request in requests {
             let response = self.read_response().await?;
@@ -248,6 +249,8 @@ impl RelayTransactionsFlow {
                 should_throttle,
             )
             .await;
+
+        self.router.set_last_tx_transfer(last_transactions_transfer);
 
         Ok(())
     }
