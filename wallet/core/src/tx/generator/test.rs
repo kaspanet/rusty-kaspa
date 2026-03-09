@@ -2,14 +2,15 @@
 
 use crate::error::Error;
 use crate::result::Result;
-use crate::tx::{Fees, MassCalculator, PaymentDestination};
+use crate::tx::{Fees, MAXIMUM_STANDARD_TRANSACTION_MASS, MassCalculator, PaymentDestination};
 use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::mass::UtxoCell;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
-use kaspa_consensus_core::tx::Transaction;
+use kaspa_consensus_core::tx::{Transaction, TransactionOutput};
+use kaspa_txscript::pay_to_address_script;
 use rand::prelude::*;
 use std::cell::RefCell;
 use std::fmt::Debug;
@@ -448,7 +449,6 @@ where
         final_transaction_destination,
         final_transaction_payload,
     };
-
     Generator::try_new(settings, None, None)
 }
 
@@ -834,6 +834,63 @@ fn test_generator_should_pick_valid_alternative_utxo_after_storage_mass_rejectio
     assert_eq!(pending.utxo_entries().len(), 2, "expected to aggregate another input");
     assert!(pending.change_output_index().is_some(), "expected explicit change output (no fee absorption)");
     assert!(pending.change_value() > 0, "expected non-zero change output (no fee absorption)");
+
+    Ok(())
+}
+
+#[test]
+// we're exactly at the storage limits for storage mass when no change and +1 when with change
+// ensure generator doesn't drain the remaining Kaspa value (10,000 Kas) as fees
+fn test_generator_rejects_large_change_absorption_at_storage_mass_limit() -> Result<()> {
+    let network_id = test_network_id();
+    let input_values = [1_000_010_000_000_u64];
+    let output_value = 10_000_000_u64;
+    let pre_fee_change_value = 1_000_000_000_000_u64;
+
+    let utxo_entries = input_values.into_iter().map(UtxoEntryReference::simulated).collect::<Vec<_>>();
+
+    let payee_address = output_address(network_id.into());
+    let change_address = change_address(network_id.into());
+
+    let calc = MassCalculator::new(&network_id.into());
+    let outputs_without_change = vec![TransactionOutput::new(output_value, pay_to_address_script(&payee_address))];
+    let outputs_with_change = vec![
+        TransactionOutput::new(output_value, pay_to_address_script(&payee_address)),
+        TransactionOutput::new(pre_fee_change_value, pay_to_address_script(&change_address)),
+    ];
+
+    let storage_mass_no_change = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &outputs_without_change).unwrap();
+    let storage_mass_with_change = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &outputs_with_change).unwrap();
+
+    // verify we're at the storage limits
+    assert_eq!(storage_mass_no_change, MAXIMUM_STANDARD_TRANSACTION_MASS);
+    assert_eq!(storage_mass_with_change, MAXIMUM_STANDARD_TRANSACTION_MASS + 1);
+
+    let generator = generator(network_id, &[10_000.1], &[], None, Fees::sender(Sompi(0)), [(output_address, Kaspa(0.1))].as_slice())?;
+
+    // should rejects creating a transaction that drains fees
+    let err = generator.generate_transaction().expect_err("expected the generator to reject burning large change");
+    assert!(matches!(err, Error::StorageMassExceedsMaximumTransactionMass { storage_mass } if storage_mass == 100_001));
+
+    Ok(())
+}
+
+#[test]
+fn test_generator_absorbs_change_only_when_fee_difference_exceeds_change() -> Result<()> {
+    let network_id = test_network_id();
+    let input_value = 10_999_999_u64;
+    let output_value = 10_000_000_u64;
+
+    let generator =
+        generator(network_id, &[0.10999999], &[], None, Fees::sender(Sompi(0)), [(output_address, Kaspa(0.1))].as_slice())?;
+
+    let pending = generator.generate_transaction()?.expect("expected final transaction");
+    let tx = pending.transaction();
+    let actual_fee = pending.aggregate_input_value() - pending.aggregate_output_value();
+
+    assert!(pending.is_final(), "expected final transaction");
+    assert_eq!(tx.outputs.len(), 1, "expected the change output to be absorbed");
+    assert!(pending.change_output_index().is_none(), "expected no change output index");
 
     Ok(())
 }
