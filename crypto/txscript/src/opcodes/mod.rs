@@ -1479,7 +1479,7 @@ opcode_list! {
         }
     }
 
-    opcode OpCovOutCount<0xd2, 1>(self, vm) {
+    opcode OpCovOutputCount<0xd2, 1>(self, vm) {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
@@ -1487,7 +1487,7 @@ opcode_list! {
                     let count = vm.covenants_ctx.num_covenant_outputs(covenant_id);
                     push_number(count as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpCovOutCount only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpCovOutputCount only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1727,7 +1727,7 @@ mod test {
             opcodes::OpInputCovenantId::empty().expect("Should accept empty"),
             opcodes::OpCovInputCount::empty().expect("Should accept empty"),
             opcodes::OpCovInputIdx::empty().expect("Should accept empty"),
-            opcodes::OpAuthOutputCount::empty().expect("Should accept empty"),
+            opcodes::OpCovOutputCount::empty().expect("Should accept empty"),
             opcodes::OpCovOutputIdx::empty().expect("Should accept empty"),
             opcodes::OpChainblockSeqCommit::empty().expect("Should accept empty"),
             opcodes::OpUnknown213::empty().expect("Should accept empty"),
@@ -4644,16 +4644,16 @@ mod test {
             let err = run_script(&tx, entries.clone(), 0, spk_cov_in_idx_oob).expect_err("cov input idx oob");
             assert!(matches!(err, TxScriptError::CovenantsError(CovenantsError::InvalidCovInIndex(_, _))));
 
-            // OpCovOutCount
+            // OpCovOutputCount
             let spk_cov_out_count_1 =
-                script(|sb| sb.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpCovOutCount)?.add_i64(3)?.add_op(codes::OpEqual));
+                script(|sb| sb.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(3)?.add_op(codes::OpEqual));
             run_script(&tx, entries.clone(), 0, spk_cov_out_count_1).unwrap();
 
             let spk_cov_out_count_2 =
-                script(|sb| sb.add_data(&covenant_id_2.as_bytes())?.add_op(codes::OpCovOutCount)?.add_i64(2)?.add_op(codes::OpEqual));
+                script(|sb| sb.add_data(&covenant_id_2.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(2)?.add_op(codes::OpEqual));
             run_script(&tx, entries.clone(), 0, spk_cov_out_count_2).unwrap();
             let spk_cov_out_count_0 =
-                script(|sb| sb.add_data(&covenant_id_3.as_bytes())?.add_op(codes::OpCovOutCount)?.add_i64(0)?.add_op(codes::OpEqual));
+                script(|sb| sb.add_data(&covenant_id_3.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(0)?.add_op(codes::OpEqual));
             run_script(&tx, entries.clone(), 0, spk_cov_out_count_0).unwrap();
 
             // OpCovOutputIdx
