@@ -12,6 +12,28 @@ use kaspa_hashes as native;
 use kaspa_hashes::HasherBase;
 use kaspa_wasm_core::types::BinaryT;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_COVENANT_AUTHORIZED_OUTPUT: &'static str = r#"
+/**
+ * An output authorized by the genesis outpoint for covenant ID derivation.
+ *
+ * @category Consensus
+ */
+export interface ICovenantAuthorizedOutput {
+    index: number;
+    output: ITransactionOutput | TransactionOutput;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    /// WASM (TypeScript) type representing an array of covenant authorized outputs.
+    ///
+    /// @category Consensus
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "ICovenantAuthorizedOutput[]")]
+    pub type CovenantAuthorizedOutputArrayT;
+}
+
 /// @category Wallet SDK
 #[derive(Default, Clone)]
 #[wasm_bindgen]
@@ -73,13 +95,13 @@ impl TransactionSigningHashECDSA {
 ///
 /// @category Consensus
 #[wasm_bindgen(js_name = covenantId)]
-pub fn js_covenant_id(genesis_outpoint: &TransactionOutpointT, auth_outputs: Vec<JsValue>) -> Result<native::Hash> {
+pub fn js_covenant_id(genesis_outpoint: &TransactionOutpointT, auth_outputs: &CovenantAuthorizedOutputArrayT) -> Result<native::Hash> {
     let outpoint_client = TransactionOutpoint::try_from(genesis_outpoint.as_ref())?;
     let outpoint = cctx::TransactionOutpoint::from(&outpoint_client);
     let outputs: Vec<(u32, cctx::TransactionOutput)> = auth_outputs
         .iter()
         .map(|item| {
-            let obj = js_sys::Object::try_from(item).ok_or_else(|| Error::custom("each auth_output must be an object"))?;
+            let obj = js_sys::Object::try_from(&item).ok_or_else(|| Error::custom("each auth_output must be an object"))?;
             let index = obj.get_u32("index")?;
             let output = TransactionOutput::try_owned_from(obj.get_value("output")?)?;
             Ok((index, cctx::TransactionOutput::from(&output)))

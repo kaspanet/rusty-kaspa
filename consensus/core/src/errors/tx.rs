@@ -46,7 +46,7 @@ pub enum TxRuleError {
     CoinbaseNonZeroMassCommitment,
 
     #[error(
-        "transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2} 
+        "transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2}
     while the merging block daa score is {3} and the coinbase maturity period of {4} hasn't passed yet"
     )]
     ImmatureCoinbaseSpend(usize, TransactionOutpoint, u64, u64, u64),
@@ -124,14 +124,6 @@ pub enum PopulateGenesisCovenantsError {
     CovenantAlreadyPopulated(u32),
     #[error("The genesis covenant group array is invalid")]
     InvalidGenesisCovenantGroupArray,
-    #[error("{0}")]
-    WASM(String),
-}
-
-impl From<workflow_wasm::error::Error> for PopulateGenesisCovenantsError {
-    fn from(e: workflow_wasm::error::Error) -> Self {
-        PopulateGenesisCovenantsError::WASM(e.to_string())
-    }
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

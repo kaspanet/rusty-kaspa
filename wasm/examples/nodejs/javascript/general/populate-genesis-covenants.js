@@ -57,8 +57,8 @@ function expectError(label, fn, expectedSubstring) {
     // Group A binds outputs [0, 2] via authorizing input 0.
     // Group B binds outputs [1, 3] via authorizing input 1.
     console.log('\n--- Example 1: Populate using GenesisCovenantGroup instances ---');
-    const groupA = new GenesisCovenantGroup(0, new Uint32Array([0, 2]));
-    const groupB = new GenesisCovenantGroup(1, new Uint32Array([1, 3]));
+    const groupA = new GenesisCovenantGroup(0, [0, 2]);
+    const groupB = new GenesisCovenantGroup(1, [1, 3]);
     tx.populateGenesisCovenants([groupA, groupB]);
 
     for (let i = 0; i < tx.outputs.length; i++) {
@@ -114,8 +114,8 @@ function expectError(label, fn, expectedSubstring) {
     const expectedB = covenantId(outpoint, groupBOutputs.map(i => ({ index: i, output: tx3.outputs[i] })));
 
     tx3.populateGenesisCovenants([
-        new GenesisCovenantGroup(0, new Uint32Array(groupAOutputs)),
-        new GenesisCovenantGroup(0, new Uint32Array(groupBOutputs)),
+        new GenesisCovenantGroup(0, groupAOutputs),
+        new GenesisCovenantGroup(0, groupBOutputs),
     ]);
 
     // Outputs in group A should all share expectedA.
@@ -141,33 +141,33 @@ function expectError(label, fn, expectedSubstring) {
     // 1. Authorizing input index out of bounds.
     expectError('NoSuchInput', () => {
         const t = makeTx(1, 1);
-        t.populateGenesisCovenants([new GenesisCovenantGroup(1, new Uint32Array([0]))]);
+        t.populateGenesisCovenants([new GenesisCovenantGroup(1, [0])]);
     }, 'out of bounds for 1 inputs');
 
     // 2. Output index out of bounds.
     expectError('NoSuchOutput', () => {
         const t = makeTx(1, 1);
-        t.populateGenesisCovenants([new GenesisCovenantGroup(0, new Uint32Array([1]))]);
+        t.populateGenesisCovenants([new GenesisCovenantGroup(0, [1])]);
     }, 'out of bounds for 1 outputs');
 
     // 3. Empty outputs list.
     expectError('EmptyOutputs', () => {
         const t = makeTx(1, 1);
-        t.populateGenesisCovenants([new GenesisCovenantGroup(0, new Uint32Array([]))]);
+        t.populateGenesisCovenants([new GenesisCovenantGroup(0, [])]);
     }, 'outputs list is empty');
 
     // 4. Outputs not sorted.
     expectError('OutputsNotOrdered', () => {
         const t = makeTx(1, 4);
-        t.populateGenesisCovenants([new GenesisCovenantGroup(0, new Uint32Array([1, 3, 2]))]);
+        t.populateGenesisCovenants([new GenesisCovenantGroup(0, [1, 3, 2])]);
     }, 'not strictly ordered');
 
     // 5. Overlapping outputs across groups.
     expectError('OutputsNotDisjoint', () => {
         const t = makeTx(1, 5);
         t.populateGenesisCovenants([
-            new GenesisCovenantGroup(0, new Uint32Array([1, 3])),
-            new GenesisCovenantGroup(0, new Uint32Array([2, 3])),
+            new GenesisCovenantGroup(0, [1, 3]),
+            new GenesisCovenantGroup(0, [2, 3]),
         ]);
     }, 'appears in more than one group');
 
@@ -187,6 +187,6 @@ function expectError(label, fn, expectedSubstring) {
             lockTime: 0n, gas: 0n, payload: '',
             subnetworkId: '0000000000000000000000000000000000000000',
         });
-        t.populateGenesisCovenants([new GenesisCovenantGroup(0, new Uint32Array([1]))]);
+        t.populateGenesisCovenants([new GenesisCovenantGroup(0, [1])]);
     }, 'already populated');
 })();
