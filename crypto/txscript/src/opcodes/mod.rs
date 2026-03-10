@@ -1455,7 +1455,7 @@ opcode_list! {
                     let count = vm.covenants_ctx.num_covenant_inputs(covenant_id);
                     push_number(count as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpCovInCount only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpCovInputCount only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1472,7 +1472,7 @@ opcode_list! {
                     let idx = vm.covenants_ctx.covenant_input_index(covenant_id, k)?;
                     push_number(idx as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpCovInIdx only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpCovInputIdx only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1504,7 +1504,7 @@ opcode_list! {
                     let idx = vm.covenants_ctx.covenant_output_index(covenant_id, k)?;
                     push_number(idx as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpCovOutIdx only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpCovOutputIdx only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
