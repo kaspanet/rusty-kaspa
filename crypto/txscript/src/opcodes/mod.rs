@@ -4645,15 +4645,18 @@ mod test {
             assert!(matches!(err, TxScriptError::CovenantsError(CovenantsError::InvalidCovInIndex(_, _))));
 
             // OpCovOutputCount
-            let spk_cov_out_count_1 =
-                script(|sb| sb.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(3)?.add_op(codes::OpEqual));
+            let spk_cov_out_count_1 = script(|sb| {
+                sb.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(3)?.add_op(codes::OpEqual)
+            });
             run_script(&tx, entries.clone(), 0, spk_cov_out_count_1).unwrap();
 
-            let spk_cov_out_count_2 =
-                script(|sb| sb.add_data(&covenant_id_2.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(2)?.add_op(codes::OpEqual));
+            let spk_cov_out_count_2 = script(|sb| {
+                sb.add_data(&covenant_id_2.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(2)?.add_op(codes::OpEqual)
+            });
             run_script(&tx, entries.clone(), 0, spk_cov_out_count_2).unwrap();
-            let spk_cov_out_count_0 =
-                script(|sb| sb.add_data(&covenant_id_3.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(0)?.add_op(codes::OpEqual));
+            let spk_cov_out_count_0 = script(|sb| {
+                sb.add_data(&covenant_id_3.as_bytes())?.add_op(codes::OpCovOutputCount)?.add_i64(0)?.add_op(codes::OpEqual)
+            });
             run_script(&tx, entries.clone(), 0, spk_cov_out_count_0).unwrap();
 
             // OpCovOutputIdx
