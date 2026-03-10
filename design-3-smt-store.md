@@ -1,31 +1,9 @@
-# KIP-21 Active Lanes SMT — Versioned Store (Implementation Design)
+# KIP-21 Active Lanes SMT — Versioned Store
 
 > Single RocksDB default CF, prefix-separated keys (Kaspa convention).
 > All multi-byte integers in keys use **ReverseBlueScore** (`u64::MAX - blue_score`, big-endian)
 > so forward lexicographic iteration yields latest versions first.
 > Crate: `consensus/smt-store/` (`kaspa-smt-store`).
-
----
-
-## Changes from Previous Design (design-2)
-
-1. **Removed PrevPtr / linked lists.** Version values no longer embed `(prev_blue_score, prev_hash)` pointers. The score index + RocksDB key ordering provide all traversal needed — no per-entity linked list required.
-
-2. **Removed tombstones.** No separate "branch became empty" or "lane purged" marker values. Old versions stay in the DB and are filtered by blue score threshold. Branch/lane head deletion handles the "became empty" case.
-
-3. **Reversed score ordering.** Keys use `ReverseBlueScore` (`u64::MAX - blue_score`) instead of raw `blue_score`. Forward RocksDB iteration yields highest blue scores first, eliminating the need for `seek_for_prev`. A simple `seek` + forward scan finds the latest version.
-
-4. **Score index redesign.** Key is `prefix | rev_blue_score | block_hash` (41 bytes). Value is concatenated lane keys (`N * 32` bytes) rather than one entry per lane. One key per block instead of one key per (block, lane) pair.
-
-5. **Canonicality via reachability, not linked lists.** `get` methods accept an `is_canonical(block_hash) -> bool` predicate. The iterator walks versions from highest blue score downward; the first entry passing the canonicality check is returned. No linked-list walk needed.
-
-6. **`min_blue_score` bound on all iterators.** Both `get` and `get_at` accept a `min_blue_score` parameter. The iterator stops early when it hits a version below this threshold, enabling efficient pruning-aware reads.
-
-7. **`MaybeFork<T>` / `Verified<T>` wrappers.** `get_at` returns `MaybeFork<T>` (caller must verify canonicality). `get` returns `Verified<T>` (canonicality already checked). Both carry `blue_score` and `block_hash` alongside the data and expose `into_parts() -> (T, u64, Hash)`.
-
-8. **Explicit `blue_score` naming.** All parameters, fields, and methods use `blue_score` (not generic `score`) to distinguish from DAA score.
-
-9. **Actual prefix values.** Uses `0x46`–`0x4A` (decimal 70–74) registered in `DatabaseStorePrefixes`, not the pseudocode `0x01`–`0x05`.
 
 ---
 
@@ -407,3 +385,17 @@ Nothing is deleted on rollback or reorg.
 | Rollback | Score index lookup → lane list → iterate version stores for previous canonical heads. Zero writes to version stores. |
 | Pruning | Iterate score index → collect keys → batch delete from Stores 2, 4. Range-delete Store 5. |
 | RAM requirement | No in-memory canonical set. Reachability service provides O(1) ancestor checks. |
+
+---
+
+## Appendix: Changes from design-2 (versioned linked-list)
+
+1. **Removed PrevPtr / linked lists.** Version values no longer embed `(prev_blue_score, prev_hash)`. The score index + RocksDB key ordering provide all traversal needed.
+2. **Removed tombstones.** Old versions stay in DB, filtered by blue score threshold. Head deletion handles "became empty".
+3. **Reversed score ordering.** `ReverseBlueScore` replaces raw `blue_score` in keys — forward iteration = descending order, no `seek_for_prev` needed.
+4. **Score index redesign.** One key per block (`prefix | rev_blue_score | block_hash`), value = concatenated lane keys.
+5. **Canonicality via reachability predicate** instead of linked-list self-filtering.
+6. **`min_blue_score` bound** on all iterators for early termination.
+7. **`MaybeFork<T>` / `Verified<T>` wrappers** for type-safe canonicality handling.
+8. **Explicit `blue_score` naming** to distinguish from DAA score.
+9. **Prefix values `0x46`–`0x4A`** (70–74) registered in `DatabaseStorePrefixes`.
