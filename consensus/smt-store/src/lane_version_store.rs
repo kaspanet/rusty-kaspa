@@ -146,7 +146,6 @@ impl DbLaneVersionStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::values::PrevPtr;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::{ConnBuilder, DirectDbWriter};
 
@@ -162,7 +161,7 @@ mod tests {
     #[test]
     fn put_and_get_at() {
         let (_lt, store) = make_store();
-        let entry = LaneVersion { lane_id: [0x55; 20], lane_tip_hash: hash(0x66), prev: PrevPtr::new(10, hash(0xCC)) };
+        let entry = LaneVersion { lane_id: [0x55; 20], lane_tip_hash: hash(0x66) };
 
         store.put(DirectDbWriter::new(&store.db), hash(0x11), 100, hash(0x22), &entry).unwrap();
 
@@ -179,7 +178,7 @@ mod tests {
         let lane_key = hash(0x11);
 
         for (score, bh) in [(50, hash(0xA0)), (100, hash(0xA1)), (200, hash(0xA2))] {
-            let entry = LaneVersion { lane_id: [score as u8; 20], lane_tip_hash: hash(0xFF), prev: PrevPtr::NULL };
+            let entry = LaneVersion { lane_id: [score as u8; 20], lane_tip_hash: hash(0xFF) };
             store.put(DirectDbWriter::new(&store.db), lane_key, score, bh, &entry).unwrap();
         }
 
@@ -202,7 +201,7 @@ mod tests {
     #[test]
     fn delete_entry() {
         let (_lt, store) = make_store();
-        let entry = LaneVersion { lane_id: [0x55; 20], lane_tip_hash: hash(0x66), prev: PrevPtr::NULL };
+        let entry = LaneVersion { lane_id: [0x55; 20], lane_tip_hash: hash(0x66) };
         store.put(DirectDbWriter::new(&store.db), hash(0x11), 100, hash(0x22), &entry).unwrap();
 
         assert!(store.get_at(hash(0x11), 100, 0).next().is_some());
@@ -221,7 +220,7 @@ mod tests {
         let fork_bh = hash(0xA2);
         let older_bh = hash(0xA0);
 
-        let mk = |id: u8| LaneVersion { lane_id: [id; 20], lane_tip_hash: hash(0xFF), prev: PrevPtr::NULL };
+        let mk = |id: u8| LaneVersion { lane_id: [id; 20], lane_tip_hash: hash(0xFF) };
 
         store.put(DirectDbWriter::new(&store.db), lane_key, 100, canonical_bh, &mk(0xCC)).unwrap();
         store.put(DirectDbWriter::new(&store.db), lane_key, 100, fork_bh, &mk(0xDD)).unwrap();

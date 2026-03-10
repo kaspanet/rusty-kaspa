@@ -152,7 +152,6 @@ impl DbBranchVersionStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::values::PrevPtr;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::{ConnBuilder, DirectDbWriter};
 
@@ -168,7 +167,7 @@ mod tests {
     #[test]
     fn put_and_get_at() {
         let (_lt, store) = make_store();
-        let version = BranchVersion { left: hash(0xAA), right: hash(0xBB), prev: PrevPtr::new(10, hash(0xCC)) };
+        let version = BranchVersion { left: hash(0xAA), right: hash(0xBB) };
 
         store.put(DirectDbWriter::new(&store.db), 3, hash(0x11), 100, hash(0x22), &version).unwrap();
 
@@ -185,7 +184,7 @@ mod tests {
         let node_key = hash(0x11);
 
         for (score, bh) in [(50, hash(0xA0)), (100, hash(0xA1)), (200, hash(0xA2))] {
-            let version = BranchVersion { left: hash(score as u8), right: hash(0xFF), prev: PrevPtr::NULL };
+            let version = BranchVersion { left: hash(score as u8), right: hash(0xFF) };
             store.put(DirectDbWriter::new(&store.db), 7, node_key, score, bh, &version).unwrap();
         }
 
@@ -212,7 +211,7 @@ mod tests {
     #[test]
     fn delete_entry() {
         let (_lt, store) = make_store();
-        let version = BranchVersion { left: hash(0xAA), right: hash(0xBB), prev: PrevPtr::NULL };
+        let version = BranchVersion { left: hash(0xAA), right: hash(0xBB) };
         store.put(DirectDbWriter::new(&store.db), 3, hash(0x11), 100, hash(0x22), &version).unwrap();
 
         assert!(store.get_at(3, hash(0x11), 100, 0).next().is_some());
@@ -239,28 +238,14 @@ mod tests {
                 node_key,
                 100,
                 canonical_bh,
-                &BranchVersion { left: hash(0xCC), right: hash(0xDD), prev: PrevPtr::NULL },
+                &BranchVersion { left: hash(0xCC), right: hash(0xDD) },
             )
             .unwrap();
         store
-            .put(
-                DirectDbWriter::new(&store.db),
-                7,
-                node_key,
-                100,
-                fork_bh,
-                &BranchVersion { left: hash(0xEE), right: hash(0xFF), prev: PrevPtr::NULL },
-            )
+            .put(DirectDbWriter::new(&store.db), 7, node_key, 100, fork_bh, &BranchVersion { left: hash(0xEE), right: hash(0xFF) })
             .unwrap();
         store
-            .put(
-                DirectDbWriter::new(&store.db),
-                7,
-                node_key,
-                50,
-                older_bh,
-                &BranchVersion { left: hash(0x11), right: hash(0x22), prev: PrevPtr::NULL },
-            )
+            .put(DirectDbWriter::new(&store.db), 7, node_key, 50, older_bh, &BranchVersion { left: hash(0x11), right: hash(0x22) })
             .unwrap();
 
         // Finds canonical at score 100 (searching from MAX down to 0)
