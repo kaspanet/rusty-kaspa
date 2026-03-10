@@ -1,6 +1,6 @@
-//! # kaspa-seq-commit — KIP-0021 Sequencing Commitment
+//! # kaspa-seq-commit — Sequencing Commitment
 //!
-//! Types and hash functions for KIP-0021 lane-based partitioned
+//! Types and hash functions for lane-based partitioned
 //! sequencing commitments.
 //!
 //! ## Feature flags

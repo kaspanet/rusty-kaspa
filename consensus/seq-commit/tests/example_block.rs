@@ -1,4 +1,4 @@
-//! Example: computing a KIP-0021 sequencing commitment for a block.
+//! Example: computing a sequencing commitment for a block.
 //!
 //! Simulates a selected block B that merges 2 blocks (selected parent + one anticone block).
 //! Each merged block has its own transactions and coinbase payload.

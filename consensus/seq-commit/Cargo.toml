@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-seq-commit"
-description = "KIP-0021 sequencing commitment types and hashing"
+description = "Sequencing commitment types and hashing"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true

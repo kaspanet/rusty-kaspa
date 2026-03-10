@@ -1,4 +1,4 @@
-//! Core types for KIP-0021 sequencing commitments.
+//! Core types for sequencing commitments.
 
 use alloc::vec::Vec;
 use kaspa_hashes::Hash;

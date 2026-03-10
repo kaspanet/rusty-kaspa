@@ -1,4 +1,4 @@
-//! Hash functions for KIP-0021 sequencing commitments.
+//! Hash functions for sequencing commitments.
 
 use kaspa_hashes::{
     Hash, HasherBase, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip, SeqCommitMergesetContext,

@@ -3,7 +3,7 @@
 // For each hasher, generates an `impl SmtHasher` block with a const array
 // of 257 `Hash` values (levels 0..=256).
 
-/// BLAKE3 hashers used for SMT internal nodes in KIP-0021.
+/// BLAKE3 hashers used for SMT internal nodes.
 ///
 /// Only `SeqCommitActiveNode` is needed — it hashes internal tree nodes.
 /// Key/leaf hashing (`SeqCommitLaneKey`, `SeqCommitActiveLeaf`) is done

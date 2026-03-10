@@ -75,7 +75,7 @@ pub enum DatabaseStorePrefixes {
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
 
-    // ---- KIP-21 SMT Versioned Store ----
+    // ---- SMT Versioned Store ----
     SmtBranchHeads = 70,
     SmtBranchVersions = 71,
     SmtLaneHeads = 72,
