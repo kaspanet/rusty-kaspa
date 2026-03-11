@@ -9,15 +9,27 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["std", "wasm32-sdk"]
+std = ["borsh/std", "serde/std", "thiserror/std"]
+wasm32-sdk = ["std", "dep:js-sys", "dep:wasm-bindgen", "dep:workflow-log", "dep:workflow-wasm"]
+
 [dependencies]
-borsh.workspace = true
-js-sys.workspace = true
-serde.workspace = true
 smallvec.workspace = true
-thiserror.workspace = true
-wasm-bindgen.workspace = true
-workflow-wasm.workspace = true
-workflow-log.workspace = true
+# these two crates defines same version as workspace, but disable default features (that enable std)
+# long term: disable at workspace level and enable granularily where required
+borsh = { version = "1.5.1", default-features = false, features = ["derive", "rc"] }
+serde = { version = "1.0.190", default-features = false, features = ["alloc", "derive", "rc"] }
+
+# newer version thiserror version (compared to workspace) allows disabling std
+# long term: upgrade thiserror at workspace level
+thiserror = { version = "2.0.18", default-features = false }
+
+# only relvant in wasm32-sdk context
+js-sys = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+workflow-wasm = { workspace = true, optional = true }
+workflow-log = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion.workspace = true
