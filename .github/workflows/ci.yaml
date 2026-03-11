@@ -192,6 +192,25 @@ jobs:
       - name: Run cargo clippy
         run: cargo clippy --workspace --tests --benches --examples -- -D warnings
 
+  check-no-std:
+    name: Check no_std
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add thumbv7em-none-eabi target
+        run: rustup target add thumbv7em-none-eabi
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run no_std cargo check for crypto/addresses
+        run: cargo check -p kaspa-addresses --no-default-features --target thumbv7em-none-eabi
+
 
   check-wasm32:
     name: Check WASM32
