@@ -206,8 +206,7 @@ pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 ///
 /// @category Address
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
-#[cfg_attr(feature = "wasm32-sdk", derive(CastFromJs))]
-#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(inspectable))]
+#[cfg_attr(feature = "wasm32-sdk", derive(CastFromJs), wasm_bindgen(inspectable))]
 pub struct Address {
     #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(skip))]
     pub prefix: Prefix,
