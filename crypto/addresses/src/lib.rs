@@ -326,14 +326,7 @@ impl<'de> Deserialize<'de> for Address {
             type Value = Address;
 
             fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
-                #[cfg(all(feature = "wasm32-sdk", target_arch = "wasm32"))]
-                {
-                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map; number-type - pointer")
-                }
-                #[cfg(not(all(feature = "wasm32-sdk", target_arch = "wasm32")))]
-                {
-                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map")
-                }
+                write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map; number-type - pointer")
             }
 
             // TODO: see related comment in script_public_key.rs
