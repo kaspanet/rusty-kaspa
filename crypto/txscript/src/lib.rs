@@ -40,6 +40,7 @@ use script_class::ScriptClass;
 pub mod prelude {
     pub use super::standard::*;
 }
+pub use crate::data_stack::{deserialize_i64, serialize_i64};
 use crate::runtime_sig_op_counter::RuntimeSigOpCounter;
 pub use crate::seq_commit_accessor::SeqCommitAccessor;
 pub use standard::*;

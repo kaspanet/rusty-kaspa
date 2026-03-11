@@ -48,7 +48,7 @@ The following is a brief overview of the SDK folder structure (as available in t
 - `nodejs/kaspa` - **full** Rusty Kaspa WASM32 SDK bindings for use with NodeJS.
 - `docs` - Rusty Kaspa WASM32 SDK documentation.
 - `examples` folders contain examples for NodeJS and web browsers.
-- `examples/data` - folder user by examples for configuration and wallet data storage.
+- `examples/data` - folder used by examples for configuration and wallet data storage.
 - `examples/javascript` - JavaScript examples.
 - `examples/javascript/general` - General SDK examples (keys & derivation, addresses, encryption, etc.).
 - `examples/javascript/transactions` - Creating, sending and receiving transactions.
