@@ -110,3 +110,86 @@ pub fn js_covenant_id(genesis_outpoint: &TransactionOutpointT, auth_outputs: &Co
 
     Ok(covenant_id::covenant_id(outpoint, outputs.iter().map(|(i, o)| (*i, o))))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::TransactionOutput;
+    use kaspa_consensus_core::hashing::covenant_id;
+    use kaspa_consensus_core::tx::ScriptPublicKey;
+    use wasm_bindgen::JsValue;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    // Helper - construct ScriptPublicKey
+    fn _construct_spk() -> ScriptPublicKey {
+        ScriptPublicKey::new(0, vec![0xaa, 0xbb].into())
+    }
+
+    // Helper - construct plain TransactionOutpoint JS object
+    fn _construct_outpoint_obj(index: u32) -> Object {
+        let txid_hex = format!("{}", TransactionId::from_slice(&[0xab; 32]));
+        let obj = Object::new();
+        obj.set("transactionId", &JsValue::from_str(&txid_hex)).unwrap();
+        obj.set("index", &JsValue::from(index)).unwrap();
+        obj
+    }
+
+    // Helper - construct ICovenantAuthorizedOutput JS object
+    fn _construct_auth_output_obj(index: u32, value: u64, spk: &ScriptPublicKey) -> JsValue {
+        let obj = Object::new();
+        obj.set("index", &JsValue::from(index)).unwrap();
+        let output = TransactionOutput::ctor(value, spk, None);
+        obj.set("output", &JsValue::from(output)).unwrap();
+        obj.into()
+    }
+
+    // Helper - construct ICovenantAuthorizedOutput[] JS array
+    fn _construct_auth_outputs_array(entries: &[(u32, u64)]) -> js_sys::Array {
+        let spk = _construct_spk();
+        let arr = js_sys::Array::new();
+        for &(index, value) in entries {
+            arr.push(&_construct_auth_output_obj(index, value, &spk));
+        }
+        arr
+    }
+
+    #[wasm_bindgen_test]
+    fn _test_covenant_id_matches_core() {
+        let spk = _construct_spk();
+        let entries: &[(u32, u64)] = &[(0, 1000), (1, 2000)];
+
+        // WASM covenant id
+        let outpoint_js = _construct_outpoint_obj(5);
+        let auth_array = _construct_auth_outputs_array(entries);
+        let wasm_hash = js_covenant_id(outpoint_js.unchecked_ref(), auth_array.unchecked_ref()).expect("wasm call should succeed");
+
+        // Core covenant id
+        let core_outpoint = cctx::TransactionOutpoint::new(TransactionId::from_slice(&[0xab; 32]), 5);
+        let core_outputs: Vec<(u32, cctx::TransactionOutput)> =
+            entries.iter().map(|&(i, v)| (i, cctx::TransactionOutput::new(v, spk.clone()))).collect();
+        let core_hash = covenant_id::covenant_id(core_outpoint, core_outputs.iter().map(|(i, o)| (*i, o)));
+
+        assert_eq!(wasm_hash, core_hash);
+    }
+
+    #[wasm_bindgen_test]
+    fn _test_covenant_id_rejects_non_object_in_array() {
+        let outpoint = _construct_outpoint_obj(0);
+        let arr = js_sys::Array::new();
+        arr.push(&JsValue::from(42));
+        let result = js_covenant_id(outpoint.unchecked_ref(), arr.unchecked_ref());
+        assert!(result.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn _test_covenant_id_rejects_missing_fields() {
+        let outpoint = _construct_outpoint_obj(0);
+        let arr = js_sys::Array::new();
+        let obj = Object::new();
+        obj.set("index", &JsValue::from(0)).unwrap();
+        // intentionally omit "output" field
+        arr.push(&obj.into());
+        let result = js_covenant_id(outpoint.unchecked_ref(), arr.unchecked_ref());
+        assert!(result.is_err());
+    }
+}

@@ -2903,6 +2903,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.64",
  "wasm-bindgen",
+ "wasm-bindgen-test",
  "workflow-log",
  "workflow-wasm",
 ]
