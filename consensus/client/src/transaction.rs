@@ -279,11 +279,9 @@ impl Transaction {
     }
 
     #[wasm_bindgen(js_name = populateGenesisCovenants)]
-    pub fn populate_genesis_covenants(&self, groups: &GenesisCovenantGroupArrayT) -> Result<()> {
+    pub fn js_populate_genesis_covenants(&self, groups: &GenesisCovenantGroupArrayT) -> Result<()> {
         let groups: Vec<GenesisCovenantGroup> = groups.try_into()?;
-        let mut tx: cctx::Transaction = self.into();
-        tx.populate_genesis_covenants(groups.as_slice())?;
-        self.inner().outputs = tx.outputs.iter().map(TransactionOutput::from).collect::<Vec<TransactionOutput>>();
+        self.populate_genesis_covenants(&groups)?;
         Ok(())
     }
 }
@@ -468,6 +466,13 @@ impl Transaction {
 
     pub fn payload_len(&self) -> usize {
         self.inner().payload.len()
+    }
+
+    pub fn populate_genesis_covenants(&self, groups: &[GenesisCovenantGroup]) -> Result<()> {
+        let mut tx: cctx::Transaction = self.into();
+        tx.populate_genesis_covenants(groups)?;
+        self.inner().outputs = tx.outputs.iter().map(TransactionOutput::from).collect::<Vec<TransactionOutput>>();
+        Ok(())
     }
 }
 
