@@ -1,5 +1,6 @@
 use std::{
-    cmp::Ordering,
+    cell::Cell,
+    collections::HashMap,
     sync::{Arc, OnceLock},
 };
 
@@ -124,10 +125,11 @@ pub fn cleanup_conflict_locks() {
     }
 }
 
-struct GroupMetadata<'a> {
+struct GroupMetadata {
     conflict_genesis: Hash,
-    subgroup: &'a Vec<Hash>,
-    rank_value: RankValue,
+    subgroup: Arc<Vec<Hash>>,
+    k: KType,
+    selected_parent: SortableBlock,
 }
 
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
@@ -179,66 +181,42 @@ impl<
 
         // g = find LCCA
         let mut conflict_genesis = self.common_chain_ancestor(parents);
-        let mut curr_subgroup = parents.to_vec();
+        let mut curr_subgroup = Arc::new(parents.to_vec());
         let mut conflict_ordered_parents = vec![];
         debug!("conflict_genesis: {:#?}", conflict_genesis);
 
         while curr_subgroup.len() > 1 {
-            let group_map = curr_subgroup
+            let agreement_grouping: HashMap<Hash, Arc<Vec<Hash>>> = curr_subgroup
                 .iter()
                 .copied()
-                .into_group_map_by(|&parent| self.reachability_service.get_next_chain_ancestor(parent, conflict_genesis));
+                .into_group_map_by(|&parent| self.reachability_service.get_next_chain_ancestor(parent, conflict_genesis))
+                .into_iter()
+                .map(|(k, v)| (k, Arc::new(v)))
+                .collect();
 
             // Shortcut condition to avoid doing unnecessary work
-            if group_map.len() == 1 {
+            if agreement_grouping.len() == 1 {
                 // There is exactly one group, we don't rank anymore.
-                let (_, subgroup) = group_map.iter().next().unwrap();
-                curr_subgroup = subgroup.to_vec();
-                conflict_genesis = self.common_chain_ancestor(subgroup);
+                let (_, subgroup) = agreement_grouping.iter().next().unwrap();
+                curr_subgroup = subgroup.clone();
+                let next_conflict_genesis = self.common_chain_ancestor(&curr_subgroup);
+                assert_ne!(
+                    next_conflict_genesis, conflict_genesis,
+                    "Expected the conflict genesis to change after skipping a level of the conflict hierarchy but got {}",
+                    conflict_genesis
+                );
+                conflict_genesis = next_conflict_genesis;
                 continue;
             }
 
             // Pick a "winner" among these subgroups
             let (winning_conflict_genesis, winning_subgroup) = {
-                let mut best_groups: Vec<GroupMetadata> = vec![];
-
-                // TODO[DK]: Process groups from highest blue score first to improve chances of getting the best group
-                // on the first try
-                let filtered_group_iter = group_map.iter().sorted_by(|a, b| {
-                    // Prioritize groups by higher blue score (descending), then by hash (ascending)
-                    let a_score = self.headers_store.get_header(a.1[0]).unwrap().blue_score;
-                    let b_score = self.headers_store.get_header(b.1[0]).unwrap().blue_score;
-                    // higher blue score first
-                    b_score.cmp(&a_score).then_with(|| a.0.cmp(b.0))
-                });
-
-                for (curr_conflict_genesis, subgroup) in filtered_group_iter {
-                    debug!("Subgroup under conflict genesis {:#?} has members: {:#?}", curr_conflict_genesis, subgroup);
-                    let best_k = best_groups.get(0).map(|g| g.rank_value.k);
-                    let rank_value = self.rank(conflict_genesis, subgroup, &curr_subgroup, best_k);
-                    let curr_k = rank_value.k;
-                    let group_metadata = GroupMetadata { rank_value, conflict_genesis: *curr_conflict_genesis, subgroup };
-
-                    if let Some(inner_best_rank) = best_k {
-                        match curr_k.cmp(&inner_best_rank) {
-                            Ordering::Less => {
-                                // Tie breaking by hash
-                                best_groups = vec![group_metadata];
-                            }
-                            Ordering::Equal => {
-                                best_groups.push(group_metadata);
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        best_groups = vec![group_metadata];
-                    }
-                }
+                let best_groups = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
 
                 let final_winner = if best_groups.len() > 1 {
                     self.tie_breaking(&best_groups)
                 } else {
-                    let single_winner = best_groups.first().expect("best_groups is non-empty");
+                    let single_winner = best_groups.into_iter().next().expect("best_groups should be non-empty after filtering");
                     (single_winner.conflict_genesis, single_winner.subgroup)
                 };
 
@@ -247,16 +225,16 @@ impl<
             };
 
             // Add the non-winners to the ordered parents
-            group_map.iter().for_each(|(&conflict_genesis, subgroup)| {
+            agreement_grouping.iter().for_each(|(&conflict_genesis, subgroup)| {
                 // TODO[DK]: Asserting here that order of the non-winning parents within a conflict hierarchy doesn't matter
                 if conflict_genesis != winning_conflict_genesis {
-                    conflict_ordered_parents.extend(subgroup);
+                    conflict_ordered_parents.extend(subgroup.as_ref().iter().copied());
                 }
             });
 
-            curr_subgroup = winning_subgroup.to_vec();
+            curr_subgroup = winning_subgroup;
             // Skip to the top-most new common chain ancestor:
-            conflict_genesis = self.common_chain_ancestor(winning_subgroup);
+            conflict_genesis = self.common_chain_ancestor(&curr_subgroup);
         }
         assert_eq!(1, curr_subgroup.len(), "Expected dagknight to have only a single parent at the end");
 
@@ -352,28 +330,53 @@ impl<
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
     /// TODO[DK]: This tie breaking rule only compares RankValue right now. Implement a proper one
     /// according to the paper
-    fn tie_breaking<'a>(&self, subgroups: &[GroupMetadata<'a>]) -> (Hash, &'a Vec<Hash>) {
-        let winning_subgroup = subgroups.iter().min_by_key(|g| &g.rank_value).expect("subgroups is non-empty");
-        (winning_subgroup.conflict_genesis, winning_subgroup.subgroup)
+    fn tie_breaking(&self, subgroups: &[GroupMetadata]) -> (Hash, Arc<Vec<Hash>>) {
+        debug!("Winning groups had rank k = {}", subgroups[0].k);
+        let winning_subgroup = subgroups.iter().max_by_key(|g| &g.selected_parent).expect("subgroups is non-empty");
+        (winning_subgroup.conflict_genesis, winning_subgroup.subgroup.clone())
     }
 
     /// Follows the Calculate-Rank algorithm in the DK paper
     ///
     /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
-    /// in the caller is simply using blue_work + hash to break ties between subgroups
-    /// TODO[DK]: Remove selected_parent from the RankValue and properly implement Tie-Breaking
-    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], all_tips: &[Hash], best_k: Option<KType>) -> RankValue {
-        let subgroup_first = subgroup[0];
+    /// in the caller is simply using blue_work + hash to break ties between subgroups.
+    ///
+    /// Returns an array of winning subgroups with their metadata
+    fn rank(
+        &self,
+        conflict_genesis: Hash,
+        agreeing_subgroups: &HashMap<Hash, Arc<Vec<Hash>>>,
+        all_tips: &[Hash],
+    ) -> Vec<GroupMetadata> {
+        let mut group_map = Cell::new(agreeing_subgroups.clone());
+        let best_groups_cell = Cell::new(vec![]);
+        let evaluate = |k: KType| -> Option<()> {
+            let (filtered_groups_kv, best_groups): (HashMap<_, _>, Vec<GroupMetadata>) = group_map
+                .get_mut()
+                .iter()
+                .filter_map(|(curr_conflict_genesis, subgroup)| {
+                    // `subgroup` is an `&Arc<Vec<Hash>>` here; pass a `&[Hash]` to the colouring function
+                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), &all_tips, k).map(|selected_parent| {
+                        (
+                            (*curr_conflict_genesis, subgroup.clone()),
+                            GroupMetadata { conflict_genesis: *curr_conflict_genesis, subgroup: subgroup.clone(), k, selected_parent },
+                        )
+                    })
+                })
+                .unzip();
 
-        let evaluate =
-            |k: KType| -> Option<SortableBlock> { self.select_parent_from_k_colouring(conflict_genesis, subgroup, all_tips, k) };
+            if filtered_groups_kv.is_empty() {
+                None
+            } else {
+                group_map.swap(&Cell::new(filtered_groups_kv));
+                best_groups_cell.swap(&Cell::new(best_groups));
+                Some(())
+            }
+        };
 
-        let search_result = RankSearcher::search(evaluate, best_k);
-
-        match search_result {
-            Some(result) => RankValue { k: result.k, selected_parent: result.result },
-            None => RankValue { k: u16::MAX, selected_parent: SortableBlock { hash: subgroup_first, blue_work: 0.into() } },
-        }
+        let _search_result = RankSearcher::search(evaluate);
+        // let (best_k) = search_result.map(|r| (r.k, r.result)).unwrap();
+        best_groups_cell.take()
     }
 
     /// Applies a coloring to the conflict zone, and determines if the
@@ -640,36 +643,6 @@ impl DagPlan {
 
     pub fn genesis(&self) -> u64 {
         self.genesis
-    }
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub struct RankValue {
-    pub k: KType,
-    pub selected_parent: SortableBlock,
-}
-
-impl PartialOrd for RankValue {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for RankValue {
-    /// Sample ordering:
-    /// { k: 0, sp_bw: 1} < { k: 1, sp_bw: 1}   => one "k" is lower than another
-    /// { k: 0, sp_bw: 10} < { k: 0, sp_bw: 1}  => same "k", different blue work. rankvalue with higher bw comes first
-    /// { k: 1, sp_bw: 5, sp_hash: 77} < { k: 1, sp_bw: 5, sp_hash: 66} => same "k" and "bw", rankvalue with higher sp hash value comes first
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.k == other.k {
-            // let ordering = self.selected_parent.cmp(&other.selected_parent);
-            // NOTE: When ordering by RankValue and k is the same, a "smaller" rank would mean a "greater" selected parent
-            let ordering = other.selected_parent.cmp(&self.selected_parent);
-            // println!("a: {} | b: {} | ordering: {:?}", self.selected_parent.blue_work, other.selected_parent.blue_work, ordering);
-            return ordering;
-        }
-
-        self.k.cmp(&other.k)
     }
 }
 
@@ -1077,8 +1050,9 @@ mod tests {
             hash
         };
 
-        let json_data: serde_json::Value =
-            serde_json::from_slice(include_bytes!("test_parent_ordering_stability.json")).expect("Unable to parse JSON");
+        let json_filename = "test_parent_ordering_stability.json";
+        let file = File::open(json_filename).expect("Unable to open JSON file");
+        let json_data: serde_json::Value = serde_json::from_reader(file).expect("Unable to parse JSON");
 
         let tips: Vec<Hash> = json_data["tips"].as_array().unwrap().iter().map(|t| prefixed_hash(t.as_str().unwrap())).collect();
 
