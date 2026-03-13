@@ -315,6 +315,9 @@ jobs:
       - name: Run wasm tests for wallet/pskt
         run: wasm-pack test --node wallet/pskt
 
+      - name: Run wasm tests for consensus/client
+        run: wasm-pack test --node consensus/client --features wasm32-sdk
+
 
   build-wasm32:
     name: Build WASM32 SDK
