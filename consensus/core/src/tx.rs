@@ -15,7 +15,6 @@ use crate::{
     subnets::{self, SubnetworkId},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use js_sys::Object;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
@@ -33,9 +32,6 @@ use std::{
     str::{self},
 };
 use wasm_bindgen::prelude::*;
-use workflow_wasm::convert::{Cast, TryCastFromJs, TryCastJsInto};
-use workflow_wasm::extensions::ObjectExtension;
-use workflow_wasm::prelude::CastFromJs;
 
 use crate::hashing::tx::seq_commit_tx_digest;
 use kaspa_hashes::Hash;
@@ -150,63 +146,17 @@ impl TransactionOutput {
 }
 
 /// Binds a transaction output to the covenant and input authorizing its creation.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Copy, CastFromJs)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Copy)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
 pub struct CovenantBinding {
     pub authorizing_input: u16,
     pub covenant_id: Hash,
 }
-type CastErr = workflow_wasm::error::Error;
-impl TryCastFromJs for CovenantBinding {
-    type Error = CastErr;
 
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
-    where
-        R: AsRef<JsValue> + 'a,
-    {
-        Self::resolve(value, || {
-            let Some(object) = Object::try_from(value.as_ref()) else { return Err(CastErr::NotAnObject) };
-            let value = object.get_u16("authorizing_input")?;
-            let covenant_id = object.get_value("covenant_id")?.try_into_owned()?;
-            Ok(Self { authorizing_input: value, covenant_id })
-        })
-    }
-}
-
-#[wasm_bindgen]
+// #[wasm_bindgen]
 impl CovenantBinding {
-    #[wasm_bindgen(constructor)]
     pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
         Self { authorizing_input, covenant_id }
-    }
-
-    #[wasm_bindgen(setter, js_name = authorizingInput)]
-    pub fn set_authorizing_input(&mut self, v: u16) {
-        self.authorizing_input = v;
-    }
-
-    #[wasm_bindgen(getter, js_name = authorizingInput)]
-    pub fn get_authorizing_input(&self) -> u16 {
-        self.authorizing_input
-    }
-
-    #[wasm_bindgen(setter, js_name = covenantId)]
-    pub fn set_covenant_id(&mut self, v: Hash) {
-        self.covenant_id = v;
-    }
-
-    #[wasm_bindgen(getter, js_name = covenantId)]
-    pub fn get_covenant_id(&self) -> Hash {
-        self.covenant_id
-    }
-
-    #[wasm_bindgen(js_name = "toJSON")]
-    pub fn to_js_object(&self) -> Result<Object, CastErr> {
-        let obj = Object::new();
-        obj.set("authorizingInput", &self.authorizing_input.into())?;
-        obj.set("covenantId", &self.covenant_id.to_string().into())?;
-        Ok(obj)
     }
 }
 

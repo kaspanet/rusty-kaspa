@@ -518,7 +518,7 @@ impl Transaction {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::*;
     use crate::input::TransactionInput;
@@ -530,14 +530,14 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test;
 
     // Helper - construct ScriptPublicKey
-    fn _construct_spk() -> ScriptPublicKey {
+    fn construct_spk() -> ScriptPublicKey {
         ScriptPublicKey::new(0, vec![0xaa, 0xbb].into())
     }
 
     // Helper - construct Transaction with given number of inputs and outputs
-    fn _construct_tx(num_inputs: u32, num_outputs: u32) -> Transaction {
+    fn construct_tx(num_inputs: u32, num_outputs: u32) -> Transaction {
         let fixed_txid = TransactionId::from_slice(&[0u8; 32]);
-        let spk = _construct_spk();
+        let spk = construct_spk();
 
         let inputs: Vec<TransactionInput> = (0..num_inputs)
             .map(|i| {
@@ -553,7 +553,7 @@ mod tests {
     }
 
     // Helper - construct GenesisCovenantGroup[] JS array
-    fn _construct_groups_array(groups: &[(u16, &[u32])]) -> js_sys::Array {
+    fn construct_groups_array(groups: &[(u16, &[u32])]) -> js_sys::Array {
         let arr = js_sys::Array::new();
         for &(auth_input, outputs) in groups {
             let obj = Object::new();
@@ -569,9 +569,9 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    fn _test_populate_multiple_groups() {
-        let tx = _construct_tx(2, 4);
-        let groups = _construct_groups_array(&[(0, &[0, 1]), (1, &[2, 3])]);
+    fn test_populate_multiple_groups() {
+        let tx = construct_tx(2, 4);
+        let groups = construct_groups_array(&[(0, &[0, 1]), (1, &[2, 3])]);
         tx.js_populate_genesis_covenants(groups.unchecked_ref()).expect("populate should succeed");
 
         let inner = tx.inner();
@@ -580,20 +580,20 @@ mod tests {
         let cov2 = inner.outputs[2].get_covenant().unwrap();
         let cov3 = inner.outputs[3].get_covenant().unwrap();
 
-        assert_eq!(cov0.authorizing_input, 0);
-        assert_eq!(cov1.authorizing_input, 0);
-        assert_eq!(cov2.authorizing_input, 1);
-        assert_eq!(cov3.authorizing_input, 1);
-        assert_eq!(cov0.covenant_id, cov1.covenant_id);
-        assert_eq!(cov2.covenant_id, cov3.covenant_id);
-        assert_ne!(cov0.covenant_id, cov2.covenant_id);
+        assert_eq!(cov0.get_authorizing_input(), 0);
+        assert_eq!(cov1.get_authorizing_input(), 0);
+        assert_eq!(cov2.get_authorizing_input(), 1);
+        assert_eq!(cov3.get_authorizing_input(), 1);
+        assert_eq!(cov0.get_covenant_id(), cov1.get_covenant_id());
+        assert_eq!(cov2.get_covenant_id(), cov3.get_covenant_id());
+        assert_ne!(cov0.get_covenant_id(), cov2.get_covenant_id());
     }
 
     #[wasm_bindgen_test]
-    fn _test_outputs_preserve_value_and_spk() {
-        let spk = _construct_spk();
-        let tx = _construct_tx(1, 2);
-        let groups = _construct_groups_array(&[(0, &[0, 1])]);
+    fn test_outputs_preserve_value_and_spk() {
+        let spk = construct_spk();
+        let tx = construct_tx(1, 2);
+        let groups = construct_groups_array(&[(0, &[0, 1])]);
         tx.js_populate_genesis_covenants(groups.unchecked_ref()).expect("populate should succeed");
 
         let inner = tx.inner();
