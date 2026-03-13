@@ -397,7 +397,9 @@ impl Generator {
                 (
                     outputs
                         .iter()
-                        .map(|output| TransactionOutput::new(output.amount, pay_to_address_script(&output.address)))
+                        .map(|output| {
+                            TransactionOutput::with_covenant(output.amount, pay_to_address_script(&output.address), output.covenant)
+                        })
                         .collect(),
                     Some(outputs.iter().map(|output| output.amount).sum()),
                 )
