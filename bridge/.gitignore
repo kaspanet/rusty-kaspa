@@ -1,5 +1,5 @@
 # ============================================
-# RustBridge .gitignore
+# RKStratum .gitignore
 # Only tracks: src/, Cargo.toml, config.yaml
 # ============================================
 
@@ -9,7 +9,7 @@ Cargo.lock
 
 # Log files (runtime artifacts)
 *.log
-rustbridge_*.log
+RKStratum_*.log
 
 # Backup files
 *.backup
