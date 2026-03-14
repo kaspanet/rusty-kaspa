@@ -62,6 +62,7 @@ pub enum KaspadPayloadOps {
     AddPeer,
     SubmitTransaction,
     SubmitTransactionReplacement,
+    SubmitLocalTransaction,
     GetSubnetwork,
     GetVirtualChainFromBlock,
     GetBlockCount,

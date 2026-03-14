@@ -667,6 +667,17 @@ impl FlowContext {
         ))
     }
 
+    /// Validates and adds a local (operator) transaction to the local transaction store
+    /// for inclusion in block templates. The transaction is NOT broadcast to peers.
+    ///
+    /// This is intended for node operators who want to include their own transactions
+    /// in blocks they mine, potentially at zero fee.
+    pub async fn submit_local_transaction(&self, consensus: &ConsensusProxy, transaction: Transaction) -> Result<(), ProtocolError> {
+        self.mining_manager().clone().validate_and_insert_local_transaction(consensus, transaction).await?;
+        // Deliberately NO broadcast to peers -- local only
+        Ok(())
+    }
+
     /// Returns true if the time has come for running the task cleaning mempool transactions.
     async fn should_run_mempool_scanning_task(&self) -> bool {
         self.transactions_spread.write().await.should_run_mempool_scanning_task()

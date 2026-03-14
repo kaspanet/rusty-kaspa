@@ -331,6 +331,18 @@ message SubmitTransactionReplacementResponseMessage {
   RPCError error = 1000;
 }
 
+// SubmitLocalTransactionRequestMessage submits a transaction to the local store
+// for prioritized inclusion in block templates without relay fee requirements
+message SubmitLocalTransactionRequestMessage {
+  RpcTransaction transaction = 1;
+}
+
+message SubmitLocalTransactionResponseMessage {
+  string transactionId = 1;
+
+  RPCError error = 1000;
+}
+
 // NotifyVirtualChainChangedRequestMessage registers this connection for virtualChainChanged notifications.
 //
 // See: VirtualChainChangedNotificationMessage

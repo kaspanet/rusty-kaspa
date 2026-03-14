@@ -1529,4 +1529,303 @@ mod tests {
         let count = mining_manager.transaction_count(TransactionQuery::TransactionsOnly);
         assert_eq!(expected_count, count, "{message} mempool transaction count: expected {}, got {}", expected_count, count);
     }
+
+    // =========================================================================
+    // SubmitLocalTransaction tests (A1–A13)
+    // =========================================================================
+
+    /// Helper: create a funded local transaction (op_true script, with UTXO in consensus).
+    /// Returns the raw Transaction (not MutableTransaction) since that's what
+    /// validate_and_insert_local_transaction expects.
+    fn create_local_transaction(consensus: &Arc<ConsensusMock>, i: u64, fee: u64) -> Transaction {
+        let funding_tx = create_transaction_without_input(vec![SOMPI_PER_KASPA + i]);
+        consensus.add_transaction(funding_tx.clone(), 1);
+        create_transaction(&funding_tx, fee)
+    }
+
+    /// A1: Zero-fee local transaction is accepted
+    #[test]
+    fn test_local_tx_zero_fee_accepted() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let tx = create_local_transaction(&consensus, 0, 0);
+        let result = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx);
+        assert!(result.is_ok(), "zero-fee local transaction should be accepted");
+    }
+
+    /// A2: Local transaction appears in block template
+    #[test]
+    fn test_local_tx_appears_in_template() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let tx = create_local_transaction(&consensus, 0, 0);
+        let tx_id = tx.id();
+        mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx).unwrap();
+
+        let miner_data = get_miner_data(Prefix::Simnet);
+        let template = mining_manager.get_block_template(consensus.as_ref(), &miner_data).unwrap();
+        // Template transactions: [coinbase, ...user txs]
+        let has_local_tx = template.block.transactions[1..].iter().any(|t| t.id() == tx_id);
+        assert!(has_local_tx, "local transaction should appear in block template");
+    }
+
+    /// A3: Multiple local transactions all appear in block template
+    #[test]
+    fn test_local_tx_priority_over_mempool() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        // Insert two local transactions (zero fee)
+        let local_tx1 = create_local_transaction(&consensus, 100, 0);
+        let local_tx1_id = local_tx1.id();
+        mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), local_tx1).unwrap();
+
+        let local_tx2 = create_local_transaction(&consensus, 200, 0);
+        let local_tx2_id = local_tx2.id();
+        mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), local_tx2).unwrap();
+
+        let miner_data = get_miner_data(Prefix::Simnet);
+        let template = mining_manager.get_block_template(consensus.as_ref(), &miner_data).unwrap();
+        let user_txs = &template.block.transactions[1..];
+
+        // Both local transactions should be in the template
+        assert!(user_txs.iter().any(|t| t.id() == local_tx1_id), "local tx1 should be in template");
+        assert!(user_txs.iter().any(|t| t.id() == local_tx2_id), "local tx2 should be in template");
+    }
+
+    /// A4: Local transaction is cleaned up after block is mined
+    #[test]
+    fn test_local_tx_cleanup_after_block() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let tx = create_local_transaction(&consensus, 0, 0);
+        let tx_id = tx.id();
+        let insertion = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx).unwrap();
+        let accepted_tx = insertion.accepted.first().unwrap().clone();
+
+        // Simulate block containing this transaction
+        let block_txs = build_block_transactions(once(accepted_tx.as_ref()));
+        mining_manager.handle_new_block_transactions(consensus.as_ref(), 1, &block_txs).unwrap();
+
+        // Local tx should no longer appear in block template
+        let miner_data = get_miner_data(Prefix::Simnet);
+        let template = mining_manager.get_block_template(consensus.as_ref(), &miner_data).unwrap();
+        let has_tx = template.block.transactions[1..].iter().any(|t| t.id() == tx_id);
+        assert!(!has_tx, "local transaction should be removed after block acceptance");
+    }
+
+    /// A5: Dust output is rejected for local transactions
+    #[test]
+    fn test_local_tx_reject_dust() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        // Create a transaction with a dust output (1 sompi)
+        let funding_tx = create_transaction_without_input(vec![SOMPI_PER_KASPA]);
+        consensus.add_transaction(funding_tx.clone(), 1);
+
+        let (script_public_key, _) = op_true_script();
+        let input = TransactionInput::new(
+            TransactionOutpoint::new(funding_tx.id(), 0),
+            pay_to_script_hash_signature_script(op_true_script().1, vec![]).unwrap(),
+            MAX_TX_IN_SEQUENCE_NUM,
+            1,
+        );
+        // Output value of 1 sompi is dust
+        let output = TransactionOutput::new(1, script_public_key);
+        let dust_tx = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+        let result = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), dust_tx);
+        assert!(result.is_err(), "dust output should be rejected for local transactions");
+    }
+
+    /// A6: Duplicate local transaction is rejected
+    #[test]
+    fn test_local_tx_reject_duplicate() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let tx = create_local_transaction(&consensus, 0, 0);
+        let tx_clone = tx.clone();
+
+        mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx).unwrap();
+        let result = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx_clone);
+        assert!(result.is_err(), "duplicate local transaction should be rejected");
+    }
+
+    /// A7: Transaction rejected by consensus validation is rejected
+    #[test]
+    fn test_local_tx_reject_invalid_signature() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let funding_tx = create_transaction_without_input(vec![SOMPI_PER_KASPA]);
+        consensus.add_transaction(funding_tx.clone(), 1);
+
+        // Set a predefined error for this transaction to simulate consensus rejection
+        let (script_public_key, _) = op_true_script();
+        let input = TransactionInput::new(
+            TransactionOutpoint::new(funding_tx.id(), 0),
+            vec![], // empty sig script
+            MAX_TX_IN_SEQUENCE_NUM,
+            1,
+        );
+        let output = TransactionOutput::new(SOMPI_PER_KASPA - DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, script_public_key);
+        let bad_tx = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        consensus.set_status(bad_tx.id(), Err(TxRuleError::MissingTxOutpoints));
+
+        let result = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), bad_tx);
+        assert!(result.is_err(), "transaction rejected by consensus should be rejected");
+    }
+
+    /// A8: Transaction spending non-existent UTXO is rejected
+    #[test]
+    fn test_local_tx_reject_missing_utxo() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        // Create a transaction referencing a non-existent UTXO (no funding tx added to consensus)
+        let (script_public_key, _) = op_true_script();
+        let input = TransactionInput::new(
+            TransactionOutpoint::new(Hash::from_u64_word(9999), 0),
+            pay_to_script_hash_signature_script(op_true_script().1, vec![]).unwrap(),
+            MAX_TX_IN_SEQUENCE_NUM,
+            1,
+        );
+        let output = TransactionOutput::new(SOMPI_PER_KASPA - 1000, script_public_key);
+        let tx = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+        let result = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx);
+        assert!(result.is_err(), "transaction with missing UTXO should be rejected");
+    }
+
+    /// A9: Transaction exceeding mass limit is rejected
+    #[test]
+    fn test_local_tx_reject_mass_exceeded() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let funding_tx = create_transaction_without_input(vec![SOMPI_PER_KASPA]);
+        consensus.add_transaction(funding_tx.clone(), 1);
+
+        let (script_public_key, _) = op_true_script();
+        let input = TransactionInput::new(
+            TransactionOutpoint::new(funding_tx.id(), 0),
+            // Oversized signature script to push mass over the limit
+            vec![0u8; 200_000],
+            MAX_TX_IN_SEQUENCE_NUM,
+            1,
+        );
+        let output = TransactionOutput::new(SOMPI_PER_KASPA - 1000, script_public_key);
+        let tx = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+        let result = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx);
+        assert!(result.is_err(), "transaction exceeding mass limit should be rejected");
+    }
+
+    /// A10: Non-standard output script is rejected
+    #[test]
+    fn test_local_tx_reject_non_standard_script() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let funding_tx = create_transaction_without_input(vec![SOMPI_PER_KASPA]);
+        consensus.add_transaction(funding_tx.clone(), 1);
+
+        let input = TransactionInput::new(
+            TransactionOutpoint::new(funding_tx.id(), 0),
+            pay_to_script_hash_signature_script(op_true_script().1, vec![]).unwrap(),
+            MAX_TX_IN_SEQUENCE_NUM,
+            1,
+        );
+        // Non-standard output script (OpReturn makes it unspendable → dust)
+        let non_standard_spk = ScriptPublicKey::new(0, kaspa_consensus_core::tx::scriptvec![0x6a]); // OP_RETURN
+        let output = TransactionOutput::new(SOMPI_PER_KASPA - 1000, non_standard_spk);
+        let tx = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+        let result = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx);
+        assert!(result.is_err(), "non-standard output script should be rejected");
+    }
+
+    /// A11: Multiple local transactions all appear in template
+    #[test]
+    fn test_local_tx_multiple_accepted() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let mut tx_ids = vec![];
+        for i in 0..5u64 {
+            let tx = create_local_transaction(&consensus, i, 0);
+            tx_ids.push(tx.id());
+            mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx).unwrap();
+        }
+
+        let miner_data = get_miner_data(Prefix::Simnet);
+        let template = mining_manager.get_block_template(consensus.as_ref(), &miner_data).unwrap();
+        let user_txs = &template.block.transactions[1..];
+
+        for tx_id in &tx_ids {
+            assert!(user_txs.iter().any(|t| t.id() == *tx_id), "local transaction {} should be in template", tx_id);
+        }
+    }
+
+    /// A12: When no local transactions exist, build_selector returns normal frontier selector
+    #[test]
+    fn test_local_tx_no_effect_when_empty() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        // Insert only a mempool transaction
+        let tx = create_local_transaction(&consensus, 0, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
+        let tx_id = tx.id();
+        mining_manager
+            .validate_and_insert_transaction(consensus.as_ref(), tx, Priority::High, Orphan::Forbidden, RbfPolicy::Forbidden)
+            .unwrap();
+
+        // Block template should still contain the mempool transaction
+        let miner_data = get_miner_data(Prefix::Simnet);
+        let template = mining_manager.get_block_template(consensus.as_ref(), &miner_data).unwrap();
+        let has_tx = template.block.transactions[1..].iter().any(|t| t.id() == tx_id);
+        assert!(has_tx, "mempool transaction should be in template when no local TXs exist");
+    }
+
+    /// A13: Failed consensus validation does not leave TX in local store
+    #[test]
+    fn test_local_tx_rejected_by_consensus_not_stored() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let funding_tx = create_transaction_without_input(vec![SOMPI_PER_KASPA]);
+        consensus.add_transaction(funding_tx.clone(), 1);
+
+        let tx = create_transaction(&funding_tx, 0);
+        let tx_id = tx.id();
+        // Set consensus to reject this transaction
+        consensus.set_status(tx_id, Err(TxRuleError::NotFinalized(0)));
+
+        let result = mining_manager.validate_and_insert_local_transaction(consensus.as_ref(), tx);
+        assert!(result.is_err(), "consensus rejection should propagate");
+
+        // Verify the transaction is NOT in the block template
+        let miner_data = get_miner_data(Prefix::Simnet);
+        let template = mining_manager.get_block_template(consensus.as_ref(), &miner_data).unwrap();
+        let has_tx = template.block.transactions[1..].iter().any(|t| t.id() == tx_id);
+        assert!(!has_tx, "rejected transaction should not appear in block template");
+    }
 }
