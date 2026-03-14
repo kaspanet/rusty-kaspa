@@ -2324,7 +2324,7 @@ dependencies = [
  "js-sys",
  "serde",
  "smallvec",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "web-sys",
