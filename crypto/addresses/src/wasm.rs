@@ -195,8 +195,7 @@ mod tests {
         array.push(&JsValue::from(addr1.clone()));
         array.push(&JsValue::from(addr2.clone()));
 
-        let addresses_result: Result<Vec<Address>, _> =
-            AddressOrStringArrayT::from(JsValue::from(array)).try_into();
+        let addresses_result: Result<Vec<Address>, _> = AddressOrStringArrayT::from(JsValue::from(array)).try_into();
 
         assert!(addresses_result.is_ok(), "direct try_into() failed: {:?}", addresses_result.err());
         let addresses = addresses_result.unwrap();
