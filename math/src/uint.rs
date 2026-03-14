@@ -346,16 +346,45 @@ macro_rules! construct_uint {
             #[inline]
             pub fn mod_inverse(self, prime: Self) -> Option<Self> {
                 use $crate::uint::malachite_nz::natural::Natural;
+                use $crate::uint::malachite_nz::platform::Limb;
                 use $crate::uint::malachite_base::num::arithmetic::traits::ModInverse;
 
-                let x = Natural::from_limbs_asc(&self.0);
-                let p = Natural::from_limbs_asc(&prime.0);
-                let mod_inv = x.mod_inverse(p);
+                // Malachite's Limb type changes from u64 to u32 when the `32_bit_limbs`
+                // feature is enabled (e.g. by risc0 via Cargo feature unification).
+                // On little-endian, [u64; N] and [Limb; N * 8/sizeof(Limb)] have
+                // identical byte layouts, so we reinterpret directly without copying.
+                #[cfg(not(target_endian = "little"))]
+                compile_error!("mod_inverse assumes little-endian byte order");
 
-                mod_inv.map(|n| {
-                    let mut res = [0u64; Self::LIMBS];
+                const LIMBS_PER_WORD: usize =
+                    core::mem::size_of::<u64>() / core::mem::size_of::<Limb>();
+
+                // SAFETY: On LE, a u64 in memory [b0..b7] is read identically as
+                // one u64 limb or two u32 limbs [b0..b3, b4..b7]. Alignment is
+                // satisfied since align_of::<u64>() >= align_of::<Limb>().
+                let as_limbs = |words: &[u64; $n_words]| -> &[Limb] {
+                    unsafe {
+                        core::slice::from_raw_parts(
+                            words.as_ptr() as *const Limb,
+                            $n_words * LIMBS_PER_WORD,
+                        )
+                    }
+                };
+
+                let x = Natural::from_limbs_asc(as_limbs(&self.0));
+                let p = Natural::from_limbs_asc(as_limbs(&prime.0));
+
+                x.mod_inverse(p).map(|n| {
                     let limbs = n.into_limbs_asc();
-                    res[..limbs.len()].copy_from_slice(&limbs);
+                    let mut res = [0u64; $n_words];
+                    // SAFETY: Same LE byte-layout argument, in reverse.
+                    let res_limbs: &mut [Limb] = unsafe {
+                        core::slice::from_raw_parts_mut(
+                            res.as_mut_ptr() as *mut Limb,
+                            $n_words * LIMBS_PER_WORD,
+                        )
+                    };
+                    res_limbs[..limbs.len()].copy_from_slice(&limbs);
                     Self(res)
                 })
             }
