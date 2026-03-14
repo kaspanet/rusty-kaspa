@@ -38,6 +38,7 @@ pub struct Args {
     pub rpclisten_json: Option<WrpcNetAddress>,
     #[serde(rename = "unsaferpc")]
     pub unsafe_rpc: bool,
+    pub auth: Option<String>,
     pub wrpc_verbose: bool,
     #[serde(rename = "loglevel")]
     pub log_level: String,
@@ -107,6 +108,7 @@ impl Default for Args {
             rpclisten_borsh: None,
             rpclisten_json: None,
             unsafe_rpc: false,
+            auth: None,
             async_threads: num_cpus::get(),
             utxoindex: false,
             reset_db: false,
@@ -269,6 +271,14 @@ pub fn cli() -> Command {
                 .help("Interface:port to listen for wRPC JSON connections (default port: 18110, testnet: 18210)."),
         )
         .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node").env("KASPAD_UNSAFERPC"))
+        .arg(
+            Arg::new("auth")
+                .long("auth")
+                .env("KASPAD_AUTH")
+                .value_name("MODE")
+                .require_equals(true)
+                .help("Enable RPC authentication. MODE: unsafe, all, or unsafe,-Method1,-Method2"),
+        )
         .arg(
             Arg::new("connect-peers")
                 .long("connect")
@@ -489,6 +499,7 @@ impl Args {
             rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned().or(defaults.rpclisten_borsh),
             rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned().or(defaults.rpclisten_json),
             unsafe_rpc: arg_match_unwrap_or::<bool>(&m, "unsaferpc", defaults.unsafe_rpc),
+            auth: m.get_one::<String>("auth").cloned().or(defaults.auth),
             wrpc_verbose: false,
             log_level: arg_match_unwrap_or::<String>(&m, "log_level", defaults.log_level),
             async_threads: arg_match_unwrap_or::<usize>(&m, "async_threads", defaults.async_threads),

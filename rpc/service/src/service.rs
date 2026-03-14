@@ -122,6 +122,7 @@ pub struct RpcCoreService {
     fee_estimate_cache: ExpiringCache<RpcFeeEstimate>,
     fee_estimate_verbose_cache: ExpiringCache<kaspa_mining::errors::MiningManagerResult<GetFeeEstimateExperimentalResponse>>,
     mining_rule_engine: Arc<MiningRuleEngine>,
+    pub auth_config: Option<Arc<kaspa_rpc_core::auth::RpcAuthConfig>>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -148,6 +149,7 @@ impl RpcCoreService {
         grpc_tower_counters: Arc<TowerConnectionCounters>,
         system_info: SystemInfo,
         mining_rule_engine: Arc<MiningRuleEngine>,
+        auth_config: Option<Arc<kaspa_rpc_core::auth::RpcAuthConfig>>,
     ) -> Self {
         // This notifier UTXOs subscription granularity to index-processor or consensus notifier
         let policies = match index_notifier {
@@ -227,7 +229,35 @@ impl RpcCoreService {
             fee_estimate_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
             fee_estimate_verbose_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
             mining_rule_engine,
+            auth_config,
         }
+    }
+
+    pub fn require_unsafe(&self, method: &str, connection: Option<&DynRpcConnection>) -> RpcResult<()> {
+        if !self.config.unsafe_rpc {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        if let Some(ref auth) = self.auth_config {
+            if auth.requires_auth_for_unsafe(method) {
+                let authenticated = connection.map_or(false, |c| c.is_authenticated());
+                if !authenticated {
+                    return Err(RpcError::AuthenticationRequired);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn require_any_auth(&self, connection: Option<&DynRpcConnection>) -> RpcResult<()> {
+        if let Some(ref auth) = self.auth_config {
+            if auth.requires_auth_for_any() {
+                let authenticated = connection.map_or(false, |c| c.is_authenticated());
+                if !authenticated {
+                    return Err(RpcError::AuthenticationRequired);
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn start_impl(&self) {
@@ -983,11 +1013,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         ))
     }
 
-    async fn add_peer_call(&self, _connection: Option<&DynRpcConnection>, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        if !self.config.unsafe_rpc {
-            warn!("AddPeer RPC command called while node in safe RPC mode -- ignoring.");
-            return Err(RpcError::UnavailableInSafeMode);
-        }
+    async fn add_peer_call(&self, connection: Option<&DynRpcConnection>, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+        self.require_unsafe("AddPeer", connection)?;
         let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
         if let Some(connection_manager) = self.flow_context.connection_manager() {
             connection_manager.add_connection_request(peer_address.into(), request.is_permanent).await;
@@ -1006,11 +1033,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetPeerAddressesResponse::new(address_manager.get_all_addresses(), address_manager.get_all_banned_addresses()))
     }
 
-    async fn ban_call(&self, _connection: Option<&DynRpcConnection>, request: BanRequest) -> RpcResult<BanResponse> {
-        if !self.config.unsafe_rpc {
-            warn!("Ban RPC command called while node in safe RPC mode -- ignoring.");
-            return Err(RpcError::UnavailableInSafeMode);
-        }
+    async fn ban_call(&self, connection: Option<&DynRpcConnection>, request: BanRequest) -> RpcResult<BanResponse> {
+        self.require_unsafe("Ban", connection)?;
         if let Some(connection_manager) = self.flow_context.connection_manager() {
             let ip = request.ip.into();
             if connection_manager.ip_has_permanent_connection(ip).await {
@@ -1023,11 +1047,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(BanResponse {})
     }
 
-    async fn unban_call(&self, _connection: Option<&DynRpcConnection>, request: UnbanRequest) -> RpcResult<UnbanResponse> {
-        if !self.config.unsafe_rpc {
-            warn!("Unban RPC command called while node in safe RPC mode -- ignoring.");
-            return Err(RpcError::UnavailableInSafeMode);
-        }
+    async fn unban_call(&self, connection: Option<&DynRpcConnection>, request: UnbanRequest) -> RpcResult<UnbanResponse> {
+        self.require_unsafe("Unban", connection)?;
         let mut address_manager = self.flow_context.address_manager.lock();
         if address_manager.is_banned(request.ip) {
             address_manager.unban(request.ip)
@@ -1047,11 +1068,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetConnectedPeerInfoResponse::new(peer_info))
     }
 
-    async fn shutdown_call(&self, _connection: Option<&DynRpcConnection>, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
-        if !self.config.unsafe_rpc {
-            warn!("Shutdown RPC command called while node in safe RPC mode -- ignoring.");
-            return Err(RpcError::UnavailableInSafeMode);
-        }
+    async fn shutdown_call(&self, connection: Option<&DynRpcConnection>, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
+        self.require_unsafe("Shutdown", connection)?;
         warn!("Shutdown RPC command was called, shutting down in 1 second...");
 
         // Signal the shutdown request
@@ -1070,15 +1088,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn resolve_finality_conflict_call(
         &self,
-        _connection: Option<&DynRpcConnection>,
+        connection: Option<&DynRpcConnection>,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
         // TODO(Relaxed): implement this functionality
         // When implementing, make sure to consider transitional IBD state
-        if !self.config.unsafe_rpc {
-            warn!("ResolveFinalityConflict RPC command called while node in safe RPC mode -- ignoring.");
-            return Err(RpcError::UnavailableInSafeMode);
-        }
+        self.require_unsafe("ResolveFinalityConflict", connection)?;
         Err(RpcError::NotImplemented)
     }
 
@@ -1371,6 +1386,10 @@ impl AsyncService for RpcCoreService {
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
+            if let Some(ref auth) = self.auth_config {
+                let _ = std::fs::remove_file(&auth.cookie_path);
+                kaspa_core::info!("RPC auth cookie removed");
+            }
             trace!("{} stopped", Self::IDENT);
             Ok(())
         })
