@@ -160,25 +160,46 @@ mod tests {
     }
 
     /// Issue #443: Verify that an array of WASM Address objects can be
-    /// converted to `Vec<Address>` via `JsValue::from()` roundtrip.
-    /// This is the conversion pattern used by `subscribeUtxosChanged` /
-    /// `unsubscribeUtxosChanged` to handle JS Address objects properly.
+    /// converted to `Vec<Address>` via the `JsValue::from()` marshalling pattern
+    /// used by `subscribeUtxosChanged` / `unsubscribeUtxosChanged`.
     #[wasm_bindgen_test]
-    fn test_wasm_address_array_js_value_roundtrip() {
+    fn test_wasm_address_array_jsvalue_marshalling() {
         use super::AddressOrStringArrayT;
 
         let addr1 = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
         let addr2 = Address::constructor("kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e");
 
-        // Simulate JS passing [new Address("..."), new Address("...")] to WASM
         let array = js_sys::Array::new();
         array.push(&JsValue::from(addr1.clone()));
         array.push(&JsValue::from(addr2.clone()));
 
-        // The fix pattern: JsValue::from() roundtrip for proper marshalling
         let addresses = Vec::<Address>::try_from(AddressOrStringArrayT::from(JsValue::from(array)))
-            .expect("should convert WASM Address objects via JsValue roundtrip");
+            .expect("JsValue marshalling pattern should convert WASM Address objects");
 
+        assert_eq!(addresses.len(), 2);
+        assert_eq!(addresses[0], addr1);
+        assert_eq!(addresses[1], addr2);
+    }
+
+    /// Issue #443: Verify the old conversion pattern (direct try_into) also
+    /// handles WASM Address objects. If this test fails while the above passes,
+    /// it confirms the JsValue marshalling fix is necessary.
+    #[wasm_bindgen_test]
+    fn test_wasm_address_array_direct_try_into() {
+        use super::AddressOrStringArrayT;
+
+        let addr1 = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+        let addr2 = Address::constructor("kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e");
+
+        let array = js_sys::Array::new();
+        array.push(&JsValue::from(addr1.clone()));
+        array.push(&JsValue::from(addr2.clone()));
+
+        let addresses_result: Result<Vec<Address>, _> =
+            AddressOrStringArrayT::from(JsValue::from(array)).try_into();
+
+        assert!(addresses_result.is_ok(), "direct try_into() failed: {:?}", addresses_result.err());
+        let addresses = addresses_result.unwrap();
         assert_eq!(addresses.len(), 2);
         assert_eq!(addresses[0], addr1);
         assert_eq!(addresses[1], addr2);
