@@ -250,6 +250,25 @@ const WRPC_CLIENT: &str = "wrpc-client";
 
 /// # [`KaspaRpcClient`] connects to Kaspa wRPC endpoint via binary Borsh or JSON protocols.
 ///
+/// ## Resource Management
+///
+/// `KaspaRpcClient` manages background tasks and network connections.
+/// For proper cleanup, always call [`disconnect()`](Self::disconnect) before dropping:
+///
+/// ```ignore
+/// let client = KaspaRpcClient::new(...)?;
+/// client.connect(None).await?;
+/// // ... use client ...
+/// client.disconnect().await?; // Clean shutdown
+/// // client can now be safely dropped
+/// ```
+///
+/// **Auto-cleanup:** If the client is dropped while still connected,
+/// a warning will be logged and best-effort background cleanup will be attempted.
+/// This cleanup is not guaranteed to complete if the runtime exits immediately.
+///
+/// ## Architecture
+///
 /// RpcClient has two ways to interface with the underlying RPC subsystem:
 /// [`Interface`] that has a [`notification()`](Interface::notification)
 /// method to register closures that will be invoked on server-side
@@ -268,6 +287,47 @@ pub struct KaspaRpcClient {
 impl Debug for KaspaRpcClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KaspaRpcClient").field("url", &self.url()).field("connected", &self.is_connected()).finish()
+    }
+}
+
+impl Drop for KaspaRpcClient {
+    fn drop(&mut self) {
+        // Only act when this is the last user-held clone.
+        // strong_count == 2 means: this Arc + the internal reference cycle
+        // (Inner → Notifier → Subscriber → Arc<Inner>).
+        // strong_count == 1 means: cycle was already broken (e.g. via disconnect()).
+        let count = Arc::strong_count(&self.inner);
+        if count > 2 {
+            return;
+        }
+
+        // Break the reference cycle so Inner can be freed.
+        if let Ok(mut notifier) = self.inner.notifier.lock() {
+            *notifier = None;
+        }
+
+        // If services are still running, perform best-effort cleanup.
+        if self.inner.background_services_running.load(Ordering::SeqCst) {
+            log_warn!(
+                "KaspaRpcClient dropped while still connected. \
+                 Call disconnect() before dropping for clean shutdown."
+            );
+
+            self.inner.notification_relay_channel.sender.close();
+            if let Ok(channel) = self.inner.notification_intake_channel.lock() {
+                channel.sender.close();
+            }
+
+            let rpc_client = self.inner.rpc_client.clone();
+            let service_ctl = self.inner.service_ctl.clone();
+            let background_services_running = self.inner.background_services_running.clone();
+
+            spawn(async move {
+                let _ = service_ctl.signal(()).await;
+                let _ = rpc_client.shutdown().await;
+                background_services_running.store(false, Ordering::SeqCst);
+            });
+        }
     }
 }
 
@@ -339,6 +399,11 @@ impl KaspaRpcClient {
     async fn stop_notifier(&self) -> Result<()> {
         self.inner.reset_notification_intake_channel();
         self.notifier().join().await?;
+
+        // Break the reference cycle (Inner → Notifier → Subscriber → Arc<Inner>)
+        // so that Inner is freed when the last KaspaRpcClient clone is dropped.
+        *self.inner.notifier.lock().unwrap() = None;
+
         Ok(())
     }
 
@@ -357,6 +422,12 @@ impl KaspaRpcClient {
 
     pub fn is_connected(&self) -> bool {
         self.inner.rpc_client.is_connected()
+    }
+
+    /// Returns the strong reference count of the internal client state.
+    /// Useful for verifying resource cleanup in tests.
+    pub fn inner_arc_strong_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
     }
 
     pub fn encoding(&self) -> Encoding {
