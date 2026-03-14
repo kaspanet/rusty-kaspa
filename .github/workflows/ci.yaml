@@ -335,6 +335,9 @@ jobs:
       - name: Run wasm tests for wallet/pskt
         run: wasm-pack test --node wallet/pskt
 
+      - name: Run wasm tests for rpc/core
+        run: wasm-pack test --node rpc/core --features wasm32-sdk
+
 
   build-wasm32:
     name: Build WASM32 SDK
