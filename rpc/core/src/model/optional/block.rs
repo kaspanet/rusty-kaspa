@@ -25,7 +25,7 @@ impl Serializer for RpcOptionalBlock {
 impl Deserializer for RpcOptionalBlock {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let header = Some(deserialize!(RpcOptionalHeader, reader)?);
+        let header = deserialize!(Option<RpcOptionalHeader>, reader)?;
         let transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
         let verbose_data = deserialize!(Option<RpcBlockVerboseData>, reader)?;
         Ok(Self { header, transactions, verbose_data })

@@ -1293,6 +1293,108 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    async fn get_blocks_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetBlocksV2Request,
+    ) -> RpcResult<GetBlocksV2Response> {
+        let session = self.consensus_manager.consensus().session().await;
+
+        // Default to Full verbosity if not specified
+        let data_verbosity_level = request.data_verbosity_level.or(Some(RpcDataVerbosityLevel::Full));
+        let header_verbosity = data_verbosity_level.map(RpcHeaderVerbosity::from);
+        let tx_verbosity = data_verbosity_level.map(RpcTransactionVerbosity::from);
+
+        // If low_hash is empty - use genesis instead.
+        let low_hash = match request.low_hash {
+            Some(low_hash) => {
+                // Make sure low_hash points to an existing and valid block
+                session.async_get_ghostdag_data(low_hash).await?;
+                low_hash
+            }
+            None => self.config.genesis.hash,
+        };
+
+        // Get hashes between low_hash and sink
+        let sink_hash = session.async_get_sink().await;
+
+        // We use +1 because low_hash is also returned
+        // max_blocks MUST be >= mergeset_size_limit + 1
+        let max_blocks = self.config.mergeset_size_limit() as usize + 1;
+        let (block_hashes, high_hash) = session.async_get_hashes_between(low_hash, sink_hash, max_blocks).await?;
+
+        // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
+        // there's space to add the sink anticone, otherwise we cannot add the anticone because
+        // there's no guarantee that all of the anticone root ancestors will be present.
+        let filtered_sink_anticone = if high_hash == sink_hash {
+            let sink_anticone = session.async_get_anticone(sink_hash).await?;
+            let mut seen_hashes: std::collections::HashSet<_> = once(low_hash).chain(block_hashes.iter().copied()).collect();
+            sink_anticone.into_iter().filter(|hash| seen_hashes.insert(*hash)).collect()
+        } else {
+            vec![]
+        };
+
+        // Prepend low hash to make it inclusive and append the filtered sink anticone
+        let block_hashes = once(low_hash).chain(block_hashes).chain(filtered_sink_anticone).collect::<Vec<_>>();
+        let blocks = if request.include_blocks {
+            let needs_utxo = tx_verbosity.as_ref().is_some_and(|v| v.requires_populated_transaction());
+            let mut blocks = Vec::with_capacity(block_hashes.len());
+            for hash in block_hashes.iter().copied() {
+                let block = session.async_get_block_even_if_header_only(hash).await?;
+                let is_chain_block = session.async_is_chain_block(hash).await.unwrap_or(false);
+
+                // For chain blocks at High+ verbosity, fetch signable transactions with UTXO entries
+                let signable_txs = if needs_utxo && is_chain_block {
+                    match session.async_get_blocks_acceptance_data(vec![hash], None).await {
+                        Ok(acceptance_data_vec) => {
+                            let mut all_txs = Vec::new();
+                            for acceptance_data in acceptance_data_vec.iter() {
+                                for merged_block_data in acceptance_data.iter() {
+                                    if merged_block_data.block_hash == hash {
+                                        match session
+                                            .async_get_transactions_by_block_acceptance_data(
+                                                hash,
+                                                merged_block_data.clone(),
+                                                None,
+                                                TransactionType::SignableTransaction,
+                                            )
+                                            .await
+                                        {
+                                            Ok(TransactionQueryResult::SignableTransaction(txs)) => {
+                                                all_txs.extend(txs.iter().cloned());
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                            if all_txs.is_empty() { None } else { Some(all_txs) }
+                        }
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
+
+                let rpc_block = self
+                    .consensus_converter
+                    .get_block_with_verbosity(
+                        &session,
+                        &block,
+                        header_verbosity.as_ref(),
+                        tx_verbosity.as_ref(),
+                        signable_txs.as_deref(),
+                    )
+                    .await?;
+                blocks.push(rpc_block);
+            }
+            blocks
+        } else {
+            Vec::new()
+        };
+        Ok(GetBlocksV2Response { block_hashes, blocks })
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
