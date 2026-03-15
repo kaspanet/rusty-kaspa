@@ -2,6 +2,8 @@ use crate::imports::*;
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_wallet_core::error::Error as WalletError;
 use kaspa_wallet_core::storage::Binding;
+use kaspa_wallet_core::wallet::WalletGuard;
+use workflow_core::time::unixtime_as_millis_u64;
 #[derive(Default, Handler)]
 #[help("Display transaction history")]
 pub struct History;
@@ -24,6 +26,9 @@ impl History {
         let current_daa_score = ctx.wallet().current_daa_score();
 
         let (last, include_utxo) = match argv.remove(0).as_str() {
+            "export" => {
+                return self.export_csv(ctx, argv, &guard).await;
+            }
             "lookup" => {
                 let transaction_id = if argv.is_empty() {
                     tprintln!(ctx, "usage: history lookup <transaction id>");
@@ -145,10 +150,62 @@ impl History {
                 ("list [<last N transactions>]", "List transactions"),
                 ("details [<last N transactions>]", "List transactions with UTXO details"),
                 ("lookup <transaction id>", "Lookup transaction in the history"),
+                ("export [<filename>]", "Export transaction history to CSV file"),
             ],
             None,
         )?;
 
+        Ok(())
+    }
+
+    async fn export_csv(
+        self: Arc<Self>,
+        ctx: Arc<KaspaCli>,
+        mut argv: Vec<String>,
+        _guard: &WalletGuard<'_>,
+    ) -> Result<()> {
+        let account = ctx.account().await?;
+        let account_id_short = account.id().short();
+        
+        // Generate filename: use provided name or generate default
+        let filename = if argv.is_empty() {
+            // Generate default filename: transactions_<account_id>_<timestamp>.csv
+            let timestamp = unixtime_as_millis_u64();
+            format!("transactions_{}_{}.csv", account_id_short, timestamp)
+        } else {
+            let name = argv.remove(0);
+            // Ensure .csv extension
+            if name.ends_with(".csv") {
+                name
+            } else {
+                format!("{}.csv", name)
+            }
+        };
+        
+        tprintln!(ctx, "");
+        tprintln!(ctx, "Exporting transaction history to '{}'...", filename);
+        
+        // Export transactions using the account API
+        let (csv_content, count) = account.export_transaction_history_csv(None, None, None).await?;
+        
+        if count == 0 {
+            tprintln!(ctx, "No transactions found for this account.");
+            return Ok(());
+        }
+        
+        // Write to file
+        match std::fs::write(&filename, &csv_content) {
+            Ok(_) => {
+                tprintln!(ctx, "Successfully exported {} transactions to '{}'", count.separated_string(), filename);
+            }
+            Err(e) => {
+                terrorln!(ctx, "Failed to write CSV file '{}': {}", filename, e);
+                return Err(Error::custom(format!("Failed to write CSV file: {}", e)));
+            }
+        }
+        
+        tprintln!(ctx, "");
+        
         Ok(())
     }
 }
