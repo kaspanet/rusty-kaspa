@@ -71,6 +71,10 @@ rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true, features = ["rt", "macros", "process"] }
 kaspa-txscript-errors.workspace = true
 
+[[bench]]
+name = "ibd_bench"
+harness = false
+
 [features]
 heap = ["dhat"]
 html_reports = []
