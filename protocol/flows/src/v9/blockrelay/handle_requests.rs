@@ -61,11 +61,15 @@ impl HandleRelayBlockRequests {
             return Ok(());
         }
         let sink = self.ctx.consensus().unguarded_session().async_get_sink().await;
+        let sink_blue_work = self.ctx.consensus().unguarded_session().async_get_header(sink).await.unwrap().blue_work;
         if sink == self.ctx.config.genesis.hash {
             return Ok(());
         }
         self.router
-            .enqueue(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(sink.into()), blue_work: None }))
+            .enqueue(make_message!(
+                Payload::InvRelayBlock,
+                InvRelayBlockMessage { hash: Some(sink.into()), blue_work: Some(sink_blue_work.into()) }
+            ))
             .await?;
         Ok(())
     }
