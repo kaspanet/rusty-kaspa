@@ -28,7 +28,7 @@ pub fn execute_zk_script(
         script,
         reused_values,
         sig_cache,
-        EngineFlags { covenants_enabled: true },
+        EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
     );
     vm.execute()
 }

@@ -623,7 +623,13 @@ fn generate_tx(
     let script_public_key = pay_to_address_script(kaspa_addr);
     let inputs = utxos
         .iter()
-        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
+        .map(|(op, _)| TransactionInput {
+            previous_outpoint: *op,
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 1,
+            compute_mass: 0,
+        })
         .collect_vec();
 
     // set base version according to the usage of covenant

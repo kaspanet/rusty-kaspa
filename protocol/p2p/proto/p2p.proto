@@ -38,6 +38,7 @@ message TransactionInput{
   bytes signatureScript = 2;
   uint64 sequence = 3;
   uint32 sigOpCount = 4;
+  uint32 computeMass = 5;
 }
 
 message Outpoint{

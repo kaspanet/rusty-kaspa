@@ -369,6 +369,7 @@ impl Transaction {
                     Some(input.signature_script.clone()),
                     input.sequence,
                     input.sig_op_count,
+                    input.compute_mass,
                     utxo,
                 )
             })

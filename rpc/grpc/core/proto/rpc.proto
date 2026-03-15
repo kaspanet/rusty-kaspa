@@ -87,6 +87,7 @@ message RpcTransactionInput {
   uint64 sequence = 3;
   uint32 sigOpCount = 5;
   RpcTransactionInputVerboseData verboseData = 4;
+  uint32 computeMass = 6;
 }
 
 message RpcTransactionInputVerboseData {
@@ -1032,6 +1033,7 @@ message RpcOptionalTransactionInput {
   optional uint64 sequence = 4;
   optional uint32 sigOpCount = 5;
   optional RpcOptionalTransactionInputVerboseData verboseData = 6;
+  optional uint32 computeMass = 7;
 }
 
 message RpcOptionalTransactionOutputVerboseData {

@@ -145,6 +145,7 @@ impl<R> PSKT<R> {
                     signature_script: vec![],
                     sequence: sequence.unwrap_or(u64::MAX),
                     sig_op_count: sig_op_count.unwrap_or(0),
+                    compute_mass: 0,
                 })
                 .collect(),
             self.outputs

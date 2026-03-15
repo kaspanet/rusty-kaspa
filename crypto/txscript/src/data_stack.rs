@@ -56,13 +56,29 @@ impl<const LEN: usize> From<SizedEncodeInt<LEN>> for i64 {
     }
 }
 
+#[inline]
+fn total_bytes(items: &[StackEntry]) -> usize {
+    items.iter().map(|item| item.len()).sum()
+}
+
 pub type StackEntry = Vec<u8>;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Stack {
     inner: Vec<StackEntry>,
     covenants_enabled: bool,
+    pushed_bytes: u64,
 }
+
+#[cfg(test)]
+impl PartialEq for Stack {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner && self.covenants_enabled == other.covenants_enabled
+    }
+}
+
+#[cfg(test)]
+impl Eq for Stack {}
 
 impl Deref for Stack {
     type Target = Vec<StackEntry>;
@@ -84,7 +100,7 @@ impl Index<usize> for Stack {
 impl From<Vec<StackEntry>> for Stack {
     fn from(inner: Vec<StackEntry>) -> Self {
         // TODO(covpp-mainnet): should have fork logic
-        Self { inner, covenants_enabled: true }
+        Self { inner, covenants_enabled: true, pushed_bytes: 0 }
     }
 }
 
@@ -266,7 +282,17 @@ impl OpcodeData<Hash> for StackEntry {
 
 impl Stack {
     pub(crate) fn new(inner: Vec<StackEntry>, covenants_enabled: bool) -> Self {
-        Self { inner, covenants_enabled }
+        Self { inner, covenants_enabled, pushed_bytes: 0 }
+    }
+
+    #[inline]
+    fn add_pushed_bytes(&mut self, bytes: usize) {
+        self.pushed_bytes = self.pushed_bytes.checked_add(bytes as u64).unwrap();
+    }
+
+    #[inline]
+    pub fn pushed_bytes(&self) -> u64 {
+        self.pushed_bytes
     }
 
     fn max_element_size(&self) -> usize {
@@ -278,6 +304,7 @@ impl Stack {
         if element.len() > self.max_element_size() {
             return Err(TxScriptError::ElementTooBig(element.len(), self.max_element_size()));
         }
+        self.add_pushed_bytes(element.len());
         self.inner.insert(index, element);
         Ok(())
     }
@@ -326,7 +353,8 @@ impl Stack {
     where
         Vec<u8>: OpcodeData<T>,
     {
-        let v = OpcodeData::serialize(&item)?;
+        let v: Vec<u8> = OpcodeData::serialize(&item)?;
+        self.add_pushed_bytes(v.len());
         Vec::push(&mut self.inner, v);
         Ok(())
     }
@@ -346,6 +374,8 @@ impl Stack {
     pub fn dup_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= SIZE {
             true => {
+                let added_bytes = total_bytes(&self.inner[self.len() - SIZE..]);
+                self.add_pushed_bytes(added_bytes);
                 self.inner.extend_from_within(self.len() - SIZE..);
                 Ok(())
             }
@@ -357,6 +387,8 @@ impl Stack {
     pub fn over_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 2 * SIZE {
             true => {
+                let added_bytes = total_bytes(&self.inner[self.len() - 2 * SIZE..self.len() - SIZE]);
+                self.add_pushed_bytes(added_bytes);
                 self.inner.extend_from_within(self.len() - 2 * SIZE..self.len() - SIZE);
                 Ok(())
             }
@@ -369,6 +401,8 @@ impl Stack {
         match self.len() >= 3 * SIZE {
             true => {
                 let drained = self.inner.drain(self.len() - 3 * SIZE..self.len() - 2 * SIZE).collect::<Vec<StackEntry>>();
+                let added_bytes = total_bytes(&drained);
+                self.add_pushed_bytes(added_bytes);
                 self.inner.extend(drained);
                 Ok(())
             }
@@ -381,6 +415,8 @@ impl Stack {
         match self.len() >= 2 * SIZE {
             true => {
                 let drained = self.inner.drain(self.len() - 2 * SIZE..self.len() - SIZE).collect::<Vec<StackEntry>>();
+                let added_bytes = total_bytes(&drained);
+                self.add_pushed_bytes(added_bytes);
                 self.inner.extend(drained);
                 Ok(())
             }
@@ -404,6 +440,7 @@ impl Stack {
         if item.len() > self.max_element_size() {
             return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
         }
+        self.add_pushed_bytes(item.len());
         self.inner.push(item);
         Ok(())
     }

@@ -44,6 +44,7 @@ impl From<&TransactionInput> for RpcTransactionInput {
             signature_script: item.signature_script.clone(),
             sequence: item.sequence,
             sig_op_count: item.sig_op_count,
+            compute_mass: item.compute_mass,
             verbose_data: None,
         }
     }
@@ -86,7 +87,9 @@ impl TryFrom<RpcTransactionOutput> for TransactionOutput {
 impl TryFrom<RpcTransactionInput> for TransactionInput {
     type Error = RpcError;
     fn try_from(item: RpcTransactionInput) -> RpcResult<Self> {
-        Ok(Self::new(item.previous_outpoint.into(), item.signature_script, item.sequence, item.sig_op_count))
+        let mut input = Self::new(item.previous_outpoint.into(), item.signature_script, item.sequence, item.sig_op_count);
+        input.compute_mass = item.compute_mass;
+        Ok(input)
     }
 }
 
@@ -128,6 +131,7 @@ impl From<&TransactionInput> for RpcOptionalTransactionInput {
             signature_script: Some(item.signature_script.clone()),
             sequence: Some(item.sequence),
             sig_op_count: Some(item.sig_op_count),
+            compute_mass: Some(item.compute_mass),
             verbose_data: None,
         }
     }
@@ -174,7 +178,7 @@ impl TryFrom<RpcOptionalTransactionOutput> for TransactionOutput {
 impl TryFrom<RpcOptionalTransactionInput> for TransactionInput {
     type Error = RpcError;
     fn try_from(item: RpcOptionalTransactionInput) -> RpcResult<Self> {
-        Ok(Self::new(
+        Ok(Self::new_with_compute_mass(
             item.previous_outpoint
                 .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "previous_outpoint".to_owned()))?
                 .try_into()?,
@@ -182,6 +186,7 @@ impl TryFrom<RpcOptionalTransactionInput> for TransactionInput {
                 .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "signature_script".to_owned()))?,
             item.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?,
             item.sig_op_count.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sig_op_count".to_owned()))?,
+            item.compute_mass.unwrap_or_default(),
         ))
     }
 }

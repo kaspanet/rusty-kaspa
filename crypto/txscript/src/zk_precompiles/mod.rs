@@ -37,8 +37,8 @@ pub(crate) fn verify_zk(tag: ZkTag, dstack: &mut Stack) -> Result<(), TxScriptEr
 }
 
 /**
- * A helper function to compute the sigop cost of a ZK proof based on its tag.
+ * A helper function to compute the cost (in script units) of a ZK proof based on its tag.
  */
-pub fn compute_zk_sigop_cost(tag: u8) -> u16 {
-    ZkTag::try_from(tag).map(|t| t.sigop_cost()).unwrap_or(ZkTag::max_cost()) // Default to highest cost for unknown tags
+pub fn compute_zk_cost(tag: u8) -> u64 {
+    ZkTag::try_from(tag).map(|t| t.cost()).unwrap_or(ZkTag::max_cost()) // Default to max cost for unknown tags
 }

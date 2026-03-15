@@ -86,6 +86,7 @@ pub struct SerializableTransactionInput {
     pub index: SignedTransactionIndexType,
     pub sequence: String,
     pub sig_op_count: u8,
+    pub compute_mass: u16,
     #[serde(with = "hex::serde")]
     pub signature_script: Vec<u8>,
     pub utxo: SerializableUtxoEntry,
@@ -101,6 +102,7 @@ impl SerializableTransactionInput {
             signature_script: input.signature_script.clone(),
             sequence: input.sequence.to_string(),
             sig_op_count: input.sig_op_count,
+            compute_mass: input.compute_mass,
             utxo: utxo.clone(),
         }
     }
@@ -136,6 +138,7 @@ impl TryFrom<SerializableTransactionInput> for cctx::TransactionInput {
             signature_script: signable_input.signature_script,
             sequence: signable_input.sequence.parse()?,
             sig_op_count: signable_input.sig_op_count,
+            compute_mass: signable_input.compute_mass,
         })
     }
 }
@@ -152,6 +155,7 @@ impl TryFrom<&SerializableTransactionInput> for TransactionInput {
             signature_script: (!serializable_input.signature_script.is_empty()).then_some(serializable_input.signature_script.clone()),
             sequence: serializable_input.sequence.parse()?,
             sig_op_count: serializable_input.sig_op_count,
+            compute_mass: serializable_input.compute_mass,
             utxo: Some(utxo),
         };
 
@@ -172,6 +176,7 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
             signature_script: inner.signature_script.clone().unwrap_or_default(),
             sequence: inner.sequence.to_string(),
             sig_op_count: inner.sig_op_count,
+            compute_mass: inner.compute_mass,
             utxo,
         })
     }

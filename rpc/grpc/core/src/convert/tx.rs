@@ -41,6 +41,7 @@ from!(item: &kaspa_rpc_core::RpcTransactionInput, protowire::RpcTransactionInput
         signature_script: item.signature_script.to_rpc_hex(),
         sequence: item.sequence,
         sig_op_count: item.sig_op_count.into(),
+        compute_mass: item.compute_mass.into(),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
@@ -51,6 +52,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalTransactionInput, protowire::RpcTransact
         signature_script: item.signature_script.as_ref().map(|x| x.to_rpc_hex()).unwrap_or_default(),
         sequence: item.sequence.unwrap_or_default(),
         sig_op_count: item.sig_op_count.map(|x| x.into()).unwrap_or_default(),
+        compute_mass: item.compute_mass.map(|x| x.into()).unwrap_or_default(),
         verbose_data: item.verbose_data.as_ref().map(protowire::RpcTransactionInputVerboseData::from),
     }
 });
@@ -150,7 +152,7 @@ from!(item: &kaspa_rpc_core::RpcTransactionVerboseData, protowire::RpcTransactio
     Self {
         transaction_id: item.transaction_id.to_string(),
         hash: item.hash.to_string(),
-        compute_mass: item.compute_mass,
+        compute_mass: 0,
         block_hash: item.block_hash.to_string(),
         block_time: item.block_time,
     }
@@ -257,6 +259,7 @@ try_from!(item: &protowire::RpcTransactionInput, kaspa_rpc_core::RpcOptionalTran
             .signature_script)?),
         sequence: Some(item.sequence),
         sig_op_count: Some(item.sig_op_count.try_into()?),
+        compute_mass: Some(item.compute_mass.try_into()?),
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionInputVerboseData::try_from).transpose()?,
     }
 });
@@ -271,6 +274,7 @@ try_from!(item: &protowire::RpcTransactionInput, kaspa_rpc_core::RpcTransactionI
         signature_script: Vec::from_rpc_hex(&item.signature_script)?,
         sequence: item.sequence,
         sig_op_count: item.sig_op_count.try_into()?,
+        compute_mass: item.compute_mass.try_into()?,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcTransactionInputVerboseData::try_from).transpose()?,
     }
 });
@@ -364,7 +368,7 @@ try_from!(item: &protowire::RpcTransactionVerboseData, kaspa_rpc_core::RpcTransa
     Self {
         transaction_id: RpcHash::from_str(&item.transaction_id)?,
         hash: RpcHash::from_str(&item.hash)?,
-        compute_mass: item.compute_mass,
+            compute_mass: item.compute_mass,
         block_hash: RpcHash::from_str(&item.block_hash)?,
         block_time: item.block_time,
     }
@@ -445,3 +449,42 @@ try_from!(item: &protowire::RpcUtxosByAddressesEntry, kaspa_rpc_core::RpcUtxosBy
             .try_into()?,
     }
 });
+
+#[cfg(test)]
+mod tests {
+    use crate::protowire;
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use kaspa_rpc_core::RpcTransaction;
+
+    #[test]
+    fn test_rpc_transaction_compute_mass_roundtrip() {
+        let tx = RpcTransaction {
+            version: 1,
+            inputs: vec![kaspa_rpc_core::RpcTransactionInput {
+                previous_outpoint: kaspa_rpc_core::RpcTransactionOutpoint {
+                    transaction_id: kaspa_consensus_core::Hash::from_bytes([1; 32]),
+                    index: 0,
+                },
+                signature_script: vec![],
+                sequence: 0,
+                sig_op_count: 0,
+                compute_mass: 222,
+                verbose_data: None,
+            }],
+            outputs: vec![],
+            lock_time: 1,
+            subnetwork_id: SubnetworkId::from_bytes([4; 20]),
+            gas: 0,
+            payload: vec![0xaa, 0xbb],
+            mass: 111,
+            verbose_data: None,
+        };
+
+        let wire: protowire::RpcTransaction = (&tx).into();
+        assert_eq!(wire.inputs[0].compute_mass, 222);
+
+        let decoded = RpcTransaction::try_from(&wire).unwrap();
+        assert_eq!(decoded.inputs[0].compute_mass, 222);
+        assert_eq!(decoded.mass, 111);
+    }
+}

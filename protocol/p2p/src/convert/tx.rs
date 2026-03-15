@@ -50,6 +50,7 @@ impl From<&TransactionInput> for protowire::TransactionInput {
             signature_script: input.signature_script.clone(),
             sequence: input.sequence,
             sig_op_count: input.sig_op_count as u32,
+            compute_mass: input.compute_mass as u32,
         }
     }
 }
@@ -139,7 +140,13 @@ impl TryFrom<protowire::TransactionInput> for TransactionInput {
     type Error = ConversionError;
 
     fn try_from(value: protowire::TransactionInput) -> Result<Self, Self::Error> {
-        Ok(Self::new(value.previous_outpoint.try_into_ex()?, value.signature_script, value.sequence, value.sig_op_count.try_into()?))
+        Ok(Self {
+            previous_outpoint: value.previous_outpoint.try_into_ex()?,
+            signature_script: value.signature_script,
+            sequence: value.sequence,
+            sig_op_count: value.sig_op_count.try_into()?,
+            compute_mass: value.compute_mass.try_into()?,
+        })
     }
 }
 
@@ -181,5 +188,32 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
         );
         transaction.set_mass(tx.mass);
         Ok(transaction)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transaction_message_compute_mass_roundtrip() {
+        let tx = Transaction::new(
+            1,
+            vec![TransactionInput::new_with_compute_mass(TransactionOutpoint::new(Hash::from_u64_word(1), 0), vec![], 0, 0, 12_345)],
+            vec![],
+            42,
+            SubnetworkId::from_bytes([3; 20]),
+            7,
+            vec![1, 2, 3],
+        );
+        tx.set_mass(54_321);
+
+        let message: protowire::TransactionMessage = (&tx).into();
+        assert_eq!(message.inputs[0].compute_mass, 12_345);
+
+        let received = Transaction::try_from(message).unwrap();
+        assert_eq!(received.inputs.len(), 1);
+        assert_eq!(received.inputs[0].compute_mass, 12_345);
+        assert_eq!(received.mass(), 54_321);
     }
 }

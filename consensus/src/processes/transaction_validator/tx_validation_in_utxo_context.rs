@@ -1,10 +1,12 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
+    constants::INPUT_COMPUTE_MASS_SCALE_FACTOR,
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_txscript::{
-    EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine, covenants::CovenantsContext,
+    COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR, EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine,
+    covenants::CovenantsContext,
 };
 use kaspa_txscript_errors::TxScriptError;
 use rayon::ThreadPool;
@@ -167,7 +169,9 @@ impl TransactionValidator {
         seq_commit_accessor: Option<&dyn SeqCommitAccessor>,
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
-        let flags = EngineFlags { covenants_enabled: self.covenants_activation.is_active(block_daa_score) };
+        let covenants_enabled = self.covenants_activation.is_active(block_daa_score);
+        let flags: EngineFlags = EngineFlags { covenants_enabled, mass_per_sig_op: self.mass_per_sig_op };
+
         check_scripts(tx, ctx, flags)
     }
 
@@ -190,9 +194,24 @@ pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_
     }
 }
 
+#[inline]
+fn input_allowed_script_units(tx: &impl VerifiableTransaction, input: &TransactionInput, flags: EngineFlags) -> u64 {
+    if tx.tx().version >= 1 {
+        (input.compute_mass as u64).saturating_mul(INPUT_COMPUTE_MASS_SCALE_FACTOR)
+    } else {
+        (input.sig_op_count as u64).saturating_mul(flags.mass_per_sig_op)
+    }
+    .saturating_add(flags.mass_per_sig_op.saturating_sub(1)) // To preserve backward compatility with the scheme that only took the number of sigops into account, we add (mass_per_sig_op-1)*COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR to the allowed
+                                                                // units, so most transactions that were previously allowed will still be allowed.
+    .saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR)
+}
+
 pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxUnsync<'_>, flags: EngineFlags) -> TxResult<()> {
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        TxScriptEngine::from_transaction_input(tx, input, i, entry, ctx, flags).execute().map_err(|err| map_script_err(err, input))?;
+        let allowed_script_units = input_allowed_script_units(tx, input, flags);
+        let mut vm =
+            TxScriptEngine::from_transaction_input_with_allowed_script_units(tx, input, i, entry, ctx, flags, allowed_script_units);
+        vm.execute().map_err(|err| map_script_err(err, input))?;
     }
     Ok(())
 }
@@ -200,7 +219,10 @@ pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxU
 pub fn check_scripts_par_iter(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtxSync<'_>, flags: EngineFlags) -> TxResult<()> {
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        TxScriptEngine::from_transaction_input(tx, input, idx, utxo, ctx, flags).execute().map_err(|err| map_script_err(err, input))
+        let allowed_script_units = input_allowed_script_units(tx, input, flags);
+        let mut vm =
+            TxScriptEngine::from_transaction_input_with_allowed_script_units(tx, input, idx, utxo, ctx, flags, allowed_script_units);
+        vm.execute().map_err(|err| map_script_err(err, input))
     })
 }
 
@@ -220,19 +242,26 @@ fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRule
 #[cfg(test)]
 mod tests {
     use super::super::errors::TxRuleError;
-    use super::CHECK_SCRIPTS_PARALLELISM_THRESHOLD;
+    use super::{CHECK_SCRIPTS_PARALLELISM_THRESHOLD, TxValidationFlags, check_scripts};
+    use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
     use core::str::FromStr;
     use itertools::Itertools;
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
     use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+    use kaspa_consensus_core::{config::params::ForkActivation, constants::INPUT_COMPUTE_MASS_SCALE_FACTOR, mass::MassCalculator};
+    use kaspa_core::assert_match;
+    use kaspa_txscript::opcodes::codes::OpDup;
+    use kaspa_txscript::{
+        EngineCtx, EngineFlags,
+        opcodes::codes::{OpCheckSig, OpDrop},
+        script_builder::ScriptBuilder,
+    };
     use kaspa_txscript_errors::TxScriptError;
     use secp256k1::Secp256k1;
     use smallvec::SmallVec;
     use std::iter::once;
-
-    use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
 
     /// Helper function to duplicate the last input
     fn duplicate_input(tx: &Transaction, entries: &[UtxoEntry]) -> (Transaction, Vec<UtxoEntry>) {
@@ -241,6 +270,155 @@ mod tests {
         tx2.inputs.push(tx2.inputs.last().unwrap().clone());
         entries2.push(entries2.last().unwrap().clone());
         (tx2, entries2)
+    }
+
+    fn build_parallel_push_budget_test_tx(num_inputs: usize) -> (Transaction, Vec<UtxoEntry>) {
+        assert!(num_inputs > CHECK_SCRIPTS_PARALLELISM_THRESHOLD);
+
+        let script_public_key = ScriptPublicKey::new(0, SmallVec::from_slice(&[0x03, 0x01, 0x02, 0x03]));
+        let outputs = vec![TransactionOutput {
+            value: 1,
+            script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&[0x51])),
+            covenant: None,
+        }];
+
+        let inputs = (0..num_inputs)
+            .map(|i| TransactionInput {
+                previous_outpoint: TransactionOutpoint {
+                    transaction_id: TransactionId::from_bytes([(i as u8).wrapping_add(1); 32]),
+                    index: 0,
+                },
+                signature_script: vec![],
+                sequence: 0,
+                sig_op_count: 0,
+                compute_mass: 3,
+            })
+            .collect_vec();
+
+        let entries = (0..num_inputs)
+            .map(|_| UtxoEntry {
+                amount: 1,
+                script_public_key: script_public_key.clone(),
+                block_daa_score: 0,
+                is_coinbase: false,
+                covenant_id: None,
+            })
+            .collect_vec();
+
+        (Transaction::new(1, inputs, outputs, 0, SubnetworkId::default(), 0, vec![]), entries)
+    }
+
+    #[test]
+    fn check_scripts_parallel_budget_behavior() {
+        let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
+        let flags = EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 };
+
+        // (a) One input alone is over budget when compute_mass=0 (allowed units per input = 0).
+        let (mut tx, entries) = build_parallel_push_budget_test_tx(2);
+        tx.inputs[0].compute_mass = 0;
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
+        assert_eq!(
+            result,
+            Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededScriptUnitsLimit { used_units: 3, allowed_units: 0 }))
+        );
+
+        // (b) A few inputs together are all independently under budget and should pass.
+        let (tx, entries) = build_parallel_push_budget_test_tx(3);
+        let mut tx = tx;
+        tx.inputs.iter_mut().for_each(|input| input.compute_mass = 3);
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
+        assert!(result.is_ok());
+
+        // (c) Everything is ok with a larger per-input budget as well.
+        let (tx, entries) = build_parallel_push_budget_test_tx(3);
+        let mut tx = tx;
+        tx.inputs.iter_mut().for_each(|input| input.compute_mass = 10);
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_populated_transaction_sigop_budget_enforced_for_v0_and_v1_with_covenants_enabled() {
+        let params = MAINNET_PARAMS.clone();
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity(),
+            params.ghostdag_k,
+            Default::default(),
+            MassCalculator::new(0, 0, 0, 0),
+            ForkActivation::always(),
+            params.mass_per_sig_op,
+        );
+
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &[7u8; 32]).unwrap();
+        let (x_only_pubkey, _) = schnorr_key.x_only_public_key();
+        let two_sigops_script = ScriptBuilder::new()
+            .add_op(OpDup) // We duplicate the signature
+            .unwrap()
+            .add_data(&x_only_pubkey.serialize())
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .add_op(OpDrop)
+            .unwrap()
+            .add_data(&x_only_pubkey.serialize())
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .drain();
+
+        for version in [0u16, 1u16] {
+            let sig_op_count = if version == 0 { 1 } else { 0 };
+            let compute_mass = if version == 1 { (params.mass_per_sig_op / INPUT_COMPUTE_MASS_SCALE_FACTOR) as u16 } else { 0 };
+
+            let input = TransactionInput {
+                previous_outpoint: TransactionOutpoint {
+                    transaction_id: TransactionId::from_bytes([version as u8 + 1; 32]),
+                    index: 0,
+                },
+                signature_script: vec![],
+                sequence: 0,
+                sig_op_count,
+                compute_mass,
+            };
+            let output = TransactionOutput {
+                value: 1,
+                script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&[0x51])),
+                covenant: None,
+            };
+            let tx = Transaction::new(version, vec![input], vec![output], 0, SubnetworkId::default(), 0, vec![]);
+
+            let utxo_entry = UtxoEntry {
+                amount: 1,
+                script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&two_sigops_script)),
+                block_daa_score: 0,
+                is_coinbase: false,
+                covenant_id: None,
+            };
+
+            let signed_tx = sign(MutableTransaction::with_entries(tx, vec![utxo_entry]), schnorr_key);
+
+            // Verify that `sign` didn't change the sig_op_count and compute_mass values.
+            assert_eq!(signed_tx.tx.inputs[0].sig_op_count, sig_op_count);
+            assert_eq!(signed_tx.tx.inputs[0].compute_mass, compute_mass);
+
+            let verifiable_tx = signed_tx.as_verifiable();
+
+            let result =
+                tv.validate_populated_transaction_and_get_fee(&verifiable_tx, 0, 0, TxValidationFlags::SkipMassCheck, None, None);
+            assert_match!(
+                result,
+                Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { .. })),
+                "expected sigop budget enforcement for tx version {version}"
+            );
+        }
     }
 
     #[test]
@@ -280,6 +458,7 @@ mod tests {
                 signature_script,
                 sequence: 0,
                 sig_op_count: 1,
+                compute_mass: 0,
             }],
             vec![
                 TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2), covenant: None },
@@ -356,6 +535,7 @@ mod tests {
                 signature_script,
                 sequence: 0,
                 sig_op_count: 1,
+                compute_mass: 0,
             }],
             vec![
                 TransactionOutput {
@@ -437,6 +617,7 @@ mod tests {
                 signature_script,
                 sequence: 0,
                 sig_op_count: 4,
+                compute_mass: 0,
             }],
             vec![
                 TransactionOutput {
@@ -518,6 +699,7 @@ mod tests {
                 signature_script,
                 sequence: 0,
                 sig_op_count: 4,
+                compute_mass: 0,
             }],
             vec![
                 TransactionOutput {
@@ -601,6 +783,7 @@ mod tests {
                 signature_script,
                 sequence: 0,
                 sig_op_count: 4,
+                compute_mass: 0,
             }],
             vec![
                 TransactionOutput {
@@ -684,6 +867,7 @@ mod tests {
                 signature_script,
                 sequence: 0,
                 sig_op_count: 4,
+                compute_mass: 0,
             }],
             vec![
                 TransactionOutput {
@@ -761,6 +945,7 @@ mod tests {
                 signature_script,
                 sequence: 0,
                 sig_op_count: 4,
+                compute_mass: 0,
             }],
             vec![TransactionOutput {
                 value: 2792999990000,
@@ -827,18 +1012,21 @@ mod tests {
                     signature_script: vec![],
                     sequence: 0,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
                     sig_op_count: 0,
+                    compute_mass: 0,
                 },
             ],
             vec![

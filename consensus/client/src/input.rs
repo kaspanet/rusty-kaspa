@@ -22,6 +22,7 @@ export interface ITransactionInput {
     signatureScript?: HexString;
     sequence: bigint;
     sigOpCount: number;
+    computeMass?: number;
     utxo?: UtxoEntryReference;
 
     /** Optional verbose data provided by RPC */
@@ -61,6 +62,8 @@ pub struct TransactionInputInner {
     pub signature_script: Option<Vec<u8>>,
     pub sequence: u64,
     pub sig_op_count: u8,
+    #[serde(default)]
+    pub compute_mass: u16,
     pub utxo: Option<UtxoEntryReference>,
 }
 
@@ -70,9 +73,10 @@ impl TransactionInputInner {
         signature_script: Option<Vec<u8>>,
         sequence: u64,
         sig_op_count: u8,
+        compute_mass: u16,
         utxo: Option<UtxoEntryReference>,
     ) -> Self {
-        Self { previous_outpoint, signature_script, sequence, sig_op_count, utxo }
+        Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, utxo }
     }
 }
 
@@ -90,9 +94,10 @@ impl TransactionInput {
         signature_script: Option<Vec<u8>>,
         sequence: u64,
         sig_op_count: u8,
+        compute_mass: u16,
         utxo: Option<UtxoEntryReference>,
     ) -> Self {
-        let inner = TransactionInputInner::new(previous_outpoint, signature_script, sequence, sig_op_count, utxo);
+        let inner = TransactionInputInner::new(previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, utxo);
         Self { inner: Arc::new(Mutex::new(inner)) }
     }
 
@@ -176,6 +181,16 @@ impl TransactionInput {
         self.inner().sig_op_count = sig_op_count;
     }
 
+    #[wasm_bindgen(getter = computeMass)]
+    pub fn get_compute_mass(&self) -> u16 {
+        self.inner().compute_mass
+    }
+
+    #[wasm_bindgen(setter = computeMass)]
+    pub fn set_compute_mass(&mut self, compute_mass: u16) {
+        self.inner().compute_mass = compute_mass;
+    }
+
     #[wasm_bindgen(getter = utxo)]
     pub fn get_utxo(&self) -> Option<UtxoEntryReference> {
         self.inner().utxo.clone()
@@ -210,8 +225,9 @@ impl TryCastFromJs for TransactionInput {
                 let signature_script = object.get_vec_u8("signatureScript").ok();
                 let sequence = object.get_u64("sequence")?;
                 let sig_op_count = object.get_u8("sigOpCount")?;
+                let compute_mass = object.get_u16("computeMass").unwrap_or_default();
                 let utxo = object.try_cast_into::<UtxoEntryReference>("utxo")?;
-                Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count, utxo).into())
+                Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, utxo).into())
             } else {
                 Err("TransactionInput must be an object".into())
             }
@@ -221,25 +237,27 @@ impl TryCastFromJs for TransactionInput {
 
 impl From<cctx::TransactionInput> for TransactionInput {
     fn from(tx_input: cctx::TransactionInput) -> Self {
-        TransactionInput::new(
-            tx_input.previous_outpoint.into(),
-            Some(tx_input.signature_script),
-            tx_input.sequence,
-            tx_input.sig_op_count,
-            None,
-        )
+        let inner = TransactionInputInner {
+            previous_outpoint: tx_input.previous_outpoint.into(),
+            signature_script: Some(tx_input.signature_script),
+            sequence: tx_input.sequence,
+            sig_op_count: tx_input.sig_op_count,
+            compute_mass: tx_input.compute_mass,
+            utxo: None,
+        };
+        TransactionInput::new_with_inner(inner)
     }
 }
 
 impl From<&TransactionInput> for cctx::TransactionInput {
     fn from(tx_input: &TransactionInput) -> Self {
         let inner = tx_input.inner();
-        cctx::TransactionInput::new(
-            inner.previous_outpoint.clone().into(),
-            // TODO - discuss: should this unwrap_or_default or return an error?
-            inner.signature_script.clone().unwrap_or_default(),
-            inner.sequence,
-            inner.sig_op_count,
-        )
+        cctx::TransactionInput {
+            previous_outpoint: inner.previous_outpoint.clone().into(),
+            signature_script: inner.signature_script.clone().unwrap_or_default(), // TODO - discuss: should this unwrap_or_default or return an error?
+            sequence: inner.sequence,
+            sig_op_count: inner.sig_op_count,
+            compute_mass: inner.compute_mass,
+        }
     }
 }
