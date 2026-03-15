@@ -51,10 +51,8 @@ impl IbdBenchArgs {
         let mut i = args_start;
         while i < args.len() {
             let arg = &args[i];
-            let is_supported_flag = arg == "--override-params-file"
-                || arg == "--simpa-db"
-                || arg == "--timeout-secs"
-                || arg == "--poll-interval-millis";
+            let is_supported_flag =
+                arg == "--override-params-file" || arg == "--simpa-db" || arg == "--timeout-secs" || arg == "--poll-interval-millis";
 
             if is_supported_flag {
                 filtered.push(arg.clone());
@@ -172,15 +170,9 @@ impl IbdBenchFixture {
         let mut syncer = Daemon::new_random_with_args(syncer_args, fd_total_budget);
         let syncer_client = syncer.start().await;
         let syncer_tip = syncer_client.get_block_dag_info().await.unwrap();
-        assert!(
-            syncer_tip.block_count > 0,
-            "syncer loaded a zero-height DB; regenerate simpa DB with non-trivial block count"
-        );
+        assert!(syncer_tip.block_count > 0, "syncer loaded a zero-height DB; regenerate simpa DB with non-trivial block count");
 
-        info!(
-            "Syncer started. target sink: {}, target block_count: {}",
-            syncer_tip.sink, syncer_tip.block_count
-        );
+        info!("Syncer started. target sink: {}, target block_count: {}", syncer_tip.sink, syncer_tip.block_count);
 
         Self {
             syncer,
@@ -230,11 +222,7 @@ impl IbdBenchFixture {
             if start.elapsed() > self.timeout {
                 panic!(
                     "timed out after {:?}. syncee block_count={}, sink={}, expected block_count={}, expected sink={}",
-                    self.timeout,
-                    syncee_tip.block_count,
-                    syncee_tip.sink,
-                    self.target_block_count,
-                    self.target_sink
+                    self.timeout, syncee_tip.block_count, syncee_tip.sink, self.target_block_count, self.target_sink
                 );
             }
 
