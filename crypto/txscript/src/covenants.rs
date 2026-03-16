@@ -171,7 +171,8 @@ mod tests {
         hashing,
         subnets::SubnetworkId,
         tx::{
-            CovenantBinding, PopulatedTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+            CovenantBinding, GenesisCovenantGroup, PopulatedTransaction, Transaction, TransactionInput, TransactionOutpoint,
+            TransactionOutput, UtxoEntry,
         },
     };
 
@@ -240,14 +241,33 @@ mod tests {
                 }
             }
 
-            for ((auth_input_idx, _), output_indices) in genesis_groups {
-                let outpoint = TransactionOutpoint::new((auth_input_idx as u64).into(), 0);
+            let genesis_groups: Vec<(usize, Vec<usize>)> =
+                genesis_groups.into_iter().map(|((auth_input_idx, _), output_indices)| (auth_input_idx, output_indices)).collect();
+
+            for (auth_input_idx, output_indices) in &genesis_groups {
+                let outpoint = tx.inputs[*auth_input_idx].previous_outpoint;
                 let expected_id =
                     hashing::covenant_id::covenant_id(outpoint, output_indices.iter().map(|&i| (i as u32, &tx.outputs[i])));
-
-                for &output_idx in &output_indices {
+                for &output_idx in output_indices {
                     tx.outputs[output_idx].covenant.as_mut().unwrap().covenant_id = expected_id;
                 }
+            }
+
+            // Verify helper API parity while keeping the existing manual construction.
+            let mut api_tx = tx.clone();
+            for &output_idx in genesis_groups.iter().flat_map(|(_, output_indices)| output_indices.iter()) {
+                api_tx.outputs[output_idx].covenant = None;
+            }
+            let api_groups: Vec<_> = genesis_groups
+                .iter()
+                .map(|(auth_input_idx, output_indices)| {
+                    GenesisCovenantGroup::new(*auth_input_idx as u16, output_indices.iter().map(|&i| i as u32).collect())
+                })
+                .collect();
+            api_tx.populate_genesis_covenants(&api_groups).unwrap();
+
+            for &output_idx in genesis_groups.iter().flat_map(|(_, output_indices)| output_indices.iter()) {
+                assert_eq!(tx.outputs[output_idx].covenant, api_tx.outputs[output_idx].covenant);
             }
         }
 
