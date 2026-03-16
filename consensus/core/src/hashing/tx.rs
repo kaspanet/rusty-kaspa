@@ -1,7 +1,7 @@
 use super::HasherExtensions;
 use crate::{
     mass::transaction_estimated_serialized_size,
-    tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+    tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass},
 };
 use kaspa_hashes::{Hash, Hasher, HasherBase, PayloadDigest, SeqCommitmentMerkleLeafHash};
 
@@ -106,7 +106,7 @@ fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, version:
     }
     hasher.update(input.sequence.to_le_bytes());
 
-    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && version >= 1 {
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && TxInputMass::has_compute_mass_field(version) {
         hasher.write_u16(input.mass.compute_mass().unwrap_or(0));
     }
 }

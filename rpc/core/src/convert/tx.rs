@@ -47,16 +47,13 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
         let sequence =
             value.input.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
 
-        Ok(if TxInputMass::has_compute_mass_field(value.version) {
-            TransactionInput::new_with_mass(
-                previous_outpoint,
-                signature_script,
-                sequence,
-                TxInputMass::ComputeMass(value.input.compute_mass.unwrap_or_default()),
-            )
+        let mass = if TxInputMass::has_compute_mass_field(value.version) {
+            TxInputMass::ComputeMass(value.input.compute_mass.unwrap_or_default())
         } else {
-            TransactionInput::new(previous_outpoint, signature_script, sequence, value.input.sig_op_count.unwrap_or_default())
-        })
+            TxInputMass::SigopCount(value.input.sig_op_count.unwrap_or_default())
+        };
+
+        Ok(TransactionInput::new_with_mass(previous_outpoint, signature_script, sequence, mass))
     }
 }
 

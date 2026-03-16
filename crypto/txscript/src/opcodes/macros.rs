@@ -78,10 +78,6 @@ macro_rules! opcode_impl {
 
             #[allow(unused_variables)]
             fn execute(&$self, $vm: &mut TxScriptEngine<T, Reused>) -> OpCodeResult {
-                println!("Executing opcode: {}, stack: {:?}", stringify!($name), {
-                    let stack : Vec<Vec<u8>> = $vm.dstack.clone().into();
-                    stack
-                }); // TODO: Change to `trace!`
                 $code
             }
         }

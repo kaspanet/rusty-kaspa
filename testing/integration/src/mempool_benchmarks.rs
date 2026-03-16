@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
     mass::MassCalculator,
     network::NetworkType,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry},
+    tx::{MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry},
     utxo::{
         utxo_collection::{UtxoCollection, UtxoCollectionExtensions},
         utxo_diff::UtxoDiff,

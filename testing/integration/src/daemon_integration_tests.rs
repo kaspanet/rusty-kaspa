@@ -581,7 +581,7 @@ async fn daemon_compute_mass_relay_test() {
     let mut transaction = signed_tx.tx;
     transaction.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeMass(300));
     assert!(
-        transaction.inputs.iter().any(|input| input.mass.compute_mass().unwrap_or(0) > 0),
+        transaction.inputs.iter().any(|input| input.mass.compute_mass().unwrap() > 0),
         "expected non-zero compute_mass commitment for v1 transaction"
     );
     let transaction_id = transaction.id();

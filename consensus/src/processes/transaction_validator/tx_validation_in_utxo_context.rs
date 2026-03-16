@@ -390,7 +390,11 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: if version == 0 { TxInputMass::SigopCount(sig_op_count) } else { TxInputMass::ComputeMass(compute_mass) },
+                mass: if TxInputMass::has_compute_mass_field(version) {
+                    TxInputMass::ComputeMass(compute_mass)
+                } else {
+                    TxInputMass::SigopCount(sig_op_count)
+                },
             };
             let output = TransactionOutput {
                 value: 1,

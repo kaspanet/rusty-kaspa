@@ -2,7 +2,7 @@ use crate::{
     config::params::Params,
     constants::{INPUT_COMPUTE_MASS_SCALE_FACTOR, TRANSIENT_BYTE_TO_MASS_FACTOR},
     subnets::SUBNETWORK_ID_SIZE,
-    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
+    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction},
 };
 use kaspa_hashes::HASH_SIZE;
 
@@ -327,7 +327,7 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let script_mass = if tx.version >= 1 {
+        let script_mass = if TxInputMass::has_compute_mass_field(tx.version) {
             INPUT_COMPUTE_MASS_SCALE_FACTOR
                 * tx.inputs
                     .iter()

@@ -158,14 +158,6 @@ impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
     }
 }
 
-impl TryFrom<SerializableTransactionInput> for cctx::TransactionInput {
-    type Error = Error;
-    fn try_from(signable_input: SerializableTransactionInput) -> Result<Self> {
-        let inferred_version = if signable_input.compute_mass > 0 { 1 } else { 0 };
-        SerializableInputWithVersion { version: inferred_version, input: signable_input }.try_into()
-    }
-}
-
 impl TryFrom<&SerializableTransactionInput> for TransactionInput {
     type Error = Error;
     fn try_from(serializable_input: &SerializableTransactionInput) -> Result<Self> {
