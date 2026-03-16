@@ -385,8 +385,16 @@ impl ConsensusConverter {
                 Default::default()
             },
             sequence: if verbosity.include_sequence.unwrap_or(false) { Some(input.sequence) } else { Default::default() },
-            sig_op_count: if verbosity.include_sig_op_count.unwrap_or(false) { Some(input.mass.sig_op_count().unwrap_or(0)) } else { Default::default() },
-            compute_mass: if verbosity.include_sig_op_count.unwrap_or(false) { Some(input.mass.compute_mass().unwrap_or(0)) } else { Default::default() }, // TODO: consider having a separate flag for compute_mass
+            sig_op_count: if verbosity.include_sig_op_count.unwrap_or(false) {
+                Some(input.mass.sig_op_count().unwrap_or(0))
+            } else {
+                Default::default()
+            },
+            compute_mass: if verbosity.include_sig_op_count.unwrap_or(false) {
+                Some(input.mass.compute_mass().unwrap_or(0))
+            } else {
+                Default::default()
+            }, // TODO: consider having a separate flag for compute_mass
             verbose_data: if let Some(input_verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
                 Some(self.get_input_verbose_data_with_verbosity(utxo, input_verbose_data_verbosity)?)
             } else {

@@ -162,7 +162,7 @@ fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
     if tx.version >= 1 {
         for (i, input) in tx.inputs.iter().enumerate() {
             if let Some(sig_op_count) = input.mass.sig_op_count() {
-                   return Err(TxRuleError::SigOpCountInV1(i, sig_op_count));
+                return Err(TxRuleError::SigOpCountInV1(i, sig_op_count));
             }
         }
     } else {
@@ -187,7 +187,10 @@ mod tests {
     use kaspa_consensus_core::{
         constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
-        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass, scriptvec},
+        tx::{
+            ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+            scriptvec,
+        },
     };
     use kaspa_core::assert_match;
 

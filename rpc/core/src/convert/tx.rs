@@ -38,14 +38,14 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
         let previous_outpoint = value
             .input
             .previous_outpoint
-        .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "previous_outpoint".to_owned()))?
-        .try_into()?;
-    let signature_script =
-        value.input.signature_script.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "signature_script".to_owned()))?;
-        let sequence = value
+            .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "previous_outpoint".to_owned()))?
+            .try_into()?;
+        let signature_script = value
             .input
-            .sequence
-            .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
+            .signature_script
+            .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "signature_script".to_owned()))?;
+        let sequence =
+            value.input.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
 
         Ok(if TxInputMass::has_compute_mass_field(value.version) {
             TransactionInput::new_with_mass(
@@ -55,12 +55,7 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
                 TxInputMass::ComputeMass(value.input.compute_mass.unwrap_or_default()),
             )
         } else {
-            TransactionInput::new(
-                previous_outpoint,
-                signature_script,
-                sequence,
-                value.input.sig_op_count.unwrap_or_default(),
-            )
+            TransactionInput::new(previous_outpoint, signature_script, sequence, value.input.sig_op_count.unwrap_or_default())
         })
     }
 }
@@ -223,4 +218,3 @@ impl TryFrom<RpcOptionalTransactionOutput> for TransactionOutput {
         ))
     }
 }
-

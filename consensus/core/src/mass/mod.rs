@@ -328,9 +328,17 @@ impl MassCalculator {
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
         let script_mass = if tx.version >= 1 {
-            INPUT_COMPUTE_MASS_SCALE_FACTOR * tx.inputs.iter().map(|input| input.mass.compute_mass().expect("v1 transactions are expected to have compute mass") as u64).sum::<u64>()
+            INPUT_COMPUTE_MASS_SCALE_FACTOR
+                * tx.inputs
+                    .iter()
+                    .map(|input| input.mass.compute_mass().expect("v1 transactions are expected to have compute mass") as u64)
+                    .sum::<u64>()
         } else {
-            let total_sigops: u64 = tx.inputs.iter().map(|input| input.mass.sig_op_count().expect("v0 transactions are expected to have sig op count") as u64).sum();
+            let total_sigops: u64 = tx
+                .inputs
+                .iter()
+                .map(|input| input.mass.sig_op_count().expect("v0 transactions are expected to have sig op count") as u64)
+                .sum();
             total_sigops * self.mass_per_sig_op
         };
 

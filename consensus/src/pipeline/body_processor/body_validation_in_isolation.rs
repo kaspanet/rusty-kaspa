@@ -144,7 +144,10 @@ mod tests {
         header::Header,
         merkle::calc_hash_merkle_root,
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass, scriptvec},
+        tx::{
+            ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+            scriptvec,
+        },
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;

@@ -2,9 +2,10 @@ use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use kaspa_consensus_core::{
     subnets::SubnetworkId,
-    tx::
-        {CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
-        TxInputMass, UtxoEntry},
+    tx::{
+        CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+        TxInputMass, UtxoEntry,
+    },
 };
 use kaspa_hashes::Hash;
 
@@ -51,7 +52,7 @@ impl From<&TransactionInput> for protowire::TransactionInput {
             mass: match input.mass {
                 TxInputMass::SigopCount(count) => count as u32,
                 TxInputMass::ComputeMass(mass) => mass as u32,
-            }
+            },
         }
     }
 }
@@ -189,7 +190,10 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
         let version = tx.version;
         let transaction = Self::new(
             tx.version.try_into()?,
-            tx.inputs.into_iter().map(|i| ProtoInputWithVersion { version, input: i }.try_into()).collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
+            tx.inputs
+                .into_iter()
+                .map(|i| ProtoInputWithVersion { version, input: i }.try_into())
+                .collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
             tx.outputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionOutput>, Self::Error>>()?,
             tx.lock_time,
             tx.subnetwork_id.try_into_ex()?,
@@ -209,7 +213,12 @@ mod tests {
     fn test_transaction_message_compute_mass_roundtrip() {
         let tx = Transaction::new(
             1,
-            vec![TransactionInput::new_with_mass(TransactionOutpoint::new(Hash::from_u64_word(1), 0), vec![], 0, TxInputMass::ComputeMass(12_345))],
+            vec![TransactionInput::new_with_mass(
+                TransactionOutpoint::new(Hash::from_u64_word(1), 0),
+                vec![],
+                0,
+                TxInputMass::ComputeMass(12_345),
+            )],
             vec![],
             42,
             SubnetworkId::from_bytes([3; 20]),

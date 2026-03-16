@@ -439,20 +439,13 @@ impl Transaction {
 
     pub fn inputs(&self) -> Vec<cctx::TransactionInput> {
         let inner = self.inner();
-        inner
-            .inputs
-            .iter()
-            .map(|input| input.with_version(inner.version).into())
-            .collect::<Vec<cctx::TransactionInput>>()
+        inner.inputs.iter().map(|input| input.with_version(inner.version).into()).collect::<Vec<cctx::TransactionInput>>()
     }
 
     pub fn inputs_outputs(&self) -> (Vec<cctx::TransactionInput>, Vec<cctx::TransactionOutput>) {
         let inner = self.inner();
-        let inputs = inner
-            .inputs
-            .iter()
-            .map(|input| input.with_version(inner.version).into())
-            .collect::<Vec<cctx::TransactionInput>>();
+        let inputs =
+            inner.inputs.iter().map(|input| input.with_version(inner.version).into()).collect::<Vec<cctx::TransactionInput>>();
         let outputs = inner.outputs.iter().map(Into::into).collect::<Vec<cctx::TransactionOutput>>();
         (inputs, outputs)
     }

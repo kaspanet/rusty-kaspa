@@ -850,8 +850,8 @@ mod tests {
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
     use kaspa_consensus_core::tx::{
-        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput,
-        TransactionOutpoint, TransactionOutput, TxInputMass,
+        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
+        TransactionOutput, TxInputMass,
     };
     use kaspa_core::assert_match;
     use smallvec::SmallVec;

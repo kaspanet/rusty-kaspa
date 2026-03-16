@@ -524,7 +524,12 @@ fn generate_stark_tx_dag(
                 c.into_iter()
                     .map(|(o, e)| {
                         (
-                            TransactionInput::new_with_mass(*o, signature_script.as_ref().clone(), 0, TxInputMass::ComputeMass(input_compute_mass)),
+                            TransactionInput::new_with_mass(
+                                *o,
+                                signature_script.as_ref().clone(),
+                                0,
+                                TxInputMass::ComputeMass(input_compute_mass),
+                            ),
                             e.clone(),
                         )
                     })
