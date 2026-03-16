@@ -3952,6 +3952,27 @@
   ],
   [
     "1",
+    "0 INPUT_COVENANT_ID 0x20 0x0000000000000000000000000000000000000000000000000000000000000000 EQUALVERIFY",
+    "",
+    "OK",
+    "OpInputCovenantId returns zero hash when there is no covenant id"
+  ],
+  [
+    "1",
+    "0 OUTPUT_COVENANT_ID 0x20 0x0000000000000000000000000000000000000000000000000000000000000000 EQUALVERIFY",
+    "",
+    "OK",
+    "OpOutputCovenantId returns zero hash when there is no covenant id"
+  ],
+  [
+    "1",
+    "0 OUTPUT_AUTHORIZING_INPUT -1 EQUALVERIFY",
+    "",
+    "OK",
+    "OpOutputAuthorizingInput returns -1 when there is no covenant id"
+  ],
+  [
+    "1",
     "2 NUM2BIN 0x02 0x0100 EQUAL",
     "",
     "OK"
@@ -4055,16 +4076,17 @@
   ],
   [
     "1",
-    "IF 0xd5 ELSE 1 ENDIF",
+    "IF 0 OUTPUT_COVENANT_ID 0x20 0x000000000000000000000000000000000000000000000000000000000000 EQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "opcodes above OpChainblockSeqCommit invalid if executed"
+    "OK",
+    "OpOutputCovenantId is enabled and returns zero hash when no covenant exists"
   ],
   [
     "1",
-    "IF 0xd6 ELSE 1 ENDIF",
+    "IF 0 OUTPUT_AUTHORIZING_INPUT -1 NUMEQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpOutputAuthorizingInput is enabled and returns -1 when no covenant exists"
   ],
   [
     "1",
