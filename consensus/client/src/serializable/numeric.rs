@@ -149,7 +149,7 @@ impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
             previous_outpoint: cctx::TransactionOutpoint { transaction_id: input.transaction_id, index: input.index },
             signature_script: input.signature_script,
             sequence: input.sequence,
-            mass: if value.version >= 1 {
+            mass: if cctx::TxInputMass::has_compute_mass_field(value.version) {
                 cctx::TxInputMass::ComputeMass(input.compute_mass)
             } else {
                 cctx::TxInputMass::SigopCount(input.sig_op_count)

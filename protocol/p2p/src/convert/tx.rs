@@ -150,10 +150,10 @@ impl TryFrom<ProtoInputWithVersion> for TransactionInput {
             previous_outpoint: value.input.previous_outpoint.try_into_ex()?,
             signature_script: value.input.signature_script,
             sequence: value.input.sequence,
-            mass: if value.version < 1 {
-                TxInputMass::SigopCount(value.input.mass.try_into()?)
-            } else {
+            mass: if TxInputMass::has_compute_mass_field(value.version as u16) {
                 TxInputMass::ComputeMass(value.input.mass.try_into()?)
+            } else {
+                TxInputMass::SigopCount(value.input.mass.try_into()?)
             },
         })
     }

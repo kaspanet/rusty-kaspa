@@ -17,7 +17,7 @@ impl From<RpcInputWithVersion> for TransactionInput {
             value.input.previous_outpoint.into(),
             value.input.signature_script,
             value.input.sequence,
-            if value.version >= 1 {
+            if TxInputMass::has_compute_mass_field(value.version) {
                 TxInputMass::ComputeMass(value.input.compute_mass)
             } else {
                 TxInputMass::SigopCount(value.input.sig_op_count)
@@ -47,7 +47,7 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
             .sequence
             .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
 
-        Ok(if value.version >= 1 {
+        Ok(if TxInputMass::has_compute_mass_field(value.version) {
             TransactionInput::new_with_mass(
                 previous_outpoint,
                 signature_script,

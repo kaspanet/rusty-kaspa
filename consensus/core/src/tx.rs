@@ -123,6 +123,14 @@ impl TxInputMass {
             _ => None,
         }
     }
+
+        pub fn has_compute_mass_field(version: u16) -> bool {
+        version >= 1
+    }
+
+    pub fn has_sig_op_count_field(version: u16) -> bool {
+        version == 0
+    }
 }
 
 /// Represents a Kaspa transaction input
@@ -137,14 +145,15 @@ pub struct TransactionInput {
 }
 
 impl TransactionInput {
-        pub fn new_with_mass(
-            previous_outpoint: TransactionOutpoint,
-            signature_script: Vec<u8>,
-            sequence: u64,
-            mass: TxInputMass,
-        ) -> Self {
-            Self { previous_outpoint, signature_script, sequence, mass }
-        }
+    pub fn new_with_mass(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        mass: TxInputMass,
+    ) -> Self {
+        Self { previous_outpoint, signature_script, sequence, mass }
+    }
+
     pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
         Self { previous_outpoint, signature_script, sequence, mass: TxInputMass::SigopCount(sig_op_count) }
     }
