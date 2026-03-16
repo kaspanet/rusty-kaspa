@@ -1,0 +1,12 @@
+[package]
+name = "zk-covenant-rollup-methods"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[build-dependencies]
+risc0-build = { version = "3.0.4" }
+
+[package.metadata.risc0]
+methods = ["guest"]

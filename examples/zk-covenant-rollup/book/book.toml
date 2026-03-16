@@ -1,0 +1,16 @@
+[book]
+authors = ["Kaspa Contributors"]
+language = "en"
+src = "src"
+title = "ZK Covenant Rollup"
+
+[output.html]
+default-theme = "navy"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html.fold]
+enable = true
+level = 1
