@@ -22,6 +22,7 @@ kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
 
 ahash.workspace = true
+borsh.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 hex.workspace = true
@@ -37,6 +38,9 @@ itertools.workspace = true
 
 workflow-wasm.workspace = true
 workflow-log.workspace = true
+
+[dev-dependencies]
+wasm-bindgen-test.workspace = true
 
 [lints]
 workspace = true

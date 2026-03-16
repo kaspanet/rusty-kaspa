@@ -4,6 +4,7 @@
 
 #![allow(non_snake_case)]
 
+use crate::covenant::CovenantBinding as ClientCovenantBinding;
 use crate::imports::*;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -88,8 +89,14 @@ impl TransactionOutput {
 impl TransactionOutput {
     #[wasm_bindgen(constructor)]
     /// TransactionOutput constructor
-    pub fn ctor(value: u64, script_public_key: &ScriptPublicKey, covenant: Option<cctx::CovenantBinding>) -> TransactionOutput {
-        Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key: script_public_key.clone(), covenant })) }
+    pub fn ctor(value: u64, script_public_key: &ScriptPublicKey, covenant: Option<ClientCovenantBinding>) -> TransactionOutput {
+        Self {
+            inner: Arc::new(Mutex::new(TransactionOutputInner {
+                value,
+                script_public_key: script_public_key.clone(),
+                covenant: covenant.map(cctx::CovenantBinding::from),
+            })),
+        }
     }
 
     #[wasm_bindgen(getter, js_name = value)]
@@ -110,6 +117,16 @@ impl TransactionOutput {
     #[wasm_bindgen(setter, js_name = scriptPublicKey)]
     pub fn set_script_public_key(&self, v: &ScriptPublicKey) {
         self.inner().script_public_key = v.clone();
+    }
+
+    #[wasm_bindgen(getter, js_name = covenant)]
+    pub fn get_covenant(&self) -> Option<ClientCovenantBinding> {
+        self.inner().covenant.map(ClientCovenantBinding::from)
+    }
+
+    #[wasm_bindgen(setter, js_name = covenant)]
+    pub fn set_covenant(&self, v: ClientCovenantBinding) {
+        self.inner().covenant = Some(v.into())
     }
 }
 
@@ -134,7 +151,7 @@ impl From<&cctx::TransactionOutput> for TransactionOutput {
 impl From<&TransactionOutput> for cctx::TransactionOutput {
     fn from(output: &TransactionOutput) -> Self {
         let inner = output.inner();
-        cctx::TransactionOutput::new(inner.value, inner.script_public_key.clone())
+        cctx::TransactionOutput::with_covenant(inner.value, inner.script_public_key.clone(), inner.covenant)
     }
 }
 
@@ -148,11 +165,11 @@ impl TryCastFromJs for TransactionOutput {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 let value = object.get_u64("value")?;
                 let script_public_key = ScriptPublicKey::try_owned_from(object.get_value("scriptPublicKey")?)?;
-                let covenant = object
+                let covenant: Option<ClientCovenantBinding> = object
                     .try_get_value("covenant")?
                     .map(|v| v.try_into_owned().map_err(|err| Error::convert("covenant", err)))
                     .transpose()?;
-                Ok(TransactionOutput::new(value, script_public_key, covenant).into())
+                Ok(TransactionOutput::new(value, script_public_key, covenant.map(cctx::CovenantBinding::from)).into())
             } else {
                 Err("TransactionInput must be an object".into())
             }

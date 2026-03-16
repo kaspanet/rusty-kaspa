@@ -10,11 +10,11 @@ mod script_public_key;
 
 use crate::mass::{ContextualMasses, Mass, MassCofactors, NonContextualMasses};
 use crate::{
+    errors::tx::PopulateGenesisCovenantsError,
     hashing,
     subnets::{self, SubnetworkId},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use js_sys::Object;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
@@ -32,9 +32,6 @@ use std::{
     str::{self},
 };
 use wasm_bindgen::prelude::*;
-use workflow_wasm::convert::{Cast, TryCastFromJs, TryCastJsInto};
-use workflow_wasm::extensions::ObjectExtension;
-use workflow_wasm::prelude::CastFromJs;
 
 use crate::hashing::tx::seq_commit_tx_digest;
 use kaspa_hashes::Hash;
@@ -149,35 +146,34 @@ impl TransactionOutput {
 }
 
 /// Binds a transaction output to the covenant and input authorizing its creation.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Copy, CastFromJs)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Copy)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
 pub struct CovenantBinding {
     pub authorizing_input: u16,
     pub covenant_id: Hash,
 }
-type CastErr = workflow_wasm::error::Error;
-impl TryCastFromJs for CovenantBinding {
-    type Error = CastErr;
 
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
-    where
-        R: AsRef<JsValue> + 'a,
-    {
-        Self::resolve(value, || {
-            let Some(object) = Object::try_from(value.as_ref()) else { return Err(CastErr::NotAnObject) };
-            let value = object.get_u16("authorizing_input")?;
-            let covenant_id = object.get_value("covenant_id")?.try_into_owned()?;
-            Ok(Self { authorizing_input: value, covenant_id })
-        })
+// #[wasm_bindgen]
+impl CovenantBinding {
+    pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
+        Self { authorizing_input, covenant_id }
     }
 }
 
-#[wasm_bindgen]
-impl CovenantBinding {
-    #[wasm_bindgen(constructor)]
-    pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
-        Self { authorizing_input, covenant_id }
+/// A genesis covenant group for bulk covenant binding population.
+///
+/// All listed outputs are bound to the same covenant id, derived from the
+/// authorizing input outpoint and this exact ordered output list.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenesisCovenantGroup {
+    pub authorizing_input: u16,
+    pub outputs: Vec<u32>,
+}
+
+impl GenesisCovenantGroup {
+    pub fn new(authorizing_input: u16, outputs: Vec<u32>) -> Self {
+        Self { authorizing_input, outputs }
     }
 }
 
@@ -276,6 +272,70 @@ impl Transaction {
         payload: Vec<u8>,
     ) -> Self {
         Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: Default::default(), id: Default::default() }
+    }
+
+    /// Populates genesis covenant bindings for multiple output groups.
+    ///
+    /// For each group, this computes `covenant_id(authorizing_input.outpoint, group.outputs)`
+    /// and sets that binding on all listed outputs.
+    ///
+    /// Validation is performed for all groups before mutating the transaction:
+    /// - authorizing input index must exist
+    /// - output indices must exist
+    /// - outputs in each group must be strictly increasing
+    /// - outputs across groups must be disjoint
+    /// - targeted outputs must not already contain a covenant binding
+    pub fn populate_genesis_covenants(&mut self, groups: &[GenesisCovenantGroup]) -> Result<(), PopulateGenesisCovenantsError> {
+        let mut seen_outs = vec![false; self.outputs.len()];
+
+        // Phase 1: Validate all groups without mutating.
+        for group in groups {
+            let auth_input = group.authorizing_input as usize;
+            if auth_input >= self.inputs.len() {
+                return Err(PopulateGenesisCovenantsError::NoSuchInput(auth_input, self.inputs.len()));
+            }
+
+            let outs = group.outputs.as_slice();
+            if outs.is_empty() {
+                return Err(PopulateGenesisCovenantsError::EmptyOutputs);
+            }
+
+            // Only enforce monotonic order here; duplicate indices are rejected by the `seen_outs` disjointness check below.
+            if !outs.is_sorted() {
+                return Err(PopulateGenesisCovenantsError::OutputsNotOrdered);
+            }
+
+            // Because indices are sorted ascending, bound-checking the last (max) index is sufficient.
+            let last = *outs.last().expect("checked non-empty above");
+            if (last as usize) >= self.outputs.len() {
+                return Err(PopulateGenesisCovenantsError::NoSuchOutput(last, self.outputs.len()));
+            }
+
+            for &out in outs {
+                if seen_outs[out as usize] {
+                    return Err(PopulateGenesisCovenantsError::OutputsNotDisjoint(out));
+                }
+                seen_outs[out as usize] = true;
+
+                if self.outputs[out as usize].covenant.is_some() {
+                    return Err(PopulateGenesisCovenantsError::CovenantAlreadyPopulated(out));
+                }
+            }
+        }
+
+        // Phase 2: Compute covenant ids and apply bindings.
+        for group in groups {
+            let auth_input = group.authorizing_input as usize;
+            let input_outpoint = self.inputs[auth_input].previous_outpoint;
+            let covenant_id =
+                hashing::covenant_id::covenant_id(input_outpoint, group.outputs.iter().map(|&out| (out, &self.outputs[out as usize])));
+            let binding = CovenantBinding::new(group.authorizing_input, covenant_id);
+            for &out in &group.outputs {
+                self.outputs[out as usize].covenant = Some(binding);
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -638,6 +698,8 @@ pub enum TransactionQueryResult {
 
 #[cfg(test)]
 mod tests {
+    use crate::errors::tx::PopulateGenesisCovenantsError;
+    use crate::hashing;
     use crate::subnets::SUBNETWORK_ID_NATIVE;
 
     use super::*;
@@ -807,6 +869,82 @@ mod tests {
         let bin = borsh::to_vec(&spk).unwrap();
         let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(spk, spk2);
+    }
+
+    fn tx_for_genesis_covenant_population(num_inputs: usize, num_outputs: usize) -> Transaction {
+        let inputs = (0..num_inputs)
+            .map(|i| TransactionInput::new(TransactionOutpoint::new((i as u64).into(), 0), vec![], 0, 0))
+            .collect::<Vec<_>>();
+        let outputs = (0..num_outputs).map(|_| TransactionOutput::new(100, Default::default())).collect::<Vec<_>>();
+        Transaction::new(1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![])
+    }
+
+    #[test]
+    fn test_populate_genesis_covenants() {
+        // Success case
+        let mut tx = tx_for_genesis_covenant_population(1, 8);
+        let group_a_outputs = [1u32, 3, 7];
+        let group_b_outputs = [2u32, 4, 5];
+        let expected_group_a = hashing::covenant_id::covenant_id(
+            tx.inputs[0].previous_outpoint,
+            group_a_outputs.into_iter().map(|i| (i, &tx.outputs[i as usize])),
+        );
+        let expected_group_b = hashing::covenant_id::covenant_id(
+            tx.inputs[0].previous_outpoint,
+            group_b_outputs.into_iter().map(|i| (i, &tx.outputs[i as usize])),
+        );
+        tx.populate_genesis_covenants(&[GenesisCovenantGroup::new(0, vec![1, 3, 7]), GenesisCovenantGroup::new(0, vec![2, 4, 5])])
+            .unwrap();
+        for &i in &[1u32, 3, 7] {
+            assert_eq!(tx.outputs[i as usize].covenant, Some(CovenantBinding::new(0, expected_group_a)));
+        }
+        for &i in &[2u32, 4, 5] {
+            assert_eq!(tx.outputs[i as usize].covenant, Some(CovenantBinding::new(0, expected_group_b)));
+        }
+        assert!(tx.outputs[0].covenant.is_none());
+        assert!(tx.outputs[6].covenant.is_none());
+
+        // Error cases
+        let mut already_populated_tx = tx_for_genesis_covenant_population(1, 2);
+        already_populated_tx.outputs[1].covenant = Some(CovenantBinding::new(0, Hash::from_u64_word(7)));
+
+        let cases = vec![
+            (
+                tx_for_genesis_covenant_population(1, 1),
+                vec![GenesisCovenantGroup::new(1, vec![0])],
+                PopulateGenesisCovenantsError::NoSuchInput(1, 1),
+            ),
+            (
+                tx_for_genesis_covenant_population(1, 1),
+                vec![GenesisCovenantGroup::new(0, vec![1])],
+                PopulateGenesisCovenantsError::NoSuchOutput(1, 1),
+            ),
+            (
+                tx_for_genesis_covenant_population(1, 1),
+                vec![GenesisCovenantGroup::new(0, vec![])],
+                PopulateGenesisCovenantsError::EmptyOutputs,
+            ),
+            (
+                tx_for_genesis_covenant_population(1, 4),
+                vec![GenesisCovenantGroup::new(0, vec![1, 3, 2])],
+                PopulateGenesisCovenantsError::OutputsNotOrdered,
+            ),
+            (
+                tx_for_genesis_covenant_population(1, 5),
+                vec![GenesisCovenantGroup::new(0, vec![1, 3]), GenesisCovenantGroup::new(0, vec![2, 3])],
+                PopulateGenesisCovenantsError::OutputsNotDisjoint(3),
+            ),
+            (
+                already_populated_tx,
+                vec![GenesisCovenantGroup::new(0, vec![1])],
+                PopulateGenesisCovenantsError::CovenantAlreadyPopulated(1),
+            ),
+        ];
+
+        for (mut tx, groups, expected_err) in cases {
+            let err = tx.populate_genesis_covenants(&groups).unwrap_err();
+            assert_eq!(err, expected_err);
+        }
     }
 
     // use wasm_bindgen_test::wasm_bindgen_test;
