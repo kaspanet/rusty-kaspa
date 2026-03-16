@@ -347,8 +347,12 @@ impl From<cctx::Transaction> for Transaction {
 impl From<&Transaction> for cctx::Transaction {
     fn from(tx: &Transaction) -> Self {
         let inner = tx.inner();
-        let inputs: Vec<cctx::TransactionInput> =
-            inner.inputs.clone().into_iter().map(|input| input.as_ref().into()).collect::<Vec<cctx::TransactionInput>>();
+        let inputs: Vec<cctx::TransactionInput> = inner
+            .inputs
+            .clone()
+            .into_iter()
+            .map(|input| input.as_ref().with_version(inner.version).into())
+            .collect::<Vec<cctx::TransactionInput>>();
         let outputs: Vec<cctx::TransactionOutput> =
             inner.outputs.clone().into_iter().map(|output| output.as_ref().into()).collect::<Vec<cctx::TransactionOutput>>();
         cctx::Transaction::new(inner.version, inputs, outputs, inner.lock_time, inner.subnetwork_id, inner.gas, inner.payload.clone())
@@ -368,8 +372,8 @@ impl Transaction {
                     previous_outpoint,
                     Some(input.signature_script.clone()),
                     input.sequence,
-                    input.sig_op_count,
-                    input.compute_mass,
+                    input.mass.sig_op_count().unwrap_or(0),
+                    input.mass.compute_mass().unwrap_or(0),
                     utxo,
                 )
             })
@@ -397,7 +401,7 @@ impl Transaction {
             .clone()
             .into_iter()
             .map(|input| {
-                inputs.push(input.as_ref().into());
+                inputs.push(input.as_ref().with_version(inner.version).into());
                 Ok(input.get_utxo().ok_or(Error::MissingUtxoEntry)?.entry().as_ref().into())
             })
             .collect::<Result<Vec<_>>>()?;
@@ -435,12 +439,20 @@ impl Transaction {
 
     pub fn inputs(&self) -> Vec<cctx::TransactionInput> {
         let inner = self.inner();
-        inner.inputs.iter().map(Into::into).collect::<Vec<cctx::TransactionInput>>()
+        inner
+            .inputs
+            .iter()
+            .map(|input| input.with_version(inner.version).into())
+            .collect::<Vec<cctx::TransactionInput>>()
     }
 
     pub fn inputs_outputs(&self) -> (Vec<cctx::TransactionInput>, Vec<cctx::TransactionOutput>) {
         let inner = self.inner();
-        let inputs = inner.inputs.iter().map(Into::into).collect::<Vec<cctx::TransactionInput>>();
+        let inputs = inner
+            .inputs
+            .iter()
+            .map(|input| input.with_version(inner.version).into())
+            .collect::<Vec<cctx::TransactionInput>>();
         let outputs = inner.outputs.iter().map(Into::into).collect::<Vec<cctx::TransactionOutput>>();
         (inputs, outputs)
     }

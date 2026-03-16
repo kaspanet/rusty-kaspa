@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
     network::NetworkType,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{CovenantBinding, MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
+    tx::{CovenantBinding, MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass, UtxoEntry},
 };
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::{ClientPool, GrpcClient};
@@ -627,8 +627,7 @@ fn generate_tx(
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            sig_op_count: 1,
-            compute_mass: 0,
+            mass: TxInputMass::SigopCount(1),
         })
         .collect_vec();
 

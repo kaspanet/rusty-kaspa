@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     Hash,
     constants::TX_VERSION,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass},
 };
 
 fn constuct_tx() -> Transaction {
@@ -13,8 +13,7 @@ fn constuct_tx() -> Transaction {
         previous_outpoint: TransactionOutpoint { transaction_id: Hash::from_bytes([0xFF; 32]), index: 0 },
         signature_script: vec![],
         sequence: 0,
-        sig_op_count: 1,
-        compute_mass: 0,
+        mass: TxInputMass::SigopCount(1),
     }];
     let outputs =
         vec![TransactionOutput { value: 10000, script_public_key: ScriptPublicKey::from_vec(0, vec![0xff; 35]), covenant: None }];

@@ -101,8 +101,8 @@ impl SerializableTransactionInput {
             index: input.previous_outpoint.index,
             signature_script: input.signature_script.clone(),
             sequence: input.sequence.to_string(),
-            sig_op_count: input.sig_op_count,
-            compute_mass: input.compute_mass,
+            sig_op_count: input.mass.sig_op_count().unwrap_or(0),
+            compute_mass: input.mass.compute_mass().unwrap_or(0),
             utxo: utxo.clone(),
         }
     }
@@ -127,19 +127,34 @@ impl TryFrom<&SerializableTransactionInput> for UtxoEntryReference {
     }
 }
 
+struct SerializableInputWithVersion {
+    version: u16,
+    input: SerializableTransactionInput,
+}
+
+impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
+    type Error = Error;
+
+    fn try_from(value: SerializableInputWithVersion) -> Result<Self> {
+        let input = value.input;
+        Ok(Self {
+            previous_outpoint: cctx::TransactionOutpoint { transaction_id: input.transaction_id, index: input.index },
+            signature_script: input.signature_script,
+            sequence: input.sequence.parse()?,
+            mass: if value.version >= 1 {
+                cctx::TxInputMass::ComputeMass(input.compute_mass)
+            } else {
+                cctx::TxInputMass::SigopCount(input.sig_op_count)
+            },
+        })
+    }
+}
+
 impl TryFrom<SerializableTransactionInput> for cctx::TransactionInput {
     type Error = Error;
     fn try_from(signable_input: SerializableTransactionInput) -> Result<Self> {
-        Ok(Self {
-            previous_outpoint: cctx::TransactionOutpoint {
-                transaction_id: signable_input.transaction_id,
-                index: signable_input.index,
-            },
-            signature_script: signable_input.signature_script,
-            sequence: signable_input.sequence.parse()?,
-            sig_op_count: signable_input.sig_op_count,
-            compute_mass: signable_input.compute_mass,
-        })
+        let inferred_version = if signable_input.compute_mass > 0 { 1 } else { 0 };
+        SerializableInputWithVersion { version: inferred_version, input: signable_input }.try_into()
     }
 }
 
@@ -333,17 +348,18 @@ impl SerializableTransaction {
 impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
     type Error = Error;
     fn try_from(signable: SerializableTransaction) -> Result<Self> {
+        let version = signable.version;
         let mut entries = vec![];
         let mut inputs = vec![];
         for input in signable.inputs {
             entries.push(input.utxo.as_ref().try_into()?);
-            inputs.push(input.try_into()?);
+            inputs.push(SerializableInputWithVersion { version, input }.try_into()?);
         }
 
         let outputs = signable.outputs.into_iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
 
         let tx = cctx::Transaction::new(
-            signable.version,
+            version,
             inputs,
             outputs,
             signable.lock_time.parse()?,

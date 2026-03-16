@@ -74,7 +74,7 @@ impl TryFrom<(cctx::Transaction, Vec<(&cctx::TransactionInput, &cctx::UtxoEntry)
                 InputBuilder::default()
                     .utxo_entry(utxo.to_owned().clone())
                     .previous_outpoint(input.previous_outpoint)
-                    .sig_op_count(input.sig_op_count)
+                    .sig_op_count(input.mass.sig_op_count().unwrap_or(0)) // TODO: Add support for v1 transactions with TxInputMass::ComputeMass
                     .build()
                     .map_err(Error::TxToInnerConversionInputBuildingError)
                 // Handle the error

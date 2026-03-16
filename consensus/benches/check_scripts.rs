@@ -6,7 +6,7 @@ use kaspa_consensus::processes::transaction_validator::tx_validation_in_utxo_con
 use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, UtxoEntry};
+use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TxInputMass, UtxoEntry};
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::{EngineCtx, pay_to_address_script};
 use kaspa_utils::iter::parallelism_in_power_steps;
@@ -37,8 +37,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
             previous_outpoint: dummy_prev_out,
             signature_script: vec![],
             sequence: 0,
-            sig_op_count: 1,
-            compute_mass: 0,
+            mass: TxInputMass::SigopCount(1),
         });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {
@@ -57,8 +56,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
             previous_outpoint: dummy_prev_out,
             signature_script: vec![],
             sequence: 0,
-            sig_op_count: 1,
-            compute_mass: 0,
+            mass: TxInputMass::SigopCount(1),
         });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {

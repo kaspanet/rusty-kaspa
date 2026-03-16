@@ -327,13 +327,14 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
-        let total_sigops_mass = total_sigops * self.mass_per_sig_op;
+        let script_mass = if tx.version >= 1 {
+            INPUT_COMPUTE_MASS_SCALE_FACTOR * tx.inputs.iter().map(|input| input.mass.compute_mass().expect("v1 transactions are expected to have compute mass") as u64).sum::<u64>()
+        } else {
+            let total_sigops: u64 = tx.inputs.iter().map(|input| input.mass.sig_op_count().expect("v0 transactions are expected to have sig op count") as u64).sum();
+            total_sigops * self.mass_per_sig_op
+        };
 
-        let total_input_compute_mass =
-            INPUT_COMPUTE_MASS_SCALE_FACTOR * tx.inputs.iter().map(|input| input.compute_mass as u64).sum::<u64>();
-
-        let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass + total_input_compute_mass;
+        let compute_mass = compute_mass_for_size + total_script_public_key_mass + script_mass;
         let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
 
         NonContextualMasses::new(compute_mass, transient_mass)
@@ -772,8 +773,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: i as u32 },
                     signature_script: vec![],
                     sequence: 0,
-                    sig_op_count: 0,
-                    compute_mass: 0,
+                    mass: TxInputMass::SigopCount(0),
                 })
                 .collect(),
             outs.iter()

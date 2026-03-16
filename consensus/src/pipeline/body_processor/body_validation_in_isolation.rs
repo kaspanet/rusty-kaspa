@@ -144,7 +144,7 @@ mod tests {
         header::Header,
         merkle::calc_hash_merkle_root,
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec},
+        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass, scriptvec},
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
@@ -217,8 +217,7 @@ mod tests {
                             },
                             signature_script: vec![],
                             sequence: u64::MAX,
-                            sig_op_count: 0,
-                            compute_mass: 0,
+                            mass: TxInputMass::SigopCount(0),
                         },
                         TransactionInput {
                             previous_outpoint: TransactionOutpoint {
@@ -230,8 +229,7 @@ mod tests {
                             },
                             signature_script: vec![],
                             sequence: u64::MAX,
-                            sig_op_count: 0,
-                            compute_mass: 0,
+                            mass: TxInputMass::SigopCount(0),
                         },
                     ],
                     vec![],
@@ -264,8 +262,7 @@ mod tests {
                             0x25, 0xf8, 0x7c, 0x16, 0x1b, 0xc6, 0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
-                        compute_mass: 0,
+                        mass: TxInputMass::SigopCount(0),
                     }],
                     vec![
                         TransactionOutput {
@@ -327,8 +324,7 @@ mod tests {
                             0xa4, 0x63, 0x1e, 0xe3, 0x95, 0x60, 0x63, 0x9d, 0xb4, 0x62, 0xe9, 0xcb, 0x85, 0x0f, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
-                        compute_mass: 0,
+                        mass: TxInputMass::SigopCount(0),
                     }],
                     vec![
                         TransactionOutput {
@@ -391,8 +387,7 @@ mod tests {
                             0xaa, 0xd3, 0xe0, 0x63, 0xce, 0x6a, 0xf4, 0xcf, 0xaa, 0xea, 0x4e, 0xa1, 0x4f, 0xbb, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
-                        compute_mass: 0,
+                        mass: TxInputMass::SigopCount(0),
                     }],
                     vec![TransactionOutput {
                         value: 0xf4240,
@@ -426,8 +421,8 @@ mod tests {
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;
-        txs[1].inputs[0].sig_op_count = 255;
-        txs[1].inputs[1].sig_op_count = 255;
+        txs[1].inputs[0].mass = TxInputMass::SigopCount(255);
+        txs[1].inputs[1].mass = TxInputMass::SigopCount(255);
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsComputeMassLimit(_, _)));
 

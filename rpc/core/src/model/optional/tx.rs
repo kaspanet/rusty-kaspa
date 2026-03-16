@@ -252,8 +252,8 @@ impl From<TransactionInput> for RpcOptionalTransactionInput {
             previous_outpoint: Some(input.previous_outpoint.into()),
             signature_script: Some(input.signature_script),
             sequence: Some(input.sequence),
-            sig_op_count: Some(input.sig_op_count),
-            compute_mass: Some(input.compute_mass),
+            sig_op_count: Some(input.mass.sig_op_count().unwrap_or(0)),
+            compute_mass: Some(input.mass.compute_mass().unwrap_or(0)),
             verbose_data: None,
         }
     }

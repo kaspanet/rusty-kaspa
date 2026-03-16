@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
     header::Header,
     sign::{sign, sign_with_multiple_v2},
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass},
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
@@ -332,8 +332,7 @@ async fn daemon_utxos_propagation_test() {
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            sig_op_count: 0,
-            compute_mass: 0,
+            mass: TxInputMass::ComputeMass(0),
         })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
@@ -351,7 +350,7 @@ async fn daemon_utxos_propagation_test() {
     .unwrap();
     let mut transaction = signed_tx.tx;
     let per_input_compute_mass_commitment: u16 = 3000; // Some upper bound
-    transaction.inputs.iter_mut().for_each(|input| input.compute_mass = per_input_compute_mass_commitment);
+    transaction.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeMass(per_input_compute_mass_commitment));
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -567,8 +566,7 @@ async fn daemon_compute_mass_relay_test() {
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            sig_op_count: 0,
-            compute_mass: 0,
+            mass: TxInputMass::ComputeMass(0),
         })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
@@ -581,9 +579,9 @@ async fn daemon_compute_mass_relay_test() {
     )
     .unwrap();
     let mut transaction = signed_tx.tx;
-    transaction.inputs.iter_mut().for_each(|input| input.compute_mass = 300);
+    transaction.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeMass(300));
     assert!(
-        transaction.inputs.iter().any(|input| input.compute_mass > 0),
+        transaction.inputs.iter().any(|input| input.mass.compute_mass().unwrap_or(0) > 0),
         "expected non-zero compute_mass commitment for v1 transaction"
     );
     let transaction_id = transaction.id();

@@ -4,7 +4,66 @@ use crate::{
     RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionOutput, RpcResult, RpcTransaction,
     RpcTransactionInput, RpcTransactionOutput,
 };
-use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, TxInputMass};
+
+struct RpcInputWithVersion {
+    version: u16,
+    input: RpcTransactionInput,
+}
+
+impl From<RpcInputWithVersion> for TransactionInput {
+    fn from(value: RpcInputWithVersion) -> Self {
+        TransactionInput::new_with_mass(
+            value.input.previous_outpoint.into(),
+            value.input.signature_script,
+            value.input.sequence,
+            if value.version >= 1 {
+                TxInputMass::ComputeMass(value.input.compute_mass)
+            } else {
+                TxInputMass::SigopCount(value.input.sig_op_count)
+            },
+        )
+    }
+}
+
+struct RpcOptionalInputWithVersion {
+    version: u16,
+    input: RpcOptionalTransactionInput,
+}
+
+impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
+    type Error = RpcError;
+
+    fn try_from(value: RpcOptionalInputWithVersion) -> RpcResult<Self> {
+        let previous_outpoint = value
+            .input
+            .previous_outpoint
+        .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "previous_outpoint".to_owned()))?
+        .try_into()?;
+    let signature_script =
+        value.input.signature_script.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "signature_script".to_owned()))?;
+        let sequence = value
+            .input
+            .sequence
+            .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
+
+        Ok(if value.version >= 1 {
+            TransactionInput::new_with_mass(
+                previous_outpoint,
+                signature_script,
+                sequence,
+                TxInputMass::ComputeMass(value.input.compute_mass.unwrap_or_default()),
+            )
+        } else {
+            TransactionInput::new(
+                previous_outpoint,
+                signature_script,
+                sequence,
+                value.input.sig_op_count.unwrap_or_default(),
+            )
+        })
+    }
+}
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -43,8 +102,8 @@ impl From<&TransactionInput> for RpcTransactionInput {
             previous_outpoint: item.previous_outpoint.into(),
             signature_script: item.signature_script.clone(),
             sequence: item.sequence,
-            sig_op_count: item.sig_op_count,
-            compute_mass: item.compute_mass,
+            sig_op_count: item.mass.sig_op_count().unwrap_or(0),
+            compute_mass: item.mass.compute_mass().unwrap_or(0),
             verbose_data: None,
         }
     }
@@ -57,12 +116,10 @@ impl From<&TransactionInput> for RpcTransactionInput {
 impl TryFrom<RpcTransaction> for Transaction {
     type Error = RpcError;
     fn try_from(item: RpcTransaction) -> RpcResult<Self> {
+        let version = item.version;
         let transaction = Transaction::new(
-            item.version,
-            item.inputs
-                .into_iter()
-                .map(kaspa_consensus_core::tx::TransactionInput::try_from)
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
+            version,
+            item.inputs.into_iter().map(|input| RpcInputWithVersion { version, input }.into()).collect(),
             item.outputs
                 .into_iter()
                 .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
@@ -81,15 +138,6 @@ impl TryFrom<RpcTransactionOutput> for TransactionOutput {
     type Error = RpcError;
     fn try_from(item: RpcTransactionOutput) -> RpcResult<Self> {
         Ok(Self::with_covenant(item.value, item.script_public_key, item.covenant.map(Into::into)))
-    }
-}
-
-impl TryFrom<RpcTransactionInput> for TransactionInput {
-    type Error = RpcError;
-    fn try_from(item: RpcTransactionInput) -> RpcResult<Self> {
-        let mut input = Self::new(item.previous_outpoint.into(), item.signature_script, item.sequence, item.sig_op_count);
-        input.compute_mass = item.compute_mass;
-        Ok(input)
     }
 }
 
@@ -130,8 +178,8 @@ impl From<&TransactionInput> for RpcOptionalTransactionInput {
             previous_outpoint: Some(item.previous_outpoint.into()),
             signature_script: Some(item.signature_script.clone()),
             sequence: Some(item.sequence),
-            sig_op_count: Some(item.sig_op_count),
-            compute_mass: Some(item.compute_mass),
+            sig_op_count: Some(item.mass.sig_op_count().unwrap_or(0)),
+            compute_mass: Some(item.mass.compute_mass().unwrap_or(0)),
             verbose_data: None,
         }
     }
@@ -144,11 +192,12 @@ impl From<&TransactionInput> for RpcOptionalTransactionInput {
 impl TryFrom<RpcOptionalTransaction> for Transaction {
     type Error = RpcError;
     fn try_from(item: RpcOptionalTransaction) -> RpcResult<Self> {
+        let version = item.version.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "version".to_owned()))?;
         let transaction = Transaction::new(
-            item.version.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "version".to_owned()))?,
+            version,
             item.inputs
                 .into_iter()
-                .map(kaspa_consensus_core::tx::TransactionInput::try_from)
+                .map(|input| RpcOptionalInputWithVersion { version, input }.try_into())
                 .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
             item.outputs
                 .into_iter()
@@ -175,18 +224,3 @@ impl TryFrom<RpcOptionalTransactionOutput> for TransactionOutput {
     }
 }
 
-impl TryFrom<RpcOptionalTransactionInput> for TransactionInput {
-    type Error = RpcError;
-    fn try_from(item: RpcOptionalTransactionInput) -> RpcResult<Self> {
-        Ok(Self::new_with_compute_mass(
-            item.previous_outpoint
-                .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "previous_outpoint".to_owned()))?
-                .try_into()?,
-            item.signature_script
-                .ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "signature_script".to_owned()))?,
-            item.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?,
-            item.sig_op_count.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sig_op_count".to_owned()))?,
-            item.compute_mass.unwrap_or_default(),
-        ))
-    }
-}

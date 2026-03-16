@@ -2,10 +2,9 @@ use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use kaspa_consensus_core::{
     subnets::SubnetworkId,
-    tx::{
-        CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
-        UtxoEntry,
-    },
+    tx::
+        {CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+        TxInputMass, UtxoEntry},
 };
 use kaspa_hashes::Hash;
 
@@ -49,8 +48,10 @@ impl From<&TransactionInput> for protowire::TransactionInput {
             previous_outpoint: Some((&input.previous_outpoint).into()),
             signature_script: input.signature_script.clone(),
             sequence: input.sequence,
-            sig_op_count: input.sig_op_count as u32,
-            compute_mass: input.compute_mass as u32,
+            mass: match input.mass {
+                TxInputMass::SigopCount(count) => count as u32,
+                TxInputMass::ComputeMass(mass) => mass as u32,
+            }
         }
     }
 }
@@ -136,16 +137,24 @@ impl TryFrom<protowire::OutpointAndUtxoEntryPair> for (TransactionOutpoint, Utxo
     }
 }
 
-impl TryFrom<protowire::TransactionInput> for TransactionInput {
+struct ProtoInputWithVersion {
+    version: u32,
+    input: protowire::TransactionInput,
+}
+
+impl TryFrom<ProtoInputWithVersion> for TransactionInput {
     type Error = ConversionError;
 
-    fn try_from(value: protowire::TransactionInput) -> Result<Self, Self::Error> {
+    fn try_from(value: ProtoInputWithVersion) -> Result<Self, Self::Error> {
         Ok(Self {
-            previous_outpoint: value.previous_outpoint.try_into_ex()?,
-            signature_script: value.signature_script,
-            sequence: value.sequence,
-            sig_op_count: value.sig_op_count.try_into()?,
-            compute_mass: value.compute_mass.try_into()?,
+            previous_outpoint: value.input.previous_outpoint.try_into_ex()?,
+            signature_script: value.input.signature_script,
+            sequence: value.input.sequence,
+            mass: if value.version < 1 {
+                TxInputMass::SigopCount(value.input.mass.try_into()?)
+            } else {
+                TxInputMass::ComputeMass(value.input.mass.try_into()?)
+            },
         })
     }
 }
@@ -177,9 +186,10 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
     type Error = ConversionError;
 
     fn try_from(tx: protowire::TransactionMessage) -> Result<Self, Self::Error> {
+        let version = tx.version;
         let transaction = Self::new(
             tx.version.try_into()?,
-            tx.inputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
+            tx.inputs.into_iter().map(|i| ProtoInputWithVersion { version, input: i }.try_into()).collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
             tx.outputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionOutput>, Self::Error>>()?,
             tx.lock_time,
             tx.subnetwork_id.try_into_ex()?,
@@ -199,7 +209,7 @@ mod tests {
     fn test_transaction_message_compute_mass_roundtrip() {
         let tx = Transaction::new(
             1,
-            vec![TransactionInput::new_with_compute_mass(TransactionOutpoint::new(Hash::from_u64_word(1), 0), vec![], 0, 0, 12_345)],
+            vec![TransactionInput::new_with_mass(TransactionOutpoint::new(Hash::from_u64_word(1), 0), vec![], 0, TxInputMass::ComputeMass(12_345))],
             vec![],
             42,
             SubnetworkId::from_bytes([3; 20]),
@@ -209,11 +219,11 @@ mod tests {
         tx.set_mass(54_321);
 
         let message: protowire::TransactionMessage = (&tx).into();
-        assert_eq!(message.inputs[0].compute_mass, 12_345);
+        assert_eq!(message.inputs[0].mass, 12_345);
 
         let received = Transaction::try_from(message).unwrap();
         assert_eq!(received.inputs.len(), 1);
-        assert_eq!(received.inputs[0].compute_mass, 12_345);
+        assert_eq!(received.inputs[0].mass.compute_mass(), Some(12_345));
         assert_eq!(received.mass(), 54_321);
     }
 }

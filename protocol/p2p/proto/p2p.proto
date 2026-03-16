@@ -37,8 +37,7 @@ message TransactionInput{
   Outpoint previousOutpoint = 1;
   bytes signatureScript = 2;
   uint64 sequence = 3;
-  uint32 sigOpCount = 4;
-  uint32 computeMass = 5;
+  uint32 mass = 4;
 }
 
 message Outpoint{

@@ -434,7 +434,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             used_sig_ops: 0,
             accounted_pushed_bytes: 0,
-            runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(input.mass.sig_op_count().unwrap_or(0)),
             sigop_compute_mass_units: flags.mass_per_sig_op.saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR),
             allowed_script_units,
             remaining_script_units: allowed_script_units,
@@ -850,7 +850,8 @@ mod tests {
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
     use kaspa_consensus_core::tx::{
-        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
+        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput,
+        TransactionOutpoint, TransactionOutput, TxInputMass,
     };
     use kaspa_core::assert_match;
     use smallvec::SmallVec;
@@ -898,8 +899,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 4294967295,
-                sig_op_count: 0,
-                compute_mass: 0,
+                mass: TxInputMass::ComputeMass(0),
             };
             let output = TransactionOutput {
                 value: 1000000000,
@@ -995,8 +995,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([7u8; 32]), index: 0 },
             signature_script: vec![OpTrue, OpTrue],
             sequence: 0,
-            sig_op_count: 0,
-            compute_mass: 0,
+            mass: TxInputMass::ComputeMass(0),
         };
 
         let output =
@@ -1066,8 +1065,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([9u8; 32]), index: 0 },
             signature_script: vec![],
             sequence: 0,
-            sig_op_count: 0, // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_mass.
-            compute_mass: 0,
+            mass: TxInputMass::ComputeMass(0), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_mass.
         };
 
         let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
@@ -1642,13 +1640,12 @@ mod tests {
 
             // Create transaction
             let tx = Transaction::new(
-                1,
+                0,
                 vec![TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    sig_op_count: test.sig_op_limit,
-                    compute_mass: 0,
+                    mass: TxInputMass::SigopCount(test.sig_op_limit),
                 }],
                 vec![],
                 0,

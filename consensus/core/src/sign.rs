@@ -3,7 +3,7 @@ use crate::{
         sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::{SIG_HASH_ALL, SigHashType},
     },
-    tx::{SignableTransaction, VerifiableTransaction},
+    tx::{SignableTransaction, TxInputMass, VerifiableTransaction},
 };
 use itertools::Itertools;
 use std::collections::BTreeMap;
@@ -82,9 +82,9 @@ impl Signed {
 pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::Keypair) -> SignableTransaction {
     for i in 0..signable_tx.tx.inputs.len() {
         if signable_tx.tx.version < 1 {
-            signable_tx.tx.inputs[i].sig_op_count = 1;
+            signable_tx.tx.inputs[i].mass = TxInputMass::SigopCount(1);
         } else {
-            signable_tx.tx.inputs[i].compute_mass = 100;
+            signable_tx.tx.inputs[i].mass = TxInputMass::ComputeMass(100);
         }
     }
 
@@ -107,7 +107,7 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
         map.insert(schnorr_key.public_key().serialize(), schnorr_key);
     }
     for i in 0..mutable_tx.tx.inputs.len() {
-        mutable_tx.tx.inputs[i].sig_op_count = 1;
+        mutable_tx.tx.inputs[i].mass = TxInputMass::SigopCount(1);
     }
 
     let reused_values = SigHashReusedValuesUnsync::new();
@@ -207,22 +207,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    sig_op_count: 0,
-                    compute_mass: 0,
+                    mass: TxInputMass::SigopCount(0),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    sig_op_count: 0,
-                    compute_mass: 0,
+                    mass: TxInputMass::SigopCount(0),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    sig_op_count: 0,
-                    compute_mass: 0,
+                    mass: TxInputMass::SigopCount(0),
                 },
             ],
             vec![

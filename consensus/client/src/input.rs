@@ -241,23 +241,37 @@ impl From<cctx::TransactionInput> for TransactionInput {
             previous_outpoint: tx_input.previous_outpoint.into(),
             signature_script: Some(tx_input.signature_script),
             sequence: tx_input.sequence,
-            sig_op_count: tx_input.sig_op_count,
-            compute_mass: tx_input.compute_mass,
+            sig_op_count: tx_input.mass.sig_op_count().unwrap_or(0),
+            compute_mass: tx_input.mass.compute_mass().unwrap_or(0),
             utxo: None,
         };
         TransactionInput::new_with_inner(inner)
     }
 }
 
-impl From<&TransactionInput> for cctx::TransactionInput {
-    fn from(tx_input: &TransactionInput) -> Self {
-        let inner = tx_input.inner();
+pub(crate) struct TransactionInputWithVersion<'a> {
+    version: u16,
+    tx_input: &'a TransactionInput,
+}
+
+impl TransactionInput {
+    pub(crate) fn with_version(&self, version: u16) -> TransactionInputWithVersion<'_> {
+        TransactionInputWithVersion { version, tx_input: self }
+    }
+}
+
+impl From<TransactionInputWithVersion<'_>> for cctx::TransactionInput {
+    fn from(value: TransactionInputWithVersion<'_>) -> Self {
+        let inner = value.tx_input.inner();
         cctx::TransactionInput {
             previous_outpoint: inner.previous_outpoint.clone().into(),
             signature_script: inner.signature_script.clone().unwrap_or_default(), // TODO - discuss: should this unwrap_or_default or return an error?
             sequence: inner.sequence,
-            sig_op_count: inner.sig_op_count,
-            compute_mass: inner.compute_mass,
+            mass: if value.version >= 1 {
+                cctx::TxInputMass::ComputeMass(inner.compute_mass)
+            } else {
+                cctx::TxInputMass::SigopCount(inner.sig_op_count)
+            },
         }
     }
 }

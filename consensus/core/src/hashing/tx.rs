@@ -100,14 +100,14 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
 fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, version: u16, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
-        hasher.write_var_bytes(input.signature_script.as_slice()).update([input.sig_op_count]);
+        hasher.write_var_bytes(input.signature_script.as_slice()).update([input.mass.sig_op_count().unwrap_or(0)]);
     } else {
         hasher.write_var_bytes(&[]);
     }
     hasher.update(input.sequence.to_le_bytes());
 
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && version >= 1 {
-        hasher.write_u16(input.compute_mass);
+        hasher.write_u16(input.mass.compute_mass().unwrap_or(0));
     }
 }
 
@@ -192,7 +192,7 @@ mod tests {
     use super::*;
     use crate::{
         subnets::{self, SubnetworkId},
-        tx::{ScriptPublicKey, scriptvec},
+        tx::{ScriptPublicKey, TxInputMass, scriptvec},
     };
     use std::str::FromStr;
 
@@ -305,7 +305,7 @@ mod tests {
         // Version >= 1: tx::id excludes mass commitments while tx::hash commits to both mass and compute_mass
         let tx_v1_a = Transaction::new(
             1,
-            vec![TransactionInput::new_with_compute_mass(TransactionOutpoint::default(), vec![], 0, 0, 111)],
+            vec![TransactionInput::new_with_mass(TransactionOutpoint::default(), vec![], 0, TxInputMass::ComputeMass(111))],
             vec![],
             0,
             subnets::SUBNETWORK_ID_NATIVE,
@@ -315,7 +315,7 @@ mod tests {
         tx_v1_a.set_mass(0);
 
         let mut tx_v1_b = tx_v1_a.clone();
-        tx_v1_b.inputs[0].compute_mass = 222;
+        tx_v1_b.inputs[0].mass = TxInputMass::ComputeMass(222);
 
         // Test #11
         tests.push(Test {

@@ -174,7 +174,7 @@ pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_value
     let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for input in tx.inputs.iter() {
-            hasher.write_u8(input.sig_op_count);
+            hasher.write_u8(input.mass.sig_op_count().unwrap_or(0));
         }
         hasher.finalize()
     };
@@ -261,7 +261,7 @@ pub fn calc_schnorr_signature_hash(
     hasher
         .write_u64(input.1.amount)
         .write_u64(input.0.sequence)
-        .write_u8(input.0.sig_op_count)
+        .write_u8(input.0.mass.sig_op_count().unwrap_or(0))
         .update(outputs_hash(tx, hash_type, reused_values, input_index))
         .write_u64(tx.lock_time)
         .update(tx.subnetwork_id)
@@ -292,7 +292,7 @@ mod tests {
     use crate::{
         hashing::sighash_type::{SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE},
         subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
-        tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, UtxoEntry},
+        tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, TxInputMass, UtxoEntry},
     };
 
     use super::*;
@@ -316,22 +316,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    sig_op_count: 0,
-                    compute_mass: 0,
+                    mass: TxInputMass::SigopCount(0),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    sig_op_count: 0,
-                    compute_mass: 0,
+                    mass: TxInputMass::SigopCount(0),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    sig_op_count: 0,
-                    compute_mass: 0,
+                    mass: TxInputMass::SigopCount(0),
                 },
             ],
             vec![
@@ -687,7 +684,7 @@ mod tests {
                     tx.inputs[i].previous_outpoint.index = 2;
                 }
                 ModifyAction::ComputeMass(i) => {
-                    tx.inputs[i].compute_mass = 1234;
+                    tx.inputs[i].mass = TxInputMass::ComputeMass(1234);
                 }
                 ModifyAction::AmountSpent(i) => {
                     entries[i].amount = 666;

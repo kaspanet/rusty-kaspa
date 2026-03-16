@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{
         MutableTransaction, ScriptPublicKey, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-        TransactionOutput, UtxoEntry,
+        TransactionOutput, TxInputMass, UtxoEntry,
     },
     utxo::{
         utxo_collection::{UtxoCollection, UtxoCollectionExtensions},
@@ -150,8 +150,7 @@ pub fn generate_tx(
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            sig_op_count: 1,
-            compute_mass: 0,
+            mass: TxInputMass::SigopCount(1),
         })
         .collect_vec();
 

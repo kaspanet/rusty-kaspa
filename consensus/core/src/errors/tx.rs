@@ -104,11 +104,11 @@ pub enum TxRuleError {
     #[error("transaction output #{0} has covenant field but transaction version is below 1")]
     CovenantBindingInPreCovTxVersion(usize),
 
-    #[error("transaction input #{0} has non-zero sig op count {1} in version 1 transaction")]
-    NonZeroSigOpCountInV1(usize, u8),
+    #[error("transaction input #{0} has a sig op count field with value {1} in version 1 transaction")]
+    SigOpCountInV1(usize, u8),
 
-    #[error("transaction input #{0} has non-zero compute mass commitment {1} in version 0 transaction")]
-    NonZeroComputeMassInV0(usize, u16),
+    #[error("transaction input #{0} has a compute mass commitment field with value {1} in version 0 transaction")]
+    ComputeMassInV0(usize, u16),
 
     #[error("covenants error: {0}")]
     CovenantsError(#[from] CovenantsError),
