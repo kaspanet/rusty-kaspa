@@ -28,7 +28,9 @@ pub struct VirtualState {
     pub past_median_time: u64,
     pub multiset: MuHash,
     pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
-    pub accepted_tx_digests: Vec<Hash>, // TODO: consider saving `accepted_id_merkle_root` directly
+    /// Pre-KIP21: tx digests for accepted_id_merkle_root computation.
+    /// Post-KIP21: single-element vec containing the seq_commit hash.
+    pub accepted_id_digests: Vec<Hash>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub mergeset_non_daa: BlockHashSet,
 }
@@ -42,7 +44,7 @@ impl VirtualState {
         past_median_time: u64,
         multiset: MuHash,
         utxo_diff: UtxoDiff,
-        accepted_tx_digests: Vec<Hash>,
+        accepted_id_digests: Vec<Hash>,
         mergeset_rewards: BlockHashMap<BlockRewardData>,
         mergeset_non_daa: BlockHashSet,
         ghostdag_data: GhostdagData,
@@ -55,15 +57,66 @@ impl VirtualState {
             past_median_time,
             multiset,
             utxo_diff,
-            accepted_tx_digests,
+            accepted_id_digests,
             mergeset_rewards,
             mergeset_non_daa,
         }
     }
 
     pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData, covenants_activation: ForkActivation) -> Self {
-        let accepted_tx_digests = if covenants_activation.is_active(genesis.daa_score) {
-            genesis.build_genesis_transactions().iter().map(|tx| tx.seq_commit_digest()).collect()
+        let accepted_id_digests = if covenants_activation.is_active(genesis.daa_score) {
+            // Post-KIP21: compute the genesis seq_commit by processing genesis
+            // transactions through the full lane pipeline.
+            use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
+            use kaspa_seq_commit::hashing::*;
+            use kaspa_seq_commit::types::*;
+
+            let txs = genesis.build_genesis_transactions();
+            let blue_score = ghostdag_data.blue_score;
+
+            // Collect per-lane activity from genesis transactions (coinbase)
+            let mut lane_activities: std::collections::BTreeMap<[u8; 20], Vec<Hash>> = std::collections::BTreeMap::new();
+            for (idx, tx) in txs.iter().enumerate() {
+                let lane_id: [u8; 20] = *tx.subnetwork_id.as_bytes();
+                let tx_digest = kaspa_consensus_core::hashing::tx::seq_commit_tx_digest(tx.id(), tx.version);
+                lane_activities.entry(lane_id).or_default().push(activity_leaf(&tx_digest, idx as u32));
+            }
+
+            let context_hash = mergeset_context_hash(&MergesetContext {
+                timestamp: seq_commit_timestamp(genesis.timestamp),
+                daa_score: genesis.daa_score,
+                blue_score,
+            });
+
+            // Miner payload from genesis coinbase
+            let mpl = miner_payload_leaf(&MinerPayloadLeafInput {
+                block_hash: &genesis.hash,
+                blue_work_bytes: &kaspa_consensus_core::BlueWorkType::ZERO.to_le_bytes(),
+                payload: genesis.coinbase_payload,
+            });
+            let payload_root = miner_payload_root(std::iter::once(mpl));
+
+            // Build SMT — new lanes anchor at ZERO_HASH (no parent seq_commit)
+            let parent_seq_commit = ZERO_HASH;
+            let mut smt = kaspa_smt::tree::SparseMerkleTree::<SeqCommitActiveNode>::new();
+            for (lane_id, leaves) in &lane_activities {
+                let lk = lane_key(lane_id);
+                let ad = activity_digest_lane(leaves.iter().copied());
+                let tip = lane_tip_next(&LaneTipInput {
+                    parent_ref: &parent_seq_commit,
+                    lane_id,
+                    activity_digest: &ad,
+                    context_hash: &context_hash,
+                });
+                let leaf_hash = smt_leaf_hash(&SmtLeafInput { lane_id, lane_tip: &tip, blue_score });
+                smt.insert(lk, leaf_hash).unwrap();
+            }
+
+            let lanes_root = smt.root();
+            let state_root =
+                seq_state_root(&SeqState { lanes_root: &lanes_root, context_hash: &context_hash, payload_root: &payload_root });
+            let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
+            vec![commit]
         } else {
             genesis.build_genesis_transactions().iter().map(|tx| tx.id()).collect()
         };
@@ -75,7 +128,7 @@ impl VirtualState {
             past_median_time: genesis.timestamp,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
-            accepted_tx_digests,
+            accepted_id_digests,
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis.hash)),
         }

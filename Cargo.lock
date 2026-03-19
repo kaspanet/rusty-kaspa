@@ -2861,6 +2861,9 @@ dependencies = [
  "kaspa-muhash",
  "kaspa-notify",
  "kaspa-pow",
+ "kaspa-seq-commit",
+ "kaspa-smt",
+ "kaspa-smt-store",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
@@ -3574,7 +3577,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-seq-commit"
-version = "1.1.0-rc.3"
+version = "1.1.0"
 dependencies = [
  "kaspa-consensus-core",
  "kaspa-hashes",
@@ -3584,20 +3587,23 @@ dependencies = [
 
 [[package]]
 name = "kaspa-smt"
-version = "1.1.0-rc.3"
+version = "1.1.0"
 dependencies = [
  "blake3",
  "kaspa-hashes",
  "rand 0.8.5",
  "thiserror 2.0.18",
+ "zerocopy 0.8.42",
 ]
 
 [[package]]
 name = "kaspa-smt-store"
-version = "1.1.0-rc.3"
+version = "1.1.0"
 dependencies = [
  "kaspa-database",
  "kaspa-hashes",
+ "kaspa-seq-commit",
+ "kaspa-smt",
  "kaspa-utils",
  "rocksdb",
  "zerocopy 0.8.42",
