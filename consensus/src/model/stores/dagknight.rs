@@ -239,6 +239,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_dagknight_key_encodes_free_search_flag() {
+        use kaspa_hashes::Hash;
+
+        let root: Hash = 0xAA_u64.into();
+        let pov: Hash = 0xBB_u64.into();
+        let k: KType = 5;
+
+        let key_committed = DagknightKey::new(root, pov, k, false);
+        let key_free = DagknightKey::new(root, pov, k, true);
+
+        // Keys with different free_search values must be distinct
+        assert_ne!(key_committed.as_ref(), key_free.as_ref());
+
+        // Verify the free_search flag is encoded as the last byte
+        assert_eq!(key_committed.as_ref().last().unwrap(), &0u8);
+        assert_eq!(key_free.as_ref().last().unwrap(), &1u8);
+    }
+
+    #[test]
     fn test_dagknight_key_encodes_k() {
         use crate::model::stores::dagknight::DagknightKey;
         use kaspa_hashes::Hash;
