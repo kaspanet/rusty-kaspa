@@ -12,12 +12,17 @@ repository.workspace = true
 [dependencies]
 kaspa-database.workspace = true
 kaspa-hashes = { workspace = true, features = ["zerocopy"] }
+kaspa-seq-commit.workspace = true
+kaspa-smt = { workspace = true, features = ["zerocopy"] }
 kaspa-utils = { workspace = true, features = ["sysinfo"] }
+rocksdb.workspace = true
 zerocopy = { workspace = true }
 
 [dev-dependencies]
 kaspa-database.workspace = true
-rocksdb.workspace = true
+kaspa-hashes = { workspace = true, features = ["zerocopy"] }
+kaspa-seq-commit.workspace = true
+kaspa-smt.workspace = true
 
 [lints]
 workspace = true

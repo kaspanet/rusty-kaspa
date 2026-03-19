@@ -3,28 +3,6 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::reverse_blue_score::ReverseBlueScore;
 
-/// Branch head key.
-/// Layout: `prefix(1) | height(1) | node_key(32)` = 34 bytes.
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Clone, Copy, PartialEq, Eq)]
-#[repr(C)]
-pub struct BranchHeadKey {
-    pub prefix: u8,
-    pub height: u8,
-    pub node_key: Hash,
-}
-
-impl BranchHeadKey {
-    pub fn new(prefix: u8, height: u8, node_key: Hash) -> Self {
-        Self { prefix, height, node_key }
-    }
-}
-
-impl AsRef<[u8]> for BranchHeadKey {
-    fn as_ref(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}
-
 /// Branch version key.
 ///
 /// Layout: `prefix(1) | height(1) | node_key(32) | rev_blue_score(8) | block_hash(32)` = 74 bytes.
@@ -61,28 +39,6 @@ impl BranchVersionKey {
 }
 
 impl AsRef<[u8]> for BranchVersionKey {
-    fn as_ref(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}
-
-/// Lane head key.
-///
-/// Layout: `prefix(1) | lane_key(32)` = 33 bytes.
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Clone, Copy, PartialEq, Eq)]
-#[repr(C)]
-pub struct LaneHeadKey {
-    pub prefix: u8,
-    pub lane_key: Hash,
-}
-
-impl LaneHeadKey {
-    pub fn new(prefix: u8, lane_key: Hash) -> Self {
-        Self { prefix, lane_key }
-    }
-}
-
-impl AsRef<[u8]> for LaneHeadKey {
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
     }
@@ -158,16 +114,6 @@ mod tests {
     use zerocopy::IntoBytes;
 
     #[test]
-    fn branch_head_key_layout() {
-        let key = BranchHeadKey::new(0x46, 42, Hash::from_bytes([0xAB; 32]));
-        let bytes = key.as_bytes();
-        assert_eq!(bytes.len(), 34);
-        assert_eq!(bytes[0], 0x46); // prefix
-        assert_eq!(bytes[1], 42); // height
-        assert_eq!(&bytes[2..34], &[0xAB; 32]);
-    }
-
-    #[test]
     fn branch_version_key_layout() {
         let key = BranchVersionKey::new(0x47, 7, Hash::from_bytes([0x11; 32]), 1000, Hash::from_bytes([0x22; 32]));
         let bytes = key.as_bytes();
@@ -178,15 +124,6 @@ mod tests {
         let rev = u64::MAX - 1000;
         assert_eq!(&bytes[34..42], &rev.to_be_bytes());
         assert_eq!(&bytes[42..74], &[0x22; 32]); // block_hash
-    }
-
-    #[test]
-    fn lane_head_key_layout() {
-        let key = LaneHeadKey::new(0x48, Hash::from_bytes([0xCC; 32]));
-        let bytes = key.as_bytes();
-        assert_eq!(bytes.len(), 33);
-        assert_eq!(bytes[0], 0x48);
-        assert_eq!(&bytes[1..33], &[0xCC; 32]);
     }
 
     #[test]
