@@ -45,6 +45,7 @@ pub struct ConflictZoneManager<
 > {
     k: KType,
     root: Hash,
+    free_search: bool,
     dagknight_store: Arc<C>,
     headers_store: Arc<O>,
     relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
@@ -62,7 +63,19 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
         reachability_service: MTReachabilityService<R>,
     ) -> Self {
-        Self { k, root, dagknight_store, headers_store, reachability_service, relations_store }
+        Self { k, root, free_search: false, dagknight_store, headers_store, reachability_service, relations_store }
+    }
+
+    pub fn with_free_search(
+        k: KType,
+        root: Hash,
+        dagknight_store: Arc<C>,
+        headers_store: Arc<O>,
+        relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
+        reachability_service: MTReachabilityService<R>,
+        free_search: bool,
+    ) -> Self {
+        Self { k, root, free_search, dagknight_store, headers_store, reachability_service, relations_store }
     }
 
     pub fn has(&self, pov_hash: Hash) -> bool {
@@ -78,7 +91,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     }
 
     fn get_key(&self, pov_hash: Hash) -> DagknightKey {
-        DagknightKey::new(self.root, pov_hash, self.k, false)
+        DagknightKey::new(self.root, pov_hash, self.k, self.free_search)
     }
 
     pub fn get_blue_score(&self, pov_hash: Hash) -> Result<u64, StoreError> {
@@ -286,6 +299,10 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         unordered_mergeset_without_selected_parent(&self.relations_store, &self.reachability_service, selected_parent, parents)
     }
 
+    pub fn is_free_search(&self) -> bool {
+        self.free_search
+    }
+
     pub fn find_selected_parent(&self, parents: impl IntoIterator<Item = Hash>) -> Hash {
         let selected_parent = parents
             .into_iter()
@@ -294,12 +311,14 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
             .unwrap()
             .hash;
 
-        assert!(
-            self.reachability_service.is_chain_ancestor_of(self.root, selected_parent),
-            "conflict genesis {} not a chain ancestor of selected parent {}",
-            self.root,
-            selected_parent
-        );
+        if !self.free_search {
+            assert!(
+                self.reachability_service.is_chain_ancestor_of(self.root, selected_parent),
+                "conflict genesis {} not a chain ancestor of selected parent {}",
+                self.root,
+                selected_parent
+            );
+        };
 
         selected_parent
     }
@@ -333,19 +352,16 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 continue;
             }
 
-            // We only care about blocks that have conflict genesis as it's chain ancestor.
-            // This means search is always free_search = false
-            // TODO[DK]: Fix this to dag ancestry if we need to support free_search = true
-            if !self.reachability_service.is_chain_ancestor_of(self.root, curr) {
+            if !self.free_search && !self.reachability_service.is_chain_ancestor_of(self.root, curr) {
                 continue;
             }
 
             if self.has(curr) {
                 roots.push(curr);
-            }
-
-            for parent in self.relations_store.get_parents(curr).unwrap().iter() {
-                queue.push_back(*parent);
+            } else {
+                for parent in self.relations_store.get_parents(curr).unwrap().iter() {
+                    queue.push_back(*parent);
+                }
             }
         }
 
@@ -389,42 +405,330 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
             if !self.has(current_hash) {
                 let parents = &self.relations_store.get_parents(current_hash).unwrap();
-                let next_chain_ancestor_of_current = self.reachability_service.get_next_chain_ancestor(current_hash, self.root);
-                let agreeing_parents = parents
-                    .iter()
-                    .copied()
-                    .filter(|&p| {
-                        next_chain_ancestor_of_current == current_hash
-                            || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
-                    })
-                    .collect::<Vec<_>>();
-                assert!(
-                    !agreeing_parents.is_empty(),
-                    "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
-                    current_hash,
-                    parents
-                );
 
-                let selected_parent = self.find_selected_parent(agreeing_parents.iter().copied());
+                // For free_search, select from all parents; for committed search, only from agreeing parents
+                let selected_parent = if self.free_search {
+                    self.find_selected_parent(parents.iter().copied())
+                } else {
+                    let next_chain_ancestor_of_current = self.reachability_service.get_next_chain_ancestor(current_hash, self.root);
+                    let agreeing_parents = parents
+                        .iter()
+                        .copied()
+                        .filter(|&p| {
+                            next_chain_ancestor_of_current == current_hash
+                                || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
+                        })
+                        .collect::<Vec<_>>();
+                    assert!(
+                        !agreeing_parents.is_empty(),
+                        "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
+                        current_hash,
+                        parents
+                    );
+                    self.find_selected_parent(agreeing_parents.iter().copied())
+                };
+
                 let current_gd = self.k_colouring(parents, self.k, Some(selected_parent));
 
                 self.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
             }
 
             for child in self.relations_store.get_children(current_hash).unwrap().read().iter().copied() {
-                if let Ok(is_chain_ancestor) = self.reachability_service.try_is_chain_ancestor_of(self.root, child) {
-                    if !is_chain_ancestor {
-                        continue;
-                    }
-                    topological_heap.push(Reverse(SortableBlock {
-                        hash: child,
-                        blue_work: self.headers_store.get_header(child).unwrap().blue_work,
-                    }));
+                // For free_search, use DAG ancestry; for committed search, use chain ancestry
+                let is_in_zone = if self.free_search {
+                    self.reachability_service.try_is_dag_ancestor_of(self.root, child).unwrap_or(false)
+                } else {
+                    self.reachability_service.try_is_chain_ancestor_of(self.root, child).unwrap_or(false)
+                };
+                if !is_in_zone {
+                    continue;
                 }
+                topological_heap
+                    .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
             }
         }
 
         visited_subdag
     }
     // END Copied from GD Manager
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::stores::{
+        dagknight::MemoryDagknightStore, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
+        relations::MemoryRelationsStore,
+    };
+    use crate::processes::reachability::tests::{DagBlock, DagBuilder};
+    use kaspa_consensus_core::blockhash::ORIGIN;
+    use kaspa_consensus_core::header::Header;
+    use parking_lot::RwLock;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    /// Test that `find_last_known_tips` correctly uses chain ancestry (committed)
+    /// vs DAG ancestry (free_search) when traversing back from tips.
+    ///
+    /// DAG structure:
+    ///
+    ///         A <= B <= D -- F
+    ///          \       /
+    ///            \  /
+    ///        Z <- C <= E -- W
+    ///         \    \   /
+    ///           \   \ /
+    ///            Y <= X
+    ///
+    /// Selected parents:
+    /// - A: ORIGIN, B: A, D: B, Z: ORIGIN
+    /// - C: A (agrees with A), E: C
+    /// - Y: Z, X: Y (X does NOT agree with A - its chain goes X→Y→Z→ORIGIN)
+    /// - F, W: tips (no selected parent yet)
+    ///
+    /// Parents:
+    /// - A:[ORIGIN], B:[A], D:[B], F:[D,E]
+    /// - Z:[ORIGIN], C:[A,Z], E:[C], W:[X,E]
+    /// - Y:[Z], X:[Y,C]
+    ///
+    /// Chain ancestry from A: A→B→D, A→C→E
+    /// X is NOT a chain ancestor of A
+    ///
+    /// Records filled for: A, B, C, D, E, Y, Z, X
+    /// F and W are tips (no records)
+    ///
+    /// TEST with tips = [F, W]:
+    /// - free_search=false: find_last_known_tips returns [D, E]
+    ///   (F→D,E; W→X,E but X skipped since not chain ancestor)
+    /// - free_search=true: find_last_known_tips returns [D, E, X]
+    ///   (F→D,E; W→X,E; all are DAG ancestors)
+    #[test]
+    fn test_find_last_known_tips_uses_correct_ancestry_type() {
+        let hash_a: Hash = 1_u64.into(); // root
+        let hash_b: Hash = 2_u64.into();
+        let hash_d: Hash = 3_u64.into();
+        let hash_z: Hash = 4_u64.into();
+        let hash_c: Hash = 5_u64.into();
+        let hash_e: Hash = 6_u64.into();
+        let hash_y: Hash = 7_u64.into();
+        let hash_x: Hash = 8_u64.into();
+        let hash_f: Hash = 9_u64.into();
+        let hash_w: Hash = 10_u64.into();
+
+        let dk_map = RefCell::new(HashMap::new());
+        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map.clone()));
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+
+        // Build DAG
+        {
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+            builder.init();
+            builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
+            builder.add_block(DagBlock::new(hash_z, vec![ORIGIN]));
+            builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_c, vec![hash_a, hash_z]), hash_a);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_d, vec![hash_b]), hash_b);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_e, vec![hash_c]), hash_c);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y, hash_c]), hash_y);
+            builder.add_block(DagBlock::new(hash_f, vec![hash_d, hash_e])); // Tip
+            builder.add_block(DagBlock::new(hash_w, vec![hash_x, hash_e])); // Tip
+
+            // Insert headers with valid bits
+            for (hash, parents) in [
+                (hash_a, vec![]),
+                (hash_b, vec![hash_a]),
+                (hash_d, vec![hash_b]),
+                (hash_z, vec![]),
+                (hash_c, vec![hash_a, hash_z]),
+                (hash_e, vec![hash_c]),
+                (hash_y, vec![hash_z]),
+                (hash_x, vec![hash_y, hash_c]),
+                (hash_f, vec![hash_d, hash_e]),
+                (hash_w, vec![hash_x, hash_e]),
+            ] {
+                let mut header = Header::from_precomputed_hash(hash, parents);
+                header.bits = 0x207fffff;
+                headers_store.insert(Arc::new(header));
+            }
+        }
+
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+        let relations_service = FutureIntersectRelations::new(relations.clone(), reachability_service.clone(), hash_a);
+
+        // Create both managers sharing the same stores
+        let manager_committed = ConflictZoneManager::new(
+            0,
+            hash_a,
+            dagknight_store.clone(),
+            headers_store.clone(),
+            relations_service.clone(),
+            reachability_service.clone(),
+        );
+
+        let manager_free = ConflictZoneManager::with_free_search(
+            0,
+            hash_a,
+            dagknight_store.clone(),
+            headers_store.clone(),
+            relations_service,
+            reachability_service,
+            true,
+        );
+
+        // Initialize root and fill records for all blocks except tips F and W
+        manager_committed.init_root();
+        manager_free.init_root();
+
+        // Fill records for non-tip blocks
+        for (hash, selected_parent) in [
+            (hash_b, hash_a),
+            (hash_d, hash_b),
+            (hash_z, ORIGIN),
+            (hash_c, hash_a),
+            (hash_e, hash_c),
+            (hash_y, hash_z),
+            (hash_x, hash_y),
+        ] {
+            let gd = GhostdagData::new_with_selected_parent(selected_parent, 0);
+            manager_committed.insert(hash, Arc::new(gd.clone())).unwrap();
+            manager_free.insert(hash, Arc::new(gd)).unwrap();
+        }
+
+        // Tips are F and W (no records yet)
+        let tips = vec![hash_f, hash_w];
+
+        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips);
+        let (roots_free, _) = manager_free.find_last_known_tips(&tips);
+
+        assert_eq!(roots_committed.len(), 2, "Committed should find D, E");
+        assert!(roots_committed.contains(&hash_d));
+        assert!(roots_committed.contains(&hash_e));
+        assert!(!roots_committed.contains(&hash_x), "X should not be in committed roots");
+
+        assert_eq!(roots_free.len(), 3, "Free search should find D, E, X");
+        assert!(roots_free.contains(&hash_d));
+        assert!(roots_free.contains(&hash_e));
+        assert!(roots_free.contains(&hash_x));
+    }
+
+    /// Test demonstrating the key difference between free_search and committed search.
+    ///
+    /// DAG structure:
+    ///
+    ///        A (conflict genesis)
+    ///       / \
+    ///      B   Z
+    ///      |   |
+    ///      C   Y
+    ///      | \ |
+    ///      D   X
+    ///
+    ///
+    /// The tips are [D, X].
+    ///
+    /// TEST: When computing X's selected_parent during fill_zone_data:
+    /// - In free_search=false (committed): selected_parent must be Y
+    ///   (X only agrees with Y, not with C - they don't share a chain ancestor above A)
+    /// - In free_search=true: selected_parent considers all parents [Y, C]
+    ///   and selects based on blue work (or hash as tiebreaker). In this case, C wins
+    #[test]
+    fn test_free_search_considers_non_agreeing_parents() {
+        use crate::processes::reachability::tests::{DagBlock, DagBuilder};
+
+        let hash_a: Hash = 1_u64.into(); // conflict genesis
+        let hash_b: Hash = 2_u64.into();
+        let hash_c: Hash = 3_u64.into();
+        let hash_d: Hash = 4_u64.into();
+        let hash_z: Hash = 5_u64.into();
+        let hash_y: Hash = 6_u64.into();
+        let hash_x: Hash = 7_u64.into();
+
+        let dk_map = RefCell::new(HashMap::new());
+        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations_store = MemoryRelationsStore::new();
+
+        // Build DAG for committed search
+        {
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+            builder.init();
+            builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
+            builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_c, vec![hash_b]), hash_b);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_d, vec![hash_c]), hash_c);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_z, vec![hash_a]), hash_a);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y, hash_c]), hash_y);
+
+            let insert_header_with_work =
+                |hash: Hash, parents: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, blue_work: BlueWorkType| {
+                    let mut header = Header::from_precomputed_hash(hash, parents);
+                    header.bits = bits;
+                    header.blue_work = blue_work;
+                    store.insert(Arc::new(header));
+                };
+
+            insert_header_with_work(hash_a, vec![], 0x207fffff, &headers_store, 0.into());
+            // Note the higher bits here to make this side have higher blue work, but not be the committed side
+            insert_header_with_work(hash_b, vec![hash_a], 0x204fffff, &headers_store, 1.into());
+            insert_header_with_work(hash_c, vec![hash_b], 0x207fffff, &headers_store, 3.into());
+            insert_header_with_work(hash_d, vec![hash_b], 0x207fffff, &headers_store, 4.into());
+
+            insert_header_with_work(hash_z, vec![hash_a], 0x207fffff, &headers_store, 1.into());
+            insert_header_with_work(hash_y, vec![hash_z], 0x207fffff, &headers_store, 2.into());
+            insert_header_with_work(hash_x, vec![hash_c, hash_y], 0x207fffff, &headers_store, 6.into());
+        }
+
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), hash_a);
+
+        // Create committed manager (free_search = false)
+        let manager_committed = ConflictZoneManager::new(
+            0,
+            hash_a,
+            dagknight_store.clone(),
+            headers_store.clone(),
+            relations_service.clone(),
+            reachability_service.clone(),
+        );
+
+        // Create free search manager (free_search = true)
+        let manager_free = ConflictZoneManager::with_free_search(
+            0,
+            hash_a,
+            dagknight_store,
+            headers_store,
+            relations_service,
+            reachability_service,
+            true,
+        );
+        assert!(manager_free.is_free_search(), "Manager should have free_search=true");
+
+        // Pre-populate the store with blocks (simulating that they were already processed)
+        // For committed search
+        manager_committed.init_root();
+
+        // Now fill zone data
+        let tips = vec![hash_x, hash_c];
+        manager_committed.fill_zone_data(&tips);
+        manager_free.fill_zone_data(&tips);
+
+        // Get X's selected parent from both managers
+        let committed_sp = manager_committed.get_selected_parent(hash_x).unwrap();
+        let free_sp = manager_free.get_selected_parent(hash_x).unwrap();
+
+        assert_eq!(committed_sp, hash_y, "In committed search, X's selected parent must be Y (the only agreeing parent)");
+
+        // In free search, X can select any parent and is expected to select C due to higher blue work (even if not agreeing)
+        assert_eq!(
+            free_sp, hash_c,
+            "In free search, X's selected parent should be C (selected from all parents, wins by higher work)"
+        );
+    }
 }
