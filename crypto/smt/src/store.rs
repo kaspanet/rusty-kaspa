@@ -1,16 +1,15 @@
 //! Storage trait and in-memory implementation for the Sparse Merkle Tree.
 //!
-//! [`SmtStore`] abstracts leaf and branch node storage, enabling both
+//! [`SmtStore`] is a **read-only** trait for branch node lookups, enabling both
 //! in-memory (`BTreeSmtStore`) and persistent (e.g. RocksDB) backends.
 //!
 //! Branch nodes are keyed by [`BranchKey`] `(height, node_key)` and store
-//! the `(left, right)` child hashes. Empty branches (both children equal to
-//! the empty subtree hash) are never stored.
+//! the `(left, right)` child hashes.
 
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 
-use kaspa_hashes::Hash;
+use kaspa_hashes::{Hash, ZERO_HASH};
 
 /// Key for a branch node in the sparse Merkle tree.
 ///
@@ -30,8 +29,6 @@ impl BranchKey {
     /// Zeroes bits at big-endian positions ≥ `(256 - height)` in the key,
     /// producing a canonical subtree identifier.
     pub fn new(height: u8, key: &Hash) -> Self {
-        // Zero the trailing (h+1) big-endian bits of the key to produce
-        // a canonical subtree identifier for this branch level.
         let bits_to_zero = height as usize + 1;
         let full_bytes = bits_to_zero / 8;
         let remaining_bits = bits_to_zero % 8;
@@ -44,34 +41,40 @@ impl BranchKey {
     }
 }
 
-/// Abstraction over leaf and branch node storage for the Sparse Merkle Tree.
+/// Children of a branch node in the sparse Merkle tree.
 ///
-/// Implementations must support leaf get/insert/remove, branch get/insert/remove,
-/// and an emptiness check.
+/// Used both as the in-memory representation and (with the `zerocopy` feature)
+/// as the on-disk format for branch version values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "zerocopy",
+    derive(zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::KnownLayout, zerocopy::Immutable, zerocopy::Unaligned)
+)]
+#[repr(C)]
+pub struct BranchChildren {
+    pub left: Hash,
+    pub right: Hash,
+}
+
+/// Read-only branch lookup for the Sparse Merkle Tree.
+///
+/// This trait is intentionally immutable — tree computations read from the store
+/// and return diffs rather than mutating the store. This prevents bugs where
+/// unchanged branches are accidentally written.
 pub trait SmtStore {
     type Error: core::fmt::Debug + core::fmt::Display;
 
-    // Leaf operations
-    fn get_leaf(&self, key: &Hash) -> Result<Option<Hash>, Self::Error>;
-    fn insert_leaf(&mut self, key: Hash, leaf_hash: Hash) -> Result<(), Self::Error>;
-    fn remove_leaf(&mut self, key: &Hash) -> Result<Option<Hash>, Self::Error>;
-
-    // Branch operations
-    fn get_branch(&self, key: &BranchKey) -> Result<Option<(Hash, Hash)>, Self::Error>;
-    fn insert_branch(&mut self, key: BranchKey, left: Hash, right: Hash) -> Result<(), Self::Error>;
-    fn remove_branch(&mut self, key: &BranchKey) -> Result<(), Self::Error>;
-
-    // Queries
-    fn is_empty_leaves(&self) -> Result<bool, Self::Error>;
+    fn get_branch(&self, key: &BranchKey) -> Result<Option<BranchChildren>, Self::Error>;
 }
 
-/// In-memory [`SmtStore`] backed by `BTreeMap`s.
+/// In-memory SMT store backed by `BTreeMap`s.
 ///
-/// Suitable for testing and scenarios where the full tree fits in memory.
-/// All operations are infallible.
+/// Implements [`SmtStore`] for read-only branch lookups.
+/// Mutations (`insert_leaf`, `insert_branch`, etc.) are inherent methods
+/// used by [`SparseMerkleTree`](crate::tree::SparseMerkleTree) in tests.
 pub struct BTreeSmtStore {
-    leaves: BTreeMap<Hash, Hash>,
-    branches: BTreeMap<BranchKey, (Hash, Hash)>,
+    pub(crate) leaves: BTreeMap<Hash, Hash>,
+    pub(crate) branches: BTreeMap<BranchKey, BranchChildren>,
 }
 
 impl BTreeSmtStore {
@@ -81,6 +84,26 @@ impl BTreeSmtStore {
 
     pub fn leaf_count(&self) -> usize {
         self.leaves.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.leaves.is_empty()
+    }
+
+    pub fn get_leaf(&self, key: &Hash) -> Option<Hash> {
+        self.leaves.get(key).copied()
+    }
+
+    pub fn insert_leaf(&mut self, key: Hash, leaf_hash: Hash) {
+        if leaf_hash == ZERO_HASH {
+            self.leaves.remove(&key);
+        } else {
+            self.leaves.insert(key, leaf_hash);
+        }
+    }
+
+    pub fn insert_branch(&mut self, key: BranchKey, children: BranchChildren) {
+        self.branches.insert(key, children);
     }
 }
 
@@ -93,46 +116,17 @@ impl Default for BTreeSmtStore {
 impl SmtStore for BTreeSmtStore {
     type Error = Infallible;
 
-    fn get_leaf(&self, key: &Hash) -> Result<Option<Hash>, Self::Error> {
-        Ok(self.leaves.get(key).copied())
-    }
-
-    fn insert_leaf(&mut self, key: Hash, leaf_hash: Hash) -> Result<(), Self::Error> {
-        self.leaves.insert(key, leaf_hash);
-        Ok(())
-    }
-
-    fn remove_leaf(&mut self, key: &Hash) -> Result<Option<Hash>, Self::Error> {
-        Ok(self.leaves.remove(key))
-    }
-
-    fn get_branch(&self, key: &BranchKey) -> Result<Option<(Hash, Hash)>, Self::Error> {
+    fn get_branch(&self, key: &BranchKey) -> Result<Option<BranchChildren>, Self::Error> {
         Ok(self.branches.get(key).copied())
-    }
-
-    fn insert_branch(&mut self, key: BranchKey, left: Hash, right: Hash) -> Result<(), Self::Error> {
-        self.branches.insert(key, (left, right));
-        Ok(())
-    }
-
-    fn remove_branch(&mut self, key: &BranchKey) -> Result<(), Self::Error> {
-        self.branches.remove(key);
-        Ok(())
-    }
-
-    fn is_empty_leaves(&self) -> Result<bool, Self::Error> {
-        Ok(self.leaves.is_empty())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_hashes::ZERO_HASH;
 
     #[test]
     fn test_branch_key_height_zero() {
-        // Height 0 = leaf parent (depth 255): zero bit 255 (LSB of byte 31).
         let key = Hash::from_bytes([0xFF; 32]);
         let bk = BranchKey::new(0, &key);
         assert_eq!(bk.height, 0);
@@ -143,7 +137,6 @@ mod tests {
 
     #[test]
     fn test_branch_key_height_8() {
-        // Height 8: zero bits 247..=255 (9 bits: LSB of byte 30 + all of byte 31).
         let key = Hash::from_bytes([0xFF; 32]);
         let bk = BranchKey::new(8, &key);
         let mut expected = [0xFF; 32];
@@ -154,7 +147,6 @@ mod tests {
 
     #[test]
     fn test_branch_key_height_255() {
-        // Height 255 (root): zero all bits (positions 0..=255).
         let key = Hash::from_bytes([0xFF; 32]);
         let bk = BranchKey::new(255, &key);
         assert_eq!(bk.node_key, Hash::from_bytes([0x00; 32]));
@@ -162,7 +154,6 @@ mod tests {
 
     #[test]
     fn test_branch_key_partial_byte() {
-        // Height 3: zero positions 252..=255 (bottom 4 bits of byte 31).
         let key = Hash::from_bytes([0xFF; 32]);
         let bk = BranchKey::new(3, &key);
         let mut expected = [0xFF; 32];
@@ -176,17 +167,17 @@ mod tests {
         let key = Hash::from_bytes([1; 32]);
         let val = Hash::from_bytes([2; 32]);
 
-        assert!(store.is_empty_leaves().unwrap());
-        assert_eq!(store.get_leaf(&key).unwrap(), None);
+        assert!(store.is_empty());
+        assert_eq!(store.get_leaf(&key), None);
 
-        store.insert_leaf(key, val).unwrap();
-        assert!(!store.is_empty_leaves().unwrap());
-        assert_eq!(store.get_leaf(&key).unwrap(), Some(val));
+        store.insert_leaf(key, val);
+        assert!(!store.is_empty());
+        assert_eq!(store.get_leaf(&key), Some(val));
         assert_eq!(store.leaf_count(), 1);
 
-        let removed = store.remove_leaf(&key).unwrap();
-        assert_eq!(removed, Some(val));
-        assert!(store.is_empty_leaves().unwrap());
+        store.insert_leaf(key, ZERO_HASH);
+        assert!(store.is_empty());
+        assert_eq!(store.get_leaf(&key), None);
     }
 
     #[test]
@@ -198,10 +189,7 @@ mod tests {
 
         assert_eq!(store.get_branch(&bk).unwrap(), None);
 
-        store.insert_branch(bk, left, right).unwrap();
-        assert_eq!(store.get_branch(&bk).unwrap(), Some((left, right)));
-
-        store.remove_branch(&bk).unwrap();
-        assert_eq!(store.get_branch(&bk).unwrap(), None);
+        store.insert_branch(bk, BranchChildren { left, right });
+        assert_eq!(store.get_branch(&bk).unwrap(), Some(BranchChildren { left, right }));
     }
 }
