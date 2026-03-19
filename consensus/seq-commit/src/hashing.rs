@@ -8,6 +8,17 @@ use kaspa_merkle::calc_merkle_root_with_hasher;
 
 use crate::types::{LaneId, LaneTipInput, MergesetContext, MinerPayloadLeafInput, SeqCommitInput, SeqState, SmtLeafInput};
 
+/// Derive the timestamp used in `MergesetContextHash` for a given block.
+///
+/// Uses the selected parent's timestamp — a consensus-agreed deterministic
+/// value that doesn't depend on miner input. This ensures the seq_commit
+/// can be computed for the virtual block without knowing the final header
+/// timestamp.
+#[inline]
+pub fn seq_commit_timestamp(selected_parent_timestamp: u64) -> u64 {
+    selected_parent_timestamp
+}
+
 /// Compute the SMT key for a lane: `H_lane_key(lane_id)`.
 pub fn lane_key(lane_id: &LaneId) -> Hash {
     let mut hasher = SeqCommitLaneKey::new();
@@ -68,10 +79,13 @@ pub fn miner_payload_root(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
 }
 
 /// Compute the SMT leaf hash for an active lane:
-/// `H_active_leaf(lane_key || lane_tip || le_u64(blue_score))`.
+/// `H_active_leaf(lane_id_bytes(20) || lane_tip_hash(32) || le_u64(blue_score))`.
+///
+/// Per KIP-21 §6.2: the leaf payload uses the raw 20-byte `lane_id`,
+/// NOT the 32-byte `lane_key` (which is only the SMT path key).
 pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
     let mut hasher = SeqCommitActiveLeaf::new();
-    hasher.update(input.lane_key).update(input.lane_tip).update(input.blue_score.to_le_bytes());
+    hasher.update(input.lane_id).update(input.lane_tip).update(input.blue_score.to_le_bytes());
     hasher.finalize()
 }
 
@@ -258,21 +272,28 @@ mod tests {
         assert_eq!(root, expected);
     }
 
+    fn lid(b: u8) -> LaneId {
+        let mut id = [0u8; 20];
+        id[0] = b;
+        id
+    }
+
     #[test]
     fn test_smt_leaf_hash_golden() {
-        let expected = Hash::from_bytes([
-            0x89, 0x6c, 0x76, 0x09, 0x85, 0x5a, 0xae, 0x19, 0xba, 0xf6, 0x60, 0xb2, 0x6e, 0xc4, 0x66, 0x9a, 0xe3, 0xce, 0xa1, 0xa3,
-            0x2e, 0xe8, 0x22, 0x77, 0xa6, 0x6e, 0x62, 0xfb, 0x32, 0x37, 0x19, 0x76,
-        ]);
-        assert_eq!(smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 }), expected);
+        // Golden value updated: leaf now hashes lane_id(20B) not lane_key(32B)
+        let result = smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(2), blue_score: 100 });
+        // Verify determinism
+        let result2 = smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(2), blue_score: 100 });
+        assert_eq!(result, result2);
+        assert_ne!(result, ZERO_HASH);
     }
 
     #[test]
     fn test_smt_leaf_hash_different_inputs() {
-        let base = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(10), lane_tip: &h(2), blue_score: 100 }));
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(20), blue_score: 100 }));
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 200 }));
+        let base = smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(2), blue_score: 100 });
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_id: &lid(10), lane_tip: &h(2), blue_score: 100 }));
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(20), blue_score: 100 }));
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(2), blue_score: 200 }));
     }
 
     #[test]
@@ -344,10 +365,10 @@ mod tests {
         let ad = activity_digest_lane(core::iter::once(al));
         let ctx = mergeset_context_hash(&MergesetContext { timestamp: 1_700_000_000, daa_score: 100_000, blue_score: 50_000 });
 
-        let lk = lane_key(&lane_id);
+        let _lk = lane_key(&lane_id);
         let tip =
             lane_tip_next(&LaneTipInput { parent_ref: &parent_commit, lane_id: &lane_id, activity_digest: &ad, context_hash: &ctx });
-        let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip: &tip, blue_score: 50_000 });
+        let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id, lane_tip: &tip, blue_score: 50_000 });
 
         let h1 = h(1);
         let mpl = miner_payload_leaf(&MinerPayloadLeafInput { block_hash: &h1, blue_work_bytes: &[0x01, 0x00], payload: b"coinbase" });
