@@ -35,7 +35,7 @@ kaspa-smt.workspace = true
 kaspa-smt-store.workspace = true
 kaspa-txscript.workspace = true
 kaspa-txscript-errors.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["sim"] }
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true

@@ -20,6 +20,7 @@ pub fn seq_commit_timestamp(selected_parent_timestamp: u64) -> u64 {
 }
 
 /// Compute the SMT key for a lane: `H_lane_key(lane_id)`.
+#[inline]
 pub fn lane_key(lane_id: &LaneId) -> Hash {
     let mut hasher = SeqCommitLaneKey::new();
     hasher.update(lane_id);
@@ -27,6 +28,7 @@ pub fn lane_key(lane_id: &LaneId) -> Hash {
 }
 
 /// Compute an activity leaf: `H_activity_leaf(tx_digest || le_u32(merge_idx))`.
+#[inline]
 pub fn activity_leaf(tx_digest: &Hash, merge_idx: u32) -> Hash {
     let mut hasher = SeqCommitActivityLeaf::new();
     hasher.update(tx_digest).update(merge_idx.to_le_bytes());
@@ -37,11 +39,13 @@ pub fn activity_leaf(tx_digest: &Hash, merge_idx: u32) -> Hash {
 ///
 /// Merkle root over the activity leaves using `H_seq` (SeqCommitmentMerkleBranchHash).
 /// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
+#[inline]
 pub fn activity_digest_lane(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
     calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, true>(leaves)
 }
 
 /// Compute the next lane tip: `H_lane_tip(parent_ref || lane_id || activity_digest || context_hash)`.
+#[inline]
 pub fn lane_tip_next(input: &LaneTipInput) -> Hash {
     let mut hasher = SeqCommitLaneTip::new();
     hasher.update(input.parent_ref).update(input.lane_id).update(input.activity_digest).update(input.context_hash);
@@ -49,6 +53,7 @@ pub fn lane_tip_next(input: &LaneTipInput) -> Hash {
 }
 
 /// Compute the mergeset context hash: `H_mergeset_context(le_u64(timestamp) || le_u64(daa_score) || le_u64(blue_score))`.
+#[inline]
 pub fn mergeset_context_hash(ctx: &MergesetContext) -> Hash {
     let mut hasher = SeqCommitMergesetContext::new();
     hasher.update(ctx.timestamp.to_le_bytes()).update(ctx.daa_score.to_le_bytes()).update(ctx.blue_score.to_le_bytes());
@@ -56,6 +61,7 @@ pub fn mergeset_context_hash(ctx: &MergesetContext) -> Hash {
 }
 
 /// Compute the miner payload hash: `H_miner_payload(payload_bytes)`.
+#[inline]
 pub fn miner_payload_hash(payload: &[u8]) -> Hash {
     let mut hasher = SeqCommitMinerPayload::new();
     hasher.update(payload);
@@ -63,6 +69,7 @@ pub fn miner_payload_hash(payload: &[u8]) -> Hash {
 }
 
 /// Compute a miner payload leaf: `H_miner_payload_leaf(block_hash || blue_work_bytes || H_miner_payload(payload))`.
+#[inline]
 pub fn miner_payload_leaf(input: &MinerPayloadLeafInput<'_>) -> Hash {
     let payload_h = miner_payload_hash(input.payload);
     let mut hasher = SeqCommitMinerPayloadLeaf::new();
@@ -74,6 +81,7 @@ pub fn miner_payload_leaf(input: &MinerPayloadLeafInput<'_>) -> Hash {
 ///
 /// Merkle root using `H_seq` (SeqCommitmentMerkleBranchHash).
 /// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
+#[inline]
 pub fn miner_payload_root(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
     calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, true>(leaves)
 }
@@ -83,6 +91,7 @@ pub fn miner_payload_root(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
 ///
 /// Per KIP-21 §6.2: the leaf payload uses the raw 20-byte `lane_id`,
 /// NOT the 32-byte `lane_key` (which is only the SMT path key).
+#[inline]
 pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
     let mut hasher = SeqCommitActiveLeaf::new();
     hasher.update(input.lane_id).update(input.lane_tip).update(input.blue_score.to_le_bytes());
@@ -90,6 +99,7 @@ pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
 }
 
 /// Compute the seq-state root: `H_seq(lanes_root, H_seq(context_hash, payload_root))`.
+#[inline]
 pub fn seq_state_root(state: &SeqState<'_>) -> Hash {
     let inner = {
         let mut hasher = SeqCommitmentMerkleBranchHash::new();
@@ -102,6 +112,7 @@ pub fn seq_state_root(state: &SeqState<'_>) -> Hash {
 }
 
 /// Compute the final sequencing commitment: `H_seq(parent_seq_commit, state_root)`.
+#[inline]
 pub fn seq_commit(input: &SeqCommitInput<'_>) -> Hash {
     let mut hasher = SeqCommitmentMerkleBranchHash::new();
     hasher.update(input.parent_seq_commit).update(input.state_root);
