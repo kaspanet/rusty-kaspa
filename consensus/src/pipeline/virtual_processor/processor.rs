@@ -637,7 +637,15 @@ impl VirtualStateProcessor {
             .unwrap();
 
         match root_branch {
-            Some(v) => kaspa_smt::hash_node::<SeqCommitActiveNode>(v.data().left, v.data().right),
+            Some(v) => {
+                let children = v.data();
+                let empty = SeqCommitActiveNode::EMPTY_HASHES[255];
+                if children.left == empty && children.right == empty {
+                    SeqCommitActiveNode::empty_root()
+                } else {
+                    kaspa_smt::hash_node::<SeqCommitActiveNode>(children.left, children.right)
+                }
+            }
             None => SeqCommitActiveNode::empty_root(),
         }
     }

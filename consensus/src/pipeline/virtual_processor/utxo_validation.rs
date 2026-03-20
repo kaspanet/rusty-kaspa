@@ -225,7 +225,7 @@ impl VirtualStateProcessor {
 
         let (expected_accepted_id_merkle_root, smt_build) = if self.covenants_activation.is_active(header.daa_score) {
             // KIP-21: compute seq_commit from SMT lane processing
-            let (hash, build) = self.verify_seq_commit(ctx, header)?;
+            let (hash, build) = self.recompute_seq_commit(ctx, header)?;
             (hash, Some(build))
         } else {
             (self.calc_accepted_id_merkle_root(header.daa_score, ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent()), None)
@@ -623,14 +623,10 @@ impl VirtualStateProcessor {
         (commit, build)
     }
 
-    // =========================================================================
-    // KIP-21: Verification + computation entry points (thin wrappers)
-    // =========================================================================
-
-    /// KIP-21: Verify the seq_commit for a block by recomputing it from the mergeset
-    /// acceptance data + SMT state. Returns the expected `accepted_id_merkle_root` and the
-    /// SmtBuild that must be flushed per-block so subsequent blocks can read updated SMT state.
-    fn verify_seq_commit(
+    /// KIP-21: Recompute the seq_commit for a chain block from its mergeset acceptance
+    /// data and SMT state. The caller compares the result against the header to verify
+    /// correctness. Returns the SmtBuild to flush so subsequent blocks can read updated state.
+    fn recompute_seq_commit(
         &self,
         ctx: &UtxoProcessingContext,
         header: &Header,

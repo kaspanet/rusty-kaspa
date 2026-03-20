@@ -96,10 +96,6 @@ impl<H: SmtHasher, S: SmtStore> SparseMerkleTree<H, S> {
     }
 }
 
-// =========================================================================
-// In-memory operations (BTreeSmtStore only — tests + RPC proofs)
-// =========================================================================
-
 #[allow(clippy::len_without_is_empty)]
 impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
     /// Number of non-empty leaves.
@@ -234,10 +230,6 @@ impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
         current
     }
 }
-
-// =========================================================================
-// Pure computation: reads from immutable store, returns only changed branches
-// =========================================================================
 
 /// Map of changed branches: `BranchKey → BranchChildren`.
 pub type SmtBranchChanges = BTreeMap<BranchKey, BranchChildren>;
