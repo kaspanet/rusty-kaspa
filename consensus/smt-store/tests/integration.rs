@@ -34,23 +34,23 @@ fn walk_up_always_insert_same_root() {
     let l2 = smt_leaf_hash(&SmtLeafInput { lane_id: &[0x02; 20], lane_tip: &hash(0xA2), blue_score: 100 });
     let l3 = smt_leaf_hash(&SmtLeafInput { lane_id: &[0x03; 20], lane_tip: &hash(0xA3), blue_score: 100 });
 
-    tree.insert(k1, l1).unwrap();
-    tree.insert(k2, l2).unwrap();
-    tree.insert(k3, l3).unwrap();
+    tree.insert(k1, l1);
+    tree.insert(k2, l2);
+    tree.insert(k3, l3);
     let root_3 = tree.root();
 
     // Update l1 to new value
     let l1_new = smt_leaf_hash(&SmtLeafInput { lane_id: &[0x01; 20], lane_tip: &hash(0xB1), blue_score: 200 });
-    tree.insert(k1, l1_new).unwrap();
+    tree.insert(k1, l1_new);
     let root_updated = tree.root();
 
     assert_ne!(root_3, root_updated);
 
     // Build same tree from scratch to verify determinism
     let mut tree2 = SparseMerkleTree::<SeqCommitActiveNode>::new();
-    tree2.insert(k1, l1_new).unwrap();
-    tree2.insert(k2, l2).unwrap();
-    tree2.insert(k3, l3).unwrap();
+    tree2.insert(k1, l1_new);
+    tree2.insert(k2, l2);
+    tree2.insert(k3, l3);
 
     assert_eq!(tree.root(), tree2.root());
 }
@@ -83,8 +83,8 @@ fn processor_two_lanes_matches_in_memory() {
     let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
     let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_a, lane_tip: &tip_a, blue_score });
     let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_b, lane_tip: &tip_b, blue_score });
-    smt.insert(key_a, leaf_a).unwrap();
-    smt.insert(key_b, leaf_b).unwrap();
+    smt.insert(key_a, leaf_a);
+    smt.insert(key_b, leaf_b);
     let mem_root = smt.root();
 
     assert_eq!(proc_root, mem_root);
@@ -131,8 +131,8 @@ fn processor_second_block_reads_from_db() {
     let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
     let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_a, lane_tip: &tip_a1, blue_score: bs1 });
     let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_b, lane_tip: &tip_b, blue_score: bs2 });
-    smt.insert(key_a, leaf_a).unwrap();
-    smt.insert(key_b, leaf_b).unwrap();
+    smt.insert(key_a, leaf_a);
+    smt.insert(key_b, leaf_b);
 
     assert_eq!(root2, smt.root());
     assert_ne!(root1, root2);
@@ -175,7 +175,7 @@ fn processor_update_same_lane_across_blocks() {
     // Verify against in-memory SMT with only the final state
     let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
     let leaf2 = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id, lane_tip: &tip2, blue_score: bs2 });
-    smt.insert(key, leaf2).unwrap();
+    smt.insert(key, leaf2);
 
     assert_eq!(root2, smt.root());
     assert_ne!(root1, root2);
@@ -257,7 +257,7 @@ fn from_root_constructor() {
     let lid = [0x01; 20];
     let key = lane_key(&lid);
     let leaf = smt_leaf_hash(&SmtLeafInput { lane_id: &lid, lane_tip: &hash(0xAA), blue_score: 100 });
-    tree.insert(key, leaf).unwrap();
+    tree.insert(key, leaf);
     let root = tree.root();
     let store = tree.into_store();
 

@@ -12,6 +12,7 @@ repository.workspace = true
 [features]
 default = ["std"]
 std = []
+test-utils = ["std"]
 zerocopy = ["dep:zerocopy"]
 
 [dependencies]

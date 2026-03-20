@@ -17,7 +17,7 @@ kaspa-merkle.workspace = true
 
 [dev-dependencies]
 kaspa-consensus-core.workspace = true
-kaspa-smt.workspace = true
+kaspa-smt = { workspace = true, features = ["test-utils"] }
 
 [lints]
 workspace = true

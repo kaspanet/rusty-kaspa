@@ -70,6 +70,7 @@ impl VirtualState {
             use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
             use kaspa_seq_commit::hashing::*;
             use kaspa_seq_commit::types::*;
+            use kaspa_smt::SmtHasher;
 
             let txs = genesis.build_genesis_transactions();
             let blue_score = ghostdag_data.blue_score;
@@ -98,21 +99,30 @@ impl VirtualState {
 
             // Build SMT — new lanes anchor at ZERO_HASH (no parent seq_commit)
             let parent_seq_commit = ZERO_HASH;
-            let mut smt = kaspa_smt::tree::SparseMerkleTree::<SeqCommitActiveNode>::new();
-            for (lane_id, leaves) in &lane_activities {
-                let lk = lane_key(lane_id);
-                let ad = activity_digest_lane(leaves.iter().copied());
-                let tip = lane_tip_next(&LaneTipInput {
-                    parent_ref: &parent_seq_commit,
-                    lane_id,
-                    activity_digest: &ad,
-                    context_hash: &context_hash,
-                });
-                let leaf_hash = smt_leaf_hash(&SmtLeafInput { lane_id, lane_tip: &tip, blue_score });
-                smt.insert(lk, leaf_hash).unwrap();
-            }
+            let leaf_updates = kaspa_smt::store::SortedLeafUpdates::from_unsorted(lane_activities.iter().map(
+                |(lane_id, leaves): (&[u8; 20], &Vec<Hash>)| {
+                    let lk = lane_key(lane_id);
+                    let ad = activity_digest_lane(leaves.iter().copied());
+                    let tip = lane_tip_next(&LaneTipInput {
+                        parent_ref: &parent_seq_commit,
+                        lane_id,
+                        activity_digest: &ad,
+                        context_hash: &context_hash,
+                    });
+                    kaspa_smt::store::LeafUpdate {
+                        key: lk,
+                        leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_id, lane_tip: &tip, blue_score }),
+                    }
+                },
+            ));
 
-            let lanes_root = smt.root();
+            let empty_store = kaspa_smt::store::BTreeSmtStore::new();
+            let (lanes_root, _) = kaspa_smt::tree::compute_root_update::<SeqCommitActiveNode, _>(
+                &empty_store,
+                SeqCommitActiveNode::empty_root(),
+                leaf_updates,
+            )
+            .unwrap();
             let state_root =
                 seq_state_root(&SeqState { lanes_root: &lanes_root, context_hash: &context_hash, payload_root: &payload_root });
             let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });

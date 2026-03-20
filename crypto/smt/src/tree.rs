@@ -13,9 +13,8 @@
 use std::collections::BTreeMap;
 use std::vec::Vec;
 
-use core::convert::Infallible;
 use core::marker::PhantomData;
-use kaspa_hashes::{Hash, ZERO_HASH};
+use kaspa_hashes::Hash;
 
 use crate::proof::OwnedSmtProof;
 use crate::store::{BTreeSmtStore, BranchChildren, BranchKey, LeafUpdate, SmtStore, SortedLeafUpdates};
@@ -118,17 +117,17 @@ impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
         self.store.get_leaf(key).is_some()
     }
 
+    #[cfg(any(test, feature = "test-utils"))]
     /// Insert or update a leaf, incrementally updating the root.
-    ///
-    /// Inserting [`ZERO_HASH`] marks the leaf as empty (equivalent to `remove`).
-    pub fn insert(&mut self, key: Hash, leaf_hash: Hash) -> Result<(), Infallible> {
+    pub fn insert(&mut self, key: Hash, leaf_hash: Hash) {
         self.store.insert_leaf(key, leaf_hash);
         self.root = self.walk_up(&key, leaf_hash);
-        Ok(())
     }
 
+    #[cfg(any(test, feature = "test-utils"))]
     /// Remove a leaf by key, incrementally updating the root.
     pub fn remove(&mut self, key: &Hash) -> Option<Hash> {
+        use kaspa_hashes::ZERO_HASH;
         let old = self.store.get_leaf(key);
         if old.is_some() {
             self.root = self.walk_up(key, ZERO_HASH);
@@ -137,7 +136,7 @@ impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
         old
     }
 
-    /// Walk from leaf to root, updating branch nodes and returning the new root.
+    #[cfg(any(test, feature = "test-utils"))]
     fn walk_up(&mut self, key: &Hash, leaf_hash: Hash) -> Hash {
         let empty_hashes = &H::EMPTY_HASHES;
         let mut current = leaf_hash;
@@ -149,8 +148,8 @@ impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
 
             let sibling = self
                 .store
-                .get_branch(&branch_key)
-                .unwrap()
+                .branches
+                .get(&branch_key)
                 .map(|bc| if goes_right { bc.left } else { bc.right })
                 .unwrap_or(empty_hashes[height]);
 
@@ -264,7 +263,7 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
 mod tests {
     use super::*;
     use crate::proof::SmtProofError;
-    use kaspa_hashes::{HasherBase, SeqCommitActiveNode};
+    use kaspa_hashes::{HasherBase, SeqCommitActiveNode, ZERO_HASH};
     use rand::{Rng, SeedableRng, rngs::StdRng};
 
     type TestHasher = SeqCommitActiveNode;
@@ -329,8 +328,8 @@ mod tests {
 
         // Build via in-memory tree
         let mut tree = Smt::new();
-        tree.insert(k1, l1).unwrap();
-        tree.insert(k2, l2).unwrap();
+        tree.insert(k1, l1);
+        tree.insert(k2, l2);
         let expected_root = tree.root();
 
         // Build via compute_root_update from empty store
@@ -350,7 +349,7 @@ mod tests {
         let l2 = test_leaf(b"b");
 
         let mut tree = Smt::new();
-        tree.insert(k1, l1).unwrap();
+        tree.insert(k1, l1);
         let root1 = tree.root();
         // The store now has branches for k1's path
         let store = tree.into_store();
@@ -360,8 +359,8 @@ mod tests {
 
         // Verify against full in-memory tree
         let mut tree2 = Smt::new();
-        tree2.insert(k1, l1).unwrap();
-        tree2.insert(k2, l2).unwrap();
+        tree2.insert(k1, l1);
+        tree2.insert(k2, l2);
 
         assert_eq!(root2, tree2.root());
         // Changes should only contain k2's path, not k1's unchanged branches
@@ -376,7 +375,7 @@ mod tests {
         let l1 = test_leaf(b"a");
 
         let mut tree = Smt::new();
-        tree.insert(k1, l1).unwrap();
+        tree.insert(k1, l1);
         let root = tree.root();
         let store = tree.into_store();
 
@@ -397,8 +396,8 @@ mod tests {
         let l1_new = test_leaf(b"a_new");
 
         let mut tree = Smt::new();
-        tree.insert(k1, l1).unwrap();
-        tree.insert(k2, l2).unwrap();
+        tree.insert(k1, l1);
+        tree.insert(k2, l2);
         let root = tree.root();
         let store = tree.into_store();
 
@@ -409,8 +408,8 @@ mod tests {
         assert!(changes.len() <= 256);
         // Verify result matches in-memory computation
         let mut tree2 = Smt::new();
-        tree2.insert(k1, l1_new).unwrap();
-        tree2.insert(k2, l2).unwrap();
+        tree2.insert(k1, l1_new);
+        tree2.insert(k2, l2);
         assert_eq!(new_root, tree2.root());
     }
 
@@ -421,7 +420,7 @@ mod tests {
         let l1 = test_leaf(b"a");
 
         let mut tree = Smt::new();
-        tree.insert(k1, l1).unwrap();
+        tree.insert(k1, l1);
         let root = tree.root();
         let store = tree.into_store();
 
@@ -491,7 +490,7 @@ mod tests {
     fn test_single_insert_changes_root() {
         let mut tree = Smt::new();
         let empty_root = tree.root();
-        tree.insert(test_key(b"k"), test_leaf(b"v")).unwrap();
+        tree.insert(test_key(b"k"), test_leaf(b"v"));
         assert_ne!(tree.root(), empty_root);
     }
 
@@ -500,7 +499,7 @@ mod tests {
         let mut tree = Smt::new();
         let key = test_key(b"k");
         let leaf = test_leaf(b"v");
-        tree.insert(key, leaf).unwrap();
+        tree.insert(key, leaf);
         assert_eq!(tree.get(&key), Some(leaf));
         assert!(tree.contains_key(&key));
         assert_eq!(tree.len(), 1);
@@ -512,14 +511,14 @@ mod tests {
         let mut tree = Smt::new();
         let key = test_key(b"k");
         let leaf = test_leaf(b"v");
-        tree.insert(key, leaf).unwrap();
+        tree.insert(key, leaf);
         assert_inclusion(&tree, &key, leaf);
     }
 
     #[test]
     fn test_single_non_inclusion_for_other_key() {
         let mut tree = Smt::new();
-        tree.insert(test_key(b"present"), test_leaf(b"v")).unwrap();
+        tree.insert(test_key(b"present"), test_leaf(b"v"));
         let absent = test_key(b"absent");
         assert_non_inclusion(&tree, &absent);
     }
@@ -529,7 +528,7 @@ mod tests {
         let mut tree = Smt::new();
         let empty_root = tree.root();
         let key = test_key(b"k");
-        tree.insert(key, test_leaf(b"v")).unwrap();
+        tree.insert(key, test_leaf(b"v"));
         assert_ne!(tree.root(), empty_root);
         tree.remove(&key);
         assert_eq!(tree.root(), empty_root);
@@ -541,10 +540,10 @@ mod tests {
         let mut tree = Smt::new();
         let key = test_key(b"k");
         let leaf = test_leaf(b"v");
-        tree.insert(key, leaf).unwrap();
+        tree.insert(key, leaf);
         let root_after_insert = tree.root();
         tree.remove(&key);
-        tree.insert(key, leaf).unwrap();
+        tree.insert(key, leaf);
         assert_eq!(tree.root(), root_after_insert);
     }
 
@@ -552,9 +551,9 @@ mod tests {
     fn test_single_update_changes_root() {
         let mut tree = Smt::new();
         let key = test_key(b"k");
-        tree.insert(key, test_leaf(b"v1")).unwrap();
+        tree.insert(key, test_leaf(b"v1"));
         let root1 = tree.root();
-        tree.insert(key, test_leaf(b"v2")).unwrap();
+        tree.insert(key, test_leaf(b"v2"));
         let root2 = tree.root();
         assert_ne!(root1, root2);
         assert_eq!(tree.len(), 1);
@@ -564,9 +563,9 @@ mod tests {
     fn test_insert_zero_hash_is_remove() {
         let mut tree = Smt::new();
         let key = test_key(b"k");
-        tree.insert(key, test_leaf(b"v")).unwrap();
+        tree.insert(key, test_leaf(b"v"));
         assert_eq!(tree.len(), 1);
-        tree.insert(key, ZERO_HASH).unwrap();
+        tree.insert(key, ZERO_HASH);
         assert_eq!(tree.len(), 0);
         assert!(tree.is_empty());
         assert_eq!(tree.root(), TestHasher::empty_root());
@@ -583,8 +582,8 @@ mod tests {
         let k2 = test_key(b"2");
         let l1 = test_leaf(b"a");
         let l2 = test_leaf(b"b");
-        tree.insert(k1, l1).unwrap();
-        tree.insert(k2, l2).unwrap();
+        tree.insert(k1, l1);
+        tree.insert(k2, l2);
         assert_eq!(tree.get(&k1), Some(l1));
         assert_eq!(tree.get(&k2), Some(l2));
         assert_eq!(tree.len(), 2);
@@ -597,8 +596,8 @@ mod tests {
         let k2 = test_key(b"2");
         let l1 = test_leaf(b"a");
         let l2 = test_leaf(b"b");
-        tree.insert(k1, l1).unwrap();
-        tree.insert(k2, l2).unwrap();
+        tree.insert(k1, l1);
+        tree.insert(k2, l2);
         assert_inclusion(&tree, &k1, l1);
         assert_inclusion(&tree, &k2, l2);
     }
@@ -609,7 +608,7 @@ mod tests {
         let keys: Vec<Hash> = (0..3).map(|i| test_key(&[i])).collect();
         let leaves: Vec<Hash> = (0..3).map(|i| test_leaf(&[i])).collect();
         for (&k, &l) in keys.iter().zip(&leaves) {
-            tree.insert(k, l).unwrap();
+            tree.insert(k, l);
         }
         for (&k, &l) in keys.iter().zip(&leaves) {
             assert_inclusion(&tree, &k, l);
@@ -621,7 +620,7 @@ mod tests {
         let mut tree = Smt::new();
         let entries: Vec<(Hash, Hash)> = (0u32..10).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
         for &(k, l) in &entries {
-            tree.insert(k, l).unwrap();
+            tree.insert(k, l);
         }
         for &(k, l) in &entries {
             assert_inclusion(&tree, &k, l);
@@ -633,7 +632,7 @@ mod tests {
         let mut tree = Smt::new();
         let mut prev_root = tree.root();
         for i in 0u32..5 {
-            tree.insert(test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes())).unwrap();
+            tree.insert(test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()));
             let new_root = tree.root();
             assert_ne!(new_root, prev_root, "root didn't change after insert {i}");
             prev_root = new_root;
@@ -644,9 +643,9 @@ mod tests {
     fn test_different_values_different_roots() {
         let key = test_key(b"k");
         let mut tree1 = Smt::new();
-        tree1.insert(key, test_leaf(b"v1")).unwrap();
+        tree1.insert(key, test_leaf(b"v1"));
         let mut tree2 = Smt::new();
-        tree2.insert(key, test_leaf(b"v2")).unwrap();
+        tree2.insert(key, test_leaf(b"v2"));
         assert_ne!(tree1.root(), tree2.root());
     }
 
@@ -654,9 +653,9 @@ mod tests {
     fn test_different_keys_different_roots() {
         let leaf = test_leaf(b"same_leaf");
         let mut tree1 = Smt::new();
-        tree1.insert(test_key(b"k1"), leaf).unwrap();
+        tree1.insert(test_key(b"k1"), leaf);
         let mut tree2 = Smt::new();
-        tree2.insert(test_key(b"k2"), leaf).unwrap();
+        tree2.insert(test_key(b"k2"), leaf);
         assert_ne!(tree1.root(), tree2.root());
     }
 
@@ -669,14 +668,14 @@ mod tests {
         let mut tree = Smt::new();
         let key = test_key(b"k");
         let leaf = test_leaf(b"v");
-        tree.insert(key, leaf).unwrap();
+        tree.insert(key, leaf);
         assert_eq!(tree.remove(&key), Some(leaf));
     }
 
     #[test]
     fn test_delete_nonexistent_noop() {
         let mut tree = Smt::new();
-        tree.insert(test_key(b"present"), test_leaf(b"v")).unwrap();
+        tree.insert(test_key(b"present"), test_leaf(b"v"));
         let root_before = tree.root();
         assert_eq!(tree.remove(&test_key(b"absent")), None);
         assert_eq!(tree.root(), root_before);
@@ -687,9 +686,9 @@ mod tests {
         let mut tree = Smt::new();
         let ka = test_key(b"a");
         let kb = test_key(b"b");
-        tree.insert(ka, test_leaf(b"la")).unwrap();
+        tree.insert(ka, test_leaf(b"la"));
         let root_a_only = tree.root();
-        tree.insert(kb, test_leaf(b"lb")).unwrap();
+        tree.insert(kb, test_leaf(b"lb"));
         assert_ne!(tree.root(), root_a_only);
         tree.remove(&kb);
         assert_eq!(tree.root(), root_a_only);
@@ -701,7 +700,7 @@ mod tests {
         let empty_root = tree.root();
         let keys: Vec<Hash> = (0u32..10).map(|i| test_key(&i.to_le_bytes())).collect();
         for (i, &k) in keys.iter().enumerate() {
-            tree.insert(k, test_leaf(&(i as u32).to_le_bytes())).unwrap();
+            tree.insert(k, test_leaf(&(i as u32).to_le_bytes()));
         }
         assert_ne!(tree.root(), empty_root);
         for k in &keys {
@@ -719,9 +718,9 @@ mod tests {
         let kc = test_key(b"c");
         let la = test_leaf(b"la");
         let lc = test_leaf(b"lc");
-        tree.insert(ka, la).unwrap();
-        tree.insert(kb, test_leaf(b"lb")).unwrap();
-        tree.insert(kc, lc).unwrap();
+        tree.insert(ka, la);
+        tree.insert(kb, test_leaf(b"lb"));
+        tree.insert(kc, lc);
         tree.remove(&kb);
         assert_eq!(tree.len(), 2);
         assert_inclusion(&tree, &ka, la);
@@ -733,7 +732,7 @@ mod tests {
     fn test_non_inclusion_after_delete() {
         let mut tree = Smt::new();
         let key = test_key(b"k");
-        tree.insert(key, test_leaf(b"v")).unwrap();
+        tree.insert(key, test_leaf(b"v"));
         tree.remove(&key);
         assert_non_inclusion(&tree, &key);
     }
@@ -748,12 +747,12 @@ mod tests {
 
         let mut tree1 = Smt::new();
         for &(k, l) in &entries {
-            tree1.insert(k, l).unwrap();
+            tree1.insert(k, l);
         }
 
         let mut tree2 = Smt::new();
         for &(k, l) in entries.iter().rev() {
-            tree2.insert(k, l).unwrap();
+            tree2.insert(k, l);
         }
 
         assert_eq!(tree1.root(), tree2.root());
@@ -766,8 +765,8 @@ mod tests {
         for i in 0u32..10 {
             let k = test_key(&i.to_le_bytes());
             let l = test_leaf(&i.to_le_bytes());
-            tree1.insert(k, l).unwrap();
-            tree2.insert(k, l).unwrap();
+            tree1.insert(k, l);
+            tree2.insert(k, l);
         }
         assert_eq!(tree1.root(), tree2.root());
     }
@@ -776,7 +775,7 @@ mod tests {
     fn test_root_idempotent() {
         let mut tree = Smt::new();
         for i in 0u32..5 {
-            tree.insert(test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes())).unwrap();
+            tree.insert(test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()));
         }
         let r1 = tree.root();
         let r2 = tree.root();
@@ -791,12 +790,12 @@ mod tests {
         let leaf = test_leaf(b"v");
 
         let mut tree1 = Smt::new();
-        tree1.insert(key, leaf).unwrap();
+        tree1.insert(key, leaf);
 
         let mut tree2 = Smt::new();
-        tree2.insert(key, leaf).unwrap();
+        tree2.insert(key, leaf);
         tree2.remove(&key);
-        tree2.insert(key, leaf).unwrap();
+        tree2.insert(key, leaf);
 
         assert_eq!(tree1.root(), tree2.root());
     }
@@ -810,7 +809,7 @@ mod tests {
         let mut tree = Smt::new();
         let entries: Vec<(Hash, Hash)> = (0u32..20).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
         for &(k, l) in &entries {
-            tree.insert(k, l).unwrap();
+            tree.insert(k, l);
         }
         for &(k, l) in &entries {
             assert_inclusion(&tree, &k, l);
@@ -821,9 +820,9 @@ mod tests {
     fn test_proof_after_update() {
         let mut tree = Smt::new();
         let key = test_key(b"k");
-        tree.insert(key, test_leaf(b"v1")).unwrap();
+        tree.insert(key, test_leaf(b"v1"));
         let new_leaf = test_leaf(b"v2");
-        tree.insert(key, new_leaf).unwrap();
+        tree.insert(key, new_leaf);
         assert_inclusion(&tree, &key, new_leaf);
     }
 
@@ -832,7 +831,7 @@ mod tests {
         let mut tree = Smt::new();
         let entries: Vec<(Hash, Hash)> = (0u32..5).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
         for &(k, l) in &entries {
-            tree.insert(k, l).unwrap();
+            tree.insert(k, l);
         }
         let root = tree.root();
         for &(k, l) in &entries {
@@ -847,7 +846,7 @@ mod tests {
         let present: Vec<(Hash, Hash)> = (0u32..5).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
         let absent: Vec<Hash> = (100u32..105).map(|i| test_key(&i.to_le_bytes())).collect();
         for &(k, l) in &present {
-            tree.insert(k, l).unwrap();
+            tree.insert(k, l);
         }
         for &(k, l) in &present {
             assert_inclusion(&tree, &k, l);
@@ -861,12 +860,12 @@ mod tests {
     fn test_proof_non_empty_count() {
         let mut tree = Smt::new();
         let k = test_key(b"solo");
-        tree.insert(k, test_leaf(b"v")).unwrap();
+        tree.insert(k, test_leaf(b"v"));
         let proof = tree.prove(&k).unwrap();
         assert_eq!(proof.non_empty_count(), 0);
         assert_eq!(proof.empty_count(), DEPTH);
 
-        tree.insert(test_key(b"other"), test_leaf(b"w")).unwrap();
+        tree.insert(test_key(b"other"), test_leaf(b"w"));
         let proof = tree.prove(&k).unwrap();
         assert_eq!(proof.non_empty_count(), 1);
     }
@@ -884,7 +883,7 @@ mod tests {
     #[test]
     fn test_non_inclusion_single_element_tree() {
         let mut tree = Smt::new();
-        tree.insert(test_key(b"present"), test_leaf(b"v")).unwrap();
+        tree.insert(test_key(b"present"), test_leaf(b"v"));
         assert_non_inclusion(&tree, &test_key(b"absent"));
     }
 
@@ -892,7 +891,7 @@ mod tests {
     fn test_non_inclusion_multi_element_tree() {
         let mut tree = Smt::new();
         for i in 0u32..10 {
-            tree.insert(test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes())).unwrap();
+            tree.insert(test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()));
         }
         for i in 100u32..110 {
             assert_non_inclusion(&tree, &test_key(&i.to_le_bytes()));
@@ -903,8 +902,8 @@ mod tests {
     fn test_non_inclusion_after_deletion() {
         let mut tree = Smt::new();
         let key = test_key(b"will_delete");
-        tree.insert(key, test_leaf(b"v")).unwrap();
-        tree.insert(test_key(b"stays"), test_leaf(b"w")).unwrap();
+        tree.insert(key, test_leaf(b"v"));
+        tree.insert(test_key(b"stays"), test_leaf(b"w"));
         tree.remove(&key);
         assert_non_inclusion(&tree, &key);
     }
@@ -915,7 +914,7 @@ mod tests {
         let present_key = test_key(b"present");
         let present_leaf = test_leaf(b"v");
         let absent_key = test_key(b"absent");
-        tree.insert(present_key, present_leaf).unwrap();
+        tree.insert(present_key, present_leaf);
 
         let root = tree.root();
         let inclusion_proof = tree.prove(&present_key).unwrap();
@@ -933,7 +932,7 @@ mod tests {
     fn test_reject_wrong_leaf_hash() {
         let mut tree = Smt::new();
         let key = test_key(b"k");
-        tree.insert(key, test_leaf(b"correct")).unwrap();
+        tree.insert(key, test_leaf(b"correct"));
         let root = tree.root();
         let proof = tree.prove(&key).unwrap();
         let wrong_leaf = test_leaf(b"wrong");
@@ -945,7 +944,7 @@ mod tests {
         let mut tree = Smt::new();
         let key = test_key(b"k");
         let leaf = test_leaf(b"v");
-        tree.insert(key, leaf).unwrap();
+        tree.insert(key, leaf);
         let proof = tree.prove(&key).unwrap();
         let wrong_root = test_leaf(b"fake_root");
         assert!(!proof.verify::<TestHasher>(&key, Some(leaf), wrong_root).unwrap());
@@ -956,7 +955,7 @@ mod tests {
         let mut tree = Smt::new();
         let key = test_key(b"correct_key");
         let leaf = test_leaf(b"v");
-        tree.insert(key, leaf).unwrap();
+        tree.insert(key, leaf);
         let root = tree.root();
         let proof = tree.prove(&key).unwrap();
         let wrong_key = test_key(b"wrong_key");
@@ -968,8 +967,8 @@ mod tests {
         let mut tree = Smt::new();
         let k1 = test_key(b"k1");
         let k2 = test_key(b"k2");
-        tree.insert(k1, test_leaf(b"v1")).unwrap();
-        tree.insert(k2, test_leaf(b"v2")).unwrap();
+        tree.insert(k1, test_leaf(b"v1"));
+        tree.insert(k2, test_leaf(b"v2"));
         let root = tree.root();
         let mut proof = tree.prove(&k1).unwrap();
 
@@ -986,7 +985,7 @@ mod tests {
         let mut tree = Smt::new();
         let key = test_key(b"k");
         let leaf = test_leaf(b"v");
-        tree.insert(key, leaf).unwrap();
+        tree.insert(key, leaf);
         let root = tree.root();
         let proof = tree.prove(&key).unwrap();
         assert!(!proof.verify::<TestHasher>(&key, None, root).unwrap());
@@ -995,7 +994,7 @@ mod tests {
     #[test]
     fn test_reject_non_inclusion_as_inclusion() {
         let mut tree = Smt::new();
-        tree.insert(test_key(b"other"), test_leaf(b"w")).unwrap();
+        tree.insert(test_key(b"other"), test_leaf(b"w"));
         let absent = test_key(b"absent");
         let root = tree.root();
         let proof = tree.prove(&absent).unwrap();
@@ -1024,8 +1023,8 @@ mod tests {
         let l1 = test_leaf(b"left");
         let l2 = test_leaf(b"right");
         let mut tree = Smt::new();
-        tree.insert(k1, l1).unwrap();
-        tree.insert(k2, l2).unwrap();
+        tree.insert(k1, l1);
+        tree.insert(k2, l2);
 
         assert_inclusion(&tree, &k1, l1);
         assert_inclusion(&tree, &k2, l2);
@@ -1047,8 +1046,8 @@ mod tests {
         let l1 = test_leaf(b"left");
         let l2 = test_leaf(b"right");
         let mut tree = Smt::new();
-        tree.insert(k1, l1).unwrap();
-        tree.insert(k2, l2).unwrap();
+        tree.insert(k1, l1);
+        tree.insert(k2, l2);
 
         assert_inclusion(&tree, &k1, l1);
         assert_inclusion(&tree, &k2, l2);
@@ -1072,8 +1071,8 @@ mod tests {
         assert_ne!(bit_at(&k1, 200), bit_at(&k2, 200));
 
         let mut tree = Smt::new();
-        tree.insert(k1, test_leaf(b"v1")).unwrap();
-        tree.insert(k2, test_leaf(b"v2")).unwrap();
+        tree.insert(k1, test_leaf(b"v1"));
+        tree.insert(k2, test_leaf(b"v2"));
 
         assert_inclusion(&tree, &k1, test_leaf(b"v1"));
         assert_inclusion(&tree, &k2, test_leaf(b"v2"));
@@ -1084,8 +1083,8 @@ mod tests {
         let zero_key = key_from_bytes([0x00; 32]);
         let max_key = key_from_bytes([0xFF; 32]);
         let mut tree = Smt::new();
-        tree.insert(zero_key, test_leaf(b"zero")).unwrap();
-        tree.insert(max_key, test_leaf(b"max")).unwrap();
+        tree.insert(zero_key, test_leaf(b"zero"));
+        tree.insert(max_key, test_leaf(b"max"));
 
         assert_inclusion(&tree, &zero_key, test_leaf(b"zero"));
         assert_inclusion(&tree, &max_key, test_leaf(b"max"));
@@ -1101,7 +1100,7 @@ mod tests {
             bytes[1..5].copy_from_slice(&i.to_le_bytes());
             let key = key_from_bytes(bytes);
             let leaf = test_leaf(&i.to_le_bytes());
-            tree.insert(key, leaf).unwrap();
+            tree.insert(key, leaf);
             entries.push((key, leaf));
         }
         for &(k, l) in &entries {
@@ -1114,8 +1113,8 @@ mod tests {
         let k1 = key_from_bytes([0xAA; 32]);
         let k2 = key_from_bytes([0x55; 32]);
         let mut tree = Smt::new();
-        tree.insert(k1, test_leaf(b"aa")).unwrap();
-        tree.insert(k2, test_leaf(b"55")).unwrap();
+        tree.insert(k1, test_leaf(b"aa"));
+        tree.insert(k2, test_leaf(b"55"));
         assert_inclusion(&tree, &k1, test_leaf(b"aa"));
         assert_inclusion(&tree, &k2, test_leaf(b"55"));
     }
@@ -1133,7 +1132,7 @@ mod tests {
         for _ in 0..100 {
             let key = Hash::from_bytes(rng.r#gen());
             let leaf = Hash::from_bytes(rng.r#gen());
-            tree.insert(key, leaf).unwrap();
+            tree.insert(key, leaf);
             entries.push((key, leaf));
         }
 
@@ -1150,7 +1149,7 @@ mod tests {
         let mut tree = Smt::new();
 
         for _ in 0..100 {
-            tree.insert(Hash::from_bytes(rng.r#gen()), Hash::from_bytes(rng.r#gen())).unwrap();
+            tree.insert(Hash::from_bytes(rng.r#gen()), Hash::from_bytes(rng.r#gen()));
         }
 
         let root = tree.root();
@@ -1180,7 +1179,7 @@ mod tests {
             } else {
                 let key = Hash::from_bytes(rng.r#gen());
                 let leaf = Hash::from_bytes(rng.r#gen());
-                tree.insert(key, leaf).unwrap();
+                tree.insert(key, leaf);
                 live_keys.push((key, leaf));
             }
         }
@@ -1199,19 +1198,19 @@ mod tests {
 
         let mut tree1 = Smt::new();
         for &(k, l) in &entries {
-            tree1.insert(k, l).unwrap();
+            tree1.insert(k, l);
         }
 
         let mut tree2 = Smt::new();
         for &(k, l) in entries.iter().rev() {
-            tree2.insert(k, l).unwrap();
+            tree2.insert(k, l);
         }
 
         let mut tree3 = Smt::new();
         let n = entries.len();
         for i in 0..n {
             let &(k, l) = &entries[(i + 73) % n];
-            tree3.insert(k, l).unwrap();
+            tree3.insert(k, l);
         }
 
         assert_eq!(tree1.root(), tree2.root(), "forward vs reverse");
@@ -1226,7 +1225,7 @@ mod tests {
     fn test_empty_hash_not_valid_leaf() {
         let mut tree = Smt::new();
         let key = test_key(b"k");
-        tree.insert(key, ZERO_HASH).unwrap();
+        tree.insert(key, ZERO_HASH);
         assert!(tree.is_empty());
         assert_eq!(tree.get(&key), None);
         assert_eq!(tree.root(), TestHasher::empty_root());
@@ -1237,7 +1236,7 @@ mod tests {
         let mut tree = Smt::new();
         let zero_key = Hash::from_bytes([0u8; 32]);
         let leaf = test_leaf(b"zero_key_leaf");
-        tree.insert(zero_key, leaf).unwrap();
+        tree.insert(zero_key, leaf);
         assert_inclusion(&tree, &zero_key, leaf);
     }
 
@@ -1246,7 +1245,7 @@ mod tests {
         let mut tree = Smt::new();
         let max_key = Hash::from_bytes([0xFF; 32]);
         let leaf = test_leaf(b"max_key_leaf");
-        tree.insert(max_key, leaf).unwrap();
+        tree.insert(max_key, leaf);
         assert_inclusion(&tree, &max_key, leaf);
     }
 
@@ -1272,7 +1271,7 @@ mod tests {
         let mut keys = Vec::new();
         for i in 0u32..50 {
             let k = test_key(&i.to_le_bytes());
-            tree.insert(k, test_leaf(&i.to_le_bytes())).unwrap();
+            tree.insert(k, test_leaf(&i.to_le_bytes()));
             keys.push(k);
         }
         for k in &keys {
@@ -1287,7 +1286,7 @@ mod tests {
     fn test_proof_bitmap_consistency() {
         let mut tree = Smt::new();
         for i in 0u32..10 {
-            tree.insert(test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes())).unwrap();
+            tree.insert(test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()));
         }
         let proof = tree.prove(&test_key(&0u32.to_le_bytes())).unwrap();
 
