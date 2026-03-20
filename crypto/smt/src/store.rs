@@ -56,6 +56,56 @@ pub struct BranchChildren {
     pub right: Hash,
 }
 
+/// A single leaf update: set `key` to `leaf_hash` (or remove if `leaf_hash == ZERO_HASH`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LeafUpdate {
+    pub key: Hash,
+    pub leaf_hash: Hash,
+}
+
+/// Sorted, unique-by-key collection of leaf updates.
+///
+/// Required by [`crate::tree::compute_root_update`] which processes leaves bottom-up
+/// and relies on sorted order to pair siblings sharing a branch.
+///
+/// Derefs to `[LeafUpdate]` for read access. No `DerefMut` — mutation could break
+/// the sorted/unique invariants.
+pub struct SortedLeafUpdates(std::vec::Vec<LeafUpdate>);
+
+impl SortedLeafUpdates {
+    /// Build from a sorted map. `BTreeMap` iteration order guarantees
+    /// keys are sorted and unique, so no additional sort/dedup is needed.
+    pub fn from_sorted_map<V>(map: &BTreeMap<Hash, V>, mut to_leaf_hash: impl FnMut(&Hash, &V) -> Hash) -> Self {
+        Self(map.iter().map(|(k, v)| LeafUpdate { key: *k, leaf_hash: to_leaf_hash(k, v) }).collect())
+    }
+
+    /// Build from an unsorted iterator. Sorts and deduplicates (last wins).
+    pub fn from_unsorted(iter: impl IntoIterator<Item = LeafUpdate>) -> Self {
+        let mut v: std::vec::Vec<LeafUpdate> = iter.into_iter().collect();
+        v.sort_unstable_by_key(|u| u.key);
+        v.dedup_by(|later, earlier| {
+            if later.key == earlier.key {
+                *earlier = *later;
+                true
+            } else {
+                false
+            }
+        });
+        Self(v)
+    }
+
+    pub fn into_vec(self) -> std::vec::Vec<LeafUpdate> {
+        self.0
+    }
+}
+
+impl std::ops::Deref for SortedLeafUpdates {
+    type Target = [LeafUpdate];
+    fn deref(&self) -> &[LeafUpdate] {
+        &self.0
+    }
+}
+
 /// Read-only branch lookup for the Sparse Merkle Tree.
 ///
 /// This trait is intentionally immutable — tree computations read from the store

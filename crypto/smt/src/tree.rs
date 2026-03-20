@@ -18,7 +18,7 @@ use core::marker::PhantomData;
 use kaspa_hashes::{Hash, ZERO_HASH};
 
 use crate::proof::OwnedSmtProof;
-use crate::store::{BTreeSmtStore, BranchChildren, BranchKey, SmtStore};
+use crate::store::{BTreeSmtStore, BranchChildren, BranchKey, LeafUpdate, SmtStore, SortedLeafUpdates};
 use crate::{DEPTH, SmtHasher, bit_at, hash_node};
 
 /// A 256-bit Sparse Merkle Tree with incremental updates and cached root.
@@ -127,73 +127,6 @@ impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
         Ok(())
     }
 
-    /// Insert or update multiple leaves in batch.
-    ///
-    /// Keys are sorted and processed bottom-up. At each level, entries sharing
-    /// a branch are paired directly (no store read for the sibling).
-    pub fn insert_many(&mut self, updates: BTreeMap<Hash, Hash>) -> Result<(), Infallible> {
-        if updates.is_empty() {
-            return Ok(());
-        }
-
-        for (&key, &leaf_hash) in &updates {
-            self.store.insert_leaf(key, leaf_hash);
-        }
-
-        if updates.len() == 1 {
-            let (&key, &leaf_hash) = updates.iter().next().unwrap();
-            self.root = self.walk_up(&key, leaf_hash);
-            return Ok(());
-        }
-
-        let mut current: Vec<(Hash, Hash)> = updates.into_iter().collect();
-        let empty_hashes = &H::EMPTY_HASHES;
-        let mut next = Vec::with_capacity(current.len());
-
-        for depth in (0..DEPTH).rev() {
-            let height = DEPTH - 1 - depth;
-            let mut i = 0;
-
-            while i < current.len() {
-                let (key, hash) = current[i];
-                let branch_key = BranchKey::new(height as u8, &key);
-
-                let sibling_in_batch = if i + 1 < current.len() {
-                    let next_bk = BranchKey::new(height as u8, &current[i + 1].0);
-                    if branch_key == next_bk { Some(current[i + 1].1) } else { None }
-                } else {
-                    None
-                };
-
-                let (left, right) = if let Some(sib) = sibling_in_batch {
-                    (hash, sib)
-                } else {
-                    let goes_right = bit_at(&key, depth);
-                    let sibling = self
-                        .store
-                        .get_branch(&branch_key)
-                        .unwrap()
-                        .map(|bc| if goes_right { bc.left } else { bc.right })
-                        .unwrap_or(empty_hashes[height]);
-                    if goes_right { (sibling, hash) } else { (hash, sibling) }
-                };
-
-                let parent = hash_node::<H>(left, right);
-                self.store.insert_branch(branch_key, BranchChildren { left, right });
-                next.push((key, parent));
-
-                i += if sibling_in_batch.is_some() { 2 } else { 1 };
-            }
-
-            core::mem::swap(&mut current, &mut next);
-            next.clear();
-        }
-
-        debug_assert_eq!(current.len(), 1);
-        self.root = current[0].1;
-        Ok(())
-    }
-
     /// Remove a leaf by key, incrementally updating the root.
     pub fn remove(&mut self, key: &Hash) -> Option<Hash> {
         let old = self.store.get_leaf(key);
@@ -245,7 +178,7 @@ pub type SmtBranchChanges = BTreeMap<BranchKey, BranchChildren>;
 pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
     store: &S,
     current_root: Hash,
-    leaf_updates: BTreeMap<Hash, Hash>,
+    leaf_updates: SortedLeafUpdates,
 ) -> Result<(Hash, SmtBranchChanges), S::Error> {
     if leaf_updates.is_empty() {
         return Ok((current_root, BTreeMap::new()));
@@ -264,7 +197,9 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
     };
 
     let empty_hashes = &H::EMPTY_HASHES;
-    let mut current: Vec<(Hash, Hash)> = leaf_updates.into_iter().collect();
+    // At each level, leaf_hash is overwritten with the computed parent hash
+    // while key is preserved for path navigation.
+    let mut current: Vec<LeafUpdate> = leaf_updates.into_vec();
     let mut next = Vec::with_capacity(current.len());
 
     for depth in (0..DEPTH).rev() {
@@ -272,13 +207,13 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
 
         let mut i = 0;
         while i < current.len() {
-            let (key, hash) = current[i];
-            let branch_key = BranchKey::new(height as u8, &key);
+            let entry = current[i];
+            let branch_key = BranchKey::new(height as u8, &entry.key);
 
             // Check if the next entry is a sibling (same BranchKey)
             let sibling_in_batch = if i + 1 < current.len() {
-                let next_bk = BranchKey::new(height as u8, &current[i + 1].0);
-                if branch_key == next_bk { Some(current[i + 1].1) } else { None }
+                let next_bk = BranchKey::new(height as u8, &current[i + 1].key);
+                if branch_key == next_bk { Some(current[i + 1].leaf_hash) } else { None }
             } else {
                 None
             };
@@ -288,12 +223,16 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
 
             let new_children = if let Some(sib) = sibling_in_batch {
                 // Both children are in the batch
-                BranchChildren { left: hash, right: sib }
+                BranchChildren { left: entry.leaf_hash, right: sib }
             } else {
                 // One child is from the batch, sibling from store/buffer
-                let goes_right = bit_at(&key, depth);
+                let goes_right = bit_at(&entry.key, depth);
                 let sibling = existing.map(|bc| if goes_right { bc.left } else { bc.right }).unwrap_or(empty_hashes[height]);
-                if goes_right { BranchChildren { left: sibling, right: hash } } else { BranchChildren { left: hash, right: sibling } }
+                if goes_right {
+                    BranchChildren { left: sibling, right: entry.leaf_hash }
+                } else {
+                    BranchChildren { left: entry.leaf_hash, right: sibling }
+                }
             };
 
             let parent = hash_node::<H>(new_children.left, new_children.right);
@@ -302,7 +241,7 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
             let empty = BranchChildren { left: empty_hashes[height], right: empty_hashes[height] };
             if new_children != existing.unwrap_or(empty) {
                 changes.insert(branch_key, new_children);
-                next.push((key, parent));
+                next.push(LeafUpdate { key: entry.key, leaf_hash: parent });
             }
 
             i += if sibling_in_batch.is_some() { 2 } else { 1 };
@@ -318,7 +257,7 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
     }
 
     debug_assert_eq!(current.len(), 1);
-    Ok((current[0].1, changes))
+    Ok((current[0].leaf_hash, changes))
 }
 
 #[cfg(test)]
@@ -332,6 +271,10 @@ mod tests {
     type Smt = SparseMerkleTree<TestHasher>;
 
     // ---- Helpers ----
+
+    fn updates(entries: impl IntoIterator<Item = (Hash, Hash)>) -> SortedLeafUpdates {
+        SortedLeafUpdates::from_unsorted(entries.into_iter().map(|(key, leaf_hash)| LeafUpdate { key, leaf_hash }))
+    }
 
     fn test_key(seed: &[u8]) -> Hash {
         let mut h = TestHasher::default();
@@ -364,10 +307,6 @@ mod tests {
         assert!(proof.verify::<TestHasher>(key, None, root).unwrap(), "non-inclusion proof failed for key {key}");
     }
 
-    fn btree(entries: impl IntoIterator<Item = (Hash, Hash)>) -> BTreeMap<Hash, Hash> {
-        entries.into_iter().collect()
-    }
-
     // ========================================================================
     // compute_root_update tests
     // ========================================================================
@@ -376,7 +315,7 @@ mod tests {
     fn test_compute_root_update_empty() {
         let store = BTreeSmtStore::new();
         let empty_root = TestHasher::empty_root();
-        let (root, changes) = compute_root_update::<TestHasher, _>(&store, empty_root, BTreeMap::new()).unwrap();
+        let (root, changes) = compute_root_update::<TestHasher, _>(&store, empty_root, updates([])).unwrap();
         assert_eq!(root, empty_root);
         assert!(changes.is_empty());
     }
@@ -397,7 +336,7 @@ mod tests {
         // Build via compute_root_update from empty store
         let store = BTreeSmtStore::new();
         let empty_root = TestHasher::empty_root();
-        let (root, _changes) = compute_root_update::<TestHasher, _>(&store, empty_root, btree([(k1, l1), (k2, l2)])).unwrap();
+        let (root, _changes) = compute_root_update::<TestHasher, _>(&store, empty_root, updates([(k1, l1), (k2, l2)])).unwrap();
 
         assert_eq!(root, expected_root);
     }
@@ -417,7 +356,7 @@ mod tests {
         let store = tree.into_store();
 
         // compute_root_update from this store with k2
-        let (root2, changes) = compute_root_update::<TestHasher, _>(&store, root1, btree([(k2, l2)])).unwrap();
+        let (root2, changes) = compute_root_update::<TestHasher, _>(&store, root1, updates([(k2, l2)])).unwrap();
 
         // Verify against full in-memory tree
         let mut tree2 = Smt::new();
@@ -441,7 +380,7 @@ mod tests {
         let root = tree.root();
         let store = tree.into_store();
 
-        let (new_root, changes) = compute_root_update::<TestHasher, _>(&store, root, btree([(k1, l1)])).unwrap();
+        let (new_root, changes) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, l1)])).unwrap();
 
         assert_eq!(new_root, root, "same leaf value should produce same root");
         assert!(changes.is_empty(), "no branches should change when leaf value is identical");
@@ -463,7 +402,7 @@ mod tests {
         let root = tree.root();
         let store = tree.into_store();
 
-        let (new_root, changes) = compute_root_update::<TestHasher, _>(&store, root, btree([(k1, l1_new)])).unwrap();
+        let (new_root, changes) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, l1_new)])).unwrap();
 
         assert_ne!(new_root, root);
         // The number of changed branches should be <= 256 (one path)
@@ -487,7 +426,7 @@ mod tests {
         let store = tree.into_store();
 
         let empty_root = TestHasher::empty_root();
-        let (new_root, _changes) = compute_root_update::<TestHasher, _>(&store, root, btree([(k1, ZERO_HASH)])).unwrap();
+        let (new_root, _changes) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, ZERO_HASH)])).unwrap();
 
         assert_eq!(new_root, empty_root);
     }
@@ -1359,163 +1298,7 @@ mod tests {
     }
 
     // ========================================================================
-    // 14. insert_many tests
-    // ========================================================================
-
-    #[test]
-    fn test_insert_many_empty() {
-        let mut tree = Smt::new();
-        let empty_root = tree.root();
-        tree.insert_many(btree([])).unwrap();
-        assert_eq!(tree.root(), empty_root);
-    }
-
-    #[test]
-    fn test_insert_many_single() {
-        let key = test_key(b"k");
-        let leaf = test_leaf(b"v");
-
-        let mut tree1 = Smt::new();
-        tree1.insert(key, leaf).unwrap();
-
-        let mut tree2 = Smt::new();
-        tree2.insert_many(btree([(key, leaf)])).unwrap();
-
-        assert_eq!(tree1.root(), tree2.root());
-    }
-
-    #[test]
-    fn test_insert_many_two_elements() {
-        let k1 = test_key(b"1");
-        let k2 = test_key(b"2");
-        let l1 = test_leaf(b"a");
-        let l2 = test_leaf(b"b");
-
-        let mut tree1 = Smt::new();
-        tree1.insert(k1, l1).unwrap();
-        tree1.insert(k2, l2).unwrap();
-
-        let mut tree2 = Smt::new();
-        tree2.insert_many(btree([(k1, l1), (k2, l2)])).unwrap();
-
-        assert_eq!(tree1.root(), tree2.root());
-    }
-
-    #[test]
-    fn test_insert_many_matches_sequential() {
-        let entries: Vec<(Hash, Hash)> = (0u32..20).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
-
-        let mut tree1 = Smt::new();
-        for &(k, l) in &entries {
-            tree1.insert(k, l).unwrap();
-        }
-
-        let mut tree2 = Smt::new();
-        tree2.insert_many(btree(entries)).unwrap();
-
-        assert_eq!(tree1.root(), tree2.root());
-    }
-
-    #[test]
-    fn test_insert_many_order_independent() {
-        let entries: Vec<(Hash, Hash)> = (0u32..10).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
-
-        let mut tree1 = Smt::new();
-        tree1.insert_many(btree(entries.clone())).unwrap();
-
-        let mut reversed = entries;
-        reversed.reverse();
-        let mut tree2 = Smt::new();
-        tree2.insert_many(btree(reversed)).unwrap();
-
-        assert_eq!(tree1.root(), tree2.root());
-    }
-
-    #[test]
-    fn test_insert_many_duplicate_keys_last_wins() {
-        let key = test_key(b"k");
-        let v1 = test_leaf(b"v1");
-        let v2 = test_leaf(b"v2");
-
-        let mut tree1 = Smt::new();
-        tree1.insert(key, v2).unwrap();
-
-        // BTreeMap deduplicates by key; last insert wins
-        let mut tree2 = Smt::new();
-        let mut map = btree([(key, v1)]);
-        map.insert(key, v2);
-        tree2.insert_many(map).unwrap();
-
-        assert_eq!(tree1.root(), tree2.root());
-    }
-
-    #[test]
-    fn test_insert_many_incremental() {
-        let entries1: Vec<(Hash, Hash)> = (0u32..5).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
-        let entries2: Vec<(Hash, Hash)> = (5u32..10).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
-
-        let mut tree1 = Smt::new();
-        for &(k, l) in entries1.iter().chain(entries2.iter()) {
-            tree1.insert(k, l).unwrap();
-        }
-
-        let mut tree2 = Smt::new();
-        tree2.insert_many(btree(entries1)).unwrap();
-        tree2.insert_many(btree(entries2)).unwrap();
-
-        assert_eq!(tree1.root(), tree2.root());
-    }
-
-    #[test]
-    fn test_insert_many_100_random() {
-        let mut rng = StdRng::seed_from_u64(42);
-        let entries: Vec<(Hash, Hash)> = (0..100).map(|_| (Hash::from_bytes(rng.r#gen()), Hash::from_bytes(rng.r#gen()))).collect();
-
-        let mut tree1 = Smt::new();
-        for &(k, l) in &entries {
-            tree1.insert(k, l).unwrap();
-        }
-
-        let mut tree2 = Smt::new();
-        tree2.insert_many(btree(entries)).unwrap();
-
-        assert_eq!(tree1.root(), tree2.root());
-    }
-
-    #[test]
-    fn test_insert_many_proofs_verify() {
-        let entries: Vec<(Hash, Hash)> = (0u32..10).map(|i| (test_key(&i.to_le_bytes()), test_leaf(&i.to_le_bytes()))).collect();
-
-        let mut tree = Smt::new();
-        tree.insert_many(btree(entries.clone())).unwrap();
-
-        for &(k, l) in &entries {
-            assert_inclusion(&tree, &k, l);
-        }
-    }
-
-    #[test]
-    fn test_insert_many_max_depth_divergence() {
-        let k1 = key_from_bytes([0u8; 32]);
-        let mut bytes2 = [0u8; 32];
-        bytes2[31] = 0x01;
-        let k2 = key_from_bytes(bytes2);
-
-        let l1 = test_leaf(b"left");
-        let l2 = test_leaf(b"right");
-
-        let mut tree1 = Smt::new();
-        tree1.insert(k1, l1).unwrap();
-        tree1.insert(k2, l2).unwrap();
-
-        let mut tree2 = Smt::new();
-        tree2.insert_many(btree([(k1, l1), (k2, l2)])).unwrap();
-
-        assert_eq!(tree1.root(), tree2.root());
-    }
-
-    // ========================================================================
-    // 15. Proof error tests
+    // 14. Proof error tests
     // ========================================================================
 
     #[test]

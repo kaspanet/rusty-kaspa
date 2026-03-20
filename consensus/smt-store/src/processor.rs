@@ -19,7 +19,7 @@ use kaspa_database::prelude::{BatchDbWriter, DB, StoreError, StoreResult};
 use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
-use kaspa_smt::store::{BranchChildren, BranchKey, SmtStore};
+use kaspa_smt::store::{BranchChildren, BranchKey, SmtStore, SortedLeafUpdates};
 use kaspa_smt::tree::{SmtBranchChanges, compute_root_update};
 use rocksdb::WriteBatch;
 
@@ -129,20 +129,12 @@ impl<'a> SmtProcessor<'a> {
             });
         }
 
-        // Derive leaf updates from lane changes
-        let leaf_updates: BTreeMap<Hash, Hash> = self
-            .lane_changes
-            .iter()
-            .map(|(lane_key, change)| {
-                let leaf_hash = match change {
-                    Some(v) => {
-                        smt_leaf_hash(&SmtLeafInput { lane_id: &v.lane_id, lane_tip: &v.lane_tip_hash, blue_score: self.blue_score })
-                    }
-                    None => ZERO_HASH,
-                };
-                (*lane_key, leaf_hash)
-            })
-            .collect();
+        // Derive leaf updates from lane changes (BTreeMap guarantees sorted + unique keys)
+        let blue_score = self.blue_score;
+        let leaf_updates = SortedLeafUpdates::from_sorted_map(&self.lane_changes, |_key, change| match change {
+            Some(v) => smt_leaf_hash(&SmtLeafInput { lane_id: &v.lane_id, lane_tip: &v.lane_tip_hash, blue_score }),
+            None => ZERO_HASH,
+        });
 
         // Pure computation: reads from immutable DB, returns only changed branches.
         let reader = VersionedBranchReader {
