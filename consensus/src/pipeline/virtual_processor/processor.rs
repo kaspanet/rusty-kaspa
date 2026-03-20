@@ -626,6 +626,7 @@ impl VirtualStateProcessor {
     /// Derive the current lanes_root from the stored root-level branch (height=255, node_key=ZERO).
     pub(super) fn derive_lanes_root(&self, blue_score: u64, selected_parent: Hash) -> Hash {
         use kaspa_hashes::SeqCommitActiveNode;
+        use kaspa_smt::SmtHasher;
         use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
 
         let min_bs = blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
@@ -637,7 +638,7 @@ impl VirtualStateProcessor {
 
         match root_branch {
             Some(v) => kaspa_smt::hash_node::<SeqCommitActiveNode>(v.data().left, v.data().right),
-            None => kaspa_smt::empty_root::<SeqCommitActiveNode>(),
+            None => SeqCommitActiveNode::empty_root(),
         }
     }
 

@@ -34,8 +34,7 @@ pub mod store;
 #[cfg(feature = "std")]
 pub mod tree;
 
-use alloc::boxed::Box;
-use kaspa_hashes::{Hash, Hasher, ZERO_HASH};
+use kaspa_hashes::{Hash, Hasher};
 
 /// Depth of the sparse Merkle tree (number of levels from root to leaf).
 pub const DEPTH: usize = 256;
@@ -62,24 +61,14 @@ pub fn bit_at(key: &Hash, d: usize) -> bool {
     key.as_slice()[d / 8] & (0x80 >> (d % 8)) != 0
 }
 
-/// Compute the root hash of a completely empty SMT.
+/// Precompute empty subtree hashes at runtime for every level of the tree.
 ///
-/// Performs [`DEPTH`] (256) hash operations. For repeated use, prefer
-/// [`compute_empty_hashes`] which returns all levels at once.
-pub fn empty_root<H: Hasher>() -> Hash {
-    compute_empty_hashes::<H>()[DEPTH]
-}
-
-/// Precompute empty subtree hashes for every level of the tree.
-///
-/// Returns a boxed array of 257 hashes indexed by *level* (height from leaf):
-/// - `[0]` = leaf level = [`ZERO_HASH`] (the canonical empty leaf)
-/// - `[i]` = `hash_node::<H>([i-1], [i-1])`
-/// - `[DEPTH]` = root of a completely empty tree = [`empty_root`]
-///
-/// The result is heap-allocated (8 KiB+) to avoid large stack moves.
-pub fn compute_empty_hashes<H: Hasher>() -> Box<[Hash; DEPTH + 1]> {
-    let mut result = Box::new([ZERO_HASH; DEPTH + 1]);
+/// This exists **only** to validate `build.rs`-generated [`SmtHasher::EMPTY_HASHES`]
+/// in tests. Production code should use `H::EMPTY_HASHES` or `H::empty_root()` instead.
+#[cfg(test)]
+fn compute_empty_hashes<H: Hasher>() -> alloc::boxed::Box<[Hash; DEPTH + 1]> {
+    use kaspa_hashes::ZERO_HASH;
+    let mut result = alloc::boxed::Box::new([ZERO_HASH; DEPTH + 1]);
     for i in 1..=DEPTH {
         result[i] = hash_node::<H>(result[i - 1], result[i - 1]);
     }
@@ -97,6 +86,12 @@ pub trait SmtHasher: Hasher {
     /// - `[i]` = `hash_node(empty[i-1], empty[i-1])`
     /// - `[DEPTH]` = root of a completely empty tree
     const EMPTY_HASHES: [Hash; DEPTH + 1];
+
+    /// Root hash of a completely empty tree — `EMPTY_HASHES[DEPTH]`.
+    #[inline]
+    fn empty_root() -> Hash {
+        Self::EMPTY_HASHES[DEPTH]
+    }
 }
 
 // Build-time generated `SmtHasher` impls for known hashers.
@@ -105,7 +100,7 @@ include!(concat!(env!("OUT_DIR"), "/empty_hashes_generated.rs"));
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_hashes::SeqCommitActiveNode;
+    use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
 
     type H = SeqCommitActiveNode;
 
@@ -154,8 +149,8 @@ mod tests {
 
     #[test]
     fn test_empty_root_deterministic() {
-        let r1 = empty_root::<H>();
-        let r2 = empty_root::<H>();
+        let r1 = H::empty_root();
+        let r2 = H::empty_root();
         assert_eq!(r1, r2);
         assert_ne!(r1, ZERO_HASH, "empty root should not be ZERO_HASH");
     }
@@ -174,7 +169,7 @@ mod tests {
         assert_eq!(table[2], hash_node::<H>(table[1], table[1]));
 
         // Top level = empty_root
-        assert_eq!(table[DEPTH], empty_root::<H>());
+        assert_eq!(table[DEPTH], H::empty_root());
 
         // All levels are distinct
         for i in 0..=DEPTH {
@@ -191,6 +186,7 @@ mod tests {
         assert_eq!(core::mem::size_of_val(&table), core::mem::size_of::<usize>());
     }
 
+    /// Validates that the build.rs-generated const matches runtime computation.
     #[test]
     fn test_smt_hasher_matches_runtime_computation() {
         let computed = compute_empty_hashes::<H>();
@@ -202,6 +198,6 @@ mod tests {
     #[test]
     fn test_smt_hasher_empty_root() {
         assert_eq!(H::EMPTY_HASHES[0], ZERO_HASH);
-        assert_eq!(H::EMPTY_HASHES[DEPTH], empty_root::<H>());
+        assert_eq!(H::EMPTY_HASHES[DEPTH], H::empty_root());
     }
 }

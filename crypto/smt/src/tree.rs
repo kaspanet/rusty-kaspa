@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn test_compute_root_update_empty() {
         let store = BTreeSmtStore::new();
-        let empty_root = crate::empty_root::<TestHasher>();
+        let empty_root = TestHasher::empty_root();
         let (root, changes) = compute_root_update::<TestHasher, _>(&store, empty_root, BTreeMap::new()).unwrap();
         assert_eq!(root, empty_root);
         assert!(changes.is_empty());
@@ -404,7 +404,7 @@ mod tests {
 
         // Build via compute_root_update from empty store
         let store = BTreeSmtStore::new();
-        let empty_root = crate::empty_root::<TestHasher>();
+        let empty_root = TestHasher::empty_root();
         let (root, _changes) = compute_root_update::<TestHasher, _>(&store, empty_root, btree([(k1, l1), (k2, l2)])).unwrap();
 
         assert_eq!(root, expected_root);
@@ -494,7 +494,7 @@ mod tests {
         let root = tree.root();
         let store = tree.into_store();
 
-        let empty_root = crate::empty_root::<TestHasher>();
+        let empty_root = TestHasher::empty_root();
         let (new_root, _changes) = compute_root_update::<TestHasher, _>(&store, root, btree([(k1, ZERO_HASH)])).unwrap();
 
         assert_eq!(new_root, empty_root);
@@ -507,7 +507,7 @@ mod tests {
     #[test]
     fn test_empty_root() {
         let tree = Smt::new();
-        let expected = crate::empty_root::<TestHasher>();
+        let expected = TestHasher::empty_root();
         assert_eq!(tree.root(), expected);
         assert_ne!(tree.root(), ZERO_HASH, "empty root should not be ZERO_HASH");
     }
@@ -532,7 +532,7 @@ mod tests {
         let mut tree = Smt::new();
         let key = test_key(b"any");
         assert_eq!(tree.remove(&key), None);
-        assert_eq!(tree.root(), crate::empty_root::<TestHasher>());
+        assert_eq!(tree.root(), TestHasher::empty_root());
     }
 
     #[test]
@@ -638,7 +638,7 @@ mod tests {
         tree.insert(key, ZERO_HASH).unwrap();
         assert_eq!(tree.len(), 0);
         assert!(tree.is_empty());
-        assert_eq!(tree.root(), crate::empty_root::<TestHasher>());
+        assert_eq!(tree.root(), TestHasher::empty_root());
     }
 
     // ========================================================================
@@ -1298,7 +1298,7 @@ mod tests {
         tree.insert(key, ZERO_HASH).unwrap();
         assert!(tree.is_empty());
         assert_eq!(tree.get(&key), None);
-        assert_eq!(tree.root(), crate::empty_root::<TestHasher>());
+        assert_eq!(tree.root(), TestHasher::empty_root());
     }
 
     #[test]
@@ -1325,9 +1325,9 @@ mod tests {
 
     #[test]
     fn test_empty_root_golden_value() {
-        let root = crate::empty_root::<TestHasher>();
+        let root = TestHasher::empty_root();
         let root_hex = std::format!("{root}");
-        let root2 = crate::empty_root::<TestHasher>();
+        let root2 = TestHasher::empty_root();
         assert_eq!(std::format!("{root2}"), root_hex);
     }
 

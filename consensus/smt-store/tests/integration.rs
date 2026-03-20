@@ -7,6 +7,7 @@ use kaspa_database::prelude::{ConnBuilder, DB};
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_seq_commit::hashing::{lane_key, smt_leaf_hash};
 use kaspa_seq_commit::types::SmtLeafInput;
+use kaspa_smt::SmtHasher;
 use kaspa_smt::tree::SparseMerkleTree;
 use rocksdb::WriteBatch;
 
@@ -69,7 +70,7 @@ fn processor_two_lanes_matches_in_memory() {
     let tip_b = hash(0xBB);
     let blue_score = 100u64;
 
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     // Process via SmtProcessor
     let mut proc = SmtProcessor::new(&stores, blue_score, empty_root);
@@ -102,7 +103,7 @@ fn processor_second_block_reads_from_db() {
     let key_b = lane_key(&lane_id_b);
     let block1_hash = hash(0x11);
     let block2_hash = hash(0x22);
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     // Block 1: insert lane A
     let tip_a1 = hash(0xA1);
@@ -147,7 +148,7 @@ fn processor_update_same_lane_across_blocks() {
     let key = lane_key(&lane_id);
     let block1_hash = hash(0x11);
     let block2_hash = hash(0x22);
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     // Block 1
     let tip1 = hash(0xA1);
@@ -191,7 +192,7 @@ fn processor_flush_writes_correct_data() {
     let block_hash = hash(0x11);
     let tip = hash(0xAA);
     let blue_score = 100u64;
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     let mut proc = SmtProcessor::new(&stores, blue_score, empty_root);
     proc.update_lane(key, lane_id, tip);
@@ -229,7 +230,7 @@ fn inactivity_threshold_hides_stale_branches() {
     let block_hash = hash(0x11);
     let tip = hash(0xAA);
     let old_blue_score = 100u64;
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     // Write a lane at blue_score=100
     let mut proc = SmtProcessor::new(&stores, old_blue_score, empty_root);
@@ -271,7 +272,7 @@ fn from_root_constructor() {
 fn build_root_matches_flush() {
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
     let blue_score = 100u64;
 
     let mut proc = SmtProcessor::new(&stores, blue_score, empty_root);
@@ -291,7 +292,7 @@ fn build_root_matches_flush() {
 fn expire_lane_removes_from_tree() {
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     let lane_id = [0x01; 20];
     let key = lane_key(&lane_id);
@@ -333,7 +334,7 @@ fn empty_build_reuses_root() {
     let lane_id = [0x01; 20];
     let key = lane_key(&lane_id);
     let block_hash = hash(0x11);
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     // Block 1: insert a lane
     let bs1 = 100u64;
@@ -362,7 +363,7 @@ fn empty_build_reuses_root() {
 fn single_touch_updates_only_path_branches() {
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
     let bs = 100u64;
 
     let mut proc = SmtProcessor::new(&stores, bs, empty_root);
@@ -380,7 +381,7 @@ fn single_touch_updates_only_path_branches() {
 fn untouched_subtree_not_in_diff() {
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     let lane_a = [0x01; 20];
     let lane_b = [0x02; 20];
@@ -416,7 +417,7 @@ fn untouched_subtree_not_in_diff() {
 fn flush_rebuild_roundtrip() {
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
-    let empty_root = kaspa_smt::empty_root::<SeqCommitActiveNode>();
+    let empty_root = SeqCommitActiveNode::empty_root();
 
     let lane_a = [0x01; 20];
     let lane_b = [0x02; 20];
