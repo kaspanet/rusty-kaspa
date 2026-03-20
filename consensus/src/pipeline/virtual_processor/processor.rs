@@ -608,14 +608,14 @@ impl VirtualStateProcessor {
         let data = self.collect_mergeset_seq_data(ctx);
         let lane_updates =
             self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
-        let lanes_root = self.derive_lanes_root(parent_header.blue_score, selected_parent);
+        let parent_lanes_root = self.derive_parent_lanes_root(parent_header.blue_score, selected_parent);
 
         let (commit, _build) = self.build_seq_commit(
             parent_seq_commit,
             context_hash,
             current_blue_score,
             parent_header.blue_score,
-            lanes_root,
+            parent_lanes_root,
             &lane_updates,
             data.miner_payload_leaves,
             selected_parent,
@@ -623,13 +623,13 @@ impl VirtualStateProcessor {
         commit
     }
 
-    /// Derive the current lanes_root from the stored root-level branch (height=255, node_key=ZERO).
-    pub(super) fn derive_lanes_root(&self, blue_score: u64, selected_parent: Hash) -> Hash {
+    /// Derive the parent's lanes_root from the stored root-level branch (height=255, node_key=ZERO).
+    pub(super) fn derive_parent_lanes_root(&self, parent_blue_score: u64, selected_parent: Hash) -> Hash {
         use kaspa_hashes::SeqCommitActiveNode;
         use kaspa_smt::SmtHasher;
         use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
 
-        let min_bs = blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
+        let min_bs = parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
         let root_branch = self
             .smt_stores
             .branch_version

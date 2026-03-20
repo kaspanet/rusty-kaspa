@@ -582,6 +582,7 @@ impl VirtualStateProcessor {
 
     /// Build the SMT from lane updates + expirations, compute the final seq_commit hash.
     ///
+    /// `parent_lanes_root` is the SMT root inherited from the selected parent block.
     /// Works with an immutable view of DB state. Returns the commit hash and an `SmtBuild`
     /// containing the diff (updated branches, lane versions, score index) for later persistence.
     pub(super) fn build_seq_commit(
@@ -590,7 +591,7 @@ impl VirtualStateProcessor {
         context_hash: Hash,
         current_blue_score: u64,
         parent_blue_score: u64,
-        lanes_root: Hash,
+        parent_lanes_root: Hash,
         lane_updates: &[ResolvedLaneUpdate],
         miner_payload_leaves: Vec<Hash>,
         selected_parent: Hash,
@@ -599,8 +600,8 @@ impl VirtualStateProcessor {
         use kaspa_seq_commit::types::{SeqCommitInput, SeqState};
         use kaspa_smt_store::processor::SmtProcessor;
 
-        // 1. Create processor with parent's lanes_root
-        let mut proc = SmtProcessor::new(&self.smt_stores, current_blue_score, lanes_root);
+        // 1. Create processor starting from the parent's lanes root
+        let mut proc = SmtProcessor::new(&self.smt_stores, current_blue_score, parent_lanes_root);
 
         // 2. Expire stale lanes
         self.expire_stale_lanes(&mut proc, parent_blue_score, current_blue_score, selected_parent);
@@ -651,14 +652,14 @@ impl VirtualStateProcessor {
         let data = self.collect_mergeset_seq_data(ctx);
         let lane_updates =
             self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
-        let lanes_root = self.derive_lanes_root(parent_header.blue_score, selected_parent);
+        let parent_lanes_root = self.derive_parent_lanes_root(parent_header.blue_score, selected_parent);
 
         let (hash, build) = self.build_seq_commit(
             parent_seq_commit,
             context_hash,
             current_blue_score,
             parent_header.blue_score,
-            lanes_root,
+            parent_lanes_root,
             &lane_updates,
             data.miner_payload_leaves,
             selected_parent,
