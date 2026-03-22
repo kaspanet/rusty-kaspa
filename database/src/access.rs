@@ -8,7 +8,7 @@ use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::{DBIteratorWithThreadMode, DBWithThreadMode, Direction, IterateBounds, IteratorMode, MultiThreaded, ReadOptions};
 use self_cell::self_cell;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 

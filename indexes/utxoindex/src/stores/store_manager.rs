@@ -1,11 +1,11 @@
 use std::{collections::HashSet, sync::Arc};
 
 use kaspa_consensus_core::{
-    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
     BlockHashSet,
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
 };
 use kaspa_core::trace;
-use kaspa_database::prelude::{CachePolicy, StoreResult, DB};
+use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
 use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, CompactUtxoEntry};
 use rocksdb::WriteBatch;
 
