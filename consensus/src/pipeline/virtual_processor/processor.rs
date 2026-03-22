@@ -14,6 +14,7 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
+            DB,
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter},
@@ -34,28 +35,28 @@ use crate::{
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
             utxo_set::UtxoSetStoreReader,
             virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
-            DB,
         },
     },
     params::Params,
     pipeline::{
-        deps_manager::VirtualStateProcessingMessage, pruning_processor::processor::PruningProcessingMessage,
-        virtual_processor::utxo_validation::UtxoProcessingContext, ProcessingCounters,
+        ProcessingCounters, deps_manager::VirtualStateProcessingMessage, pruning_processor::processor::PruningProcessingMessage,
+        virtual_processor::utxo_validation::UtxoProcessingContext,
     },
     processes::{
         coinbase::CoinbaseManager,
         ghostdag::ordering::SortableBlock,
-        transaction_validator::{errors::TxResult, tx_validation_in_utxo_context::TxValidationFlags, TransactionValidator},
+        transaction_validator::{TransactionValidator, errors::TxResult, tx_validation_in_utxo_context::TxValidationFlags},
         window::WindowManager,
     },
 };
 use kaspa_consensus_core::{
+    BlockHashSet, ChainPath,
     acceptance_data::AcceptanceData,
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
-    config::{genesis::GenesisBlock, params::ForkActivation},
+    config::genesis::GenesisBlock,
     header::Header,
     merkle::calc_hash_merkle_root,
     mining_rules::MiningRules,
@@ -65,7 +66,6 @@ use kaspa_consensus_core::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
-    BlockHashSet, ChainPath,
 };
 use kaspa_consensus_notify::{
     notification::{
@@ -82,26 +82,23 @@ use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};
 use once_cell::unsync::Lazy;
 
-use super::{
-    errors::{PruningImportError, PruningImportResult},
-    utxo_validation::crescendo::CrescendoLogger,
-};
+use super::errors::{PruningImportError, PruningImportResult};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
 use kaspa_consensus_core::tx::ValidatedTransaction;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
-use rand::{seq::SliceRandom, Rng};
+use rand::{Rng, seq::SliceRandom};
 use rayon::{
-    prelude::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator},
     ThreadPool,
+    prelude::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator},
 };
 use rocksdb::WriteBatch;
 use std::{
     cmp::min,
     collections::{BinaryHeap, HashMap, VecDeque},
     ops::Deref,
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 
 pub struct VirtualStateProcessor {
@@ -170,13 +167,8 @@ pub struct VirtualStateProcessor {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    pub(super) crescendo_logger: CrescendoLogger,
-
-    // Crescendo hardfork activation score (used here for activating KIPs 9,10)
-    pub(crate) crescendo_activation: ForkActivation,
-
     // Mining Rule
-    mining_rules: Arc<MiningRules>,
+    _mining_rules: Arc<MiningRules>,
 }
 
 impl VirtualStateProcessor {
@@ -241,9 +233,7 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
-            crescendo_logger: CrescendoLogger::new(),
-            crescendo_activation: params.crescendo_activation,
-            mining_rules,
+            _mining_rules: mining_rules,
         }
     }
 
@@ -1029,11 +1019,7 @@ impl VirtualStateProcessor {
                 invalid_transactions.insert(tx.id(), e);
             }
         }
-        if !invalid_transactions.is_empty() {
-            Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions))
-        } else {
-            Ok(())
-        }
+        if !invalid_transactions.is_empty() { Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions)) } else { Ok(()) }
     }
 
     pub(crate) fn build_block_template_from_virtual_state(

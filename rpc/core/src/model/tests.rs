@@ -101,7 +101,7 @@ mod mockery {
         ($($type:ty),*) => {
             $(impl Mock for $type {
                 fn mock() -> Self {
-                    rand::thread_rng().gen()
+                    rand::thread_rng().r#gen()
                 }
             })*
         };
@@ -525,7 +525,7 @@ mod mockery {
 
     impl Mock for ScriptClass {
         fn mock() -> Self {
-            match rand::thread_rng().gen::<u8>() % 4 {
+            match rand::thread_rng().r#gen::<u8>() % 4 {
                 0 => ScriptClass::NonStandard,
                 1 => ScriptClass::PubKey,
                 2 => ScriptClass::PubKeyECDSA,

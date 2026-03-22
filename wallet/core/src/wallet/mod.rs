@@ -22,8 +22,8 @@ use crate::factory::try_load_account;
 use crate::imports::*;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{OpenArgs, StorageDescriptor};
-use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
+use crate::storage::local::interface::LocalStore;
 use crate::wallet::keydata::PrvKeyDataVariantKind;
 use crate::wallet::maps::ActiveAccountMap;
 use kaspa_bip32::{ExtendedKey, Language, Mnemonic, Prefix as KeyPrefix, WordCount};
@@ -584,10 +584,10 @@ impl Wallet {
             self.set_network_id(&network_id).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_id));
         }
 
-        if let Some(url) = settings.get::<String>(WalletSettings::Server) {
-            if let Some(wrpc_client) = self.try_wrpc_client() {
-                wrpc_client.set_url(Some(url.as_str())).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
-            }
+        if let Some(url) = settings.get::<String>(WalletSettings::Server)
+            && let Some(wrpc_client) = self.try_wrpc_client()
+        {
+            wrpc_client.set_url(Some(url.as_str())).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
         }
 
         Ok(())

@@ -1,10 +1,10 @@
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet,
     coinbase::*,
     config::params::ForkedParam,
     errors::coinbase::{CoinbaseError, CoinbaseResult},
     subnets,
     tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionOutput},
-    BlockHashMap, BlockHashSet,
 };
 use std::convert::TryInto;
 

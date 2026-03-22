@@ -1,10 +1,10 @@
 use crate::mempool::{
+    Mempool,
     errors::RuleResult,
     model::{
         pool::Pool,
         tx::{MempoolTransaction, TxRemovalReason},
     },
-    Mempool,
 };
 use kaspa_consensus_core::{
     api::ConsensusApi,

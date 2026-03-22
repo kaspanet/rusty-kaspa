@@ -1,3 +1,5 @@
+use alloc::{string::String, vec, vec::Vec};
+
 use crate::{Address, AddressError, Prefix};
 
 const CHARSET: &[u8] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
@@ -48,7 +50,7 @@ where
 
 // Convert 8bit array to 5bit array with right padding
 fn conv8to5(payload: &[u8]) -> Vec<u8> {
-    let padding = match payload.len() % 5 == 0 {
+    let padding = match payload.len().is_multiple_of(5) {
         true => 0,
         false => 1,
     };

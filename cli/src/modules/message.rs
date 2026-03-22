@@ -3,7 +3,7 @@ use kaspa_bip32::secp256k1::XOnlyPublicKey;
 use kaspa_wallet_core::message::SignMessageOptions;
 use kaspa_wallet_core::{
     account::{BIP32_ACCOUNT_KIND, KEYPAIR_ACCOUNT_KIND},
-    message::{sign_message, verify_message, PersonalMessage},
+    message::{PersonalMessage, sign_message, verify_message},
 };
 
 use crate::imports::*;

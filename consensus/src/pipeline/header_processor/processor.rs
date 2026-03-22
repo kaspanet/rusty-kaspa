@@ -10,6 +10,7 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
+            DB,
             block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter, BlockWindowHeap},
             daa::DbDaaStore,
             depth::DbDepthStore,
@@ -20,7 +21,6 @@ use crate::{
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
-            DB,
         },
     },
     params::Params,
@@ -30,11 +30,11 @@ use crate::{
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashSet, BlockLevel,
     blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     config::genesis::GenesisBlock,
     header::Header,
-    BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_database::prelude::{StoreResultExt, StoreResultUnitExt};
@@ -43,7 +43,7 @@ use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 use super::super::ProcessingCounters;
 
@@ -128,11 +128,11 @@ pub struct HeaderProcessor {
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
-    pub(super) dag_traversal_manager: DbDagTraversalManager,
+    pub(super) _dag_traversal_manager: DbDagTraversalManager,
     pub(super) window_manager: DbWindowManager,
     pub(super) depth_manager: DbBlockDepthManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
-    pub(super) pruning_point_manager: DbPruningPointManager,
+    pub(super) _pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
 
     // Pruning lock
@@ -178,11 +178,11 @@ impl HeaderProcessor {
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
             ghostdag_manager: services.ghostdag_manager.clone(),
-            dag_traversal_manager: services.dag_traversal_manager.clone(),
+            _dag_traversal_manager: services.dag_traversal_manager.clone(),
             window_manager: services.window_manager.clone(),
             reachability_service: services.reachability_service.clone(),
             depth_manager: services.depth_manager.clone(),
-            pruning_point_manager: services.pruning_point_manager.clone(),
+            _pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
 
             task_manager: BlockTaskDependencyManager::new(),
@@ -476,6 +476,7 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
         let mut relations_write = self.relations_store.write();
         relations_write.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
+        self.ghostdag_store.insert_batch(&mut batch, ORIGIN, &self.ghostdag_manager.origin_ghostdag_data()).unwrap();
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();

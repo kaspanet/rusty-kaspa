@@ -1,4 +1,4 @@
-use crate::{hashing, BlueWorkType};
+use crate::{BlueWorkType, hashing};
 use borsh::{BorshDeserialize, BorshSerialize};
 use itertools::Itertools;
 use kaspa_hashes::Hash;

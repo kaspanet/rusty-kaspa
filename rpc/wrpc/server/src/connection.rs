@@ -6,7 +6,7 @@ use kaspa_notify::{
     notification::Notification as NotificationT,
     notifier::Notify,
 };
-use kaspa_rpc_core::{api::ops::RpcApiOps, notify::mode::NotificationMode, Notification};
+use kaspa_rpc_core::{Notification, api::ops::RpcApiOps, notify::mode::NotificationMode};
 use std::{
     fmt::{Debug, Display},
     sync::{Arc, Mutex},

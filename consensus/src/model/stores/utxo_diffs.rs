@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{utxo::utxo_diff::UtxoDiff, BlockHasher};
+use kaspa_consensus_core::{BlockHasher, utxo::utxo_diff::UtxoDiff};
 use kaspa_database::prelude::CachePolicy;
-use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
+use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;

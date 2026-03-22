@@ -14,8 +14,8 @@ use kaspa_hashes::Hash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use parking_lot::RwLock;
 
-use super::services::{DbDagTraversalManager, DbGhostdagManager, DbWindowManager};
 use super::Consensus;
+use super::services::{DbDagTraversalManager, DbGhostdagManager, DbWindowManager};
 use crate::pipeline::virtual_processor::test_block_builder::TestBlockBuilder;
 use crate::processes::window::WindowManager;
 use crate::{
@@ -25,11 +25,11 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
-            ghostdag::DbGhostdagStore, headers::HeaderStoreReader, reachability::DbReachabilityStore, virtual_state::VirtualStores, DB,
+            DB, ghostdag::DbGhostdagStore, headers::HeaderStoreReader, reachability::DbReachabilityStore, virtual_state::VirtualStores,
         },
     },
     params::Params,
-    pipeline::{body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor, ProcessingCounters},
+    pipeline::{ProcessingCounters, body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor},
     test_helpers::header_from_precomputed_hash,
 };
 use kaspa_database::create_temp_db;
@@ -41,7 +41,7 @@ pub struct TestConsensus {
     params: Params,
     consensus: Arc<Consensus>,
     block_builder: TestBlockBuilder,
-    db_lifetime: DbLifetime,
+    _db_lifetime: DbLifetime,
 }
 
 impl TestConsensus {
@@ -62,7 +62,7 @@ impl TestConsensus {
         ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
-        Self { params: config.params.clone(), consensus, block_builder, db_lifetime: Default::default() }
+        Self { params: config.params.clone(), consensus, block_builder, _db_lifetime: Default::default() }
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and the provided `notification_sender`
@@ -83,7 +83,7 @@ impl TestConsensus {
         ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
-        Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
+        Self { consensus, block_builder, params: config.params.clone(), _db_lifetime: db_lifetime }
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and no notifier
@@ -105,7 +105,7 @@ impl TestConsensus {
         ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
-        Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
+        Self { consensus, block_builder, params: config.params.clone(), _db_lifetime: db_lifetime }
     }
 
     /// Clone the inner consensus Arc. For general usage of the underlying consensus simply deref

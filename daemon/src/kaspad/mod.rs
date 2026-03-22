@@ -3,7 +3,7 @@ pub mod wasm;
 
 use crate::imports::*;
 
-use wasm::{version, Process, ProcessEvent, ProcessOptions};
+use wasm::{Process, ProcessEvent, ProcessOptions, version};
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct KaspadConfig {
@@ -192,11 +192,7 @@ impl Kaspad {
     }
 
     pub fn uptime(&self) -> Option<Duration> {
-        if let Some(process) = self.inner().process.as_ref() {
-            process.uptime()
-        } else {
-            None
-        }
+        if let Some(process) = self.inner().process.as_ref() { process.uptime() } else { None }
     }
 
     pub fn process(&self) -> Option<Arc<Process>> {
@@ -213,10 +209,10 @@ impl Kaspad {
 
     pub fn start(&self) -> Result<()> {
         let process = self.process();
-        if let Some(process) = process {
-            if process.is_running() {
-                return Err(Error::Custom("Kaspa node is already running.".to_string()));
-            }
+        if let Some(process) = process
+            && process.is_running()
+        {
+            return Err(Error::Custom("Kaspa node is already running.".to_string()));
         }
 
         let argv = self.try_argv()?;

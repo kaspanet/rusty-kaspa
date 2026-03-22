@@ -19,6 +19,6 @@ pub mod prelude {
     pub use super::key::DbKey;
     pub use super::set_access::{CachedDbSetAccess, DbSetAccess, ReadLock};
     pub use super::writer::{BatchDbWriter, DbWriter, DirectDbWriter, DirectWriter, MemoryWriter};
-    pub use db::{delete_db, ConnBuilder, RocksDbPreset, DB};
+    pub use db::{ConnBuilder, DB, RocksDbPreset, delete_db};
     pub use errors::{StoreError, StoreErrorPredicates, StoreResult, StoreResultExt, StoreResultUnitExt};
 }

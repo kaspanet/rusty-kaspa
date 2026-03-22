@@ -6,7 +6,7 @@ use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_core::warn;
 use kaspa_grpc_client::ClientPool;
-use kaspa_rpc_core::{api::rpc::RpcApi, RpcRawBlock};
+use kaspa_rpc_core::{RpcRawBlock, api::rpc::RpcApi};
 use kaspa_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::{task::JoinHandle, time::sleep};

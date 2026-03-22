@@ -1,4 +1,5 @@
 use crate::{
+    Policy,
     feerate::{FeerateEstimator, FeerateEstimatorArgs},
     mempool::{
         config::Config,
@@ -11,8 +12,7 @@ use crate::{
         },
         tx::Priority,
     },
-    model::{topological_index::TopologicalIndex, TransactionIdSet},
-    Policy,
+    model::{TransactionIdSet, topological_index::TopologicalIndex},
 };
 use kaspa_consensus_core::{
     block::TemplateTransactionSelector,

@@ -1,17 +1,17 @@
 use std::{
     cmp::Reverse,
-    collections::{hash_map::Entry::Vacant, BinaryHeap, HashSet},
+    collections::{BinaryHeap, HashSet, hash_map::Entry::Vacant},
     sync::Arc,
 };
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
     blockhash::{BlockHashes, ORIGIN},
     errors::pruning::{PruningImportError, PruningImportResult},
     header::Header,
     pruning::PruningPointProof,
     trusted::TrustedBlock,
-    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_core::{debug, trace};
 use kaspa_hashes::Hash;
@@ -25,6 +25,7 @@ use crate::{
         stores::{
             ghostdag::{GhostdagData, GhostdagStore},
             headers::HeaderStore,
+            pruning::PruningProofDescriptor,
             reachability::StagingReachabilityStore,
             relations::StagingRelationsStore,
             selected_chain::SelectedChainStore,
@@ -46,6 +47,9 @@ impl PruningProofManager {
 
         let pruning_point_header = proof[0].last().unwrap().clone();
         let pruning_point = pruning_point_header.hash;
+
+        // Build the descriptor based on the new proof before modifying it
+        let descriptor = PruningProofDescriptor::from_proof(&proof, pruning_point, true);
 
         // Create a copy of the proof, since we're going to be mutating the proof passed to us
         let proof_sets = (0..=self.max_block_level)
@@ -130,6 +134,9 @@ impl PruningProofManager {
 
             ancestors.insert(header.hash);
         }
+
+        // Once applied, store the descriptor
+        self.pruning_point_store.write().set_pruning_proof_descriptor(descriptor).unwrap();
 
         // Update virtual state based on proof derived pruning point.
         // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.

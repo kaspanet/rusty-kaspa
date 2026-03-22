@@ -10,13 +10,13 @@ use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, CompactUtxoEntry
 use rocksdb::WriteBatch;
 
 use crate::{
+    IDENT,
     model::UtxoSetByScriptPublicKey,
     stores::{
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },
-    IDENT,
 };
 
 #[derive(Clone)]

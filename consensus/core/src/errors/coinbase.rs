@@ -11,7 +11,9 @@ pub enum CoinbaseError {
     #[error("coinbase payload script public key length is {0} while the maximum allowed length is {1}")]
     PayloadScriptPublicKeyLenAboveMax(usize, u8),
 
-    #[error("coinbase payload length is {0} bytes but it needs to be at least {1} bytes long in order to accommodate the script public key")]
+    #[error(
+        "coinbase payload length is {0} bytes but it needs to be at least {1} bytes long in order to accommodate the script public key"
+    )]
     PayloadCantContainScriptPublicKey(usize, usize),
 }
 

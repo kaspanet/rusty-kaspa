@@ -8,7 +8,7 @@ use kaspa_core::{
 use kaspa_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
-use workflow_perf_monitor::mem::{get_process_memory_info, ProcessMemoryInfo};
+use workflow_perf_monitor::mem::{ProcessMemoryInfo, get_process_memory_info};
 
 pub struct MemoryMonitorTask {
     tick_service: Arc<TickService>,
