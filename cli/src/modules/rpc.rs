@@ -162,10 +162,6 @@ impl Rpc {
                 let result = rpc.shutdown_call(None, ShutdownRequest {}).await?;
                 self.println(&ctx, result);
             }
-            // RpcApiOps::GetHeaders => {
-            //     let result = rpc.get_headers_call(GetHeadersRequest {  }).await?;
-            //     self.println(&ctx, result);
-            // }
             RpcApiOps::GetUtxosByAddresses => {
                 if argv.is_empty() {
                     return Err(Error::custom("Please specify at least one address"));

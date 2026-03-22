@@ -999,44 +999,6 @@ try_from! ( args: GetCurrentNetworkResponse, IGetCurrentNetworkResponse, {
 
 // ---
 
-declare! {
-    IGetHeadersRequest,
-    r#"
-    /**
-     *
-     *
-     * @category Node RPC
-     */
-    export interface IGetHeadersRequest {
-        startHash : HexString;
-        limit : bigint;
-        isAscending : boolean;
-    }
-    "#,
-}
-
-try_from! ( args: IGetHeadersRequest, GetHeadersRequest, {
-    Ok(from_value(args.into())?)
-});
-
-declare! {
-    IGetHeadersResponse,
-    r#"
-    /**
-     *
-     *
-     * @category Node RPC
-     */
-    export interface IGetHeadersResponse {
-        headers : IHeader[];
-    }
-    "#,
-}
-
-try_from! ( args: GetHeadersResponse, IGetHeadersResponse, {
-    Ok(to_value(&args)?.into())
-});
-
 // ---
 
 declare! {

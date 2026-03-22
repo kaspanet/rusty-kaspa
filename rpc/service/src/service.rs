@@ -921,14 +921,6 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(PingResponse {})
     }
 
-    async fn get_headers_call(
-        &self,
-        _connection: Option<&DynRpcConnection>,
-        _request: GetHeadersRequest,
-    ) -> RpcResult<GetHeadersResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
     async fn get_block_dag_info_call(
         &self,
         _connection: Option<&DynRpcConnection>,

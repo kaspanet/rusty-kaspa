@@ -43,7 +43,6 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetBlockCount);
     impl_into_kaspad_request!(GetBlockDagInfo);
     impl_into_kaspad_request!(ResolveFinalityConflict);
-    impl_into_kaspad_request!(GetHeaders);
     impl_into_kaspad_request!(GetUtxosByAddresses);
     impl_into_kaspad_request!(GetBalanceByAddress);
     impl_into_kaspad_request!(GetBalancesByAddresses);
@@ -182,7 +181,6 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetBlockCount);
     impl_into_kaspad_response!(GetBlockDagInfo);
     impl_into_kaspad_response!(ResolveFinalityConflict);
-    impl_into_kaspad_response!(GetHeaders);
     impl_into_kaspad_response!(GetUtxosByAddresses);
     impl_into_kaspad_response!(GetBalanceByAddress);
     impl_into_kaspad_response!(GetBalancesByAddresses);

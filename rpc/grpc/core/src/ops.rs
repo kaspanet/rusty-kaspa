@@ -67,7 +67,6 @@ pub enum KaspadPayloadOps {
     GetBlockCount,
     GetBlockDagInfo,
     ResolveFinalityConflict,
-    GetHeaders,
     GetUtxosByAddresses,
     GetBalanceByAddress,
     GetBalancesByAddresses,

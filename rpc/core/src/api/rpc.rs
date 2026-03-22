@@ -312,16 +312,6 @@ pub trait RpcApi: Sync + Send + AnySync {
     }
     async fn shutdown_call(&self, connection: Option<&DynRpcConnection>, request: ShutdownRequest) -> RpcResult<ShutdownResponse>;
 
-    /// Requests headers between the given `start_hash` and the current virtual, up to the given limit.
-    async fn get_headers(&self, start_hash: RpcHash, limit: u64, is_ascending: bool) -> RpcResult<Vec<RpcHeader>> {
-        Ok(self.get_headers_call(None, GetHeadersRequest::new(start_hash, limit, is_ascending)).await?.headers)
-    }
-    async fn get_headers_call(
-        &self,
-        connection: Option<&DynRpcConnection>,
-        request: GetHeadersRequest,
-    ) -> RpcResult<GetHeadersResponse>;
-
     /// Returns the total balance in unspent transactions towards a given address.
     ///
     /// This call is only available when this node was started with `--utxoindex`.
