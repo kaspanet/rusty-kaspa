@@ -40,11 +40,11 @@ impl<T: Ord, const K: usize> TopK<T, K> {
     pub fn push(&mut self, item: T) {
         if self.heap.len() < K {
             self.heap.push(Reverse(item));
-        } else if let Some(Reverse(min)) = self.heap.peek() {
-            if item > *min {
-                self.heap.pop();
-                self.heap.push(Reverse(item));
-            }
+        } else if let Some(Reverse(min)) = self.heap.peek()
+            && item > *min
+        {
+            self.heap.pop();
+            self.heap.push(Reverse(item));
         }
     }
 

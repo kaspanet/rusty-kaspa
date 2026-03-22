@@ -107,10 +107,10 @@ mod ref_lock {
 
         pub async fn read(&self) -> RefReadersFirstRwLockReadGuard<T> {
             let mut g = self.cached_readers_guard.lock().await;
-            if let Some(wrg) = g.clone() {
-                if let Some(rg) = wrg.upgrade() {
-                    return rg;
-                }
+            if let Some(wrg) = g.clone()
+                && let Some(rg) = wrg.upgrade()
+            {
+                return rg;
             }
             let rg = Arc::new(self.inner.clone().read_owned().await);
             g.replace(Arc::downgrade(&rg));

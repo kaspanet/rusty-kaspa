@@ -35,7 +35,7 @@ use std::{ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
-    db: Arc<DB>,
+    _db: Arc<DB>,
 
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -229,7 +229,7 @@ impl ConsensusStorage {
         relations::init(reachability_relations_store.write().deref_mut());
 
         Arc::new(Self {
-            db,
+            _db: db,
             statuses_store,
             relations_store,
             reachability_relations_store,

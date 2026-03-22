@@ -584,10 +584,10 @@ impl Wallet {
             self.set_network_id(&network_id).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_id));
         }
 
-        if let Some(url) = settings.get::<String>(WalletSettings::Server) {
-            if let Some(wrpc_client) = self.try_wrpc_client() {
-                wrpc_client.set_url(Some(url.as_str())).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
-            }
+        if let Some(url) = settings.get::<String>(WalletSettings::Server)
+            && let Some(wrpc_client) = self.try_wrpc_client()
+        {
+            wrpc_client.set_url(Some(url.as_str())).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
         }
 
         Ok(())

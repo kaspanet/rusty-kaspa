@@ -33,7 +33,7 @@ pub struct SyncManager<
     traversal_manager: DagTraversalManager<U, T, S>,
     ghostdag_store: Arc<U>,
     selected_chain_store: Arc<RwLock<V>>,
-    header_selected_tip_store: Arc<RwLock<W>>,
+    _header_selected_tip_store: Arc<RwLock<W>>,
     pruning_point_store: Arc<RwLock<X>>,
     statuses_store: Arc<RwLock<Y>>,
 }
@@ -64,7 +64,7 @@ impl<
             traversal_manager,
             ghostdag_store,
             selected_chain_store,
-            header_selected_tip_store,
+            _header_selected_tip_store: header_selected_tip_store,
             pruning_point_store,
             statuses_store,
         }

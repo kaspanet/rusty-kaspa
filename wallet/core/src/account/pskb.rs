@@ -197,10 +197,10 @@ pub async fn pskb_signer_for_address(
     // in case of keypair account, we don't have a derivation path,
     // so we need to skip the key source
     let mut key_source = None;
-    if let Some(key_fingerprint) = key_fingerprint {
-        if let Some(derivation_path) = derivation_path {
-            key_source = Some(KeySource { key_fingerprint, derivation_path: derivation_path.clone() });
-        }
+    if let Some(key_fingerprint) = key_fingerprint
+        && let Some(derivation_path) = derivation_path
+    {
+        key_source = Some(KeySource { key_fingerprint, derivation_path: derivation_path.clone() });
     }
 
     // Process each PSKT in the bundle

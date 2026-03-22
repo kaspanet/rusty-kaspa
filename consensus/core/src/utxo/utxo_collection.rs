@@ -67,10 +67,10 @@ impl UtxoCollectionExtensions for UtxoCollection {
         // We prefer iterating over the smaller set
         if self.len() <= other.len() {
             for (k, v1) in self.iter() {
-                if let Some(v2) = other.get(k) {
-                    if rule(k, v1, v2) {
-                        return Some(*k);
-                    }
+                if let Some(v2) = other.get(k)
+                    && rule(k, v1, v2)
+                {
+                    return Some(*k);
                 }
             }
         } else {

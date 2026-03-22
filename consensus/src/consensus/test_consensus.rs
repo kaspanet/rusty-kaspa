@@ -41,7 +41,7 @@ pub struct TestConsensus {
     params: Params,
     consensus: Arc<Consensus>,
     block_builder: TestBlockBuilder,
-    db_lifetime: DbLifetime,
+    _db_lifetime: DbLifetime,
 }
 
 impl TestConsensus {
@@ -62,7 +62,7 @@ impl TestConsensus {
         ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
-        Self { params: config.params.clone(), consensus, block_builder, db_lifetime: Default::default() }
+        Self { params: config.params.clone(), consensus, block_builder, _db_lifetime: Default::default() }
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and the provided `notification_sender`
@@ -83,7 +83,7 @@ impl TestConsensus {
         ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
-        Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
+        Self { consensus, block_builder, params: config.params.clone(), _db_lifetime: db_lifetime }
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and no notifier
@@ -105,7 +105,7 @@ impl TestConsensus {
         ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
-        Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
+        Self { consensus, block_builder, params: config.params.clone(), _db_lifetime: db_lifetime }
     }
 
     /// Clone the inner consensus Arc. For general usage of the underlying consensus simply deref

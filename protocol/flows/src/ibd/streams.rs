@@ -67,7 +67,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
         // Request the next batch only if the stream is still live
         if let Ok(Some(_)) = res {
             self.i += 1;
-            if self.i % IBD_BATCH_SIZE == 0 {
+            if self.i.is_multiple_of(IBD_BATCH_SIZE) {
                 info!("Downloaded {} blocks from the pruning point anticone", self.i - 1);
                 self.router
                     .enqueue(make_message!(
@@ -186,7 +186,7 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
         if let Ok(Some(chunk)) = res {
             self.i += 1;
             self.utxo_count += chunk.len();
-            if self.i % IBD_BATCH_SIZE == 0 {
+            if self.i.is_multiple_of(IBD_BATCH_SIZE) {
                 info!("Received {} UTXO set chunks so far, totaling in {} UTXOs", self.i, self.utxo_count);
                 self.router
                     .enqueue(make_message!(
