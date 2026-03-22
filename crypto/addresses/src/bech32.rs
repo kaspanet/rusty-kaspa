@@ -1,3 +1,5 @@
+use alloc::{string::String, vec, vec::Vec};
+
 use crate::{Address, AddressError, Prefix};
 
 const CHARSET: &[u8] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
