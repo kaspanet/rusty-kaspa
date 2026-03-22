@@ -960,22 +960,6 @@ mod mockery {
 
     test!(ShutdownResponse);
 
-    impl Mock for GetHeadersRequest {
-        fn mock() -> Self {
-            GetHeadersRequest { start_hash: mock(), limit: mock(), is_ascending: mock() }
-        }
-    }
-
-    test!(GetHeadersRequest);
-
-    impl Mock for GetHeadersResponse {
-        fn mock() -> Self {
-            GetHeadersResponse { headers: mock() }
-        }
-    }
-
-    test!(GetHeadersResponse);
-
     impl Mock for GetBalanceByAddressRequest {
         fn mock() -> Self {
             GetBalanceByAddressRequest { address: mock() }

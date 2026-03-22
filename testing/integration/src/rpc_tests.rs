@@ -405,18 +405,6 @@ async fn sanity_test() {
                 })
             }
 
-            KaspadPayloadOps::GetHeaders => {
-                let rpc_client = client.clone();
-                tst!(op, {
-                    let response_result = rpc_client
-                        .get_headers_call(None, GetHeadersRequest { start_hash: SIMNET_GENESIS.hash, limit: 1, is_ascending: true })
-                        .await;
-
-                    // Err because it's currently unimplemented
-                    assert!(response_result.is_err());
-                })
-            }
-
             KaspadPayloadOps::GetUtxosByAddresses => {
                 let rpc_client = client.clone();
                 tst!(op, {

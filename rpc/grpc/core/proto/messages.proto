@@ -31,7 +31,7 @@ message KaspadRequest {
     // FinalityConflictResolvedNotificationMessage finalityConflictResolvedNotification = 1042;
     GetMempoolEntriesRequestMessage getMempoolEntriesRequest = 1043;
     ShutdownRequestMessage shutdownRequest = 1045;
-    GetHeadersRequestMessage getHeadersRequest = 1047;
+    // Field 1047 removed (GetHeaders was never implemented)
     NotifyUtxosChangedRequestMessage notifyUtxosChangedRequest = 1049;
     // UtxosChangedNotificationMessage utxosChangedNotification = 1051;
     GetUtxosByAddressesRequestMessage getUtxosByAddressesRequest = 1052;
@@ -98,7 +98,7 @@ message KaspadResponse {
     FinalityConflictResolvedNotificationMessage finalityConflictResolvedNotification = 1042;
     GetMempoolEntriesResponseMessage getMempoolEntriesResponse = 1044;
     ShutdownResponseMessage shutdownResponse = 1046;
-    GetHeadersResponseMessage getHeadersResponse = 1048;
+    // Field 1048 removed (GetHeaders was never implemented)
     NotifyUtxosChangedResponseMessage notifyUtxosChangedResponse = 1050;
     UtxosChangedNotificationMessage utxosChangedNotification = 1051;
     GetUtxosByAddressesResponseMessage getUtxosByAddressesResponse = 1053;

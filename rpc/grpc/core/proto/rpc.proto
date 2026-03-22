@@ -489,19 +489,6 @@ message ShutdownResponseMessage {
   RPCError error = 1000;
 }
 
-// GetHeadersRequestMessage requests headers between the given startHash and the
-// current virtual, up to the given limit.
-message GetHeadersRequestMessage {
-  string startHash = 1;
-  uint64 limit = 2;
-  bool isAscending = 3;
-}
-
-message GetHeadersResponseMessage {
-  repeated string headers = 1;
-  RPCError error = 1000;
-}
-
 // NotifyUtxosChangedRequestMessage registers this connection for utxoChanged notifications
 // for the given addresses.
 //

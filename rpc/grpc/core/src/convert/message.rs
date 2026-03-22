@@ -323,13 +323,6 @@ from!(_item: RpcResult<&kaspa_rpc_core::ResolveFinalityConflictResponse>, protow
 from!(&kaspa_rpc_core::ShutdownRequest, protowire::ShutdownRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::ShutdownResponse>, protowire::ShutdownResponseMessage);
 
-from!(item: &kaspa_rpc_core::GetHeadersRequest, protowire::GetHeadersRequestMessage, {
-    Self { start_hash: item.start_hash.to_string(), limit: item.limit, is_ascending: item.is_ascending }
-});
-from!(item: RpcResult<&kaspa_rpc_core::GetHeadersResponse>, protowire::GetHeadersResponseMessage, {
-    Self { headers: item.headers.iter().map(|x| x.hash.to_string()).collect(), error: None }
-});
-
 from!(item: &kaspa_rpc_core::GetUtxosByAddressesRequest, protowire::GetUtxosByAddressesRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
 });
@@ -843,14 +836,6 @@ try_from!(&protowire::ResolveFinalityConflictResponseMessage, RpcResult<kaspa_rp
 
 try_from!(&protowire::ShutdownRequestMessage, kaspa_rpc_core::ShutdownRequest);
 try_from!(&protowire::ShutdownResponseMessage, RpcResult<kaspa_rpc_core::ShutdownResponse>);
-
-try_from!(item: &protowire::GetHeadersRequestMessage, kaspa_rpc_core::GetHeadersRequest, {
-    Self { start_hash: RpcHash::from_str(&item.start_hash)?, limit: item.limit, is_ascending: item.is_ascending }
-});
-try_from!(item: &protowire::GetHeadersResponseMessage, RpcResult<kaspa_rpc_core::GetHeadersResponse>, {
-    // TODO
-    Self { headers: vec![] }
-});
 
 try_from!(item: &protowire::GetUtxosByAddressesRequestMessage, kaspa_rpc_core::GetUtxosByAddressesRequest, {
     Self { addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()? }
