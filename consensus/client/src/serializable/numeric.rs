@@ -7,17 +7,16 @@
 //!
 
 use crate::error::Error;
-use crate::imports::*;
+use crate::{covenant, imports::*};
 use crate::result::Result;
 use crate::{
-    Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutpointInner, TransactionOutput, UtxoEntry,
+    CovenantBinding, Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutpointInner, TransactionOutput, UtxoEntry,
     UtxoEntryId, UtxoEntryReference,
 };
 use ahash::AHashMap;
 use cctx::VerifiableTransaction;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::CovenantBinding;
 use kaspa_hashes::Hash;
 use workflow_wasm::serde::{from_value, to_value};
 
@@ -187,35 +186,94 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct SerializableCovenantBinding {
+    authorizing_input: u16,
+    covenant_id: Hash,
+}
+
+impl From<cctx::CovenantBinding> for SerializableCovenantBinding {
+    fn from(covenant: cctx::CovenantBinding) -> Self {
+        Self { authorizing_input: covenant.authorizing_input, covenant_id: covenant.covenant_id }
+    }
+}
+
+impl From<&cctx::CovenantBinding> for SerializableCovenantBinding {
+    fn from(covenant: &cctx::CovenantBinding) -> Self {
+        Self { authorizing_input: covenant.authorizing_input, covenant_id: covenant.covenant_id }
+    }
+}
+
+impl From<CovenantBinding> for SerializableCovenantBinding {
+    fn from(covenant: CovenantBinding) -> Self {
+        Self { authorizing_input: covenant.get_authorizing_input(), covenant_id: covenant.get_covenant_id() }
+    }
+}
+
+impl TryFrom<SerializableCovenantBinding> for cctx::CovenantBinding {
+    type Error = Error;
+    fn try_from(covenant: SerializableCovenantBinding) -> Result<Self> {
+        Ok(Self { authorizing_input: covenant.authorizing_input, covenant_id: covenant.covenant_id })
+    }
+}
+
+impl TryFrom<&SerializableCovenantBinding> for CovenantBinding {
+    type Error = Error;
+    fn try_from(covenant: &SerializableCovenantBinding) -> Result<Self> {
+        Ok(CovenantBinding::new(covenant.authorizing_input, covenant.covenant_id))
+    }
+}
+
+impl TryFrom<&CovenantBinding> for SerializableCovenantBinding {
+    type Error = Error;
+    fn try_from(covenant: &CovenantBinding) -> std::result::Result<Self, Self::Error> {
+        Ok(Self { authorizing_input: covenant.get_authorizing_input(), covenant_id: covenant.get_covenant_id() })
+    }
+}
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct SerializableTransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
-    pub covenant: Option<CovenantBinding>,
+    pub covenant: Option<SerializableCovenantBinding>,
 }
 
 impl From<cctx::TransactionOutput> for SerializableTransactionOutput {
     fn from(output: cctx::TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: output.script_public_key, covenant: output.covenant }
+        let covenant = output.covenant.map(SerializableCovenantBinding::from);
+        Self { value: output.value, script_public_key: output.script_public_key, covenant }
     }
 }
 
 impl From<&cctx::TransactionOutput> for SerializableTransactionOutput {
     fn from(output: &cctx::TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: output.script_public_key.clone(), covenant: output.covenant }
+        let covenant = output.covenant.map(SerializableCovenantBinding::from);
+        Self { value: output.value, script_public_key: output.script_public_key.clone(), covenant }
     }
 }
 
 impl TryFrom<SerializableTransactionOutput> for cctx::TransactionOutput {
     type Error = Error;
     fn try_from(output: SerializableTransactionOutput) -> Result<Self> {
-        Ok(Self { value: output.value, script_public_key: output.script_public_key, covenant: output.covenant })
+        let covenant = match output.covenant {
+            Some(covenant) => Some(cctx::CovenantBinding::try_from(covenant)?),
+            None => None
+        };
+
+        Ok(Self { value: output.value, script_public_key: output.script_public_key, covenant })
     }
 }
 
 impl TryFrom<&SerializableTransactionOutput> for TransactionOutput {
     type Error = Error;
     fn try_from(output: &SerializableTransactionOutput) -> Result<Self> {
-        Ok(TransactionOutput::new(output.value, output.script_public_key.clone(), output.covenant))
+        let covenant = match &output.covenant {
+            Some(covenant) => Some(CovenantBinding::new(covenant.authorizing_input, covenant.covenant_id)),
+            None => None,
+        };
+
+        Ok(TransactionOutput::new(output.value, output.script_public_key.clone(), covenant))
     }
 }
 
@@ -223,7 +281,8 @@ impl TryFrom<&TransactionOutput> for SerializableTransactionOutput {
     type Error = Error;
     fn try_from(output: &TransactionOutput) -> Result<Self> {
         let inner = output.inner();
-        Ok(Self { value: inner.value, script_public_key: inner.script_public_key.clone(), covenant: inner.covenant })
+        let covenant = inner.covenant.map(SerializableCovenantBinding::from);
+        Ok(Self { value: inner.value, script_public_key: inner.script_public_key.clone(), covenant })
     }
 }
 
