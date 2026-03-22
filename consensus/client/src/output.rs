@@ -115,12 +115,12 @@ impl TransactionOutput {
 
     #[wasm_bindgen(getter, js_name = covenant)]
     pub fn get_covenant(&self) -> Option<CovenantBinding> {
-        self.inner().covenant.map(CovenantBinding::from)
+        self.inner().covenant
     }
 
     #[wasm_bindgen(setter, js_name = covenant)]
     pub fn set_covenant(&self, v: CovenantBinding) {
-        self.inner().covenant = Some(v.into())
+        self.inner().covenant = Some(v)
     }
 }
 
@@ -167,7 +167,7 @@ impl TryCastFromJs for TransactionOutput {
                     .try_get_value("covenant")?
                     .map(|v| v.try_into_owned().map_err(|err| Error::convert("covenant", err)))
                     .transpose()?;
-                Ok(TransactionOutput::new(value, script_public_key, covenant.map(CovenantBinding::from)).into())
+                Ok(TransactionOutput::new(value, script_public_key, covenant).into())
             } else {
                 Err("TransactionInput must be an object".into())
             }

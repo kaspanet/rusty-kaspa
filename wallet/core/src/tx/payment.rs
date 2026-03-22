@@ -4,7 +4,6 @@
 
 use crate::imports::*;
 use kaspa_consensus_client::{CovenantBinding as ClientCovenantBinding, TransactionOutput, TransactionOutputInner};
-use kaspa_consensus_core::tx::CovenantBinding;
 use kaspa_txscript::pay_to_address_script;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -125,7 +124,7 @@ impl From<PaymentOutput> for TransactionOutput {
         Self::new_with_inner(TransactionOutputInner {
             script_public_key: pay_to_address_script(&value.address),
             value: value.amount,
-            covenant: value.covenant.map(CovenantBinding::from),
+            covenant: value.covenant,
         })
     }
 }

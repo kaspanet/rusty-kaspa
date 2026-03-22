@@ -7,12 +7,12 @@
 //!
 
 use crate::error::Error;
+use crate::imports::*;
 use crate::result::Result;
 use crate::{
     CovenantBinding, Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutpointInner,
     TransactionOutput, UtxoEntry, UtxoEntryId, UtxoEntryReference,
 };
-use crate::{covenant, imports::*};
 use ahash::AHashMap;
 use cctx::VerifiableTransaction;
 use kaspa_addresses::Address;
@@ -267,10 +267,7 @@ impl TryFrom<SerializableTransactionOutput> for cctx::TransactionOutput {
 impl TryFrom<&SerializableTransactionOutput> for TransactionOutput {
     type Error = Error;
     fn try_from(output: &SerializableTransactionOutput) -> Result<Self> {
-        let covenant = match &output.covenant {
-            Some(covenant) => Some(CovenantBinding::new(covenant.authorizing_input, covenant.covenant_id)),
-            None => None,
-        };
+        let covenant = output.covenant.as_ref().map(|covenant| CovenantBinding::new(covenant.authorizing_input, covenant.covenant_id));
 
         Ok(TransactionOutput::new(output.value, output.script_public_key.clone(), covenant))
     }
