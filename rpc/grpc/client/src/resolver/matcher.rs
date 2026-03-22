@@ -31,10 +31,10 @@ impl Matcher<&kaspad_response::Payload> for kaspad_request::Payload {
 
 impl Matcher<&KaspadResponse> for KaspadRequest {
     fn is_matching(&self, response: &KaspadResponse) -> bool {
-        if let Some(ref response) = response.payload {
-            if let Some(ref request) = self.payload {
-                return request.is_matching(response);
-            }
+        if let Some(ref response) = response.payload
+            && let Some(ref request) = self.payload
+        {
+            return request.is_matching(response);
         }
         false
     }

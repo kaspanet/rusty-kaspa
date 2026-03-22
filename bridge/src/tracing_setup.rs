@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Mutex as StdMutex;
 use tracing_subscriber::fmt::format::{FormatEvent, FormatFields, Writer};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt};
 
 use kaspa_stratum_bridge::log_colors::LogColors;
 
-use crate::app_config::BridgeConfig;
 use crate::app_dirs;
+use kaspa_stratum_bridge::BridgeConfig;
 
 // Global registry mapping instance_id strings to instance numbers
 // This persists across async boundaries and thread switches
@@ -52,7 +52,7 @@ where
 
         let target = event.metadata().target();
         let formatted_target =
-            if let Some(rest) = target.strip_prefix("rustbridge") { format!("rustbridge{}", rest) } else { target.to_string() };
+            if let Some(rest) = target.strip_prefix("RKStratum") { format!("RKStratum{}", rest) } else { target.to_string() };
         let is_multiline = original_message.contains('\n');
 
         // Special-case the periodic stats output:
@@ -177,14 +177,14 @@ where
         let mut instance_num: Option<usize> = None;
 
         // Try to find instance_id in the message and look it up in registry
-        if let Some(instance_start) = original_message.find("[Instance ") {
-            if let Some(instance_end) = original_message[instance_start..].find("]") {
-                let instance_id_str = &original_message[instance_start..instance_start + instance_end + 1];
-                if let Ok(registry) = INSTANCE_REGISTRY.lock() {
-                    if let Some(&num) = registry.get(instance_id_str) {
-                        instance_num = Some(num);
-                    }
-                }
+        if let Some(instance_start) = original_message.find("[Instance ")
+            && let Some(instance_end) = original_message[instance_start..].find("]")
+        {
+            let instance_id_str = &original_message[instance_start..instance_start + instance_end + 1];
+            if let Ok(registry) = INSTANCE_REGISTRY.lock()
+                && let Some(&num) = registry.get(instance_id_str)
+            {
+                instance_num = Some(num);
             }
         }
 
@@ -256,16 +256,16 @@ where
                 return Ok(());
             } else
             // Fallback: Check for instance pattern in message
-            if let Some(instance_start) = message.find("[Instance ") {
-                if let Some(instance_end) = message[instance_start..].find("]") {
-                    let instance_str = &message[instance_start + 10..instance_start + instance_end];
-                    if let Ok(inst_num) = instance_str.parse::<usize>() {
-                        // Apply instance color to the entire message
-                        let color_code = LogColors::instance_color_code(inst_num);
-                        write!(writer, "{}{}\x1b[0m", color_code, &message)?;
-                        writeln!(writer)?;
-                        return Ok(());
-                    }
+            if let Some(instance_start) = message.find("[Instance ")
+                && let Some(instance_end) = message[instance_start..].find("]")
+            {
+                let instance_str = &message[instance_start + 10..instance_start + instance_end];
+                if let Ok(inst_num) = instance_str.parse::<usize>() {
+                    // Apply instance color to the entire message
+                    let color_code = LogColors::instance_color_code(inst_num);
+                    write!(writer, "{}{}\x1b[0m", color_code, &message)?;
+                    writeln!(writer)?;
+                    return Ok(());
                 }
             }
             if message.contains("[ASIC->BRIDGE]") {
@@ -284,7 +284,7 @@ where
                 write!(writer, "\x1b[96m{}\x1b[0m", &message)?; // Bright Cyan for separator lines
             } else if message.contains("initializing bridge") {
                 write!(writer, "\x1b[92m{}\x1b[0m", &message)?; // Bright Green for initialization
-            } else if message.contains("Starting RustBridge") {
+            } else if message.contains("Starting RKStratum") {
                 write!(writer, "\x1b[92m{}\x1b[0m", &message)?; // Bright Green for startup
             } else if message.starts_with("\t") && message.contains(":") {
                 // Configuration lines - color the label part (e.g., "\tkaspad:          value")
@@ -327,7 +327,7 @@ pub(crate) fn init_tracing(
         // Create log file with timestamp
         use std::time::SystemTime;
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
-        let log_filename = format!("rustbridge_{}.log", timestamp);
+        let log_filename = format!("RKStratum_{}.log", timestamp);
         let log_dir = app_dirs::get_bridge_logs_dir();
         let _ = std::fs::create_dir_all(&log_dir);
         let log_path = log_dir.join(&log_filename);
@@ -350,7 +350,7 @@ pub(crate) fn init_tracing(
                     .event_format(CustomFormatter { apply_colors: false }),
             );
 
-        match subscriber.try_init() {
+        match tracing::subscriber::set_global_default(subscriber) {
             Ok(()) => {
                 eprintln!("Logging to file: {}", log_path.display());
                 Some(guard)
@@ -367,17 +367,19 @@ pub(crate) fn init_tracing(
                 .event_format(CustomFormatter { apply_colors: LogColors::should_colorize() }),
         );
 
-        if let Err(e) = subscriber.try_init() {
+        if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
             eprintln!("Failed to initialize tracing subscriber (already initialized?): {}", e);
         }
 
         None
     };
 
-    // In inprocess mode, the embedded node primarily uses the `log` crate (via kaspa_core::* macros).
-    // Forward those events into our tracing subscriber so users can see node startup/performance logs.
-    if inprocess_mode {
-        let _ = tracing_log::LogTracer::init();
+    // IMPORTANT: Do not initialize LogTracer in in-process mode.
+    // The embedded kaspad runtime initializes the global `log` logger via
+    // `kaspa_core::log::init_logger(...).unwrap()`. If LogTracer grabs the
+    // global logger first, kaspad panics with SetLoggerError.
+    if !inprocess_mode && let Err(e) = tracing_log::LogTracer::init() {
+        eprintln!("Failed to initialize log tracer: {}", e);
     }
 
     file_guard

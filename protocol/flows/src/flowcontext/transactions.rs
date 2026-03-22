@@ -55,7 +55,7 @@ impl TransactionsSpread {
 
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
     pub fn should_rebroadcast(&self) -> bool {
-        self.scanning_job_count % REBROADCAST_FREQUENCY == 0
+        self.scanning_job_count.is_multiple_of(REBROADCAST_FREQUENCY)
     }
 
     pub fn mempool_scanning_job_count(&self) -> u64 {

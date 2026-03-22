@@ -129,13 +129,14 @@ pub mod test_helpers {
         ) -> Option<Self> {
             match subscription.active() {
                 true => {
-                    if let TestNotification::VirtualChainChanged(payload) = self {
-                        if !subscription.include_accepted_transaction_ids() && payload.accepted_transaction_ids.is_some() {
-                            return Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
-                                data: payload.data,
-                                accepted_transaction_ids: None,
-                            }));
-                        }
+                    if let TestNotification::VirtualChainChanged(payload) = self
+                        && !subscription.include_accepted_transaction_ids()
+                        && payload.accepted_transaction_ids.is_some()
+                    {
+                        return Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
+                            data: payload.data,
+                            accepted_transaction_ids: None,
+                        }));
                     }
                     Some(self.clone())
                 }

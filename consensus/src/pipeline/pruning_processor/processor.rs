@@ -407,7 +407,7 @@ impl PruningProcessor {
                 .read()
                 .iter()
                 .copied()
-                .filter(|&h| !reachability_read.is_dag_ancestor_of_result(new_pruning_point, h).unwrap())
+                .filter(|&h| !reachability_read.try_is_dag_ancestor_of(new_pruning_point, h).unwrap())
                 .collect_vec();
             tips_write.prune_tips_with_writer(BatchDbWriter::new(&mut batch), &pruned_tips).unwrap();
             if !pruned_tips.is_empty() {
@@ -444,7 +444,7 @@ impl PruningProcessor {
         let (mut counter, mut traversed) = (0, 0);
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
-            if reachability_read.is_dag_ancestor_of_result(retention_period_root, current).unwrap() {
+            if reachability_read.try_is_dag_ancestor_of(retention_period_root, current).unwrap() {
                 continue;
             }
             traversed += 1;
