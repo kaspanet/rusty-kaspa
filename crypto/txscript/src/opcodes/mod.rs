@@ -98,7 +98,7 @@ pub trait OpcodeSerialization {
 }
 
 pub trait OpCodeImplementation<T: VerifiableTransaction, Reused: SigHashReusedValues>:
-    OpCodeExecution<T, Reused> + OpCodeMetadata + OpcodeSerialization
+    OpCodeExecution<T, Reused> + OpCodeMetadata + OpcodeSerialization + std::fmt::Display
 {
 }
 
@@ -1076,7 +1076,8 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script};
+    use crate::{LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, parse_script, pay_to_address_script};
+    use itertools::Itertools;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
@@ -1263,6 +1264,61 @@ mod test {
                 _ => panic!("Opcode {pop:?} should be disabled"),
             }
         }
+    }
+
+    #[test]
+    fn test_opcode_to_string_without_data() {
+        let opcode: Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>> =
+            opcodes::OpTrue::empty().expect("Should accept empty");
+        assert_eq!(opcode.to_string(), "OpTrue");
+    }
+
+    #[test]
+    fn test_opcode_to_string_with_data() {
+        let opcode: Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>> =
+            opcodes::OpData2::new(vec![0xab, 0xcd]).expect("Should accept data");
+        assert_eq!(opcode.to_string(), "OpData2 0xabcd");
+    }
+
+    #[test]
+    fn test_script_builder_roundtrip_to_joined_opcode_string() {
+        use opcodes::codes::{OpBlake2b, OpCheckSig, OpDrop, OpDup, OpEqualVerify, OpVerify};
+
+        let mut builder = crate::script_builder::ScriptBuilder::new();
+        builder
+            .add_op(OpDup)
+            .unwrap()
+            .add_data(&[0x02, 0xab, 0xcd])
+            .unwrap()
+            .add_op(OpBlake2b)
+            .unwrap()
+            .add_data(b"kaspa")
+            .unwrap()
+            .add_op(OpEqualVerify)
+            .unwrap()
+            .add_i64(-1)
+            .unwrap()
+            .add_i64(16)
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .add_data(&[0xde, 0xad, 0xbe, 0xef])
+            .unwrap()
+            .add_op(OpDrop)
+            .unwrap()
+            .add_op(OpVerify)
+            .unwrap();
+
+        let script = builder.drain();
+
+        let joined = parse_script::<PopulatedTransaction, SigHashReusedValuesUnsync>(&script)
+            .map(|opcode| opcode.unwrap().to_string())
+            .join(" ");
+
+        assert_eq!(
+            joined,
+            "OpDup OpData3 0x02abcd OpBlake2b OpData5 0x6b61737061 OpEqualVerify Op1Negate Op16 OpCheckSig OpData4 0xdeadbeef OpDrop OpVerify"
+        );
     }
 
     #[test]

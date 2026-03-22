@@ -65,6 +65,17 @@ macro_rules! opcode_impl {
     ($name: ident, $num: literal, $length: tt, $code: expr, $self:ident, $vm:ident ) => {
         type $name = OpCode<$num>;
 
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let name = stringify!($name);
+                if self.data.is_empty() {
+                    write!(f, "{name}")
+                } else {
+                    write!(f, "{name} 0x{}", kaspa_utils::hex::ToHex::to_hex(&self.data))
+                }
+            }
+        }
+
         impl OpcodeSerialization for $name {
             opcode_serde!($length);
         }
