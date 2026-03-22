@@ -90,13 +90,7 @@ impl TransactionOutput {
     #[wasm_bindgen(constructor)]
     /// TransactionOutput constructor
     pub fn ctor(value: u64, script_public_key: &ScriptPublicKey, covenant: Option<CovenantBinding>) -> TransactionOutput {
-        Self {
-            inner: Arc::new(Mutex::new(TransactionOutputInner {
-                value,
-                script_public_key: script_public_key.clone(),
-                covenant,
-            })),
-        }
+        Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key: script_public_key.clone(), covenant })) }
     }
 
     #[wasm_bindgen(getter, js_name = value)]
@@ -151,7 +145,11 @@ impl From<&cctx::TransactionOutput> for TransactionOutput {
 impl From<&TransactionOutput> for cctx::TransactionOutput {
     fn from(output: &TransactionOutput) -> Self {
         let inner = output.inner();
-        cctx::TransactionOutput::with_covenant(inner.value, inner.script_public_key.clone(), inner.covenant.map(cctx::CovenantBinding::from))
+        cctx::TransactionOutput::with_covenant(
+            inner.value,
+            inner.script_public_key.clone(),
+            inner.covenant.map(cctx::CovenantBinding::from),
+        )
     }
 }
 
