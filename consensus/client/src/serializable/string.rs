@@ -190,12 +190,6 @@ impl From<cctx::CovenantBinding> for SerializableCovenantBinding {
     }
 }
 
-// impl From<&cctx::CovenantBinding> for SerializableCovenantBinding {
-//     fn from(covenant: &cctx::CovenantBinding) -> Self {
-//         Self { authorizing_input: covenant.authorizing_input, covenant_id: covenant.covenant_id }
-//     }
-// }
-
 impl From<CovenantBinding> for SerializableCovenantBinding {
     fn from(covenant: CovenantBinding) -> Self {
         Self { authorizing_input: covenant.get_authorizing_input(), covenant_id: covenant.get_covenant_id() }
@@ -208,20 +202,6 @@ impl TryFrom<SerializableCovenantBinding> for cctx::CovenantBinding {
         Ok(Self { authorizing_input: covenant.authorizing_input, covenant_id: covenant.covenant_id })
     }
 }
-
-// impl TryFrom<&SerializableCovenantBinding> for CovenantBinding {
-//     type Error = Error;
-//     fn try_from(covenant: &SerializableCovenantBinding) -> Result<Self> {
-//         Ok(CovenantBinding::new(covenant.authorizing_input, covenant.covenant_id))
-//     }
-// }
-
-// impl TryFrom<&CovenantBinding> for SerializableCovenantBinding {
-//     type Error = Error;
-//     fn try_from(covenant: &CovenantBinding) -> std::result::Result<Self, Self::Error> {
-//         Ok(Self { authorizing_input: covenant.get_authorizing_input(), covenant_id: covenant.get_covenant_id() })
-//     }
-// }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
