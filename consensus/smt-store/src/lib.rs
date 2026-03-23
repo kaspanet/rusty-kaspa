@@ -1,6 +1,7 @@
 use kaspa_hashes::Hash;
 
 pub mod branch_version_store;
+pub mod cache;
 pub mod keys;
 pub mod lane_version_store;
 pub mod maybe_fork;

@@ -229,7 +229,8 @@ impl ConsensusStorage {
             Arc::new(RwLock::new(VirtualStores::new(db.clone(), lkg_virtual_state.clone(), utxo_set_builder.build())));
 
         // SMT stores (KIP-21)
-        let smt_stores = Arc::new(SmtStores::new(db.clone()));
+        // TODO: make cache capacities configurable via consensus params
+        let smt_stores = Arc::new(SmtStores::new(db.clone(), 500_000, 50_000));
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();

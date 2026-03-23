@@ -9,11 +9,13 @@
 //! `build()` derives leaf hashes from accumulated lane changes, calls
 //! [`compute_root_update`] against an immutable DB reader, and returns
 //! an [`SmtBuild`] containing the root and only the changed branches.
-//! `flush()` persists the diff to a `WriteBatch`. The caller commits
-//! atomically via `db.write(batch)`.
+//! `flush()` persists the diff to a `WriteBatch` and populates the caches.
+//! The caller commits atomically via `db.write(batch)`.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use kaspa_database::prelude::{BatchDbWriter, DB, StoreError, StoreResult};
 use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
@@ -24,20 +26,18 @@ use kaspa_smt::tree::{SmtBranchChanges, compute_root_update};
 use rocksdb::WriteBatch;
 
 use crate::branch_version_store::DbBranchVersionStore;
+use crate::cache::{BranchEntity, BranchVersionCache, LaneVersionCache};
 use crate::lane_version_store::DbLaneVersionStore;
+use crate::maybe_fork::Verified;
 use crate::score_index::DbScoreIndex;
 use crate::values::LaneVersion;
 use crate::{BlockHash, LANE_INACTIVITY_THRESHOLD, LaneKey};
 
-// ---------------------------------------------------------------------------
-// VersionedBranchReader — read-only SmtStore impl over versioned DB
-// ---------------------------------------------------------------------------
-
-/// Reads branches from the versioned DB with canonicality + inactivity filtering.
+/// Reads branches via cache-first + DB fallback with canonicality filtering.
 ///
 /// Implements [`SmtStore`] (read-only) for use with [`compute_root_update`].
 struct VersionedBranchReader<'a, F: Fn(Hash) -> bool> {
-    store: &'a DbBranchVersionStore,
+    stores: &'a SmtStores,
     min_blue_score: u64,
     is_canonical: F,
 }
@@ -46,37 +46,67 @@ impl<F: Fn(Hash) -> bool> SmtStore for VersionedBranchReader<'_, F> {
     type Error = StoreError;
 
     fn get_branch(&self, key: &BranchKey) -> Result<Option<BranchChildren>, StoreError> {
-        let version = self.store.get(key.height, key.node_key, self.min_blue_score, |bh| (self.is_canonical)(bh))?;
-        Ok(version.map(|v| *v.data()))
+        let entity = BranchEntity { height: key.height, node_key: key.node_key };
+        Ok(self.stores.get_branch(entity, self.min_blue_score, |bh| (self.is_canonical)(bh)).map(|v| *v.data()))
     }
 }
 
-// ---------------------------------------------------------------------------
-// SmtStores — bundled DB stores
-// ---------------------------------------------------------------------------
-
-/// All versioned SMT DB stores, bundled for convenience.
+/// All versioned SMT DB stores with in-memory caches.
 ///
-/// Created once during consensus init and shared across block processing.
+/// Created once during consensus init and shared via `Arc` across block processing.
+/// Cache fields use `Mutex` for `Arc` compatibility; contention is minimal
+/// since the virtual processor is single-threaded.
 pub struct SmtStores {
     pub branch_version: DbBranchVersionStore,
     pub lane_version: DbLaneVersionStore,
     pub score_index: DbScoreIndex,
+    branch_cache: Mutex<BranchVersionCache>,
+    lane_cache: Mutex<LaneVersionCache>,
 }
 
 impl SmtStores {
-    pub fn new(db: Arc<DB>) -> Self {
+    pub fn new(db: Arc<DB>, branch_cache_capacity: usize, lane_cache_capacity: usize) -> Self {
         Self {
             branch_version: DbBranchVersionStore::new(db.clone()),
             lane_version: DbLaneVersionStore::new(db.clone()),
             score_index: DbScoreIndex::new(db),
+            branch_cache: Mutex::new(BranchVersionCache::new(branch_cache_capacity)),
+            lane_cache: Mutex::new(LaneVersionCache::new(lane_cache_capacity)),
         }
     }
-}
 
-// ---------------------------------------------------------------------------
-// SmtProcessor — accumulate lane changes, build, flush
-// ---------------------------------------------------------------------------
+    /// Find the latest canonical branch version, checking cache first then DB.
+    pub fn get_branch(
+        &self,
+        entity: BranchEntity,
+        min_blue_score: u64,
+        mut is_canonical: impl FnMut(Hash) -> bool,
+    ) -> Option<Verified<BranchChildren>> {
+        if let Some((score, block_hash, value)) = self.branch_cache.lock().get(entity, u64::MAX, min_blue_score, &mut is_canonical) {
+            return Some(Verified::new(*value, score, block_hash));
+        }
+        self.branch_version.get(entity.height, entity.node_key, min_blue_score, is_canonical).unwrap()
+    }
+
+    /// Find the latest canonical lane version, checking cache first then DB.
+    pub fn get_lane(
+        &self,
+        lane_key: LaneKey,
+        min_blue_score: u64,
+        mut is_canonical: impl FnMut(Hash) -> bool,
+    ) -> Option<Verified<LaneVersion>> {
+        if let Some((score, block_hash, value)) = self.lane_cache.lock().get(lane_key, u64::MAX, min_blue_score, &mut is_canonical) {
+            return Some(Verified::new(*value, score, block_hash));
+        }
+        self.lane_version.get(lane_key, min_blue_score, is_canonical).unwrap()
+    }
+
+    /// Evict cache entries below the given score threshold.
+    pub fn evict_caches_below_score(&self, min_score: u64) {
+        self.branch_cache.lock().evict_below_score(min_score);
+        self.lane_cache.lock().evict_below_score(min_score);
+    }
+}
 
 /// Accumulates SMT lane updates for a single block.
 ///
@@ -116,11 +146,8 @@ impl<'a> SmtProcessor<'a> {
     }
 
     /// Build the SMT: derive leaf hashes from lane changes, compute root
-    /// against immutable DB, return only changed branches.
-    ///
-    /// The `is_canonical` closure filters fork entries in the versioned store.
+    /// against immutable cache+DB, return only changed branches.
     pub fn build(self, is_canonical: impl Fn(Hash) -> bool) -> StoreResult<SmtBuild> {
-        // No lanes touched or expired: skip build entirely, reuse parent root
         if self.lane_changes.is_empty() {
             return Ok(SmtBuild {
                 root: self.current_lanes_root,
@@ -136,9 +163,8 @@ impl<'a> SmtProcessor<'a> {
             None => ZERO_HASH,
         });
 
-        // Pure computation: reads from immutable DB, returns only changed branches.
         let reader = VersionedBranchReader {
-            store: &self.stores.branch_version,
+            stores: self.stores,
             min_blue_score: self.blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD),
             is_canonical,
         };
@@ -147,10 +173,6 @@ impl<'a> SmtProcessor<'a> {
         Ok(SmtBuild { root, branch_changes, lane_changes: self.lane_changes })
     }
 }
-
-// ---------------------------------------------------------------------------
-// SmtBuild — result of build, ready for persistence
-// ---------------------------------------------------------------------------
 
 /// Result of building an SMT: root hash + only changed branches, ready for persistence.
 pub struct SmtBuild {
@@ -168,7 +190,7 @@ impl SmtBuild {
         self.branch_changes.len()
     }
 
-    /// Persist the build's diff to a `WriteBatch`.
+    /// Persist the build's diff to a `WriteBatch` and populate caches.
     ///
     /// Writes only changed branch versions, active lane versions, and score index.
     /// Expired lanes are NOT recorded in the score index (only branch changes are persisted).
@@ -176,22 +198,25 @@ impl SmtBuild {
     pub fn flush(self, stores: &SmtStores, batch: &mut WriteBatch, blue_score: u64, block_hash: BlockHash) -> StoreResult<Hash> {
         let root = self.root;
 
-        // Branch versions — only changed branches
-        for (bk, bc) in &self.branch_changes {
-            stores.branch_version.put(BatchDbWriter::new(batch), bk.height, bk.node_key, blue_score, block_hash, bc)?;
+        // Branch versions + cache — only changed branches
+        let mut bc = stores.branch_cache.lock();
+        for (bk, children) in &self.branch_changes {
+            stores.branch_version.put(BatchDbWriter::new(batch), bk.height, bk.node_key, blue_score, block_hash, children)?;
+            bc.insert(BranchEntity { height: bk.height, node_key: bk.node_key }, blue_score, block_hash, *children);
         }
+        drop(bc);
 
-        // Lane versions (only for updates, not expirations)
+        // Lane versions + cache (only for updates, not expirations)
+        let mut lc = stores.lane_cache.lock();
         for (lane_key, version) in &self.lane_changes {
             if let Some(v) = version {
                 stores.lane_version.put(BatchDbWriter::new(batch), *lane_key, blue_score, block_hash, v)?;
+                lc.insert(*lane_key, blue_score, block_hash, *v);
             }
         }
+        drop(lc);
 
-        // Score index — only active lane updates (not expirations).
-        // Expired lanes don't need index entries because:
-        // - Branch changes from expirations are in branch_version_store directly
-        // - The score index serves expire_stale_lanes which only needs active touches
+        // Score index — only active lane updates (not expirations)
         let active_keys: Vec<LaneKey> = self.lane_changes.iter().filter_map(|(k, v)| v.as_ref().map(|_| *k)).collect();
         if !active_keys.is_empty() {
             stores.score_index.put(BatchDbWriter::new(batch), blue_score, block_hash, &active_keys)?;

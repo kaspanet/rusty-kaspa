@@ -18,7 +18,7 @@ fn hash(v: u8) -> Hash {
 }
 
 fn make_stores(db: &Arc<DB>) -> SmtStores {
-    SmtStores::new(db.clone())
+    SmtStores::new(db.clone(), 1, 1)
 }
 
 /// A1/A2: walk_up without remove_branch produces the same roots as insertion-only paths.

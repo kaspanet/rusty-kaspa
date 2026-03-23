@@ -560,15 +560,13 @@ impl VirtualStateProcessor {
             let lk = lane_key(lane_id);
             let ad = activity_digest_lane(activity_leaves.iter().copied());
 
-            // Look up current lane tip from DB.
+            // Look up current lane tip.
             // New/reactivated lanes use parent_seq_commit as anchor (KIP-21 §5.1).
             let parent_ref = self
                 .smt_stores
-                .lane_version
-                .get(lk, parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD), |bh| {
+                .get_lane(lk, parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD), |bh| {
                     self.reachability_service.is_chain_ancestor_of(bh, selected_parent)
                 })
-                .unwrap()
                 .map(|v| v.data().lane_tip_hash)
                 .unwrap_or(parent_seq_commit);
 

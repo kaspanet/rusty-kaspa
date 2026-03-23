@@ -628,13 +628,12 @@ impl VirtualStateProcessor {
         use kaspa_hashes::SeqCommitActiveNode;
         use kaspa_smt::SmtHasher;
         use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
+        use kaspa_smt_store::cache::BranchEntity;
 
         let min_bs = parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
-        let root_branch = self
-            .smt_stores
-            .branch_version
-            .get(255, ZERO_HASH, min_bs, |bh| self.reachability_service.is_chain_ancestor_of(bh, selected_parent))
-            .unwrap();
+        let entity = BranchEntity { height: 255, node_key: ZERO_HASH };
+        let root_branch =
+            self.smt_stores.get_branch(entity, min_bs, |bh| self.reachability_service.is_chain_ancestor_of(bh, selected_parent));
 
         match root_branch {
             Some(v) => {
@@ -678,9 +677,7 @@ impl VirtualStateProcessor {
                 // Check if this lane has a newer canonical version (within the active window)
                 let has_newer = self
                     .smt_stores
-                    .lane_version
-                    .get(*lk, curr_min, |bh| self.reachability_service.is_chain_ancestor_of(bh, selected_parent))
-                    .unwrap()
+                    .get_lane(*lk, curr_min, |bh| self.reachability_service.is_chain_ancestor_of(bh, selected_parent))
                     .is_some();
 
                 if !has_newer {

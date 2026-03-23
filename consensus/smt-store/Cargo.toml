@@ -15,6 +15,7 @@ kaspa-hashes = { workspace = true, features = ["zerocopy"] }
 kaspa-seq-commit.workspace = true
 kaspa-smt = { workspace = true, features = ["zerocopy"] }
 kaspa-utils = { workspace = true, features = ["sysinfo"] }
+parking_lot.workspace = true
 rocksdb.workspace = true
 zerocopy = { workspace = true }
 
