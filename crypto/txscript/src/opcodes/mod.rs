@@ -11,12 +11,12 @@ use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::VerifiableTransaction;
 use kaspa_hashes::Hash;
+use kaspa_hashes::ZERO_HASH;
 use sha2::{Digest, Sha256};
 use std::{
     fmt::{Debug, Formatter},
     num::TryFromIntError,
 };
-use kaspa_hashes::ZERO_HASH;
 
 /// First value in the range formed by the "small integer" Op# opcodes
 pub const OP_SMALL_INT_MIN_VAL: u8 = 1;
@@ -4734,15 +4734,13 @@ mod test {
 
             // OpInputCovenantId when covenant id is None (returns zero hash)
             let (tx_no_cov, entries_no_cov) = base_transaction(0);
-            let spk_input_cov_none = script(|sb| {
-                sb.add_i64(0)?.add_op(codes::OpInputCovenantId)?.add_data(&ZERO_HASH.as_bytes())?.add_op(codes::OpEqual)
-            });
+            let spk_input_cov_none =
+                script(|sb| sb.add_i64(0)?.add_op(codes::OpInputCovenantId)?.add_data(&ZERO_HASH.as_bytes())?.add_op(codes::OpEqual));
             run_script(&tx_no_cov, entries_no_cov.clone(), 0, spk_input_cov_none).unwrap();
 
             // OpOutputCovenantId when covenant id is None (returns zero hash)
-            let spk_output_cov_none = script(|sb| {
-                sb.add_i64(0)?.add_op(codes::OpOutputCovenantId)?.add_data(&ZERO_HASH.as_bytes())?.add_op(codes::OpEqual)
-            });
+            let spk_output_cov_none =
+                script(|sb| sb.add_i64(0)?.add_op(codes::OpOutputCovenantId)?.add_data(&ZERO_HASH.as_bytes())?.add_op(codes::OpEqual));
             run_script(&tx_no_cov, entries_no_cov.clone(), 0, spk_output_cov_none).unwrap();
 
             // OpOutputAuthorizingInput when covenant is None (returns -1)
