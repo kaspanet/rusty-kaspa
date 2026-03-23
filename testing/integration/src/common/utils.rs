@@ -114,15 +114,14 @@ pub fn generate_tx_dag_with_lanes(
     target_width: usize,
     num_lanes: usize,
 ) -> Vec<Arc<Transaction>> {
-    let lanes: Vec<SubnetworkId> = (0..num_lanes)
-        .map(|i| {
-            let mut bytes = [0u8; 20];
-            // Start from 2 to avoid colliding with native (0) and coinbase (1)
-            let id = (i as u32) + 2;
-            bytes[..4].copy_from_slice(&id.to_le_bytes());
-            SubnetworkId::from_bytes(bytes)
-        })
-        .collect();
+    /// Build a SubnetworkId from `idx % num_lanes`.
+    /// Offset by 2 to avoid native (0) and coinbase (1).
+    fn lane_id(idx: usize, num_lanes: usize) -> SubnetworkId {
+        let val = ((idx % num_lanes) as u64) + 2;
+        let mut bytes = [0u8; 20];
+        bytes[12..20].copy_from_slice(&val.to_be_bytes());
+        SubnetworkId::from_bytes(bytes)
+    }
 
     let num_inputs = CONTRACT_FACTOR as usize;
     let num_outputs = EXPAND_FACTOR;
@@ -143,8 +142,7 @@ pub fn generate_tx_dag_with_lanes(
             .into_par_iter()
             .enumerate()
             .map(|(j, (inputs, entries))| {
-                let idx = level_start + j;
-                let subnetwork = lanes[idx % lanes.len()];
+                let subnetwork = lane_id(level_start + j, num_lanes);
                 let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
                 let total_out = total_in - required_fee(num_inputs, num_outputs);
                 let outputs = (0..num_outputs)

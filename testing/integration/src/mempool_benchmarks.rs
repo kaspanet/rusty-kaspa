@@ -383,8 +383,8 @@ async fn bench_bbt_latency_2() {
 
 /// Benchmark with multiple subnetwork lanes to measure KIP-21 SMT overhead.
 ///
-/// Every tx is assigned to one of `NUM_LANES` distinct subnetworks (round-robin),
-/// controlling the width of the active portion of the SMT. Tune `NUM_LANES` to
+/// Every tx is assigned to one of `num_lanes` distinct subnetworks (round-robin),
+/// controlling the width of the active portion of the SMT. Tune `num_lanes` to
 /// measure how lane count affects bbt latency and throughput.
 ///
 /// Run with:
@@ -403,12 +403,17 @@ async fn bench_bbt_latency_lanes() {
     const SUBMIT_BLOCK_CLIENTS: usize = 20;
     const SUBMIT_TX_CLIENTS: usize = 2;
 
-    // Number of active lanes (distinct subnetwork IDs). Tune this to control SMT width.
-    const NUM_LANES: usize = 200;
+    // Power of 2 for lane count: num_lanes = 2^LANE_POW.
+    // Override via: LANE_POW=6 cargo test ... (gives 64 lanes)
+    // Suggested values: 5(32), 8(256), 10(1024), 17(~131K), 20(~1M)
+    let lane_pow: u32 = std::env::var("LANE_POW").ok().and_then(|s| s.parse().ok()).unwrap_or(8);
+    let num_lanes: usize = 1usize << lane_pow.min(20); // cap at 2^20 = 1M
 
     if TX_COUNT < TX_LEVEL_WIDTH {
         panic!()
     }
+
+    info!("Starting bench_bbt_latency_lanes: 2^{} = {} lanes", lane_pow, num_lanes);
 
     let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let prealloc_address =
@@ -431,10 +436,9 @@ async fn bench_bbt_latency_lanes() {
         spk,
         TX_COUNT / TX_LEVEL_WIDTH,
         TX_LEVEL_WIDTH,
-        NUM_LANES,
+        num_lanes,
     );
     common::utils::verify_tx_dag(&utxoset, &txs);
-    info!("Generated overall {} txs across {} lanes", txs.len(), NUM_LANES);
 
     let client_manager = Arc::new(ClientManager::new(args));
     let mut tasks = TasksRunner::new(Some(DaemonTask::build(client_manager.clone())))
