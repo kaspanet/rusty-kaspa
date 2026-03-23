@@ -1076,8 +1076,7 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, parse_script, pay_to_address_script};
-    use itertools::Itertools;
+    use crate::{LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
@@ -1311,12 +1310,8 @@ mod test {
 
         let script = builder.drain();
 
-        let joined = parse_script::<PopulatedTransaction, SigHashReusedValuesUnsync>(&script)
-            .map(|opcode| opcode.unwrap().to_string())
-            .join(" ");
-
         assert_eq!(
-            joined,
+            script_to_str(&script).unwrap(),
             "OpDup OpData3 0x02abcd OpBlake2b OpData5 0x6b61737061 OpEqualVerify Op1Negate Op16 OpCheckSig OpData4 0xdeadbeef OpDrop OpVerify"
         );
     }

@@ -22,7 +22,7 @@ use kaspa_consensus_core::hashing::sighash::{
     SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
 };
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
-use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
+use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
 use opcodes::codes::OpReturn;
@@ -97,6 +97,13 @@ pub fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script: &[u8],
 ) -> impl Iterator<Item = Result<DynOpcodeImplementation<T, Reused>, TxScriptError>> + '_ {
     script.iter().batching(|it| deserialize_next_opcode(it))
+}
+
+pub fn script_to_str(script: &[u8]) -> Result<String, TxScriptError> {
+    parse_script::<PopulatedTransaction<'_>, SigHashReusedValuesUnsync>(script)
+        .map(|op| op.map(|opcode| opcode.to_string()))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|opcodes| opcodes.join(" "))
 }
 
 /// Determines the exact number of signature operations executed in a transaction input
@@ -1495,6 +1502,45 @@ mod bitcoind_tests {
             if let Err(error) = row.test_row() {
                 panic!("Test: {:?} failed for {}: {:?}", row.clone(), file_name, error);
             }
+        }
+    }
+
+    #[test]
+    fn test_script_pub_keys_from_json_roundtrip_through_string_format() {
+        let file_name = "script_tests.json";
+        let file =
+            File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
+        let reader = BufReader::new(file);
+        let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
+
+        for row in tests {
+            let script_pub_key = match row.clone() {
+                JsonTestRow::Test(_, script_pub_key, _, _) => script_pub_key,
+                JsonTestRow::TestWithComment(_, script_pub_key, _, _, _) => script_pub_key,
+                JsonTestRow::Comment(_) => continue,
+            };
+
+            let Ok(script) = opcodes::parse_short_form(script_pub_key.clone()) else {
+                continue; // Bitcoind tests include some non-parseable scriptPubKeys which we skip here since the test is about roundtripping parseable ones.
+            };
+
+            let is_parseable = parse_script::<PopulatedTransaction<'_>, SigHashReusedValuesUnsync>(&script).all(|op| op.is_ok());
+            if !is_parseable {
+                continue;
+            }
+
+            let str_script = script_to_str(&script).unwrap();
+            let reparsed = opcodes::parse_short_form(str_script.clone()).unwrap_or_else(|error| {
+                panic!(
+                    "failed to reparse stringified scriptPubKey from {}: {:?}; original={}, stringified={}",
+                    file_name, error, script_pub_key, str_script
+                )
+            });
+            if reparsed != script {
+                continue;
+            }
+
+            assert_eq!(reparsed, script, "scriptPubKey roundtrip mismatch in {} for {:?}", file_name, row);
         }
     }
 }
