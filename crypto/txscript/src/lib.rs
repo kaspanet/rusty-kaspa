@@ -14,6 +14,8 @@ pub mod wasm;
 
 pub mod runtime_sig_op_counter;
 
+use std::io::Write;
+
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
@@ -91,6 +93,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
 
     num_ops: i32,
     runtime_sig_op_counter: RuntimeSigOpCounter,
+    opcode_execution_log_buffer: Option<&'a mut dyn Write>,
 }
 
 pub fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -239,12 +242,18 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: vec![],
             num_ops: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
+            opcode_execution_log_buffer: None,
         }
     }
 
     /// Returns the number of signature operations used in script execution.
     pub fn used_sig_ops(&self) -> u8 {
         self.runtime_sig_op_counter.used_sig_ops()
+    }
+
+    pub fn with_opcode_execution_log_buffer(mut self, buffer: &'a mut dyn Write) -> Self {
+        self.opcode_execution_log_buffer = Some(buffer);
+        self
     }
 
     /// Creates a new Script Engine for validating transaction input.
@@ -285,6 +294,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
+            opcode_execution_log_buffer: None,
         }
     }
 
@@ -299,6 +309,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
+            opcode_execution_log_buffer: None,
         }
     }
 
@@ -307,7 +318,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         self.cond_stack.is_empty() || *self.cond_stack.last().expect("Checked not empty") == OpCond::True
     }
 
-    fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
+    pub fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
+        self.print_opcode_execution(&opcode);
+
         // Different from kaspad: Illegal and disabled opcode are checked on execute instead
         // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
@@ -327,6 +340,28 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         } else {
             Ok(())
         }
+    }
+
+    fn print_opcode_execution(&mut self, opcode: &DynOpcodeImplementation<T, Reused>) {
+        let Some(buffer) = self.opcode_execution_log_buffer.as_mut() else {
+            return;
+        };
+
+        let format_stack = |stack: &Stack| {
+            stack
+                .iter()
+                .map(|element| format!("0x{}", hex::encode(element)))
+                .collect::<Vec<_>>()
+        };
+
+        writeln!(
+            buffer,
+            "Executing opcode: {}, astack: {:?}, dstack: {:?}",
+            opcode.to_string(),
+            format_stack(&self.astack),
+            format_stack(&self.dstack)
+        )
+        .unwrap();
     }
 
     fn execute_script(&mut self, script: &[u8], verify_only_push: bool) -> Result<(), TxScriptError> {
@@ -719,6 +754,22 @@ mod tests {
         ];
 
         run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_opcode_execution_log_buffer_trace_output() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut output = Vec::new();
+
+        let mut vm = TxScriptEngine::<VerifiableTransactionMock, _>::from_script(b"\x51", &reused_values, &sig_cache)
+            .with_opcode_execution_log_buffer(&mut output);
+
+        assert_eq!(vm.execute(), Ok(()));
+        assert_eq!(
+            String::from_utf8(output).expect("trace output should be valid UTF-8"),
+            "Executing opcode: OpTrue, astack: [], dstack: []\n"
+        );
     }
 
     #[test]
