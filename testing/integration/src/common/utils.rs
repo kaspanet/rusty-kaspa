@@ -2,10 +2,10 @@ use super::client::ListeningClient;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    constants::TX_VERSION,
+    constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
     header::Header,
     sign::sign,
-    subnets::SUBNETWORK_ID_NATIVE,
+    subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
     tx::{
         MutableTransaction, ScriptPublicKey, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
         TransactionOutput, UtxoEntry,
@@ -19,7 +19,7 @@ use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::{BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification, api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use secp256k1::Keypair;
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry::Occupied},
@@ -95,6 +95,76 @@ pub fn generate_tx_dag(
 
         if i % (target_levels / 10).max(1) == 0 {
             info!("Generated {} txs", txs.len());
+        }
+    }
+
+    txs
+}
+
+/// Like [`generate_tx_dag`] but distributes transactions across `num_lanes`
+/// distinct subnetwork IDs (round-robin). Every tx belongs to a lane —
+/// this controls the width of the non-empty portion of the SMT.
+///
+/// Uses `TX_VERSION_POST_COV_HF` so non-native subnetworks pass validation.
+pub fn generate_tx_dag_with_lanes(
+    mut utxoset: UtxoCollection,
+    schnorr_key: Keypair,
+    spk: ScriptPublicKey,
+    target_levels: usize,
+    target_width: usize,
+    num_lanes: usize,
+) -> Vec<Arc<Transaction>> {
+    let lanes: Vec<SubnetworkId> = (0..num_lanes)
+        .map(|i| {
+            let mut bytes = [0u8; 20];
+            // Start from 2 to avoid colliding with native (0) and coinbase (1)
+            let id = (i as u32) + 2;
+            bytes[..4].copy_from_slice(&id.to_le_bytes());
+            SubnetworkId::from_bytes(bytes)
+        })
+        .collect();
+
+    let num_inputs = CONTRACT_FACTOR as usize;
+    let num_outputs = EXPAND_FACTOR;
+
+    let mut txs = Vec::with_capacity(target_levels * target_width);
+    let mut tx_counter: usize = 0;
+
+    for i in 0..target_levels {
+        let mut utxo_diff = UtxoDiff::default();
+        let level_start = tx_counter;
+        utxoset
+            .iter()
+            .take(num_inputs * target_width)
+            .chunks(num_inputs)
+            .into_iter()
+            .map(|c| c.into_iter().map(|(o, e)| (TransactionInput::new(*o, vec![], 0, 1), e.clone())).unzip())
+            .collect::<Vec<(Vec<_>, Vec<_>)>>()
+            .into_par_iter()
+            .enumerate()
+            .map(|(j, (inputs, entries))| {
+                let idx = level_start + j;
+                let subnetwork = lanes[idx % lanes.len()];
+                let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
+                let total_out = total_in - required_fee(num_inputs, num_outputs);
+                let outputs = (0..num_outputs)
+                    .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
+                    .collect_vec();
+                let unsigned_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, subnetwork, 0, vec![]);
+                sign(SignableTransaction::with_entries(unsigned_tx, entries), schnorr_key)
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .for_each(|signed_tx| {
+                utxo_diff.add_transaction(&signed_tx.as_verifiable(), 0).unwrap();
+                txs.push(Arc::new(signed_tx.tx));
+                tx_counter += 1;
+            });
+        utxoset.remove_collection(&utxo_diff.remove);
+        utxoset.add_collection(&utxo_diff.add);
+
+        if i % (target_levels / 10).max(1) == 0 {
+            info!("Generated {} txs ({} lanes)", txs.len(), num_lanes);
         }
     }
 

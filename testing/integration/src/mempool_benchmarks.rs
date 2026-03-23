@@ -381,6 +381,85 @@ async fn bench_bbt_latency_2() {
     tasks.join().await;
 }
 
+/// Benchmark with multiple subnetwork lanes to measure KIP-21 SMT overhead.
+///
+/// Every tx is assigned to one of `NUM_LANES` distinct subnetworks (round-robin),
+/// controlling the width of the active portion of the SMT. Tune `NUM_LANES` to
+/// measure how lane count affects bbt latency and throughput.
+///
+/// Run with:
+/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency_lanes --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_bbt_latency_lanes() {
+    kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
+    kaspa_core::panic::configure_panic();
+
+    const BLOCK_COUNT: usize = usize::MAX;
+    const MEMPOOL_TARGET: u64 = 600_000;
+    const TX_COUNT: usize = 1_000_000;
+    const TX_LEVEL_WIDTH: usize = 300_000;
+    const TPS_PRESSURE: u64 = u64::MAX;
+    const SUBMIT_BLOCK_CLIENTS: usize = 20;
+    const SUBMIT_TX_CLIENTS: usize = 2;
+
+    // Number of active lanes (distinct subnetwork IDs). Tune this to control SMT width.
+    const NUM_LANES: usize = 200;
+
+    if TX_COUNT < TX_LEVEL_WIDTH {
+        panic!()
+    }
+
+    let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let prealloc_address =
+        Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
+    let schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
+    let spk = pay_to_address_script(&prealloc_address);
+
+    let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, 500)
+        .prealloc_address(prealloc_address.clone())
+        .apply_args(Daemon::fill_args_with_random_ports)
+        .build();
+
+    let network = args.network();
+    let params: Params = network.into();
+
+    let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
+    let txs = common::utils::generate_tx_dag_with_lanes(
+        utxoset.clone(),
+        schnorr_key,
+        spk,
+        TX_COUNT / TX_LEVEL_WIDTH,
+        TX_LEVEL_WIDTH,
+        NUM_LANES,
+    );
+    common::utils::verify_tx_dag(&utxoset, &txs);
+    info!("Generated overall {} txs across {} lanes", txs.len(), NUM_LANES);
+
+    let client_manager = Arc::new(ClientManager::new(args));
+    let mut tasks = TasksRunner::new(Some(DaemonTask::build(client_manager.clone())))
+        .launch()
+        .await
+        .task(
+            MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal)
+                .await,
+        )
+        .task(
+            TxSenderGroupTask::build(
+                client_manager.clone(),
+                SUBMIT_TX_CLIENTS,
+                false,
+                txs,
+                TPS_PRESSURE,
+                MEMPOOL_TARGET,
+                Stopper::Signal,
+            )
+            .await,
+        );
+    tasks.run().await;
+    tasks.join().await;
+}
+
 /// Run this benchmark with the following command line:
 /// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency_stark --exact --nocapture --ignored`
 #[tokio::test]
