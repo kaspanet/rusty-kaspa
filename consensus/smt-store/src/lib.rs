@@ -18,7 +18,7 @@ pub type BlockHash = Hash;
 
 /// Inactivity threshold: lanes not touched within this many blue_score
 /// units below current PoV are considered inactive.
-pub const LANE_INACTIVITY_THRESHOLD: u64 = 200; // TODO: move to consensus params
+pub const LANE_INACTIVITY_THRESHOLD: u64 = 432000; // TODO: move to consensus params
 
 /// Re-export the branch changes map type from kaspa-smt.
 pub use kaspa_smt::tree::SmtBranchChanges;
