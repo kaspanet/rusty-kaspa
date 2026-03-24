@@ -101,9 +101,7 @@ pub fn generate_tx_dag(
     txs
 }
 
-/// Like [`generate_tx_dag`] but distributes transactions across `num_lanes`
-/// distinct subnetwork IDs (round-robin). Every tx belongs to a lane —
-/// this controls the width of the non-empty portion of the SMT.
+/// Like [`generate_tx_dag`] but every tx gets a unique subnetwork ID (lane).
 ///
 /// Uses `TX_VERSION_POST_COV_HF` so non-native subnetworks pass validation.
 pub fn generate_tx_dag_with_lanes(
@@ -112,14 +110,11 @@ pub fn generate_tx_dag_with_lanes(
     spk: ScriptPublicKey,
     target_levels: usize,
     target_width: usize,
-    num_lanes: usize,
 ) -> Vec<Arc<Transaction>> {
-    /// Build a SubnetworkId from `idx % num_lanes`.
-    /// Offset by 2 to avoid native (0) and coinbase (1).
-    fn lane_id(idx: usize, num_lanes: usize) -> SubnetworkId {
-        let val = ((idx % num_lanes) as u64) + 2;
+    fn make_lane_id(tx_idx: usize) -> SubnetworkId {
         let mut bytes = [0u8; 20];
-        bytes[12..20].copy_from_slice(&val.to_be_bytes());
+        bytes[0] = 0xFF; // non-reserved: avoids native(0), coinbase(1), registry(2)
+        bytes[12..20].copy_from_slice(&(tx_idx as u64).to_be_bytes());
         SubnetworkId::from_bytes(bytes)
     }
 
@@ -130,8 +125,8 @@ pub fn generate_tx_dag_with_lanes(
     let mut tx_counter: usize = 0;
 
     for i in 0..target_levels {
-        let mut utxo_diff = UtxoDiff::default();
         let level_start = tx_counter;
+        let mut utxo_diff = UtxoDiff::default();
         utxoset
             .iter()
             .take(num_inputs * target_width)
@@ -142,7 +137,7 @@ pub fn generate_tx_dag_with_lanes(
             .into_par_iter()
             .enumerate()
             .map(|(j, (inputs, entries))| {
-                let subnetwork = lane_id(level_start + j, num_lanes);
+                let subnetwork = make_lane_id(level_start + j);
                 let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
                 let total_out = total_in - required_fee(num_inputs, num_outputs);
                 let outputs = (0..num_outputs)
@@ -162,7 +157,7 @@ pub fn generate_tx_dag_with_lanes(
         utxoset.add_collection(&utxo_diff.add);
 
         if i % (target_levels / 10).max(1) == 0 {
-            info!("Generated {} txs ({} lanes)", txs.len(), num_lanes);
+            info!("Generated {} txs (1 lane per tx, {} unique lanes so far)", txs.len(), tx_counter);
         }
     }
 

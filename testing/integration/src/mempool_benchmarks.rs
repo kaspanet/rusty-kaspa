@@ -381,11 +381,11 @@ async fn bench_bbt_latency_2() {
     tasks.join().await;
 }
 
-/// Benchmark with multiple subnetwork lanes to measure KIP-21 SMT overhead.
+/// Benchmark measuring KIP-21 SMT overhead — every tx gets a unique lane.
 ///
-/// Every tx is assigned to one of `num_lanes` distinct subnetworks (round-robin),
-/// controlling the width of the active portion of the SMT. Tune `num_lanes` to
-/// measure how lane count affects bbt latency and throughput.
+/// The miner picks txs from the mempool, so lanes-per-block = txs-per-block
+/// (typically ~300 TPB from baseline). This measures the worst case where
+/// every transaction belongs to a distinct subnetwork.
 ///
 /// Run with:
 /// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency_lanes --exact --nocapture --ignored`
@@ -403,17 +403,9 @@ async fn bench_bbt_latency_lanes() {
     const SUBMIT_BLOCK_CLIENTS: usize = 20;
     const SUBMIT_TX_CLIENTS: usize = 2;
 
-    // Power of 2 for lane count: num_lanes = 2^LANE_POW.
-    // Override via: LANE_POW=6 cargo test ... (gives 64 lanes)
-    // Suggested values: 5(32), 8(256), 10(1024), 17(~131K), 20(~1M)
-    let lane_pow: u32 = std::env::var("LANE_POW").ok().and_then(|s| s.parse().ok()).unwrap_or(8);
-    let num_lanes: usize = 1usize << lane_pow.min(20); // cap at 2^20 = 1M
-
     if TX_COUNT < TX_LEVEL_WIDTH {
         panic!()
     }
-
-    info!("Starting bench_bbt_latency_lanes: 2^{} = {} lanes", lane_pow, num_lanes);
 
     let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let prealloc_address =
@@ -430,15 +422,9 @@ async fn bench_bbt_latency_lanes() {
     let params: Params = network.into();
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
-    let txs = common::utils::generate_tx_dag_with_lanes(
-        utxoset.clone(),
-        schnorr_key,
-        spk,
-        TX_COUNT / TX_LEVEL_WIDTH,
-        TX_LEVEL_WIDTH,
-        num_lanes,
-    );
+    let txs = common::utils::generate_tx_dag_with_lanes(utxoset.clone(), schnorr_key, spk, TX_COUNT / TX_LEVEL_WIDTH, TX_LEVEL_WIDTH);
     common::utils::verify_tx_dag(&utxoset, &txs);
+    info!("Generated {} txs, each with a unique lane", txs.len());
 
     let client_manager = Arc::new(ClientManager::new(args));
     let mut tasks = TasksRunner::new(Some(DaemonTask::build(client_manager.clone())))
