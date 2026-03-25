@@ -352,7 +352,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         writeln!(
             buffer,
             "Executing opcode: {}, astack: {:?}, dstack: {:?}",
-            opcode.to_string(),
+            opcode,
             format_stack(&self.astack),
             format_stack(&self.dstack)
         )
