@@ -1,12 +1,6 @@
-use std::{
-    collections::HashSet,
-    net::SocketAddr,
-    ops::Deref,
-    sync::{Arc, atomic::AtomicBool},
-    time::Duration,
-};
+use std::{collections::HashSet, net::SocketAddr, sync::Arc};
 
-use kaspa_core::{debug, info, task::service::AsyncService, warn};
+use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
 use kaspa_utils::networking::ContextualNetAddress;
 use tokio::sync::Mutex as TokioMutex;
@@ -16,9 +10,12 @@ use crate::{
     params::{FragmentationConfig, TransportParams},
     servers::{
         auth::TokenAuthenticator,
-        peer_directory::{Allowlist, PeerDirectory},
-        tcp_control::{PeerDirection, runtime::ControlRuntime},
-        udp_transport::{pipeline::reassembly::reassembly::BlockReassemblerBlockMessage, runtime::TransportRuntime},
+        peer_directory::PeerDirectory,
+        tcp_control::{
+            PeerDirection,
+            runtime::{ControlRuntime, ControlRuntimeHandle},
+        },
+        udp_transport::runtime::TransportRuntime,
     },
 };
 
@@ -27,15 +24,19 @@ pub const DEFAULT_TCP_PORT: u16 = 16113;
 
 #[derive(Clone)]
 pub struct FastTrustedRelay {
+    /// Shared mutable state for the UDP transport; cloned handles refer to the
+    /// same runtime. Protected by mutex for thread-safe start/stop.
     udp_runtime: Arc<TokioMutex<Option<TransportRuntime>>>,
-    tcp_runtime: Arc<TokioMutex<ControlRuntime>>,
+    /// Handle for controlling the TCP control runtime.
+    tcp_handle: ControlRuntimeHandle,
+    /// Task handle for awaiting TCP runtime shutdown.
+    tcp_task: Arc<TokioMutex<Option<tokio::task::JoinHandle<()>>>>,
     authenticator: Arc<TokenAuthenticator>,
     directory: Arc<PeerDirectory>,
     params: TransportParams,
     fragmentation_config: FragmentationConfig,
     listen_address: SocketAddr,
-    block_receiver: Option<Arc<TokioMutex<tokio::sync::mpsc::UnboundedReceiver<BlockReassemblerBlockMessage>>>>,
-    udp_active: Arc<AtomicBool>,
+    /// Notifier to wake up `recv_block` waiters when state changes.
     receive_block_waker: Arc<tokio::sync::Notify>,
     udp_port: u16,
     tcp_port: u16,
@@ -72,12 +73,13 @@ impl FastTrustedRelay {
         let directory =
             Arc::new(PeerDirectory::new(allowlist.iter().cloned().map(|(addr, direction)| (addr.into(), direction)).collect()));
         let authenticator = Arc::new(TokenAuthenticator::new(secret));
-        let is_udp_active = Arc::new(AtomicBool::new(false));
         let receive_block_waker = Arc::new(tokio::sync::Notify::new());
-        let tcp_runtime = ControlRuntime::new(listen_address, directory.clone(), authenticator.clone(), is_udp_active.clone());
+        let tcp_runtime = ControlRuntime::new(listen_address, directory.clone(), authenticator.clone());
+        let (tcp_handle, tcp_task) = tcp_runtime.spawn();
         Self {
             listen_address,
-            tcp_runtime: Arc::new(TokioMutex::new(tcp_runtime)),
+            tcp_handle,
+            tcp_task: Arc::new(TokioMutex::new(Some(tcp_task))),
             udp_runtime: Arc::new(TokioMutex::new(None)),
             authenticator,
             directory,
@@ -85,66 +87,88 @@ impl FastTrustedRelay {
             fragmentation_config,
             udp_port: DEFAULT_UDP_PORT,
             tcp_port: DEFAULT_TCP_PORT,
-            udp_active: is_udp_active,
             receive_block_waker,
-            block_receiver: None,
         }
     }
 
-    pub async fn start_control_runtime(&mut self) {
-        info!("Starting TCP control runtime...");
-        let tcp_runtime = self.tcp_runtime.clone();
-        let mut rt = tcp_runtime.lock().await;
-        rt.run().await;
-    }
-
-    /// stop the UDP relay without consuming the struct so the caller can still
-    /// use the relay instance afterwards.
-    pub async fn stop_fast_relay(&mut self) {
-        self.udp_runtime.lock().await.take();
-        self.block_receiver.take();
-    }
-
-    /// start or restart the UDP relay; takes `&mut self` to avoid moving the
-    /// entire relay instance out of the caller.
-    pub async fn start_fast_relay(&mut self) {
+    /// Stop the UDP relay. If the runtime is already inactive, returns false.
+    /// Returns true if the stop was successful.
+    ///
+    /// This method uses async-safe shutdown to properly await worker thread completion.
+    pub async fn stop_fast_relay(&self) -> bool {
         let mut guard = self.udp_runtime.lock().await;
-        if guard.is_some() {
-            return;
+        let old_runtime = guard.take();
+        drop(guard); // Release lock before awaiting shutdown
+
+        if let Some(mut runtime) = old_runtime {
+            // Use async shutdown to properly await thread completion
+            runtime.shutdown_async().await;
+
+            // Wake any waiting receivers
+            self.receive_block_waker.notify_waiters();
+
+            // Tell peers that we're no longer ready
+            self.tcp_handle.signal_not_ready();
+
+            info!("fast trusted relay UDP transport stopped");
+            true
+        } else {
+            debug!("UDP relay is already inactive.");
+            false
         }
-        let udp_runtime = guard.get_or_insert(TransportRuntime::new(
+    }
+
+    /// Start the UDP relay. If the runtime is already active, returns false.
+    /// Returns true if the start was successful.
+    pub async fn start_fast_relay(&self) -> bool {
+        let mut udp_runtime = self.udp_runtime.lock().await;
+        if udp_runtime.is_some() {
+            debug!("UDP runtime is already active");
+            return false;
+        }
+
+        let mut transport = TransportRuntime::new(
             self.params,
             self.listen_address,
             self.fragmentation_config,
             self.directory.clone(),
             self.authenticator.clone(),
-            self.udp_active.clone(),
-        ));
-        udp_runtime.start();
-        self.block_receiver = Some(udp_runtime.block_receive());
-        self.tcp_runtime.lock().await.signal_ready().await;
+        );
+
+        if !transport.start() {
+            warn!("UDP transport failed to start");
+            return false;
+        }
+
+        *udp_runtime = Some(transport);
+        drop(udp_runtime); // Release lock before notifying
+
+        // Wake receivers after committing state
+        self.receive_block_waker.notify_waiters();
+
+        // Signal peers after we committed state
+        self.tcp_handle.signal_ready();
         info!("fast trusted relay UDP transport started");
+        true
     }
 
-    /// shut down both runtimes; does not consume the relay in order to allow
-    /// callers (including `Drop`) to borrow it.
-    pub fn shutdown(&mut self) {
+    /// Shut down both runtimes.
+    pub async fn shutdown(&self) {
         debug!("shutting down fast trusted relay...");
-        let mut self_clone = self.clone();
-        tokio::spawn(async move {
-            self_clone.stop_fast_relay().await;
-            // only move the control runtime into the spawned task, keeping the
-            // rest of `self` live.
-            let tcp_runtime = self_clone.tcp_runtime.clone();
-            let mut rt = tcp_runtime.lock().await;
-            rt.stop().await;
-        });
+        self.stop_fast_relay().await;
+        self.tcp_handle.stop();
+
+        // Await TCP task completion
+        if let Some(task) = self.tcp_task.lock().await.take() {
+            let _ = task.await;
+        }
+        info!("fast trusted relay shut down");
     }
 
     pub async fn broadcast_block(&self, hash: Hash, block: Arc<FtrBlock>) -> Result<(), String> {
         debug!("broadcasting block from fast trusted relay...");
-        if let Some(udp_runtime) = &self.udp_runtime.lock().await.as_ref() {
-            udp_runtime.submit_block_for_broadcast(hash, block)
+        if let Some(runtime) = self.udp_runtime.lock().await.as_ref() {
+            runtime.submit_block_for_broadcast(hash, block)
         } else {
             // Relay is inactive; ignore the broadcast but return Ok to avoid
             // treating this as an error.
@@ -155,54 +179,172 @@ impl FastTrustedRelay {
     pub async fn recv_block(&self) -> (Hash, FtrBlock) {
         debug!("entering receive block loop from fast trusted relay...");
         loop {
-            if let Some(block_receiver_arc) = self.block_receiver.clone() {
-                let mut block_receiver = block_receiver_arc.lock().await;
+            // Register for notification BEFORE checking condition to avoid race.
+            // This ensures we don't miss notifications that arrive between
+            // the condition check and the await.
+            let notified = self.receive_block_waker.notified();
+
+            // Clone receiver under the lock so it doesn't disappear mid-await.
+            let receiver_opt = self.udp_runtime.lock().await.as_ref().map(|rt| rt.block_receive());
+            if let Some(rx_arc) = receiver_opt {
+                let mut rx = rx_arc.lock().await;
                 debug!("Waiting to receive block from UDP runtime...");
-                if let Some(msg) = block_receiver.recv().await {
+                if let Some(msg) = rx.recv().await {
                     return msg.into_parts();
                 }
+                // Receiver closed unexpectedly (runtime dropped/crashed). Clear state.
+                debug!("UDP block receiver closed unexpectedly; marking relay inactive");
+                self.udp_runtime.lock().await.take();
+                self.receive_block_waker.notify_waiters();
+                // Fall through and wait for a restart
             }
             debug!("UDP runtime not active, waiting for it to become active...");
-            // wait until the udp runtime becomes active again.
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            notified.await;
         }
     }
 
-    pub fn toggle_udp_active(&self, toggle: bool) -> bool {
-        debug!("checking if UDP runtime is active: {}", self.udp_active.load(std::sync::atomic::Ordering::SeqCst));
-        let old = self.udp_active.swap(toggle, std::sync::atomic::Ordering::SeqCst);
-        old
+    /// Enable or disable the UDP relay. This is a convenience method that calls
+    /// `start_fast_relay()` or `stop_fast_relay()` based on the desired state.
+    /// Returns the actual resulting state (true = active, false = inactive).
+    pub async fn set_udp_enabled(&self, enable: bool) -> bool {
+        if enable {
+            self.start_fast_relay().await;
+        } else {
+            self.stop_fast_relay().await;
+        }
+        self.is_udp_active().await
     }
 
-    pub fn is_udp_active(&self) -> bool {
-        self.udp_active.load(std::sync::atomic::Ordering::SeqCst)
+    /// Returns true if the UDP runtime is currently active.
+    pub async fn is_udp_active(&self) -> bool {
+        self.udp_runtime.lock().await.is_some()
+    }
+
+    /// Best-effort non-blocking check if UDP is active.
+    /// Returns None if the lock couldn't be acquired immediately.
+    pub fn try_is_udp_active(&self) -> Option<bool> {
+        self.udp_runtime.try_lock().ok().map(|rt| rt.is_some())
     }
 }
 
-// The relay is a cheap, cloneable handle; clones share the same
-// underlying control/udp runtimes via `Arc`.  We used to shut the transport
-// down on _every_ drop, which meant that creating a temporary clone (for
-// example when registering the relay flow) would immediately trigger a shutdown
-// task.  That task would then block waiting for a future `start_fast_relay` and
-// eventually starve the tokio runtime – leaving kaspad apparently hung after
-// IBD.
-//
-// Instead we only perform a shutdown when the _last_ strong reference disappears.
-// At drop time the only thing we can observe synchronously is the current
-// strong count; if it is one then this handle is the final owner and we can
-// safely spawn the background task to tear everything down.  If there are others
-// remaining we simply do nothing and let the real owner clean up later.
-impl Drop for FastTrustedRelay {
-    fn drop(&mut self) {
-        // tcp_runtime is always present; udp_runtime is optional
-        let tcp_refs = Arc::strong_count(&self.tcp_runtime);
-        let udp_refs = Arc::strong_count(&self.udp_runtime);
+// ============================================================================
+// UNIT TESTS
+// ============================================================================
 
-        // when both counts are 1 (i.e. only `self` holds the reference) we are
-        // the last handle.
-        if tcp_refs == 1 && udp_refs <= 1 {
-            debug!("last FastTrustedRelay handle dropped, performing shutdown (tcp={}, udp={})", tcp_refs, udp_refs);
-            self.shutdown();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::time::{Duration, timeout};
+
+    fn make_relay() -> FastTrustedRelay {
+        let params = TransportParams::default();
+        let frag = FragmentationConfig::new(4, 2, 1024);
+        let listen = "127.0.0.1:0".parse().unwrap();
+        FastTrustedRelay::new(params, frag, listen, vec![], vec![], vec![])
+    }
+
+    #[tokio::test]
+    async fn concurrent_start_stop() {
+        let relay = Arc::new(make_relay());
+        let mut handles = Vec::new();
+        for _ in 0..10 {
+            let r = relay.clone();
+            handles.push(tokio::spawn(async move {
+                // These calls are serialized internally via the state machine
+                r.start_fast_relay().await;
+                r.stop_fast_relay().await;
+            }));
         }
+        for h in handles {
+            let _ = h.await;
+        }
+        assert!(!relay.is_udp_active().await);
+    }
+
+    #[tokio::test]
+    async fn lifecycle_state_transitions() {
+        let relay = make_relay();
+        assert!(!relay.is_udp_active().await);
+
+        relay.start_fast_relay().await;
+        assert!(relay.is_udp_active().await);
+
+        relay.stop_fast_relay().await;
+        assert!(!relay.is_udp_active().await);
+
+        // Can restart
+        relay.start_fast_relay().await;
+        assert!(relay.is_udp_active().await);
+    }
+
+    #[tokio::test]
+    async fn set_udp_enabled_toggle() {
+        let relay = make_relay();
+
+        // Enable
+        let result = relay.set_udp_enabled(true).await;
+        assert!(result);
+        assert!(relay.is_udp_active().await);
+
+        // Disable
+        let result = relay.set_udp_enabled(false).await;
+        assert!(!result);
+        assert!(!relay.is_udp_active().await);
+
+        // Re-enable
+        let result = relay.set_udp_enabled(true).await;
+        assert!(result);
+        assert!(relay.is_udp_active().await);
+    }
+
+    #[tokio::test]
+    async fn recv_block_handles_runtime_drop() {
+        let relay = make_relay();
+        relay.start_fast_relay().await;
+        assert!(relay.is_udp_active().await);
+
+        // Simulate runtime disappearing without calling stop_fast_relay
+        relay.udp_runtime.lock().await.take();
+
+        // Now inactive
+        assert!(!relay.is_udp_active().await);
+
+        // recv_block should wait for restart (times out in test)
+        let relay2 = relay.clone();
+        let handle = tokio::spawn(async move { tokio::time::timeout(Duration::from_millis(100), relay2.recv_block()).await });
+        assert!(handle.await.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn idempotent_start_stop() {
+        let relay = make_relay();
+
+        // Multiple stops when inactive are no-ops
+        assert!(!relay.stop_fast_relay().await);
+        assert!(!relay.stop_fast_relay().await);
+
+        // Start succeeds
+        assert!(relay.start_fast_relay().await);
+
+        // Multiple starts when active are no-ops
+        assert!(!relay.start_fast_relay().await);
+        assert!(!relay.start_fast_relay().await);
+
+        // Stop succeeds
+        assert!(relay.stop_fast_relay().await);
+
+        // Multiple stops are no-ops again
+        assert!(!relay.stop_fast_relay().await);
+    }
+
+    // waker behaviour is lightly exercised by the concurrency test and by
+    // observing that broadcast_block/recv_block work in integration; a full
+    // injection test requires poking private channels and is deferred.
+
+    #[test]
+    fn sanity_check() {
+        // make sure the harness picks up at least one test
+        assert_eq!(2 + 2, 4);
     }
 }

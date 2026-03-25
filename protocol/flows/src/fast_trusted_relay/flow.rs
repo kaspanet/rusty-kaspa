@@ -16,6 +16,7 @@ use kaspa_p2p_lib::{
     pb::{InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage, kaspad_message::Payload},
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
+use kaspa_utils::triggers::Listener;
 use std::{collections::VecDeque, sync::Arc};
 use kaspa_trusted_relay::{FastTrustedRelay, fast_trusted_relay, model::ftr_block::FtrBlock};
 
@@ -26,6 +27,7 @@ use kaspa_trusted_relay::{FastTrustedRelay, fast_trusted_relay, model::ftr_block
 pub struct HandleFastTrustedRelayFlow {
     ctx: FlowContext,
     fast_trusted_relay: FastTrustedRelay,
+    shutdown_listener: Listener,
 }
 
 #[async_trait::async_trait]
@@ -42,30 +44,35 @@ impl Flow for HandleFastTrustedRelayFlow {
 
 
 impl HandleFastTrustedRelayFlow {
-    pub fn new(ctx: FlowContext, fast_trusted_relay: FastTrustedRelay) -> Self {
-        Self { ctx, fast_trusted_relay }
+    pub fn new(ctx: FlowContext, fast_trusted_relay: FastTrustedRelay, shutdown_listener: Listener) -> Self {
+        Self { ctx, fast_trusted_relay, shutdown_listener }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         info!("{} flow started", self.name());
-        let mut fast_trusted_relay = self.fast_trusted_relay.clone();
-        tokio::spawn(async move {
-            fast_trusted_relay.start_control_runtime().await;
-        });
+        // TCP control runtime is auto-spawned on FastTrustedRelay::new()
         loop {
             let session = self.ctx.consensus().unguarded_session();
             let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
 
             info!("Waiting to receive block from fast trusted relay...");
 
-            let (hash, ftr_block) = self.fast_trusted_relay.recv_block().await;
+            // Use select! to handle graceful shutdown
+            let (hash, ftr_block) = tokio::select! {
+                biased;
+                _ = self.shutdown_listener.clone() => {
+                    info!("{} flow received shutdown signal, exiting gracefully", self.name());
+                    return Ok(());
+                }
+                result = self.fast_trusted_relay.recv_block() => result,
+            };
 
             info!("Received block {} from fast trusted relay", hash);
 
             // We do not sync from fast relay messages, but if in transitional state,
             // toggle the fast relay off.
             if is_ibd_in_transitional_state {
-                if self.fast_trusted_relay.is_udp_active() {
+                if self.fast_trusted_relay.is_udp_active().await {
                     self.fast_trusted_relay.stop_fast_relay().await;
                 }
                 continue;
@@ -97,7 +104,7 @@ impl HandleFastTrustedRelayFlow {
 
             if self.ctx.is_ibd_running() && !self.ctx.should_mine(&session).await {
                 // we toggle out fast relay off, since we consider it out of sync
-                if self.fast_trusted_relay.is_udp_active() {
+                if self.fast_trusted_relay.is_udp_active().await {
                     self.fast_trusted_relay.stop_fast_relay().await;
                 }
                 debug!("Got fast relay block {} while in IBD and the node is out of sync, continuing...", hash);
@@ -105,7 +112,7 @@ impl HandleFastTrustedRelayFlow {
             }
 
             // If we were not considered synced yet we do now.
-            if !self.fast_trusted_relay.is_udp_active() {
+            if !self.fast_trusted_relay.is_udp_active().await {
                 info!("Turning on fast trusted relay UDP transport since we consider ourselves synced now");
                 self.fast_trusted_relay.start_fast_relay().await;
             }

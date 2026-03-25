@@ -101,7 +101,7 @@ impl TransportParams {
     }
 
     pub fn verification_channel_capacity(&self) -> usize {
-        (self.receive_buffer_size() / self.num_of_verifiers) * 100 // this channel should be large, mostly to deal with ddos.
+        (self.receive_buffer_size() / self.num_of_verifiers)
     }
 
     pub fn forwarder_channel_capacity(&self) -> usize {
@@ -113,7 +113,7 @@ impl TransportParams {
     }
 
     pub fn coordinator_receive_channel_capacity(&self) -> usize {
-        ((self.consensus_bps * self.fragments_per_block() / self.num_of_coordinators) as f64 * self.multiplier) as usize
+        ((self.consensus_k * self.fragments_per_block() / self.num_of_coordinators) as f64 * self.multiplier) as usize
     }
 
     pub fn coordinator_send_channel_capacity(&self) -> usize {
@@ -121,15 +121,15 @@ impl TransportParams {
     }
 
     pub fn decoder_channel_capacity(&self) -> usize {
-        ((self.consensus_bps * self.generations_per_block() / self.num_of_decoders_per_coordinators) as f64 * self.multiplier) as usize
+        ((self.consensus_k * self.fragments_per_block() / self.num_of_decoders_per_coordinators) as f64 * self.multiplier) as usize
     }
 
     pub fn send_buffer_size(&self) -> usize {
-        ((self.consensus_bps * self.fragments_per_block() / self.num_of_collectors) as f64 * self.multiplier) as usize * self.num_of_outgoing_peers
+        1024 * 1024 * 32 //32mb
     }
 
     pub fn receive_buffer_size(&self) -> usize {
-        ((self.consensus_bps * self.fragments_per_block() / self.num_of_collectors) as f64 * self.multiplier) as usize * self.num_of_incoming_peers
+        1024 * 1024 * 32 //32mb
     }
 
     pub fn fragments_per_block(&self) -> usize {
@@ -141,7 +141,7 @@ impl TransportParams {
     }
 
     pub fn max_concurrent_blocks(&self) -> usize {
-        self.consensus_k
+        self.consensus_k * 10
     }
 }
 

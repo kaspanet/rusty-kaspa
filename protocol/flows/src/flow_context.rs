@@ -1,8 +1,12 @@
-use crate::{fast_trusted_relay::{self, flow::HandleFastTrustedRelayFlow}, flow_trait::Flow, flowcontext::{
-    orphans::{OrphanBlocksPool, OrphanOutput},
-    process_queue::ProcessQueue,
-    transactions::TransactionsSpread,
-}};
+use crate::{
+    fast_trusted_relay::{self, flow::HandleFastTrustedRelayFlow},
+    flow_trait::Flow,
+    flowcontext::{
+        orphans::{OrphanBlocksPool, OrphanOutput},
+        process_queue::ProcessQueue,
+        transactions::TransactionsSpread,
+    },
+};
 use crate::{v7, v8};
 use async_trait::async_trait;
 use futures::future::join_all;
@@ -390,12 +394,17 @@ impl FlowContext {
         self.fast_trusted_relay.clone()
     }
 
-    pub async fn try_register_fast_trusted_relay_flow(&self) {
+    /// Shuts down the fast trusted relay if it exists.
+    /// Should be called during service shutdown to cleanly terminate the relay.
+    pub async fn shutdown_fast_trusted_relay(&self) {
+        if let Some(ftr) = self.fast_trusted_relay.as_ref() {
+            ftr.shutdown().await;
+        }
+    }
+
+    pub async fn try_register_fast_trusted_relay_flow(&self, shutdown_listener: kaspa_utils::triggers::Listener) {
         if let Some(ftr) = self.clone().fast_trusted_relay() {
-            let mut flow = Box::new(HandleFastTrustedRelayFlow::new(
-                self.clone(),
-                ftr,
-            ));
+            let mut flow = Box::new(HandleFastTrustedRelayFlow::new(self.clone(), ftr, shutdown_listener));
             flow.launch();
         }
     }

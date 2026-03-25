@@ -86,7 +86,7 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            flow_context.try_register_fast_trusted_relay_flow().await;
+            flow_context.try_register_fast_trusted_relay_flow(shutdown_signal.clone()).await;
 
             for peer_address in self.connect_peers.iter().cloned().chain(self.add_peers.iter().cloned()) {
                 connection_manager.add_connection_request(peer_address.into(), true).await;
@@ -94,6 +94,10 @@ impl AsyncService for P2pService {
 
             // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;
+
+            // Shut down fast trusted relay first for clean disconnection
+            flow_context.shutdown_fast_trusted_relay().await;
+
             // Important for cleanup of the P2P adaptor since we have a reference cycle:
             // flow ctx -> conn manager -> p2p adaptor -> flow ctx (as ConnectionInitializer)
             self.flow_context.drop_connection_manager();

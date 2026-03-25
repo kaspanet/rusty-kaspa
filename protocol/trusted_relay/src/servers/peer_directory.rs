@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use crate::servers::tcp_control::PeerDirection;
 use arc_swap::ArcSwap;

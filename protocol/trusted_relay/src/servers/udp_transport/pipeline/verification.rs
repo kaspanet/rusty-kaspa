@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use bytes::Bytes;
 use crossbeam_channel::Receiver as CrossbeamReceiver;
@@ -15,8 +14,10 @@ use crate::model::fragments::{Fragment, FragmentHeader};
 use crate::params::{FragmentationConfig, TransportParams};
 use crate::servers::auth::{AuthToken, TokenAuthenticator};
 use crate::servers::peer_directory::{Allowlist, PeerDirectory};
-use crate::servers::udp_transport::pipeline::reassembly::reassembly::{ReassemblerBlockReceiver, ReassemblerFragmentMessage, ReassemblerFragmentReceiver, ReassemblerFragmentSender};
-use crate::servers::udp_transport::pipeline::relay::{self, RelayMessage, RelayReceiver, RelaySender};
+use crate::servers::udp_transport::pipeline::reassembly::reassembly::{
+    ReassemblerBlockReceiver, ReassemblerFragmentMessage, ReassemblerFragmentReceiver, ReassemblerFragmentSender,
+};
+use crate::servers::udp_transport::pipeline::relay::{RelayMessage, RelayReceiver, RelaySender};
 
 const WORKER_NAME: &str = "verification-worker";
 
@@ -130,8 +131,12 @@ fn run(
                 let fragment_hash = get_fragment_hash(&packet);
                 let (compressed_fragment_index, compressed_capacity) =
                     compress_fragment_indices(fragment_index, last_fragment_index, num_of_workers);
-                let (is_unique, hash_entry_present) =
-                    is_unique_fragment(fragment_hash, compressed_fragment_index as u16, compressed_capacity as u16, &mut recent_fragments);
+                let (is_unique, hash_entry_present) = is_unique_fragment(
+                    fragment_hash,
+                    compressed_fragment_index as u16,
+                    compressed_capacity as u16,
+                    &mut recent_fragments,
+                );
 
                 // TODO: Consider making the checking order here configurable.
                 // Note: currently we optimize for the expected case, i.e. that is multiple peers sending duplicate packets,
@@ -149,7 +154,13 @@ fn run(
                     continue;
                 }
 
-                update_recent_fragments(fragment_hash, hash_entry_present, compressed_fragment_index, compressed_capacity, &mut recent_fragments);
+                update_recent_fragments(
+                    fragment_hash,
+                    hash_entry_present,
+                    compressed_fragment_index,
+                    compressed_capacity,
+                    &mut recent_fragments,
+                );
 
                 // Forward to the Coordinator.
                 let fragment = build_fragment(packet.clone(), fragment_hash, fragment_index, last_fragment_index);
@@ -178,17 +189,12 @@ fn run(
                 }
 
                 // Forward verified fragment to fragmentForwarder (best-effort, non-blocking).
-                if let Err(e) = relay_sender.try_send(RelayMessage::new(packet, src))
-                {
+                if let Err(e) = relay_sender.try_send(RelayMessage::new(packet, src)) {
                     match e {
                         crossbeam_channel::TrySendError::Full(_) => {
                             warn!(
                                 "{}-{}: forwarder channel full, dropping {}:{} from {}, and draining forward channel to make room - consider increasing channel capacities",
-                                WORKER_NAME,
-                                worker_idx,
-                                fragment_hash,
-                                fragment_index,
-                                src,
+                                WORKER_NAME, worker_idx, fragment_hash, fragment_index, src,
                             );
                             // drain channel to make space
                             relay_receiver.try_iter();
@@ -201,7 +207,10 @@ fn run(
                 }
             }
             VerificationMessage::MarkBlockBroadcasted(MarkBlockBroadcastedMessage(hash, total_fragments)) => {
-                trace!("{}-{}: received MarkBlockBroadcasted for block {} with total_fragments={}", WORKER_NAME, worker_idx, hash, total_fragments);
+                trace!(
+                    "{}-{}: received MarkBlockBroadcasted for block {} with total_fragments={}",
+                    WORKER_NAME, worker_idx, hash, total_fragments
+                );
                 let count = total_fragments.saturating_add(1) as usize;
                 let compressed_capacity = count.div_ceil(num_of_workers).max(1);
 
@@ -214,10 +223,7 @@ fn run(
                 full_bitset.toggle_range(..);
                 recent_fragments.push_back(hash, full_bitset);
 
-                trace!(
-                    "{}-{}: marked block {} as broadcasted (capacity={})",
-                    WORKER_NAME, worker_idx, hash, compressed_capacity
-                );
+                trace!("{}-{}: marked block {} as broadcasted (capacity={})", WORKER_NAME, worker_idx, hash, compressed_capacity);
             }
         }
     }
@@ -237,9 +243,8 @@ pub fn spawn_verifier_thread(
     forwarder_receivers: RelayReceiver,
     config: FragmentationConfig,
     transport: TransportParams,
-    recent_fragments: RingMap<Hash, FixedBitSet>
+    recent_fragments: RingMap<Hash, FixedBitSet>,
 ) -> std::thread::JoinHandle<()> {
-
     let handle = std::thread::Builder::new()
         .name(format!("{}-{}", WORKER_NAME, worker_idx))
         .spawn(move || {
@@ -266,10 +271,14 @@ fn get_fragment_indices(packet: &[u8]) -> (u16, u16) {
     // Caller must ensure `packet.len() >= AuthToken::TOKEN_SIZE + FragmentHeader::SIZE`.
     // Use direct indexed reads (faster and no panics because caller checks length).
     let base = AuthToken::TOKEN_SIZE;
-    let fragment_index =
-        u16::from_le_bytes([packet[base + FragmentHeader::FRAGMENT_INDEX_OFFSET], packet[base + FragmentHeader::FRAGMENT_INDEX_OFFSET + 1]]);
-    let total_fragments =
-        u16::from_le_bytes([packet[base + FragmentHeader::TOTAL_FRAGMENTS_OFFSET], packet[base + FragmentHeader::TOTAL_FRAGMENTS_OFFSET + 1]]);
+    let fragment_index = u16::from_le_bytes([
+        packet[base + FragmentHeader::FRAGMENT_INDEX_OFFSET],
+        packet[base + FragmentHeader::FRAGMENT_INDEX_OFFSET + 1],
+    ]);
+    let total_fragments = u16::from_le_bytes([
+        packet[base + FragmentHeader::TOTAL_FRAGMENTS_OFFSET],
+        packet[base + FragmentHeader::TOTAL_FRAGMENTS_OFFSET + 1],
+    ]);
     (fragment_index, total_fragments)
 }
 
@@ -331,11 +340,6 @@ fn is_authenticated(packet: &[u8], authenticator: &TokenAuthenticator) -> bool {
 #[inline(always)]
 fn is_from_allowlist(src: &SocketAddr, allowlist: &Allowlist) -> bool {
     allowlist.load().contains_key(&src.ip())
-}
-
-#[inline(always)]
-fn is_relay_ready(is_ready: &Arc<AtomicBool>) -> bool {
-    is_ready.load(Ordering::Relaxed)
 }
 
 #[inline(always)]

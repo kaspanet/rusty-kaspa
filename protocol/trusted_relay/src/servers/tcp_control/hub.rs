@@ -1,16 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-
-use arc_swap::ArcSwap;
 
 use log::{debug, info, trace, warn};
 use tokio::sync::mpsc;
 
 use crate::servers::peer_directory::PeerDirectory;
 use crate::servers::peer_directory::PeerInfo;
-use crate::servers::tcp_control::{ControlMsg, Peer, PeerCloseReason, hub};
+use crate::servers::tcp_control::{ControlMsg, Peer, PeerCloseReason};
 // ============================================================================
 // HUB EVENTS
 // ============================================================================
@@ -27,6 +24,8 @@ pub enum HubEvent {
     SendControl(SocketAddr, ControlMsg),
     /// Send a control command to all peers.
     BroadcastControl(ControlMsg),
+    /// Set local ready state and broadcast to all peers.
+    SetLocalReady(bool),
     /// Shut down the Hub and all peers.
     Shutdown,
 }
@@ -66,10 +65,9 @@ pub struct Hub {
     hub_event_sender: mpsc::UnboundedSender<HubEvent>,
     /// Receiver for Hub events — owned by the Hub's event loop.
     hub_event_receiver: mpsc::UnboundedReceiver<HubEvent>,
-    /// Whether *we* are ready to relay. Flipped by the Adaptor via
-    /// `start_fast_relay()` / `stop_fast_relay()`. Outbound shards are
-    /// only sent when `local_ready && peer_ready`.
-    local_ready: Arc<AtomicBool>,
+    /// Whether *we* are ready to relay. Set via `signal_ready()` / `signal_not_ready()`.
+    /// Outbound shards are only sent when `local_ready && peer_ready`.
+    local_ready: bool,
 }
 
 impl Hub {
@@ -79,17 +77,10 @@ impl Hub {
     /// returned sender to submit events.
     pub fn new(
         directory: Arc<PeerDirectory>,
-        is_ready: Arc<AtomicBool>, // this is the same / alias as udp shutdown bool. i.e. if we shutdown udp, we signal not ready here.
         hub_event_sender: mpsc::UnboundedSender<HubEvent>,
         hub_event_receiver: mpsc::UnboundedReceiver<HubEvent>,
     ) -> Self {
-        Self {
-            peers: HashMap::new(),
-            directory,
-            hub_event_sender: hub_event_sender.clone(),
-            hub_event_receiver,
-            local_ready: is_ready,
-        }
+        Self { peers: HashMap::new(), directory, hub_event_sender: hub_event_sender.clone(), hub_event_receiver, local_ready: false }
     }
 
     /// Run the Hub event loop. Blocks until `Shutdown` or all senders drop.
@@ -106,6 +97,9 @@ impl Hub {
                     for handle in self.peers.values() {
                         self.handle_send_control(handle.info.address(), msg).await;
                     }
+                }
+                HubEvent::SetLocalReady(ready) => {
+                    self.set_local_ready(ready).await;
                 }
                 HubEvent::Shutdown => {
                     info!("Hub shutting down, disconnecting {} peers", self.peers.len());
@@ -147,7 +141,7 @@ impl Hub {
 
         // If we are already in relay-active mode, immediately tell this new
         // peer to start (writes Start over TCP so the remote knows).
-        if self.local_ready.load(std::sync::atomic::Ordering::Relaxed) {
+        if self.local_ready {
             if let Some(handle) = self.peers.get(&addr) {
                 let tx = handle.control_tx.clone();
                 tokio::spawn(async move {
@@ -205,17 +199,20 @@ impl Hub {
         }
     }
 
-    pub async fn signal_ready(&self) {
-        for (addr, handle) in self.peers.iter() {
-            debug!("Signaling Start to peer {}", addr);
-            let _ = handle.control_tx.send(ControlMsg::Start).await;
-        }
+    pub async fn signal_ready(&mut self) {
+        self.set_local_ready(true).await;
     }
 
-    pub async fn signal_not_ready(&self) {
+    pub async fn signal_not_ready(&mut self) {
+        self.set_local_ready(false).await;
+    }
+
+    async fn set_local_ready(&mut self, ready: bool) {
+        self.local_ready = ready;
+        let msg = if ready { ControlMsg::Start } else { ControlMsg::Stop };
         for (addr, handle) in self.peers.iter() {
-            debug!("Signaling Stop to peer {}", addr);
-            let _ = handle.control_tx.send(ControlMsg::Stop).await;
+            debug!("Signaling {:?} to peer {}", msg, addr);
+            let _ = handle.control_tx.send(msg).await;
         }
     }
 }
@@ -240,9 +237,8 @@ mod tests {
     /// Create a Hub wired to throwaway channels.
     async fn make_hub() -> (mpsc::UnboundedSender<HubEvent>, Hub) {
         let directory = Arc::new(PeerDirectory::new(std::collections::HashMap::new()));
-        let local_ready = Arc::new(AtomicBool::new(false));
         let (hub_tx, hub_rx) = mpsc::unbounded_channel();
-        let hub = Hub::new(directory, local_ready, hub_tx.clone(), hub_rx);
+        let hub = Hub::new(directory, hub_tx.clone(), hub_rx);
         (hub_tx, hub)
     }
 
@@ -295,9 +291,8 @@ mod tests {
         use std::sync::Arc;
 
         let directory = Arc::new(PeerDirectory::new(HashMap::new()));
-        let local_ready = Arc::new(AtomicBool::new(false));
         let (event_tx, hub_rx) = mpsc::unbounded_channel();
-        let mut hub = Hub::new(directory.clone(), local_ready, event_tx.clone(), hub_rx);
+        let mut hub = Hub::new(directory.clone(), event_tx.clone(), hub_rx);
 
         // Run the Hub loop in background.
         let hub_handle = tokio::spawn(async move { hub.run().await });
@@ -360,9 +355,8 @@ mod tests {
         use std::sync::Arc;
 
         let directory = Arc::new(PeerDirectory::new(HashMap::new()));
-        let local_ready = Arc::new(AtomicBool::new(false));
         let (event_tx, hub_rx) = mpsc::unbounded_channel();
-        let mut hub = Hub::new(directory.clone(), local_ready, event_tx.clone(), hub_rx);
+        let mut hub = Hub::new(directory.clone(), event_tx.clone(), hub_rx);
 
         let hub_handle = tokio::spawn(async move { hub.run().await });
 

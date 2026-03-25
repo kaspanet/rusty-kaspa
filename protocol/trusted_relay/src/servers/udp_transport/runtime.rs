@@ -1,7 +1,6 @@
 //! Minimal TransportRuntime scaffold: owned runtime + handle API
 use std::net::{SocketAddr, UdpSocket};
-use std::ops::Deref;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -39,7 +38,16 @@ struct TransportRuntimeHandles {
 }
 
 impl TransportRuntimeHandles {
-    fn shutdown(&mut self) {
+    /// Signal all threads to shutdown without waiting.
+    /// Threads will exit when they see shutdown signal or their channels close.
+    fn signal_shutdown(&self) {
+        // Handles will be joined by shutdown_blocking() or dropped naturally
+        info!("UdpTransportRuntime: signaling worker threads to shutdown");
+    }
+
+    /// Blocking shutdown - waits for all threads to complete.
+    /// Should only be called from a blocking context (e.g., spawn_blocking).
+    fn shutdown_blocking(&mut self) {
         for h in self.collector_handles.drain(..) {
             info!("Stopping collector thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
@@ -70,13 +78,24 @@ impl TransportRuntimeHandles {
 struct TransportRuntimeInner {
     handles: Arc<Mutex<TransportRuntimeHandles>>,
     bound_addr: SocketAddr,
+    /// Internal shutdown signal for collector threads. This is NOT exposed through the API.
+    /// Set to true when shutdown() is called to signal collectors to exit.
+    collector_shutdown: Arc<AtomicBool>,
 }
 
 impl TransportRuntimeInner {
-    /// Spawn a broadcast worker and record its handle.
-    fn shutdown(&self) {
+    /// Signal shutdown without blocking. Safe to call from async context.
+    fn signal_shutdown(&self) {
+        self.collector_shutdown.store(true, Ordering::SeqCst);
+        self.handles.lock().unwrap().signal_shutdown();
+    }
+
+    /// Blocking shutdown - signals and waits for all threads.
+    /// Should only be called from a blocking context.
+    fn shutdown_blocking(self) {
+        self.collector_shutdown.store(true, Ordering::SeqCst);
         let mut handles = self.handles.lock().unwrap();
-        handles.shutdown();
+        handles.shutdown_blocking();
     }
 
     fn start(
@@ -84,10 +103,12 @@ impl TransportRuntimeInner {
         config: FragmentationConfig,
         directory: Arc<PeerDirectory>,
         authenticator: Arc<TokenAuthenticator>,
-        shutdown: Arc<AtomicBool>,
         broadcast_receiver: BroadcastReceiver,
         block_emit_sender: Arc<ReassemblerBlockSender>,
     ) -> Self {
+        // Internal shutdown signal for collectors only
+        let collector_shutdown = Arc::new(AtomicBool::new(false));
+
         let handles = Arc::new(Mutex::new(TransportRuntimeHandles {
             broadcast_handles: Vec::with_capacity(params.num_of_broadcasters),
             verifier_handles: Vec::with_capacity(params.num_of_verifiers),
@@ -100,9 +121,10 @@ impl TransportRuntimeInner {
         // Create a UDP datagram socket using socket2 for advanced options
         use socket2::{Domain, Protocol, Socket, Type};
         let udp_socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).expect("Failed to create UDP socket");
-        // Optionally set socket options here (reuse, buffer sizes, etc.)
-        // Example: udp_socket.set_reuse_address(true).expect("set_reuse_address failed");
-        // Bind to the desired address
+        // Set large socket buffers to avoid packet loss under burst traffic
+        // Uses .ok() since OS may cap to system limits (e.g. /proc/sys/net/core/rmem_max)
+        udp_socket.set_recv_buffer_size(32 * 1024 * 1024).ok();
+        udp_socket.set_send_buffer_size(32 * 1024 * 1024).ok();
         udp_socket.set_nonblocking(false).unwrap();
         udp_socket.set_reuse_address(true).unwrap();
         udp_socket.set_reuse_port(true).unwrap();
@@ -175,7 +197,7 @@ impl TransportRuntimeInner {
                 verification_receiver_channels.clone(),
                 params.clone(),
                 config.clone(),
-                shutdown.clone(),
+                collector_shutdown.clone(),
             ));
         }
 
@@ -235,25 +257,23 @@ impl TransportRuntimeInner {
             ));
         }
 
-        TransportRuntimeInner { handles, bound_addr }
+        TransportRuntimeInner { handles, bound_addr, collector_shutdown }
     }
 }
 
-/// Owned runtime that holds transport resources. Dropping this will drop
-/// the held resources; prefer calling `shutdown` for deterministic join.
-#[derive(Clone)]
+/// Owned runtime that holds transport resources. Dropping this will shut down
+/// the runtime; prefer calling `shutdown` for deterministic join.
 pub struct TransportRuntime {
     params: TransportParams,
     config: FragmentationConfig,
     directory: Arc<PeerDirectory>,
     authenticator: Arc<TokenAuthenticator>,
-    shutdown: Arc<AtomicBool>,
     listen_addr: SocketAddr,
     block_emit_receiver: Arc<TokioMutex<ReassemblerBlockReceiver>>,
     block_emit_sender: Arc<ReassemblerBlockSender>,
     broadcast_sender: Option<BroadcastSender>,
     broadcast_receiver: BroadcastReceiver,
-    inner: Option<Arc<TransportRuntimeInner>>,
+    inner: Option<TransportRuntimeInner>,
 }
 
 impl TransportRuntime {
@@ -264,7 +284,6 @@ impl TransportRuntime {
         config: FragmentationConfig,
         directory: Arc<PeerDirectory>,
         authenticator: Arc<TokenAuthenticator>,
-        shutdown: Arc<AtomicBool>,
     ) -> Self {
         let (block_emit_sender, block_emit_receiver) = tokio_unbounded_channel::<BlockReassemblerBlockMessage>();
         let (broadcast_sender, broadcast_receiver) = bounded::<BroadcastMessage>(params.broadcast_channel_capacity());
@@ -274,7 +293,6 @@ impl TransportRuntime {
             config,
             directory,
             authenticator: authenticator.clone(),
-            shutdown: shutdown.clone(),
             block_emit_sender: Arc::new(block_emit_sender),
             broadcast_receiver,
             inner: None,
@@ -283,29 +301,25 @@ impl TransportRuntime {
         }
     }
 
-    pub fn start(&mut self) {
+    pub fn start(&mut self) -> bool {
         if self.inner.is_some() {
             warn!("TransportRuntime is already started, skipping start");
-            return;
+            return false;
         }
-        self.inner = Some(Arc::new(TransportRuntimeInner::start(
+        self.inner = Some(TransportRuntimeInner::start(
             self.params.clone(),
             self.config.clone(),
             self.directory.clone(),
             self.authenticator.clone(),
-            self.shutdown.clone(),
             self.broadcast_receiver.clone(),
             self.block_emit_sender.clone(),
-        )));
+        ));
+        true
     }
 
     pub fn submit_block_for_broadcast(&self, hash: Hash, block: Arc<FtrBlock>) -> Result<(), String> {
-        if self.inner.is_some() {
-            self.broadcast_sender
-                .as_ref()
-                .ok_or_else(|| "TransportRuntime is not started".to_string())?
-                .send(BroadcastMessage::new(hash, block))
-                .map_err(|e| format!("Failed to send broadcast message: {}", e))
+        if let Some(broadcast_sender) = &self.broadcast_sender {
+            broadcast_sender.send(BroadcastMessage::new(hash, block)).map_err(|e| format!("Failed to send broadcast message: {}", e))
         } else {
             Err("TransportRuntime is not started".to_string())
         }
@@ -315,6 +329,7 @@ impl TransportRuntime {
     ///
     /// This channel is a tokio channel, as to integrate with the wider tokio runtime.
     /// as such this is the only async method on the runtime.
+    #[inline(always)]
     pub fn block_receive(&self) -> Arc<TokioMutex<ReassemblerBlockReceiver>> {
         self.block_emit_receiver.clone()
     }
@@ -325,18 +340,35 @@ impl TransportRuntime {
         self.inner.as_ref().map(|inner| inner.bound_addr)
     }
 
+    /// Returns true if the runtime is started and hasn't been shut down.
     pub fn is_active(&self) -> bool {
-        !self.shutdown.load(std::sync::atomic::Ordering::SeqCst)
+        self.inner.as_ref().map_or(false, |inner| !inner.collector_shutdown.load(Ordering::SeqCst))
+    }
+
+    /// Async-safe shutdown that uses spawn_blocking to wait for threads.
+    /// This should be called during graceful shutdown to properly await thread completion.
+    pub async fn shutdown_async(&mut self) {
+        if let Some(inner) = self.inner.take() {
+            self.broadcast_sender.take(); // Drop sender to unblock broadcaster
+            // Use spawn_blocking to avoid blocking the tokio runtime
+            let _ = tokio::task::spawn_blocking(move || {
+                inner.shutdown_blocking();
+            })
+            .await;
+        }
     }
 }
 
 impl Drop for TransportRuntime {
     fn drop(&mut self) {
-        if let Some(inner) = &self.inner
-            && Arc::strong_count(inner) == 1
-        {
-            self.broadcast_sender.take(); // drop this sender to unblock the broadcaster.
-            inner.shutdown();
+        if let Some(inner) = self.inner.take() {
+            self.broadcast_sender.take(); // Drop sender to unblock broadcaster
+            // Only signal shutdown - don't block waiting for threads.
+            // Threads will exit on their own when they see the shutdown signal
+            // or when their channels are closed.
+            inner.signal_shutdown();
+            // Note: Thread handles are dropped here without joining.
+            // For graceful shutdown, call shutdown_async() instead.
         }
     }
 }

@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::{self, Duration, Instant};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce, aead::Aead};
 use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use hmac::{Hmac, Mac};
-use kaspa_core::trace;
+
 use poly1305::universal_hash::UniversalHash;
 use rand::random;
 use sha2::Sha256;
@@ -36,14 +36,15 @@ fn set_recv_buf(sock: &std::net::UdpSocket, size: usize) -> std::net::UdpSocket 
     use socket2::Socket;
 
     let sock = Socket::from(sock.try_clone().expect("Failed to clone socket"));
-    sock.set_recv_buffer_size(size).expect("Failed to set SO_RCVBUF");
-    sock.set_send_buffer_size(size / 2).expect("Failed to set SO_SNDBUF");
+    // Best-effort buffer sizing - OS may cap to system limits (e.g. /proc/sys/net/core/rmem_max)
+    let _ = sock.set_recv_buffer_size(size);
+    let _ = sock.set_send_buffer_size(size);
     sock.set_nonblocking(false).expect("Failed to set non-blocking mode");
     //sock.set_nodelay(true).expect("Failed to set TCP_NODELAY");
     sock.set_reuse_address(true).expect("Failed to set SO_REUSEADDR");
     sock.set_reuse_port(true).expect("Failed to set SO_REUSEPORT");
     assert!(sock.recv_buffer_size().expect("Failed to get SO_RCVBUF") >= size);
-    assert!(sock.send_buffer_size().expect("Failed to get SO_SNDBUF") >= size / 2);
+    assert!(sock.send_buffer_size().expect("Failed to get SO_SNDBUF") >= size);
     sock.into()
 }
 
@@ -76,6 +77,7 @@ fn frame_fragments(fragments: &[Fragment], auth: &TokenAuthenticator) -> Vec<Vec
 
 /// Helper: set up a TransportRuntime for benchmarking.
 /// Returns `(runtime, block_rx, tokio_rt)`.
+#[allow(clippy::type_complexity)]
 fn make_loopback_pipeline(
     config: FragmentationConfig,
     auth: &TokenAuthenticator,
@@ -89,7 +91,7 @@ fn make_loopback_pipeline(
     Arc<PeerDirectory>,
 ) {
     // Create sender socket BEFORE starting runtime so we can add it to allowlist.
-    let mut send_socket = std::net::UdpSocket::bind("127.0.0.1:0").expect("Failed to bind sender socket");
+    let send_socket = std::net::UdpSocket::bind("127.0.0.1:0").expect("Failed to bind sender socket");
     let send_socket = set_recv_buf(&send_socket, 1024 * 1024 * 32);
     let sender_addr = send_socket.local_addr().expect("Failed to get sender socket address");
 
@@ -97,21 +99,19 @@ fn make_loopback_pipeline(
     // the allowlist is only seeded from the HashMap passed to PeerDirectory::new().
     // The verifier checks this allowlist, so the sender MUST be in the initial map.
     let mut allowlist_map = HashMap::new();
-    allowlist_map.insert(sender_addr, PeerDirection::Both);
+    allowlist_map.insert(sender_addr.ip(), PeerDirection::Both);
     let directory = Arc::new(PeerDirectory::new(allowlist_map));
     let authenticator = Arc::new(auth.clone());
-    let shutdown = Arc::new(AtomicBool::new(false));
 
     let listen_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let mut runtime =
-        TransportRuntime::new(transport, listen_addr, config, directory.clone(), authenticator.clone(), shutdown.clone());
+    let mut runtime = TransportRuntime::new(transport, listen_addr, config, directory.clone(), authenticator.clone());
     runtime.start();
 
     let block_rx = runtime.block_receive();
     let tokio_rt = tokio::runtime::Runtime::new().unwrap();
 
     // Brief pause for worker threads to initialize and bind socket.
-    std::thread::sleep(Duration::from_millis(5000));
+    std::thread::sleep(Duration::from_millis(10000));
 
     // Get the actual bound address where the runtime is listening.
     let recv_addr = runtime.local_addr().expect("TransportRuntime must expose bound address after start()");
@@ -210,7 +210,7 @@ fn benchmark_different_configs(c: &mut Criterion) {
 
 /// Encode → feed all fragments (perfect reception) → decode.
 fn benchmark_decoding_perfect_reception(c: &mut Criterion) {
-    //kaspa_core::log::try_init_logger("trace");
+    kaspa_core::log::try_init_logger("warn");
     let mut group = c.benchmark_group("decoding_perfect");
     // keep this heavy bench bounded so it doesn't run forever on CI/dev boxes
     group.sample_size(10);
@@ -222,8 +222,7 @@ fn benchmark_decoding_perfect_reception(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(label), &size, |b, &size| {
             let config = FragmentationConfig::new(16, 4, 1200);
             let auth = TokenAuthenticator::new(b"bench-secret".to_vec());
-            let mut transport = TransportParams::default();
-            transport.multiplier = 1.0;
+            let transport = TransportParams { multiplier: 10.0, ..TransportParams::default() };
             let test_data = vec![42u8; size];
             let (send_socket, recv_addr, _runtime, block_rx, tokio_rt, _dir) = make_loopback_pipeline(config, &auth, transport);
 
@@ -262,7 +261,7 @@ fn benchmark_decoding_perfect_reception(c: &mut Criterion) {
 
 /// Encode → drop all parity fragments (data-only fast path) → decode.
 fn benchmark_decoding_fast_path(c: &mut Criterion) {
-    //kaspa_core::log::try_init_logger("trace");
+    kaspa_core::log::try_init_logger("warn");
 
     let mut group = c.benchmark_group("decoding_fast_path");
     group.sample_size(10);
@@ -274,7 +273,7 @@ fn benchmark_decoding_fast_path(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(label), &size, |b, &size| {
             let config = FragmentationConfig::new(16, 4, 1200);
             let auth = TokenAuthenticator::new(b"bench-secret".to_vec());
-            let transport = TransportParams::default();
+            let transport = TransportParams { multiplier: 10.0, ..TransportParams::default() };
             let test_data = vec![42u8; size];
 
             // create pipeline once per size
@@ -315,6 +314,8 @@ fn benchmark_decoding_fast_path(c: &mut Criterion) {
 
 /// Encode → drop one data fragment per generation (forces RS decode) → decode.
 fn benchmark_decoding_with_loss(c: &mut Criterion) {
+    kaspa_core::log::try_init_logger("warn");
+
     let mut group = c.benchmark_group("decoding_with_loss");
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(5));
@@ -330,6 +331,7 @@ fn benchmark_decoding_with_loss(c: &mut Criterion) {
                 k: config.data_blocks,
                 m: config.parity_blocks,
                 payload_size: config.payload_size,
+                multiplier: 10.0,
                 ..TransportParams::default()
             };
             let test_data = vec![42u8; size];
@@ -381,6 +383,8 @@ fn benchmark_decoding_with_loss(c: &mut Criterion) {
 
 /// Vary k/m ratios with a fixed 500KB block.
 fn benchmark_decoding_different_k_m(c: &mut Criterion) {
+    kaspa_core::log::try_init_logger("warn");
+
     let mut group = c.benchmark_group("decoding_configs");
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(5));
@@ -403,7 +407,7 @@ fn benchmark_decoding_different_k_m(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(label), &(k, m), |b, &(k, m)| {
             let config = FragmentationConfig::new(k, m, 1200);
             let auth = TokenAuthenticator::new(b"bench-secret".to_vec());
-            let transport = TransportParams { k, m, payload_size: 1200, ..TransportParams::default() };
+            let transport = TransportParams { k, m, payload_size: 1200, multiplier: 10.0, ..TransportParams::default() };
 
             let (send_socket, recv_addr, _runtime, block_rx, tokio_rt, _dir) = make_loopback_pipeline(config, &auth, transport);
 
@@ -556,11 +560,13 @@ fn benchmark_mac_algorithms(c: &mut Criterion) {
 // packets via a raw UDP socket.
 
 fn benchmark_udp_receive_loop(c: &mut Criterion) {
+    kaspa_core::log::try_init_logger("warn");
+
     let mut group = c.benchmark_group("udp_receive_loop");
 
     let auth = TokenAuthenticator::new(b"bench-secret".to_vec());
     let config = FragmentationConfig::new(16, 4, 1200);
-    let transport = TransportParams::default();
+    let transport = TransportParams { multiplier: 10.0, ..TransportParams::default() };
 
     const NUM_PACKETS: u16 = 100;
     const PAYLOAD_SIZE: usize = 1200;
@@ -737,7 +743,9 @@ fn benchmark_broadcast_worker_e2e_1mb(c: &mut Criterion) {
             peer_recv.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
 
             let start = Instant::now();
-            broadcast_tx.try_send(BroadcastMessage::new(black_box(hash), Arc::new(FtrBlock(black_box(data.clone()))))).expect("send job");
+            broadcast_tx
+                .try_send(BroadcastMessage::new(black_box(hash), Arc::new(FtrBlock(black_box(data.clone())))))
+                .expect("send job");
 
             // wait for all fragments to arrive at peer socket
             let mut received = 0usize;
@@ -832,6 +840,8 @@ fn benchmark_recv_path_processing(c: &mut Criterion) {
 // can sweep thread configurations in a single bench run.
 
 fn benchmark_full_pipeline(c: &mut Criterion) {
+    kaspa_core::log::try_init_logger("warn");
+
     let mut group = c.benchmark_group("full_pipeline");
     // Each iteration sends hundreds of packets — keep sample size modest.
     group.sample_size(10);
@@ -866,6 +876,7 @@ fn benchmark_full_pipeline(c: &mut Criterion) {
                     num_of_decoders_per_coordinators: n_dec,
                     num_of_coordinators: n_coord,
                     default_buffer_size: 1500,
+                    multiplier: 10.0,
                     ..TransportParams::default()
                 };
 
@@ -877,7 +888,7 @@ fn benchmark_full_pipeline(c: &mut Criterion) {
                     let mut total = Duration::ZERO;
 
                     for _i in 0..iters {
-                        let iter_id = PIPELINE_ITER.fetch_add(1, Ordering::Relaxed);
+                        let _iter_id = PIPELINE_ITER.fetch_add(1, Ordering::Relaxed);
                         let hash = random_hash();
 
                         // Pre-encode block into framed UDP packets (outside measurement)
@@ -934,6 +945,7 @@ fn benchmark_full_pipeline(c: &mut Criterion) {
 
 fn benchmark_throughput(c: &mut Criterion) {
     use rand::Rng as _;
+    kaspa_core::log::try_init_logger("warn");
 
     let mut group = c.benchmark_group("throughput");
     // We're sending many blocks — keep iterations low.
@@ -965,7 +977,7 @@ fn benchmark_throughput(c: &mut Criterion) {
                     num_of_decoders_per_coordinators: *num_decoders,
                     num_of_coordinators: *num_coordinators,
                     default_buffer_size: 4096,
-                    multiplier: 10.0, // this is high stress test, increase the multiplier to reflect this.
+                    multiplier: 10.0,
                     ..TransportParams::default()
                 };
 
@@ -979,13 +991,13 @@ fn benchmark_throughput(c: &mut Criterion) {
                     let mut total = Duration::ZERO;
 
                     for _iter in 0..iters {
-                        let base = THROUGHPUT_ITER.fetch_add(NUM_BLOCKS as u64, Ordering::Relaxed);
+                        let _base = THROUGHPUT_ITER.fetch_add(NUM_BLOCKS as u64, Ordering::Relaxed);
                         let mut rng = rand::thread_rng();
                         let gen_size = frag_config.fragments_per_generation();
 
                         // Pre-encode all blocks outside timed section
                         let mut all_frames: Vec<Vec<Vec<u8>>> = Vec::with_capacity(NUM_BLOCKS);
-                        for blk in 0..NUM_BLOCKS {
+                        for _blk in 0..NUM_BLOCKS {
                             let hash = random_hash();
                             let test_data = vec![0x42u8; BLOCK_SIZE];
                             let fragments: Vec<Fragment> = FragmentGenerator::new(frag_config, hash, FtrBlock(test_data)).collect();
@@ -1086,6 +1098,7 @@ fn benchmark_throughput(c: &mut Criterion) {
 
 fn benchmark_congestion(c: &mut Criterion) {
     use std::sync::Barrier;
+    kaspa_core::log::try_init_logger("warn");
 
     let mut group = c.benchmark_group("congestion");
     group.sample_size(10);
@@ -1129,23 +1142,15 @@ fn benchmark_congestion(c: &mut Criterion) {
                     num_of_decoders_per_coordinators: n_dec,
                     num_of_coordinators: n_coord,
                     default_buffer_size: 4096,
-                    multiplier: 10.0, // this is high stress test, increase the multiplier to reflect this.
+                    multiplier: 10.0,
                     ..TransportParams::default()
                 };
 
                 let listen_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
                 let directory = Arc::new(PeerDirectory::new(HashMap::new()));
                 let authenticator = Arc::new(auth.clone());
-                let shutdown = Arc::new(AtomicBool::new(false));
 
-                let mut runtime = TransportRuntime::new(
-                    transport,
-                    listen_addr,
-                    frag_config,
-                    directory.clone(),
-                    authenticator.clone(),
-                    shutdown.clone(),
-                );
+                let mut runtime = TransportRuntime::new(transport, listen_addr, frag_config, directory.clone(), authenticator.clone());
                 runtime.start();
 
                 let recv_addr = runtime.local_addr().expect("TransportRuntime bound address");
@@ -1164,7 +1169,7 @@ fn benchmark_congestion(c: &mut Criterion) {
                         let addr = sock.local_addr().expect("peer addr");
                         allowlist.rcu(|old| {
                             let mut s = (**old).clone();
-                            s.insert(addr, PeerDirection::Both);
+                            s.insert(addr.ip(), PeerDirection::Both);
                             s
                         });
                         sock
@@ -1201,7 +1206,7 @@ fn benchmark_congestion(c: &mut Criterion) {
                     let mut total = Duration::ZERO;
 
                     for _ in 0..iters {
-                        let iter_id = CONGESTION_ITER.fetch_add(1, Ordering::Relaxed);
+                        let _iter_id = CONGESTION_ITER.fetch_add(1, Ordering::Relaxed);
                         let hash = random_hash();
 
                         // Pre-encode one block (outside measurement)
@@ -1266,7 +1271,7 @@ criterion_group!(
     //benchmark_fragment_generation,
     //benchmark_fragment_generation_small,
     //benchmark_different_configs,
-    //benchmark_decoding_perfect_reception,
+    benchmark_decoding_perfect_reception,
     //benchmark_decoding_fast_path,
     //benchmark_decoding_with_loss,
     //benchmark_decoding_different_k_m,
@@ -1275,8 +1280,8 @@ criterion_group!(
     //benchmark_udp_receive_loop,
     //benchmark_broadcast_worker_e2e_1mb,
     //benchmark_recv_path_processing,
-    //benchmark_full_pipeline,
-    //benchmark_throughput,
+    benchmark_full_pipeline,
+    benchmark_throughput,
     benchmark_congestion,
 );
 criterion_main!(benches);
