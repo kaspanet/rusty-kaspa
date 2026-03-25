@@ -416,7 +416,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         }
 
         if self.is_executing() || opcode.is_conditional() {
-            if opcode.value() > 0 && opcode.value() <= 0x4e {
+            if !self.flags.covenants_enabled && opcode.value() > 0 && opcode.value() <= 0x4e {
                 opcode.check_minimal_data_push()?;
             }
             opcode.execute(self)
