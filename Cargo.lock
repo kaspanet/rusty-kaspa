@@ -3302,7 +3302,6 @@ dependencies = [
  "borsh",
  "cfg-if 1.0.0",
  "criterion",
- "hex",
  "hexplay",
  "indexmap 2.6.0",
  "itertools 0.13.0",
