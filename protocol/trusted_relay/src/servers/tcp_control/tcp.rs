@@ -55,6 +55,9 @@ impl TcpServer {
         let local_addr = tcp_listener.local_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "unknown".to_string());
         info!("TCP server listening on {}", local_addr);
 
+        // Perform immediate connection attempts to all outgoing peers on startup
+        self.attempt_reconnections().await;
+
         let shutdown_listener = self.shutdown_listen.clone();
         loop {
             select! {
@@ -92,26 +95,51 @@ impl TcpServer {
                     },
                 // reconnection attempts
                 _ = tokio::time::sleep(Duration::from_secs(30)) => {
-                    debug!("TCP server periodic wakeup for reconnection attempts");
-                    // this is a dynamically created list of currently connected peers,
-                    // we may use this to filter reconnection attempts.
-                    let peer_info_list = self.directory.peer_info_list().load_full();
-                    // this is a static list of allowed addresses, and directions, from which we will attempt reconnections.
-                    let allow_list = self.directory.allowlist().load_full();
-                    for (a, direction) in allow_list.iter() {
-                        if direction == &PeerDirection::Inbound {
-                            continue; // we only attempt reconnections to peers we are supposed to send to.
-                        }
-                        if !peer_info_list.iter().any(|p| &p.address().ip() == a) {
-                            debug!("Attempting reconnection to peer {}", a);
-                            match tcp_connect(SocketAddr::from((*a, DEFAULT_TCP_PORT)), self.authenticator.clone(), *direction, 0, self.hub_event_sender.clone(), self.directory.allowlist()).await {
-                                Ok(_) => info!("Fast Trusted Relay Reconnection to peer {} succeeded", a),
-                                Err(e) => info!("Fast Trusted Relay Reconnection to peer {} failed: {}", a, e),
-                            }
-                        }
-                    };
+                    self.attempt_reconnections().await;
                 },
             }
+        }
+    }
+
+    /// Attempt to connect to all outgoing peers that are not already connected.
+    async fn attempt_reconnections(&self) {
+        info!("Fast Trusted Relay: checking for peers to connect...");
+        // this is a dynamically created list of currently connected peers,
+        // we may use this to filter reconnection attempts.
+        let peer_info_list = self.directory.peer_info_list().load_full();
+        // this is a static list of allowed addresses, and directions, from which we will attempt reconnections.
+        let allow_list = self.directory.allowlist().load_full();
+
+        let mut attempted = 0;
+        for (a, direction) in allow_list.iter() {
+            if direction == &PeerDirection::Inbound {
+                continue; // we only attempt reconnections to peers we are supposed to send to.
+            }
+            if !peer_info_list.iter().any(|p| &p.address().ip() == a) {
+                attempted += 1;
+                info!("Fast Trusted Relay: attempting connection to peer {} (direction: {:?})", a, direction);
+                match tcp_connect(
+                    SocketAddr::from((*a, DEFAULT_TCP_PORT)),
+                    self.authenticator.clone(),
+                    *direction,
+                    0,
+                    self.hub_event_sender.clone(),
+                    self.directory.allowlist(),
+                )
+                .await
+                {
+                    Ok(_) => info!("Fast Trusted Relay: connection to peer {} succeeded", a),
+                    Err(e) => info!("Fast Trusted Relay: connection to peer {} failed: {}", a, e),
+                }
+            }
+        }
+
+        if attempted == 0 {
+            info!(
+                "Fast Trusted Relay: no outgoing peers to connect (allowlist: {} entries, connected: {})",
+                allow_list.len(),
+                peer_info_list.len()
+            );
         }
     }
 }
@@ -152,9 +180,7 @@ async fn handshake_accept(
     let data_for_hmac = &buf[64..];
 
     // Validate HMAC(secret, nonce || SHA256(direction||udp_port)).
-    let nonce_array: [u8; 32] = nonce
-        .try_into()
-        .map_err(|_| RelayError::AuthenticationFailed("invalid nonce size".into()))?;
+    let nonce_array: [u8; 32] = nonce.try_into().map_err(|_| RelayError::AuthenticationFailed("invalid nonce size".into()))?;
     let their_token = auth::AuthToken::from_bytes(client_hmac.to_vec());
     let is_authentic = authenticator.validate_token(&nonce_array, &data_for_hmac, &their_token);
     if !is_authentic {

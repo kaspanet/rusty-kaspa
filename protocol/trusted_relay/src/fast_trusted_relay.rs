@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
@@ -57,24 +57,32 @@ impl FastTrustedRelay {
         incoming_peers: Vec<ContextualNetAddress>,
         outgoing_peers: Vec<ContextualNetAddress>,
     ) -> Self {
-        // create the allowlist if in incoming only -> PeerDirection::Inbound, outgoing only -> PeerDirection::Outbound, or both -> PeerDirection::Both modes.
-        let mut allowlist = HashSet::new();
-        let incoming_peers_set: HashSet<_> = incoming_peers.iter().collect();
-        let outgoing_peers_set: HashSet<_> = outgoing_peers.iter().collect();
+        // Build allowlist as HashMap<IpAddr, PeerDirection> directly to avoid duplicates.
+        // Priority: Both > Outbound > Inbound (peers in both lists get Both direction)
+        let mut allowlist: HashMap<std::net::IpAddr, PeerDirection> = HashMap::new();
 
-        for peer in incoming_peers {
-            if outgoing_peers.contains(&peer) {
-                allowlist.insert((SocketAddr::from((peer)).ip(), PeerDirection::Both));
-            } else {
-                allowlist.insert((SocketAddr::from((peer)).ip(), PeerDirection::Inbound));
-            }
-        }
-        for peer in outgoing_peers {
-            allowlist.insert((SocketAddr::from((peer)).ip(), PeerDirection::Outbound));
+        // First add all outgoing peers
+        for peer in &outgoing_peers {
+            let ip = SocketAddr::from(*peer).ip();
+            allowlist.insert(ip, PeerDirection::Outbound);
         }
 
-        let directory =
-            Arc::new(PeerDirectory::new(allowlist.iter().cloned().map(|(addr, direction)| (addr.into(), direction)).collect()));
+        // Then process incoming peers - upgrade to Both if already exists as Outbound
+        for peer in &incoming_peers {
+            let ip = SocketAddr::from(*peer).ip();
+            allowlist
+                .entry(ip)
+                .and_modify(|dir| {
+                    if *dir == PeerDirection::Outbound {
+                        *dir = PeerDirection::Both;
+                    }
+                })
+                .or_insert(PeerDirection::Inbound);
+        }
+
+        info!("Fast trusted relay allowlist: {:?}", allowlist);
+
+        let directory = Arc::new(PeerDirectory::new(allowlist));
         let authenticator = Arc::new(TokenAuthenticator::new(secret));
         let receive_block_waker = Arc::new(tokio::sync::Notify::new());
         // Create the TCP runtime but don't spawn it yet - that requires an active Tokio runtime
