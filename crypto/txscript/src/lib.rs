@@ -347,12 +347,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             return;
         };
 
-        let format_stack = |stack: &Stack| {
-            stack
-                .iter()
-                .map(|element| format!("0x{}", hex::encode(element)))
-                .collect::<Vec<_>>()
-        };
+        let format_stack = |stack: &Stack| stack.iter().map(|element| format!("0x{}", hex::encode(element))).collect::<Vec<_>>();
 
         writeln!(
             buffer,
