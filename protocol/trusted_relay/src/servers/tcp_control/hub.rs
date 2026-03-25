@@ -131,7 +131,8 @@ impl Hub {
 
         info!("Peer connected: {} ({})", addr, direction);
 
-        let info = info.with_ready(true);
+        // Start with ready=false; peer becomes ready when we receive Control::Start from them
+        let info = info.with_ready(false);
         let handle = PeerHandle { info: info.clone(), control_tx };
         self.peers.insert(addr, handle);
 

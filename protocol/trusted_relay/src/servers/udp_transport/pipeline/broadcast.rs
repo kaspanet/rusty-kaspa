@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use kaspa_hashes::Hash;
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use std::net::UdpSocket;
 
 use crate::servers::auth::TokenAuthenticator;
@@ -56,7 +56,7 @@ fn run(
         let peers = peer_info_list.load_full();
         let outbound_peers: Vec<_> = peers.iter().filter(|p| p.is_outbound_ready()).collect();
         if outbound_peers.is_empty() {
-            trace!("{}-{}: no outbound-ready peers, skipping block {}", WORKER_NAME, broadcaster_idx, hash);
+            debug!("{}-{}: no outbound-ready peers, skipping block {} (total peers: {})", WORKER_NAME, broadcaster_idx, hash, peers.len());
             continue;
         }
 
