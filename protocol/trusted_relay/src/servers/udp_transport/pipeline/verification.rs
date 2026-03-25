@@ -119,7 +119,7 @@ fn run(
                     dropped_allowlist += 1;
                     if dropped_allowlist <= 5 || dropped_allowlist % 100 == 0 {
                         let current_allowlist: Vec<_> = allowlist.load().keys().cloned().collect();
-                        warn!("{}-{}: dropping packet from {} (not in allowlist, dropped {} so far). Allowlist: {:?}", 
+                        warn!("{}-{}: dropping packet from {} (not in allowlist, dropped {} so far). Allowlist: {:?}",
                             WORKER_NAME, worker_idx, src, dropped_allowlist, current_allowlist);
                     }
                     continue;
