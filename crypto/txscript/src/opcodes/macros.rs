@@ -65,6 +65,17 @@ macro_rules! opcode_impl {
     ($name: ident, $num: literal, $length: tt, $code: expr, $self:ident, $vm:ident ) => {
         type $name = OpCode<$num>;
 
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let name = stringify!($name);
+                if self.data.is_empty() {
+                    write!(f, "{name}")
+                } else {
+                    write!(f, "{name} 0x{}", kaspa_utils::hex::ToHex::to_hex(&self.data))
+                }
+            }
+        }
+
         impl OpcodeSerialization for $name {
             opcode_serde!($length);
         }
@@ -122,42 +133,41 @@ macro_rules! opcode_list {
             }
         }
 
-        #[cfg(test)]
         use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
 
-        #[cfg(test)]
         #[allow(unused_comparisons)]
-        pub(crate) fn parse_short_form(script: String) -> ScriptBuilderResult<Vec<u8>>
+        pub fn parse_short_form(script: String) -> ScriptBuilderResult<Vec<u8>>
         {
             let mut builder = ScriptBuilder::new();
-            for token in script.split_whitespace() {
-                if let Ok(value) = token.parse::<i64>() {
-                    if value == i64::MIN {
-                        builder.add_i64_min()?;
-                    } else {
-                        builder.add_i64(value)?;
+            for line in script.lines() {
+                let line = line.split('#').next().unwrap_or_default();
+                for token in line.split_whitespace() {
+                    if let Ok(value) = token.parse::<i64>() {
+                        if value == i64::MIN {
+                            builder.add_i64_min()?;
+                        } else {
+                            builder.add_i64(value)?;
+                        }
+                    } else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(Vec::from_hex(trimmed))) {
+                        builder.script_mut().extend(&value);
+                    } else if token.len() >= 2 && token.chars().nth(0) == Some('\'') && token.chars().last() == Some('\'') {
+                        builder.add_data(token[1..token.len()-1].as_bytes())?;
                     }
-                }
-                else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(hex::decode(trimmed))) {
-                    builder.script_mut().extend(&value);
-                }
-                else if token.len() >= 2 && token.chars().nth(0) == Some('\'') && token.chars().last() == Some('\'') {
-                    builder.add_data(token[1..token.len()-1].as_bytes())?;
-                }
-                // TODO: this for loop slows down the test. Can be improved with procedural macro
-                // (very low priority)
-                $(
-                    else if token.replace("_", "") == stringify!($name).to_uppercase() || (
-                        (
-                            stringify!($name) == "OpFalse" ||
-                            stringify!($name) == "OpTrue" || ($num != codes::Op0 && ($num < codes::Op1 || $num > codes::Op16))
-                        ) && token.replace("_", "") == (&stringify!($name)[2..]).to_uppercase()
-                    ){
-                        builder.add_op($num)?;
+                    // TODO: this for loop slows down the test. Can be improved with procedural macro
+                    // (very low priority)
+                    $(
+                        else if token.replace("_", "").to_uppercase() == stringify!($name).to_uppercase() || (
+                            (
+                                stringify!($name) == "OpFalse" ||
+                                stringify!($name) == "OpTrue" || ($num != codes::Op0 && ($num < codes::Op1 || $num > codes::Op16))
+                            ) && token.replace("_", "").to_uppercase() == (&stringify!($name)[2..]).to_uppercase()
+                        ){
+                            builder.add_op($num)?;
+                        }
+                    )*
+                    else {
+                        panic!("Cannot parse {}", token);
                     }
-                )*
-                else {
-                    panic!("Cannot parse {}", token);
                 }
             }
             Ok(builder.drain())
