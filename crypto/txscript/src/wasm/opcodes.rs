@@ -249,7 +249,7 @@ pub enum Opcodes {
     OpCovOutputCount = 0xd2,
     OpCovOutputIdx = 0xd3,
     OpChainblockSeqCommit = 0xd4,
-    OpUnknown213 = 0xd5,
+    OpOutputCovenantId = 0xd5,
     OpUnknown214 = 0xd6,
     OpUnknown215 = 0xd7,
     OpUnknown216 = 0xd8,
