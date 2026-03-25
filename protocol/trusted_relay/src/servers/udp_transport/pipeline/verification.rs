@@ -97,8 +97,10 @@ fn run(
     config: FragmentationConfig,
     allowlist: Allowlist,
 ) {
-    info!("{}-{} started", WORKER_NAME, worker_idx);
+    let allowlist_ips: Vec<_> = allowlist.load().keys().cloned().collect();
+    info!("{}-{} started (allowlist has {} entries: {:?})", WORKER_NAME, worker_idx, allowlist_ips.len(), allowlist_ips);
     let mut count = 0u64;
+    let mut dropped_allowlist = 0u64;
     while let Ok(message) = receiver.recv() {
         match message {
             VerificationMessage::PacketReceived(PacketReceivedMessage(packet, src)) => {
@@ -114,7 +116,12 @@ fn run(
                     // note: allowlist is a naive, best-effort, defense, ip headers in udp packets can be spoofed.
                     // but it does require an attacker to know the ips of trusted relay peers,
                     // or have a way to sniff the traffic. Actual authentication is via the hmac.
-                    trace!("{}-{}: dropping packet from {} (not allowlisted)", WORKER_NAME, worker_idx, src);
+                    dropped_allowlist += 1;
+                    if dropped_allowlist <= 5 || dropped_allowlist % 100 == 0 {
+                        let current_allowlist: Vec<_> = allowlist.load().keys().cloned().collect();
+                        warn!("{}-{}: dropping packet from {} (not in allowlist, dropped {} so far). Allowlist: {:?}", 
+                            WORKER_NAME, worker_idx, src, dropped_allowlist, current_allowlist);
+                    }
                     continue;
                 }
 

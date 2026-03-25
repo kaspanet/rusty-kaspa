@@ -22,15 +22,21 @@ fn run(
     config: FragmentationConfig,
     shutting_down: Arc<AtomicBool>,
 ) {
-    info!("{}-{} started", COLLECTOR_WORKER_NAME, collector_idx);
+    info!("{}-{} started, listening on UDP socket", COLLECTOR_WORKER_NAME, collector_idx);
     let mut buf = vec![0u8; buf_size];
     let min_expected_fragment_size = AuthToken::TOKEN_SIZE + FragmentHeader::SIZE + config.payload_size;
     let fragment_index_offset = AuthToken::TOKEN_SIZE + FragmentHeader::FRAGMENT_INDEX_OFFSET;
     let mut count = 0u64;
+    let mut last_log_count = 0u64;
     while !shutting_down.load(Ordering::Relaxed) {
         match socket.recv_from(&mut buf) {
             Ok((len, src)) => {
                 count += 1;
+                // Log every 100 packets to confirm receipt
+                if count - last_log_count >= 100 {
+                    info!("Collector {}: received {} packets so far (latest from {})", collector_idx, count, src);
+                    last_log_count = count;
+                }
                 // We must ensure we can read the fragment index bytes before routing.
                 // This is the only check we do in the collector.
                 if len < min_expected_fragment_size {
