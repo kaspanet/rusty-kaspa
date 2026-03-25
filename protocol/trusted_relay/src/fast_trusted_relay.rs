@@ -27,8 +27,11 @@ pub struct FastTrustedRelay {
     /// Shared mutable state for the UDP transport; cloned handles refer to the
     /// same runtime. Protected by mutex for thread-safe start/stop.
     udp_runtime: Arc<TokioMutex<Option<TransportRuntime>>>,
-    /// Handle for controlling the TCP control runtime.
-    tcp_handle: ControlRuntimeHandle,
+    /// Unspawned TCP control runtime. Stored until spawn_tcp_runtime() is called
+    /// within an async context where Tokio runtime is available.
+    tcp_runtime: Arc<TokioMutex<Option<ControlRuntime>>>,
+    /// Handle for controlling the TCP control runtime (populated after spawn).
+    tcp_handle: Arc<TokioMutex<Option<ControlRuntimeHandle>>>,
     /// Task handle for awaiting TCP runtime shutdown.
     tcp_task: Arc<TokioMutex<Option<tokio::task::JoinHandle<()>>>>,
     authenticator: Arc<TokenAuthenticator>,
@@ -74,12 +77,13 @@ impl FastTrustedRelay {
             Arc::new(PeerDirectory::new(allowlist.iter().cloned().map(|(addr, direction)| (addr.into(), direction)).collect()));
         let authenticator = Arc::new(TokenAuthenticator::new(secret));
         let receive_block_waker = Arc::new(tokio::sync::Notify::new());
+        // Create the TCP runtime but don't spawn it yet - that requires an active Tokio runtime
         let tcp_runtime = ControlRuntime::new(listen_address, directory.clone(), authenticator.clone());
-        let (tcp_handle, tcp_task) = tcp_runtime.spawn();
         Self {
             listen_address,
-            tcp_handle,
-            tcp_task: Arc::new(TokioMutex::new(Some(tcp_task))),
+            tcp_runtime: Arc::new(TokioMutex::new(Some(tcp_runtime))),
+            tcp_handle: Arc::new(TokioMutex::new(None)),
+            tcp_task: Arc::new(TokioMutex::new(None)),
             udp_runtime: Arc::new(TokioMutex::new(None)),
             authenticator,
             directory,
@@ -88,6 +92,18 @@ impl FastTrustedRelay {
             udp_port: DEFAULT_UDP_PORT,
             tcp_port: DEFAULT_TCP_PORT,
             receive_block_waker,
+        }
+    }
+
+    /// Spawn the TCP control runtime. Must be called from within an async context
+    /// where a Tokio runtime is active. No-op if already spawned.
+    pub async fn spawn_tcp_runtime(&self) {
+        let mut runtime_guard = self.tcp_runtime.lock().await;
+        if let Some(runtime) = runtime_guard.take() {
+            let (handle, task) = runtime.spawn();
+            *self.tcp_handle.lock().await = Some(handle);
+            *self.tcp_task.lock().await = Some(task);
+            info!("TCP control runtime spawned");
         }
     }
 
@@ -108,7 +124,9 @@ impl FastTrustedRelay {
             self.receive_block_waker.notify_waiters();
 
             // Tell peers that we're no longer ready
-            self.tcp_handle.signal_not_ready();
+            if let Some(handle) = self.tcp_handle.lock().await.as_ref() {
+                handle.signal_not_ready();
+            }
 
             info!("fast trusted relay UDP transport stopped");
             true
@@ -147,7 +165,9 @@ impl FastTrustedRelay {
         self.receive_block_waker.notify_waiters();
 
         // Signal peers after we committed state
-        self.tcp_handle.signal_ready();
+        if let Some(handle) = self.tcp_handle.lock().await.as_ref() {
+            handle.signal_ready();
+        }
         info!("fast trusted relay UDP transport started");
         true
     }
@@ -156,7 +176,11 @@ impl FastTrustedRelay {
     pub async fn shutdown(&self) {
         debug!("shutting down fast trusted relay...");
         self.stop_fast_relay().await;
-        self.tcp_handle.stop();
+
+        // Stop TCP runtime if it was spawned
+        if let Some(handle) = self.tcp_handle.lock().await.as_ref() {
+            handle.stop();
+        }
 
         // Await TCP task completion
         if let Some(task) = self.tcp_task.lock().await.take() {

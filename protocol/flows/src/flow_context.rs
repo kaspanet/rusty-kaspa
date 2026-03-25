@@ -404,6 +404,8 @@ impl FlowContext {
 
     pub async fn try_register_fast_trusted_relay_flow(&self, shutdown_listener: kaspa_utils::triggers::Listener) {
         if let Some(ftr) = self.clone().fast_trusted_relay() {
+            // Spawn the TCP runtime now that we're in an async context with active Tokio runtime
+            ftr.spawn_tcp_runtime().await;
             let mut flow = Box::new(HandleFastTrustedRelayFlow::new(self.clone(), ftr, shutdown_listener));
             flow.launch();
         }
