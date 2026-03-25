@@ -88,7 +88,7 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
         let (test_passed, test_value) = test_pow_state.check_pow(test_nonce);
         if test_passed {
             let test_pow_value = BigUint::from_bytes_be(&test_value.to_be_bytes());
-            tracing::debug!("  ✓ FOUND VALID NONCE: {}", test_nonce);
+            tracing::debug!("  FOUND VALID NONCE: {}", test_nonce);
             tracing::debug!("    Pow value: 0x{:064x}", test_pow_value);
             found_valid = true;
             break;
@@ -96,7 +96,7 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     }
 
     if !found_valid {
-        tracing::debug!("  ✗ No valid nonce found in range 0-999");
+        tracing::debug!("  No valid nonce found in range 0-999");
         tracing::debug!("  This confirms the issue: even with devnet difficulty, we can't find valid blocks");
     }
 

@@ -174,7 +174,7 @@ async fn handle_extranonce_subscribe(
     Ok(())
 }
 
-/// Handle authorize request (v0.1 canxium-patch)
+/// Handle authorize request
 /// If client_handler and kaspa_api are provided, sends immediate job after authorization
 pub async fn handle_authorize(
     ctx: Arc<StratumContext>,
