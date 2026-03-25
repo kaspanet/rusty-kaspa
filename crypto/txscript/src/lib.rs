@@ -33,6 +33,7 @@ use kaspa_consensus_core::hashing::sighash::{
 };
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
+use kaspa_hashes::Hash;
 use kaspa_txscript_errors::TxScriptError;
 use kaspa_utils::hex::ToHex;
 use log::trace;
@@ -663,73 +664,81 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
     #[inline]
     fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
-        self.runtime_sig_op_counter.consume_sig_op()?;
         match self.script_source {
             ScriptSource::TxInput { tx, idx, .. } => {
-                if sig.len() != 64 {
-                    return Err(TxScriptError::SigLength(sig.len()));
-                }
-                Self::check_pub_key_encoding(key)?;
-                let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
-                let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
                 let sig_hash = calc_schnorr_signature_hash(tx, idx, hash_type, self.reused_values);
-                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
-                let sig_cache_key =
-                    SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
-
-                match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => Ok(valid),
-                    None => {
-                        // TODO: Find a way to parallelize this part.
-                        match sig.verify(&msg, &pk) {
-                            Ok(()) => {
-                                self.sig_cache.insert(sig_cache_key, true);
-                                Ok(true)
-                            }
-                            Err(_) => {
-                                self.sig_cache.insert(sig_cache_key, false);
-                                Ok(false)
-                            }
-                        }
-                    }
-                }
+                self.check_schnorr_signature_for_msg_hash(sig_hash, key, sig)
             }
             _ => Err(TxScriptError::NotATransactionInput),
         }
     }
 
-    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+    fn check_schnorr_signature_for_msg_hash(&mut self, msg_hash: Hash, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         self.runtime_sig_op_counter.consume_sig_op()?;
-        match self.script_source {
-            ScriptSource::TxInput { tx, idx, .. } => {
-                if sig.len() != 64 {
-                    return Err(TxScriptError::SigLength(sig.len()));
-                }
-                Self::check_pub_key_encoding_ecdsa(key)?;
-                let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
-                let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
-                let sig_hash = calc_ecdsa_signature_hash(tx, idx, hash_type, self.reused_values);
-                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
-                let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
+        if sig.len() != 64 {
+            return Err(TxScriptError::SigLength(sig.len()));
+        }
+        Self::check_pub_key_encoding(key)?;
+        let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
+        let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
+        let secp_msg = secp256k1::Message::from_digest_slice(msg_hash.as_bytes().as_slice()).unwrap();
+        let sig_cache_key = SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: secp_msg };
 
-                match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => Ok(valid),
-                    None => {
-                        // TODO: Find a way to parallelize this part.
-                        match sig.verify(&msg, &pk) {
-                            Ok(()) => {
-                                self.sig_cache.insert(sig_cache_key, true);
-                                Ok(true)
-                            }
-                            Err(_) => {
-                                self.sig_cache.insert(sig_cache_key, false);
-                                Ok(false)
-                            }
-                        }
+        match self.sig_cache.get(&sig_cache_key) {
+            Some(valid) => Ok(valid),
+            None => {
+                // TODO: Find a way to parallelize this part.
+                match sig.verify(&secp_msg, &pk) {
+                    Ok(()) => {
+                        self.sig_cache.insert(sig_cache_key, true);
+                        Ok(true)
+                    }
+                    Err(_) => {
+                        self.sig_cache.insert(sig_cache_key, false);
+                        Ok(false)
                     }
                 }
             }
+        }
+    }
+
+    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+        match self.script_source {
+            ScriptSource::TxInput { tx, idx, .. } => {
+                let sig_hash = calc_ecdsa_signature_hash(tx, idx, hash_type, self.reused_values);
+
+                self.check_ecdsa_signature_for_msg_hash(sig_hash, key, sig)
+            }
             _ => Err(TxScriptError::NotATransactionInput),
+        }
+    }
+
+    fn check_ecdsa_signature_for_msg_hash(&mut self, msg_hash: Hash, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+        self.runtime_sig_op_counter.consume_sig_op()?;
+        if sig.len() != 64 {
+            return Err(TxScriptError::SigLength(sig.len()));
+        }
+        Self::check_pub_key_encoding_ecdsa(key)?;
+        let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
+        let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
+        let secp_msg = secp256k1::Message::from_digest_slice(msg_hash.as_bytes().as_slice()).unwrap();
+        let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: secp_msg };
+
+        match self.sig_cache.get(&sig_cache_key) {
+            Some(valid) => Ok(valid),
+            None => {
+                // TODO: Find a way to parallelize this part.
+                match sig.verify(&secp_msg, &pk) {
+                    Ok(()) => {
+                        self.sig_cache.insert(sig_cache_key, true);
+                        Ok(true)
+                    }
+                    Err(_) => {
+                        self.sig_cache.insert(sig_cache_key, false);
+                        Ok(false)
+                    }
+                }
+            }
         }
     }
 }
@@ -749,8 +758,8 @@ mod tests {
     use std::iter::once;
 
     use crate::opcodes::codes::{
-        OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDup, OpEndIf,
-        OpEqual, OpFalse, OpIf, OpPushData1, OpTrue, OpVerify,
+        OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigFromStack, OpCheckSigFromStackECDSA, OpCheckSigVerify,
+        OpData1, OpData2, OpData32, OpDup, OpEndIf, OpEqual, OpFalse, OpIf, OpPushData1, OpTrue, OpVerify,
     };
 
     use super::*;
@@ -1433,6 +1442,137 @@ mod tests {
             }
         }
 
+        Ok(())
+    }
+
+    // This test checks that valid signatures for OpCheckSig are also valid signatures for OpCheckSigFromStack
+    #[test]
+    fn test_checksig_and_checksigfromstack_match_for_schnorr() -> ScriptBuilderResult<()> {
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let xonly_pub_key = keypair.x_only_public_key().0.serialize();
+
+        let mut script_pub_key_builder = ScriptBuilder::new();
+        script_pub_key_builder
+            .add_data(&xonly_pub_key)?
+            .add_op(OpCheckSigVerify)?
+            .add_data(&xonly_pub_key)?
+            .add_op(OpCheckSigFromStack)?;
+        let script_pub_key_script = script_pub_key_builder.drain();
+        let script_pub_key = ScriptPublicKey::new(0, script_pub_key_script.clone().into());
+        let utxo_entry = UtxoEntry::new(1000, script_pub_key, 0, false, None);
+
+        let tx = Transaction::new(
+            1,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
+                signature_script: vec![],
+                sequence: 0,
+                sig_op_count: 2,
+            }],
+            vec![],
+            0,
+            Default::default(),
+            0,
+            vec![],
+        );
+        let mut tx = MutableTransaction::new(tx);
+        tx.entries = vec![Some(utxo_entry.clone())];
+
+        let sig_hash = calc_schnorr_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &reused_values);
+        let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
+        let schnorr_sig = keypair.sign_schnorr(msg);
+        let schnorr_sig_raw = schnorr_sig.as_ref().to_vec();
+        let mut schnorr_sig_with_hash_type = schnorr_sig_raw.clone();
+        schnorr_sig_with_hash_type.push(SIG_HASH_ALL.to_u8());
+
+        let mut signature_script_builder = ScriptBuilder::new();
+        signature_script_builder
+            .add_data(&schnorr_sig_raw)?
+            .add_data(sig_hash.as_bytes().as_slice())?
+            .add_data(&schnorr_sig_with_hash_type)?;
+        tx.tx.inputs[0].signature_script = signature_script_builder.drain();
+
+        let tx = tx.as_verifiable();
+        let sig_cache = Cache::new(10_000);
+        let result = TxScriptEngine::from_transaction_input(
+            &tx,
+            &tx.inputs()[0],
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            EngineFlags { covenants_enabled: true },
+        )
+        .execute();
+        assert_eq!(result, Ok(()));
+        Ok(())
+    }
+
+    // This test checks that valid signatures for OpCheckSigECDSA are also valid signatures for OpCheckSigFromStackECDSA
+    #[test]
+    fn test_checksig_and_checksigfromstack_match_for_ecdsa() -> ScriptBuilderResult<()> {
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let ecdsa_pub_key = keypair.public_key().serialize();
+
+        let mut script_pub_key_builder = ScriptBuilder::new();
+        script_pub_key_builder
+            .add_data(&ecdsa_pub_key)?
+            .add_op(OpCheckSigECDSA)?
+            .add_op(OpVerify)?
+            .add_data(&ecdsa_pub_key)?
+            .add_op(OpCheckSigFromStackECDSA)?;
+        let script_pub_key_script = script_pub_key_builder.drain();
+        let script_pub_key = ScriptPublicKey::new(0, script_pub_key_script.clone().into());
+        let utxo_entry = UtxoEntry::new(1000, script_pub_key, 0, false, None);
+
+        let tx = Transaction::new(
+            1,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
+                signature_script: vec![],
+                sequence: 0,
+                sig_op_count: 3,
+            }],
+            vec![],
+            0,
+            Default::default(),
+            0,
+            vec![],
+        );
+        let mut tx = MutableTransaction::new(tx);
+        tx.entries = vec![Some(utxo_entry.clone())];
+
+        let sig_hash = calc_ecdsa_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &reused_values);
+        let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
+        let ecdsa_sig = keypair.secret_key().sign_ecdsa(msg);
+        let ecdsa_sig_raw = ecdsa_sig.serialize_compact().to_vec();
+        let mut ecdsa_sig_with_hash_type = ecdsa_sig_raw.clone();
+        ecdsa_sig_with_hash_type.push(SIG_HASH_ALL.to_u8());
+
+        let mut signature_script_builder = ScriptBuilder::new();
+        signature_script_builder
+            .add_data(&ecdsa_sig_raw)?
+            .add_data(sig_hash.as_bytes().as_slice())?
+            .add_data(&ecdsa_sig_with_hash_type)?;
+        tx.tx.inputs[0].signature_script = signature_script_builder.drain();
+
+        let tx = tx.as_verifiable();
+        let sig_cache = Cache::new(10_000);
+        let result = TxScriptEngine::from_transaction_input(
+            &tx,
+            &tx.inputs()[0],
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            EngineFlags { covenants_enabled: true },
+        )
+        .execute();
+        assert_eq!(result, Ok(()));
         Ok(())
     }
 }
