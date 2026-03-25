@@ -26,6 +26,7 @@ use kaspa_consensus_core::hashing::sighash::{
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
+use kaspa_utils::hex::ToHex;
 use log::trace;
 use opcodes::codes::OpReturn;
 use opcodes::{OpCond, codes, to_small_int};
@@ -347,7 +348,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             return;
         };
 
-        let format_stack = |stack: &Stack| stack.iter().map(|element| format!("0x{}", hex::encode(element))).collect::<Vec<_>>();
+        let format_stack = |stack: &Stack| stack.iter().map(|element| format!("0x{}", element.to_hex())).collect::<Vec<_>>();
 
         writeln!(
             buffer,

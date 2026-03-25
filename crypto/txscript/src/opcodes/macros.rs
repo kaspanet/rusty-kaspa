@@ -148,7 +148,7 @@ macro_rules! opcode_list {
                         } else {
                             builder.add_i64(value)?;
                         }
-                    } else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(hex::decode(trimmed))) {
+                    } else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(Vec::from_hex(trimmed))) {
                         builder.script_mut().extend(&value);
                     } else if token.len() >= 2 && token.chars().nth(0) == Some('\'') && token.chars().last() == Some('\'') {
                         builder.add_data(token[1..token.len()-1].as_bytes())?;
