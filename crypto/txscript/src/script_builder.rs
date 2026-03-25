@@ -139,21 +139,21 @@ impl ScriptBuilder {
     /// the length of the data. A zero length buffer will lead to a push of empty
     /// data onto the stack (OP_0). No data limits are enforced with this function.
     fn add_raw_data(&mut self, data: &[u8]) -> &mut Self {
-        let data_len = data.len();
-
-        // When the data consists of a single number that can be represented
-        // by one of the "small integer" opcodes, use that opcode instead of
-        // a data push opcode followed by the number.
-        if data_len == 1 && OP_SMALL_INT_MIN_VAL <= data[0] && data[0] <= OP_SMALL_INT_MAX_VAL {
-            self.script.push((Op1 - 1) + data[0]);
-            return self;
-        } else if data_len == 1 && data[0] == OP_1_NEGATE_VAL {
-            self.script.push(Op1Negate);
-            return self;
+        match data {
+            [OP_1_NEGATE_VAL] => {
+                self.script.push(Op1Negate);
+                self
+            }
+            // When the data consists of a single number that can be represented
+            // by one of the "small integer" opcodes, use that opcode instead of
+            // a data push opcode followed by the number.
+            [OP_SMALL_INT_MIN_VAL..=OP_SMALL_INT_MAX_VAL] => {
+                self.script.push((Op1 - 1) + data[0]);
+                self
+            }
+            // For all other data, choose the appropriate push opcode based on data length.
+            _ => self.add_raw_data_with_data_opcode(data),
         }
-
-        // For all other data, choose the appropriate push opcode based on data length.
-        self.add_raw_data_with_data_opcode(data)
     }
 
     /// This function should not typically be used by ordinary users as it does not
@@ -215,6 +215,12 @@ impl ScriptBuilder {
         Ok(self.add_raw_data_with_data_opcode(data))
     }
 
+    /// Adds `data` using an explicit push-data opcode chosen only by payload size.
+    ///
+    /// It's an internal function that is used by `add_raw_data` if we can't apply
+    /// small integer optimization, or by `add_data_with_push_opcode`, when the
+    /// caller is not interested in small integer optimization and wants the
+    /// push data prefix to be determined only by the payload length.
     fn add_raw_data_with_data_opcode(&mut self, data: &[u8]) -> &mut Self {
         // Empty data can be pushed using Op0.
         let data_len = data.len();
