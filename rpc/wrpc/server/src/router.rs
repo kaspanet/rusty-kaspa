@@ -45,6 +45,7 @@ impl Router {
                 GetBlocks,
                 GetBlockTemplate,
                 GetCurrentBlockColor,
+                GetBlockRewardInfo,
                 GetCoinSupply,
                 GetConnectedPeerInfo,
                 GetDaaScoreTimestampEstimate,

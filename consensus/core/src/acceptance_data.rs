@@ -18,3 +18,9 @@ pub struct AcceptedTxEntry {
     pub transaction_id: TransactionId,
     pub index_within_block: u32,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MergedBlockContext {
+    pub merging_chain_block_hash: Hash,
+    pub is_blue: bool,
+}

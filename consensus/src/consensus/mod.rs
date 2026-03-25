@@ -45,7 +45,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::{
         BlockValidationFutures, ConsensusApi, ConsensusStats,
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -748,6 +748,61 @@ impl ConsensusApi for Consensus {
         }
 
         None
+    }
+
+    /// If block hash doesn't exist, returns Err
+    ///
+    /// For a given block hash, try to find its `MergingBlockContext`
+    fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
+        let _guard = self.pruning_lock.blocking_read();
+
+        self.validate_block_exists(hash)?;
+
+        if !self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash) {
+            return Err(ConsensusError::General("the queried hash does not have retention root in its past"));
+        }
+
+        let sink = self.get_sink();
+        if !self.services.reachability_service.is_dag_ancestor_of(hash, sink) {
+            return Ok(None);
+        }
+
+        let mut heap: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
+        let mut visited = BlockHashSet::new();
+
+        for child in self.get_block_children(hash).unwrap() {
+            if visited.insert(child) {
+                let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
+                heap.push(Reverse(SortableBlock::new(child, blue_work)));
+            }
+        }
+
+        while let Some(Reverse(SortableBlock { hash: decedent, .. })) = heap.pop() {
+            if self.services.reachability_service.is_chain_ancestor_of(decedent, sink) {
+                let decedent_data = self.get_ghostdag_data(decedent).unwrap();
+
+                return Ok(if decedent_data.mergeset_blues.contains(&hash) {
+                    Some(MergedBlockContext { merging_chain_block_hash: decedent, is_blue: true })
+                } else if decedent_data.mergeset_reds.contains(&hash) {
+                    Some(MergedBlockContext { merging_chain_block_hash: decedent, is_blue: false })
+                } else {
+                    // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
+                    // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
+                    // unreachable.
+                    kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
+                    None
+                });
+            }
+
+            for child in self.get_block_children(decedent).unwrap() {
+                if visited.insert(child) {
+                    let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
+                    heap.push(Reverse(SortableBlock::new(child, blue_work)));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     BlockHashSet, BlueWorkType, ChainPath,
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockstatus::BlockStatus,
@@ -146,6 +146,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+        unimplemented!()
+    }
+
+    fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         unimplemented!()
     }
 

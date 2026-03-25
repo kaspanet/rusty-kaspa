@@ -36,6 +36,7 @@ cfg_if::cfg_if! {
         mod sign;
         mod parents;
         mod optional_header;
+        mod block;
 
         pub use header::*;
         pub use utils::*;
