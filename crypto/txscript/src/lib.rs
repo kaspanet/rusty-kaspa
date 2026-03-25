@@ -669,6 +669,7 @@ mod tests {
     use kaspa_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
+    use kaspa_utils::hex::FromHex;
     use smallvec::SmallVec;
 
     struct ScriptTestCase {
@@ -986,7 +987,7 @@ mod tests {
             prev_script_public_key: ScriptPublicKey,
         }
 
-        let script_hash = hex::decode("433ec2ac1ffa1b7b7d027f564529c57197f9ae88").unwrap();
+        let script_hash = Vec::from_hex("433ec2ac1ffa1b7b7d027f564529c57197f9ae88").unwrap();
         let prev_script_pubkey_p2sh_script =
             [OpBlake2b, OpData32].iter().copied().chain(script_hash.iter().copied()).chain(once(OpEqual));
         let prev_script_pubkey_p2sh = ScriptPublicKey::new(0, SmallVec::from_iter(prev_script_pubkey_p2sh_script));
@@ -1024,10 +1025,10 @@ mod tests {
             },
             TestVector {
                 name: "mainnet multisig transaction 487f94ffa63106f72644068765b9dc629bb63e481210f382667d4a93b69af412",
-                signature_script: &hex::decode("41eb577889fa28283709201ef5b056745c6cf0546dd31666cecd41c40a581b256e885d941b86b14d44efacec12d614e7fcabf7b341660f95bab16b71d766ab010501411c0eeef117ca485d34e4bc0cf6d5b578aa250c5d13ebff0882a7e2eeea1f31e8ecb6755696d194b1b0fcb853afab28b61f3f7cec487bd611df7e57252802f535014c875220ab64c7691713a32ea6dfced9155c5c26e8186426f0697af0db7a4b1340f992d12041ae738d66fe3d21105483e5851778ad73c5cddf0819c5e8fd8a589260d967e72065120722c36d3fac19646258481dd3661fa767da151304af514cb30af5cb5692203cd7690ecb67cbbe6cafad00a7c9133da535298ab164549e0cce2658f7b3032754ae").unwrap(),
+                signature_script: &Vec::from_hex("41eb577889fa28283709201ef5b056745c6cf0546dd31666cecd41c40a581b256e885d941b86b14d44efacec12d614e7fcabf7b341660f95bab16b71d766ab010501411c0eeef117ca485d34e4bc0cf6d5b578aa250c5d13ebff0882a7e2eeea1f31e8ecb6755696d194b1b0fcb853afab28b61f3f7cec487bd611df7e57252802f535014c875220ab64c7691713a32ea6dfced9155c5c26e8186426f0697af0db7a4b1340f992d12041ae738d66fe3d21105483e5851778ad73c5cddf0819c5e8fd8a589260d967e72065120722c36d3fac19646258481dd3661fa767da151304af514cb30af5cb5692203cd7690ecb67cbbe6cafad00a7c9133da535298ab164549e0cce2658f7b3032754ae").unwrap(),
                 prev_script_public_key: ScriptPublicKey::new(
                     0,
-                    SmallVec::from_slice(&hex::decode("aa20f38031f61ca23d70844f63a477d07f0b2c2decab907c2e096e548b0e08721c7987").unwrap()),
+                    SmallVec::from_slice(&Vec::from_hex("aa20f38031f61ca23d70844f63a477d07f0b2c2decab907c2e096e548b0e08721c7987").unwrap()),
                 ),
                 expected_sig_ops: 4,
             },
@@ -1042,10 +1043,10 @@ mod tests {
             },
             TestVector {
                 name: "p2pk",
-                signature_script: &hex::decode("416db0c0ce824a6d076c8e73aae9987416933df768e07760829cb0685dc0a2bbb11e2c0ced0cab806e111a11cbda19784098fd25db176b6a9d7c93e5747674d32301").unwrap(),
+                signature_script: &Vec::from_hex("416db0c0ce824a6d076c8e73aae9987416933df768e07760829cb0685dc0a2bbb11e2c0ced0cab806e111a11cbda19784098fd25db176b6a9d7c93e5747674d32301").unwrap(),
                 prev_script_public_key: ScriptPublicKey::new(
                     0,
-                    SmallVec::from_slice(&hex::decode("208a457ca74ade0492c44c440da1cab5b008d8449150fe2794f0d8f4cce7e8aa27ac").unwrap()),
+                    SmallVec::from_slice(&Vec::from_hex("208a457ca74ade0492c44c440da1cab5b008d8449150fe2794f0d8f4cce7e8aa27ac").unwrap()),
                 ),
                 expected_sig_ops: 1,
             },

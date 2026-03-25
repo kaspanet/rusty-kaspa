@@ -152,6 +152,7 @@ pub mod test_helpers {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_utils::hex::FromHex;
 
     #[test]
     fn test_extract_address_and_encode_script() {
@@ -169,7 +170,7 @@ mod tests {
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version(),
                     ScriptVec::from_slice(
-                        &hex::decode("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
+                        &Vec::from_hex("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
                     ),
                 ),
                 prefix: Prefix::Mainnet,
@@ -180,7 +181,7 @@ mod tests {
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKeyECDSA.version(),
                     ScriptVec::from_slice(
-                        &hex::decode("21ba01fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
+                        &Vec::from_hex("21ba01fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
                     ),
                 ),
                 prefix: Prefix::Testnet,
@@ -191,7 +192,7 @@ mod tests {
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version(),
                     ScriptVec::from_slice(
-                        &hex::decode("2001fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
+                        &Vec::from_hex("2001fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
                     ),
                 ),
                 prefix: Prefix::Testnet,
@@ -202,7 +203,7 @@ mod tests {
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version() + 1,
                     ScriptVec::from_slice(
-                        &hex::decode("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
+                        &Vec::from_hex("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
                     ),
                 ),
                 prefix: Prefix::Mainnet,
