@@ -618,6 +618,8 @@ impl IbdFlow {
             return Ok(());
         }
 
+        consensus.async_clear_pruning_smt_stores().await;
+
         info!("downloading the pruning point SMT state from {}", self.router);
 
         self.router
@@ -657,6 +659,7 @@ impl IbdFlow {
 
         let lane_count = lanes.len();
         consensus.clone().spawn_blocking(move |c| c.import_pruning_point_smt(pruning_point, lanes_root, lanes)).await?;
+        consensus.async_set_pruning_smt_stable().await;
 
         info!("SMT state synced: {} lanes", lane_count);
         Ok(())
