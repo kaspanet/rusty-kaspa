@@ -2,18 +2,22 @@
 
 ## Summary
 
-Introduces a **Fast Trusted Relay** (FTR) network protocol for Kaspa, enabling low-latency block propagation via a custom push based UDP transport protocol with Reed-Solomon Forward Error Correction (FEC). Designed for trusted operators (mining pools, infrastructure providers, or even just altruistic actors) to achieve minimal block transfer latency across geographically distributed nodes. Further use-cases may include satellite communications, where RTTs can inherently become a limiting factor, or faster communication between nodes situated within one data-center. The application of the customizable FEC also facilitates adopting this protocol in potentially lossy network conditions.
+**Note: This is a draft PR, published for testing visibility, and not considered stable!**
 
-One key limitation of this protocol is that due to its push-based nature it cannot function in isolation, and should / must be used together with standard relay. This is quintessential for resolving protocol aspects such as orphan resolution, etc. Currently, adding a peer to the FTR network will automatically add the peer to the standard relay as well, in order to facilitate such operations.
+Introduces a **Fast Trusted Relay** (FTR) network protocol for Kaspa, enabling low-latency block propagation via a custom push based UDP transport protocol with Reed-Solomon Forward Error Correction (FEC). Designed for trusted operators (mining pools, infrastructure providers, or even just altruistic actors) to achieve minimal block transfer latency across geographically distributed nodes. Although this directly profits those that require low-latency block propagation, any fast relay overlay, also indirectly helps the global kaspa network reduce propagation. Further use-cases may include satellite communications, where RTTs can inherently become a limiting factor, or faster communication between nodes situated within one data-center. The application of the customizable FEC also facilitates adopting this protocol in potentially lossy network conditions.
+
+Furthermore, Fast Relay networks are oftentimes exclusive services offered by enterprise for enterprise, which can easily compound, for example, pool advantages over individual solo miners, by offering an open source easily accessible Fast Relay option on the node, free for anyone to use, we limit such centralized advantages and also help facilitate more such overlays to establish themselves on the kaspa network.
 
 The main observable changes are that logs will display the number of blocks propagated via the fast relay network, alongside the normal blocks added logs, as such:
 
 ```
-Accepted 9 blocks ...2ab529f31b82379f60d1799b3d72d06eac3ca77b29b1f8dfb8dde3ec7737a4ac via relay
+2026-03-26 14:14:40.849+01:00 [INFO ] Accepted 9 blocks ...2ab529f31b82379f60d1799b3d72d06eac3ca77b29b1f8dfb8dde3ec7737a4ac via relay
 2026-03-26 14:14:40.849+01:00 [INFO ] Accepted 5 blocks ...2afc49022f1c41890b182252b80844992afcac58deb1f2b6661e5d1049e17d4b via trusted relay
 ```
 
-Note: This is a draft PR, published for testing visibility, and not considered stable!
+One key limitation of this protocol is that due to its push-based nature it cannot function in isolation, and should / must be used together with standard relay. This is quintessential for resolving protocol aspects such as orphan resolution, etc... Currently, adding a peer to the FTR network will automatically add the peer to the standard relay as well, in order to facilitate such operations.
+
+Although this PR is a far-shot away from replacing our standard tcp relay, adopting and adapting such a custom udp protocol could potentially be an entry point for gathering data and experience for such a maneuver, many projects, such as solana's Turbine block propagation, already use highly customized and optimized udp transport layers, in order to reduce latency.
 
 ## Motivation
 
@@ -23,7 +27,7 @@ Standard P2P block relay (TCP-based with request-response semantics) introduces 
 - **Loss tolerance**: FEC allows recovery even when packets are lost in lossy network conditions
 - **Parallel processing**: Multi-threaded pipeline saturates bandwidth
 
-One trade-off is that the FTR bypasses block signaling and propagates whole blocks. Furthermore, FEC increases the bandwidth usage, which quickly compounds with the number of peers in the network. As such, a large network bandwidth should be a prerequisite to run such a network. That being said, facilitating 7-12 peers (which should easily be enough for a good globally dispersed network) on a 1Gbit or 10Gbit connection should easily be sustainable.
+One trade-off is that the FTR bypasses block signaling and propagates whole blocks. Furthermore, FEC increases the bandwidth usage, which quickly compounds with the number of peers in the network. As such, a large network bandwidth should be a prerequisite to run such a FTR network. That being said, facilitating 10-20 peers (which should easily be enough for a good globally dispersed network) on a 1Gbit or 10Gbit connection should easily be sustainable, As should a small handful of peers on even more limited bandwidth.
 
 ## Architecture
 
@@ -172,6 +176,8 @@ NOTE:
 
 3) A lot more configurations can be found and altered in `protocol/trusted_relay/src/params.rs`. This includes options to multi-thread specific workers, etc., but defaults are still under consideration and as such not included in client args.
 
+4) currently ports will always revert to default ports (TCP control -> 16113, UDP transport -> 16114)
+
 ## Wire Formats
 
 ### Packet (UDP)
@@ -256,3 +262,4 @@ Here are some other ideas for the future:
 - Adaptive FEC based on network conditions.
 - Explore compression algorithms.
 - Optionally exchange more trust for complete bypassing of consensus verification (facilitating faster time to block template).
+- Add a guide to docs

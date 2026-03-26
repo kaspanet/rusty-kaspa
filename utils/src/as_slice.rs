@@ -89,21 +89,21 @@ impl<T> AsSlice for Arc<[T]> {
     type Element = T;
 
     fn as_slice(&self) -> &[Self::Element] {
-        self.as_ref().as_slice()
+        self.as_ref()
     }
 }
 impl<T> AsSlice for Rc<[T]> {
     type Element = T;
 
     fn as_slice(&self) -> &[Self::Element] {
-        self.as_ref().as_slice()
+        self.as_ref()
     }
 }
 impl<T> AsSlice for Box<[T]> {
     type Element = T;
 
     fn as_slice(&self) -> &[Self::Element] {
-        self.as_ref().as_slice()
+        self.as_ref()
     }
 }
 
