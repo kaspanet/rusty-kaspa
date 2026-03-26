@@ -6,8 +6,8 @@
 //! Branch nodes are keyed by [`BranchKey`] `(height, node_key)` and store
 //! the `(left, right)` child hashes.
 
-use std::collections::BTreeMap;
-use std::convert::Infallible;
+use alloc::collections::BTreeMap;
+use core::convert::Infallible;
 
 use kaspa_hashes::{Hash, ZERO_HASH};
 

@@ -15,3 +15,4 @@ extern crate core;
 
 pub mod hashing;
 pub mod types;
+pub mod verify;

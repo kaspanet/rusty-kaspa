@@ -3583,6 +3583,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-merkle",
  "kaspa-smt",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

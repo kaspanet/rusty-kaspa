@@ -10,8 +10,8 @@
 //!   in the output. Paths stop propagating when the computed parent matches the existing
 //!   value. Used by consensus (`SmtProcessor::build`).
 
-use std::collections::BTreeMap;
-use std::vec::Vec;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 use core::marker::PhantomData;
 use kaspa_hashes::Hash;
@@ -179,13 +179,26 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
     current_root: Hash,
     leaf_updates: SortedLeafUpdates,
 ) -> Result<(Hash, SmtBranchChanges), S::Error> {
-    if leaf_updates.is_empty() {
-        return Ok((current_root, BTreeMap::new()));
-    }
+    let mut changes = SmtBranchChanges::new();
+    let root = compute_root_update_into::<H, S>(store, current_root, leaf_updates, &mut changes)?;
+    Ok((root, changes))
+}
 
-    // Buffer: branches modified during computation.
-    // Needed so later leaves on shared paths see earlier updates.
-    let mut changes: SmtBranchChanges = BTreeMap::new();
+/// Like [`compute_root_update`] but writes into an externally-owned branch map.
+///
+/// Pre-populated entries are used as "existing" branches: the local buffer is
+/// checked before the immutable store, and paths that match pre-existing values
+/// stop propagating. This allows proof-verified branches to short-circuit
+/// tree computation.
+pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
+    store: &S,
+    current_root: Hash,
+    leaf_updates: SortedLeafUpdates,
+    changes: &mut SmtBranchChanges,
+) -> Result<Hash, S::Error> {
+    if leaf_updates.is_empty() {
+        return Ok(current_root);
+    }
 
     // Read a branch: check our local buffer first, then the immutable store.
     let read_branch = |changes: &SmtBranchChanges, bk: BranchKey| -> Result<Option<BranchChildren>, S::Error> {
@@ -196,8 +209,6 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
     };
 
     let empty_hashes = &H::EMPTY_HASHES;
-    // At each level, leaf_hash is overwritten with the computed parent hash
-    // while key is preserved for path navigation.
     let mut current: Vec<LeafUpdate> = leaf_updates.into_vec();
     let mut next = Vec::with_capacity(current.len());
 
@@ -218,13 +229,11 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
             };
 
             // Read existing children from buffer/store
-            let existing = read_branch(&changes, branch_key)?;
+            let existing = read_branch(changes, branch_key)?;
 
             let new_children = if let Some(sib) = sibling_in_batch {
-                // Both children are in the batch
                 BranchChildren { left: entry.leaf_hash, right: sib }
             } else {
-                // One child is from the batch, sibling from store/buffer
                 let goes_right = bit_at(&entry.key, depth);
                 let sibling = existing.map(|bc| if goes_right { bc.left } else { bc.right }).unwrap_or(empty_hashes[height]);
                 if goes_right {
@@ -249,14 +258,13 @@ pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
         core::mem::swap(&mut current, &mut next);
         next.clear();
 
-        // All paths converged to unchanged branches — root didn't change
         if current.is_empty() {
-            return Ok((current_root, changes));
+            return Ok(current_root);
         }
     }
 
     debug_assert_eq!(current.len(), 1);
-    Ok((current[0].leaf_hash, changes))
+    Ok(current[0].leaf_hash)
 }
 
 #[cfg(test)]

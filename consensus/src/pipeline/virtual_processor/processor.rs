@@ -623,6 +623,12 @@ impl VirtualStateProcessor {
         commit
     }
 
+    /// Check if `block_hash` is canonical for SMT lookups.
+    /// ZERO_HASH is treated as always canonical — it marks IBD-imported entries.
+    pub(super) fn is_smt_canonical(&self, block_hash: Hash, selected_parent: Hash) -> bool {
+        block_hash == ZERO_HASH || self.reachability_service.is_chain_ancestor_of(block_hash, selected_parent)
+    }
+
     /// Derive the parent's lanes_root from the stored root-level branch (height=255, node_key=ZERO).
     pub(super) fn derive_parent_lanes_root(&self, parent_blue_score: u64, selected_parent: Hash) -> Hash {
         use kaspa_hashes::SeqCommitActiveNode;
@@ -632,8 +638,7 @@ impl VirtualStateProcessor {
 
         let min_bs = parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
         let entity = BranchEntity { height: 255, node_key: ZERO_HASH };
-        let root_branch =
-            self.smt_stores.get_branch(entity, min_bs, |bh| self.reachability_service.is_chain_ancestor_of(bh, selected_parent));
+        let root_branch = self.smt_stores.get_branch(entity, min_bs, |bh| self.is_smt_canonical(bh, selected_parent));
 
         match root_branch {
             Some(v) => {
@@ -670,15 +675,12 @@ impl VirtualStateProcessor {
         for entry in self.smt_stores.score_index.get_at(curr_min.saturating_sub(1), prev_min) {
             let entry = entry.unwrap();
             // Only process canonical entries
-            if !self.reachability_service.is_chain_ancestor_of(entry.block_hash(), selected_parent) {
+            if !self.is_smt_canonical(entry.block_hash(), selected_parent) {
                 continue;
             }
             for lk in entry.data().iter() {
                 // Check if this lane has a newer canonical version (within the active window)
-                let has_newer = self
-                    .smt_stores
-                    .get_lane(*lk, curr_min, |bh| self.reachability_service.is_chain_ancestor_of(bh, selected_parent))
-                    .is_some();
+                let has_newer = self.smt_stores.get_lane(*lk, curr_min, |bh| self.is_smt_canonical(bh, selected_parent)).is_some();
 
                 if !has_newer {
                     proc.expire_lane(*lk);

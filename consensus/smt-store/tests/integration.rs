@@ -441,3 +441,173 @@ fn flush_rebuild_roundtrip() {
     let build2 = proc2.build(|_| true).unwrap();
     assert_eq!(build2.root, original_root, "no-change rebuild should produce same root");
 }
+
+/// IBD sync simulation: build a tree, clear stores, rebuild from lane preimages
+/// via SmtProcessor (same path as real IBD import), verify root + branches match.
+#[test]
+fn ibd_sync_via_smt_processor() {
+    use kaspa_smt::tree::SmtBranchChanges;
+
+    let empty_root = SeqCommitActiveNode::empty_root();
+    let pp_blue_score = 1000u64;
+    let pp_hash = hash(0xFF);
+
+    let lanes: Vec<([u8; 20], Hash, u64)> = (1u8..=10)
+        .map(|i| {
+            let mut lid = [0u8; 20];
+            lid[0] = i;
+            (lid, hash(i.wrapping_mul(3)), pp_blue_score - (i as u64 * 10))
+        })
+        .collect();
+
+    // Build a reference in-memory tree for proofs
+    let ref_tree = {
+        let mut tree = SparseMerkleTree::<SeqCommitActiveNode>::new();
+        for (lid, tip, _bs) in &lanes {
+            let lk = lane_key(lid);
+            let lh = smt_leaf_hash(&SmtLeafInput { lane_id: lid, lane_tip: tip, blue_score: pp_blue_score });
+            tree.insert(lk, lh);
+        }
+        tree
+    };
+    let original_root = ref_tree.root();
+    assert_ne!(original_root, empty_root, "tree should not be empty");
+
+    // Simulate IBD receiver: fresh DB (empty SMT stores)
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    // Stream lanes with periodic proof verification, then rebuild via SmtProcessor
+    let mut branches = SmtBranchChanges::new();
+    let mut proc = SmtProcessor::new(&stores, pp_blue_score, empty_root);
+
+    for (i, (lid, tip, _bs)) in lanes.iter().enumerate() {
+        let lk = lane_key(lid);
+        let lh = smt_leaf_hash(&SmtLeafInput { lane_id: lid, lane_tip: tip, blue_score: pp_blue_score });
+
+        if i % 3 == 0 {
+            let proof = ref_tree.prove(&lk).unwrap();
+            let ok = proof.as_proof().verify_cached::<SeqCommitActiveNode>(&lk, Some(lh), original_root, &mut branches).unwrap();
+            assert!(ok, "proof verification failed at lane index {i}");
+        }
+
+        proc.update_lane(lk, *lid, *tip);
+    }
+
+    // Build tree — SmtProcessor reads from empty DB, same as cleared stores during IBD
+    let build = proc.build(|_| true).unwrap();
+    assert_eq!(build.root, original_root, "rebuilt root must match original");
+
+    // Flush to DB
+    let mut batch = WriteBatch::default();
+    build.flush(&stores, &mut batch, pp_blue_score, pp_hash).unwrap();
+    db.write(batch).unwrap();
+
+    // Verify root branch exists and derives correct root
+    let root_branch = stores.branch_version.get(255, Hash::from_bytes([0; 32]), 0, |_| true).unwrap();
+    assert!(root_branch.is_some(), "root branch must exist after import");
+    let children = root_branch.unwrap();
+    let derived_root = kaspa_smt::hash_node::<SeqCommitActiveNode>(children.data().left, children.data().right);
+    assert_eq!(derived_root, original_root, "derived root from branches must match");
+
+    // Verify each lane is readable
+    for (lid, tip, _bs) in &lanes {
+        let lk = lane_key(lid);
+        let v = stores.get_lane(lk, 0, |_| true);
+        assert!(v.is_some(), "lane for lid[0]={} must be readable", lid[0]);
+        assert_eq!(v.unwrap().data().lane_tip_hash, *tip);
+    }
+
+    // Verify a subsequent block can build on top of the imported state
+    let mut next_proc = SmtProcessor::new(&stores, pp_blue_score + 1, original_root);
+    next_proc.update_lane(lane_key(&[0xFE; 20]), [0xFE; 20], hash(0xFE));
+    let next_build = next_proc.build(|bh| bh == pp_hash).unwrap();
+    assert_ne!(next_build.root, original_root, "adding a lane should change the root");
+    assert_ne!(next_build.root, empty_root);
+}
+
+/// Lanes written with ZERO_HASH block_hash are readable when the caller
+/// treats ZERO_HASH as canonical (IBD sentinel).
+#[test]
+fn zero_hash_block_hash_lanes_are_readable() {
+    use kaspa_hashes::ZERO_HASH;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    let lane_id = [0x01; 20];
+    let lk = lane_key(&lane_id);
+    let tip = hash(0xAA);
+    let bs = 500u64;
+
+    let mut proc = SmtProcessor::new(&stores, bs, SeqCommitActiveNode::empty_root());
+    proc.update_lane(lk, lane_id, tip);
+    let build = proc.build(|_| true).unwrap();
+    let mut batch = WriteBatch::default();
+    build.flush(&stores, &mut batch, bs, ZERO_HASH).unwrap();
+    db.write(batch).unwrap();
+
+    let result = stores.get_lane(lk, 0, |bh| bh == kaspa_hashes::ZERO_HASH);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data().lane_tip_hash, tip);
+}
+
+/// Branches written with ZERO_HASH block_hash are readable when the caller
+/// treats ZERO_HASH as canonical.
+#[test]
+fn zero_hash_block_hash_branches_are_readable() {
+    use kaspa_hashes::ZERO_HASH;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    let lane_id = [0x01; 20];
+    let lk = lane_key(&lane_id);
+    let tip = hash(0xAA);
+    let bs = 500u64;
+
+    let mut proc = SmtProcessor::new(&stores, bs, SeqCommitActiveNode::empty_root());
+    proc.update_lane(lk, lane_id, tip);
+    let build = proc.build(|_| true).unwrap();
+    let root = build.root;
+    let mut batch = WriteBatch::default();
+    build.flush(&stores, &mut batch, bs, ZERO_HASH).unwrap();
+    db.write(batch).unwrap();
+
+    let root_branch = stores.branch_version.get(255, Hash::from_bytes([0; 32]), 0, |bh| bh == kaspa_hashes::ZERO_HASH).unwrap();
+    assert!(root_branch.is_some());
+
+    let children = root_branch.unwrap();
+    let derived = kaspa_smt::hash_node::<SeqCommitActiveNode>(children.data().left, children.data().right);
+    assert_eq!(derived, root);
+}
+
+/// SmtProcessor applies one blue_score to all lanes. With per-lane scores the
+/// leaf hashes differ, producing a different root.
+#[test]
+fn per_lane_blue_score_produces_different_root() {
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    let lane_a_id = [0x01; 20];
+    let lane_b_id = [0x02; 20];
+    let lk_a = lane_key(&lane_a_id);
+    let lk_b = lane_key(&lane_b_id);
+    let tip_a = hash(0xAA);
+    let tip_b = hash(0xBB);
+    let bs_a = 500u64;
+    let bs_b = 800u64;
+
+    let mut ref_tree = SparseMerkleTree::<SeqCommitActiveNode>::new();
+    ref_tree.insert(lk_a, smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a_id, lane_tip: &tip_a, blue_score: bs_a }));
+    ref_tree.insert(lk_b, smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b_id, lane_tip: &tip_b, blue_score: bs_b }));
+    let expected_root = ref_tree.root();
+
+    let uniform_blue_score = 1000u64;
+    let mut proc = SmtProcessor::new(&stores, uniform_blue_score, SeqCommitActiveNode::empty_root());
+    proc.update_lane(lk_a, lane_a_id, tip_a);
+    proc.update_lane(lk_b, lane_b_id, tip_b);
+    let build = proc.build(|_| true).unwrap();
+
+    assert_ne!(build.root, expected_root, "uniform blue_score should differ from per-lane reference");
+}

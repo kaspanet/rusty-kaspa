@@ -40,7 +40,6 @@ use kaspa_hashes::{Hash, SeqCommitmentMerkleBranchHash};
 use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
-use crate::model::services::reachability::ReachabilityService;
 use crate::model::services::seq_commit_accessor::SeqCommitAccessor;
 use kaspa_consensus_core::hashing::tx::seq_commit_tx_digest;
 use kaspa_consensus_core::tx::TransactionId;
@@ -565,7 +564,7 @@ impl VirtualStateProcessor {
             let parent_ref = self
                 .smt_stores
                 .get_lane(lk, parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD), |bh| {
-                    self.reachability_service.is_chain_ancestor_of(bh, selected_parent)
+                    self.is_smt_canonical(bh, selected_parent)
                 })
                 .map(|v| v.data().lane_tip_hash)
                 .unwrap_or(parent_seq_commit);
@@ -610,7 +609,7 @@ impl VirtualStateProcessor {
         }
 
         // 4. Build SMT (skips entirely when no pending leaves — no expirations, no touches)
-        let build = proc.build(|bh| self.reachability_service.is_chain_ancestor_of(bh, selected_parent)).unwrap();
+        let build = proc.build(|bh| self.is_smt_canonical(bh, selected_parent)).unwrap();
 
         // 5. Compute final hash: payload_root → state_root → seq_commit
         let payload_root = miner_payload_root(miner_payload_leaves.into_iter());
