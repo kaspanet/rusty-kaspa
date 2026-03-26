@@ -1,4 +1,5 @@
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
@@ -41,6 +42,8 @@ pub struct FastTrustedRelay {
     listen_address: SocketAddr,
     /// Notifier to wake up `recv_block` waiters when state changes.
     receive_block_waker: Arc<tokio::sync::Notify>,
+    /// Flag to prevent restarts during shutdown.
+    shutting_down: Arc<AtomicBool>,
     udp_port: u16,
     tcp_port: u16,
 }
@@ -100,6 +103,7 @@ impl FastTrustedRelay {
             udp_port: DEFAULT_UDP_PORT,
             tcp_port: DEFAULT_TCP_PORT,
             receive_block_waker,
+            shutting_down: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -147,6 +151,12 @@ impl FastTrustedRelay {
     /// Start the UDP relay. If the runtime is already active, returns false.
     /// Returns true if the start was successful.
     pub async fn start_fast_relay(&self) -> bool {
+        // Prevent restarts during shutdown
+        if self.shutting_down.load(Ordering::SeqCst) {
+            debug!("Cannot start UDP runtime - shutdown in progress");
+            return false;
+        }
+
         let mut udp_runtime = self.udp_runtime.lock().await;
         if udp_runtime.is_some() {
             debug!("UDP runtime is already active");
@@ -183,6 +193,9 @@ impl FastTrustedRelay {
     /// Shut down both runtimes.
     pub async fn shutdown(&self) {
         debug!("shutting down fast trusted relay...");
+        // Prevent any new start_fast_relay calls
+        self.shutting_down.store(true, Ordering::SeqCst);
+
         self.stop_fast_relay().await;
 
         // Stop TCP runtime if it was spawned
@@ -221,17 +234,33 @@ impl FastTrustedRelay {
             if let Some(rx_arc) = receiver_opt {
                 let mut rx = rx_arc.lock().await;
                 debug!("Waiting to receive block from UDP runtime...");
-                if let Some(msg) = rx.recv().await {
-                    return msg.into_parts();
+
+                // Use select! to race recv() against state change notifications.
+                // This ensures we re-check the runtime if it's replaced while waiting,
+                // avoiding the stale receiver problem where we wait on an old channel
+                // while the new runtime publishes to a different one.
+                tokio::select! {
+                    biased;
+                    _ = notified => {
+                        // Runtime state changed (stop/restart), re-check and get fresh receiver
+                        debug!("recv_block: notified of state change, re-acquiring receiver");
+                    }
+                    result = rx.recv() => {
+                        if let Some(msg) = result {
+                            return msg.into_parts();
+                        }
+                        // Receiver closed unexpectedly (runtime dropped/crashed). Clear state.
+                        debug!("UDP block receiver closed unexpectedly; marking relay inactive");
+                        self.udp_runtime.lock().await.take();
+                        self.receive_block_waker.notify_waiters();
+                        // Loop will re-register notified and wait for restart
+                    }
                 }
-                // Receiver closed unexpectedly (runtime dropped/crashed). Clear state.
-                debug!("UDP block receiver closed unexpectedly; marking relay inactive");
-                self.udp_runtime.lock().await.take();
-                self.receive_block_waker.notify_waiters();
-                // Fall through and wait for a restart
+            } else {
+                // No runtime active, wait for notification that one has started
+                debug!("UDP runtime not active, waiting for it to become active...");
+                notified.await;
             }
-            debug!("UDP runtime not active, waiting for it to become active...");
-            notified.await;
         }
     }
 
