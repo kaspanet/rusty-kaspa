@@ -265,8 +265,7 @@ pub async fn tcp_connect(
     }
 
     let peer_addr = stream.peer_addr()?;
-    let udp_target = SocketAddr::new(peer_addr.ip(), remote_addr.port());
-
+    let udp_target = SocketAddr::new(peer_addr.ip(), DEFAULT_UDP_PORT);
     let peer = Peer::new(peer_addr, our_direction, stream, udp_target, hub_event_sender.clone());
     hub_event_sender
         .send(HubEvent::PeerConnected(peer))
