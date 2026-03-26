@@ -8,7 +8,8 @@ use kaspa_consensusmanager::BlockProcessingBatch;
 use kaspa_core::{debug, info, warn};
 use kaspa_p2p_lib::{
     Router,
-    common::ProtocolError, make_message,
+    common::ProtocolError,
+    make_message,
     pb::{InvRelayBlockMessage, kaspad_message::Payload},
 };
 use kaspa_trusted_relay::FastTrustedRelay;

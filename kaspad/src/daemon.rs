@@ -120,22 +120,24 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     }
 
     // Fast Trusted Relay sanity
-    if (!args.trusted_relay_incoming.is_empty() || !args.trusted_relay_outgoing.is_empty())
-        && args.trusted_relay_secret.is_none() {
-            return Err(ConfigError::TrustedRelayMissingSecret);
-        }
+    if (!args.trusted_relay_incoming.is_empty() || !args.trusted_relay_outgoing.is_empty()) && args.trusted_relay_secret.is_none() {
+        return Err(ConfigError::TrustedRelayMissingSecret);
+    }
     if let Some(k) = args.fec_data_blocks
-        && (!(4..=128).contains(&k)) {
-            return Err(ConfigError::FecDataBlocksOutOfRange);
-        }
+        && (!(4..=128).contains(&k))
+    {
+        return Err(ConfigError::FecDataBlocksOutOfRange);
+    }
     if let Some(m) = args.fec_parity_blocks
-        && (!(1..=64).contains(&m)) {
-            return Err(ConfigError::FecParityBlocksOutOfRange);
-        }
+        && (!(1..=64).contains(&m))
+    {
+        return Err(ConfigError::FecParityBlocksOutOfRange);
+    }
     if let Some(payload) = args.udp_payload_size
-        && (!(500..=1472).contains(&payload)) {
-            return Err(ConfigError::UdpPayloadSizeOutOfRange);
-        }
+        && (!(500..=1472).contains(&payload))
+    {
+        return Err(ConfigError::UdpPayloadSizeOutOfRange);
+    }
 
     Ok(())
 }
