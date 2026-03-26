@@ -80,7 +80,13 @@ fn run(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| decode_generation(&mut common_decoder, config, &mut job)));
 
         let data = match maybe_data {
-            Ok(Ok(d)) => d,
+            Ok(Ok(d)) => {
+                info!(
+                    "{}-{}-{}-{}: successfully decoded block {} generation {} ({} bytes)",
+                    REASSEMBLER_WORKER_NAME, reassembler_idx, WORKER_NAME, decoder_idx, job.hash, job.generation, d.len()
+                );
+                d
+            }
             Ok(Err(e)) => {
                 warn!(
                     "{}-{}-{}-{}: decoding failed for block {} generation {} — {e}",

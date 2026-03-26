@@ -32,6 +32,13 @@ fn run(
         match socket.recv_from(&mut buf) {
             Ok((len, src)) => {
                 count += 1;
+                // Log first packet to confirm UDP reception is working
+                if count == 1 {
+                    info!(
+                        "Collector {}: received FIRST UDP packet ({} bytes) from {} - relay is receiving data",
+                        collector_idx, len, src
+                    );
+                }
                 // Log every 100 packets to confirm receipt
                 if count - last_log_count >= 100 {
                     info!("Collector {}: received {} packets so far (latest from {})", collector_idx, count, src);

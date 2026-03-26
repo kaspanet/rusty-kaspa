@@ -101,6 +101,8 @@ fn run(
     info!("{}-{} started (allowlist has {} entries: {:?})", WORKER_NAME, worker_idx, allowlist_ips.len(), allowlist_ips);
     let mut count = 0u64;
     let mut dropped_allowlist = 0u64;
+    let mut valid_fragments = 0u64;
+    let mut last_valid_log = 0u64;
     while let Ok(message) = receiver.recv() {
         match message {
             VerificationMessage::PacketReceived(PacketReceivedMessage(packet, src)) => {
@@ -119,8 +121,10 @@ fn run(
                     dropped_allowlist += 1;
                     if dropped_allowlist <= 5 || dropped_allowlist % 100 == 0 {
                         let current_allowlist: Vec<_> = allowlist.load().keys().cloned().collect();
-                        warn!("{}-{}: dropping packet from {} (not in allowlist, dropped {} so far). Allowlist: {:?}",
-                            WORKER_NAME, worker_idx, src, dropped_allowlist, current_allowlist);
+                        warn!(
+                            "{}-{}: dropping packet from {} (not in allowlist, dropped {} so far). Allowlist: {:?}",
+                            WORKER_NAME, worker_idx, src, dropped_allowlist, current_allowlist
+                        );
                     }
                     continue;
                 }
@@ -168,6 +172,21 @@ fn run(
                     compressed_capacity,
                     &mut recent_fragments,
                 );
+
+                // Track valid fragments for diagnostics
+                valid_fragments += 1;
+                if valid_fragments == 1 {
+                    info!(
+                        "{}-{}: forwarding FIRST valid fragment (block={}, idx={}) - HMAC auth passed",
+                        WORKER_NAME, worker_idx, fragment_hash, fragment_index
+                    );
+                } else if valid_fragments - last_valid_log >= 100 {
+                    info!(
+                        "{}-{}: forwarded {} valid fragments so far (latest block={})",
+                        WORKER_NAME, worker_idx, valid_fragments, fragment_hash
+                    );
+                    last_valid_log = valid_fragments;
+                }
 
                 // Forward to the Coordinator.
                 let fragment = build_fragment(packet.clone(), fragment_hash, fragment_index, last_fragment_index);

@@ -86,17 +86,21 @@ impl HandleFastTrustedRelayFlow {
                 }
                 _ => {
                     // Block is already known, skip to next inv
-                    debug!("Relay block {} already exists, continuing...", hash);
+                    info!("Relay block {} already exists in consensus, skipping", hash);
                     continue;
                 }
             }
 
             match self.ctx.get_orphan_roots_if_known(&session, hash).await {
                 OrphanOutput::Unknown => {}           // Keep processing this inv
-                OrphanOutput::NoRoots(_) => continue, // Existing orphan w/o missing roots
-                OrphanOutput::Roots(_) => {
+                OrphanOutput::NoRoots(_) => {
+                    info!("Block {} is already in orphan pool with no missing roots, skipping", hash);
+                    continue;
+                }
+                OrphanOutput::Roots(roots) => {
                     // This is a change to the standard relay, Since by its very nature the fast relay is only push based, we cannot enqueue,
                     // hence we just add it to the orphan pool, and let it resolve via std relay flows and logic.
+                    info!("Block {} has {} missing parent roots, adding to orphan pool", hash, roots.len());
                     self.ctx.add_orphan(&session, ftr_block.into()).await;
                     continue;
                 }
@@ -107,7 +111,7 @@ impl HandleFastTrustedRelayFlow {
                 if self.fast_trusted_relay.is_udp_active().await {
                     self.fast_trusted_relay.stop_fast_relay().await;
                 }
-                debug!("Got fast relay block {} while in IBD and the node is out of sync, continuing...", hash);
+                info!("Got fast relay block {} while in IBD and the node is out of sync, skipping (relay disabled)", hash);
                 continue;
             }
 
@@ -121,7 +125,7 @@ impl HandleFastTrustedRelayFlow {
             let block = Block::from(ftr_block);
             if block.is_header_only() {
                 // TODO: check if this should be unexpected an a warn message.
-                debug!("Received header-only block {} from fast relay", hash);
+                info!("Received header-only block {} from fast relay, skipping", hash);
                 continue;
             }
 
