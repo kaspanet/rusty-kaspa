@@ -442,88 +442,100 @@ fn flush_rebuild_roundtrip() {
     assert_eq!(build2.root, original_root, "no-change rebuild should produce same root");
 }
 
-/// IBD sync simulation: build a tree, clear stores, rebuild from lane preimages
-/// via SmtProcessor (same path as real IBD import), verify root + branches match.
+/// Simulate block-by-block processing, export lane state, import into fresh
+/// stores via ImportLaneChanges, and verify the roots match.
 #[test]
-fn ibd_sync_via_smt_processor() {
-    use kaspa_smt::tree::SmtBranchChanges;
+fn export_import_roundtrip() {
+    use kaspa_hashes::ZERO_HASH;
 
-    let empty_root = SeqCommitActiveNode::empty_root();
-    let pp_blue_score = 1000u64;
-    let pp_hash = hash(0xFF);
-
-    let lanes: Vec<([u8; 20], Hash, u64)> = (1u8..=10)
-        .map(|i| {
-            let mut lid = [0u8; 20];
-            lid[0] = i;
-            (lid, hash(i.wrapping_mul(3)), pp_blue_score - (i as u64 * 10))
-        })
-        .collect();
-
-    // Build a reference in-memory tree for proofs
-    let ref_tree = {
-        let mut tree = SparseMerkleTree::<SeqCommitActiveNode>::new();
-        for (lid, tip, _bs) in &lanes {
-            let lk = lane_key(lid);
-            let lh = smt_leaf_hash(&SmtLeafInput { lane_id: lid, lane_tip: tip, blue_score: pp_blue_score });
-            tree.insert(lk, lh);
-        }
-        tree
-    };
-    let original_root = ref_tree.root();
-    assert_ne!(original_root, empty_root, "tree should not be empty");
-
-    // Simulate IBD receiver: fresh DB (empty SMT stores)
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
+    let empty_root = SeqCommitActiveNode::empty_root();
 
-    // Stream lanes with periodic proof verification, then rebuild via SmtProcessor
-    let mut branches = SmtBranchChanges::new();
-    let mut proc = SmtProcessor::new(&stores, pp_blue_score, empty_root);
+    // Define lanes touched by different blocks at different blue_scores
+    struct BlockSpec {
+        blue_score: u64,
+        block_hash: Hash,
+        lanes: Vec<([u8; 20], Hash)>, // (lane_id, lane_tip)
+    }
 
-    for (i, (lid, tip, _bs)) in lanes.iter().enumerate() {
-        let lk = lane_key(lid);
-        let lh = smt_leaf_hash(&SmtLeafInput { lane_id: lid, lane_tip: tip, blue_score: pp_blue_score });
+    let blocks = vec![
+        BlockSpec { blue_score: 100, block_hash: hash(0x01), lanes: vec![([0x01; 20], hash(0xA1))] },
+        BlockSpec { blue_score: 200, block_hash: hash(0x02), lanes: vec![([0x02; 20], hash(0xA2)), ([0x03; 20], hash(0xA3))] },
+        BlockSpec { blue_score: 300, block_hash: hash(0x03), lanes: vec![([0x01; 20], hash(0xB1))] }, // update lane 1
+        BlockSpec { blue_score: 400, block_hash: hash(0x04), lanes: vec![([0x04; 20], hash(0xA4))] },
+        BlockSpec { blue_score: 500, block_hash: hash(0x05), lanes: vec![([0x05; 20], hash(0xA5)), ([0x02; 20], hash(0xB2))] },
+    ];
 
-        if i % 3 == 0 {
-            let proof = ref_tree.prove(&lk).unwrap();
-            let ok = proof.as_proof().verify_cached::<SeqCommitActiveNode>(&lk, Some(lh), original_root, &mut branches).unwrap();
-            assert!(ok, "proof verification failed at lane index {i}");
+    // Process blocks sequentially, each building on the previous root
+    let mut current_root = empty_root;
+    for block in &blocks {
+        let mut proc = SmtProcessor::new(&stores, block.blue_score, current_root);
+        for (lid, tip) in &block.lanes {
+            proc.update_lane(lane_key(lid), *lid, *tip);
         }
-
-        proc.update_lane(lk, *lid, *tip);
+        let build = proc.build(|_| true).unwrap();
+        current_root = build.root;
+        let mut batch = WriteBatch::default();
+        build.flush(&stores, &mut batch, block.blue_score, block.block_hash).unwrap();
+        db.write(batch).unwrap();
     }
 
-    // Build tree — SmtProcessor reads from empty DB, same as cleared stores during IBD
-    let build = proc.build(|_| true).unwrap();
-    assert_eq!(build.root, original_root, "rebuilt root must match original");
+    let final_root = current_root;
+    assert_ne!(final_root, empty_root);
 
-    // Flush to DB
-    let mut batch = WriteBatch::default();
-    build.flush(&stores, &mut batch, pp_blue_score, pp_hash).unwrap();
-    db.write(batch).unwrap();
-
-    // Verify root branch exists and derives correct root
-    let root_branch = stores.branch_version.get(255, Hash::from_bytes([0; 32]), 0, |_| true).unwrap();
-    assert!(root_branch.is_some(), "root branch must exist after import");
-    let children = root_branch.unwrap();
-    let derived_root = kaspa_smt::hash_node::<SeqCommitActiveNode>(children.data().left, children.data().right);
-    assert_eq!(derived_root, original_root, "derived root from branches must match");
-
-    // Verify each lane is readable
-    for (lid, tip, _bs) in &lanes {
+    // Export: collect the canonical lane state (what the IBD sender would read)
+    // Each lane's latest canonical version with its blue_score
+    let lane_ids: Vec<[u8; 20]> = (1u8..=5).map(|i| [i; 20]).collect();
+    let mut exported: Vec<([u8; 20], Hash, u64)> = Vec::new();
+    for lid in &lane_ids {
         let lk = lane_key(lid);
-        let v = stores.get_lane(lk, 0, |_| true);
-        assert!(v.is_some(), "lane for lid[0]={} must be readable", lid[0]);
-        assert_eq!(v.unwrap().data().lane_tip_hash, *tip);
+        if let Some(v) = stores.get_lane(lk, 0, |_| true) {
+            exported.push((*lid, v.data().lane_tip_hash, v.blue_score()));
+        }
+    }
+    assert_eq!(exported.len(), 5, "all 5 lanes should have canonical versions");
+
+    // Import: fresh stores, rebuild via ImportLaneChanges with per-lane blue_scores
+    let (_lt2, db2) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let import_stores = make_stores(&db2);
+
+    let pp_blue_score = 500; // latest block's blue_score
+    let mut import_proc = SmtProcessor::new_import(&import_stores, pp_blue_score, empty_root);
+    for (lid, tip, bs) in &exported {
+        import_proc.update_lane(lane_key(lid), *lid, *tip, *bs);
+    }
+    let import_build = import_proc.build(|_| true).unwrap();
+    assert_eq!(import_build.root, final_root, "import must reproduce the same root");
+
+    // Flush import to DB with ZERO_HASH (IBD sentinel)
+    let mut batch = WriteBatch::default();
+    import_build.flush(&import_stores, &mut batch, pp_blue_score, ZERO_HASH).unwrap();
+    db2.write(batch).unwrap();
+
+    // Verify lanes are readable with correct blue_scores
+    for (lid, tip, bs) in &exported {
+        let lk = lane_key(lid);
+        let v = import_stores.get_lane(lk, 0, |bh| bh == ZERO_HASH);
+        assert!(v.is_some(), "lane {:02x} must be readable", lid[0]);
+        assert_eq!(v.as_ref().unwrap().data().lane_tip_hash, *tip);
+        assert_eq!(v.unwrap().blue_score(), *bs);
     }
 
-    // Verify a subsequent block can build on top of the imported state
-    let mut next_proc = SmtProcessor::new(&stores, pp_blue_score + 1, original_root);
-    next_proc.update_lane(lane_key(&[0xFE; 20]), [0xFE; 20], hash(0xFE));
-    let next_build = next_proc.build(|bh| bh == pp_hash).unwrap();
-    assert_ne!(next_build.root, original_root, "adding a lane should change the root");
-    assert_ne!(next_build.root, empty_root);
+    // Build the same next block on both original and imported stores — roots must match
+    let next_bs = pp_blue_score + 1;
+    let new_lane_id = [0xFE; 20];
+    let new_tip = hash(0xFE);
+
+    let mut orig_next = SmtProcessor::new(&stores, next_bs, final_root);
+    orig_next.update_lane(lane_key(&new_lane_id), new_lane_id, new_tip);
+    let orig_next_build = orig_next.build(|_| true).unwrap();
+
+    let mut import_next = SmtProcessor::new(&import_stores, next_bs, final_root);
+    import_next.update_lane(lane_key(&new_lane_id), new_lane_id, new_tip);
+    let import_next_build = import_next.build(|bh| bh == ZERO_HASH).unwrap();
+
+    assert_eq!(orig_next_build.root, import_next_build.root, "next block must produce same root on original and imported stores");
 }
 
 /// Lanes written with ZERO_HASH block_hash are readable when the caller
@@ -582,10 +594,9 @@ fn zero_hash_block_hash_branches_are_readable() {
     assert_eq!(derived, root);
 }
 
-/// SmtProcessor applies one blue_score to all lanes. With per-lane scores the
-/// leaf hashes differ, producing a different root.
+/// ImportLaneChanges produces the correct root when lanes have different blue_scores.
 #[test]
-fn per_lane_blue_score_produces_different_root() {
+fn import_lane_changes_per_lane_blue_score() {
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
 
@@ -603,11 +614,17 @@ fn per_lane_blue_score_produces_different_root() {
     ref_tree.insert(lk_b, smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b_id, lane_tip: &tip_b, blue_score: bs_b }));
     let expected_root = ref_tree.root();
 
-    let uniform_blue_score = 1000u64;
-    let mut proc = SmtProcessor::new(&stores, uniform_blue_score, SeqCommitActiveNode::empty_root());
-    proc.update_lane(lk_a, lane_a_id, tip_a);
-    proc.update_lane(lk_b, lane_b_id, tip_b);
-    let build = proc.build(|_| true).unwrap();
+    // BlockLaneChanges (uniform) produces a different root
+    let mut block_proc = SmtProcessor::new(&stores, 1000, SeqCommitActiveNode::empty_root());
+    block_proc.update_lane(lk_a, lane_a_id, tip_a);
+    block_proc.update_lane(lk_b, lane_b_id, tip_b);
+    let block_build = block_proc.build(|_| true).unwrap();
+    assert_ne!(block_build.root, expected_root);
 
-    assert_ne!(build.root, expected_root, "uniform blue_score should differ from per-lane reference");
+    // ImportLaneChanges (per-lane) matches the reference
+    let mut import_proc = SmtProcessor::new_import(&stores, 1000, SeqCommitActiveNode::empty_root());
+    import_proc.update_lane(lk_a, lane_a_id, tip_a, bs_a);
+    import_proc.update_lane(lk_b, lane_b_id, tip_b, bs_b);
+    let import_build = import_proc.build(|_| true).unwrap();
+    assert_eq!(import_build.root, expected_root);
 }
