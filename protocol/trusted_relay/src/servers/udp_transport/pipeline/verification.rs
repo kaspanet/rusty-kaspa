@@ -4,7 +4,7 @@ use bytes::Bytes;
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use crossbeam_channel::Sender as CrossbeamSender;
 use fixedbitset::FixedBitSet;
-use kaspa_core::{info, trace, warn};
+use kaspa_core::{debug, info, trace, warn};
 use kaspa_hashes::Hash;
 use ringmap::RingMap;
 
@@ -101,8 +101,7 @@ fn run(
     info!("{}-{} started (allowlist has {} entries: {:?})", WORKER_NAME, worker_idx, allowlist_ips.len(), allowlist_ips);
     let mut count = 0u64;
     let mut dropped_allowlist = 0u64;
-    let mut valid_fragments = 0u64;
-    let mut last_valid_log = 0u64;
+    let mut first_valid_fragment_logged = false;
     while let Ok(message) = receiver.recv() {
         match message {
             VerificationMessage::PacketReceived(PacketReceivedMessage(packet, src)) => {
@@ -173,19 +172,13 @@ fn run(
                     &mut recent_fragments,
                 );
 
-                // Track valid fragments for diagnostics
-                valid_fragments += 1;
-                if valid_fragments == 1 {
-                    info!(
+                // Log first valid fragment for diagnostics
+                if !first_valid_fragment_logged {
+                    debug!(
                         "{}-{}: forwarding FIRST valid fragment (block={}, idx={}) - HMAC auth passed",
                         WORKER_NAME, worker_idx, fragment_hash, fragment_index
                     );
-                } else if valid_fragments - last_valid_log >= 100 {
-                    info!(
-                        "{}-{}: forwarded {} valid fragments so far (latest block={})",
-                        WORKER_NAME, worker_idx, valid_fragments, fragment_hash
-                    );
-                    last_valid_log = valid_fragments;
+                    first_valid_fragment_logged = true;
                 }
 
                 // Forward to the Coordinator.

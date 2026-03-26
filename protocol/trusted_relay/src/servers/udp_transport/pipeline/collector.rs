@@ -2,7 +2,7 @@ use bytes::Bytes;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use kaspa_core::{info, trace, warn};
+use kaspa_core::{debug, info, trace, warn};
 
 use crate::model::fragments::FragmentHeader;
 use crate::params::{FragmentationConfig, TransportParams};
@@ -26,23 +26,17 @@ fn run(
     let mut buf = vec![0u8; buf_size];
     let min_expected_fragment_size = AuthToken::TOKEN_SIZE + FragmentHeader::SIZE + config.payload_size;
     let fragment_index_offset = AuthToken::TOKEN_SIZE + FragmentHeader::FRAGMENT_INDEX_OFFSET;
-    let mut count = 0u64;
-    let mut last_log_count = 0u64;
+    let mut first_packet_logged = false;
     while !shutting_down.load(Ordering::Relaxed) {
         match socket.recv_from(&mut buf) {
             Ok((len, src)) => {
-                count += 1;
                 // Log first packet to confirm UDP reception is working
-                if count == 1 {
-                    info!(
+                if !first_packet_logged {
+                    debug!(
                         "Collector {}: received FIRST UDP packet ({} bytes) from {} - relay is receiving data",
                         collector_idx, len, src
                     );
-                }
-                // Log every 100 packets to confirm receipt
-                if count - last_log_count >= 100 {
-                    info!("Collector {}: received {} packets so far (latest from {})", collector_idx, count, src);
-                    last_log_count = count;
+                    first_packet_logged = true;
                 }
                 // We must ensure we can read the fragment index bytes before routing.
                 // This is the only check we do in the collector.
@@ -55,8 +49,8 @@ fn run(
                     % verification_senders.len();
 
                 trace!(
-                    "{}[{}]: {} recv {} bytes from {}, routing to worker {}",
-                    count, COLLECTOR_WORKER_NAME, collector_idx, len, src, worker_idx
+                    "{}[{}]: recv {} bytes from {}, routing to worker {}",
+                    COLLECTOR_WORKER_NAME, collector_idx, len, src, worker_idx
                 );
                 let packet = Bytes::copy_from_slice(&buf[..len]);
                 let msg = VerificationMessage::PacketReceived(PacketReceivedMessage::new(packet, src));
