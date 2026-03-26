@@ -71,6 +71,8 @@ pub const MAX_PUB_KEYS_PER_MUTLTISIG: i32 = 20;
 // Note that this includes OP_RESERVED which counts as a push operation.
 pub const NO_COST_OPCODE: u8 = 0x60;
 
+pub const ZERO_SIG: &[u8] = &[0u8; 64];
+
 pub type DynOpcodeImplementation<Tx, Reused> = Box<dyn OpCodeImplementation<Tx, Reused>>;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -647,8 +649,19 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             }
         }
 
-        if failed && signatures.iter().any(|sig| !sig.is_empty()) {
-            return Err(TxScriptError::NullFail);
+        if self.flags.covenants_enabled {
+            if failed
+                && !signatures.iter().all(|sig| {
+                    // We check whether it's empty or the stripped sig is all zeros.
+                    sig.split_last().map(|(_, sig_without_type)| sig_without_type == ZERO_SIG).unwrap_or(true)
+                })
+            {
+                return Err(TxScriptError::NullFail);
+            }
+        } else {
+            if failed && signatures.iter().any(|sig| !sig.is_empty()) {
+                return Err(TxScriptError::NullFail);
+            }
         }
 
         self.dstack.push_item(!failed)?;
@@ -680,7 +693,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         enforce_nullfail: bool,
     ) -> Result<bool, TxScriptError> {
         self.runtime_sig_op_counter.consume_sig_op()?;
-        if sig.is_empty() {
+        if sig == ZERO_SIG {
             return Ok(false);
         }
 
@@ -732,7 +745,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         enforce_nullfail: bool,
     ) -> Result<bool, TxScriptError> {
         self.runtime_sig_op_counter.consume_sig_op()?;
-        if sig.is_empty() {
+        if sig.is_empty() || sig == ZERO_SIG {
             return Ok(false);
         }
 
