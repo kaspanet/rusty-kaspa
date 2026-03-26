@@ -60,18 +60,21 @@ Note: The stack is designed upon crossbeam worker threads, and can easily be mul
 ## Key Features
 
 ### Reed-Solomon FEC Encoding
+
 - Default: k=16 data fragments, m=4 parity fragments per generation.
 - Receiver needs only k of (k+m) fragments to recover data
 - Tolerates ~20% packet loss.
 - SIMD-accelerated via `reed-solomon-simd` crate (although actual benefits compared to other crates have not been benchmarked)
 
 ### HMAC-SHA256 Authentication
+
 - Offers basic DDoS protection.
 - Per-fragment MAC: `hmac(secret, header ‖ payload)`
 - TCP handshake: `hmac(secret, nonce ‖ direction ‖ udp_port)`
 - Shared secret across trusted peer group
 
 ### IBD-Aware Control
+
 - UDP transport is designed to be toggleable
 - Auto-disabled during Initial Block Download (IBD)
 - Re-enabled when node considers itself synced
@@ -226,7 +229,6 @@ receive buffer:
 `sudo sysctl -w net.core.rmem_max=33554432`
 send buffer:
 `sudo sysctl -w net.core.wmem_max=33554432`
-
 
 ## Dependencies Added
 
