@@ -98,6 +98,15 @@ impl SmtStores {
         self.branch_cache.lock().evict_below_score(min_score);
         self.lane_cache.lock().evict_below_score(min_score);
     }
+
+    /// Clear all SMT stores and caches. Used before IBD SMT sync.
+    pub fn clear_all(&self) {
+        self.branch_version.delete_all();
+        self.lane_version.delete_all();
+        self.score_index.delete_all();
+        self.branch_cache.lock().clear();
+        self.lane_cache.lock().clear();
+    }
 }
 
 /// Abstraction over lane change collections.

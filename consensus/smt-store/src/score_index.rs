@@ -22,6 +22,11 @@ impl DbScoreIndex {
         Self { db, prefix: DatabaseStorePrefixes::SmtScoreIndex.into() }
     }
 
+    pub fn delete_all(&self) {
+        use kaspa_database::prelude::DirectDbWriter;
+        DirectDbWriter::new(&self.db).delete_range(vec![self.prefix], vec![self.prefix + 1]).unwrap();
+    }
+
     /// Write all lane touches for a block at once.
     pub fn put(&self, mut writer: impl DbWriter, blue_score: u64, block_hash: Hash, lane_keys: &[Hash]) -> StoreResult<()> {
         let key = ScoreIndexKey::new(self.prefix, blue_score, block_hash);

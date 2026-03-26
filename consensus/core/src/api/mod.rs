@@ -451,6 +451,18 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn clear_pruning_smt_stores(&self) {
+        unimplemented!()
+    }
+
+    fn set_pruning_smt_stable_flag(&self, _val: bool) {
+        unimplemented!()
+    }
+
+    fn is_pruning_smt_stable(&self) -> bool {
+        unimplemented!()
+    }
+
     fn set_pruning_utxoset_stable_flag(&self, val: bool) {
         unimplemented!()
     }

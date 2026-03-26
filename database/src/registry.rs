@@ -79,6 +79,7 @@ pub enum DatabaseStorePrefixes {
     SmtBranchVersions = 71,
     SmtLaneVersions = 73,
     SmtScoreIndex = 74,
+    SmtSyncFlag = 75,
 
     // ---- Separator ----
     /// Reserved as a separator

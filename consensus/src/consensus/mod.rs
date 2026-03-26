@@ -356,6 +356,9 @@ impl Consensus {
         if pruning_meta_write.pruning_utxoset_stable_flag() {
             pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, true).unwrap();
         }
+        if pruning_meta_write.pruning_smt_stable_flag() {
+            pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, true).unwrap();
+        }
         self.db.write(batch).unwrap();
     }
 
@@ -496,8 +499,11 @@ impl Consensus {
         self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
         // Update selected_chain
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
-        // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
-        self.pruning_meta_stores.write().set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+        // It is important to set these flags to false together with writing the batch, in case the node crashes suddenly before syncing starts
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, false).unwrap();
+        drop(pruning_meta_write);
         // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
         let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
         // Add the pruning point itself which is also missing a body
@@ -1457,6 +1463,25 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
         self.db.write(batch).unwrap();
         pruning_meta_write.utxo_set.clear().unwrap();
+    }
+
+    fn clear_pruning_smt_stores(&self) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, false).unwrap();
+        self.db.write(batch).unwrap();
+        self.storage.smt_stores.clear_all();
+    }
+
+    fn set_pruning_smt_stable_flag(&self, val: bool) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, val).unwrap();
+        self.db.write(batch).unwrap();
+    }
+
+    fn is_pruning_smt_stable(&self) -> bool {
+        self.pruning_meta_stores.read().pruning_smt_stable_flag()
     }
 
     /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default

@@ -501,6 +501,15 @@ impl ConsensusSessionOwned {
     pub async fn async_get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
         self.clone().spawn_blocking(move |c| c.get_n_last_pruning_points(n)).await
     }
+    pub async fn async_clear_pruning_smt_stores(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_pruning_smt_stores()).await
+    }
+    pub async fn async_set_pruning_smt_stable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_smt_stable_flag(true)).await
+    }
+    pub async fn async_is_pruning_smt_stable(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_smt_stable()).await
+    }
     pub async fn async_get_pruning_point_smt_metadata(
         &self,
         expected_pp: Hash,

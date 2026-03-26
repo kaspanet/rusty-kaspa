@@ -23,6 +23,11 @@ impl DbBranchVersionStore {
         Self { db, prefix: DatabaseStorePrefixes::SmtBranchVersions.into() }
     }
 
+    pub fn delete_all(&self) {
+        use kaspa_database::prelude::DirectDbWriter;
+        DirectDbWriter::new(&self.db).delete_range(vec![self.prefix], vec![self.prefix + 1]).unwrap();
+    }
+
     pub fn put(
         &self,
         mut writer: impl DbWriter,

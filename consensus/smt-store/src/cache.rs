@@ -68,6 +68,11 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
         self.by_entity.is_empty()
     }
 
+    pub fn clear(&mut self) {
+        self.by_entity.clear();
+        self.by_score.clear();
+    }
+
     pub fn capacity(&self) -> usize {
         self.capacity
     }
