@@ -174,7 +174,7 @@ impl HandleFastTrustedRelayFlow {
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
                 ctx.on_new_block(&session, BlockProcessingBatch::default(), validated_block, virtual_state_task).await;
-                ctx.log_block_event(BlockLogEvent::Relay(hash));
+                ctx.log_block_event(BlockLogEvent::TrustedRelay(hash));
             });
         }
     }

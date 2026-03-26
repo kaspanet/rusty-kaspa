@@ -80,6 +80,8 @@ const REQUEST_SCOPE_WAIT_TIME: Duration = Duration::from_secs(1);
 pub enum BlockLogEvent {
     /// Accepted block via *relay*
     Relay(Hash),
+    /// Accepted block via *trusted relay*
+    TrustedRelay(Hash),
     /// Accepted block via *submit block*
     Submit(Hash),
     /// Orphaned block with x missing roots
@@ -116,11 +118,13 @@ impl BlockEventLogger {
                 struct LogSummary {
                     // Representatives
                     relay_rep: Option<Hash>,
+                    trusted_relay_rep: Option<Hash>,
                     submit_rep: Option<Hash>,
                     orphan_rep: Option<Hash>,
                     unorphan_rep: Option<Hash>,
                     // Counts
                     relay_count: usize,
+                    trusted_relay_count: usize,
                     submit_count: usize,
                     orphan_count: usize,
                     unorphan_count: usize,
@@ -148,6 +152,10 @@ impl BlockEventLogger {
                         self.relay_rep.into()
                     }
 
+                    fn trusted_relay(&self) -> LogHash {
+                        self.trusted_relay_rep.into()
+                    }
+
                     fn submit(&self) -> LogHash {
                         self.submit_rep.into()
                     }
@@ -166,6 +174,10 @@ impl BlockEventLogger {
                         BlockLogEvent::Relay(hash) => {
                             summary.relay_count += 1;
                             summary.relay_rep = Some(hash)
+                        }
+                        BlockLogEvent::TrustedRelay(hash) => {
+                            summary.trusted_relay_count += 1;
+                            summary.trusted_relay_rep = Some(hash)
                         }
                         BlockLogEvent::Submit(hash) => {
                             summary.submit_count += 1;
@@ -193,6 +205,12 @@ impl BlockEventLogger {
                     (n, m) => {
                         info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, summary.submit(), m, n)
                     }
+                }
+
+                match summary.trusted_relay_count {
+                    0 => {}
+                    1 => info!("Accepted block {} via trusted relay", summary.trusted_relay()),
+                    n => info!("Accepted {} blocks ...{} via trusted relay", n, summary.trusted_relay()),
                 }
 
                 match (summary.orphan_count, summary.orphan_roots_count) {
@@ -533,6 +551,7 @@ impl FlowContext {
         } else {
             match event {
                 BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
+                BlockLogEvent::TrustedRelay(hash) => info!("Accepted block {} via trusted relay", hash),
                 BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
                 BlockLogEvent::Orphaned(orphan, roots_count) => {
                     info!("Received a block with {} missing ancestors, adding to orphan pool: {}", roots_count, orphan)
