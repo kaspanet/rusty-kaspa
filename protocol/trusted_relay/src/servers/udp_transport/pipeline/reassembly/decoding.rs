@@ -1,5 +1,5 @@
 use crossbeam_channel::{Receiver, Sender};
-use kaspa_core::{info, warn};
+use kaspa_core::{debug, info, warn};
 use reed_solomon_simd::ReedSolomonDecoder;
 
 use crate::servers::udp_transport::pipeline::reassembly::reassembly::WORKER_NAME as REASSEMBLER_WORKER_NAME;
@@ -81,7 +81,7 @@ fn run(
 
         let data = match maybe_data {
             Ok(Ok(d)) => {
-                info!(
+                debug!(
                     "{}-{}-{}-{}: successfully decoded block {} generation {} ({} bytes)",
                     REASSEMBLER_WORKER_NAME, reassembler_idx, WORKER_NAME, decoder_idx, job.hash, job.generation, d.len()
                 );

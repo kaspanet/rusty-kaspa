@@ -137,7 +137,7 @@ fn handle_fragment(
 
     // Insert fragment; returns true if decodable (and not previously decodable) after this insert
     if state.encoded.insert_fragment(generation, index_within_gen, fragment) {
-        info!("Block {} generation {} is now decodable, dispatching decode job", hash, generation);
+        debug!("Block {} generation {} is now decodable, dispatching decode job", hash, generation);
         let job = state.encoded.extract_job_from_generation(generation);
         if let Err(e) = decoder_job_sender.try_send(DecodeJobMessage::new(job)) {
             warn!("Error dispatching decode job for block {}: {}", state.metadata.hash, e);
@@ -169,7 +169,7 @@ fn handle_decode_result(
         processed_block_cache.push_back(result.hash);
         if let Some(state) = partial_blocks.remove(&result.hash) {
             let block_data = state.decoded.reassemble();
-            info!("Block {} fully reassembled ({} bytes), sending to flow handler", result.hash, block_data.len());
+            debug!("Block {} fully reassembled ({} bytes), sending to flow handler", result.hash, block_data.len());
             block_sender
                 .send(BlockReassemblerBlockMessage::new(result.hash, FtrBlock::from(block_data)))
                 .unwrap_or_else(|e| warn!("Failed to send reassembled block {}: {}", result.hash, e));

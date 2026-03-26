@@ -55,7 +55,7 @@ impl HandleFastTrustedRelayFlow {
             let session = self.ctx.consensus().unguarded_session();
             let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
 
-            info!("Waiting to receive block from fast trusted relay...");
+            debug!("Waiting to receive block from fast trusted relay...");
 
             // Use select! to handle graceful shutdown
             let (hash, ftr_block) = tokio::select! {
@@ -67,7 +67,7 @@ impl HandleFastTrustedRelayFlow {
                 result = self.fast_trusted_relay.recv_block() => result,
             };
 
-            info!("Received block {} from fast trusted relay", hash);
+            debug!("Received block {} from fast trusted relay", hash);
 
             // We do not sync from fast relay messages, but if in transitional state,
             // toggle the fast relay off.
