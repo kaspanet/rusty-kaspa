@@ -2,7 +2,7 @@ use crossbeam_channel::{Receiver, Sender};
 use kaspa_core::{debug, warn};
 use reed_solomon_simd::ReedSolomonDecoder;
 
-use crate::servers::udp_transport::pipeline::reassembly::reassembly::WORKER_NAME as REASSEMBLER_WORKER_NAME;
+use crate::servers::udp_transport::pipeline::reassembly::reassembler::WORKER_NAME as REASSEMBLER_WORKER_NAME;
 use crate::{
     codec::decoder::{DecodeJob, DecodeResult, decode_generation},
     params::FragmentationConfig,
@@ -17,27 +17,19 @@ pub type DecodingJobReceiver = Receiver<DecodeJobMessage>;
 pub struct DecodeJobMessage(DecodeJob);
 
 impl DecodeJobMessage {
-    #[inline(always)]
-    pub fn new(job: DecodeJob) -> Self {
+    pub(crate) fn new(job: DecodeJob) -> Self {
         Self(job)
-    }
-
-    #[inline(always)]
-    pub fn job(self) -> DecodeJob {
-        self.0
     }
 }
 
 pub struct DecodeResultMessage(DecodeResult);
 
 impl DecodeResultMessage {
-    #[inline(always)]
-    pub fn new(result: DecodeResult) -> Self {
+    pub(crate) fn new(result: DecodeResult) -> Self {
         Self(result)
     }
 
-    #[inline(always)]
-    pub fn result(self) -> DecodeResult {
+    pub(crate) fn result(self) -> DecodeResult {
         self.0
     }
 }
@@ -123,13 +115,12 @@ pub fn spawn_decode_worker(
     job_rx: Receiver<DecodeJobMessage>,
     result_tx: Sender<DecodeResultMessage>,
 ) -> std::thread::JoinHandle<()> {
-    let handle = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name(format!("{}-{}-{}-{}", REASSEMBLER_WORKER_NAME, reassembler_idx, WORKER_NAME, decoder_idx))
         .spawn(move || run(reassembler_idx, decoder_idx, config, job_rx, result_tx))
-        .expect(
-            format!("Failed to spawn {}-{}-{}-{} thread", REASSEMBLER_WORKER_NAME, reassembler_idx, WORKER_NAME, decoder_idx).as_str(),
-        );
-    handle
+        .unwrap_or_else(|_| {
+            panic!("Failed to spawn {}-{}-{}-{} thread", REASSEMBLER_WORKER_NAME, reassembler_idx, WORKER_NAME, decoder_idx)
+        })
 }
 
 // ============================================================================

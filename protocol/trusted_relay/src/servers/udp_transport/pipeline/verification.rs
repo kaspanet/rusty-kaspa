@@ -14,8 +14,8 @@ use crate::model::fragments::{Fragment, FragmentHeader};
 use crate::params::{FragmentationConfig, TransportParams};
 use crate::servers::auth::{AuthToken, TokenAuthenticator};
 use crate::servers::peer_directory::{Allowlist, PeerDirectory};
-use crate::servers::udp_transport::pipeline::reassembly::reassembly::{
-    ReassemblerBlockReceiver, ReassemblerFragmentMessage, ReassemblerFragmentReceiver, ReassemblerFragmentSender,
+use crate::servers::udp_transport::pipeline::reassembly::reassembler::{
+    ReassemblerFragmentMessage, ReassemblerFragmentReceiver, ReassemblerFragmentSender,
 };
 use crate::servers::udp_transport::pipeline::relay::{RelayMessage, RelayReceiver, RelaySender};
 
@@ -27,18 +27,15 @@ pub type VerificationReceiver = CrossbeamReceiver<VerificationMessage>;
 pub struct PacketReceivedMessage(Bytes, SocketAddr);
 
 impl PacketReceivedMessage {
-    #[inline(always)]
     pub fn new(raw_packet: Bytes, src: SocketAddr) -> Self {
         Self(raw_packet, src)
     }
 
-    #[inline(always)]
-    pub fn raw_packet(mut self) -> Bytes {
+    pub fn raw_packet(self) -> Bytes {
         self.0
     }
 
-    #[inline(always)]
-    pub fn src(mut self) -> SocketAddr {
+    pub fn src(self) -> SocketAddr {
         self.1
     }
 }
@@ -46,18 +43,15 @@ impl PacketReceivedMessage {
 pub struct MarkBlockBroadcastedMessage(Hash, u16);
 
 impl MarkBlockBroadcastedMessage {
-    #[inline(always)]
     pub fn new(hash: Hash, total_fragments: u16) -> Self {
         Self(hash, total_fragments)
     }
 
-    #[inline(always)]
-    pub fn hash(mut self) -> Hash {
+    pub fn hash(self) -> Hash {
         self.0
     }
 
-    #[inline(always)]
-    pub fn total_fragments(mut self) -> u16 {
+    pub fn total_fragments(self) -> u16 {
         self.1
     }
 }
@@ -77,6 +71,7 @@ pub enum VerificationMessage {
 ///
 /// Owns a private `RingMap` for deduplication (no cross-worker synchronization).
 /// Performs MAC verification, deduplication, and forwarding of authenticated fragments.
+#[allow(clippy::too_many_arguments)]
 fn run(
     worker_idx: usize,
     num_of_workers: usize,
@@ -118,7 +113,7 @@ fn run(
                     // but it does require an attacker to know the ips of trusted relay peers,
                     // or have a way to sniff the traffic. Actual authentication is via the hmac.
                     dropped_allowlist += 1;
-                    if dropped_allowlist <= 5 || dropped_allowlist % 100 == 0 {
+                    if dropped_allowlist <= 5 || dropped_allowlist.is_multiple_of(100) {
                         let current_allowlist: Vec<_> = allowlist.load().keys().cloned().collect();
                         warn!(
                             "{}-{}: dropping packet from {} (not in allowlist, dropped {} so far). Allowlist: {:?}",
@@ -250,6 +245,7 @@ fn run(
     debug!("{}-{}: UDP verification worker exited", WORKER_NAME, worker_idx);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_verifier_thread(
     worker_idx: usize,
     num_of_workers: usize,
@@ -261,10 +257,10 @@ pub fn spawn_verifier_thread(
     forwarder_senders: RelaySender,
     forwarder_receivers: RelayReceiver,
     config: FragmentationConfig,
-    transport: TransportParams,
+    _transport: TransportParams,
     recent_fragments: RingMap<Hash, FixedBitSet>,
 ) -> std::thread::JoinHandle<()> {
-    let handle = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name(format!("{}-{}", WORKER_NAME, worker_idx))
         .spawn(move || {
             run(
@@ -281,8 +277,7 @@ pub fn spawn_verifier_thread(
                 directory.allowlist(),
             );
         })
-        .expect(&format!("Failed to spawn {}-{} thread", WORKER_NAME, worker_idx));
-    handle
+        .unwrap_or_else(|_| panic!("Failed to spawn {}-{} thread", WORKER_NAME, worker_idx))
 }
 
 #[inline(always)]

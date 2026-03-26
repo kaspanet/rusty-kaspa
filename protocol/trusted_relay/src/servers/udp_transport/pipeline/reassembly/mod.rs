@@ -1,2 +1,2 @@
-pub mod decoding;
-pub mod reassembly;
+pub mod decoder;
+pub mod reassembler;

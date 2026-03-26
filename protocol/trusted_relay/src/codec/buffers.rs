@@ -5,7 +5,6 @@ use crate::{codec::decoder::DecodeJob, model::fragments::Fragment, params::Fragm
 
 // Buffers designed for holding accumulated fragments, and for reassembling from such fragments.
 
-
 // ============================================================================
 // BUFFER METADATA
 // ============================================================================
@@ -66,7 +65,15 @@ pub(crate) struct GenerationalfragmentBuffer {
 
 impl GenerationalfragmentBuffer {
     pub fn new(generation: usize, k: usize, m: usize) -> Self {
-        Self { generation, k, m, data_fragments: vec![None; k], data_fragment_count: 0, parity_fragments: vec![None; m], parity_fragment_count: 0 }
+        Self {
+            generation,
+            k,
+            m,
+            data_fragments: vec![None; k],
+            data_fragment_count: 0,
+            parity_fragments: vec![None; m],
+            parity_fragment_count: 0,
+        }
     }
 
     /// Insert a fragment by its index within this generation.
@@ -132,7 +139,7 @@ pub(crate) struct EncodedBuffer {
     generations: Vec<GenerationalfragmentBuffer>,
     /// Number of generations that have been dispatched for decoding.
     dispatched_count: usize,
-    payload_size: usize,
+    _payload_size: usize,
 }
 
 impl EncodedBuffer {
@@ -142,7 +149,7 @@ impl EncodedBuffer {
             let (k, m) = metadata.k_m_for_generation(g);
             generations.push(GenerationalfragmentBuffer::new(g, k, m));
         }
-        Self { hash: metadata.hash, generations, dispatched_count: 0, payload_size: metadata.payload_size }
+        Self { hash: metadata.hash, generations, dispatched_count: 0, _payload_size: metadata.payload_size }
     }
 
     /// Insert a fragment into the correct generational buffer.
@@ -165,15 +172,7 @@ impl EncodedBuffer {
         let k = generational_buffer.k;
         let m = generational_buffer.m;
         let num_of_data_fragments = generational_buffer.data_fragment_count;
-        DecodeJob {
-            hash: self.hash,
-            generation,
-            k,
-            m,
-            data_fragments,
-            num_of_data_fragments,
-            parity_fragments,
-        }
+        DecodeJob { hash: self.hash, generation, k, m, data_fragments, num_of_data_fragments, parity_fragments }
     }
 
     #[cfg(test)]

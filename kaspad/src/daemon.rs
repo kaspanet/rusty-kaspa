@@ -1,4 +1,4 @@
-use std::{fs, net::SocketAddr, path::PathBuf, process::exit, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
@@ -120,26 +120,22 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     }
 
     // Fast Trusted Relay sanity
-    if !args.trusted_relay_incoming.is_empty() || !args.trusted_relay_outgoing.is_empty() {
-        if args.trusted_relay_secret.is_none() {
+    if (!args.trusted_relay_incoming.is_empty() || !args.trusted_relay_outgoing.is_empty())
+        && args.trusted_relay_secret.is_none() {
             return Err(ConfigError::TrustedRelayMissingSecret);
         }
-    }
-    if let Some(k) = args.fec_data_blocks {
-        if k < 4 || k > 128 {
+    if let Some(k) = args.fec_data_blocks
+        && (!(4..=128).contains(&k)) {
             return Err(ConfigError::FecDataBlocksOutOfRange);
         }
-    }
-    if let Some(m) = args.fec_parity_blocks {
-        if m < 1 || m > 64 {
+    if let Some(m) = args.fec_parity_blocks
+        && (!(1..=64).contains(&m)) {
             return Err(ConfigError::FecParityBlocksOutOfRange);
         }
-    }
-    if let Some(payload) = args.udp_payload_size {
-        if payload < 500 || payload > 1472 {
+    if let Some(payload) = args.udp_payload_size
+        && (!(500..=1472).contains(&payload)) {
             return Err(ConfigError::UdpPayloadSizeOutOfRange);
         }
-    }
 
     Ok(())
 }
@@ -275,7 +271,7 @@ pub fn build_fast_trusted_relay(args: &Args) -> Option<FastTrustedRelay> {
     // multiple nodes can run concurrently without port conflicts.
     let listen_address = args.externalip.unwrap().normalize(DEFAULT_TCP_PORT).into();
 
-    let mut relay = FastTrustedRelay::new(transport, frag_cfg, listen_address, secret, incoming, outgoing);
+    let relay = FastTrustedRelay::new(transport, frag_cfg, listen_address, secret, incoming, outgoing);
     Some(relay)
 }
 
@@ -712,7 +708,7 @@ Do you confirm? (y/n)";
     ));
 
     // construct fast-trusted-relay if requested by user
-    let fast_trusted_relay = build_fast_trusted_relay(&args);
+    let fast_trusted_relay = build_fast_trusted_relay(args);
 
     info!("fast trusted relay: {}", if fast_trusted_relay.is_some() { "enabled" } else { "disabled" });
 

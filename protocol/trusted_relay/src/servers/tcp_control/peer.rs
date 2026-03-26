@@ -8,9 +8,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
-use crate::servers::tcp_control::HubEvent;
 use crate::servers::peer_directory::PeerInfo;
-
+use crate::servers::tcp_control::HubEvent;
 
 // ============================================================================
 // PEER DIRECTION
@@ -344,7 +343,7 @@ mod tests {
         let (hub_tx, _hub_rx) = mpsc::unbounded_channel();
         let peer = Peer::new(addr, PeerDirection::Both, server_stream, "127.0.0.1:9999".parse().unwrap(), hub_tx);
         (peer, remote_stream)
-        }
+    }
 
     #[tokio::test]
     async fn test_control_msg_roundtrip() {

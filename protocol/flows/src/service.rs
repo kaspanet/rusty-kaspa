@@ -10,7 +10,7 @@ use kaspa_p2p_lib::Adaptor;
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
-use crate::flow_context::{self, FlowContext};
+use crate::flow_context::FlowContext;
 
 const P2P_CORE_SERVICE: &str = "p2p-service";
 

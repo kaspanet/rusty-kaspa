@@ -25,7 +25,7 @@ use kaspa_trusted_relay::servers::auth::{AuthToken, TokenAuthenticator};
 use kaspa_trusted_relay::servers::peer_directory::{PeerDirectory, PeerInfo};
 use kaspa_trusted_relay::servers::tcp_control::PeerDirection;
 use kaspa_trusted_relay::servers::udp_transport::pipeline::broadcast::{BroadcastMessage, spawn_broadcaster_thread};
-use kaspa_trusted_relay::servers::udp_transport::pipeline::reassembly::reassembly::BlockReassemblerBlockMessage;
+use kaspa_trusted_relay::servers::udp_transport::pipeline::reassembly::reassembler::BlockReassemblerBlockMessage;
 use kaspa_trusted_relay::servers::udp_transport::pipeline::verification::VerificationMessage;
 use kaspa_trusted_relay::servers::udp_transport::runtime::TransportRuntime;
 

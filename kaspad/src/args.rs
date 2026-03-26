@@ -7,15 +7,10 @@ use kaspa_consensus_core::{
 // fast trusted relay types needed for helper
 use kaspa_core::kaspad_env::version;
 use kaspa_notify::address::tracker::Tracker;
-use kaspa_trusted_relay::{
-    FastTrustedRelay,
-    params::{FragmentationConfig, TransportParams},
-};
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, serde_as};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::{ffi::OsString, fs};
 use toml::from_str;
 

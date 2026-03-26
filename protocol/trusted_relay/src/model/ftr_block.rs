@@ -11,8 +11,8 @@ use kaspa_hashes::Hash;
 pub struct FtrBlock(pub Vec<u8>);
 
 impl FtrBlock {
-    const HeaderHeightIndexOffset: usize = 32;
-    const TransactionLengthIndexOffset: usize = 36;
+    const HEADER_HEIGHT_INDEX_OFFSET: usize = 32;
+    const TRANSACTION_LENGTH_INDEX_OFFSET: usize = 36;
 
     pub fn new(hash: Hash, header_len: u32, txs_len: u32, header: Vec<u8>, txs: Vec<u8>) -> Self {
         let mut buf: Vec<u8> = Vec::with_capacity(32 + 4 + 4 + header.len() + txs.len());
@@ -24,40 +24,34 @@ impl FtrBlock {
         Self(buf)
     }
 
-    #[inline(always)]
     pub fn hash(&self) -> Hash {
-        Hash::from_slice(&self.0[..Self::HeaderHeightIndexOffset])
+        Hash::from_slice(&self.0[..Self::HEADER_HEIGHT_INDEX_OFFSET])
     }
 
-    #[inline(always)]
     pub fn header_len(&self) -> u32 {
         u32::from_le_bytes(
-            self.0[Self::HeaderHeightIndexOffset..Self::TransactionLengthIndexOffset]
+            self.0[Self::HEADER_HEIGHT_INDEX_OFFSET..Self::TRANSACTION_LENGTH_INDEX_OFFSET]
                 .try_into()
                 .expect("FtrBlock data too small for header_len"),
         )
     }
 
-    #[inline(always)]
     pub fn txs_len(&self) -> u32 {
         u32::from_le_bytes(
-            self.0[Self::TransactionLengthIndexOffset..Self::TransactionLengthIndexOffset + 4]
+            self.0[Self::TRANSACTION_LENGTH_INDEX_OFFSET..Self::TRANSACTION_LENGTH_INDEX_OFFSET + 4]
                 .try_into()
                 .expect("FtrBlock data too small for txs_len"),
         )
     }
 
-    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    #[inline(always)]
     pub fn as_bytes(self) -> Vec<u8> {
         self.0
     }
 }
-
 
 impl From<FtrBlock> for Block {
     fn from(ftr_block: FtrBlock) -> Self {
@@ -79,11 +73,9 @@ impl From<FtrBlock> for Block {
 }
 
 impl From<Block> for FtrBlock {
-
     fn from(block: Block) -> Self {
         let header_bytes = bincode::serialize(&*block.header).expect("header serialization failed");
-        let txs_bytes =
-            bincode::serialize(&*block.transactions).expect("transactions serialization failed");
+        let txs_bytes = bincode::serialize(&*block.transactions).expect("transactions serialization failed");
         let hash = block.header.hash;
         Self::new(hash, header_bytes.len() as u32, txs_bytes.len() as u32, header_bytes, txs_bytes)
     }
@@ -92,8 +84,7 @@ impl From<Block> for FtrBlock {
 impl From<&Block> for FtrBlock {
     fn from(block: &Block) -> Self {
         let header_bytes = bincode::serialize(&*block.header).expect("header serialization failed");
-        let txs_bytes =
-            bincode::serialize(&*block.transactions).expect("transactions serialization failed");
+        let txs_bytes = bincode::serialize(&*block.transactions).expect("transactions serialization failed");
         let hash = block.header.hash;
         Self::new(hash, header_bytes.len() as u32, txs_bytes.len() as u32, header_bytes, txs_bytes)
     }

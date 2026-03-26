@@ -90,7 +90,7 @@ pub fn spawn_collector_thread(
     config: FragmentationConfig,
     shutting_down: Arc<AtomicBool>,
 ) -> std::thread::JoinHandle<()> {
-    let handle = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name(format!("{}-{}", COLLECTOR_WORKER_NAME, collector_idx))
         .spawn(move || {
             run(
@@ -103,6 +103,5 @@ pub fn spawn_collector_thread(
                 shutting_down.clone(),
             );
         })
-        .expect(&format!("Failed to spawn {}-{} thread", COLLECTOR_WORKER_NAME, collector_idx));
-    handle
+        .unwrap_or_else(|_| panic!("Failed to spawn {}-{} thread", COLLECTOR_WORKER_NAME, collector_idx))
 }

@@ -11,7 +11,7 @@ use crate::{
     codec::{buffers::BlockDecodeState, decoder::DecodeResult},
     model::{fragments::Fragment, ftr_block::FtrBlock},
     params::FragmentationConfig,
-    servers::udp_transport::pipeline::reassembly::decoding::{DecodeJobMessage, DecodingJobSender, DecodingResultReceiver},
+    servers::udp_transport::pipeline::reassembly::decoder::{DecodeJobMessage, DecodingJobSender, DecodingResultReceiver},
 };
 
 pub const WORKER_NAME: &str = "block-reassembler-worker";
@@ -19,12 +19,10 @@ pub const WORKER_NAME: &str = "block-reassembler-worker";
 pub struct ReassemblerFragmentMessage(Fragment);
 
 impl ReassemblerFragmentMessage {
-    #[inline(always)]
     pub fn new(fragment: Fragment) -> Self {
         Self(fragment)
     }
 
-    #[inline(always)]
     pub fn fragment(self) -> Fragment {
         self.0
     }
@@ -33,22 +31,18 @@ impl ReassemblerFragmentMessage {
 pub struct BlockReassemblerBlockMessage(Hash, FtrBlock);
 
 impl BlockReassemblerBlockMessage {
-    #[inline(always)]
     pub fn new(hash: Hash, block: FtrBlock) -> Self {
         Self(hash, block)
     }
 
-    #[inline(always)]
     pub fn hash(self) -> Hash {
         self.0
     }
 
-    #[inline(always)]
     pub fn block(self) -> FtrBlock {
         self.1
     }
 
-    #[inline(always)]
     pub fn into_parts(self) -> (Hash, FtrBlock) {
         (self.0, self.1)
     }
@@ -63,7 +57,7 @@ pub type ReassemblerBlockReceiver = TokioReceiver<BlockReassemblerBlockMessage>;
 // DECODER CONFIG
 // ============================================================================
 
-pub fn run(
+pub(crate) fn run(
     reassembler_idx: usize,
     fragment_receiver: ReassemblerFragmentReceiver,
     decoder_job_sender: DecodingJobSender,
@@ -126,7 +120,7 @@ fn handle_fragment(
     if !partial_blocks.contains_key(&hash) && partial_blocks.len() >= max_congruent_blocks {
         // Evict the oldest block (first inserted) to make room.
         if let Some((&oldest_hash, _)) = partial_blocks.iter().next() {
-            warn!("Evicting stale block {} to enforce max_concurrent_blocks ({})", oldest_hash, max_congruent_blocks);
+            debug!("Evicting stale block {} to enforce max_concurrent_blocks ({})", oldest_hash, max_congruent_blocks);
             partial_blocks.remove(&oldest_hash);
         }
     }
@@ -177,7 +171,7 @@ fn handle_decode_result(
     }
 }
 
-pub fn spawn_reassembler_thread(
+pub(crate) fn spawn_reassembler_thread(
     reassembler_idx: usize,
     fragment_receiver: ReassemblerFragmentReceiver,
     decoder_job_sender: DecodingJobSender,
@@ -188,7 +182,7 @@ pub fn spawn_reassembler_thread(
     max_congruent_blocks: usize,
     config: FragmentationConfig,
 ) -> std::thread::JoinHandle<()> {
-    let handle = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name(format!("{}-{}", WORKER_NAME, reassembler_idx))
         .spawn(move || {
             run(
@@ -203,8 +197,7 @@ pub fn spawn_reassembler_thread(
                 config,
             )
         })
-        .expect(format!("Failed to spawn {}-{} thread", WORKER_NAME, reassembler_idx).as_str());
-    handle
+        .unwrap_or_else(|_| panic!("Failed to spawn {}-{} thread", WORKER_NAME, reassembler_idx))
 }
 
 #[cfg(test)]

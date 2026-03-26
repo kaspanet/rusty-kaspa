@@ -1,23 +1,19 @@
 use crate::{
-    flow_context::{BlockLogEvent, FlowContext, RequestScope},
+    flow_context::{BlockLogEvent, FlowContext},
     flow_trait::Flow,
     flowcontext::orphans::OrphanOutput,
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
-use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
+use kaspa_consensusmanager::BlockProcessingBatch;
 use kaspa_core::{debug, info, warn};
-use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
-    IncomingRoute, Router, SharedIncomingRoute,
-    common::ProtocolError,
-    convert::header::{HeaderFormat, Versioned},
-    dequeue, dequeue_with_timeout, make_message, make_request,
-    pb::{InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage, kaspad_message::Payload},
+    Router,
+    common::ProtocolError, make_message,
+    pb::{InvRelayBlockMessage, kaspad_message::Payload},
 };
-use kaspa_trusted_relay::{FastTrustedRelay, fast_trusted_relay, model::ftr_block::FtrBlock};
-use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
+use kaspa_trusted_relay::FastTrustedRelay;
 use kaspa_utils::triggers::Listener;
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 
 // TODO: implement more intricate orphan handling.
 
@@ -82,7 +78,7 @@ impl HandleFastTrustedRelayFlow {
                 }
                 _ => {
                     // Block is already known, skip to next inv
-                    info!("Relay block {} already exists in consensus, skipping", hash);
+                    debug!("Relay block {} already exists in consensus, skipping", hash);
                     continue;
                 }
             }
@@ -159,7 +155,7 @@ impl HandleFastTrustedRelayFlow {
                 }
             };
 
-            info!("Block {} from fast relay passed validation", hash);
+            debug!("Block {} from fast relay passed validation", hash);
 
             if broadcast {
                 self.ctx

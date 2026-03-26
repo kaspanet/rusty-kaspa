@@ -15,7 +15,6 @@ impl FragmentHeader {
     pub const FRAGMENT_INDEX_OFFSET: usize = 32;
     pub const TOTAL_FRAGMENTS_OFFSET: usize = 34;
 
-    #[inline(always)]
     pub fn new(hash: BlockHash, fragment_index: u16, total_fragments: u16) -> Self {
         let mut header = Self([0u8; Self::SIZE]);
         header.0[0..32].copy_from_slice(&hash.as_bytes()[..]);
@@ -24,17 +23,14 @@ impl FragmentHeader {
         header
     }
 
-    #[inline(always)]
     pub fn block_hash(&self) -> BlockHash {
         BlockHash::from_slice(&self.0[..Self::FRAGMENT_INDEX_OFFSET])
     }
 
-    #[inline(always)]
     pub fn is_last_gen(&self, k: u16, m: u16) -> bool {
         self.fragment_generation(k, m) == self.last_fragment_generation(k, m)
     }
 
-    #[inline(always)]
     pub fn last_gen_k(&self, k: u16, m: u16) -> u8 {
         let gen_size = k + m;
         let total_fragments = self.total_fragments();
@@ -42,7 +38,6 @@ impl FragmentHeader {
         if last_gen_fragments == 0 { k as u8 } else { (last_gen_fragments.min(k)) as u8 }
     }
 
-    #[inline(always)]
     pub fn last_gen_m(&self, k: u16, m: u16) -> u8 {
         let gen_size = k + m;
         let total_fragments = self.total_fragments();
@@ -50,25 +45,21 @@ impl FragmentHeader {
         if last_gen_fragments == 0 { m as u8 } else { (last_gen_fragments.saturating_sub(k)) as u8 }
     }
 
-    #[inline(always)]
     pub fn is_data(&self, k: u16, m: u16) -> bool {
         let gen_size = k + m;
         let index_within_gen = self.fragment_index() % gen_size;
         index_within_gen < k
     }
 
-    #[inline(always)]
     pub fn is_parity(&self, k: u16, m: u16) -> bool {
         !self.is_data(k, m)
     }
 
-    #[inline(always)]
     pub fn fragment_generation(&self, k: u16, m: u16) -> u8 {
         let gen_size = k + m;
         (self.fragment_index() / gen_size) as u8
     }
 
-    #[inline(always)]
     pub fn last_fragment_generation(&self, k: u16, m: u16) -> u8 {
         let gen_size = k + m;
         let total_fragments = self.total_fragments();
@@ -76,12 +67,10 @@ impl FragmentHeader {
         if last_gen_fragments == 0 { (total_fragments / gen_size - 1) as u8 } else { (total_fragments / gen_size) as u8 }
     }
 
-    #[inline(always)]
     pub fn index_within_generation(&self, gen_size: u16) -> u8 {
         (self.fragment_index() % gen_size) as u8
     }
 
-    #[inline(always)]
     pub fn fragment_index(&self) -> u16 {
         self.0[Self::FRAGMENT_INDEX_OFFSET..Self::TOTAL_FRAGMENTS_OFFSET]
             .try_into()
@@ -89,7 +78,6 @@ impl FragmentHeader {
             .expect("fragment_index bytes should always be present and valid")
     }
 
-    #[inline(always)]
     pub fn total_fragments(&self) -> u16 {
         self.0[Self::TOTAL_FRAGMENTS_OFFSET..Self::TOTAL_FRAGMENTS_OFFSET + 2]
             .try_into()
@@ -97,12 +85,10 @@ impl FragmentHeader {
             .expect("total_fragments bytes should always be present and valid")
     }
 
-    #[inline(always)]
     pub fn total_generations(&self, gen_size: usize) -> u8 {
         (self.total_fragments() as usize).div_ceil(gen_size) as u8
     }
 
-    #[inline(always)]
     pub fn as_bytes(&self) -> &[u8; Self::SIZE] {
         &self.0
     }

@@ -125,7 +125,6 @@ impl Hub {
         let info = peer.peer_info();
         let addr = info.address();
         let direction = info.direction();
-        let udp_target = info.udp_target();
         let control_tx = peer.control_tx();
         let hub_event_sender = self.hub_event_sender.clone();
 
@@ -163,7 +162,7 @@ impl Hub {
     }
 
     fn handle_peer_disconnected(&mut self, addr: SocketAddr, reason: PeerCloseReason) {
-        if let Some(_) = self.peers.remove(&addr) {
+        if self.peers.remove(&addr).is_some() {
             info!("Peer removed: {} (reason: {:?})", addr, reason);
             // Remove from the shared PeerDirectory so udp transport workers
             // stop sending to this peer.
@@ -231,6 +230,7 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::net::TcpStream;
 
+    #[allow(dead_code)]
     fn test_config() -> FragmentationConfig {
         FragmentationConfig::new(4, 2, 1024)
     }

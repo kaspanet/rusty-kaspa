@@ -1,7 +1,7 @@
 use kaspa_hashes::Hash;
 
-
 const MAX_EXPECTED_BLOCK_SIZE: usize = 1024 * 1024; // 1 MiB
+const BUFFER_SIZE_32MB: usize = 32 * 1024 * 1024;
 
 /// FEC Fragmentation parameters: purely protocol-level, no worker counts.
 #[derive(Debug, Clone, Copy)]
@@ -19,18 +19,15 @@ impl FragmentationConfig {
         Self { data_blocks, parity_blocks, payload_size }
     }
 
-    #[inline(always)]
     pub fn fragments_per_generation(&self) -> usize {
         self.data_blocks + self.parity_blocks
     }
 
     /// Minimum number of blocks needed to reconstruct data
-    #[inline(always)]
     pub fn min_recovery_blocks(&self) -> usize {
         self.data_blocks
     }
 
-    #[inline(always)]
     pub fn calculate_last_k_and_m(&self, total_fragments: usize) -> (usize, usize) {
         let gen_size = self.fragments_per_generation();
         let last_gen_fragments = total_fragments % gen_size;
@@ -44,7 +41,6 @@ impl FragmentationConfig {
         }
     }
 
-    #[inline(always)]
     pub fn get_hash_bucket(&self, hash: Hash, bucket_size: usize) -> usize {
         // we use the 2nd index, because the 3rd is used for the BlockHashMap,
         // since we use that as well, and we want to avoid overlap.
@@ -82,15 +78,12 @@ pub struct TransportParams {
 
     /// custom multiplier, for adjustments.
     pub multiplier: f64,
-
 }
 
 impl TransportParams {
-
     // TODO: correct these estimations based on real-world testing and metrics, and adjust the formulas as needed.
     // Best effort estimations on good sizes, taking into account:
     // Max expected block sizes, peer counts, consensus variables, Fragmentation configs, number of workers.
-
 
     pub fn block_cache_capacity(&self) -> usize {
         ((self.consensus_mergeset_root * 2) as f64 * self.multiplier) as usize
@@ -101,7 +94,7 @@ impl TransportParams {
     }
 
     pub fn verification_channel_capacity(&self) -> usize {
-        (self.receive_buffer_size() / self.num_of_verifiers)
+        self.receive_buffer_size() / self.num_of_verifiers
     }
 
     pub fn forwarder_channel_capacity(&self) -> usize {
@@ -125,11 +118,11 @@ impl TransportParams {
     }
 
     pub fn send_buffer_size(&self) -> usize {
-        1024 * 1024 * 32 //32mb
+        BUFFER_SIZE_32MB
     }
 
     pub fn receive_buffer_size(&self) -> usize {
-        1024 * 1024 * 32 //32mb
+        BUFFER_SIZE_32MB
     }
 
     pub fn fragments_per_block(&self) -> usize {
@@ -137,7 +130,7 @@ impl TransportParams {
     }
 
     pub fn generations_per_block(&self) -> usize {
-        self.fragments_per_block() /  (self.k + self.m)
+        self.fragments_per_block() / (self.k + self.m)
     }
 
     pub fn max_concurrent_blocks(&self) -> usize {
@@ -155,7 +148,7 @@ impl Default for TransportParams {
             num_of_broadcasters: 1,
             num_of_coordinators: 1,
             num_of_decoders_per_coordinators: 2,
-            multiplier: 1.0, // large multiplier for benches TODO: remove.
+            multiplier: 1.0,
             consensus_bps: 10,
             consensus_mergeset_root: 1200,
             consensus_k: 256,
@@ -171,19 +164,19 @@ impl Default for TransportParams {
 /// Top-level container for trusted-relay runtime parameters.
 #[derive(Debug, Clone, Copy)]
 pub struct TrustedRelayParams {
-    pub Fragmentation: FragmentationConfig,
+    pub fragmentation: FragmentationConfig,
     pub transport: TransportParams,
 }
 
 impl TrustedRelayParams {
-    pub fn new(Fragmentation: FragmentationConfig, transport: TransportParams) -> Self {
-        Self { Fragmentation, transport }
+    pub fn new(fragmentation: FragmentationConfig, transport: TransportParams) -> Self {
+        Self { fragmentation, transport }
     }
 
     /// Convenience constructor with sane defaults for transport/decoding.
-    pub fn default_with_Fragmentation(data_blocks: usize, parity_blocks: usize, payload_size: usize) -> Self {
+    pub fn default_with_fragmentation(data_blocks: usize, parity_blocks: usize, payload_size: usize) -> Self {
         Self {
-            Fragmentation: FragmentationConfig::new(data_blocks, parity_blocks, payload_size),
+            fragmentation: FragmentationConfig::new(data_blocks, parity_blocks, payload_size),
             transport: TransportParams::default(),
         }
     }
@@ -191,6 +184,6 @@ impl TrustedRelayParams {
 
 impl Default for TrustedRelayParams {
     fn default() -> Self {
-        Self::default_with_Fragmentation(16, 4, 1200)
+        Self::default_with_fragmentation(16, 4, 1200)
     }
 }

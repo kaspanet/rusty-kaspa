@@ -1,7 +1,7 @@
 pub mod hub;
 pub mod peer;
-pub mod tcp;
 pub mod runtime;
+pub mod tcp;
 
 // Re-export common control-plane types for ergonomic access.
 pub use hub::{Hub, HubEvent};

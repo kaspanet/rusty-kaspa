@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use kaspa_utils::triggers::Listener;
 use kaspa_core::{debug, info, warn};
+use kaspa_utils::triggers::Listener;
 use rand::{RngCore, rngs::OsRng};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -182,7 +182,7 @@ async fn handshake_accept(
     // Validate HMAC(secret, nonce || SHA256(direction||udp_port)).
     let nonce_array: [u8; 32] = nonce.try_into().map_err(|_| RelayError::AuthenticationFailed("invalid nonce size".into()))?;
     let their_token = auth::AuthToken::from_bytes(client_hmac.to_vec());
-    let is_authentic = authenticator.validate_token(&nonce_array, &data_for_hmac, &their_token);
+    let is_authentic = authenticator.validate_token(&nonce_array, data_for_hmac, &their_token);
     if !is_authentic {
         info!("msg auth failed expected HMAC");
         let _ = stream.write_all(&[0x00]).await;
@@ -190,7 +190,7 @@ async fn handshake_accept(
     }
 
     // Respond OK.
-    stream.write_all(&[0x01]).await.map_err(|e| RelayError::Io(e))?;
+    stream.write_all(&[0x01]).await.map_err(RelayError::Io)?;
 
     // Map client-perspective direction to our perspective (invert).
     let direction = match direction_byte {
@@ -213,7 +213,7 @@ pub async fn tcp_connect(
     remote_addr: SocketAddr,
     authenticator: Arc<TokenAuthenticator>,
     our_direction: PeerDirection,
-    local_udp_port: u16,
+    _local_udp_port: u16,
     hub_event_sender: mpsc::UnboundedSender<HubEvent>,
     allow_list: Allowlist,
 ) -> RelayResult<SocketAddr> {
@@ -244,7 +244,7 @@ pub async fn tcp_connect(
     //msg[65..67].copy_from_slice(&local_udp_port.to_le_bytes());
     // token computed over nonce and direction+port
     let token = authenticator.generate_token(&nonce, &msg[64..]);
-    msg[0..32].copy_from_slice(&token.as_bytes());
+    msg[0..32].copy_from_slice(token.as_bytes());
 
     // perform the write with an explicit result type so the compiler
     // can infer the intermediate `Result` produced by `timeout`.
@@ -394,7 +394,7 @@ mod tests {
         msg[32..64].copy_from_slice(&nonce);
         msg[64] = 0x01; // inbound
         let token = TokenAuthenticator::new(secret.clone()).generate_token(&nonce, &msg[64..]);
-        msg[0..32].copy_from_slice(&token.as_bytes());
+        msg[0..32].copy_from_slice(token.as_bytes());
         // tamper direction
         msg[64] = 0x02;
         client.write_all(&msg).await.unwrap();

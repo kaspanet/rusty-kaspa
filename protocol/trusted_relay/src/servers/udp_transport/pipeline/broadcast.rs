@@ -22,19 +22,8 @@ pub type BroadcastReceiver = crossbeam_channel::Receiver<BroadcastMessage>;
 pub struct BroadcastMessage(Hash, Arc<FtrBlock>);
 
 impl BroadcastMessage {
-    #[inline(always)]
     pub fn new(hash: Hash, block: Arc<FtrBlock>) -> Self {
         Self(hash, block)
-    }
-
-    #[inline(always)]
-    pub fn hash(self) -> Hash {
-        self.0
-    }
-
-    #[inline(always)]
-    pub fn block(self) -> Arc<FtrBlock> {
-        self.1
     }
 }
 
@@ -50,7 +39,7 @@ fn run(
     debug!("{}-{} started", WORKER_NAME, broadcaster_idx);
 
     let mut framed = vec![0u8; FragmentHeader::SIZE + config.payload_size + AuthToken::TOKEN_SIZE];
-    while let Ok(BroadcastMessage { 0: hash, 1: ftr_block }) = receiver.recv() {
+    while let Ok(BroadcastMessage(hash, ftr_block)) = receiver.recv() {
         let peers = peer_info_list.load_full();
         let outbound_peers: Vec<_> = peers.iter().filter(|p| p.is_outbound_ready()).collect();
         if outbound_peers.is_empty() {
@@ -107,9 +96,8 @@ pub fn spawn_broadcaster_thread(
     config: FragmentationConfig,
     verification_senders: Vec<crossbeam_channel::Sender<VerificationMessage>>,
 ) -> std::thread::JoinHandle<()> {
-    let handle = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name(format!("{}-{}", WORKER_NAME, broadcaster_idx))
         .spawn(move || run(broadcaster_idx, receiver, directory.peer_info_list(), authenticator, config, verification_senders.clone()))
-        .expect(&format!("Failed to spawn {}-{} thread", WORKER_NAME, broadcaster_idx));
-    handle
+        .unwrap_or_else(|_| panic!("Failed to spawn {}-{} thread", WORKER_NAME, broadcaster_idx))
 }

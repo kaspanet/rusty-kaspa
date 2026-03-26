@@ -25,9 +25,8 @@ pub(crate) struct DecodeResult {
     pub data: Vec<u8>,
 }
 
-
 /// Decode a single generation's shards into the original data.
-pub fn decode_generation(
+pub(crate) fn decode_generation(
     common_decoder: &mut ReedSolomonDecoder,
     config: FragmentationConfig,
     job: &mut DecodeJob,

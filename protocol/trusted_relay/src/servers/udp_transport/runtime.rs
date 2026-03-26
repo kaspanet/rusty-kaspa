@@ -20,8 +20,8 @@ use crate::params::{FragmentationConfig, TransportParams};
 use crate::servers::auth::TokenAuthenticator;
 use crate::servers::peer_directory::PeerDirectory;
 use crate::servers::udp_transport::pipeline::broadcast::{self, BroadcastMessage, BroadcastReceiver, BroadcastSender};
-use crate::servers::udp_transport::pipeline::reassembly::decoding::{self, DecodeJobMessage, DecodeResultMessage};
-use crate::servers::udp_transport::pipeline::reassembly::reassembly::{
+use crate::servers::udp_transport::pipeline::reassembly::decoder::{self, DecodeJobMessage, DecodeResultMessage};
+use crate::servers::udp_transport::pipeline::reassembly::reassembler::{
     BlockReassemblerBlockMessage, ReassemblerBlockReceiver, ReassemblerBlockSender, ReassemblerFragmentMessage,
 };
 use crate::servers::udp_transport::pipeline::relay::RelayMessage;
@@ -195,26 +195,26 @@ impl TransportRuntimeInner {
                 Arc::clone(&socket),
                 verification_sender_channels.clone(),
                 verification_receiver_channels.clone(),
-                params.clone(),
-                config.clone(),
+                params,
+                config,
                 collector_shutdown.clone(),
             ));
         }
 
         // spawn verifiers
-        for i in 0..params.num_of_verifiers {
+        for (i, receiver) in verification_receiver_channels.iter().enumerate().take(params.num_of_verifiers) {
             handles.lock().unwrap().verifier_handles.push(verification::spawn_verifier_thread(
                 i,
                 params.num_of_verifiers,
                 directory.clone(),
                 authenticator.clone(),
-                verification_receiver_channels[i].clone(),
+                receiver.clone(),
                 reassembly_sender_channels.clone(),
                 reassembly_receiver_channels.clone(),
                 forwarder_sender.clone(),
                 forwarder_receiver.clone(),
-                config.clone(),
-                params.clone(),
+                config,
+                params,
                 recent_shards_cache.pop().unwrap(),
             ));
         }
@@ -222,7 +222,7 @@ impl TransportRuntimeInner {
         // spawn coordinators
         for i in 0..params.num_of_coordinators {
             for j in 0..params.num_of_decoders_per_coordinators {
-                handles.lock().unwrap().decoder_handles.push(decoding::spawn_decode_worker(
+                handles.lock().unwrap().decoder_handles.push(decoder::spawn_decode_worker(
                     i,
                     j,
                     config,
@@ -231,7 +231,7 @@ impl TransportRuntimeInner {
                 ));
             }
 
-            handles.lock().unwrap().coordinator_handles.push(reassembly::reassembly::spawn_reassembler_thread(
+            handles.lock().unwrap().coordinator_handles.push(reassembly::reassembler::spawn_reassembler_thread(
                 i,
                 reassembly_receiver_channels[i].clone(),
                 decode_job_sender_channels[i].clone(),
@@ -240,7 +240,7 @@ impl TransportRuntimeInner {
                 processed_block_cache.pop().unwrap(),
                 partial_blocks.pop().unwrap(),
                 params.max_concurrent_blocks(),
-                config.clone(),
+                config,
             ));
         }
 
@@ -251,7 +251,7 @@ impl TransportRuntimeInner {
                 directory.clone(),
                 broadcast_receiver.clone(),
                 authenticator.clone(),
-                config.clone(),
+                config,
                 verification_sender_channels.clone(),
             ));
         }
@@ -267,7 +267,7 @@ pub struct TransportRuntime {
     config: FragmentationConfig,
     directory: Arc<PeerDirectory>,
     authenticator: Arc<TokenAuthenticator>,
-    listen_addr: SocketAddr,
+    _listen_addr: SocketAddr,
     block_emit_receiver: Arc<TokioMutex<ReassemblerBlockReceiver>>,
     block_emit_sender: Arc<ReassemblerBlockSender>,
     broadcast_sender: Option<BroadcastSender>,
@@ -288,7 +288,7 @@ impl TransportRuntime {
         let (broadcast_sender, broadcast_receiver) = bounded::<BroadcastMessage>(params.broadcast_channel_capacity());
         Self {
             params,
-            listen_addr,
+            _listen_addr: listen_addr,
             config,
             directory,
             authenticator: authenticator.clone(),
@@ -306,8 +306,8 @@ impl TransportRuntime {
             return false;
         }
         self.inner = Some(TransportRuntimeInner::start(
-            self.params.clone(),
-            self.config.clone(),
+            self.params,
+            self.config,
             self.directory.clone(),
             self.authenticator.clone(),
             self.broadcast_receiver.clone(),
@@ -341,7 +341,7 @@ impl TransportRuntime {
 
     /// Returns true if the runtime is started and hasn't been shut down.
     pub fn is_active(&self) -> bool {
-        self.inner.as_ref().map_or(false, |inner| !inner.collector_shutdown.load(Ordering::SeqCst))
+        self.inner.as_ref().is_some_and(|inner| !inner.collector_shutdown.load(Ordering::SeqCst))
     }
 
     /// Async-safe shutdown that uses spawn_blocking to wait for threads.

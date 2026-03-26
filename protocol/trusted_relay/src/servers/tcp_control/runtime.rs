@@ -93,10 +93,7 @@ impl ControlRuntime {
     /// Run both tcp_server and hub concurrently until shutdown.
     async fn run(mut self) {
         info!("TCP control runtime starting");
-        tokio::join!(
-            self.tcp_server.run(),
-            self.hub.run()
-        );
+        tokio::join!(self.tcp_server.run(), self.hub.run());
         info!("TCP control runtime stopped");
     }
 }

@@ -44,8 +44,8 @@ pub struct FastTrustedRelay {
     receive_block_waker: Arc<tokio::sync::Notify>,
     /// Flag to prevent restarts during shutdown.
     shutting_down: Arc<AtomicBool>,
-    udp_port: u16,
-    tcp_port: u16,
+    _udp_port: u16,
+    _tcp_port: u16,
 }
 
 impl FastTrustedRelay {
@@ -100,8 +100,9 @@ impl FastTrustedRelay {
             directory,
             params,
             fragmentation_config,
-            udp_port: DEFAULT_UDP_PORT,
-            tcp_port: DEFAULT_TCP_PORT,
+            // TODO: make this configurable via kaspad args.
+            _udp_port: DEFAULT_UDP_PORT,
+            _tcp_port: DEFAULT_TCP_PORT,
             receive_block_waker,
             shutting_down: Arc::new(AtomicBool::new(false)),
         }
@@ -296,7 +297,7 @@ impl FastTrustedRelay {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use tokio::time::{Duration, timeout};
+    use tokio::time::Duration;
 
     fn make_relay() -> FastTrustedRelay {
         let params = TransportParams::default();

@@ -191,17 +191,15 @@ impl PeerDirectory {
         let peer_addr = peer.address();
 
         // Check if we can reuse an existing socket from a peer with the same address
-        if peer.direction.is_outbound() {
-            if let Some(existing) = old_vec.iter().find(|p| p.address() == peer_addr) {
+        if peer.direction.is_outbound()
+            && let Some(existing) = old_vec.iter().find(|p| p.address() == peer_addr) {
                 // Reuse socket if existing peer is outbound with the same UDP target
-                if existing.direction.is_outbound() && existing.udp_target == peer.udp_target {
-                    if let Some(socket) = &existing.send_socket {
+                if existing.direction.is_outbound() && existing.udp_target == peer.udp_target
+                    && let Some(socket) = &existing.send_socket {
                         trace!("PeerDirectory: reusing existing socket for peer {}", peer_addr);
                         peer.send_socket = Some(socket.clone());
                     }
-                }
             }
-        }
 
         let mut new_vec: Vec<_> = old_vec.iter().filter(|p| p.address() != peer_addr).cloned().collect();
         new_vec.push(peer.clone());

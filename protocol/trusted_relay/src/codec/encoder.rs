@@ -5,8 +5,13 @@ use kaspa_core::trace;
 use kaspa_hashes::Hash;
 use reed_solomon_simd::ReedSolomonEncoder;
 
-use crate::{model::{fragments::{Fragment, FragmentHeader, FragmentPayload}, ftr_block::FtrBlock}, params::FragmentationConfig};
-
+use crate::{
+    model::{
+        fragments::{Fragment, FragmentHeader, FragmentPayload},
+        ftr_block::FtrBlock,
+    },
+    params::FragmentationConfig,
+};
 
 /// Generates FEC-encoded fragments for a serialized block.
 ///
@@ -30,7 +35,6 @@ pub struct FragmentGenerator {
 
 impl FragmentGenerator {
     pub fn new(config: FragmentationConfig, hash: Hash, ftr_block: FtrBlock) -> Self {
-
         let mut data = ftr_block.as_bytes();
 
         if !data.len().is_multiple_of(config.payload_size) {
@@ -86,22 +90,18 @@ impl FragmentGenerator {
         }
     }
 
-    #[inline(always)]
     pub fn total_fragments(&self) -> usize {
         self.total_number_of_fragments
     }
 
-    #[inline(always)]
     pub fn index_of_last_generation(&self) -> usize {
         (self.total_number_of_fragments - 1) / self.config.fragments_per_generation()
     }
 
-    #[inline(always)]
     pub fn current_generation(&self) -> usize {
         std::cmp::min(self.current_fragment_index, self.total_number_of_fragments - 1) / self.config.fragments_per_generation()
     }
 
-    #[inline(always)]
     pub fn should_encode(&self) -> bool {
         if self.current_fragment_index == 0 {
             return false;
@@ -116,12 +116,10 @@ impl FragmentGenerator {
         self.index_within_generation() == self.config.data_blocks
     }
 
-    #[inline(always)]
     pub fn index_within_generation(&self) -> usize {
         self.current_fragment_index % self.config.fragments_per_generation()
     }
 
-    #[inline(always)]
     pub fn is_in_parity_phase(&self) -> bool {
         if self.current_generation() == self.index_of_last_generation() {
             self.index_within_generation() >= self.last_gen_k
@@ -130,7 +128,6 @@ impl FragmentGenerator {
         }
     }
 
-    #[inline(always)]
     pub fn current_generation_max_index(&self) -> usize {
         if self.current_generation() == self.index_of_last_generation() {
             self.last_gen_k + self.last_gen_m - 1
@@ -141,7 +138,6 @@ impl FragmentGenerator {
 
     /// Returns `(k, m)` for the *next* generation's encoding pass, or `None`
     /// if the current generation is the last.
-    #[inline(always)]
     pub fn to_encode_counts(&self) -> Option<(usize, usize)> {
         let current_generation = self.current_generation();
         let index_of_last_generation = self.index_of_last_generation();

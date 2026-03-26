@@ -1,5 +1,5 @@
 use crate::{
-    fast_trusted_relay::{self, flow::HandleFastTrustedRelayFlow},
+    fast_trusted_relay::flow::HandleFastTrustedRelayFlow,
     flow_trait::Flow,
     flowcontext::{
         orphans::{OrphanBlocksPool, OrphanOutput},
@@ -408,7 +408,7 @@ impl FlowContext {
         &self.mining_manager
     }
 
-    pub fn fast_trusted_relay(mut self) -> Option<FastTrustedRelay> {
+    pub fn fast_trusted_relay(self) -> Option<FastTrustedRelay> {
         self.fast_trusted_relay.clone()
     }
 
@@ -424,7 +424,7 @@ impl FlowContext {
         if let Some(ftr) = self.clone().fast_trusted_relay() {
             // Spawn the TCP runtime now that we're in an async context with active Tokio runtime
             ftr.spawn_tcp_runtime().await;
-            let mut flow = Box::new(HandleFastTrustedRelayFlow::new(self.clone(), ftr, shutdown_listener));
+            let flow = Box::new(HandleFastTrustedRelayFlow::new(self.clone(), ftr, shutdown_listener));
             flow.launch();
         }
     }

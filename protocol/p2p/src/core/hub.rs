@@ -23,14 +23,11 @@ pub struct Hub {
     ///
     /// Note: the map key holds the node id and IP to prevent node impersonating.
     pub(crate) peers: Arc<RwLock<HashMap<PeerKey, Arc<Router>>>>,
-
-    /// Set of trusted relay peer keys (separate from regular peers for fast forwarding)
-    pub(crate) trusted_relay_peers: Arc<RwLock<Vec<PeerKey>>>,
 }
 
 impl Hub {
     pub fn new() -> Self {
-        Self { peers: Arc::new(RwLock::new(HashMap::new())), trusted_relay_peers: Arc::new(RwLock::new(Vec::new())) }
+        Self { peers: Arc::new(RwLock::new(HashMap::new())) }
     }
 
     /// Starts a loop for receiving central hub events from all peer routers. This mechanism is used for
