@@ -4183,7 +4183,7 @@
     "",
     "0x01 0x00 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK",
     "",
-    "NULLFAIL",
+    "INVALID_SIG",
     "OpCheckSigFromStack rejects non-64-byte signatures"
   ],
   [
@@ -4239,7 +4239,7 @@
     "",
     "0x01 0x00 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x21 0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACKECDSA",
     "",
-    "NULLFAIL",
+    "INVALID_SIG",
     "OpCheckSigFromStackECDSA rejects non-64-byte signatures"
   ],
   [
@@ -5938,8 +5938,8 @@
     "0x09 0x300602010102010101 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
     "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
     "",
-    "NULLFAIL",
-    "BIP66-compliant but not NULLFAIL-compliant 4"
+    "PUBKEYFORMAT",
+    "BIP66-compliant but not PUBKEYFORMAT-compliant 4"
   ],
   [
     "The End"
