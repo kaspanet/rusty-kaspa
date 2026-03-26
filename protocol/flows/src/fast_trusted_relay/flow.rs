@@ -1,4 +1,3 @@
-
 use crate::{
     flow_context::{BlockLogEvent, FlowContext, RequestScope},
     flow_trait::Flow,
@@ -15,14 +14,12 @@ use kaspa_p2p_lib::{
     dequeue, dequeue_with_timeout, make_message, make_request,
     pb::{InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage, kaspad_message::Payload},
 };
+use kaspa_trusted_relay::{FastTrustedRelay, fast_trusted_relay, model::ftr_block::FtrBlock};
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
 use kaspa_utils::triggers::Listener;
 use std::{collections::VecDeque, sync::Arc};
-use kaspa_trusted_relay::{FastTrustedRelay, fast_trusted_relay, model::ftr_block::FtrBlock};
-
 
 // TODO: implement more intricate orphan handling.
-
 
 pub struct HandleFastTrustedRelayFlow {
     ctx: FlowContext,
@@ -41,7 +38,6 @@ impl Flow for HandleFastTrustedRelayFlow {
         self.start_impl().await
     }
 }
-
 
 impl HandleFastTrustedRelayFlow {
     pub fn new(ctx: FlowContext, fast_trusted_relay: FastTrustedRelay, shutdown_listener: Listener) -> Self {
@@ -92,7 +88,7 @@ impl HandleFastTrustedRelayFlow {
             }
 
             match self.ctx.get_orphan_roots_if_known(&session, hash).await {
-                OrphanOutput::Unknown => {}           // Keep processing this inv
+                OrphanOutput::Unknown => {} // Keep processing this inv
                 OrphanOutput::NoRoots(_) => {
                     info!("Block {} is already in orphan pool with no missing roots, skipping", hash);
                     continue;
@@ -160,7 +156,7 @@ impl HandleFastTrustedRelayFlow {
                     // We don't issue protocol errors in the fast trusted relay since we consider all peers to be trusted, but we do log unexpected validation errors.
                     warn!("Fast Relay Block {} failed validation, this is unexpected: {}", hash, rule_error);
                     continue;
-                },
+                }
             };
 
             info!("Block {} from fast relay passed validation", hash);
@@ -182,5 +178,4 @@ impl HandleFastTrustedRelayFlow {
             });
         }
     }
-
-    }
+}

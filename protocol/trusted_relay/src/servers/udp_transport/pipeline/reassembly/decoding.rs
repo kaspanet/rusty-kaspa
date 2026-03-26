@@ -83,7 +83,13 @@ fn run(
             Ok(Ok(d)) => {
                 debug!(
                     "{}-{}-{}-{}: successfully decoded block {} generation {} ({} bytes)",
-                    REASSEMBLER_WORKER_NAME, reassembler_idx, WORKER_NAME, decoder_idx, job.hash, job.generation, d.len()
+                    REASSEMBLER_WORKER_NAME,
+                    reassembler_idx,
+                    WORKER_NAME,
+                    decoder_idx,
+                    job.hash,
+                    job.generation,
+                    d.len()
                 );
                 d
             }
