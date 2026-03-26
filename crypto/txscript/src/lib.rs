@@ -244,7 +244,7 @@ pub fn get_sig_op_count_upper_bound<T: VerifiableTransaction, Reused: SigHashReu
     // For P2SH scripts, the signature script must be non-empty;
     // otherwise there is no redeem script candidate and the conservative upper bound is zero.
     let signature_script_ops = parse_script::<T, Reused>(signature_script).collect_vec();
-    if signature_script_ops.is_empty() {
+    if signature_script_ops.is_empty() || signature_script_ops.iter().any(|op| op.is_err()) {
         return 0;
     }
 
@@ -281,7 +281,7 @@ pub fn get_zk_script_units_upper_bound<T: VerifiableTransaction, Reused: SigHash
     // For P2SH scripts, the signature script must be non-empty;
     // otherwise there is no redeem script candidate and the conservative upper bound is zero.
     let signature_script_ops = parse_script::<T, Reused>(signature_script).collect_vec();
-    if signature_script_ops.is_empty() {
+    if signature_script_ops.is_empty() || signature_script_ops.iter().any(|op| op.is_err()) {
         return 0;
     }
 
