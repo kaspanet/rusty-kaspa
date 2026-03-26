@@ -75,8 +75,12 @@ fn run(
         }
 
         for fragment in fragment_gen {
-            framed[..FragmentHeader::SIZE].copy_from_slice(fragment.header.as_bytes());
-            framed[FragmentHeader::SIZE..FragmentHeader::SIZE + fragment.payload.len()].copy_from_slice(fragment.payload.as_ref());
+            // Wire format: [0..32] MAC | [32..68] FragmentHeader | [68..] Payload
+            framed[AuthToken::TOKEN_SIZE..AuthToken::TOKEN_SIZE + FragmentHeader::SIZE].copy_from_slice(fragment.header.as_bytes());
+            framed
+                [AuthToken::TOKEN_SIZE + FragmentHeader::SIZE..AuthToken::TOKEN_SIZE + FragmentHeader::SIZE + fragment.payload.len()]
+                .copy_from_slice(fragment.payload.as_ref());
+            // MAC covers everything after the token slot (header + payload)
             let mac = authenticator.mac(&framed[AuthToken::TOKEN_SIZE..]);
             framed[..AuthToken::TOKEN_SIZE].copy_from_slice(&mac);
 
