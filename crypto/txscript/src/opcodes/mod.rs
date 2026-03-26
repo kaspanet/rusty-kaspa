@@ -879,7 +879,7 @@ opcode_list! {
         match sig.pop() {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
+                match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice(), false) {
                     Ok(valid) => {
                         vm.dstack.push_item(valid)?;
                         Ok(())
@@ -902,7 +902,7 @@ opcode_list! {
         match sig.pop() {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
+                match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice(), false) {
                     Ok(valid) => {
                         vm.dstack.push_item(valid)?;
                         Ok(())
@@ -1568,7 +1568,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [signature, msg_hash, pubkey] = vm.dstack.pop_raw()?;
             let msg_hash = Hash::try_from(msg_hash.as_slice()).map_err(|_| TxScriptError::InvalidState("message hash must be 32 bytes".to_string()))?;
-            let is_valid = vm.check_schnorr_signature_for_msg_hash(msg_hash, &pubkey, &signature)?;
+            let is_valid = vm.check_schnorr_signature_for_msg_hash(msg_hash, &pubkey, &signature, true)?;
             vm.dstack.push_item(is_valid)
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1579,7 +1579,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [signature, msg_hash, pubkey] = vm.dstack.pop_raw()?;
             let msg_hash = Hash::try_from(msg_hash.as_slice()).map_err(|_| TxScriptError::InvalidState("message hash must be 32 bytes".to_string()))?;
-            let is_valid = vm.check_ecdsa_signature_for_msg_hash(msg_hash, &pubkey, &signature)?;
+            let is_valid = vm.check_ecdsa_signature_for_msg_hash(msg_hash, &pubkey, &signature, true)?;
             vm.dstack.push_item(is_valid)
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))

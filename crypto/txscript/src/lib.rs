@@ -628,9 +628,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 let pub_key = pub_key_iter.next().unwrap();
 
                 let check_signature_result = if ecdsa {
-                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature)
+                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature, true)
                 } else {
-                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature)
+                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature, true)
                 };
 
                 match check_signature_result {
@@ -656,17 +656,29 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     #[inline]
-    fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+    fn check_schnorr_signature(
+        &mut self,
+        hash_type: SigHashType,
+        key: &[u8],
+        sig: &[u8],
+        enforce_nullfail: bool,
+    ) -> Result<bool, TxScriptError> {
         match self.script_source {
             ScriptSource::TxInput { tx, idx, .. } => {
                 let sig_hash = calc_schnorr_signature_hash(tx, idx, hash_type, self.reused_values);
-                self.check_schnorr_signature_for_msg_hash(sig_hash, key, sig)
+                self.check_schnorr_signature_for_msg_hash(sig_hash, key, sig, enforce_nullfail)
             }
             _ => Err(TxScriptError::NotATransactionInput),
         }
     }
 
-    fn check_schnorr_signature_for_msg_hash(&mut self, msg_hash: Hash, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+    fn check_schnorr_signature_for_msg_hash(
+        &mut self,
+        msg_hash: Hash,
+        key: &[u8],
+        sig: &[u8],
+        enforce_nullfail: bool,
+    ) -> Result<bool, TxScriptError> {
         self.runtime_sig_op_counter.consume_sig_op()?;
         if sig.is_empty() {
             return Ok(false);
@@ -688,25 +700,37 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                     }
                     Err(_) => {
                         self.sig_cache.insert(sig_cache_key, false);
-                        Ok(false)
+                        if enforce_nullfail { return Err(TxScriptError::NullFail) } else { Ok(false) }
                     }
                 }
             }
         }
     }
 
-    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+    fn check_ecdsa_signature(
+        &mut self,
+        hash_type: SigHashType,
+        key: &[u8],
+        sig: &[u8],
+        enforce_nullfail: bool,
+    ) -> Result<bool, TxScriptError> {
         match self.script_source {
             ScriptSource::TxInput { tx, idx, .. } => {
                 let sig_hash = calc_ecdsa_signature_hash(tx, idx, hash_type, self.reused_values);
 
-                self.check_ecdsa_signature_for_msg_hash(sig_hash, key, sig)
+                self.check_ecdsa_signature_for_msg_hash(sig_hash, key, sig, enforce_nullfail)
             }
             _ => Err(TxScriptError::NotATransactionInput),
         }
     }
 
-    fn check_ecdsa_signature_for_msg_hash(&mut self, msg_hash: Hash, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+    fn check_ecdsa_signature_for_msg_hash(
+        &mut self,
+        msg_hash: Hash,
+        key: &[u8],
+        sig: &[u8],
+        enforce_nullfail: bool,
+    ) -> Result<bool, TxScriptError> {
         self.runtime_sig_op_counter.consume_sig_op()?;
         if sig.is_empty() {
             return Ok(false);
@@ -729,7 +753,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                     }
                     Err(_) => {
                         self.sig_cache.insert(sig_cache_key, false);
-                        Ok(false)
+                        if enforce_nullfail { return Err(TxScriptError::NullFail) } else { Ok(false) }
                     }
                 }
             }

@@ -4167,17 +4167,24 @@
   ],
   [
     "",
-    "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x20 0x0303030303030303030303030303030303030303030303030303030303030303 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK NOT",
+    "0 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK NOT",
     "",
     "OK",
-    "OpCheckSigFromStack returns false rather than erroring when the message hash does not match"
+    "OpCheckSigFromStack returns false rather than NULLFAIL for an empty signature"
+  ],
+  [
+    "",
+    "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x20 0x0303030303030303030303030303030303030303030303030303030303030303 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK NOT",
+    "",
+    "NULLFAIL",
+    "OpCheckSigFromStack enforces NULLFAIL when a non-empty signature verifies to false for the provided message hash"
   ],
   [
     "",
     "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766 CHECKSIGFROMSTACK NOT",
     "",
-    "OK",
-    "OpCheckSigFromStack returns false rather than erroring when the public key does not match"
+    "NULLFAIL",
+    "OpCheckSigFromStack enforces NULLFAIL when a non-empty signature verifies to false for the provided public key"
   ],
   [
     "",
@@ -4225,15 +4232,15 @@
     "",
     "0x40 0x97ef30233ead25d10f7bb2bf9eaf571a16f2deb33a75f20819284f0cb8ff3cc14870ca05940199c113b4dc77866f001702691cde269f6835581e7aea1ead2660 0x20 0x0303030303030303030303030303030303030303030303030303030303030303 0x21 0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACKECDSA NOT",
     "",
-    "OK",
-    "OpCheckSigFromStackECDSA returns false rather than erroring when the message hash does not match"
+    "NULLFAIL",
+    "OpCheckSigFromStackECDSA enforces NULLFAIL when a non-empty signature verifies to false for the provided message hash"
   ],
   [
     "",
     "0x40 0x97ef30233ead25d10f7bb2bf9eaf571a16f2deb33a75f20819284f0cb8ff3cc14870ca05940199c113b4dc77866f001702691cde269f6835581e7aea1ead2660 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x21 0x024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766 CHECKSIGFROMSTACKECDSA NOT",
     "",
-    "OK",
-    "OpCheckSigFromStackECDSA returns false rather than erroring when the public key does not match"
+    "NULLFAIL",
+    "OpCheckSigFromStackECDSA enforces NULLFAIL when a non-empty signature verifies to false for the provided public key"
   ],
   [
     "",
