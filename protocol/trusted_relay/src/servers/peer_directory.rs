@@ -1,10 +1,31 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::io;
+use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::Arc;
 
 use crate::servers::tcp_control::PeerDirection;
 use arc_swap::ArcSwap;
-use log::trace;
+use log::{trace, warn};
+use socket2::{Domain, Protocol, Socket, Type};
+
+/// Create a connected UDP socket for sending to a specific peer.
+///
+/// The socket is connected to the target address, allowing use of `send()` instead of `send_to()`.
+/// This can provide better performance by avoiding destination lookup per packet and enables
+/// ICMP error reporting.
+pub fn create_connected_socket(target: SocketAddr) -> io::Result<UdpSocket> {
+    let domain = if target.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+    // Set large send buffer to match the shared receive socket
+    socket.set_send_buffer_size(32 * 1024 * 1024).ok();
+    socket.set_nonblocking(false)?;
+
+    // Connect to the peer address - this makes send() work without specifying destination
+    socket.connect(&target.into())?;
+
+    Ok(UdpSocket::from(socket))
+}
 
 pub type Allowlist = Arc<ArcSwap<HashMap<IpAddr, PeerDirection>>>;
 pub type PeerInfoList = Arc<ArcSwap<Vec<PeerInfo>>>;
@@ -17,17 +38,62 @@ pub type PeerInfoList = Arc<ArcSwap<Vec<PeerInfo>>>;
 ///
 /// Fields are public because this is a simple data carrier with no invariants
 /// to enforce. Constructed via `PeerInfo::new()` and cheaply shared via `Arc`.
-#[derive(Debug, Clone)]
+///
+/// For outbound peers, a connected UDP socket is created for efficient sending
+/// using `send()` instead of `send_to()`.
 pub struct PeerInfo {
     pub address: SocketAddr,
     pub direction: PeerDirection,
     pub udp_target: SocketAddr,
     pub ready: bool,
+    /// Connected UDP socket for this peer (outbound peers only).
+    /// Using a connected socket allows `send()` instead of `send_to()`,
+    /// which can be more efficient and provides ICMP error feedback.
+    send_socket: Option<Arc<UdpSocket>>,
+}
+
+impl std::fmt::Debug for PeerInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerInfo")
+            .field("address", &self.address)
+            .field("direction", &self.direction)
+            .field("udp_target", &self.udp_target)
+            .field("ready", &self.ready)
+            .field("has_send_socket", &self.send_socket.is_some())
+            .finish()
+    }
+}
+
+impl Clone for PeerInfo {
+    fn clone(&self) -> Self {
+        Self {
+            address: self.address,
+            direction: self.direction,
+            udp_target: self.udp_target,
+            ready: self.ready,
+            send_socket: self.send_socket.clone(),
+        }
+    }
 }
 
 impl PeerInfo {
+    /// Create a new PeerInfo. For outbound peers, a connected UDP socket is created.
     pub fn new(address: SocketAddr, direction: PeerDirection, udp_target: SocketAddr) -> Self {
-        Self { address, direction, udp_target, ready: false }
+        let send_socket = if direction.is_outbound() {
+            match create_connected_socket(udp_target) {
+                Ok(socket) => {
+                    trace!("PeerInfo: created connected socket for outbound peer {}", udp_target);
+                    Some(Arc::new(socket))
+                }
+                Err(e) => {
+                    warn!("PeerInfo: failed to create connected socket for {}: {}", udp_target, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        Self { address, direction, udp_target, ready: false, send_socket }
     }
 
     /// Convenience: address accessor (also available via `.address` directly).
@@ -58,6 +124,12 @@ impl PeerInfo {
     #[inline]
     pub fn with_ready(&self, ready: bool) -> Self {
         Self { ready, ..self.clone() }
+    }
+
+    /// Get the connected send socket for this peer (outbound peers only).
+    #[inline]
+    pub fn send_socket(&self) -> Option<&Arc<UdpSocket>> {
+        self.send_socket.as_ref()
     }
 
     /// Whether this peer should receive outbound shards now.
@@ -111,11 +183,26 @@ impl PeerDirectory {
     /// Insert a peer into the directory.
     ///
     /// Called by the Hub on `PeerConnected`. Replaces any existing entry
-    /// with the same `address`.
-    pub fn insert_peer(&self, peer: PeerInfo) {
+    /// with the same `address`. If the existing peer is outbound and the new peer
+    /// is also outbound with the same UDP target, the existing socket is reused.
+    pub fn insert_peer(&self, mut peer: PeerInfo) {
         let old_vec = self.peer_infos.load_full();
         let old_allowlist = self.allowlist.load_full();
         let peer_addr = peer.address();
+
+        // Check if we can reuse an existing socket from a peer with the same address
+        if peer.direction.is_outbound() {
+            if let Some(existing) = old_vec.iter().find(|p| p.address() == peer_addr) {
+                // Reuse socket if existing peer is outbound with the same UDP target
+                if existing.direction.is_outbound() && existing.udp_target == peer.udp_target {
+                    if let Some(socket) = &existing.send_socket {
+                        trace!("PeerDirectory: reusing existing socket for peer {}", peer_addr);
+                        peer.send_socket = Some(socket.clone());
+                    }
+                }
+            }
+        }
+
         let mut new_vec: Vec<_> = old_vec.iter().filter(|p| p.address() != peer_addr).cloned().collect();
         new_vec.push(peer.clone());
         let len = new_vec.len();

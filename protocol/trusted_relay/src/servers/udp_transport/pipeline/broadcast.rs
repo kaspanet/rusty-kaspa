@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use kaspa_hashes::Hash;
 use log::{debug, info, trace, warn};
-use std::net::UdpSocket;
 
 use crate::servers::auth::TokenAuthenticator;
 use crate::{
@@ -43,7 +42,6 @@ impl BroadcastMessage {
 fn run(
     broadcaster_idx: usize,
     receiver: crossbeam_channel::Receiver<BroadcastMessage>,
-    socket: Arc<UdpSocket>,
     peer_info_list: PeerInfoList,
     authenticator: Arc<TokenAuthenticator>,
     config: FragmentationConfig,
@@ -56,7 +54,13 @@ fn run(
         let peers = peer_info_list.load_full();
         let outbound_peers: Vec<_> = peers.iter().filter(|p| p.is_outbound_ready()).collect();
         if outbound_peers.is_empty() {
-            debug!("{}-{}: no outbound-ready peers, skipping block {} (total peers: {})", WORKER_NAME, broadcaster_idx, hash, peers.len());
+            debug!(
+                "{}-{}: no outbound-ready peers, skipping block {} (total peers: {})",
+                WORKER_NAME,
+                broadcaster_idx,
+                hash,
+                peers.len()
+            );
             continue;
         }
 
@@ -77,8 +81,12 @@ fn run(
             framed[..AuthToken::TOKEN_SIZE].copy_from_slice(&mac);
 
             for peer in &outbound_peers {
-                if let Err(e) = socket.send_to(&framed, peer.udp_target()) {
-                    warn!("{}-{}: send to {}: {}", WORKER_NAME, broadcaster_idx, peer.udp_target(), e);
+                if let Some(socket) = peer.send_socket() {
+                    if let Err(e) = socket.send(&framed) {
+                        warn!("{}-{}: send to {}: {}", WORKER_NAME, broadcaster_idx, peer.udp_target(), e);
+                    }
+                } else {
+                    warn!("{}-{}: no send socket for peer {}", WORKER_NAME, broadcaster_idx, peer.udp_target());
                 }
             }
         }
@@ -89,7 +97,6 @@ fn run(
 
 pub fn spawn_broadcaster_thread(
     broadcaster_idx: usize,
-    socket: Arc<UdpSocket>,
     directory: Arc<PeerDirectory>,
     receiver: BroadcastReceiver,
     authenticator: Arc<TokenAuthenticator>,
@@ -98,9 +105,7 @@ pub fn spawn_broadcaster_thread(
 ) -> std::thread::JoinHandle<()> {
     let handle = std::thread::Builder::new()
         .name(format!("{}-{}", WORKER_NAME, broadcaster_idx))
-        .spawn(move || {
-            run(broadcaster_idx, receiver, socket, directory.peer_info_list(), authenticator, config, verification_senders.clone())
-        })
+        .spawn(move || run(broadcaster_idx, receiver, directory.peer_info_list(), authenticator, config, verification_senders.clone()))
         .expect(&format!("Failed to spawn {}-{} thread", WORKER_NAME, broadcaster_idx));
     handle
 }

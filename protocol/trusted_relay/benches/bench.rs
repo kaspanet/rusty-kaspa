@@ -641,11 +641,6 @@ fn benchmark_broadcast_worker_e2e_1mb(c: &mut Criterion) {
     // 1 MB payload
     let data = vec![0u8; 1024 * 1024];
 
-    // create the socket BroadcastWorker will use
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind worker socket");
-    set_recv_buf(&std_sock, 16 * 1024 * 1024);
-    let worker_socket = Arc::new(std_sock);
-
     // peer receive socket
     let peer_recv = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind peer recv");
     set_recv_buf(&peer_recv, 16 * 1024 * 1024);
@@ -706,15 +701,7 @@ fn benchmark_broadcast_worker_e2e_1mb(c: &mut Criterion) {
 
     // Create broadcast channel and spawn broadcaster thread
     let (broadcast_tx, broadcast_rx) = crossbeam_channel::bounded::<BroadcastMessage>(64);
-    let _handle = spawn_broadcaster_thread(
-        0,
-        worker_socket.clone(),
-        directory.clone(),
-        broadcast_rx,
-        Arc::new(auth.clone()),
-        config,
-        verification_senders,
-    );
+    let _handle = spawn_broadcaster_thread(0, directory.clone(), broadcast_rx, Arc::new(auth.clone()), config, verification_senders);
 
     // Give the worker thread a short moment to initialize
     std::thread::sleep(Duration::from_millis(100));

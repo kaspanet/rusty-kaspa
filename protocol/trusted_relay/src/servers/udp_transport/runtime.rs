@@ -248,7 +248,6 @@ impl TransportRuntimeInner {
         for i in 0..params.num_of_broadcasters {
             handles.lock().unwrap().broadcast_handles.push(broadcast::spawn_broadcaster_thread(
                 i,
-                Arc::clone(&socket),
                 directory.clone(),
                 broadcast_receiver.clone(),
                 authenticator.clone(),
