@@ -1,5 +1,5 @@
 use crossbeam_channel::{Receiver, Sender};
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, warn};
 use reed_solomon_simd::ReedSolomonDecoder;
 
 use crate::servers::udp_transport::pipeline::reassembly::reassembly::WORKER_NAME as REASSEMBLER_WORKER_NAME;
@@ -57,7 +57,7 @@ fn run(
     job_rx: Receiver<DecodeJobMessage>,
     result_tx: Sender<DecodeResultMessage>,
 ) {
-    info!("{}-{}-{}-{} started", REASSEMBLER_WORKER_NAME, reassembler_idx, WORKER_NAME, decoder_idx);
+    debug!("{}-{}-{}-{} started", REASSEMBLER_WORKER_NAME, reassembler_idx, WORKER_NAME, decoder_idx);
 
     // Pre-allocate decoder for the common k/m (full generations).
     // Last generations with different k/m will create a temporary decoder.

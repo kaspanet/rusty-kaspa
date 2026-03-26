@@ -2,8 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use kaspa_core::trace;
-use log::{info, warn};
+use kaspa_core::{debug, trace, warn};
 
 use crate::servers::peer_directory::{PeerDirectory, PeerInfoList};
 
@@ -42,7 +41,7 @@ impl RelayMessage {
 /// snapshot.  This amortises the `ArcSwap::load_full()` cost over
 /// many packets during bursts.
 fn run(worker_idx: usize, receiver: RelayReceiver, peer_info_list: PeerInfoList) {
-    info!("{}-{} started", WORKER_NAME, worker_idx);
+    debug!("{}-{} started", WORKER_NAME, worker_idx);
 
     while let Ok(RelayMessage { 0: raw_packet, 1: src }) = receiver.recv() {
         trace!("{}-{}: received packet (len={}) from {}", WORKER_NAME, worker_idx, raw_packet.len(), src);
@@ -65,7 +64,7 @@ fn run(worker_idx: usize, receiver: RelayReceiver, peer_info_list: PeerInfoList)
             }
         }
     }
-    info!("{}-{} exited", WORKER_NAME, worker_idx);
+    debug!("{}-{} exited", WORKER_NAME, worker_idx);
 }
 
 pub fn spawn_relay_thread(

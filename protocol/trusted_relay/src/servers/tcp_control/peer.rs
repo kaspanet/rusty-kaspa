@@ -3,7 +3,7 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use log::{debug, trace, warn};
+use kaspa_core::{debug, trace, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;

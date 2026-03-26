@@ -9,7 +9,7 @@ use tokio::sync::Mutex as TokioMutex;
 use crossbeam_channel::bounded;
 use fixedbitset::FixedBitSet;
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, Hash, HashMapCustomHasher};
-use kaspa_core::{info, warn};
+use kaspa_core::{debug, warn};
 use ringmap::{RingMap, RingSet};
 use tokio::sync::mpsc::unbounded_channel as tokio_unbounded_channel;
 
@@ -42,37 +42,37 @@ impl TransportRuntimeHandles {
     /// Threads will exit when they see shutdown signal or their channels close.
     fn signal_shutdown(&self) {
         // Handles will be joined by shutdown_blocking() or dropped naturally
-        info!("UdpTransportRuntime: signaling worker threads to shutdown");
+        debug!("UdpTransportRuntime: signaling worker threads to shutdown");
     }
 
     /// Blocking shutdown - waits for all threads to complete.
     /// Should only be called from a blocking context (e.g., spawn_blocking).
     fn shutdown_blocking(&mut self) {
         for h in self.collector_handles.drain(..) {
-            info!("Stopping collector thread: {}", h.thread().name().unwrap_or("unknown"));
+            debug!("Stopping collector thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
         }
         for h in self.broadcast_handles.drain(..) {
-            info!("Stopping broadcast thread: {}", h.thread().name().unwrap_or("unknown"));
+            debug!("Stopping broadcast thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
         }
         for h in self.verifier_handles.drain(..) {
-            info!("Stopping verifier thread: {}", h.thread().name().unwrap_or("unknown"));
+            debug!("Stopping verifier thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
         }
         for h in self.forwarder_handles.drain(..) {
-            info!("Stopping forwarder thread: {}", h.thread().name().unwrap_or("unknown"));
+            debug!("Stopping forwarder thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
         }
         for h in self.coordinator_handles.drain(..) {
-            info!("Stopping coordinator thread: {}", h.thread().name().unwrap_or("unknown"));
+            debug!("Stopping coordinator thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
         }
         for h in self.decoder_handles.drain(..) {
-            info!("Stopping decoder thread: {}", h.thread().name().unwrap_or("unknown"));
+            debug!("Stopping decoder thread: {}", h.thread().name().unwrap_or("unknown"));
             let _ = h.join();
         }
-        info!("UdpTransportRuntime: all worker threads stopped");
+        debug!("UdpTransportRuntime: all worker threads stopped");
     }
 }
 struct TransportRuntimeInner {

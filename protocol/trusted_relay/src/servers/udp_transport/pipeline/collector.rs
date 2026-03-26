@@ -2,7 +2,7 @@ use bytes::Bytes;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use kaspa_core::{debug, info, trace, warn};
+use kaspa_core::{debug, trace, warn};
 
 use crate::model::fragments::FragmentHeader;
 use crate::params::{FragmentationConfig, TransportParams};
@@ -22,7 +22,7 @@ fn run(
     config: FragmentationConfig,
     shutting_down: Arc<AtomicBool>,
 ) {
-    info!("{}-{} started, listening on UDP socket", COLLECTOR_WORKER_NAME, collector_idx);
+    debug!("{}-{} started, listening on UDP socket", COLLECTOR_WORKER_NAME, collector_idx);
     let mut buf = vec![0u8; buf_size];
     let min_expected_fragment_size = AuthToken::TOKEN_SIZE + FragmentHeader::SIZE + config.payload_size;
     let fragment_index_offset = AuthToken::TOKEN_SIZE + FragmentHeader::FRAGMENT_INDEX_OFFSET;
@@ -61,7 +61,7 @@ fn run(
                             verification_receivers[worker_idx].try_iter();
                         }
                         crossbeam_channel::TrySendError::Disconnected(_) => {
-                            info!("Collector {}: worker {} disconnected, shutting down", collector_idx, worker_idx);
+                            debug!("Collector {}: worker {} disconnected, shutting down", collector_idx, worker_idx);
                             return;
                         }
                     }
@@ -73,12 +73,12 @@ fn run(
                     continue;
                 }
                 // Other socket errors - exit the loop
-                info!("Collector {}: socket error: {}, shutting down", collector_idx, e);
+                debug!("Collector {}: socket error: {}, shutting down", collector_idx, e);
                 break;
             }
         }
     }
-    info!("{}-{} exited (shutdown signaled)", COLLECTOR_WORKER_NAME, collector_idx);
+    debug!("{}-{} exited (shutdown signaled)", COLLECTOR_WORKER_NAME, collector_idx);
 }
 
 pub fn spawn_collector_thread(

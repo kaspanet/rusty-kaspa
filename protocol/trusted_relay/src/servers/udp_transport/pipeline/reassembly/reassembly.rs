@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crossbeam_channel::{Receiver, Sender, select_biased};
 use kaspa_consensus_core::{BlockHashMap, BlockHasher};
-use kaspa_core::{debug, info, trace, warn};
+use kaspa_core::{debug, trace, warn};
 use kaspa_hashes::Hash;
 use ringmap::RingSet;
 use tokio::sync::mpsc::{UnboundedReceiver as TokioReceiver, UnboundedSender as TokioSender};
@@ -74,7 +74,7 @@ pub fn run(
     max_congruent_blocks: usize,
     config: FragmentationConfig,
 ) {
-    info!("{}-{} started", WORKER_NAME, reassembler_idx);
+    debug!("{}-{} started", WORKER_NAME, reassembler_idx);
     loop {
         select_biased!(
             recv(decoder_result_receiver) -> msg => match msg {
@@ -97,7 +97,7 @@ pub fn run(
         )
     }
 
-    info!("Coordinator event loop exited: all channels closed");
+    debug!("Coordinator event loop exited: all channels closed");
 }
 
 // ========================================================================

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use log::{debug, info, trace, warn};
+use kaspa_core::{debug, info, trace, warn};
 use tokio::sync::mpsc;
 
 use crate::servers::peer_directory::PeerDirectory;
@@ -85,7 +85,7 @@ impl Hub {
 
     /// Run the Hub event loop. Blocks until `Shutdown` or all senders drop.
     pub async fn run(&mut self) {
-        info!("Hub started, listening for events");
+        debug!("Hub started, listening for events");
 
         while let Some(event) = self.hub_event_receiver.recv().await {
             match event {
@@ -102,14 +102,14 @@ impl Hub {
                     self.set_local_ready(ready).await;
                 }
                 HubEvent::Shutdown => {
-                    info!("Hub shutting down, disconnecting {} peers", self.peers.len());
+                    debug!("Hub shutting down, disconnecting {} peers", self.peers.len());
                     self.shutdown_all_peers().await;
                     break;
                 }
             }
         }
 
-        info!("Hub event loop exited");
+        debug!("Hub event loop exited");
     }
 
     /// Number of connected peers.

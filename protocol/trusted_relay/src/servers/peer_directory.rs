@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::servers::tcp_control::PeerDirection;
 use arc_swap::ArcSwap;
-use log::{trace, warn};
+use kaspa_core::{trace, warn};
 use socket2::{Domain, Protocol, Socket, Type};
 
 /// Create a connected UDP socket for sending to a specific peer.

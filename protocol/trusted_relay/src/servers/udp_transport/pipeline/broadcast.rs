@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use kaspa_core::{debug, trace, warn};
 use kaspa_hashes::Hash;
-use log::{debug, info, trace, warn};
 
 use crate::servers::auth::TokenAuthenticator;
 use crate::{
@@ -47,7 +47,7 @@ fn run(
     config: FragmentationConfig,
     verification_senders: Vec<crossbeam_channel::Sender<VerificationMessage>>,
 ) {
-    info!("{}-{} started", WORKER_NAME, broadcaster_idx);
+    debug!("{}-{} started", WORKER_NAME, broadcaster_idx);
 
     let mut framed = vec![0u8; FragmentHeader::SIZE + config.payload_size + AuthToken::TOKEN_SIZE];
     while let Ok(BroadcastMessage { 0: hash, 1: ftr_block }) = receiver.recv() {
@@ -96,7 +96,7 @@ fn run(
         }
     }
     // receive loop exits when channel is disconnected.
-    info!("{}-{} exited", WORKER_NAME, broadcaster_idx);
+    debug!("{}-{} exited", WORKER_NAME, broadcaster_idx);
 }
 
 pub fn spawn_broadcaster_thread(

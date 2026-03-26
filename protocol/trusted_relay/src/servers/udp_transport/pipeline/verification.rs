@@ -4,7 +4,7 @@ use bytes::Bytes;
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use crossbeam_channel::Sender as CrossbeamSender;
 use fixedbitset::FixedBitSet;
-use kaspa_core::{debug, info, trace, warn};
+use kaspa_core::{debug, trace, warn};
 use kaspa_hashes::Hash;
 use ringmap::RingMap;
 
@@ -98,7 +98,7 @@ fn run(
     allowlist: Allowlist,
 ) {
     let allowlist_ips: Vec<_> = allowlist.load().keys().cloned().collect();
-    info!("{}-{} started (allowlist has {} entries: {:?})", WORKER_NAME, worker_idx, allowlist_ips.len(), allowlist_ips);
+    debug!("{}-{} started (allowlist has {} entries: {:?})", WORKER_NAME, worker_idx, allowlist_ips.len(), allowlist_ips);
     let mut count = 0u64;
     let mut dropped_allowlist = 0u64;
     let mut first_valid_fragment_logged = false;
@@ -201,7 +201,7 @@ fn run(
                             reassembly_receivers[config.get_hash_bucket(fragment_hash, reassembly_receivers.len())].try_iter();
                         }
                         crossbeam_channel::TrySendError::Disconnected(_) => {
-                            info!("{}-{}: fragment channel disconnected, shutting down", WORKER_NAME, worker_idx);
+                            debug!("{}-{}: fragment channel disconnected, shutting down", WORKER_NAME, worker_idx);
                             return;
                         }
                     }
@@ -219,7 +219,7 @@ fn run(
                             relay_receiver.try_iter();
                         }
                         crossbeam_channel::TrySendError::Disconnected(_) => {
-                            info!("{}-{}: forwarder channel disconnected, shutting down", WORKER_NAME, worker_idx);
+                            debug!("{}-{}: forwarder channel disconnected, shutting down", WORKER_NAME, worker_idx);
                             return;
                         }
                     }
@@ -247,7 +247,7 @@ fn run(
         }
     }
 
-    info!("{}-{}: UDP verification worker exited", WORKER_NAME, worker_idx);
+    debug!("{}-{}: UDP verification worker exited", WORKER_NAME, worker_idx);
 }
 
 pub fn spawn_verifier_thread(

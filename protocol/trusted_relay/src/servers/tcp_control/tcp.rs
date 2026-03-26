@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use kaspa_utils::triggers::Listener;
-use log::{debug, info, warn};
+use kaspa_core::{debug, info, warn};
 use rand::{RngCore, rngs::OsRng};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
