@@ -623,9 +623,70 @@ impl VirtualStateProcessor {
         commit
     }
 
+    /// Compute SMT metadata for the pruning point. Lane streaming is separate.
+    pub fn get_pruning_point_smt_metadata(
+        &self,
+        expected_pruning_point: Hash,
+    ) -> kaspa_consensus_core::errors::consensus::ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+        use kaspa_consensus_core::api::SmtExportMetadata;
+        use kaspa_consensus_core::errors::consensus::ConsensusError;
+        use kaspa_seq_commit::hashing::{mergeset_context_hash, miner_payload_root, seq_commit_timestamp};
+        use kaspa_seq_commit::types::{MergesetContext, MinerPayloadLeafInput};
+
+        // TODO: should we store and restore the metadata instead of recomputing it??
+
+        let pp = self.pruning_point_store.read().pruning_point().unwrap();
+        if pp != expected_pruning_point {
+            return Err(ConsensusError::UnexpectedPruningPoint);
+        }
+
+        let pp_header = self.headers_store.get_header(pp).unwrap();
+        let parent = pp_header.direct_parents()[0];
+        let parent_header = self.headers_store.get_header(parent).unwrap();
+
+        let lanes_root = self.derive_parent_lanes_root(pp_header.blue_score, pp);
+        let parent_seq_commit = parent_header.accepted_id_merkle_root;
+        let context_hash = mergeset_context_hash(&MergesetContext {
+            timestamp: seq_commit_timestamp(parent_header.timestamp),
+            daa_score: pp_header.daa_score,
+            blue_score: pp_header.blue_score,
+        });
+
+        let acceptance_data = self.acceptance_data_store.get(pp).unwrap();
+        let mut miner_payload_leaves = Vec::new();
+        for block_acceptance in acceptance_data.iter() {
+            let merged_block = block_acceptance.block_hash;
+            let merged_header = self.headers_store.get_header(merged_block).unwrap();
+            let block_txs = self.block_transactions_store.get(merged_block).unwrap();
+            miner_payload_leaves.push(kaspa_seq_commit::hashing::miner_payload_leaf(&MinerPayloadLeafInput {
+                block_hash: &merged_block,
+                blue_work_bytes: &merged_header.blue_work.to_le_bytes(),
+                payload: &block_txs[0].payload,
+            }));
+        }
+        let payload_root = miner_payload_root(miner_payload_leaves.into_iter());
+
+        debug_assert!(
+            kaspa_seq_commit::verify::verify_smt_metadata(
+                &kaspa_seq_commit::verify::SmtMetadata {
+                    lanes_root: &lanes_root,
+                    context_hash: &context_hash,
+                    payload_root: &payload_root,
+                    parent_seq_commit: &parent_seq_commit,
+                },
+                pp_header.accepted_id_merkle_root,
+                parent_header.accepted_id_merkle_root,
+            )
+            .is_ok(),
+            "exported SMT metadata does not match pruning point seq_commit"
+        );
+
+        Ok(SmtExportMetadata { lanes_root, context_hash, payload_root, parent_seq_commit })
+    }
+
     /// Check if `block_hash` is canonical for SMT lookups.
     /// ZERO_HASH is treated as always canonical — it marks IBD-imported entries.
-    pub(super) fn is_smt_canonical(&self, block_hash: Hash, selected_parent: Hash) -> bool {
+    pub fn is_smt_canonical(&self, block_hash: Hash, selected_parent: Hash) -> bool {
         block_hash == ZERO_HASH || self.reachability_service.is_chain_ancestor_of(block_hash, selected_parent)
     }
 

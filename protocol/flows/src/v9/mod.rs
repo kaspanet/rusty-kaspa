@@ -13,6 +13,8 @@ use crate::v7::{
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
 use crate::v8::request_block_bodies::HandleBlockBodyRequests;
+pub(crate) mod request_pruning_point_smt_state;
+use request_pruning_point_smt_state::RequestPruningPointSmtStateFlow;
 
 use crate::{flow_context::FlowContext, flow_trait::Flow, ibd::IbdFlow};
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute, convert::header::HeaderFormat};
@@ -93,7 +95,11 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
             ]),
         )),
-        // TODO: add RequestPruningPointSmtStateFlow here
+        Box::new(RequestPruningPointSmtStateFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointSmtState]),
+        )),
         Box::new(HandleIbdBlockRequests::new(
             ctx.clone(),
             router.clone(),

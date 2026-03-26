@@ -202,13 +202,6 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
 /// Proof is required for the first lane and every 16th lane thereafter.
 const SMT_PROOF_INTERVAL: usize = 16;
 
-pub struct SmtMetadataParsed {
-    pub lanes_root: Hash,
-    pub context_hash: Hash,
-    pub payload_root: Hash,
-    pub parent_seq_commit: Hash,
-}
-
 /// Stream of SMT lane entries. Pure one-way — no flow control.
 /// Enforces that the first and every 16th entry carries proof bytes.
 pub struct SmtStream<'a, 'b> {
@@ -222,7 +215,7 @@ impl<'a, 'b> SmtStream<'a, 'b> {
         Self { _router: router, incoming_route, lane_count: 0 }
     }
 
-    pub async fn recv_metadata(&mut self) -> Result<SmtMetadataParsed, ProtocolError> {
+    pub async fn recv_metadata(&mut self) -> Result<kaspa_consensus_core::api::SmtExportMetadata, ProtocolError> {
         match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
             Ok(Some(msg)) => match msg.payload {
                 Some(Payload::SmtMetadata(payload)) => {
@@ -235,7 +228,7 @@ impl<'a, 'b> SmtStream<'a, 'b> {
                     }
                     let [lanes_root, context_hash, payload_root, parent_seq_commit] =
                         [lanes_root, context_hash, payload_root, parent_seq_commit].map(Hash::from_bytes);
-                    Ok(SmtMetadataParsed { lanes_root, context_hash, payload_root, parent_seq_commit })
+                    Ok(kaspa_consensus_core::api::SmtExportMetadata { lanes_root, context_hash, payload_root, parent_seq_commit })
                 }
                 Some(Payload::UnexpectedPruningPoint(_)) => Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint)),
                 _ => Err(ProtocolError::UnexpectedMessage(stringify!(Payload::SmtMetadata), msg.payload.as_ref().map(|v| v.into()))),

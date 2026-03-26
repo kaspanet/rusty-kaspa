@@ -1128,6 +1128,40 @@ impl ConsensusApi for Consensus {
         Ok(())
     }
 
+    fn get_pruning_point_smt_metadata(
+        &self,
+        expected_pruning_point: Hash,
+    ) -> ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+        self.virtual_processor.get_pruning_point_smt_metadata(expected_pruning_point)
+    }
+
+    fn iter_pruning_point_smt_lanes(
+        &self,
+        expected_pruning_point: Hash,
+        mut f: Box<dyn FnMut(kaspa_consensus_core::api::ImportLane) -> bool + Send + 'static>,
+    ) {
+        use kaspa_consensus_core::api::ImportLane;
+        use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
+
+        let pp = self.pruning_point_store.read().pruning_point().unwrap();
+        if pp != expected_pruning_point {
+            return;
+        }
+        let pp_header = self.storage.headers_store.get_header(pp).unwrap();
+        let min_score = pp_header.blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
+
+        for result in
+            self.storage.smt_stores.lane_version.iter_all_canonical(min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))
+        {
+            let (_lk, v) = result.unwrap();
+            let lane =
+                ImportLane { lane_id: v.data().lane_id, lane_tip: v.data().lane_tip_hash, blue_score: v.blue_score(), proof: None };
+            if !f(lane) {
+                break;
+            }
+        }
+    }
+
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
         let (synced_pruning_point, synced_pp_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();

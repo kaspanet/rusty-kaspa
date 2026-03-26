@@ -56,6 +56,15 @@ pub struct ImportLane {
     pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
 }
 
+/// SMT metadata for IBD sync — verified against the pruning point header.
+#[derive(Clone, Debug)]
+pub struct SmtExportMetadata {
+    pub lanes_root: Hash,
+    pub context_hash: Hash,
+    pub payload_root: Hash,
+    pub parent_seq_commit: Hash,
+}
+
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
 pub trait ConsensusApi: Send + Sync {
@@ -281,6 +290,17 @@ pub trait ConsensusApi: Send + Sync {
         _lanes_root: Hash,
         _lanes: Vec<ImportLane>,
     ) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    /// Compute SMT metadata for the pruning point (for P2P streaming).
+    fn get_pruning_point_smt_metadata(&self, _expected_pruning_point: Hash) -> ConsensusResult<SmtExportMetadata> {
+        unimplemented!()
+    }
+
+    /// Iterate canonical SMT lanes at the pruning point, calling `f` for each.
+    /// Stops early if `f` returns false.
+    fn iter_pruning_point_smt_lanes(&self, _expected_pruning_point: Hash, _f: Box<dyn FnMut(ImportLane) -> bool + Send + 'static>) {
         unimplemented!()
     }
 
