@@ -1,5 +1,5 @@
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
