@@ -629,10 +629,11 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 // SAFETY: we just checked the len
                 let pub_key = pub_key_iter.next().unwrap();
 
+                // We don't pass 'enforce_nullfail=true' because we manually enforce it below
                 let check_signature_result = if ecdsa {
-                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature, true)
+                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature, false)
                 } else {
-                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature, true)
+                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature, false)
                 };
 
                 match check_signature_result {
