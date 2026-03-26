@@ -8,6 +8,7 @@ use kaspa_consensus_core::{
     tx::{TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
+use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::{DEFAULT_TIMEOUT, ProtocolError},
@@ -195,5 +196,102 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
         } else {
             res
         }
+    }
+}
+
+/// Proof is required for the first lane and every 16th lane thereafter.
+const SMT_PROOF_INTERVAL: usize = 16;
+
+pub struct SmtMetadataParsed {
+    pub lanes_root: Hash,
+    pub context_hash: Hash,
+    pub payload_root: Hash,
+    pub parent_seq_commit: Hash,
+}
+
+/// Stream of SMT lane entries. Pure one-way — no flow control.
+/// Enforces that the first and every 16th entry carries proof bytes.
+pub struct SmtStream<'a, 'b> {
+    incoming_route: &'b mut IncomingRoute,
+    _router: &'a Router,
+    lane_count: usize,
+}
+
+impl<'a, 'b> SmtStream<'a, 'b> {
+    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
+        Self { _router: router, incoming_route, lane_count: 0 }
+    }
+
+    pub async fn recv_metadata(&mut self) -> Result<SmtMetadataParsed, ProtocolError> {
+        match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
+            Ok(Some(msg)) => match msg.payload {
+                Some(Payload::SmtMetadata(payload)) => {
+                    let (chunks, rem) = payload.data.as_chunks::<32>();
+                    let &[lanes_root, context_hash, payload_root, parent_seq_commit] = chunks else {
+                        return Err(ProtocolError::Other("SmtMetadata data must be exactly 128 bytes"));
+                    };
+                    if !rem.is_empty() {
+                        return Err(ProtocolError::Other("SmtMetadata data must be exactly 128 bytes"));
+                    }
+                    let [lanes_root, context_hash, payload_root, parent_seq_commit] =
+                        [lanes_root, context_hash, payload_root, parent_seq_commit].map(Hash::from_bytes);
+                    Ok(SmtMetadataParsed { lanes_root, context_hash, payload_root, parent_seq_commit })
+                }
+                Some(Payload::UnexpectedPruningPoint(_)) => Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint)),
+                _ => Err(ProtocolError::UnexpectedMessage(stringify!(Payload::SmtMetadata), msg.payload.as_ref().map(|v| v.into()))),
+            },
+            Ok(None) => Err(ProtocolError::ConnectionClosed),
+            Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
+        }
+    }
+
+    pub async fn next(&mut self) -> Result<Option<kaspa_consensus_core::api::ImportLane>, ProtocolError> {
+        match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
+            Ok(Some(msg)) => match msg.payload {
+                Some(Payload::SmtLaneEntry(payload)) => {
+                    let Some((&lane_id, rem)) = payload.data.split_first_chunk::<20>() else {
+                        return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_id"));
+                    };
+                    let Some(&tip_bytes) = rem.first_chunk::<32>() else {
+                        return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_tip"));
+                    };
+                    if rem.len() != 32 {
+                        return Err(ProtocolError::Other("SmtLaneEntry data must be exactly 52 bytes"));
+                    }
+                    let lane_tip = Hash::from_bytes(tip_bytes);
+
+                    let requires_proof = self.lane_count.is_multiple_of(SMT_PROOF_INTERVAL);
+                    let proof = if requires_proof {
+                        if payload.proof.is_empty() {
+                            return Err(ProtocolError::Other("SMT proof required for first and every 16th lane entry"));
+                        }
+                        Some(
+                            kaspa_smt::proof::OwnedSmtProof::from_bytes(&payload.proof)
+                                .map_err(|e| ProtocolError::OtherOwned(format!("invalid SMT proof: {e}")))?,
+                        )
+                    } else {
+                        None
+                    };
+
+                    self.lane_count += 1;
+                    Ok(Some(kaspa_consensus_core::api::ImportLane { lane_id, lane_tip, blue_score: payload.blue_score, proof }))
+                }
+                Some(Payload::DoneSmtChunks(_)) => {
+                    info!("Finished receiving SMT state. Total lanes: {}", self.lane_count);
+                    Ok(None)
+                }
+                Some(Payload::UnexpectedPruningPoint(_)) => Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint)),
+                _ => Err(ProtocolError::UnexpectedMessage(
+                    stringify!(Payload::SmtLaneEntry | Payload::DoneSmtChunks),
+                    msg.payload.as_ref().map(|v| v.into()),
+                )),
+            },
+            Ok(None) => Err(ProtocolError::ConnectionClosed),
+            Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
+        }
+    }
+
+    pub fn lane_count(&self) -> usize {
+        self.lane_count
     }
 }

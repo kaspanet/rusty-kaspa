@@ -29,6 +29,7 @@ kaspa-addresses.workspace = true
 kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
+kaspa-smt.workspace = true
 kaspa-merkle.workspace = true
 kaspa-muhash.workspace = true
 kaspa-txscript-errors.workspace = true

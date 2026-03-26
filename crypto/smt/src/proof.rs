@@ -121,6 +121,27 @@ pub struct OwnedSmtProof {
 }
 
 impl OwnedSmtProof {
+    /// Parse from wire format: `bitmap[32] || siblings[N * 32]`.
+    /// Returns `Err` if the length is not `32 + N * 32` where N matches the bitmap.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, SmtProofError> {
+        let Some((&bitmap, sibling_bytes)) = data.split_first_chunk::<32>() else {
+            return Err(SmtProofError::SiblingCountMismatch { expected: 0, actual: 0 });
+        };
+        let (siblings, rem) = sibling_bytes.as_chunks::<32>();
+        if !rem.is_empty() {
+            return Err(SmtProofError::SiblingCountMismatch {
+                expected: bitmap_clear_count(&bitmap),
+                actual: sibling_bytes.len() / 32,
+            });
+        }
+        let expected = bitmap_clear_count(&bitmap);
+        if siblings.len() != expected {
+            return Err(SmtProofError::SiblingCountMismatch { expected, actual: siblings.len() });
+        }
+        let siblings = siblings.iter().copied().map(Hash::from_bytes).collect::<Vec<_>>();
+        Ok(Self { bitmap, siblings })
+    }
+
     pub fn as_proof(&self) -> SmtProof<'_> {
         SmtProof { bitmap: &self.bitmap, siblings: &self.siblings }
     }

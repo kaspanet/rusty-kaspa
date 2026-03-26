@@ -1092,6 +1092,42 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
+    // TODO: SMT is built in 3 places (block verification, virtual state, IBD import).
+    // All currently collect leaves into a BTreeMap then compute sequentially.
+    // Optimize: stream leaves directly into the processor, let it detect siblings
+    // vs empty and dispatch hash computation to a thread pool at each level.
+    fn import_pruning_point_smt(
+        &self,
+        new_pruning_point: Hash,
+        lanes_root: Hash,
+        lanes: Vec<kaspa_consensus_core::api::ImportLane>,
+    ) -> PruningImportResult<()> {
+        use kaspa_hashes::ZERO_HASH;
+        use kaspa_seq_commit::hashing::lane_key;
+        use kaspa_smt::SmtHasher;
+        use kaspa_smt_store::processor::SmtProcessor;
+
+        let pp_header = self.storage.headers_store.get_header(new_pruning_point).unwrap();
+        let empty_root = kaspa_hashes::SeqCommitActiveNode::empty_root();
+
+        let mut proc = SmtProcessor::new_import(&self.storage.smt_stores, pp_header.blue_score, empty_root);
+        for lane in &lanes {
+            proc.update_lane(lane_key(&lane.lane_id), lane.lane_id, lane.lane_tip, lane.blue_score);
+        }
+        let build = proc.build(|_| true).map_err(|e| PruningImportError::SmtStoreError(format!("{e}")))?;
+
+        if build.root != lanes_root {
+            return Err(PruningImportError::SmtRootMismatch { expected: lanes_root, computed: build.root });
+        }
+
+        let mut batch = rocksdb::WriteBatch::default();
+        build.flush(&self.storage.smt_stores, &mut batch, pp_header.blue_score, ZERO_HASH).unwrap();
+        self.db.write(batch).unwrap();
+
+        info!("Imported SMT state for pruning point {}: {} lanes, root {}", new_pruning_point, lanes.len(), lanes_root);
+        Ok(())
+    }
+
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
         let (synced_pruning_point, synced_pp_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();

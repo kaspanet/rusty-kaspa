@@ -47,6 +47,15 @@ pub struct BlockValidationFutures {
     pub virtual_state_task: BlockValidationFuture,
 }
 
+/// A lane to import during IBD SMT sync.
+#[derive(Clone, Debug)]
+pub struct ImportLane {
+    pub lane_id: [u8; 20],
+    pub lane_tip: Hash,
+    pub blue_score: u64,
+    pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
+}
+
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
 pub trait ConsensusApi: Send + Sync {
@@ -261,6 +270,17 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    /// Import SMT lane state at the pruning point. Builds the tree from lane
+    /// preimages, verifies root matches `lanes_root`, and flushes to DB.
+    fn import_pruning_point_smt(
+        &self,
+        _new_pruning_point: Hash,
+        _lanes_root: Hash,
+        _lanes: Vec<ImportLane>,
+    ) -> PruningImportResult<()> {
         unimplemented!()
     }
 

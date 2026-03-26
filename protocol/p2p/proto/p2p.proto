@@ -310,3 +310,22 @@ message TrustedDataMessage {
   repeated DaaBlockV4 daaWindow = 1; // TODO: rename to `trustedSubDag` once v5 is obsolete
   repeated BlockGhostdagDataHashPair ghostdagData = 2; // TODO: remove once v5 is obsolete
 }
+
+// SMT state sync (KIP-21 IBD)
+
+message RequestPruningPointSmtStateMessage {
+  Hash pruningPointHash = 1;
+}
+
+message SmtMetadataMessage {
+  bytes data = 1; // 128 bytes: lanes_root || context_hash || payload_root || parent_seq_commit
+}
+
+message SmtLaneEntryMessage {
+  bytes data = 1;         // 52 bytes: lane_id[20] || lane_tip[32]
+  uint64 blueScore = 2;
+  bytes proof = 3;        // optional: bitmap[32] || siblings[N * 32]
+}
+
+message DoneSmtChunksMessage {
+}
