@@ -2501,6 +2501,7 @@ dependencies = [
  "kaspa-addressmanager",
  "kaspa-core",
  "kaspa-p2p-lib",
+ "kaspa-perigeemanager",
  "kaspa-utils",
  "log",
  "parking_lot",
@@ -3073,6 +3074,7 @@ dependencies = [
  "kaspa-p2p-lib",
  "kaspa-p2p-mining",
  "kaspa-trusted-relay",
+ "kaspa-perigeemanager",
  "kaspa-utils",
  "kaspa-utils-tower",
  "log",
@@ -3146,6 +3148,22 @@ dependencies = [
  "thiserror 1.0.64",
  "tokio",
  "workflow-perf-monitor",
+]
+
+[[package]]
+name = "kaspa-perigeemanager"
+version = "1.1.0-rc.2"
+dependencies = [
+ "itertools 0.13.0",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-p2p-lib",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -3890,6 +3908,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-addressmanager",
  "kaspa-alloc",
+ "kaspa-connectionmanager",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -3905,6 +3924,7 @@ dependencies = [
  "kaspa-p2p-lib",
  "kaspa-p2p-mining",
  "kaspa-perf-monitor",
+ "kaspa-perigeemanager",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
  "kaspa-trusted-relay",

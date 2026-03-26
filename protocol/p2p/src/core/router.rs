@@ -1,18 +1,21 @@
 use crate::core::hub::HubEvent;
+use crate::core::peer::PeerOutboundType;
 use crate::pb::RejectMessage;
 use crate::pb::{KaspadMessage, kaspad_message::Payload as KaspadMessagePayload};
 use crate::{KaspadMessagePayloadType, common::ProtocolError};
 use crate::{Peer, make_message};
+use kaspa_consensus_core::Hash;
 use kaspa_core::{debug, error, info, trace, warn};
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
-use std::{collections::HashMap, sync::Arc};
 use tokio::select;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{Receiver as MpscReceiver, Sender as MpscSender, channel as mpsc_channel};
@@ -102,6 +105,8 @@ struct RouterMutableState {
 
     /// Duration of the last ping to this peer
     last_ping_duration: u64,
+
+    perigee_timestamps: HashMap<Hash, Instant>,
 }
 
 impl RouterMutableState {
@@ -120,8 +125,8 @@ pub struct Router {
     /// The socket address of this peer
     net_address: SocketAddr,
 
-    /// Indicates whether this connection is an outbound connection
-    is_outbound: bool,
+    /// Indicates whether this connection is an outbound connection, and if so under which outbound type
+    outbound_type: Option<PeerOutboundType>,
 
     /// Time of creation of this object and the connection it holds
     connection_started: Instant,
@@ -149,19 +154,27 @@ impl Display for Router {
 
 impl From<&Router> for PeerKey {
     fn from(value: &Router) -> Self {
-        Self::new(value.identity.read(), value.net_address.ip().into())
+        Self::new(value.identity.read(), value.net_address.ip().into(), value.net_address.port())
     }
 }
 
-impl From<&Router> for Peer {
-    fn from(router: &Router) -> Self {
+impl From<(&Router, bool)> for Peer {
+    /// the bool indicates whether to include perigee data
+    fn from(item: (&Router, bool)) -> Self {
+        let (router, include_perigee_data) = item;
         Self::new(
             router.identity(),
             router.net_address,
-            router.is_outbound,
+            router.outbound_type,
             router.connection_started,
             router.properties(),
             router.last_ping_duration(),
+            if include_perigee_data {
+                let perigee_timestamps = router.perigee_timestamps();
+                Arc::new(perigee_timestamps)
+            } else {
+                Arc::new(HashMap::new())
+            },
         )
     }
 }
@@ -175,7 +188,7 @@ fn message_summary(msg: &KaspadMessage) -> impl Debug {
 impl Router {
     pub(crate) async fn new(
         net_address: SocketAddr,
-        is_outbound: bool,
+        outbound_type: Option<PeerOutboundType>,
         hub_sender: MpscSender<HubEvent>,
         mut incoming_stream: Streaming<KaspadMessage>,
         outgoing_route: MpscSender<KaspadMessage>,
@@ -186,7 +199,7 @@ impl Router {
         let router = Arc::new(Router {
             identity: Default::default(),
             net_address,
-            is_outbound,
+            outbound_type,
             connection_started: Instant::now(),
             routing_map_by_type: RwLock::new(HashMap::new()),
             routing_map_by_id: RwLock::new(HashMap::new()),
@@ -266,7 +279,19 @@ impl Router {
 
     /// Indicates whether this connection is an outbound connection
     pub fn is_outbound(&self) -> bool {
-        self.is_outbound
+        self.outbound_type.is_some()
+    }
+
+    pub fn is_user_supplied(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::UserSupplied))
+    }
+
+    pub fn is_perigee(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::Perigee))
+    }
+
+    pub fn is_random_graph(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::RandomGraph))
     }
 
     pub fn connection_started(&self) -> Instant {
@@ -290,12 +315,28 @@ impl Router {
         self.mutable_state.lock().last_ping_duration = last_ping_duration;
     }
 
+    pub fn add_perigee_timestamp(&self, hash: Hash, timestamp: Instant) {
+        self.mutable_state.lock().perigee_timestamps.insert(hash, timestamp);
+    }
+
+    pub fn clear_perigee_timestamps(&self) {
+        self.mutable_state.lock().perigee_timestamps.clear();
+    }
+
+    pub fn perigee_timestamps(&self) -> HashMap<Hash, Instant> {
+        self.mutable_state.lock().perigee_timestamps.clone()
+    }
+
     pub fn last_ping_duration(&self) -> u64 {
         self.mutable_state.lock().last_ping_duration
     }
 
     pub fn incoming_flow_baseline_channel_size() -> usize {
         256
+    }
+
+    pub fn protocol_version(&self) -> u32 {
+        self.mutable_state.lock().properties.protocol_version
     }
 
     /// Send a signal to start this router's receive loop
@@ -468,5 +509,45 @@ fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
         }
 
         err = err.source()?;
+    }
+}
+
+// --- TEST UTILS ---
+#[cfg(feature = "test-utils")]
+pub trait RouterTestExt {
+    fn test_new(
+        identity: PeerId,
+        net_address: std::net::SocketAddr,
+        outbound_type: Option<super::peer::PeerOutboundType>,
+        connection_started: std::time::Instant,
+    ) -> std::sync::Arc<Self>
+    where
+        Self: Sized;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl RouterTestExt for Router {
+    fn test_new(
+        identity: PeerId,
+        net_address: std::net::SocketAddr,
+        outbound_type: Option<super::peer::PeerOutboundType>,
+        connection_started: std::time::Instant,
+    ) -> std::sync::Arc<Self> {
+        use tokio::sync::mpsc;
+        let (hub_sender, _hub_receiver) = mpsc::channel(1);
+        let (outgoing_route, _outgoing_receiver) = mpsc::channel(1);
+        // Create a dummy streaming object (not actually used in this test context)
+        // let dummy_stream = Streaming::<KaspadMessage>::new_empty(...); // not needed for struct
+        std::sync::Arc::new(Router {
+            identity: seqlock::SeqLock::new(identity),
+            net_address,
+            outbound_type,
+            connection_started,
+            routing_map_by_type: parking_lot::RwLock::new(std::collections::HashMap::new()),
+            routing_map_by_id: parking_lot::RwLock::new(std::collections::HashMap::new()),
+            outgoing_route,
+            hub_sender,
+            mutable_state: parking_lot::Mutex::new(RouterMutableState::new(None, None)),
+        })
     }
 }
