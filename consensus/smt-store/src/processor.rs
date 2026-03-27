@@ -31,7 +31,7 @@ use crate::lane_version_store::DbLaneVersionStore;
 use crate::maybe_fork::Verified;
 use crate::score_index::DbScoreIndex;
 use crate::values::LaneVersion;
-use crate::{BlockHash, LANE_INACTIVITY_THRESHOLD, LaneKey};
+use crate::{BlockHash, LaneKey};
 
 struct VersionedBranchReader<'a, F: Fn(Hash) -> bool> {
     stores: &'a SmtStores,
@@ -238,13 +238,14 @@ impl LaneChanges for ImportLaneChanges {
 pub struct SmtProcessor<'a, C: LaneChanges = BlockLaneChanges> {
     stores: &'a SmtStores,
     blue_score: u64,
+    inactivity_threshold: u64,
     current_lanes_root: Hash,
     lane_changes: C,
 }
 
 impl<'a> SmtProcessor<'a, BlockLaneChanges> {
-    pub fn new(stores: &'a SmtStores, blue_score: u64, current_lanes_root: Hash) -> Self {
-        Self { stores, blue_score, current_lanes_root, lane_changes: BlockLaneChanges::new(blue_score) }
+    pub fn new(stores: &'a SmtStores, blue_score: u64, inactivity_threshold: u64, current_lanes_root: Hash) -> Self {
+        Self { stores, blue_score, inactivity_threshold, current_lanes_root, lane_changes: BlockLaneChanges::new(blue_score) }
     }
 
     pub fn update_lane(&mut self, lane_key: LaneKey, lane_id: [u8; 20], lane_tip_hash: Hash) {
@@ -257,8 +258,8 @@ impl<'a> SmtProcessor<'a, BlockLaneChanges> {
 }
 
 impl<'a> SmtProcessor<'a, ImportLaneChanges> {
-    pub fn new_import(stores: &'a SmtStores, blue_score: u64, current_lanes_root: Hash) -> Self {
-        Self { stores, blue_score, current_lanes_root, lane_changes: ImportLaneChanges::new() }
+    pub fn new_import(stores: &'a SmtStores, blue_score: u64, inactivity_threshold: u64, current_lanes_root: Hash) -> Self {
+        Self { stores, blue_score, inactivity_threshold, current_lanes_root, lane_changes: ImportLaneChanges::new() }
     }
 
     pub fn update_lane(&mut self, lane_key: LaneKey, lane_id: [u8; 20], lane_tip_hash: Hash, blue_score: u64) {
@@ -281,7 +282,7 @@ impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
         let leaf_updates = self.lane_changes.to_leaf_updates();
         let reader = VersionedBranchReader {
             stores: self.stores,
-            min_blue_score: self.blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD),
+            min_blue_score: self.blue_score.saturating_sub(self.inactivity_threshold),
             is_canonical,
         };
         let (root, branch_changes) = compute_root_update::<SeqCommitActiveNode, _>(&reader, self.current_lanes_root, leaf_updates)?;

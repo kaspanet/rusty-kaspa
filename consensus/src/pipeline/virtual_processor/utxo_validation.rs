@@ -553,8 +553,6 @@ impl VirtualStateProcessor {
     ) -> Vec<ResolvedLaneUpdate> {
         use kaspa_seq_commit::hashing::{activity_digest_lane, lane_key, lane_tip_next};
         use kaspa_seq_commit::types::LaneTipInput;
-        use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
-
         let mut updates = Vec::with_capacity(data.lane_activities.len());
 
         for (lane_id, activity_leaves) in &data.lane_activities {
@@ -563,9 +561,9 @@ impl VirtualStateProcessor {
 
             // Look up current lane tip.
             // New/reactivated lanes use parent_seq_commit as anchor (KIP-21 §5.1).
-            let existing = self.smt_stores.get_lane(lk, parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD), |bh| {
-                self.is_smt_canonical(bh, selected_parent)
-            });
+            let existing = self
+                .smt_stores
+                .get_lane(lk, parent_blue_score.saturating_sub(self.finality_depth), |bh| self.is_smt_canonical(bh, selected_parent));
             let is_new = existing.is_none();
             let parent_ref = existing.map(|v| v.data().lane_tip_hash).unwrap_or(parent_seq_commit);
 
@@ -604,7 +602,7 @@ impl VirtualStateProcessor {
         use kaspa_smt_store::processor::SmtProcessor;
 
         // 1. Create processor starting from the parent's lanes root
-        let mut proc = SmtProcessor::new(&self.smt_stores, current_blue_score, parent_lanes_root);
+        let mut proc = SmtProcessor::new(&self.smt_stores, current_blue_score, self.finality_depth, parent_lanes_root);
 
         // 2. Expire stale lanes
         let expired_count = self.expire_stale_lanes(&mut proc, parent_blue_score, current_blue_score, selected_parent);

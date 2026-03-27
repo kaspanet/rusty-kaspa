@@ -679,10 +679,8 @@ impl VirtualStateProcessor {
         current_blue_score: u64,
         selected_parent: Hash,
     ) -> u64 {
-        use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
-
-        let prev_min = parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
-        let curr_min = current_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
+        let prev_min = parent_blue_score.saturating_sub(self.finality_depth);
+        let curr_min = current_blue_score.saturating_sub(self.finality_depth);
 
         if curr_min <= prev_min {
             return 0;

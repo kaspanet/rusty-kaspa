@@ -1118,7 +1118,8 @@ impl ConsensusApi for Consensus {
         let pp_header = self.storage.headers_store.get_header(new_pruning_point).unwrap();
         let empty_root = kaspa_hashes::SeqCommitActiveNode::empty_root();
 
-        let mut proc = SmtProcessor::new_import(&self.storage.smt_stores, pp_header.blue_score, empty_root);
+        let finality_depth = self.config.params.finality_depth();
+        let mut proc = SmtProcessor::new_import(&self.storage.smt_stores, pp_header.blue_score, finality_depth, empty_root);
         for lane in &lanes {
             proc.update_lane(lane_key(&lane.lane_id), lane.lane_id, lane.lane_tip, lane.blue_score);
         }
@@ -1161,14 +1162,13 @@ impl ConsensusApi for Consensus {
         mut f: Box<dyn FnMut(kaspa_consensus_core::api::ImportLane) -> bool + Send + 'static>,
     ) {
         use kaspa_consensus_core::api::ImportLane;
-        use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
 
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if pp != expected_pruning_point {
             return;
         }
         let pp_header = self.storage.headers_store.get_header(pp).unwrap();
-        let min_score = pp_header.blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
+        let min_score = pp_header.blue_score.saturating_sub(self.config.params.finality_depth());
 
         for result in
             self.storage.smt_stores.lane_version.iter_all_canonical(min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))

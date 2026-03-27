@@ -21,6 +21,9 @@ fn make_stores(db: &Arc<DB>) -> SmtStores {
     SmtStores::new(db.clone(), 1, 1)
 }
 
+/// Test-only inactivity threshold (large enough to never expire in tests).
+const TEST_THRESHOLD: u64 = 432_000;
+
 /// A1/A2: walk_up without remove_branch produces the same roots as insertion-only paths.
 #[test]
 fn walk_up_always_insert_same_root() {
@@ -73,7 +76,7 @@ fn processor_two_lanes_matches_in_memory() {
     let empty_root = SeqCommitActiveNode::empty_root();
 
     // Process via SmtProcessor
-    let mut proc = SmtProcessor::new(&stores, blue_score, empty_root);
+    let mut proc = SmtProcessor::new(&stores, blue_score, TEST_THRESHOLD, empty_root);
     proc.update_lane(key_a, lane_id_a, tip_a);
     proc.update_lane(key_b, lane_id_b, tip_b);
     let build = proc.build(|_| true).unwrap();
@@ -108,7 +111,7 @@ fn processor_second_block_reads_from_db() {
     // Block 1: insert lane A
     let tip_a1 = hash(0xA1);
     let bs1 = 100u64;
-    let mut proc1 = SmtProcessor::new(&stores, bs1, empty_root);
+    let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
     proc1.update_lane(key_a, lane_id_a, tip_a1);
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
@@ -119,7 +122,7 @@ fn processor_second_block_reads_from_db() {
     // Block 2: insert lane B (lane A should be read from DB)
     let tip_b = hash(0xB1);
     let bs2 = 200u64;
-    let mut proc2 = SmtProcessor::new(&stores, bs2, root1);
+    let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
     proc2.update_lane(key_b, lane_id_b, tip_b);
     let build2 = proc2.build(|_| true).unwrap();
     let root2 = build2.root;
@@ -153,7 +156,7 @@ fn processor_update_same_lane_across_blocks() {
     // Block 1
     let tip1 = hash(0xA1);
     let bs1 = 100u64;
-    let mut proc1 = SmtProcessor::new(&stores, bs1, empty_root);
+    let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
     proc1.update_lane(key, lane_id, tip1);
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
@@ -164,7 +167,7 @@ fn processor_update_same_lane_across_blocks() {
     // Block 2: update same lane with new tip
     let tip2 = hash(0xB2);
     let bs2 = 200u64;
-    let mut proc2 = SmtProcessor::new(&stores, bs2, root1);
+    let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
     proc2.update_lane(key, lane_id, tip2);
     let build2 = proc2.build(|_| true).unwrap();
     let root2 = build2.root;
@@ -194,7 +197,7 @@ fn processor_flush_writes_correct_data() {
     let blue_score = 100u64;
     let empty_root = SeqCommitActiveNode::empty_root();
 
-    let mut proc = SmtProcessor::new(&stores, blue_score, empty_root);
+    let mut proc = SmtProcessor::new(&stores, blue_score, TEST_THRESHOLD, empty_root);
     proc.update_lane(key, lane_id, tip);
     let build = proc.build(|_| true).unwrap();
     let mut batch = WriteBatch::default();
@@ -220,8 +223,6 @@ fn processor_flush_writes_correct_data() {
 /// Inactivity threshold — lane not touched within threshold -> treated as empty.
 #[test]
 fn inactivity_threshold_hides_stale_branches() {
-    use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
-
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
 
@@ -233,7 +234,7 @@ fn inactivity_threshold_hides_stale_branches() {
     let empty_root = SeqCommitActiveNode::empty_root();
 
     // Write a lane at blue_score=100
-    let mut proc = SmtProcessor::new(&stores, old_blue_score, empty_root);
+    let mut proc = SmtProcessor::new(&stores, old_blue_score, TEST_THRESHOLD, empty_root);
     proc.update_lane(key, lane_id, tip);
     let build = proc.build(|_| true).unwrap();
     let mut batch = WriteBatch::default();
@@ -245,7 +246,7 @@ fn inactivity_threshold_hides_stale_branches() {
     assert!(root_branch.is_some(), "branch should be visible at same blue_score");
 
     // At blue_score=100 + THRESHOLD + 1: beyond inactivity window
-    let far_future_min = (old_blue_score + LANE_INACTIVITY_THRESHOLD + 1).saturating_sub(LANE_INACTIVITY_THRESHOLD);
+    let far_future_min = (old_blue_score + TEST_THRESHOLD + 1).saturating_sub(TEST_THRESHOLD);
     let root_branch_far = stores.branch_version.get(255, Hash::from_bytes([0; 32]), far_future_min, |_| true).unwrap();
     assert!(root_branch_far.is_none(), "branch should be hidden beyond inactivity threshold");
 }
@@ -275,7 +276,7 @@ fn build_root_matches_flush() {
     let empty_root = SeqCommitActiveNode::empty_root();
     let blue_score = 100u64;
 
-    let mut proc = SmtProcessor::new(&stores, blue_score, empty_root);
+    let mut proc = SmtProcessor::new(&stores, blue_score, TEST_THRESHOLD, empty_root);
     proc.update_lane(lane_key(&[0x01; 20]), [0x01; 20], hash(0xAA));
     let build = proc.build(|_| true).unwrap();
     let root_from_build = build.root;
@@ -301,7 +302,7 @@ fn expire_lane_removes_from_tree() {
 
     // Block 1: insert a lane
     let bs1 = 100u64;
-    let mut proc1 = SmtProcessor::new(&stores, bs1, empty_root);
+    let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
     proc1.update_lane(key, lane_id, hash(0xAA));
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
@@ -313,7 +314,7 @@ fn expire_lane_removes_from_tree() {
 
     // Block 2: expire the lane
     let bs2 = 200u64;
-    let mut proc2 = SmtProcessor::new(&stores, bs2, root1);
+    let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
     proc2.expire_lane(key);
     let build2 = proc2.build(|_| true).unwrap();
     let root2 = build2.root;
@@ -338,7 +339,7 @@ fn empty_build_reuses_root() {
 
     // Block 1: insert a lane
     let bs1 = 100u64;
-    let mut proc1 = SmtProcessor::new(&stores, bs1, empty_root);
+    let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
     proc1.update_lane(key, lane_id, hash(0xAA));
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
@@ -348,7 +349,7 @@ fn empty_build_reuses_root() {
 
     // Block 2: no updates, no expirations
     let bs2 = 200u64;
-    let proc2 = SmtProcessor::new(&stores, bs2, root1);
+    let proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
     let build2 = proc2.build(|_| true).unwrap();
 
     assert_eq!(build2.root, root1, "empty build should reuse parent root");
@@ -366,7 +367,7 @@ fn single_touch_updates_only_path_branches() {
     let empty_root = SeqCommitActiveNode::empty_root();
     let bs = 100u64;
 
-    let mut proc = SmtProcessor::new(&stores, bs, empty_root);
+    let mut proc = SmtProcessor::new(&stores, bs, TEST_THRESHOLD, empty_root);
     proc.update_lane(lane_key(&[0x01; 20]), [0x01; 20], hash(0xAA));
     let build = proc.build(|_| true).unwrap();
 
@@ -391,7 +392,7 @@ fn untouched_subtree_not_in_diff() {
     let bs1 = 100u64;
 
     // Block 1: insert both lanes
-    let mut proc1 = SmtProcessor::new(&stores, bs1, empty_root);
+    let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
     proc1.update_lane(key_a, lane_a, hash(0xAA));
     proc1.update_lane(key_b, lane_b, hash(0xBB));
     let build1 = proc1.build(|_| true).unwrap();
@@ -402,7 +403,7 @@ fn untouched_subtree_not_in_diff() {
 
     // Block 2: only touch lane A
     let bs2 = 200u64;
-    let mut proc2 = SmtProcessor::new(&stores, bs2, root1);
+    let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
     proc2.update_lane(key_a, lane_a, hash(0xCC));
     let build2 = proc2.build(|_| true).unwrap();
 
@@ -427,7 +428,7 @@ fn flush_rebuild_roundtrip() {
     let bs = 100u64;
 
     // Build and flush
-    let mut proc = SmtProcessor::new(&stores, bs, empty_root);
+    let mut proc = SmtProcessor::new(&stores, bs, TEST_THRESHOLD, empty_root);
     proc.update_lane(key_a, lane_a, hash(0xAA));
     proc.update_lane(key_b, lane_b, hash(0xBB));
     let build = proc.build(|_| true).unwrap();
@@ -437,7 +438,7 @@ fn flush_rebuild_roundtrip() {
     db.write(batch).unwrap();
 
     // Rebuild with no changes — root should match
-    let proc2 = SmtProcessor::new(&stores, bs + 10, original_root);
+    let proc2 = SmtProcessor::new(&stores, bs + 10, TEST_THRESHOLD, original_root);
     let build2 = proc2.build(|_| true).unwrap();
     assert_eq!(build2.root, original_root, "no-change rebuild should produce same root");
 }
@@ -470,7 +471,7 @@ fn export_import_roundtrip() {
     // Process blocks sequentially, each building on the previous root
     let mut current_root = empty_root;
     for block in &blocks {
-        let mut proc = SmtProcessor::new(&stores, block.blue_score, current_root);
+        let mut proc = SmtProcessor::new(&stores, block.blue_score, TEST_THRESHOLD, current_root);
         for (lid, tip) in &block.lanes {
             proc.update_lane(lane_key(lid), *lid, *tip);
         }
@@ -501,7 +502,7 @@ fn export_import_roundtrip() {
     let import_stores = make_stores(&db2);
 
     let pp_blue_score = 500; // latest block's blue_score
-    let mut import_proc = SmtProcessor::new_import(&import_stores, pp_blue_score, empty_root);
+    let mut import_proc = SmtProcessor::new_import(&import_stores, pp_blue_score, TEST_THRESHOLD, empty_root);
     for (lid, tip, bs) in &exported {
         import_proc.update_lane(lane_key(lid), *lid, *tip, *bs);
     }
@@ -527,11 +528,11 @@ fn export_import_roundtrip() {
     let new_lane_id = [0xFE; 20];
     let new_tip = hash(0xFE);
 
-    let mut orig_next = SmtProcessor::new(&stores, next_bs, final_root);
+    let mut orig_next = SmtProcessor::new(&stores, next_bs, TEST_THRESHOLD, final_root);
     orig_next.update_lane(lane_key(&new_lane_id), new_lane_id, new_tip);
     let orig_next_build = orig_next.build(|_| true).unwrap();
 
-    let mut import_next = SmtProcessor::new(&import_stores, next_bs, final_root);
+    let mut import_next = SmtProcessor::new(&import_stores, next_bs, TEST_THRESHOLD, final_root);
     import_next.update_lane(lane_key(&new_lane_id), new_lane_id, new_tip);
     let import_next_build = import_next.build(|bh| bh == ZERO_HASH).unwrap();
 
@@ -552,7 +553,7 @@ fn zero_hash_block_hash_lanes_are_readable() {
     let tip = hash(0xAA);
     let bs = 500u64;
 
-    let mut proc = SmtProcessor::new(&stores, bs, SeqCommitActiveNode::empty_root());
+    let mut proc = SmtProcessor::new(&stores, bs, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());
     proc.update_lane(lk, lane_id, tip);
     let build = proc.build(|_| true).unwrap();
     let mut batch = WriteBatch::default();
@@ -578,7 +579,7 @@ fn zero_hash_block_hash_branches_are_readable() {
     let tip = hash(0xAA);
     let bs = 500u64;
 
-    let mut proc = SmtProcessor::new(&stores, bs, SeqCommitActiveNode::empty_root());
+    let mut proc = SmtProcessor::new(&stores, bs, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());
     proc.update_lane(lk, lane_id, tip);
     let build = proc.build(|_| true).unwrap();
     let root = build.root;
@@ -615,14 +616,14 @@ fn import_lane_changes_per_lane_blue_score() {
     let expected_root = ref_tree.root();
 
     // BlockLaneChanges (uniform) produces a different root
-    let mut block_proc = SmtProcessor::new(&stores, 1000, SeqCommitActiveNode::empty_root());
+    let mut block_proc = SmtProcessor::new(&stores, 1000, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());
     block_proc.update_lane(lk_a, lane_a_id, tip_a);
     block_proc.update_lane(lk_b, lane_b_id, tip_b);
     let block_build = block_proc.build(|_| true).unwrap();
     assert_ne!(block_build.root, expected_root);
 
     // ImportLaneChanges (per-lane) matches the reference
-    let mut import_proc = SmtProcessor::new_import(&stores, 1000, SeqCommitActiveNode::empty_root());
+    let mut import_proc = SmtProcessor::new_import(&stores, 1000, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());
     import_proc.update_lane(lk_a, lane_a_id, tip_a, bs_a);
     import_proc.update_lane(lk_b, lane_b_id, tip_b, bs_b);
     let import_build = import_proc.build(|_| true).unwrap();
