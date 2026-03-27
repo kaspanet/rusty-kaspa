@@ -427,16 +427,6 @@ jobs:
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Cache Toolchain
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/x-tools
-          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/preset.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-musl-
-
-      
       - name: Build RK with musl toolchain
         if: runner.os == 'Linux'
         run: |
