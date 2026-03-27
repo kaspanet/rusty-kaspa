@@ -10,7 +10,7 @@ use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::Verifiable
 use kaspa_txscript_errors::SerializationError;
 use thiserror::Error;
 
-use crate::viewer::ScriptViewer;
+use crate::viewer::{ScriptViewer, ScriptViewerOptions};
 
 /// DEFAULT_SCRIPT_ALLOC is the default size used for the backing array
 /// for a script being built by the ScriptBuilder. The array will

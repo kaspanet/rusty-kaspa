@@ -1,6 +1,5 @@
 use crate::result::Result;
-use crate::viewer::ScriptViewerOptions;
-use crate::wasm::IScriptViewerOptions;
+use crate::wasm::ScriptViewerOptions;
 use crate::{script_builder as native, standard};
 use kaspa_consensus_core::{
     hashing::sighash::SigHashReusedValuesSync,
@@ -183,8 +182,8 @@ impl ScriptBuilder {
     }
 
     #[wasm_bindgen(js_name = "stringView")]
-    pub fn string_view(&self, options: Option<IScriptViewerOptions>) -> Result<String> {
-        let options = options.map(ScriptViewerOptions::try_from).transpose()?.unwrap_or_default();
+    pub fn string_view(&self, options: Option<ScriptViewerOptions>) -> Result<String> {
+        let options = options.map(crate::viewer::ScriptViewerOptions::try_from).transpose()?.unwrap_or_default();
 
         Ok(self.inner().string_view::<ValidatedTransaction, SigHashReusedValuesSync>(options))
     }

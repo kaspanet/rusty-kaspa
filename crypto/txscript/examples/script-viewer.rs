@@ -14,6 +14,6 @@ fn main() {
     // print the human readable form
     println!(
         "{}",
-        s.string_view::<ValidatedTransaction, SigHashReusedValuesSync>(ScriptViewerOptions { contains_redeem_script: false })
+        s.string_view::<ValidatedTransaction, SigHashReusedValuesSync>(ScriptViewerOptions { contains_redeem_script: true })
     );
 }
