@@ -211,7 +211,7 @@ fn processor_flush_writes_correct_data() {
     assert_eq!(lane_ver.blue_score(), blue_score);
 
     // Verify score index entry
-    let si_entry = stores.score_index.get_at(blue_score, 0).next().unwrap().unwrap();
+    let si_entry = stores.score_index.get_updated(blue_score, 0).next().unwrap().unwrap();
     assert_eq!(si_entry.block_hash(), block_hash);
     assert_eq!(si_entry.data(), &vec![key]);
 
