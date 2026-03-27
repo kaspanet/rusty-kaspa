@@ -220,15 +220,20 @@ impl<'a, 'b> SmtStream<'a, 'b> {
             Ok(Some(msg)) => match msg.payload {
                 Some(Payload::SmtMetadata(payload)) => {
                     let (chunks, rem) = payload.data.as_chunks::<32>();
-                    let &[lanes_root, context_hash, payload_root, parent_seq_commit] = chunks else {
-                        return Err(ProtocolError::Other("SmtMetadata data must be exactly 128 bytes"));
+                    let &[lanes_root, payload_and_ctx_digest, parent_seq_commit] = chunks else {
+                        return Err(ProtocolError::Other("SmtMetadata data must be exactly 96 bytes"));
                     };
                     if !rem.is_empty() {
-                        return Err(ProtocolError::Other("SmtMetadata data must be exactly 128 bytes"));
+                        return Err(ProtocolError::Other("SmtMetadata data must be exactly 96 bytes"));
                     }
-                    let [lanes_root, context_hash, payload_root, parent_seq_commit] =
-                        [lanes_root, context_hash, payload_root, parent_seq_commit].map(Hash::from_bytes);
-                    Ok(kaspa_consensus_core::api::SmtExportMetadata { lanes_root, context_hash, payload_root, parent_seq_commit })
+                    let [lanes_root, payload_and_ctx_digest, parent_seq_commit] =
+                        [lanes_root, payload_and_ctx_digest, parent_seq_commit].map(Hash::from_bytes);
+                    Ok(kaspa_consensus_core::api::SmtExportMetadata {
+                        lanes_root,
+                        payload_and_ctx_digest,
+                        parent_seq_commit,
+                        active_lanes_count: payload.active_lanes_count,
+                    })
                 }
                 Some(Payload::UnexpectedPruningPoint(_)) => Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint)),
                 _ => Err(ProtocolError::UnexpectedMessage(stringify!(Payload::SmtMetadata), msg.payload.as_ref().map(|v| v.into()))),

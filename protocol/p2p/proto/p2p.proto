@@ -318,7 +318,8 @@ message RequestPruningPointSmtStateMessage {
 }
 
 message SmtMetadataMessage {
-  bytes data = 1; // 128 bytes: lanes_root || context_hash || payload_root || parent_seq_commit
+  bytes data = 1;                  // 96 bytes: lanes_root || payload_and_ctx_digest || parent_seq_commit
+  uint64 activeLanesCount = 2;     // number of active lanes
 }
 
 message SmtLaneEntryMessage {

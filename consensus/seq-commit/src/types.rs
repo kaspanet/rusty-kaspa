@@ -44,8 +44,7 @@ pub struct SmtLeafInput<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct SeqState<'a> {
     pub lanes_root: &'a Hash,
-    pub context_hash: &'a Hash,
-    pub payload_root: &'a Hash,
+    pub payload_and_ctx_digest: &'a Hash,
 }
 
 /// Input for the final sequencing commitment.

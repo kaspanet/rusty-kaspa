@@ -99,7 +99,7 @@ impl SmtStores {
         self.lane_cache.lock().evict_below_score(min_score);
     }
 
-    /// Clear all SMT stores and caches. Used before IBD SMT sync.
+    /// Clear all versioned SMT stores and caches. Used before IBD SMT sync.
     pub fn clear_all(&self) {
         self.branch_version.delete_all();
         self.lane_version.delete_all();
@@ -273,6 +273,8 @@ impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
                 root: self.current_lanes_root,
                 branch_changes: SmtBranchChanges::new(),
                 lane_changes: self.lane_changes,
+                payload_and_ctx_digest: ZERO_HASH,
+                active_lanes_count: 0,
             });
         }
 
@@ -283,15 +285,24 @@ impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
             is_canonical,
         };
         let (root, branch_changes) = compute_root_update::<SeqCommitActiveNode, _>(&reader, self.current_lanes_root, leaf_updates)?;
-        Ok(SmtBuild { root, branch_changes, lane_changes: self.lane_changes })
+        Ok(SmtBuild {
+            root,
+            branch_changes,
+            lane_changes: self.lane_changes,
+            payload_and_ctx_digest: ZERO_HASH,
+            active_lanes_count: 0,
+        })
     }
 }
 
-/// Result of building an SMT: root hash + changed branches + lane changes.
+/// Result of building an SMT: root hash + changed branches + lane changes + metadata.
 pub struct SmtBuild<C: LaneChanges = BlockLaneChanges> {
     pub root: Hash,
     branch_changes: SmtBranchChanges,
     lane_changes: C,
+    /// Set by `build_seq_commit` after computing the seq_commit components.
+    pub payload_and_ctx_digest: Hash,
+    pub active_lanes_count: u64,
 }
 
 impl<C: LaneChanges> SmtBuild<C> {
@@ -299,10 +310,11 @@ impl<C: LaneChanges> SmtBuild<C> {
         self.branch_changes.len()
     }
 
-    /// Persist the build's diff to a `WriteBatch` and populate caches.
+    /// Persist the build's branch/lane/score-index diff to a `WriteBatch` and populate caches.
     ///
     /// `branch_blue_score` versions the branches. Lane and score_index
     /// blue_scores are determined by the `LaneChanges` implementation.
+    /// Metadata is written separately by the caller via `DbSmtMetadataStore`.
     pub fn flush(
         self,
         stores: &SmtStores,

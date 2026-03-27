@@ -200,6 +200,8 @@ pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
         return Ok(current_root);
     }
 
+    // TODO: we must explicitly know if we get value from changes or from store. if from changes - we dont need to calculate hash, otherwise we need calc and insert into changes
+
     // Read a branch: check our local buffer first, then the immutable store.
     let read_branch = |changes: &SmtBranchChanges, bk: BranchKey| -> Result<Option<BranchChildren>, S::Error> {
         if let Some(&bc) = changes.get(&bk) {

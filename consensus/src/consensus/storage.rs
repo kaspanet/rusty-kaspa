@@ -17,6 +17,7 @@ use crate::{
         reachability::{DbReachabilityStore, ReachabilityData},
         relations::DbRelationsStore,
         selected_chain::DbSelectedChainStore,
+        smt_metadata::DbSmtMetadataStore,
         statuses::DbStatusesStore,
         tips::DbTipsStore,
         utxo_diffs::DbUtxoDiffsStore,
@@ -70,6 +71,7 @@ pub struct ConsensusStorage {
 
     // SMT stores (KIP-21 lane processing)
     pub smt_stores: Arc<SmtStores>,
+    pub smt_metadata_store: Arc<DbSmtMetadataStore>,
 
     // "Last Known Good" caches
     /// The "last known good" virtual state. To be used by any logic which does not want to wait
@@ -231,6 +233,9 @@ impl ConsensusStorage {
         // SMT stores (KIP-21)
         // TODO: make cache capacities configurable via consensus params
         let smt_stores = Arc::new(SmtStores::new(db.clone(), 500_000, 50_000));
+        // TODO: tune SMT metadata cache budget based on profiling
+        let smt_metadata_builder = PolicyBuilder::new().max_items(pruning_size_for_caches).untracked();
+        let smt_metadata_store = Arc::new(DbSmtMetadataStore::new(db.clone(), smt_metadata_builder.build()));
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
@@ -261,6 +266,7 @@ impl ConsensusStorage {
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             smt_stores,
+            smt_metadata_store,
             lkg_virtual_state,
         })
     }

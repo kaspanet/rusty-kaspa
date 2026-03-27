@@ -123,8 +123,8 @@ impl VirtualState {
                 leaf_updates,
             )
             .unwrap();
-            let state_root =
-                seq_state_root(&SeqState { lanes_root: &lanes_root, context_hash: &context_hash, payload_root: &payload_root });
+            let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&context_hash, &payload_root);
+            let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &pd });
             let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
             vec![commit]
         } else {

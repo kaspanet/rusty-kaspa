@@ -98,16 +98,22 @@ pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
     hasher.finalize()
 }
 
-/// Compute the seq-state root: `H_seq(lanes_root, H_seq(context_hash, payload_root))`.
+/// Compute the payload digest: `H_seq(context_hash, payload_root)`.
+///
+/// Combines the mergeset context and miner payload into a single hash
+/// that can be stored and reused without access to block transactions.
+#[inline]
+pub fn payload_and_context_digest(context_hash: &Hash, payload_root: &Hash) -> Hash {
+    let mut hasher = SeqCommitmentMerkleBranchHash::new();
+    hasher.update(context_hash).update(payload_root);
+    hasher.finalize()
+}
+
+/// Compute the seq-state root: `H_seq(lanes_root, payload_and_ctx_digest)`.
 #[inline]
 pub fn seq_state_root(state: &SeqState<'_>) -> Hash {
-    let inner = {
-        let mut hasher = SeqCommitmentMerkleBranchHash::new();
-        hasher.update(state.context_hash).update(state.payload_root);
-        hasher.finalize()
-    };
     let mut hasher = SeqCommitmentMerkleBranchHash::new();
-    hasher.update(state.lanes_root).update(inner);
+    hasher.update(state.lanes_root).update(state.payload_and_ctx_digest);
     hasher.finalize()
 }
 
@@ -314,21 +320,18 @@ mod tests {
             0xbe, 0x27, 0xd1, 0xdc, 0x11, 0x50, 0xb8, 0xaf, 0x23, 0x9e, 0x56, 0xd9,
         ]);
         let (lr, ch, pr) = (h(1), h(2), h(3));
-        assert_eq!(seq_state_root(&SeqState { lanes_root: &lr, context_hash: &ch, payload_root: &pr }), expected);
+        let pd = payload_and_context_digest(&ch, &pr);
+        assert_eq!(seq_state_root(&SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd }), expected);
     }
 
     #[test]
     fn test_seq_state_root_structure() {
         let (lr, ch, pr) = (h(1), h(2), h(3));
-        let state = SeqState { lanes_root: &lr, context_hash: &ch, payload_root: &pr };
-        let inner = {
-            let mut hasher = SeqCommitmentMerkleBranchHash::new();
-            hasher.update(state.context_hash).update(state.payload_root);
-            hasher.finalize()
-        };
+        let pd = payload_and_context_digest(&ch, &pr);
+        let state = SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd };
         let expected = {
             let mut hasher = SeqCommitmentMerkleBranchHash::new();
-            hasher.update(state.lanes_root).update(inner);
+            hasher.update(state.lanes_root).update(state.payload_and_ctx_digest);
             hasher.finalize()
         };
         assert_eq!(seq_state_root(&state), expected);
@@ -385,7 +388,8 @@ mod tests {
         let mpl = miner_payload_leaf(&MinerPayloadLeafInput { block_hash: &h1, blue_work_bytes: &[0x01, 0x00], payload: b"coinbase" });
         let mpr = miner_payload_root(core::iter::once(mpl));
 
-        let state_root = seq_state_root(&SeqState { lanes_root: &smt_leaf, context_hash: &ctx, payload_root: &mpr });
+        let pd = payload_and_context_digest(&ctx, &mpr);
+        let state_root = seq_state_root(&SeqState { lanes_root: &smt_leaf, payload_and_ctx_digest: &pd });
         let commitment = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_commit, state_root: &state_root });
         assert_ne!(commitment, parent_commit);
     }

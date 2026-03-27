@@ -614,13 +614,17 @@ impl VirtualStateProcessor {
         }
 
         // 4. Build SMT (skips entirely when no pending leaves — no expirations, no touches)
-        let build = proc.build(|bh| self.is_smt_canonical(bh, selected_parent)).unwrap();
+        let mut build = proc.build(|bh| self.is_smt_canonical(bh, selected_parent)).unwrap();
 
-        // 5. Compute final hash: payload_root → state_root → seq_commit
+        // 5. Compute final hash: payload_and_ctx_digest → state_root → seq_commit
         let payload_root = miner_payload_root(miner_payload_leaves.into_iter());
-        let state_root =
-            seq_state_root(&SeqState { lanes_root: &build.root, context_hash: &context_hash, payload_root: &payload_root });
+        let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&context_hash, &payload_root);
+        let state_root = seq_state_root(&SeqState { lanes_root: &build.root, payload_and_ctx_digest: &pd });
         let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
+
+        // 6. Store metadata on the build for persistence in flush()
+        build.payload_and_ctx_digest = pd;
+        // TODO: active_lanes_count needs to be tracked by SmtProcessor
 
         (commit, build)
     }
@@ -650,7 +654,7 @@ impl VirtualStateProcessor {
         let data = self.collect_mergeset_seq_data(ctx);
         let lane_updates =
             self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
-        let parent_lanes_root = self.derive_parent_lanes_root(parent_header.blue_score, selected_parent);
+        let (parent_lanes_root, _parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
 
         let (hash, build) = self.build_seq_commit(
             parent_seq_commit,

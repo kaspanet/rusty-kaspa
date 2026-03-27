@@ -1106,6 +1106,8 @@ impl ConsensusApi for Consensus {
         &self,
         new_pruning_point: Hash,
         lanes_root: Hash,
+        payload_and_ctx_digest: Hash,
+        expected_lane_count: u64,
         lanes: Vec<kaspa_consensus_core::api::ImportLane>,
     ) -> PruningImportResult<()> {
         use kaspa_hashes::ZERO_HASH;
@@ -1126,8 +1128,20 @@ impl ConsensusApi for Consensus {
             return Err(PruningImportError::SmtRootMismatch { expected: lanes_root, computed: build.root });
         }
 
+        let actual_count = lanes.len() as u64;
+        if actual_count != expected_lane_count {
+            return Err(PruningImportError::SmtStoreError(format!(
+                "active lanes count mismatch: expected {expected_lane_count}, got {actual_count}"
+            )));
+        }
+
         let mut batch = rocksdb::WriteBatch::default();
-        build.flush(&self.storage.smt_stores, &mut batch, pp_header.blue_score, ZERO_HASH).unwrap();
+        let root = build.flush(&self.storage.smt_stores, &mut batch, pp_header.blue_score, ZERO_HASH).unwrap();
+        use crate::model::stores::smt_metadata::SmtBlockMetadata;
+        self.storage
+            .smt_metadata_store
+            .insert_batch(&mut batch, new_pruning_point, SmtBlockMetadata::new(root, payload_and_ctx_digest, actual_count))
+            .unwrap();
         self.db.write(batch).unwrap();
 
         info!("Imported SMT state for pruning point {}: {} lanes, root {}", new_pruning_point, lanes.len(), lanes_root);
@@ -1471,6 +1485,7 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, false).unwrap();
         self.db.write(batch).unwrap();
         self.storage.smt_stores.clear_all();
+        self.storage.smt_metadata_store.delete_all().unwrap();
     }
 
     fn set_pruning_smt_stable_flag(&self, val: bool) {

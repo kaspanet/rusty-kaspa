@@ -173,6 +173,7 @@ pub struct VirtualStateProcessor {
 
     // SMT stores
     pub(super) smt_stores: Arc<kaspa_smt_store::processor::SmtStores>,
+    pub(super) smt_metadata_store: Arc<crate::model::stores::smt_metadata::DbSmtMetadataStore>,
 
     // Mining Rule
     _mining_rules: Arc<MiningRules>,
@@ -243,6 +244,7 @@ impl VirtualStateProcessor {
             counters,
             covenants_activation: params.covenants_activation,
             smt_stores: storage.smt_stores.clone(),
+            smt_metadata_store: storage.smt_metadata_store.clone(),
             _mining_rules: mining_rules,
             finality_depth: params.finality_depth(),
         }
@@ -511,7 +513,11 @@ impl VirtualStateProcessor {
         self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).idempotent().unwrap();
         // Flush SMT branch/lane/score-index changes (KIP-21) alongside UTXO data
         if let Some(build) = smt_build {
-            build.flush(&self.smt_stores, &mut batch, blue_score, current).unwrap();
+            let pd = build.payload_and_ctx_digest;
+            let alc = build.active_lanes_count;
+            let root = build.flush(&self.smt_stores, &mut batch, blue_score, current).unwrap();
+            use crate::model::stores::smt_metadata::SmtBlockMetadata;
+            self.smt_metadata_store.insert_batch(&mut batch, current, SmtBlockMetadata::new(root, pd, alc)).unwrap();
         }
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
@@ -608,7 +614,7 @@ impl VirtualStateProcessor {
         let data = self.collect_mergeset_seq_data(ctx);
         let lane_updates =
             self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
-        let parent_lanes_root = self.derive_parent_lanes_root(parent_header.blue_score, selected_parent);
+        let (parent_lanes_root, _parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
 
         let (commit, _build) = self.build_seq_commit(
             parent_seq_commit,
@@ -623,65 +629,33 @@ impl VirtualStateProcessor {
         commit
     }
 
-    /// Compute SMT metadata for the pruning point. Lane streaming is separate.
+    /// Read stored SMT metadata for the pruning point.
     pub fn get_pruning_point_smt_metadata(
         &self,
         expected_pruning_point: Hash,
     ) -> kaspa_consensus_core::errors::consensus::ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
         use kaspa_consensus_core::api::SmtExportMetadata;
         use kaspa_consensus_core::errors::consensus::ConsensusError;
-        use kaspa_seq_commit::hashing::{mergeset_context_hash, miner_payload_root, seq_commit_timestamp};
-        use kaspa_seq_commit::types::{MergesetContext, MinerPayloadLeafInput};
-
-        // TODO: should we store and restore the metadata instead of recomputing it??
 
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if pp != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
 
+        let meta = self
+            .smt_metadata_store
+            .get(pp)
+            .map_err(|_| ConsensusError::GeneralOwned(format!("SMT metadata not found for pruning point {pp}")))?;
+
         let pp_header = self.headers_store.get_header(pp).unwrap();
-        let parent = pp_header.direct_parents()[0];
-        let parent_header = self.headers_store.get_header(parent).unwrap();
+        let parent_seq_commit = self.headers_store.get_header(pp_header.direct_parents()[0]).unwrap().accepted_id_merkle_root;
 
-        let lanes_root = self.derive_parent_lanes_root(pp_header.blue_score, pp);
-        let parent_seq_commit = parent_header.accepted_id_merkle_root;
-        let context_hash = mergeset_context_hash(&MergesetContext {
-            timestamp: seq_commit_timestamp(parent_header.timestamp),
-            daa_score: pp_header.daa_score,
-            blue_score: pp_header.blue_score,
-        });
-
-        let acceptance_data = self.acceptance_data_store.get(pp).unwrap();
-        let mut miner_payload_leaves = Vec::new();
-        for block_acceptance in acceptance_data.iter() {
-            let merged_block = block_acceptance.block_hash;
-            let merged_header = self.headers_store.get_header(merged_block).unwrap();
-            let block_txs = self.block_transactions_store.get(merged_block).unwrap();
-            miner_payload_leaves.push(kaspa_seq_commit::hashing::miner_payload_leaf(&MinerPayloadLeafInput {
-                block_hash: &merged_block,
-                blue_work_bytes: &merged_header.blue_work.to_le_bytes(),
-                payload: &block_txs[0].payload,
-            }));
-        }
-        let payload_root = miner_payload_root(miner_payload_leaves.into_iter());
-
-        debug_assert!(
-            kaspa_seq_commit::verify::verify_smt_metadata(
-                &kaspa_seq_commit::verify::SmtMetadata {
-                    lanes_root: &lanes_root,
-                    context_hash: &context_hash,
-                    payload_root: &payload_root,
-                    parent_seq_commit: &parent_seq_commit,
-                },
-                pp_header.accepted_id_merkle_root,
-                parent_header.accepted_id_merkle_root,
-            )
-            .is_ok(),
-            "exported SMT metadata does not match pruning point seq_commit"
-        );
-
-        Ok(SmtExportMetadata { lanes_root, context_hash, payload_root, parent_seq_commit })
+        Ok(SmtExportMetadata {
+            lanes_root: meta.lanes_root,
+            payload_and_ctx_digest: meta.payload_and_ctx_digest,
+            parent_seq_commit,
+            active_lanes_count: meta.active_lanes_count,
+        })
     }
 
     /// Check if `block_hash` is canonical for SMT lookups.
@@ -690,29 +664,9 @@ impl VirtualStateProcessor {
         block_hash == ZERO_HASH || self.reachability_service.is_chain_ancestor_of(block_hash, selected_parent)
     }
 
-    /// Derive the parent's lanes_root from the stored root-level branch (height=255, node_key=ZERO).
-    pub(super) fn derive_parent_lanes_root(&self, parent_blue_score: u64, selected_parent: Hash) -> Hash {
-        use kaspa_hashes::SeqCommitActiveNode;
-        use kaspa_smt::SmtHasher;
-        use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
-        use kaspa_smt_store::cache::BranchEntity;
-
-        let min_bs = parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
-        let entity = BranchEntity { height: 255, node_key: ZERO_HASH };
-        let root_branch = self.smt_stores.get_branch(entity, min_bs, |bh| self.is_smt_canonical(bh, selected_parent));
-
-        match root_branch {
-            Some(v) => {
-                let children = v.data();
-                let empty = SeqCommitActiveNode::EMPTY_HASHES[255];
-                if children.left == empty && children.right == empty {
-                    SeqCommitActiveNode::empty_root()
-                } else {
-                    kaspa_smt::hash_node::<SeqCommitActiveNode>(children.left, children.right)
-                }
-            }
-            None => SeqCommitActiveNode::empty_root(),
-        }
+    /// Get the parent's lanes_root and active_lanes_count from the metadata store.
+    pub(super) fn get_parent_smt_metadata(&self, selected_parent: Hash) -> (Hash, u64) {
+        self.smt_metadata_store.get(selected_parent).map(|meta| (meta.lanes_root, meta.active_lanes_count)).unwrap_or_default() // genesis / pre-KIP21 fallback
     }
 
     /// Expire lanes that fall out of the active window between parent and current blue score.

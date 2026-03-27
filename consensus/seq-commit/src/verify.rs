@@ -11,8 +11,7 @@ use kaspa_hashes::{Hash, HasherBase, SeqCommitmentMerkleBranchHash};
 #[derive(Clone, Copy, Debug)]
 pub struct SmtMetadata<'a> {
     pub lanes_root: &'a Hash,
-    pub context_hash: &'a Hash,
-    pub payload_root: &'a Hash,
+    pub payload_and_ctx_digest: &'a Hash,
     pub parent_seq_commit: &'a Hash,
 }
 
@@ -49,11 +48,8 @@ pub fn verify_smt_metadata(
         });
     }
 
-    let state_root = seq_state_root(&SeqState {
-        lanes_root: metadata.lanes_root,
-        context_hash: metadata.context_hash,
-        payload_root: metadata.payload_root,
-    });
+    let state_root =
+        seq_state_root(&SeqState { lanes_root: metadata.lanes_root, payload_and_ctx_digest: metadata.payload_and_ctx_digest });
 
     let computed = {
         let mut h = SeqCommitmentMerkleBranchHash::new();
@@ -72,7 +68,7 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use crate::hashing::{lane_key, smt_leaf_hash};
+    use crate::hashing::{lane_key, payload_and_context_digest, smt_leaf_hash};
     use crate::types::{LaneId, SmtLeafInput};
     use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
     use kaspa_smt::tree::SmtBranchChanges;
@@ -111,24 +107,24 @@ mod tests {
         let pr = Hash::from_bytes([3; 32]);
         let ps = Hash::from_bytes([4; 32]);
 
-        let sr = seq_state_root(&SeqState { lanes_root: &lr, context_hash: &ch, payload_root: &pr });
+        let pd = payload_and_context_digest(&ch, &pr);
+        let sr = seq_state_root(&SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd });
         let sc = {
             let mut h = SeqCommitmentMerkleBranchHash::new();
             h.update(ps).update(sr);
             h.finalize()
         };
 
-        let md = SmtMetadata { lanes_root: &lr, context_hash: &ch, payload_root: &pr, parent_seq_commit: &ps };
+        let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
         assert!(verify_smt_metadata(&md, sc, ps).is_ok());
     }
 
     #[test]
     fn metadata_wrong_parent() {
         let lr = Hash::from_bytes([1; 32]);
-        let ch = Hash::from_bytes([2; 32]);
-        let pr = Hash::from_bytes([3; 32]);
+        let pd = Hash::from_bytes([2; 32]);
         let ps = Hash::from_bytes([4; 32]);
-        let md = SmtMetadata { lanes_root: &lr, context_hash: &ch, payload_root: &pr, parent_seq_commit: &ps };
+        let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
         assert!(matches!(
             verify_smt_metadata(&md, ZERO_HASH, Hash::from_bytes([99; 32])),
             Err(SmtVerifyError::ParentSeqCommitMismatch { .. })
@@ -138,10 +134,9 @@ mod tests {
     #[test]
     fn metadata_wrong_commit() {
         let lr = Hash::from_bytes([1; 32]);
-        let ch = Hash::from_bytes([2; 32]);
-        let pr = Hash::from_bytes([3; 32]);
+        let pd = Hash::from_bytes([2; 32]);
         let ps = Hash::from_bytes([4; 32]);
-        let md = SmtMetadata { lanes_root: &lr, context_hash: &ch, payload_root: &pr, parent_seq_commit: &ps };
+        let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
         assert!(matches!(verify_smt_metadata(&md, Hash::from_bytes([99; 32]), ps), Err(SmtVerifyError::SeqCommitMismatch { .. })));
     }
 

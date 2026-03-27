@@ -60,9 +60,9 @@ pub struct ImportLane {
 #[derive(Clone, Debug)]
 pub struct SmtExportMetadata {
     pub lanes_root: Hash,
-    pub context_hash: Hash,
-    pub payload_root: Hash,
+    pub payload_and_ctx_digest: Hash,
     pub parent_seq_commit: Hash,
+    pub active_lanes_count: u64,
 }
 
 /// Abstracts the consensus external API
@@ -288,6 +288,8 @@ pub trait ConsensusApi: Send + Sync {
         &self,
         _new_pruning_point: Hash,
         _lanes_root: Hash,
+        _payload_and_ctx_digest: Hash,
+        _expected_lane_count: u64,
         _lanes: Vec<ImportLane>,
     ) -> PruningImportResult<()> {
         unimplemented!()

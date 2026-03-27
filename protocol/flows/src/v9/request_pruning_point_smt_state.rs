@@ -50,13 +50,17 @@ impl RequestPruningPointSmtStateFlow {
             res => res,
         }?;
 
-        // Send metadata
-        let mut md_bytes = Vec::with_capacity(128);
+        // Send metadata: lanes_root || payload_and_ctx_digest || parent_seq_commit (96 bytes)
+        let mut md_bytes = Vec::with_capacity(96);
         md_bytes.extend_from_slice(&metadata.lanes_root.as_bytes());
-        md_bytes.extend_from_slice(&metadata.context_hash.as_bytes());
-        md_bytes.extend_from_slice(&metadata.payload_root.as_bytes());
+        md_bytes.extend_from_slice(&metadata.payload_and_ctx_digest.as_bytes());
         md_bytes.extend_from_slice(&metadata.parent_seq_commit.as_bytes());
-        self.router.enqueue(make_message!(Payload::SmtMetadata, SmtMetadataMessage { data: md_bytes })).await?;
+        self.router
+            .enqueue(make_message!(
+                Payload::SmtMetadata,
+                SmtMetadataMessage { data: md_bytes, active_lanes_count: metadata.active_lanes_count }
+            ))
+            .await?;
 
         // Stream lanes: blocking DB iteration pushes into channel, async loop sends to peer
         let (tx, mut rx) = tokio::sync::mpsc::channel::<ImportLane>(64);

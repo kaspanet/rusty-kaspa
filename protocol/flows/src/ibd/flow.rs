@@ -637,8 +637,7 @@ impl IbdFlow {
         verify_smt_metadata(
             &SmtMetadata {
                 lanes_root: &md.lanes_root,
-                context_hash: &md.context_hash,
-                payload_root: &md.payload_root,
+                payload_and_ctx_digest: &md.payload_and_ctx_digest,
                 parent_seq_commit: &md.parent_seq_commit,
             },
             pp_header.accepted_id_merkle_root,
@@ -647,18 +646,25 @@ impl IbdFlow {
         .map_err(|e| ProtocolError::OtherOwned(format!("SMT metadata verification failed: {e}")))?;
 
         let lanes_root = md.lanes_root;
+        let payload_and_ctx_digest = md.payload_and_ctx_digest;
 
         // TODO: SMT is built in 3 places (block verification, virtual state, IBD import).
         // All currently collect leaves into a BTreeMap then compute sequentially.
         // Optimize: stream leaves directly into the processor, let it detect siblings
         // vs empty and dispatch hash computation to a thread pool at each level.
-        let mut lanes = Vec::new();
+        let mut lanes = Vec::with_capacity(md.active_lanes_count as usize);
         while let Some(lane) = stream.next().await? {
             lanes.push(lane);
         }
 
         let lane_count = lanes.len();
-        consensus.clone().spawn_blocking(move |c| c.import_pruning_point_smt(pruning_point, lanes_root, lanes)).await?;
+        let expected_count = md.active_lanes_count;
+        consensus
+            .clone()
+            .spawn_blocking(move |c| {
+                c.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, lanes)
+            })
+            .await?;
         consensus.async_set_pruning_smt_stable().await;
 
         info!("SMT state synced: {} lanes", lane_count);
