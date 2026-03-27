@@ -143,8 +143,20 @@ pub struct GenesisCovenantGroup {
 }
 
 impl GenesisCovenantGroup {
+    pub fn new(authorizing_input: u16, outputs: Vec<u32>) -> Self {
+        Self { inner: CoreGenesisCovenantGroup::new(authorizing_input, outputs) }
+    }
+
     pub fn inner(&self) -> &CoreGenesisCovenantGroup {
         &self.inner
+    }
+
+    pub fn outputs(&self) -> Vec<u32> {
+        self.inner.outputs.clone()
+    }
+
+    pub fn set_outputs(&mut self, outputs: Vec<u32>) {
+        self.inner.outputs = outputs
     }
 }
 
@@ -178,15 +190,15 @@ impl GenesisCovenantGroup {
         self.inner.authorizing_input = value;
     }
 
-    #[wasm_bindgen(setter = outputs)]
-    pub fn set_outputs(&mut self, outputs: NumberArray) -> ClientResult<()> {
+    #[wasm_bindgen(setter = outputs, js_name = otuputs)]
+    pub fn js_set_outputs(&mut self, outputs: NumberArray) -> ClientResult<()> {
         let outputs: Vec<u32> = serde_wasm_bindgen::from_value(outputs.into())?;
         self.inner.outputs = outputs;
         Ok(())
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn outputs(&self) -> NumberArray {
+    #[wasm_bindgen(getter, js_name = outputs)]
+    pub fn js_outputs(&self) -> NumberArray {
         serde_wasm_bindgen::to_value(&self.inner.outputs)
             .expect("serializing genesis covenant outputs should not fail")
             .unchecked_into()
