@@ -28,11 +28,10 @@ else
     local repo="$1"
     echo "Trying to download toolchain from $repo..."
 
-    if ! gh release download "$TOOLCHAIN_TAG" \
-         --repo "$repo" \
-         --pattern "x-tools.tar.zst" \
-         --dir /tmp 2>/dev/null; then
+    local download_url="https://github.com/$repo/releases/download/$TOOLCHAIN_TAG/x-tools.tar.zst"
+    if ! curl -fsSL -o /tmp/x-tools.tar.zst "$download_url"; then
       echo "  No release found in $repo"
+      rm -f /tmp/x-tools.tar.zst
       return 1
     fi
 
