@@ -27,6 +27,8 @@ chmod +x "$APPDIR/AppRun"
 
 mkdir -p "$APPDIR/usr/share/applications"
 cp "${PACK_DIR}/stratum-bridge.desktop" "$APPDIR/usr/share/applications/stratum-bridge.desktop"
+# appimagetool requires exactly one .desktop at the AppDir root (may be a symlink).
+ln -sf "usr/share/applications/stratum-bridge.desktop" "${APPDIR}/stratum-bridge.desktop"
 
 ICON_DIR="$APPDIR/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$ICON_DIR"
