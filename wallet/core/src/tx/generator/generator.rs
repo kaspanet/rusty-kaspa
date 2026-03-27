@@ -694,7 +694,7 @@ impl Generator {
 
     /// Pull the next available UTXO, if any, and stash it for the next accumulation attempt.
     /// Use with caution: this advances one of the underlying UTXO sources and mutates `utxo_stash`.
-    fn try_stash_next_utxo(&self, context: &mut Context, stage: &mut Stage) -> bool {
+    fn stash_next_utxo(&self, context: &mut Context, stage: &mut Stage) -> bool {
         if let Some(utxo_entry_reference) = self.get_utxo_entry(context, stage) {
             context.utxo_stash.push_back(utxo_entry_reference);
             true
@@ -805,7 +805,7 @@ impl Generator {
                 Ok(mass_disposition) => mass_disposition,
                 Err(err @ Error::StorageMassExceedsMaximumTransactionMass { .. }) => {
                     // stash one more input and retry finalization on the next loop iteration if there are more candidates
-                    if self.try_stash_next_utxo(context, stage) {
+                    if self.stash_next_utxo(context, stage) {
                         return Ok(None);
                     }
                     return Err(err);
@@ -842,7 +842,7 @@ impl Generator {
                 && transaction_mass < TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION
             {
                 // fetch UTXO from the iterator and if exists, make it available on the next iteration via utxo_stash.
-                if self.try_stash_next_utxo(context, stage) {
+                if self.stash_next_utxo(context, stage) {
                     return Ok(None);
                 }
             }
@@ -992,7 +992,7 @@ impl Generator {
         if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
             // transaction mass is too high... if we have additional
             // UTXOs, reject and try to accumulate more inputs...
-            if self.try_stash_next_utxo(context, stage) {
+            if self.stash_next_utxo(context, stage) {
                 Ok(None)
             } else {
                 // otherwise we have insufficient funds
