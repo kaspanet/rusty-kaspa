@@ -76,7 +76,7 @@ jobs:
         continue-on-error: true
         run: |
           cd $GITHUB_WORKSPACE
-          bash packaging/appimage-stratum-bridge/build.sh "${{ github.event.release.tag_name }}"
+          bash bridge/appimage/build.sh "${{ github.event.release.tag_name }}"
           echo "appimage=${GITHUB_WORKSPACE}/stratum-bridge-${{ github.event.release.tag_name }}-x86_64.AppImage" >> $GITHUB_ENV
 
       - name: Build on Windows
