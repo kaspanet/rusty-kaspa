@@ -33,12 +33,21 @@ ln -sf "usr/share/applications/stratum-bridge.desktop" "${APPDIR}/stratum-bridge
 ICON_DIR="$APPDIR/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$ICON_DIR"
 SVG="${ROOT}/bridge/static/assets/kaspa.svg"
+BUNDLED_PNG="${PACK_DIR}/stratum-bridge.png"
+# appimagetool requires Icon=name as name.png at the AppDir root (256x256 recommended).
 if [[ -f "$SVG" ]] && command -v rsvg-convert >/dev/null 2>&1; then
   rsvg-convert -w 256 -h 256 "$SVG" -o "${ICON_DIR}/stratum-bridge.png"
-  cp "${ICON_DIR}/stratum-bridge.png" "$APPDIR/.DirIcon"
+elif [[ -f "$BUNDLED_PNG" ]]; then
+  cp "$BUNDLED_PNG" "${ICON_DIR}/stratum-bridge.png"
 elif [[ -f "$SVG" ]]; then
-  echo "warning: rsvg-convert not found; install librsvg2-bin for a PNG icon (AppImage still builds)." >&2
+  echo "error: rsvg-convert not found and no ${BUNDLED_PNG}; cannot produce stratum-bridge.png for AppImage." >&2
+  exit 1
+else
+  echo "error: missing kaspa.svg and bundled stratum-bridge.png; cannot produce app icon." >&2
+  exit 1
 fi
+cp "${ICON_DIR}/stratum-bridge.png" "${APPDIR}/stratum-bridge.png"
+cp "${ICON_DIR}/stratum-bridge.png" "${APPDIR}/.DirIcon"
 
 TOOL="${PACK_DIR}/appimagetool-x86_64.AppImage"
 if [[ ! -x "$TOOL" ]]; then
