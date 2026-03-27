@@ -695,4 +695,128 @@ mod tests {
         let all_done = state.decoded.store(1, vec![4, 5, 6]);
         assert!(all_done, "Block should be complete");
     }
+
+    // ========================================================================
+    // Dual-Trigger Optimization Tests
+    // ========================================================================
+
+    #[test]
+    fn test_dual_trigger_parity_first_then_data() {
+        // Scenario: UDP reordering causes parity to arrive mixed with data.
+        // We reach k=6 total fragments before having all 6 data fragments.
+        // First dispatch triggers (slow-path). Later, remaining data arrives,
+        // triggering a second dispatch (fast-path).
+        let hash = Hash::default();
+        let mut buf = GenerationalfragmentBuffer::new(0, 6, 3);
+
+        // Insert 4 data fragments (indices 0-3)
+        for i in 0..4 {
+            let fragment = dummy_fragment(hash, i as u16, b"data");
+            let trigger = buf.insert(i, fragment);
+            assert!(!trigger, "Not yet decodable with {} data + 0 parity", i + 1);
+        }
+
+        // Insert 2 parity fragments (indices 6-7) — now we have 6 total
+        for i in 0..2 {
+            let fragment = dummy_fragment(hash, (6 + i) as u16, b"parity");
+            let trigger = buf.insert(6 + i, fragment);
+            if i == 1 {
+                assert!(trigger, "Should trigger on 6th fragment (4 data + 2 parity)");
+            } else {
+                assert!(!trigger, "Not yet decodable with 4 data + 1 parity");
+            }
+        }
+
+        // Simulate first dispatch (slow-path: needs RS recovery)
+        assert!(!buf.has_all_data(), "Should NOT have all data yet");
+        let (data1, parity1) = buf.clone_for_decode();
+        buf.mark_dispatched();
+        assert_eq!(data1.iter().filter(|s| s.is_some()).count(), 4);
+        assert_eq!(parity1.iter().filter(|s| s.is_some()).count(), 2);
+
+        // More data arrives (fragments 4 and 5) — should still be accepted
+        // because we haven't reached all k data yet
+        let fragment = dummy_fragment(hash, 4, b"data");
+        let trigger = buf.insert(4, fragment);
+        assert!(!trigger, "5th data fragment doesn't cross any threshold");
+
+        let fragment = dummy_fragment(hash, 5, b"data");
+        let trigger = buf.insert(5, fragment);
+        assert!(trigger, "6th data fragment should trigger fast-path dispatch");
+
+        // Second dispatch (fast-path: all data present, no RS needed)
+        assert!(buf.has_all_data(), "Should now have all data");
+        let (data2, _parity2) = buf.take_for_decode();
+        assert_eq!(data2.iter().filter(|s| s.is_some()).count(), 6);
+
+        // After taking, no more fragments should be accepted
+        let fragment = dummy_fragment(hash, 8, b"parity");
+        let trigger = buf.insert(8, fragment);
+        assert!(!trigger, "No more inserts after final dispatch");
+    }
+
+    #[test]
+    fn test_all_data_first_single_trigger() {
+        // Scenario: All data fragments arrive first (optimal case).
+        // Only one dispatch should trigger (fast-path).
+        let hash = Hash::default();
+        let mut buf = GenerationalfragmentBuffer::new(0, 6, 3);
+
+        // Insert all 6 data fragments
+        for i in 0..6 {
+            let fragment = dummy_fragment(hash, i as u16, b"data");
+            let trigger = buf.insert(i, fragment);
+            if i == 5 {
+                assert!(trigger, "Should trigger on 6th data fragment");
+            } else {
+                assert!(!trigger, "Not yet decodable");
+            }
+        }
+
+        // First (and only) dispatch — fast-path
+        assert!(buf.has_all_data());
+        let (data, _parity) = buf.take_for_decode();
+        buf.mark_dispatched();
+        assert_eq!(data.iter().filter(|s| s.is_some()).count(), 6);
+
+        // Parity arriving later should be ignored
+        let fragment = dummy_fragment(hash, 6, b"parity");
+        let trigger = buf.insert(6, fragment);
+        assert!(!trigger, "Parity after all-data dispatch should be ignored");
+    }
+
+    #[test]
+    fn test_encoded_buffer_dual_dispatch_preserves_fragments() {
+        // Test that EncodedBuffer correctly clones on slow-path dispatch
+        // and takes on fast-path dispatch.
+        let config = test_config();
+        let metadata = BufferMetadata::new(Hash::default(), 9, config);
+        let mut encoded = EncodedBuffer::new(&metadata);
+        let hash = Hash::default();
+
+        // Insert 4 data + 2 parity = 6 total (slow-path trigger)
+        for i in 0..4 {
+            encoded.insert_fragment(0, i, dummy_fragment(hash, i as u16, b"data"));
+        }
+        for i in 0..2 {
+            let trigger = encoded.insert_fragment(0, 6 + i, dummy_fragment(hash, (6 + i) as u16, b"parity"));
+            if i == 1 {
+                assert!(trigger, "Should trigger slow-path dispatch");
+            }
+        }
+
+        // First dispatch — should clone, not take
+        let job1 = encoded.extract_job_from_generation(0);
+        assert_eq!(job1.num_of_data_fragments, 4, "First job has 4 data fragments");
+
+        // Insert remaining data
+        let trigger = encoded.insert_fragment(0, 4, dummy_fragment(hash, 4, b"data"));
+        assert!(!trigger, "5th data doesn't cross threshold");
+        let trigger = encoded.insert_fragment(0, 5, dummy_fragment(hash, 5, b"data"));
+        assert!(trigger, "6th data crosses all-data threshold");
+
+        // Second dispatch — should take
+        let job2 = encoded.extract_job_from_generation(0);
+        assert_eq!(job2.num_of_data_fragments, 6, "Second job has all 6 data fragments");
+    }
 }
