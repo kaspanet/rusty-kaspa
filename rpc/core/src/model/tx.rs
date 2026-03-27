@@ -304,6 +304,12 @@ impl From<RpcCovenantBinding> for CovenantBinding {
     }
 }
 
+impl From<kaspa_consensus_client::CovenantBinding> for RpcCovenantBinding {
+    fn from(covenant: kaspa_consensus_client::CovenantBinding) -> Self {
+        CovenantBinding::from(covenant).into()
+    }
+}
+
 impl Serializer for RpcCovenantBinding {
     fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u8, &1, writer)?;
