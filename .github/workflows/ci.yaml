@@ -430,24 +430,15 @@ jobs:
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Cache Toolchain
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/x-tools
-          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/preset.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-musl-
-
-      
       - name: Build RK with musl toolchain
         if: runner.os == 'Linux'
         run: |
           # Run build script for musl toolchain
           source musl-toolchain/build.sh
-          # Build other binaries first (without the allow-multiple-definition flag)
-          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
           # Build bridge with allow-multiple-definition flag to handle mimalloc conflicts with libstdc++ in musl builds
           # This flag is only needed for kaspa-stratum-bridge due to its dual mimalloc dependency structure
           export RUSTFLAGS="$RUSTFLAGS -C link-arg=-Wl,--allow-multiple-definition"
-          cargo --verbose build --bin stratum-bridge --release --target x86_64-unknown-linux-musl
+          
+          # Build other binaries first (without the allow-multiple-definition flag)
+          cargo build --bin kaspad --bin rothschild --bin kaspa-wallet --bin stratum-bridge --release --target x86_64-unknown-linux-musl
+          
