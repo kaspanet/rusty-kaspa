@@ -948,9 +948,8 @@ impl Generator {
                     let difference = fees_with_change.saturating_sub(fees_no_change);
                     let should_absorb_change = difference > change_value;
                     let can_keep_change = storage_mass_with_change <= MAXIMUM_STANDARD_TRANSACTION_MASS;
-                    let prefer_with_change = storage_mass_with_change < storage_mass_no_change;
 
-                    if can_keep_change && (prefer_with_change || !should_absorb_change) {
+                    if can_keep_change && !should_absorb_change {
                         storage_mass_with_change
                     } else if should_absorb_change {
                         absorb_change_to_fees = true;
