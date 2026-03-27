@@ -614,7 +614,7 @@ impl VirtualStateProcessor {
         let data = self.collect_mergeset_seq_data(ctx);
         let lane_updates =
             self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
-        let (parent_lanes_root, _parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
+        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
 
         let (commit, _build) = self.build_seq_commit(
             parent_seq_commit,
@@ -622,6 +622,7 @@ impl VirtualStateProcessor {
             current_blue_score,
             parent_header.blue_score,
             parent_lanes_root,
+            parent_active_lanes,
             &lane_updates,
             data.miner_payload_leaves,
             selected_parent,
@@ -670,22 +671,24 @@ impl VirtualStateProcessor {
     }
 
     /// Expire lanes that fall out of the active window between parent and current blue score.
+    /// Returns the number of lanes expired.
     pub(super) fn expire_stale_lanes(
         &self,
         proc: &mut kaspa_smt_store::processor::SmtProcessor,
         parent_blue_score: u64,
         current_blue_score: u64,
         selected_parent: Hash,
-    ) {
+    ) -> u64 {
         use kaspa_smt_store::LANE_INACTIVITY_THRESHOLD;
 
         let prev_min = parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
         let curr_min = current_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD);
 
         if curr_min <= prev_min {
-            return; // No new expirations
+            return 0;
         }
 
+        let mut expired = 0u64;
         // Iterate score_index entries in [prev_min, curr_min) to find lanes that might expire
         for entry in self.smt_stores.score_index.get_at(curr_min.saturating_sub(1), prev_min) {
             let entry = entry.unwrap();
@@ -699,9 +702,11 @@ impl VirtualStateProcessor {
 
                 if !has_newer {
                     proc.expire_lane(*lk);
+                    expired += 1;
                 }
             }
         }
+        expired
     }
 
     fn commit_virtual_state(

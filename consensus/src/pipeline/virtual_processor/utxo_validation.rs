@@ -61,6 +61,8 @@ pub(super) struct ResolvedLaneUpdate {
     pub lane_key: kaspa_smt_store::LaneKey,
     pub lane_id: [u8; 20],
     pub new_tip: Hash,
+    /// True if this lane had no active canonical version (new or reactivated).
+    pub is_new: bool,
 }
 
 pub(crate) mod crescendo {
@@ -561,17 +563,15 @@ impl VirtualStateProcessor {
 
             // Look up current lane tip.
             // New/reactivated lanes use parent_seq_commit as anchor (KIP-21 §5.1).
-            let parent_ref = self
-                .smt_stores
-                .get_lane(lk, parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD), |bh| {
-                    self.is_smt_canonical(bh, selected_parent)
-                })
-                .map(|v| v.data().lane_tip_hash)
-                .unwrap_or(parent_seq_commit);
+            let existing = self.smt_stores.get_lane(lk, parent_blue_score.saturating_sub(LANE_INACTIVITY_THRESHOLD), |bh| {
+                self.is_smt_canonical(bh, selected_parent)
+            });
+            let is_new = existing.is_none();
+            let parent_ref = existing.map(|v| v.data().lane_tip_hash).unwrap_or(parent_seq_commit);
 
             let new_tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_ref, lane_id, activity_digest: &ad, context_hash });
 
-            updates.push(ResolvedLaneUpdate { lane_key: lk, lane_id: *lane_id, new_tip });
+            updates.push(ResolvedLaneUpdate { lane_key: lk, lane_id: *lane_id, new_tip, is_new });
         }
 
         updates
@@ -594,6 +594,7 @@ impl VirtualStateProcessor {
         current_blue_score: u64,
         parent_blue_score: u64,
         parent_lanes_root: Hash,
+        parent_active_lanes: u64,
         lane_updates: &[ResolvedLaneUpdate],
         miner_payload_leaves: Vec<Hash>,
         selected_parent: Hash,
@@ -606,9 +607,10 @@ impl VirtualStateProcessor {
         let mut proc = SmtProcessor::new(&self.smt_stores, current_blue_score, parent_lanes_root);
 
         // 2. Expire stale lanes
-        self.expire_stale_lanes(&mut proc, parent_blue_score, current_blue_score, selected_parent);
+        let expired_count = self.expire_stale_lanes(&mut proc, parent_blue_score, current_blue_score, selected_parent);
 
         // 3. Apply lane updates
+        let new_lane_count = lane_updates.iter().filter(|lu| lu.is_new).count() as u64;
         for lu in lane_updates {
             proc.update_lane(lu.lane_key, lu.lane_id, lu.new_tip);
         }
@@ -622,9 +624,9 @@ impl VirtualStateProcessor {
         let state_root = seq_state_root(&SeqState { lanes_root: &build.root, payload_and_ctx_digest: &pd });
         let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
 
-        // 6. Store metadata on the build for persistence in flush()
+        // 6. Store metadata on the build for persistence
         build.payload_and_ctx_digest = pd;
-        // TODO: active_lanes_count needs to be tracked by SmtProcessor
+        build.active_lanes_count = parent_active_lanes + new_lane_count - expired_count;
 
         (commit, build)
     }
@@ -654,7 +656,7 @@ impl VirtualStateProcessor {
         let data = self.collect_mergeset_seq_data(ctx);
         let lane_updates =
             self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
-        let (parent_lanes_root, _parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
+        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
 
         let (hash, build) = self.build_seq_commit(
             parent_seq_commit,
@@ -662,6 +664,7 @@ impl VirtualStateProcessor {
             current_blue_score,
             parent_header.blue_score,
             parent_lanes_root,
+            parent_active_lanes,
             &lane_updates,
             data.miner_payload_leaves,
             selected_parent,

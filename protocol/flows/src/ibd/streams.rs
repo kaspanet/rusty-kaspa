@@ -200,6 +200,8 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
 }
 
 /// Proof is required for the first lane and every 16th lane thereafter.
+/// TODO: re-enable proof enforcement once the sender generates proofs
+#[allow(dead_code)]
 const SMT_PROOF_INTERVAL: usize = 16;
 
 /// Stream of SMT lane entries. Pure one-way — no flow control.
@@ -258,11 +260,8 @@ impl<'a, 'b> SmtStream<'a, 'b> {
                     }
                     let lane_tip = Hash::from_bytes(tip_bytes);
 
-                    let requires_proof = self.lane_count.is_multiple_of(SMT_PROOF_INTERVAL);
-                    let proof = if requires_proof {
-                        if payload.proof.is_empty() {
-                            return Err(ProtocolError::Other("SMT proof required for first and every 16th lane entry"));
-                        }
+                    // TODO: sender does not generate proofs yet — re-enable once the sender flow includes SMT proofs
+                    let proof = if !payload.proof.is_empty() {
                         Some(
                             kaspa_smt::proof::OwnedSmtProof::from_bytes(&payload.proof)
                                 .map_err(|e| ProtocolError::OtherOwned(format!("invalid SMT proof: {e}")))?,
