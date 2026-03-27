@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Tag name for the pre-built toolchain release
+UPSTREAM_REPO="kaspanet/rusty-kaspa"
 TOOLCHAIN_TAG="musl-toolchain-v1"
 
 # Calculate the hash of the preset file
@@ -20,28 +20,48 @@ source preset.sh
 if [ -d "$HOME/x-tools" ] && [ -f "$PRESET_HASH_FILE" ] && [ "$(cat $PRESET_HASH_FILE)" = "$CURRENT_PRESET_HASH" ]; then
   echo "Toolchain already installed and up-to-date, skipping"
 else
-  echo "Toolchain not found or outdated, downloading pre-built toolchain from release..."
   rm -rf "$HOME/x-tools"
+  TOOLCHAIN_INSTALLED=false
 
-  gh release download "$TOOLCHAIN_TAG" \
-    --repo "$GITHUB_REPOSITORY" \
-    --pattern "x-tools.tar.zst" \
-    --dir /tmp
+  # Try downloading and verifying from a repo. Cleans up on hash mismatch.
+  try_download_toolchain() {
+    local repo="$1"
+    echo "Trying to download toolchain from $repo..."
 
-  echo "Extracting pre-built toolchain..."
-  tar --use-compress-program=zstd -xf /tmp/x-tools.tar.zst -C "$HOME"
-  rm /tmp/x-tools.tar.zst
+    if ! gh release download "$TOOLCHAIN_TAG" \
+         --repo "$repo" \
+         --pattern "x-tools.tar.zst" \
+         --dir /tmp 2>/dev/null; then
+      echo "  No release found in $repo"
+      return 1
+    fi
 
-  # Verify the downloaded toolchain matches current preset
-  if [ ! -f "$PRESET_HASH_FILE" ] || [ "$(cat $PRESET_HASH_FILE)" != "$CURRENT_PRESET_HASH" ]; then
-    echo "ERROR: Pre-built toolchain preset hash mismatch."
-    echo "Expected: $CURRENT_PRESET_HASH"
-    echo "Got:      $(cat $PRESET_HASH_FILE 2>/dev/null || echo 'missing')"
-    echo "Run the 'Build musl toolchain' workflow to rebuild the release."
-    exit 1
+    echo "  Extracting..."
+    tar --use-compress-program=zstd -xf /tmp/x-tools.tar.zst -C "$HOME"
+    rm -f /tmp/x-tools.tar.zst
+
+    if [ -f "$PRESET_HASH_FILE" ] && [ "$(cat "$PRESET_HASH_FILE")" = "$CURRENT_PRESET_HASH" ]; then
+      echo "  Preset hash matches, toolchain ready"
+      return 0
+    fi
+
+    echo "  Preset hash mismatch (expected: $CURRENT_PRESET_HASH, got: $(cat "$PRESET_HASH_FILE" 2>/dev/null || echo 'missing'))"
+    rm -rf "$HOME/x-tools"
+    return 1
+  }
+
+  # Try upstream first, then fall back to the current repo (for fork-based toolchain testing)
+  if try_download_toolchain "$UPSTREAM_REPO"; then
+    TOOLCHAIN_INSTALLED=true
+  elif [ "$GITHUB_REPOSITORY" != "$UPSTREAM_REPO" ] && try_download_toolchain "$GITHUB_REPOSITORY"; then
+    TOOLCHAIN_INSTALLED=true
   fi
 
-  echo "Pre-built toolchain matches current preset, ready to use"
+  if [ "$TOOLCHAIN_INSTALLED" != "true" ]; then
+    echo "ERROR: Could not download a matching toolchain from $UPSTREAM_REPO or $GITHUB_REPOSITORY"
+    echo "Run the 'Build musl toolchain' workflow to create/update the release."
+    exit 1
+  fi
 fi
 
 # Update toolchain variables: C compiler, C++ compiler, linker, and archiver
