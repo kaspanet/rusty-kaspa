@@ -36,7 +36,7 @@ Then run in external mode:
 ./stratum-bridge --config bridge/config.yaml --node-mode external
 ```
 
-**Linux AppImage (optional):** Releases may include `stratum-bridge-<version>-x86_64.AppImage`. Make it executable (`chmod +x`), then run it or use your file manager. The AppImage looks for `config.yaml` at `$XDG_CONFIG_HOME/stratum-bridge/config.yaml` (usually `~/.config/stratum-bridge/config.yaml`) when that file exists; otherwise it uses built-in defaults. Extra CLI arguments are forwarded to the bridge (an explicit `--config` skips that default). To build the AppImage locally after a musl `stratum-bridge` release build: `bash bridge/appimage/build.sh <version-label>`.
+**Linux AppImage (optional):** Releases may include `stratum-bridge-<version>-x86_64.AppImage`. Make it executable (`chmod +x`), then run it or use your file manager. When launched from a desktop (no terminal), `AppRun` tries to open a system terminal window so startup logs stay visible; set `RKSTRATUM_NO_AUTO_TERMINAL=1` to disable that. The AppImage looks for `config.yaml` at `$XDG_CONFIG_HOME/stratum-bridge/config.yaml` (usually `~/.config/stratum-bridge/config.yaml`) when that file exists; otherwise it uses built-in defaults. Extra CLI arguments are forwarded to the bridge (an explicit `--config` skips that default). To build the AppImage locally after a musl `stratum-bridge` release build: `bash bridge/appimage/build.sh <version-label>`.
 
 ### CLI Help
 
