@@ -659,10 +659,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             {
                 return Err(TxScriptError::NullFail);
             }
-        } else {
-            if failed && signatures.iter().any(|sig| !sig.is_empty()) {
-                return Err(TxScriptError::NullFail);
-            }
+        } else if failed && signatures.iter().any(|sig| !sig.is_empty()) {
+            return Err(TxScriptError::NullFail);
         }
 
         self.dstack.push_item(!failed)?;
@@ -714,7 +712,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                     }
                     Err(_) => {
                         self.sig_cache.insert(sig_cache_key, false);
-                        if enforce_nullfail { return Err(TxScriptError::NullFail) } else { Ok(false) }
+                        if enforce_nullfail { Err(TxScriptError::NullFail) } else { Ok(false) }
                     }
                 }
             }
@@ -767,7 +765,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                     }
                     Err(_) => {
                         self.sig_cache.insert(sig_cache_key, false);
-                        if enforce_nullfail { return Err(TxScriptError::NullFail) } else { Ok(false) }
+                        if enforce_nullfail { Err(TxScriptError::NullFail) } else { Ok(false) }
                     }
                 }
             }
