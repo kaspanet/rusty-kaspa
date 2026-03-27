@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Kaspa Stratum Bridge
+Name=RKStratum
 Comment=Stratum bridge for Kaspa mining
 Exec=stratum-bridge
 Icon=stratum-bridge
