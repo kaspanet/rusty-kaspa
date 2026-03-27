@@ -48,8 +48,12 @@ impl BufferMetadata {
 // GENERATIONAL fragment BUFFER
 // ============================================================================
 
-/// Accumulates fragments for a single generation until k fragments arrive.
+/// Accumulates fragments for a single generation until decodable.
 /// No locks needed — only the single-threaded Coordinator touches this.
+///
+/// Supports two decode trigger conditions (see `insert()` for details):
+/// 1. All k data fragments arrived → fast-path (no RS recovery needed)
+/// 2. k total fragments arrived (any mix) → may need RS recovery
 #[derive(Clone)]
 pub(crate) struct GenerationalfragmentBuffer {
     generation: usize,
@@ -61,6 +65,10 @@ pub(crate) struct GenerationalfragmentBuffer {
     data_fragment_count: usize,
     parity_fragments: Vec<Option<Fragment>>,
     parity_fragment_count: usize,
+    /// Whether a decode job has been dispatched for this generation.
+    /// Used to continue accepting data fragments after first dispatch
+    /// (to potentially trigger a fast-path re-dispatch).
+    dispatched: bool,
 }
 
 impl GenerationalfragmentBuffer {
@@ -73,11 +81,35 @@ impl GenerationalfragmentBuffer {
             data_fragment_count: 0,
             parity_fragments: vec![None; m],
             parity_fragment_count: 0,
+            dispatched: false,
         }
     }
 
     /// Insert a fragment by its index within this generation.
-    /// Returns `true` if this insertion made the generation decodable for the first time.
+    ///
+    /// Returns `true` if this insertion crossed a decode threshold for the first time.
+    ///
+    /// ## Why Two Conditions?
+    ///
+    /// With UDP, packet reordering is common. If parity fragments arrive before some data
+    /// fragments (reaching k total), we'd trigger RS recovery even though waiting slightly
+    /// longer might give us all k data fragments (enabling the much cheaper fast-path).
+    ///
+    /// To optimize for this, we support two decode triggers:
+    ///
+    /// 1. **All k data fragments arrived** → Triggers fast-path decode (just concatenation,
+    ///    no Reed-Solomon recovery needed). This is the ideal case.
+    ///
+    /// 2. **k total fragments arrived** (any mix of data + parity) → Triggers decode that
+    ///    may require RS recovery if some data fragments are missing.
+    ///
+    /// If condition #2 fires first (parity pushed us to k total before we had all data),
+    /// we continue accepting data fragments. If condition #1 fires later (we now have all
+    /// k data), we dispatch again — the fast-path decode may win the race and the
+    /// redundant slow-path result is simply discarded (DecodedBuffer::store is idempotent).
+    ///
+    /// Once we have all k data fragments AND have dispatched, we stop accepting fragments
+    /// entirely since we've achieved the optimal decode condition.
     pub fn insert(&mut self, index_within_gen: usize, fragment: Fragment) -> bool {
         if index_within_gen >= self.data_fragments.len() + self.parity_fragments.len() {
             log::warn!(
@@ -88,9 +120,16 @@ impl GenerationalfragmentBuffer {
             );
             return false;
         }
-        if self.data_fragment_count + self.parity_fragment_count >= self.k {
-            return false; // We expect this to already have been decoded.
+
+        // Early exit: stop accepting fragments once we've dispatched AND have all data.
+        // Before that point, we keep accepting data fragments to potentially trigger
+        // a fast-path re-dispatch even after an initial parity-triggered dispatch.
+        if self.dispatched && self.data_fragment_count >= self.k {
+            return false;
         }
+
+        let total_before = self.data_fragment_count + self.parity_fragment_count;
+        let data_before = self.data_fragment_count;
 
         if index_within_gen < self.k {
             // Data fragment
@@ -100,7 +139,11 @@ impl GenerationalfragmentBuffer {
             self.data_fragment_count += 1;
             self.data_fragments[index_within_gen] = Some(fragment);
         } else {
-            // Parity fragment
+            // Parity fragment — only accept if we haven't dispatched yet
+            // (no point collecting more parity after first dispatch)
+            if self.dispatched {
+                return false;
+            }
             let parity_index = index_within_gen - self.k;
             if self.parity_fragments[parity_index].is_some() {
                 return false; // Duplicate
@@ -109,8 +152,21 @@ impl GenerationalfragmentBuffer {
             self.parity_fragments[parity_index] = Some(fragment);
         }
 
-        // Return true only if this insertion made the generation decodable for the first time.
-        self.data_fragment_count + self.parity_fragment_count >= self.k
+        let total_after = self.data_fragment_count + self.parity_fragment_count;
+        let data_after = self.data_fragment_count;
+
+        // Trigger decode on EITHER threshold being crossed for the first time:
+        // 1. All k data fragments (fast-path possible)
+        // 2. k total fragments (may need RS recovery)
+        let crossed_data_threshold = data_before < self.k && data_after >= self.k;
+        let crossed_total_threshold = total_before < self.k && total_after >= self.k;
+
+        crossed_data_threshold || crossed_total_threshold
+    }
+
+    /// Mark this generation as having been dispatched for decoding.
+    pub fn mark_dispatched(&mut self) {
+        self.dispatched = true;
     }
 
     /// Extract data and parity fragment payloads for the decode worker.
@@ -124,6 +180,19 @@ impl GenerationalfragmentBuffer {
         let data = self.data_fragments.iter_mut().map(|opt| opt.take().map(|fragment| fragment.payload)).collect();
         let parity = self.parity_fragments.iter_mut().map(|opt| opt.take().map(|fragment| fragment.payload)).collect();
         (data, parity)
+    }
+
+    /// Clone fragment payloads for decode without consuming them.
+    /// Used for slow-path dispatch when we may want a subsequent fast-path dispatch.
+    pub fn clone_for_decode(&self) -> (Vec<Option<Bytes>>, Vec<Option<Bytes>>) {
+        let data = self.data_fragments.iter().map(|opt| opt.as_ref().map(|fragment| fragment.payload.clone())).collect();
+        let parity = self.parity_fragments.iter().map(|opt| opt.as_ref().map(|fragment| fragment.payload.clone())).collect();
+        (data, parity)
+    }
+
+    /// Returns true if all k data fragments are present (fast-path possible).
+    pub fn has_all_data(&self) -> bool {
+        self.data_fragment_count >= self.k
     }
 }
 
@@ -165,13 +234,25 @@ impl EncodedBuffer {
 
     /// Extract fragment data for a generation that's ready to decode.
     /// Returns (data_slots, parity_slots) for the decode worker.
+    ///
+    /// If all k data fragments are present (fast-path), takes ownership of fragments.
+    /// Otherwise (slow-path), clones fragments to allow a potential subsequent fast-path dispatch.
     pub fn extract_job_from_generation(&mut self, generation: usize) -> DecodeJob {
         self.dispatched_count += 1;
         let generational_buffer = &mut self.generations[generation];
-        let (data_fragments, parity_fragments) = generational_buffer.take_for_decode();
         let k = generational_buffer.k;
         let m = generational_buffer.m;
         let num_of_data_fragments = generational_buffer.data_fragment_count;
+
+        // If we have all data fragments, this is the optimal (final) dispatch — take ownership.
+        // Otherwise, clone to keep fragments around for potential fast-path re-dispatch.
+        let (data_fragments, parity_fragments) = if generational_buffer.has_all_data() {
+            generational_buffer.take_for_decode()
+        } else {
+            generational_buffer.clone_for_decode()
+        };
+
+        generational_buffer.mark_dispatched();
         DecodeJob { hash: self.hash, generation, k, m, data_fragments, num_of_data_fragments, parity_fragments }
     }
 
