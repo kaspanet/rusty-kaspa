@@ -200,9 +200,7 @@ pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
         return Ok(current_root);
     }
 
-    // TODO: we must explicitly know if we get value from changes or from store. if from changes - we dont need to calculate hash, otherwise we need calc and insert into changes
-
-    // Read a branch: check our local buffer first, then the immutable store.
+    // Read a branch: check changes (proof cache) first, then the immutable store.
     let read_branch = |changes: &SmtBranchChanges, bk: BranchKey| -> Result<Option<BranchChildren>, S::Error> {
         if let Some(&bc) = changes.get(&bk) {
             return Ok(Some(bc));
@@ -230,7 +228,7 @@ pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
                 None
             };
 
-            // Read existing children from buffer/store
+            // Read existing children from changes (proof cache) or store
             let existing = read_branch(changes, branch_key)?;
 
             let new_children = if let Some(sib) = sibling_in_batch {
@@ -245,11 +243,12 @@ pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
                 }
             };
 
-            let parent = hash_node::<H>(new_children.left, new_children.right);
-
-            // Only record and propagate if the branch actually changed
+            // Only hash and propagate if the branch actually changed.
+            // When the existing value came from the proof cache (changes map)
+            // and children are unchanged, we skip the hash entirely.
             let empty = BranchChildren { left: empty_hashes[height], right: empty_hashes[height] };
             if new_children != existing.unwrap_or(empty) {
+                let parent = hash_node::<H>(new_children.left, new_children.right);
                 changes.insert(branch_key, new_children);
                 next.push(LeafUpdate { key: entry.key, leaf_hash: parent });
             }
