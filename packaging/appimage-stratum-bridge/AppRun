@@ -1,0 +1,24 @@
+#!/bin/bash
+# AppImage entry: run stratum-bridge with optional config in a writable location
+# (AppImage mounts are read-only; config lives under XDG_CONFIG_HOME.)
+set -euo pipefail
+HERE="$(dirname "$(readlink -f "${0}")")"
+BIN="${HERE}/usr/bin/stratum-bridge"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/stratum-bridge"
+CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+mkdir -p "${CONFIG_DIR}"
+# Do not inject --config if the user passed one (clap rejects duplicate --config).
+inject_config=true
+for a in "$@"; do
+  case "$a" in
+    --config | --config=*)
+      inject_config=false
+      break
+      ;;
+  esac
+done
+EXTRA_ARGS=()
+if [[ "${inject_config}" == true ]] && [[ -f "${CONFIG_FILE}" ]]; then
+  EXTRA_ARGS+=(--config "${CONFIG_FILE}")
+fi
+exec "${BIN}" "${EXTRA_ARGS[@]}" "$@"

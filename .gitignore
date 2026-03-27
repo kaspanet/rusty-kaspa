@@ -16,3 +16,4 @@ Servers.toml
 release
 package-sizes.js
 rustbridge_*.log
+packaging/appimage-stratum-bridge/appimagetool-x86_64.AppImage

@@ -66,6 +66,19 @@ jobs:
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
 
+      - name: Install AppImage packaging deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin fuse libfuse2
+
+      - name: Build stratum-bridge AppImage (Linux)
+        id: appimage
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          cd $GITHUB_WORKSPACE
+          bash packaging/appimage-stratum-bridge/build.sh "${{ github.event.release.tag_name }}"
+          echo "appimage=${GITHUB_WORKSPACE}/stratum-bridge-${{ github.event.release.tag_name }}-x86_64.AppImage" >> $GITHUB_ENV
+
       - name: Build on Windows
         if: runner.os == 'Windows'
         shell: bash
@@ -103,6 +116,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ./${{ env.archive }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload stratum-bridge AppImage
+        if: runner.os == 'Linux' && steps.appimage.outcome == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.appimage }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
