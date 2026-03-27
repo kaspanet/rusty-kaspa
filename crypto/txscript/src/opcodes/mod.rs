@@ -11,6 +11,8 @@ use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::VerifiableTransaction;
 use kaspa_hashes::Hash;
+use kaspa_hashes::ZERO_HASH;
+use kaspa_utils::hex::FromHex;
 use sha2::{Digest, Sha256};
 use std::{
     fmt::{Debug, Formatter},
@@ -99,7 +101,7 @@ pub trait OpcodeSerialization {
 }
 
 pub trait OpCodeImplementation<T: VerifiableTransaction, Reused: SigHashReusedValues>:
-    OpCodeExecution<T, Reused> + OpCodeMetadata + OpcodeSerialization
+    OpCodeExecution<T, Reused> + OpCodeMetadata + OpcodeSerialization + std::fmt::Display
 {
 }
 
@@ -1435,10 +1437,8 @@ opcode_list! {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
                     let idx = i32_to_usize(idx)?;
                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    match utxo.covenant_id{
-                        None => vm.dstack.push_item(false),
-                        Some(covenant_id) => push_data(covenant_id.as_bytes().into(), vm),
-                    }
+                    let covenant_id = utxo.covenant_id.unwrap_or(ZERO_HASH);
+                    push_data(covenant_id.as_bytes().into(), vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpInputCovenantId only applies to transaction inputs".to_string()))
             }
@@ -1516,7 +1516,7 @@ opcode_list! {
             // seq_commit_access is none only if the opcode is not enabled
             return Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         };
-        let [block]: [Hash; 1] = vm.dstack.pop_items()?; // todo we actually could convert slice ref into hash ref if it was repr(transparent)
+        let [block]: [Hash; 1] = vm.dstack.pop_items()?; // TODO: We actually could convert slice ref into hash ref if it was repr(transparent)
         match seq_commit_accessor.is_chain_ancestor_from_pov(block) {
             None => return Err(TxScriptError::BlockAlreadyPruned(block.to_string())),
             Some(false) => return Err(TxScriptError::BlockNotSelected(block.to_string())),
@@ -1527,8 +1527,42 @@ opcode_list! {
         vm.dstack.push_item(commitment)?;
         Ok(())
     }
-    opcode OpUnknown213<0xd5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown214<0xd6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+
+    opcode OpOutputCovenantId<0xd5, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let idx = i32_to_usize(idx)?;
+                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.inputs().len()))?;
+                    let covenant_id = output.covenant.map(|c| c.covenant_id).unwrap_or(ZERO_HASH);
+                    push_data(covenant_id.as_bytes().into(), vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputCovenantId only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpOutputAuthorizingInput<0xd6, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let idx = i32_to_usize(idx)?;
+                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.inputs().len()))?;
+                    let auth_input_idx = output.covenant.as_ref()
+                        .map(|c| c.authorizing_input as i64)
+                        .unwrap_or(-1i64);
+                    push_number(auth_input_idx as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputAuthorizingInput only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
     opcode OpUnknown215<0xd7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown216<0xd8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown217<0xd9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1590,7 +1624,7 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{EngineContext, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script};
+    use crate::{EngineContext, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
@@ -1730,8 +1764,8 @@ mod test {
             opcodes::OpCovOutputCount::empty().expect("Should accept empty"),
             opcodes::OpCovOutputIdx::empty().expect("Should accept empty"),
             opcodes::OpChainblockSeqCommit::empty().expect("Should accept empty"),
-            opcodes::OpUnknown213::empty().expect("Should accept empty"),
-            opcodes::OpUnknown214::empty().expect("Should accept empty"),
+            opcodes::OpOutputCovenantId::empty().expect("Should accept empty"),
+            opcodes::OpOutputAuthorizingInput::empty().expect("Should accept empty"),
             opcodes::OpUnknown215::empty().expect("Should accept empty"),
             opcodes::OpUnknown216::empty().expect("Should accept empty"),
             opcodes::OpUnknown217::empty().expect("Should accept empty"),
@@ -1780,6 +1814,57 @@ mod test {
                 _ => panic!("Opcode {pop:?} should be disabled"),
             }
         }
+    }
+
+    #[test]
+    fn test_opcode_to_string_without_data() {
+        let opcode: Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>> =
+            opcodes::OpTrue::empty().expect("Should accept empty");
+        assert_eq!(opcode.to_string(), "OpTrue");
+    }
+
+    #[test]
+    fn test_opcode_to_string_with_data() {
+        let opcode: Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>> =
+            opcodes::OpData2::new(vec![0xab, 0xcd]).expect("Should accept data");
+        assert_eq!(opcode.to_string(), "OpData2 0xabcd");
+    }
+
+    #[test]
+    fn test_script_builder_roundtrip_to_joined_opcode_string() {
+        use opcodes::codes::{OpBlake2b, OpCheckSig, OpDrop, OpDup, OpEqualVerify, OpVerify};
+
+        let mut builder = crate::script_builder::ScriptBuilder::new();
+        builder
+            .add_op(OpDup)
+            .unwrap()
+            .add_data(&[0x02, 0xab, 0xcd])
+            .unwrap()
+            .add_op(OpBlake2b)
+            .unwrap()
+            .add_data(b"kaspa")
+            .unwrap()
+            .add_op(OpEqualVerify)
+            .unwrap()
+            .add_i64(-1)
+            .unwrap()
+            .add_i64(16)
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .add_data(&[0xde, 0xad, 0xbe, 0xef])
+            .unwrap()
+            .add_op(OpDrop)
+            .unwrap()
+            .add_op(OpVerify)
+            .unwrap();
+
+        let script = builder.drain();
+
+        assert_eq!(
+            script_to_str(&script).unwrap(),
+            "OpDup OpData3 0x02abcd OpBlake2b OpData5 0x6b61737061 OpEqualVerify Op1Negate Op16 OpCheckSig OpData4 0xdeadbeef OpDrop OpVerify"
+        );
     }
 
     #[test]
@@ -4251,7 +4336,7 @@ mod test {
             CovenantBinding, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput,
             TransactionOutpoint, TransactionOutput, UtxoEntry,
         };
-        use kaspa_hashes::Hash;
+        use kaspa_hashes::{Hash, ZERO_HASH};
         use kaspa_txscript_errors::CovenantsError;
 
         fn payload_bytes(len: usize) -> Vec<u8> {
@@ -4613,6 +4698,26 @@ mod test {
             });
             run_script(&tx, entries.clone(), 0, spk_input_cov_id_3).unwrap();
 
+            // OpOutputCovenantId for outputs with covenant ids
+            let spk_output_cov_id_0 = script(|sb| {
+                sb.add_i64(0)?.add_op(codes::OpOutputCovenantId)?.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_output_cov_id_0).unwrap();
+
+            let spk_output_cov_id_2 = script(|sb| {
+                sb.add_i64(2)?.add_op(codes::OpOutputCovenantId)?.add_data(&covenant_id_2.as_bytes())?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_output_cov_id_2).unwrap();
+
+            // OpOutputAuthorizingInput for outputs with covenant bindings
+            let spk_output_auth_input_0 =
+                script(|sb| sb.add_i64(0)?.add_op(codes::OpOutputAuthorizingInput)?.add_i64(0)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_output_auth_input_0).unwrap();
+
+            let spk_output_auth_input_1 =
+                script(|sb| sb.add_i64(1)?.add_op(codes::OpOutputAuthorizingInput)?.add_i64(3)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_output_auth_input_1).unwrap();
+
             // OpCovInputCount
             let spk_cov_in_count_1 = script(|sb| {
                 sb.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpCovInputCount)?.add_i64(3)?.add_op(codes::OpEqual)
@@ -4679,11 +4784,21 @@ mod test {
             let err = run_script(&tx, entries, 0, spk_cov_out_idx_oob).expect_err("cov out idx oob");
             assert!(matches!(err, TxScriptError::CovenantsError(CovenantsError::InvalidCovOutIndex(_, _))));
 
-            // OpInputCovenantId when covenant id is None
+            // OpInputCovenantId when covenant id is None (returns zero hash)
             let (tx_no_cov, entries_no_cov) = base_transaction(0);
             let spk_input_cov_none =
-                script(|sb| sb.add_i64(0)?.add_op(codes::OpInputCovenantId)?.add_op(codes::OpFalse)?.add_op(codes::OpEqual));
+                script(|sb| sb.add_i64(0)?.add_op(codes::OpInputCovenantId)?.add_data(&ZERO_HASH.as_bytes())?.add_op(codes::OpEqual));
             run_script(&tx_no_cov, entries_no_cov.clone(), 0, spk_input_cov_none).unwrap();
+
+            // OpOutputCovenantId when covenant id is None (returns zero hash)
+            let spk_output_cov_none =
+                script(|sb| sb.add_i64(0)?.add_op(codes::OpOutputCovenantId)?.add_data(&ZERO_HASH.as_bytes())?.add_op(codes::OpEqual));
+            run_script(&tx_no_cov, entries_no_cov.clone(), 0, spk_output_cov_none).unwrap();
+
+            // OpOutputAuthorizingInput when covenant is None (returns -1)
+            let spk_output_auth_none =
+                script(|sb| sb.add_i64(0)?.add_op(codes::OpOutputAuthorizingInput)?.add_i64(-1)?.add_op(codes::OpEqual));
+            run_script(&tx_no_cov, entries_no_cov.clone(), 0, spk_output_auth_none).unwrap();
 
             // OpInputCovenantId out-of-bounds
             let spk_input_cov_oob = script(|sb| sb.add_i64(5)?.add_op(codes::OpInputCovenantId));

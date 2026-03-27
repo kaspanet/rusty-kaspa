@@ -46,7 +46,7 @@ pub enum TxRuleError {
     CoinbaseNonZeroMassCommitment,
 
     #[error(
-        "transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2} 
+        "transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2}
     while the merging block daa score is {3} and the coinbase maturity period of {4} hasn't passed yet"
     )]
     ImmatureCoinbaseSpend(usize, TransactionOutpoint, u64, u64, u64),
@@ -106,6 +106,24 @@ pub enum TxRuleError {
 
     #[error("covenants error: {0}")]
     CovenantsError(#[from] CovenantsError),
+}
+
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum PopulateGenesisCovenantsError {
+    #[error("outputs list is empty")]
+    EmptyOutputs,
+    #[error("authorizing input index {0} is out of bounds for {1} inputs")]
+    NoSuchInput(usize, usize),
+    #[error("output index {0} is out of bounds for {1} outputs")]
+    NoSuchOutput(u32, usize),
+    #[error("outputs are not strictly ordered")]
+    OutputsNotOrdered,
+    #[error("output index {0} appears in more than one group")]
+    OutputsNotDisjoint(u32),
+    #[error("output index {0} covenant field is already populated")]
+    CovenantAlreadyPopulated(u32),
+    #[error("The genesis covenant group array is invalid")]
+    InvalidGenesisCovenantGroupArray,
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
