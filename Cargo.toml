@@ -215,7 +215,7 @@ indexmap = "2.1.0"
 intertrait = "0.2.2"
 ipnet = { version = "2.11.0", default-features = false }
 itertools = { version = "0.13.0", default-features = false }
-js-sys = { version = "0.3.70", default-features = false }
+js-sys = { version = "=0.3.77", default-features = false }
 keccak = "0.1.4"
 local-ip-address = "0.6.1"
 log = { version = "0.4.20", default-features = false }
@@ -283,10 +283,10 @@ tonic = { version = "0.12.3", features = ["tls-webpki-roots", "gzip", "transport
 tonic-build = { version = "0.12.3", features = ["prost"] }
 triggered = "0.1.2"
 uuid = { version = "1.16.0", default-features = false }
-wasm-bindgen = { version = "0.2.100", default-features = false }
-wasm-bindgen-futures = "0.4.43"
+wasm-bindgen = { version = "=0.2.100", default-features = false }
+wasm-bindgen-futures = "=0.4.50"
 wasm-bindgen-test = "0.3.50"
-web-sys = "0.3.70"
+web-sys = "=0.3.77"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }

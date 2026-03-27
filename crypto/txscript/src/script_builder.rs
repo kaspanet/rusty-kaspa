@@ -139,19 +139,93 @@ impl ScriptBuilder {
     /// the length of the data. A zero length buffer will lead to a push of empty
     /// data onto the stack (OP_0). No data limits are enforced with this function.
     fn add_raw_data(&mut self, data: &[u8]) -> &mut Self {
-        let data_len = data.len();
+        match data {
+            [OP_1_NEGATE_VAL] => {
+                self.script.push(Op1Negate);
+                self
+            }
+            // When the data consists of a single number that can be represented
+            // by one of the "small integer" opcodes, use that opcode instead of
+            // a data push opcode followed by the number.
+            [OP_SMALL_INT_MIN_VAL..=OP_SMALL_INT_MAX_VAL] => {
+                self.script.push((Op1 - 1) + data[0]);
+                self
+            }
+            // For all other data, choose the appropriate push opcode based on data length.
+            _ => self.add_raw_data_with_data_opcode(data),
+        }
+    }
 
-        // When the data consists of a single number that can be represented
-        // by one of the "small integer" opcodes, use that opcode instead of
-        // a data push opcode followed by the number.
+    /// This function should not typically be used by ordinary users as it does not
+    /// include the checks which prevent data pushes larger than the maximum allowed
+    /// sizes which leads to scripts that can't be executed. This is provided for
+    /// testing purposes such as tests where sizes are intentionally made larger
+    /// than allowed.
+    ///
+    /// Use add_data instead.
+    #[cfg(test)]
+    pub fn add_data_unchecked(&mut self, data: &[u8]) -> &mut Self {
+        self.add_raw_data(data)
+    }
+
+    fn validate_data_push(&self, data: &[u8]) -> ScriptBuilderResult<()> {
+        // Pushes that would cause the script to exceed the largest allowed
+        // script size would result in a non-canonical script.
+        let data_size = Self::canonical_data_size(data);
+
+        if self.script.len() + data_size > MAX_SCRIPTS_SIZE {
+            return Err(ScriptBuilderError::DataRejected(data_size));
+        }
+
+        // Pushes larger than the max script element size would result in a
+        // script that is not canonical.
+        let data_len = data.len();
+        if data_len > MAX_SCRIPT_ELEMENT_SIZE {
+            return Err(ScriptBuilderError::ElementExceedsMaxSize(data_len));
+        }
+
+        Ok(())
+    }
+
+    /// AddData pushes the passed data to the end of the script. It automatically
+    /// chooses canonical opcodes depending on the length of the data.
+    ///
+    /// A zero length buffer will lead to a push of empty data onto the stack (Op0 = OpFalse)
+    /// and any push of data greater than [`MAX_SCRIPT_ELEMENT_SIZE`] will not modify
+    /// the script since that is not allowed by the script engine.
+    ///
+    /// Also, the script will not be modified if pushing the data would cause the script to
+    /// exceed the maximum allowed script engine size [`MAX_SCRIPTS_SIZE`].
+    pub fn add_data(&mut self, data: &[u8]) -> ScriptBuilderResult<&mut Self> {
+        self.validate_data_push(data)?;
+
+        Ok(self.add_raw_data(data))
+    }
+
+    /// Adds `data` using an explicit push-data opcode chosen only by payload size.
+    ///
+    /// Unlike `add_data()`, this method does not canonicalize single-byte small
+    /// integers into `Op1Negate` or `Op1..Op16`.
+    ///
+    /// Empty data is encoded as `Op0`, and all other values are emitted using
+    /// one of the push-data forms (`OpDataN`, `OpPushData1`, `OpPushData2`, or
+    /// `OpPushData4`) according to the length of `data`.
+    pub fn add_data_with_push_opcode(&mut self, data: &[u8]) -> ScriptBuilderResult<&mut Self> {
+        self.validate_data_push(data)?;
+        Ok(self.add_raw_data_with_data_opcode(data))
+    }
+
+    /// Adds `data` using an explicit push-data opcode chosen only by payload size.
+    ///
+    /// It's an internal function that is used by `add_raw_data` if we can't apply
+    /// small integer optimization, or by `add_data_with_push_opcode`, when the
+    /// caller is not interested in small integer optimization and wants the
+    /// push data prefix to be determined only by the payload length.
+    fn add_raw_data_with_data_opcode(&mut self, data: &[u8]) -> &mut Self {
+        // Empty data can be pushed using Op0.
+        let data_len = data.len();
         if data_len == 0 {
             self.script.push(Op0);
-            return self;
-        } else if data_len == 1 && data[0] >= OP_SMALL_INT_MIN_VAL && data[0] <= OP_SMALL_INT_MAX_VAL {
-            self.script.push((Op1 - 1) + data[0]);
-            return self;
-        } else if data_len == 1 && data[0] == OP_1_NEGATE_VAL {
-            self.script.push(Op1Negate);
             return self;
         }
 
@@ -172,46 +246,6 @@ impl ScriptBuilder {
         // Append the actual data.
         self.script.extend(data);
         self
-    }
-
-    /// This function should not typically be used by ordinary users as it does not
-    /// include the checks which prevent data pushes larger than the maximum allowed
-    /// sizes which leads to scripts that can't be executed. This is provided for
-    /// testing purposes such as tests where sizes are intentionally made larger
-    /// than allowed.
-    ///
-    /// Use add_data instead.
-    #[cfg(test)]
-    pub fn add_data_unchecked(&mut self, data: &[u8]) -> &mut Self {
-        self.add_raw_data(data)
-    }
-
-    /// AddData pushes the passed data to the end of the script. It automatically
-    /// chooses canonical opcodes depending on the length of the data.
-    ///
-    /// A zero length buffer will lead to a push of empty data onto the stack (Op0 = OpFalse)
-    /// and any push of data greater than [`MAX_SCRIPT_ELEMENT_SIZE`] will not modify
-    /// the script since that is not allowed by the script engine.
-    ///
-    /// Also, the script will not be modified if pushing the data would cause the script to
-    /// exceed the maximum allowed script engine size [`MAX_SCRIPTS_SIZE`].
-    pub fn add_data(&mut self, data: &[u8]) -> ScriptBuilderResult<&mut Self> {
-        // Pushes that would cause the script to exceed the largest allowed
-        // script size would result in a non-canonical script.
-        let data_size = Self::canonical_data_size(data);
-
-        if self.script.len() + data_size > MAX_SCRIPTS_SIZE {
-            return Err(ScriptBuilderError::DataRejected(data_size));
-        }
-
-        // Pushes larger than the max script element size would result in a
-        // script that is not canonical.
-        let data_len = data.len();
-        if data_len > MAX_SCRIPT_ELEMENT_SIZE {
-            return Err(ScriptBuilderError::ElementExceedsMaxSize(data_len));
-        }
-
-        Ok(self.add_raw_data(data))
     }
 
     pub fn add_i64(&mut self, val: i64) -> ScriptBuilderResult<&mut Self> {
@@ -235,9 +269,8 @@ impl ScriptBuilder {
         self.add_data(&bytes)
     }
 
-    // Bitcoind tests utilizes this function
-    #[cfg(test)]
-    pub fn add_i64_min(&mut self) -> ScriptBuilderResult<&mut Self> {
+    // This value is outside the range of numbers allowed in the script. Bitcoind tests utilizes this function
+    pub(crate) fn add_i64_min(&mut self) -> ScriptBuilderResult<&mut Self> {
         let bytes: Vec<_> = OpcodeData::serialize(&crate::data_stack::SizedEncodeInt::<9>(i64::MIN)).expect("infallible");
         self.add_data(&bytes)
     }

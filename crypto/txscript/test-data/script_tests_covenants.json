@@ -3952,6 +3952,27 @@
   ],
   [
     "1",
+    "0 INPUT_COVENANT_ID 0x20 0x0000000000000000000000000000000000000000000000000000000000000000 EQUALVERIFY",
+    "",
+    "OK",
+    "OpInputCovenantId returns zero hash when there is no covenant id"
+  ],
+  [
+    "1",
+    "0 OUTPUT_COVENANT_ID 0x20 0x0000000000000000000000000000000000000000000000000000000000000000 EQUALVERIFY",
+    "",
+    "OK",
+    "OpOutputCovenantId returns zero hash when there is no covenant id"
+  ],
+  [
+    "1",
+    "0 OUTPUT_AUTHORIZING_INPUT -1 EQUALVERIFY",
+    "",
+    "OK",
+    "OpOutputAuthorizingInput returns -1 when there is no covenant id"
+  ],
+  [
+    "1",
     "2 NUM2BIN 0x02 0x0100 EQUAL",
     "",
     "OK"
@@ -4055,16 +4076,17 @@
   ],
   [
     "1",
-    "IF 0xd5 ELSE 1 ENDIF",
+    "IF 0 OUTPUT_COVENANT_ID 0x20 0x0000000000000000000000000000000000000000000000000000000000000000 EQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "opcodes above OpChainblockSeqCommit invalid if executed"
+    "OK",
+    "OpOutputCovenantId is enabled and returns zero hash when no covenant exists"
   ],
   [
     "1",
-    "IF 0xd6 ELSE 1 ENDIF",
+    "IF 0 OUTPUT_AUTHORIZING_INPUT -1 NUMEQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpOutputAuthorizingInput is enabled and returns -1 when no covenant exists"
   ],
   [
     "1",
@@ -4966,139 +4988,146 @@
     "Basic OP_0 execution"
   ],
   [
-    "MINIMALDATA enforcement for PUSHDATAs"
+    "MINIMALDATA non-enforcement for PUSHDATAs after the covenants HF"
+  ],
+  [
+    "0x4c 0x01 0x01",
+    "1 EQUAL",
+    "",
+    "OK",
+    "Non-minimal PUSHDATA1 push is allowed with covenants enabled"
   ],
   [
     "0x4c 0x00",
     "DROP 1",
     "",
-    "MINIMALDATA",
-    "Empty vector minimally represented by OP_0"
+    "OK",
+    "Empty vector is minimally represented by OP_0, but after the covenants HF it can also be represented as OP_PUSHDATA1 0x00"
   ],
   [
     "0x01 0x81",
     "DROP 1",
     "",
-    "MINIMALDATA",
-    "-1 minimally represented by OP_1NEGATE"
+    "OK",
+    "-1 is minimally represented by OP_1NEGATE, but after the covenants HF it can also be represented as a 1-byte data push"
   ],
   [
     "0x01 0x01",
     "DROP 1",
     "",
-    "MINIMALDATA",
-    "1 to 16 minimally represented by OP_1 to OP_16"
+    "OK",
+    "1 to 16 are minimally represented by OP_1 to OP_16, but after the covenants HF they can also be represented as 1-byte data pushes"
   ],
   [
     "0x01 0x02",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x03",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x04",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x05",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x06",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x07",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x08",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x09",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x0a",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x0b",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x0c",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x0d",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x0e",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x0f",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x01 0x10",
     "DROP 1",
     "",
-    "MINIMALDATA"
+    "OK"
   ],
   [
     "0x4c 0x48 0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
     "DROP 1",
     "",
-    "MINIMALDATA",
-    "PUSHDATA1 of 72 bytes minimally represented by direct push"
+    "OK",
+    "A 72-byte element is minimally represented by a direct push, but after the covenants HF OP_PUSHDATA1 is also accepted"
   ],
   [
     "0x4d 0xFF00 0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
     "DROP 1",
     "",
-    "MINIMALDATA",
-    "PUSHDATA2 of 255 bytes minimally represented by PUSHDATA1"
+    "OK",
+    "A 255-byte element is minimally represented by OP_PUSHDATA1, but after the covenants HF OP_PUSHDATA2 is also accepted"
   ],
   [
     "0x4e 0x00010000 0x11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
     "DROP 1",
     "",
-    "MINIMALDATA",
-    "PUSHDATA4 of 256 bytes minimally represented by PUSHDATA2"
+    "OK",
+    "A 256-byte element is minimally represented by OP_PUSHDATA2, but after the covenants HF OP_PUSHDATA4 is also accepted"
   ],
   [
     "MINIMALDATA non-enforcement for numeric arguments"

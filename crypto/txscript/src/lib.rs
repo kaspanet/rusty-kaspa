@@ -16,6 +16,8 @@ pub mod zk_precompiles;
 
 pub mod runtime_sig_op_counter;
 
+use std::io::Write;
+
 use std::ops::Deref;
 
 use crate::caches::Cache;
@@ -30,8 +32,9 @@ use kaspa_consensus_core::hashing::sighash::{
     SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
 };
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
-use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
+use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
+use kaspa_utils::hex::ToHex;
 use log::trace;
 use opcodes::codes::OpReturn;
 use opcodes::{OpCond, codes, to_small_int};
@@ -119,6 +122,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
 
     num_ops: i32,
     runtime_sig_op_counter: RuntimeSigOpCounter,
+    opcode_execution_log_buffer: Option<&'a mut dyn Write>,
     flags: EngineFlags,
 }
 
@@ -140,6 +144,13 @@ pub fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script: &[u8],
 ) -> impl Iterator<Item = Result<DynOpcodeImplementation<T, Reused>, TxScriptError>> + '_ {
     script.iter().batching(|it| deserialize_next_opcode(it))
+}
+
+pub fn script_to_str(script: &[u8]) -> Result<String, TxScriptError> {
+    parse_script::<PopulatedTransaction<'_>, SigHashReusedValuesUnsync>(script)
+        .map(|op| op.map(|opcode| opcode.to_string()))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|opcodes| opcodes.join(" "))
 }
 
 /// Determines the exact number of signature operations executed in a transaction input
@@ -300,6 +311,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX, TX_VERSION_POST_COV_HF),
             flags,
+            opcode_execution_log_buffer: None,
         }
     }
 
@@ -310,6 +322,11 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     /// Returns the number of signature operations used in script execution.
     pub fn used_sig_ops(&self) -> u16 {
         self.runtime_sig_op_counter.used_sig_ops()
+    }
+
+    pub fn with_opcode_execution_log_buffer(mut self, buffer: &'a mut dyn Write) -> Self {
+        self.opcode_execution_log_buffer = Some(buffer);
+        self
     }
 
     /// Returns a read-only view of the execution stacks
@@ -354,6 +371,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count, tx.version()),
+            opcode_execution_log_buffer: None,
             flags,
         }
     }
@@ -373,6 +391,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX, TX_VERSION_POST_COV_HF),
+            opcode_execution_log_buffer: None,
             flags,
         }
     }
@@ -383,6 +402,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     pub fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
+        self.print_opcode_execution(&opcode);
+
         // Different from kaspad: Illegal and disabled opcode are checked on execute instead
         // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
@@ -395,13 +416,30 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         }
 
         if self.is_executing() || opcode.is_conditional() {
-            if opcode.value() > 0 && opcode.value() <= 0x4e {
+            if !self.flags.covenants_enabled && opcode.value() > 0 && opcode.value() <= 0x4e {
                 opcode.check_minimal_data_push()?;
             }
             opcode.execute(self)
         } else {
             Ok(())
         }
+    }
+
+    fn print_opcode_execution(&mut self, opcode: &DynOpcodeImplementation<T, Reused>) {
+        let Some(buffer) = self.opcode_execution_log_buffer.as_mut() else {
+            return;
+        };
+
+        let format_stack = |stack: &Stack| stack.iter().map(|element| format!("0x{}", element.to_hex())).collect::<Vec<_>>();
+
+        writeln!(
+            buffer,
+            "Executing opcode: {}, astack: {:?}, dstack: {:?}",
+            opcode,
+            format_stack(&self.astack),
+            format_stack(&self.dstack)
+        )
+        .unwrap();
     }
 
     fn execute_script(&mut self, script: &[u8], verify_only_push: bool) -> Result<(), TxScriptError> {
@@ -710,7 +748,6 @@ impl SpkEncoding for ScriptPublicKey {
 mod tests {
     use std::iter::once;
 
-    use crate::hex;
     use crate::opcodes::codes::{
         OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDup, OpEndIf,
         OpEqual, OpFalse, OpIf, OpPushData1, OpTrue, OpVerify,
@@ -723,6 +760,7 @@ mod tests {
     use kaspa_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
+    use kaspa_utils::hex::FromHex;
     use smallvec::SmallVec;
 
     struct ScriptTestCase {
@@ -815,6 +853,23 @@ mod tests {
         ];
 
         run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_opcode_execution_log_buffer_trace_output() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut output = Vec::new();
+
+        let mut vm =
+            TxScriptEngine::<VerifiableTransactionMock, _>::from_script(b"\x51", &reused_values, &sig_cache, EngineFlags::default())
+                .with_opcode_execution_log_buffer(&mut output);
+
+        assert_eq!(vm.execute(), Ok(()));
+        assert_eq!(
+            String::from_utf8(output).expect("trace output should be valid UTF-8"),
+            "Executing opcode: OpTrue, astack: [], dstack: []\n"
+        );
     }
 
     #[test]
@@ -1035,7 +1090,7 @@ mod tests {
             prev_script_public_key: ScriptPublicKey,
         }
 
-        let script_hash = hex::decode("433ec2ac1ffa1b7b7d027f564529c57197f9ae88").unwrap();
+        let script_hash = Vec::from_hex("433ec2ac1ffa1b7b7d027f564529c57197f9ae88").unwrap();
         let prev_script_pubkey_p2sh_script =
             [OpBlake2b, OpData32].iter().copied().chain(script_hash.iter().copied()).chain(once(OpEqual));
         let prev_script_pubkey_p2sh = ScriptPublicKey::new(0, SmallVec::from_iter(prev_script_pubkey_p2sh_script));
@@ -1073,10 +1128,10 @@ mod tests {
             },
             TestVector {
                 name: "mainnet multisig transaction 487f94ffa63106f72644068765b9dc629bb63e481210f382667d4a93b69af412",
-                signature_script: &hex::decode("41eb577889fa28283709201ef5b056745c6cf0546dd31666cecd41c40a581b256e885d941b86b14d44efacec12d614e7fcabf7b341660f95bab16b71d766ab010501411c0eeef117ca485d34e4bc0cf6d5b578aa250c5d13ebff0882a7e2eeea1f31e8ecb6755696d194b1b0fcb853afab28b61f3f7cec487bd611df7e57252802f535014c875220ab64c7691713a32ea6dfced9155c5c26e8186426f0697af0db7a4b1340f992d12041ae738d66fe3d21105483e5851778ad73c5cddf0819c5e8fd8a589260d967e72065120722c36d3fac19646258481dd3661fa767da151304af514cb30af5cb5692203cd7690ecb67cbbe6cafad00a7c9133da535298ab164549e0cce2658f7b3032754ae").unwrap(),
+                signature_script: &Vec::from_hex("41eb577889fa28283709201ef5b056745c6cf0546dd31666cecd41c40a581b256e885d941b86b14d44efacec12d614e7fcabf7b341660f95bab16b71d766ab010501411c0eeef117ca485d34e4bc0cf6d5b578aa250c5d13ebff0882a7e2eeea1f31e8ecb6755696d194b1b0fcb853afab28b61f3f7cec487bd611df7e57252802f535014c875220ab64c7691713a32ea6dfced9155c5c26e8186426f0697af0db7a4b1340f992d12041ae738d66fe3d21105483e5851778ad73c5cddf0819c5e8fd8a589260d967e72065120722c36d3fac19646258481dd3661fa767da151304af514cb30af5cb5692203cd7690ecb67cbbe6cafad00a7c9133da535298ab164549e0cce2658f7b3032754ae").unwrap(),
                 prev_script_public_key: ScriptPublicKey::new(
                     0,
-                    SmallVec::from_slice(&hex::decode("aa20f38031f61ca23d70844f63a477d07f0b2c2decab907c2e096e548b0e08721c7987").unwrap()),
+                    SmallVec::from_hex("aa20f38031f61ca23d70844f63a477d07f0b2c2decab907c2e096e548b0e08721c7987").unwrap(),
                 ),
                 expected_sig_ops: 4,
             },
@@ -1091,10 +1146,10 @@ mod tests {
             },
             TestVector {
                 name: "p2pk",
-                signature_script: &hex::decode("416db0c0ce824a6d076c8e73aae9987416933df768e07760829cb0685dc0a2bbb11e2c0ced0cab806e111a11cbda19784098fd25db176b6a9d7c93e5747674d32301").unwrap(),
+                signature_script: &Vec::from_hex("416db0c0ce824a6d076c8e73aae9987416933df768e07760829cb0685dc0a2bbb11e2c0ced0cab806e111a11cbda19784098fd25db176b6a9d7c93e5747674d32301").unwrap(),
                 prev_script_public_key: ScriptPublicKey::new(
                     0,
-                    SmallVec::from_slice(&hex::decode("208a457ca74ade0492c44c440da1cab5b008d8449150fe2794f0d8f4cce7e8aa27ac").unwrap()),
+                    SmallVec::from_hex("208a457ca74ade0492c44c440da1cab5b008d8449150fe2794f0d8f4cce7e8aa27ac").unwrap(),
                 ),
                 expected_sig_ops: 1,
             },
@@ -1465,12 +1520,6 @@ mod bitcoind_tests {
                 }
             };
 
-            if let JsonTestRow::TestWithComment(_, _, _, _, comment) = self.clone()
-                && comment.contains("OpTxSubnetId")
-            {
-                eprintln!("debug");
-            }
-
             let result = Self::run_test(sig_script, script_pub_key, flags);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
@@ -1638,5 +1687,44 @@ mod bitcoind_tests {
     #[test]
     fn test_covenants_bitcoind_tests() {
         run_json_test_file("script_tests_covenants.json", EngineFlags { covenants_enabled: true });
+    }
+
+    #[test]
+    fn test_script_pub_keys_from_json_roundtrip_through_string_format() {
+        let file_name = "script_tests.json";
+        let file =
+            File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
+        let reader = BufReader::new(file);
+        let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
+
+        for row in tests {
+            let script_pub_key = match row.clone() {
+                JsonTestRow::Test(_, script_pub_key, _, _) => script_pub_key,
+                JsonTestRow::TestWithComment(_, script_pub_key, _, _, _) => script_pub_key,
+                JsonTestRow::Comment(_) => continue,
+            };
+
+            let Ok(script) = opcodes::parse_short_form(script_pub_key.clone()) else {
+                continue; // Bitcoind tests include some non-parseable scriptPubKeys which we skip here since the test is about roundtripping parseable ones.
+            };
+
+            let is_parseable = parse_script::<PopulatedTransaction<'_>, SigHashReusedValuesUnsync>(&script).all(|op| op.is_ok());
+            if !is_parseable {
+                continue;
+            }
+
+            let str_script = script_to_str(&script).unwrap();
+            let reparsed = opcodes::parse_short_form(str_script.clone()).unwrap_or_else(|error| {
+                panic!(
+                    "failed to reparse stringified scriptPubKey from {}: {:?}; original={}, stringified={}",
+                    file_name, error, script_pub_key, str_script
+                )
+            });
+            if reparsed != script {
+                continue;
+            }
+
+            assert_eq!(reparsed, script, "scriptPubKey roundtrip mismatch in {} for {:?}", file_name, row);
+        }
     }
 }
