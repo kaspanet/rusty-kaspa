@@ -826,14 +826,16 @@ fn test_generator_fan_out_1() -> Result<()> {
 
 #[test]
 fn test_generator_should_pick_valid_alternative_utxo_after_storage_mass_rejection() -> Result<()> {
-    let generator =
-        generator(test_network_id(), &[0.21, 0.5], &[], None, Fees::sender(Sompi(0)), [(output_address, Kaspa(0.2))].as_slice())?;
-
-    let pending = generator.generate_transaction()?.expect("expected final transaction");
-    assert!(pending.is_final(), "expected final transaction");
-    assert_eq!(pending.utxo_entries().len(), 2, "expected to aggregate another input");
-    assert!(pending.change_output_index().is_some(), "expected explicit change output (no fee absorption)");
-    assert!(pending.change_value() > 0, "expected non-zero change output (no fee absorption)");
+    generator(test_network_id(), &[0.21, 0.5], &[], None, Fees::sender(Sompi(0)), [(output_address, Kaspa(0.2))].as_slice())?
+        .harness()
+        .fetch(&Expected {
+            is_final: true,
+            input_count: 2,
+            aggregate_input_value: Kaspa(0.71),
+            output_count: 2,
+            priority_fees: FeesExpected::None,
+        })
+        .finalize();
 
     Ok(())
 }
