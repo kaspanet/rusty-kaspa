@@ -94,12 +94,6 @@ macro_rules! opcode_impl {
         }
 
         impl<T: VerifiableTransaction, Reused: SigHashReusedValues> OpCodeImplementation<T, Reused> for $name {}
-
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, $str_rep)
-            }
-        }
     }
 }
 
@@ -120,7 +114,7 @@ macro_rules! opcode_list {
         }
 
         $(
-            opcode_impl!($name, $str_rep, $num, $length, $code, $self, $vm);
+            opcode_impl!($name, $num, $length, $code, $self, $vm);
 
             $(
                 #[allow(dead_code)]
