@@ -155,23 +155,14 @@ fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
     }
 }
 
-// TODO: Rename to DefaultSizedEncodeInt when KIP-10 is activated
-pub type Kip10I64 = SizedEncodeInt<8>;
-
 impl OpcodeData<i64> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<i64, TxScriptError> {
-        // TODO: Change LEN to 8 once KIP-10 is activated
-        OpcodeData::<SizedEncodeInt<4>>::deserialize(self).map(i64::from)
+        OpcodeData::<SizedEncodeInt<8>>::deserialize(self).map(i64::from)
     }
 
     #[inline]
     fn serialize(from: &i64) -> Result<Self, SerializationError> {
-        // Note that serialization and deserialization use different LEN.
-        // This is because prior to KIP-10, only deserialization size was limited.
-        // It's safe to use 8 here because i32 arithmetic operations (which were the
-        // only ones that were supported prior to KIP-10) can't get to i64::MIN
-        // (the only i64 value that requires more than 8 bytes to serialize).
         OpcodeData::<SizedEncodeInt<8>>::serialize(&(*from).into())
     }
 }
@@ -343,9 +334,10 @@ impl DataStack for Stack {
 
 #[cfg(test)]
 mod tests {
-    use super::{Kip10I64, OpcodeData};
+    use super::OpcodeData;
     use crate::data_stack::SizedEncodeInt;
     use kaspa_txscript_errors::{SerializationError, TxScriptError};
+    use kaspa_utils::hex::FromHex;
 
     // TestScriptNumBytes
     #[test]
@@ -357,46 +349,46 @@ mod tests {
 
         let tests = vec![
             TestCase { num: 0, serialized: vec![] },
-            TestCase { num: 1, serialized: hex::decode("01").expect("failed parsing hex") },
-            TestCase { num: -1, serialized: hex::decode("81").expect("failed parsing hex") },
-            TestCase { num: 127, serialized: hex::decode("7f").expect("failed parsing hex") },
-            TestCase { num: -127, serialized: hex::decode("ff").expect("failed parsing hex") },
-            TestCase { num: 128, serialized: hex::decode("8000").expect("failed parsing hex") },
-            TestCase { num: -128, serialized: hex::decode("8080").expect("failed parsing hex") },
-            TestCase { num: 129, serialized: hex::decode("8100").expect("failed parsing hex") },
-            TestCase { num: -129, serialized: hex::decode("8180").expect("failed parsing hex") },
-            TestCase { num: 256, serialized: hex::decode("0001").expect("failed parsing hex") },
-            TestCase { num: -256, serialized: hex::decode("0081").expect("failed parsing hex") },
-            TestCase { num: 32767, serialized: hex::decode("ff7f").expect("failed parsing hex") },
-            TestCase { num: -32767, serialized: hex::decode("ffff").expect("failed parsing hex") },
-            TestCase { num: 32768, serialized: hex::decode("008000").expect("failed parsing hex") },
-            TestCase { num: -32768, serialized: hex::decode("008080").expect("failed parsing hex") },
-            TestCase { num: 65535, serialized: hex::decode("ffff00").expect("failed parsing hex") },
-            TestCase { num: -65535, serialized: hex::decode("ffff80").expect("failed parsing hex") },
-            TestCase { num: 524288, serialized: hex::decode("000008").expect("failed parsing hex") },
-            TestCase { num: -524288, serialized: hex::decode("000088").expect("failed parsing hex") },
-            TestCase { num: 7340032, serialized: hex::decode("000070").expect("failed parsing hex") },
-            TestCase { num: -7340032, serialized: hex::decode("0000f0").expect("failed parsing hex") },
-            TestCase { num: 8388608, serialized: hex::decode("00008000").expect("failed parsing hex") },
-            TestCase { num: -8388608, serialized: hex::decode("00008080").expect("failed parsing hex") },
-            TestCase { num: 2147483647, serialized: hex::decode("ffffff7f").expect("failed parsing hex") },
-            TestCase { num: -2147483647, serialized: hex::decode("ffffffff").expect("failed parsing hex") },
+            TestCase { num: 1, serialized: Vec::from_hex("01").expect("failed parsing hex") },
+            TestCase { num: -1, serialized: Vec::from_hex("81").expect("failed parsing hex") },
+            TestCase { num: 127, serialized: Vec::from_hex("7f").expect("failed parsing hex") },
+            TestCase { num: -127, serialized: Vec::from_hex("ff").expect("failed parsing hex") },
+            TestCase { num: 128, serialized: Vec::from_hex("8000").expect("failed parsing hex") },
+            TestCase { num: -128, serialized: Vec::from_hex("8080").expect("failed parsing hex") },
+            TestCase { num: 129, serialized: Vec::from_hex("8100").expect("failed parsing hex") },
+            TestCase { num: -129, serialized: Vec::from_hex("8180").expect("failed parsing hex") },
+            TestCase { num: 256, serialized: Vec::from_hex("0001").expect("failed parsing hex") },
+            TestCase { num: -256, serialized: Vec::from_hex("0081").expect("failed parsing hex") },
+            TestCase { num: 32767, serialized: Vec::from_hex("ff7f").expect("failed parsing hex") },
+            TestCase { num: -32767, serialized: Vec::from_hex("ffff").expect("failed parsing hex") },
+            TestCase { num: 32768, serialized: Vec::from_hex("008000").expect("failed parsing hex") },
+            TestCase { num: -32768, serialized: Vec::from_hex("008080").expect("failed parsing hex") },
+            TestCase { num: 65535, serialized: Vec::from_hex("ffff00").expect("failed parsing hex") },
+            TestCase { num: -65535, serialized: Vec::from_hex("ffff80").expect("failed parsing hex") },
+            TestCase { num: 524288, serialized: Vec::from_hex("000008").expect("failed parsing hex") },
+            TestCase { num: -524288, serialized: Vec::from_hex("000088").expect("failed parsing hex") },
+            TestCase { num: 7340032, serialized: Vec::from_hex("000070").expect("failed parsing hex") },
+            TestCase { num: -7340032, serialized: Vec::from_hex("0000f0").expect("failed parsing hex") },
+            TestCase { num: 8388608, serialized: Vec::from_hex("00008000").expect("failed parsing hex") },
+            TestCase { num: -8388608, serialized: Vec::from_hex("00008080").expect("failed parsing hex") },
+            TestCase { num: 2147483647, serialized: Vec::from_hex("ffffff7f").expect("failed parsing hex") },
+            TestCase { num: -2147483647, serialized: Vec::from_hex("ffffffff").expect("failed parsing hex") },
             // Values that are out of range for data that is interpreted as
             // numbers before KIP-10 enabled, but are allowed as the result of numeric operations.
-            TestCase { num: 2147483648, serialized: hex::decode("0000008000").expect("failed parsing hex") },
-            TestCase { num: -2147483648, serialized: hex::decode("0000008080").expect("failed parsing hex") },
-            TestCase { num: 2415919104, serialized: hex::decode("0000009000").expect("failed parsing hex") },
-            TestCase { num: -2415919104, serialized: hex::decode("0000009080").expect("failed parsing hex") },
-            TestCase { num: 4294967295, serialized: hex::decode("ffffffff00").expect("failed parsing hex") },
-            TestCase { num: -4294967295, serialized: hex::decode("ffffffff80").expect("failed parsing hex") },
-            TestCase { num: 4294967296, serialized: hex::decode("0000000001").expect("failed parsing hex") },
-            TestCase { num: -4294967296, serialized: hex::decode("0000000081").expect("failed parsing hex") },
-            TestCase { num: 281474976710655, serialized: hex::decode("ffffffffffff00").expect("failed parsing hex") },
-            TestCase { num: -281474976710655, serialized: hex::decode("ffffffffffff80").expect("failed parsing hex") },
-            TestCase { num: 72057594037927935, serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex") },
-            TestCase { num: -72057594037927935, serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex") },
-            TestCase { num: 9223372036854775807, serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex") },
-            TestCase { num: -9223372036854775807, serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex") },
+            TestCase { num: 2147483648, serialized: Vec::from_hex("0000008000").expect("failed parsing hex") },
+            TestCase { num: -2147483648, serialized: Vec::from_hex("0000008080").expect("failed parsing hex") },
+            TestCase { num: 2415919104, serialized: Vec::from_hex("0000009000").expect("failed parsing hex") },
+            TestCase { num: -2415919104, serialized: Vec::from_hex("0000009080").expect("failed parsing hex") },
+            TestCase { num: 4294967295, serialized: Vec::from_hex("ffffffff00").expect("failed parsing hex") },
+            TestCase { num: -4294967295, serialized: Vec::from_hex("ffffffff80").expect("failed parsing hex") },
+            TestCase { num: 4294967296, serialized: Vec::from_hex("0000000001").expect("failed parsing hex") },
+            TestCase { num: -4294967296, serialized: Vec::from_hex("0000000081").expect("failed parsing hex") },
+            TestCase { num: 281474976710655, serialized: Vec::from_hex("ffffffffffff00").expect("failed parsing hex") },
+            TestCase { num: -281474976710655, serialized: Vec::from_hex("ffffffffffff80").expect("failed parsing hex") },
+            TestCase { num: 72057594037927935, serialized: Vec::from_hex("ffffffffffffff00").expect("failed parsing hex") },
+            TestCase { num: -72057594037927935, serialized: Vec::from_hex("ffffffffffffff80").expect("failed parsing hex") },
+            TestCase { num: 9223372036854775807, serialized: Vec::from_hex("ffffffffffffff7f").expect("failed parsing hex") },
+            TestCase { num: -9223372036854775807, serialized: Vec::from_hex("ffffffffffffffff").expect("failed parsing hex") },
         ];
 
         for test in tests {
@@ -419,182 +411,88 @@ mod tests {
 
         let tests = vec![
             TestCase::<i64> {
-                serialized: hex::decode("80").expect("failed parsing hex"),
+                serialized: Vec::from_hex("80").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData("numeric value encoded as [80] is not minimally encoded".to_string())),
             },
             // Minimally encoded valid values with minimal encoding flag.
             // Should not error and return expected integral number.
             TestCase::<i64> { serialized: vec![], result: Ok(0) },
-            TestCase::<i64> { serialized: hex::decode("01").expect("failed parsing hex"), result: Ok(1) },
-            TestCase::<i64> { serialized: hex::decode("81").expect("failed parsing hex"), result: Ok(-1) },
-            TestCase::<i64> { serialized: hex::decode("7f").expect("failed parsing hex"), result: Ok(127) },
-            TestCase::<i64> { serialized: hex::decode("ff").expect("failed parsing hex"), result: Ok(-127) },
-            TestCase::<i64> { serialized: hex::decode("8000").expect("failed parsing hex"), result: Ok(128) },
-            TestCase::<i64> { serialized: hex::decode("8080").expect("failed parsing hex"), result: Ok(-128) },
-            TestCase::<i64> { serialized: hex::decode("8100").expect("failed parsing hex"), result: Ok(129) },
-            TestCase::<i64> { serialized: hex::decode("8180").expect("failed parsing hex"), result: Ok(-129) },
-            TestCase::<i64> { serialized: hex::decode("0001").expect("failed parsing hex"), result: Ok(256) },
-            TestCase::<i64> { serialized: hex::decode("0081").expect("failed parsing hex"), result: Ok(-256) },
-            TestCase::<i64> { serialized: hex::decode("ff7f").expect("failed parsing hex"), result: Ok(32767) },
-            TestCase::<i64> { serialized: hex::decode("ffff").expect("failed parsing hex"), result: Ok(-32767) },
-            TestCase::<i64> { serialized: hex::decode("008000").expect("failed parsing hex"), result: Ok(32768) },
-            TestCase::<i64> { serialized: hex::decode("008080").expect("failed parsing hex"), result: Ok(-32768) },
-            TestCase::<i64> { serialized: hex::decode("ffff00").expect("failed parsing hex"), result: Ok(65535) },
-            TestCase::<i64> { serialized: hex::decode("ffff80").expect("failed parsing hex"), result: Ok(-65535) },
-            TestCase::<i64> { serialized: hex::decode("000008").expect("failed parsing hex"), result: Ok(524288) },
-            TestCase::<i64> { serialized: hex::decode("000088").expect("failed parsing hex"), result: Ok(-524288) },
-            TestCase::<i64> { serialized: hex::decode("000070").expect("failed parsing hex"), result: Ok(7340032) },
-            TestCase::<i64> { serialized: hex::decode("0000f0").expect("failed parsing hex"), result: Ok(-7340032) },
-            TestCase::<i64> { serialized: hex::decode("00008000").expect("failed parsing hex"), result: Ok(8388608) },
-            TestCase::<i64> { serialized: hex::decode("00008080").expect("failed parsing hex"), result: Ok(-8388608) },
-            TestCase::<i64> { serialized: hex::decode("ffffff7f").expect("failed parsing hex"), result: Ok(2147483647) },
-            TestCase::<i64> { serialized: hex::decode("ffffffff").expect("failed parsing hex"), result: Ok(-2147483647) },
-            /*
-            TestCase::<i64>{serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"), num_len: 8, result: Ok(9223372036854775807)},
-            TestCase::<i64>{serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"), num_len: 8, result: Ok(-9223372036854775807)},*/
-            // Minimally encoded values that are out of range for data that
-            // is interpreted as script numbers with the minimal encoding
-            // flag set. Should error and return 0.
-            TestCase::<i64> {
-                serialized: hex::decode("0000008000").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [0, 0, 0, 80, 0] is 5 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("0000008080").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [0, 0, 0, 80, 80] is 5 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("0000009000").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [0, 0, 0, 90, 0] is 5 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("0000009080").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [0, 0, 0, 90, 80] is 5 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffff00").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [ff, ff, ff, ff, 0] is 5 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffff80").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [ff, ff, ff, ff, 80] is 5 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("0000000001").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [0, 0, 0, 0, 1] is 5 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("0000000081").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [0, 0, 0, 0, 81] is 5 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffff00").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, 0] is 7 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffff80").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, 80] is 7 bytes which exceeds the max allowed of 4".to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 0] is 8 bytes which exceeds the max allowed of 4"
-                        .to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 80] is 8 bytes which exceeds the max allowed of 4"
-                        .to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 7f] is 8 bytes which exceeds the max allowed of 4"
-                        .to_string(),
-                )),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
-                result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, ff] is 8 bytes which exceeds the max allowed of 4"
-                        .to_string(),
-                )),
-            },
+            TestCase::<i64> { serialized: Vec::from_hex("01").expect("failed parsing hex"), result: Ok(1) },
+            TestCase::<i64> { serialized: Vec::from_hex("81").expect("failed parsing hex"), result: Ok(-1) },
+            TestCase::<i64> { serialized: Vec::from_hex("7f").expect("failed parsing hex"), result: Ok(127) },
+            TestCase::<i64> { serialized: Vec::from_hex("ff").expect("failed parsing hex"), result: Ok(-127) },
+            TestCase::<i64> { serialized: Vec::from_hex("8000").expect("failed parsing hex"), result: Ok(128) },
+            TestCase::<i64> { serialized: Vec::from_hex("8080").expect("failed parsing hex"), result: Ok(-128) },
+            TestCase::<i64> { serialized: Vec::from_hex("8100").expect("failed parsing hex"), result: Ok(129) },
+            TestCase::<i64> { serialized: Vec::from_hex("8180").expect("failed parsing hex"), result: Ok(-129) },
+            TestCase::<i64> { serialized: Vec::from_hex("0001").expect("failed parsing hex"), result: Ok(256) },
+            TestCase::<i64> { serialized: Vec::from_hex("0081").expect("failed parsing hex"), result: Ok(-256) },
+            TestCase::<i64> { serialized: Vec::from_hex("ff7f").expect("failed parsing hex"), result: Ok(32767) },
+            TestCase::<i64> { serialized: Vec::from_hex("ffff").expect("failed parsing hex"), result: Ok(-32767) },
+            TestCase::<i64> { serialized: Vec::from_hex("008000").expect("failed parsing hex"), result: Ok(32768) },
+            TestCase::<i64> { serialized: Vec::from_hex("008080").expect("failed parsing hex"), result: Ok(-32768) },
+            TestCase::<i64> { serialized: Vec::from_hex("ffff00").expect("failed parsing hex"), result: Ok(65535) },
+            TestCase::<i64> { serialized: Vec::from_hex("ffff80").expect("failed parsing hex"), result: Ok(-65535) },
+            TestCase::<i64> { serialized: Vec::from_hex("000008").expect("failed parsing hex"), result: Ok(524288) },
+            TestCase::<i64> { serialized: Vec::from_hex("000088").expect("failed parsing hex"), result: Ok(-524288) },
+            TestCase::<i64> { serialized: Vec::from_hex("000070").expect("failed parsing hex"), result: Ok(7340032) },
+            TestCase::<i64> { serialized: Vec::from_hex("0000f0").expect("failed parsing hex"), result: Ok(-7340032) },
+            TestCase::<i64> { serialized: Vec::from_hex("00008000").expect("failed parsing hex"), result: Ok(8388608) },
+            TestCase::<i64> { serialized: Vec::from_hex("00008080").expect("failed parsing hex"), result: Ok(-8388608) },
+            TestCase::<i64> { serialized: Vec::from_hex("ffffff7f").expect("failed parsing hex"), result: Ok(2147483647) },
+            TestCase::<i64> { serialized: Vec::from_hex("ffffffff").expect("failed parsing hex"), result: Ok(-2147483647) },
             // Non-minimally encoded, but otherwise valid values with
             // minimal encoding flag. Should error and return 0.
             TestCase::<i64> {
-                serialized: hex::decode("00").expect("failed parsing hex"),
+                serialized: Vec::from_hex("00").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0] is not minimally encoded".to_string())),
             }, // 0
             TestCase::<i64> {
-                serialized: hex::decode("0100").expect("failed parsing hex"),
+                serialized: Vec::from_hex("0100").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData("numeric value encoded as [1, 0] is not minimally encoded".to_string())),
             }, // 1
             TestCase::<i64> {
-                serialized: hex::decode("7f00").expect("failed parsing hex"),
+                serialized: Vec::from_hex("7f00").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData("numeric value encoded as [7f, 0] is not minimally encoded".to_string())),
             }, // 127
             TestCase::<i64> {
-                serialized: hex::decode("800000").expect("failed parsing hex"),
+                serialized: Vec::from_hex("800000").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData("numeric value encoded as [80, 0, 0] is not minimally encoded".to_string())),
             }, // 128
             TestCase::<i64> {
-                serialized: hex::decode("810000").expect("failed parsing hex"),
+                serialized: Vec::from_hex("810000").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData("numeric value encoded as [81, 0, 0] is not minimally encoded".to_string())),
             }, // 129
             TestCase::<i64> {
-                serialized: hex::decode("000100").expect("failed parsing hex"),
+                serialized: Vec::from_hex("000100").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0, 1, 0] is not minimally encoded".to_string())),
             }, // 256
             TestCase::<i64> {
-                serialized: hex::decode("ff7f00").expect("failed parsing hex"),
+                serialized: Vec::from_hex("ff7f00").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData(
                     "numeric value encoded as [ff, 7f, 0] is not minimally encoded".to_string(),
                 )),
             }, // 32767
             TestCase::<i64> {
-                serialized: hex::decode("00800000").expect("failed parsing hex"),
+                serialized: Vec::from_hex("00800000").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData(
                     "numeric value encoded as [0, 80, 0, 0] is not minimally encoded".to_string(),
                 )),
             }, // 32768
             TestCase::<i64> {
-                serialized: hex::decode("ffff0000").expect("failed parsing hex"),
+                serialized: Vec::from_hex("ffff0000").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData(
                     "numeric value encoded as [ff, ff, 0, 0] is not minimally encoded".to_string(),
                 )),
             }, // 65535
             TestCase::<i64> {
-                serialized: hex::decode("00000800").expect("failed parsing hex"),
+                serialized: Vec::from_hex("00000800").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData(
                     "numeric value encoded as [0, 0, 8, 0] is not minimally encoded".to_string(),
                 )),
             }, // 524288
             TestCase::<i64> {
-                serialized: hex::decode("00007000").expect("failed parsing hex"),
+                serialized: Vec::from_hex("00007000").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData(
                     "numeric value encoded as [0, 0, 70, 0] is not minimally encoded".to_string(),
                 )),
@@ -602,67 +500,43 @@ mod tests {
                // Values above 8 bytes should always return error
         ];
         let kip10_tests = vec![
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("0000008000").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(2147483648i64)),
+            TestCase::<i64> { serialized: Vec::from_hex("0000008000").expect("failed parsing hex"), result: Ok(2147483648i64) },
+            TestCase::<i64> { serialized: Vec::from_hex("0000008080").expect("failed parsing hex"), result: Ok(-2147483648i64) },
+            TestCase::<i64> { serialized: Vec::from_hex("0000009000").expect("failed parsing hex"), result: Ok(2415919104i64) },
+            TestCase::<i64> { serialized: Vec::from_hex("0000009080").expect("failed parsing hex"), result: Ok(-2415919104i64) },
+            TestCase::<i64> { serialized: Vec::from_hex("ffffffff00").expect("failed parsing hex"), result: Ok(4294967295i64) },
+            TestCase::<i64> { serialized: Vec::from_hex("ffffffff80").expect("failed parsing hex"), result: Ok(-4294967295i64) },
+            TestCase::<i64> { serialized: Vec::from_hex("0000000001").expect("failed parsing hex"), result: Ok(4294967296i64) },
+            TestCase::<i64> { serialized: Vec::from_hex("0000000081").expect("failed parsing hex"), result: Ok(-4294967296i64) },
+            TestCase::<i64> {
+                serialized: Vec::from_hex("ffffffffffff00").expect("failed parsing hex"),
+                result: Ok(281474976710655i64),
             },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("0000008080").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(-2147483648i64)),
+            TestCase::<i64> {
+                serialized: Vec::from_hex("ffffffffffff80").expect("failed parsing hex"),
+                result: Ok(-281474976710655i64),
             },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("0000009000").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(2415919104i64)),
+            TestCase::<i64> {
+                serialized: Vec::from_hex("ffffffffffffff00").expect("failed parsing hex"),
+                result: Ok(72057594037927935i64),
             },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("0000009080").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(-2415919104i64)),
+            TestCase::<i64> {
+                serialized: Vec::from_hex("ffffffffffffff80").expect("failed parsing hex"),
+                result: Ok(-72057594037927935i64),
             },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("ffffffff00").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(4294967295i64)),
+            TestCase::<i64> {
+                serialized: Vec::from_hex("ffffffffffffff7f").expect("failed parsing hex"),
+                result: Ok(9223372036854775807i64),
             },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("ffffffff80").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(-4294967295i64)),
-            },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("0000000001").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(4294967296i64)),
-            },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("0000000081").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(-4294967296i64)),
-            },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("ffffffffffff00").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(281474976710655i64)),
-            },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("ffffffffffff80").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(-281474976710655i64)),
-            },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(72057594037927935i64)),
-            },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(-72057594037927935i64)),
-            },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(9223372036854775807i64)),
-            },
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
-                result: Ok(Kip10I64::from(-9223372036854775807i64)),
+            TestCase::<i64> {
+                serialized: Vec::from_hex("ffffffffffffffff").expect("failed parsing hex"),
+                result: Ok(-9223372036854775807i64),
             },
             // Minimally encoded values that are out of range for data that
             // is interpreted as script numbers with the minimal encoding
             // flag set. Should error and return 0.
-            TestCase::<Kip10I64> {
-                serialized: hex::decode("000000000000008080").expect("failed parsing hex"),
+            TestCase::<i64> {
+                serialized: Vec::from_hex("000000000000008080").expect("failed parsing hex"),
                 result: Err(TxScriptError::NumberTooBig(
                     "numeric value encoded as [0, 0, 0, 0, 0, 0, 0, 80, 80] is 9 bytes which exceeds the max allowed of 8".to_string(),
                 )),
@@ -670,15 +544,15 @@ mod tests {
         ];
         let test_of_size_5 = vec![
             TestCase::<SizedEncodeInt<5>> {
-                serialized: hex::decode("ffffffff7f").expect("failed parsing hex"),
+                serialized: Vec::from_hex("ffffffff7f").expect("failed parsing hex"),
                 result: Ok(SizedEncodeInt::<5>(549755813887)),
             },
             TestCase::<SizedEncodeInt<5>> {
-                serialized: hex::decode("ffffffffff").expect("failed parsing hex"),
+                serialized: Vec::from_hex("ffffffffff").expect("failed parsing hex"),
                 result: Ok(SizedEncodeInt::<5>(-549755813887)),
             },
             TestCase::<SizedEncodeInt<5>> {
-                serialized: hex::decode("0009000100").expect("failed parsing hex"),
+                serialized: Vec::from_hex("0009000100").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData(
                     "numeric value encoded as [0, 9, 0, 1, 0] is not minimally encoded".to_string(),
                 )),
@@ -687,45 +561,45 @@ mod tests {
 
         let test_of_size_8 = vec![
             TestCase::<SizedEncodeInt<8>> {
-                serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"),
+                serialized: Vec::from_hex("ffffffffffffff7f").expect("failed parsing hex"),
                 result: Ok(SizedEncodeInt::<8>(i64::MAX)),
             },
             TestCase::<SizedEncodeInt<8>> {
-                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
+                serialized: Vec::from_hex("ffffffffffffffff").expect("failed parsing hex"),
                 result: Ok(SizedEncodeInt::<8>(i64::MIN + 1)),
             },
         ];
 
         let test_of_size_9 = vec![
             TestCase::<SizedEncodeInt<9>> {
-                serialized: hex::decode("ffffffffffffffffff").expect("failed parsing hex"),
+                serialized: Vec::from_hex("ffffffffffffffffff").expect("failed parsing hex"),
                 result: Err(TxScriptError::NotMinimalData(
                     "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, ff, ff] is longer than 8 bytes".to_string(),
                 )),
             },
             TestCase::<SizedEncodeInt<9>> {
-                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
+                serialized: Vec::from_hex("ffffffffffffffff").expect("failed parsing hex"),
                 result: Ok(SizedEncodeInt::<9>(i64::MIN + 1)),
             },
         ];
 
         let test_of_size_10 = vec![TestCase::<SizedEncodeInt<10>> {
-            serialized: hex::decode("00000000000000000000").expect("failed parsing hex"),
+            serialized: Vec::from_hex("00000000000000000000").expect("failed parsing hex"),
             result: Err(TxScriptError::NotMinimalData(
                 "numeric value encoded as [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] is longer than 8 bytes".to_string(),
             )),
         }];
 
         let test_bool = vec![
-            TestCase::<bool> { serialized: hex::decode("").expect("failed parsing hex"), result: Ok(false) },
-            TestCase::<bool> { serialized: hex::decode("00").expect("failed parsing hex"), result: Ok(false) },
-            TestCase::<bool> { serialized: hex::decode("0000").expect("failed parsing hex"), result: Ok(false) },
-            TestCase::<bool> { serialized: hex::decode("0011").expect("failed parsing hex"), result: Ok(true) },
-            TestCase::<bool> { serialized: hex::decode("80").expect("failed parsing hex"), result: Ok(false) }, // Negative zero
-            TestCase::<bool> { serialized: hex::decode("8011").expect("failed parsing hex"), result: Ok(true) }, // MSB by itself is negative zero, but the whole number isn't
-            TestCase::<bool> { serialized: hex::decode("8080").expect("failed parsing hex"), result: Ok(true) }, // All bytes are negative zeroes by themselves, but the whole number isn't
-            TestCase::<bool> { serialized: hex::decode("1234").expect("failed parsing hex"), result: Ok(true) },
-            TestCase::<bool> { serialized: hex::decode("ffffffff").expect("failed parsing hex"), result: Ok(true) },
+            TestCase::<bool> { serialized: Vec::from_hex("").expect("failed parsing hex"), result: Ok(false) },
+            TestCase::<bool> { serialized: Vec::from_hex("00").expect("failed parsing hex"), result: Ok(false) },
+            TestCase::<bool> { serialized: Vec::from_hex("0000").expect("failed parsing hex"), result: Ok(false) },
+            TestCase::<bool> { serialized: Vec::from_hex("0011").expect("failed parsing hex"), result: Ok(true) },
+            TestCase::<bool> { serialized: Vec::from_hex("80").expect("failed parsing hex"), result: Ok(false) }, // Negative zero
+            TestCase::<bool> { serialized: Vec::from_hex("8011").expect("failed parsing hex"), result: Ok(true) }, // MSB by itself is negative zero, but the whole number isn't
+            TestCase::<bool> { serialized: Vec::from_hex("8080").expect("failed parsing hex"), result: Ok(true) }, // All bytes are negative zeroes by themselves, but the whole number isn't
+            TestCase::<bool> { serialized: Vec::from_hex("1234").expect("failed parsing hex"), result: Ok(true) },
+            TestCase::<bool> { serialized: Vec::from_hex("ffffffff").expect("failed parsing hex"), result: Ok(true) },
         ];
 
         for test in tests {

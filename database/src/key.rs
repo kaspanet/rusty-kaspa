@@ -64,38 +64,38 @@ impl Display for DbKey {
         use DatabaseStorePrefixes::*;
         let mut pos = 0;
 
-        if self.prefix_len > 0 {
-            if let Ok(prefix) = DatabaseStorePrefixes::try_from(self.path[0]) {
-                prefix.fmt(f)?;
-                f.write_str("/")?;
-                pos += 1;
-                if self.prefix_len > 1 {
-                    match prefix {
-                        Ghostdag
-                        | GhostdagCompact
-                        | TempGhostdag
-                        | TempGhostdagCompact
-                        | RelationsParents
-                        | RelationsChildren
-                        | Reachability
-                        | ReachabilityTreeChildren
-                        | ReachabilityFutureCoveringSet => {
-                            if self.path[1] != SEPARATOR {
-                                // Expected to be a block level so we display as a number
-                                Display::fmt(&self.path[1], f)?;
-                                f.write_str("/")?;
-                            }
+        if self.prefix_len > 0
+            && let Ok(prefix) = DatabaseStorePrefixes::try_from(self.path[0])
+        {
+            prefix.fmt(f)?;
+            f.write_str("/")?;
+            pos += 1;
+            if self.prefix_len > 1 {
+                match prefix {
+                    Ghostdag
+                    | GhostdagCompact
+                    | TempGhostdag
+                    | TempGhostdagCompact
+                    | RelationsParents
+                    | RelationsChildren
+                    | Reachability
+                    | ReachabilityTreeChildren
+                    | ReachabilityFutureCoveringSet => {
+                        if self.path[1] != SEPARATOR {
+                            // Expected to be a block level so we display as a number
+                            Display::fmt(&self.path[1], f)?;
+                            f.write_str("/")?;
+                        }
+                        pos += 1;
+                    }
+                    ReachabilityRelations => {
+                        if let Ok(next_prefix) = DatabaseStorePrefixes::try_from(self.path[1]) {
+                            next_prefix.fmt(f)?;
+                            f.write_str("/")?;
                             pos += 1;
                         }
-                        ReachabilityRelations => {
-                            if let Ok(next_prefix) = DatabaseStorePrefixes::try_from(self.path[1]) {
-                                next_prefix.fmt(f)?;
-                                f.write_str("/")?;
-                                pos += 1;
-                            }
-                        }
-                        _ => {}
                     }
+                    _ => {}
                 }
             }
         }
@@ -114,8 +114,8 @@ impl Debug for DbKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_hashes::{Hash, HASH_SIZE};
     use DatabaseStorePrefixes::*;
+    use kaspa_hashes::{HASH_SIZE, Hash};
 
     #[test]
     fn test_key_display() {

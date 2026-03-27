@@ -117,10 +117,10 @@ impl OrphanPool {
 
     fn check_orphan_double_spend(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         for input in transaction.tx.inputs.iter() {
-            if let Some(double_spend_orphan) = self.outpoint_orphan(&input.previous_outpoint) {
-                if double_spend_orphan.id() != transaction.id() {
-                    return Err(RuleError::RejectDoubleSpendOrphan(transaction.id(), double_spend_orphan.id()));
-                }
+            if let Some(double_spend_orphan) = self.outpoint_orphan(&input.previous_outpoint)
+                && double_spend_orphan.id() != transaction.id()
+            {
+                return Err(RuleError::RejectDoubleSpendOrphan(transaction.id(), double_spend_orphan.id()));
             }
         }
         Ok(())
@@ -265,7 +265,7 @@ impl OrphanPool {
     }
 
     pub(crate) fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
-        if virtual_daa_score < self.last_expire_scan + self.config.orphan_expire_scan_interval_daa_score.get(virtual_daa_score) {
+        if virtual_daa_score < self.last_expire_scan + self.config.orphan_expire_scan_interval_daa_score {
             return Ok(());
         }
 
@@ -276,7 +276,7 @@ impl OrphanPool {
             .values()
             .filter_map(|x| {
                 if (x.priority == Priority::Low)
-                    && virtual_daa_score > x.added_at_daa_score + self.config.orphan_expire_interval_daa_score.get(virtual_daa_score)
+                    && virtual_daa_score > x.added_at_daa_score + self.config.orphan_expire_interval_daa_score
                 {
                     Some(x.id())
                 } else {

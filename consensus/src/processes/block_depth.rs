@@ -1,7 +1,4 @@
-use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, ORIGIN},
-    config::params::ForkedParam,
-};
+use kaspa_consensus_core::blockhash::{BlockHashExtensions, ORIGIN};
 use kaspa_hashes::Hash;
 use std::sync::Arc;
 
@@ -22,26 +19,34 @@ enum BlockDepthType {
 
 #[derive(Clone)]
 pub struct BlockDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T: HeaderStoreReader> {
-    merge_depth: ForkedParam<u64>,
-    finality_depth: ForkedParam<u64>,
+    merge_depth: u64,
+    finality_depth: u64,
     genesis_hash: Hash,
     depth_store: Arc<S>,
     reachability_service: MTReachabilityService<U>,
     ghostdag_store: Arc<V>,
-    headers_store: Arc<T>,
+    _headers_store: Arc<T>,
 }
 
 impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T: HeaderStoreReader> BlockDepthManager<S, U, V, T> {
     pub fn new(
-        merge_depth: ForkedParam<u64>,
-        finality_depth: ForkedParam<u64>,
+        merge_depth: u64,
+        finality_depth: u64,
         genesis_hash: Hash,
         depth_store: Arc<S>,
         reachability_service: MTReachabilityService<U>,
         ghostdag_store: Arc<V>,
         headers_store: Arc<T>,
     ) -> Self {
-        Self { merge_depth, finality_depth, genesis_hash, depth_store, reachability_service, ghostdag_store, headers_store }
+        Self {
+            merge_depth,
+            finality_depth,
+            genesis_hash,
+            depth_store,
+            reachability_service,
+            ghostdag_store,
+            _headers_store: headers_store,
+        }
     }
     pub fn calc_merge_depth_root(&self, ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
         self.calculate_block_at_depth(ghostdag_data, BlockDepthType::MergeRoot, pruning_point)
@@ -55,10 +60,9 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T:
         if ghostdag_data.selected_parent.is_origin() {
             return ORIGIN;
         }
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         let depth = match depth_type {
-            BlockDepthType::MergeRoot => self.merge_depth.get(selected_parent_daa_score),
-            BlockDepthType::Finality => self.finality_depth.get(selected_parent_daa_score),
+            BlockDepthType::MergeRoot => self.merge_depth,
+            BlockDepthType::Finality => self.finality_depth,
         };
         if ghostdag_data.blue_score < depth {
             return self.genesis_hash;
@@ -74,9 +78,7 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T:
             return ORIGIN;
         }
 
-        // [Crescendo]: we start from the depth/finality point of the selected parent. This makes the selection monotonic
-        // also when the depth increases in the fork activation point. The loop below will simply not progress for a while,
-        // until a new block above the previous point reaches the *new increased depth*.
+        // We start from the depth/finality point of the selected parent and then walk up the chain.
         let mut current = match depth_type {
             BlockDepthType::MergeRoot => self.depth_store.merge_depth_root(ghostdag_data.selected_parent).unwrap(),
             BlockDepthType::Finality => self.depth_store.finality_point(ghostdag_data.selected_parent).unwrap(),

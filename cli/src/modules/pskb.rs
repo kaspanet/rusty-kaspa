@@ -5,7 +5,7 @@ use kaspa_addresses::Prefix;
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 use kaspa_wallet_core::account::pskb::finalize_pskt_one_or_more_sig_and_redeem_script;
 use kaspa_wallet_pskt::{
-    prelude::{lock_script_sig_templating, script_sig_to_address, unlock_utxos_as_pskb, Bundle, Signer, PSKT},
+    prelude::{Bundle, PSKT, Signer, lock_script_sig_templating, script_sig_to_address, unlock_utxos_as_pskb},
     pskt::Inner,
 };
 

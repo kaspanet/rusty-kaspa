@@ -9,7 +9,7 @@ use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+use tokio::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::{Encoding as WrpcEncoding, WebSocketConfig, WebSocketCounters};
 

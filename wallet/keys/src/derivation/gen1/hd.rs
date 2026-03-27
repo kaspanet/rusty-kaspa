@@ -2,7 +2,7 @@ use crate::derivation::traits::*;
 use crate::imports::*;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
-use kaspa_bip32::types::{ChainCode, HmacSha512, KeyFingerprint, PublicKeyBytes, KEY_SIZE};
+use kaspa_bip32::types::{ChainCode, HmacSha512, KEY_SIZE, KeyFingerprint, PublicKeyBytes};
 use kaspa_bip32::{
     AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
     PrivateKey, PublicKey, SecretKey, SecretKeyExt,

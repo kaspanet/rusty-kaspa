@@ -42,18 +42,18 @@ The [Crescendo Hardfork](docs/crescendo-guide.md) took place on May 5, 2025, at 
       lld lldb llvm-dev llvm-runtime \
       llvm python3-clang
       ```
-  3. Install the [rust toolchain](https://rustup.rs/)
+  4. Install the [rust toolchain](https://rustup.rs/)
 
      If you already have rust installed, update it by running: `rustup update`
-  4. Install wasm-pack
+  5. Install wasm-pack
       ```bash
       cargo install wasm-pack
       ```
-  4. Install wasm32 target
+  6. Install wasm32 target
       ```bash
       rustup target add wasm32-unknown-unknown
       ```
-  5. Clone the repo
+  7. Clone the repo
       ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
@@ -146,11 +146,11 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
       ```bash
       cargo install wasm-pack
       ```
-  4. Install wasm32 target
+  5. Install wasm32 target
       ```bash
       rustup target add wasm32-unknown-unknown
       ```
-  5. Clone the repo
+  6. Clone the repo
       ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
@@ -287,7 +287,7 @@ The framework is compatible with all major desktop and mobile browsers.
   ```bash
 cargo run --release --bin kaspad -- --testnet
   ```
-  
+
 <details>
   <summary>
     Start a devnet node
@@ -299,8 +299,8 @@ Start the DevNet node with the following command:
 cargo run --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex
 ```
 * `enable-unsynced-mining` is required when the network isn't synchronized, which is the case on the first launch
-* `uxtoindex` enables the UTXO index, which is necessary for wallet functionality.
-* `rpclisten-borsh` and `rpclisten-borsh` are likely to be required by mining softwares
+* `utxoindex` enables the UTXO index, which is necessary for wallet functionality.
+* `rpclisten` and `rpclisten-borsh` are likely to be required by mining software
 
 note: it will take a bit of time for difficulty to adjust, so you may need to wait a bit before you see blocks being mined consistently.
 
@@ -383,6 +383,13 @@ wRPC
 
 </details>
 
+## Stratum Bridge Beta
+
+This Stratum Bridge is currently in BETA. Support is available in the Kaspa Discord’s [#mining-and-hardware](https://discord.com/channels/599153230659846165/910178666099646584) channel.
+
+For bug reports or feature request, please open an issue at https://github.com/kaspanet/rusty-kaspa/issues and prefix your issue title with [Bridge].
+
+Check out the [README.md](bridge/docs/README.md) for instructions on how to run the stratum bridge.
 
 ## Benchmarking & Testing
 
@@ -484,5 +491,13 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
     (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
     ```
     In this command we set the `loglevel` to `INFO`.
+
+</details>
+
+<details>
+
+<summary>Override consensus parameters</summary>
+
+You can experiment with non-standard consensus parameters in non-mainnet environments by supplying a JSON file with `--override-params-file <path>`. See [docs/override-params.md](docs/override-params.md) for a more detailed explanation.
 
 </details>

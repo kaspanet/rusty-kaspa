@@ -6,9 +6,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
 pub enum PruningImportError {
-    #[error("pruning proof validation failed")]
-    ProofValidationError,
-
     #[error("pruning proof doesn't have {0} levels")]
     ProofNotEnoughLevels(usize),
 
@@ -17,6 +14,9 @@ pub enum PruningImportError {
 
     #[error("the proof header {0} is missing known parents at level {1}")]
     PruningProofHeaderWithNoKnownParents(Hash, BlockLevel),
+
+    #[error("the proof header {0} at level {1} has blue work inconsistent with its parents")]
+    PruningProofInconsistentBlueWork(Hash, BlockLevel),
 
     #[error("proof level {0} is missing the block at depth m in level {1}")]
     PruningProofMissingBlockAtDepthMFromNextLevel(BlockLevel, BlockLevel),
@@ -30,17 +30,20 @@ pub enum PruningImportError {
     #[error("the pruning proof selected tip {0} at level {1} is not a parent of the pruning point on the same level")]
     PruningProofSelectedTipNotParentOfPruningPoint(Hash, BlockLevel),
 
-    #[error("the proof doesn't have sufficient blue work in order to replace the current DAG")]
-    PruningProofInsufficientBlueWork,
+    #[error("the pruning proof selected tip {0} at level {1} blue score {2} < 2M and root is not genesis")]
+    PruningProofSelectedTipNotEnoughBlueScore(Hash, BlockLevel, u64),
 
-    #[error("the pruning proof doesn't have any shared blocks with the known DAGs, but doesn't have enough headers from levels higher than the existing block levels.")]
+    #[error("provided pruning proof is weaker than local: {0}")]
+    ProofWeaknessError(#[from] ProofWeakness),
+
+    #[error("the pruning proof is missing headers")]
     PruningProofNotEnoughHeaders,
 
     #[error("block {0} already appeared in the proof headers for level {1}")]
     PruningProofDuplicateHeaderAtLevel(Hash, BlockLevel),
 
-    #[error("got header-only trusted block {0} which is not in pruning point past according to available reachability")]
-    PruningPointPastMissingReachability(Hash),
+    #[error("trusted block {0} is in the anticone of the pruning point but does not have block body")]
+    PruningPointAnticoneMissingBody(Hash),
 
     #[error("new pruning point has an invalid transaction {0}: {1}")]
     NewPruningPointTxError(Hash, TxRuleError),
@@ -80,6 +83,18 @@ pub enum PruningImportError {
 
     #[error("a past pruning point has not been pointed at")]
     UnpointedPruningPoint,
+
+    #[error("got trusted block {0} in the future of the pruning point {1}")]
+    TrustedBlockInPruningPointFuture(Hash, Hash),
+}
+
+#[derive(Error, Debug, Clone)]
+pub enum ProofWeakness {
+    #[error("no sufficient blue work in order to replace the current DAG")]
+    InsufficientBlueWork,
+
+    #[error("no shared blocks with the known level DAGs, and not enough headers from levels higher than the existing block levels.")]
+    NotEnoughHeaders,
 }
 
 pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;

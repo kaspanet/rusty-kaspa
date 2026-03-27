@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::result::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_rpc_core::GetMetricsResponse;
-use separator::{separated_float, separated_int, separated_uint_with_output, Separatable};
+use separator::{Separatable, separated_float, separated_int, separated_uint_with_output};
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;
 
@@ -711,7 +711,7 @@ impl MetricsSnapshot {
 
 #[inline(always)]
 fn per_sec(a: u64, b: u64, duration_millis: f64) -> f64 {
-    b.checked_sub(a).unwrap_or_default() as f64 * 1000. / duration_millis
+    b.saturating_sub(a) as f64 * 1000. / duration_millis
 }
 
 impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
@@ -887,9 +887,5 @@ pub fn format_as_float(f: f64, short: bool) -> String {
 
 /// Format supplied value as a float with 2 decimal places.
 fn format_with_precision(f: f64) -> String {
-    if f.fract() < 0.01 {
-        separated_float!(format!("{}", f.trunc()))
-    } else {
-        separated_float!(format!("{:.2}", f))
-    }
+    if f.fract() < 0.01 { separated_float!(format!("{}", f.trunc())) } else { separated_float!(format!("{:.2}", f)) }
 }

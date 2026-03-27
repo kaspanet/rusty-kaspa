@@ -4,12 +4,12 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use kaspa_consensus_core::api::stats::VirtualStateStats;
 use kaspa_consensus_core::{
-    block::VirtualStateApproxId, coinbase::BlockRewardData, config::genesis::GenesisBlock, tx::TransactionId,
-    utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
+    BlockHashMap, BlockHashSet, HashMapCustomHasher, block::VirtualStateApproxId, coinbase::BlockRewardData,
+    config::genesis::GenesisBlock, tx::TransactionId, utxo::utxo_diff::UtxoDiff,
 };
-use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter, StoreResultExtensions};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter, StoreResultExt};
 use kaspa_database::prelude::{CachePolicy, StoreResult};
-use kaspa_database::prelude::{StoreError, DB};
+use kaspa_database::prelude::{DB, StoreError};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -164,7 +164,7 @@ impl DbVirtualStateStore {
     pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState) -> Self {
         let access = CachedDbItem::new(db.clone(), DatabaseStorePrefixes::VirtualState.into());
         // Init the LKG cache from DB store data
-        lkg_virtual_state.store(access.read().unwrap_option().unwrap_or_default());
+        lkg_virtual_state.store(access.read().optional().unwrap().unwrap_or_default());
         Self { db, access, lkg_virtual_state }
     }
 

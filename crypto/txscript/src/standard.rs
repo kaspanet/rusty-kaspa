@@ -12,7 +12,7 @@ use std::iter::once;
 
 mod multisig;
 
-pub use multisig::{multisig_redeem_script, multisig_redeem_script_ecdsa, Error as MultisigCreateError};
+pub use multisig::{Error as MultisigCreateError, multisig_redeem_script, multisig_redeem_script_ecdsa};
 
 /// Creates a new script to pay a transaction output to a 32-byte pubkey.
 fn pay_to_pub_key(address_payload: &[u8]) -> ScriptVec {
@@ -85,7 +85,7 @@ pub fn extract_script_pub_key_address(script_public_key: &ScriptPublicKey, prefi
 
 pub mod test_helpers {
     use super::*;
-    use crate::{opcodes::codes::OpTrue, MAX_TX_IN_SEQUENCE_NUM};
+    use crate::{MAX_TX_IN_SEQUENCE_NUM, opcodes::codes::OpTrue};
     use kaspa_consensus_core::{
         constants::TX_VERSION,
         subnets::SUBNETWORK_ID_NATIVE,
@@ -152,6 +152,7 @@ pub mod test_helpers {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_utils::hex::FromHex;
 
     #[test]
     fn test_extract_address_and_encode_script() {
@@ -168,9 +169,7 @@ mod tests {
                 name: "Mainnet PubKey script and address",
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version(),
-                    ScriptVec::from_slice(
-                        &hex::decode("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
-                    ),
+                    ScriptVec::from_hex("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
                 ),
                 prefix: Prefix::Mainnet,
                 expected_address: Ok("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j".try_into().unwrap()),
@@ -179,9 +178,7 @@ mod tests {
                 name: "Testnet PubKeyECDSA script and address",
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKeyECDSA.version(),
-                    ScriptVec::from_slice(
-                        &hex::decode("21ba01fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
-                    ),
+                    ScriptVec::from_hex("21ba01fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
                 ),
                 prefix: Prefix::Testnet,
                 expected_address: Ok("kaspatest:qxaqrlzlf6wes72en3568khahq66wf27tuhfxn5nytkd8tcep2c0vrse6gdmpks".try_into().unwrap()),
@@ -190,9 +187,7 @@ mod tests {
                 name: "Testnet non standard script",
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version(),
-                    ScriptVec::from_slice(
-                        &hex::decode("2001fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
-                    ),
+                    ScriptVec::from_hex("2001fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
                 ),
                 prefix: Prefix::Testnet,
                 expected_address: Err(TxScriptError::PubKeyFormat),
@@ -201,9 +196,7 @@ mod tests {
                 name: "Mainnet script with unknown version",
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version() + 1,
-                    ScriptVec::from_slice(
-                        &hex::decode("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
-                    ),
+                    ScriptVec::from_hex("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
                 ),
                 prefix: Prefix::Mainnet,
                 expected_address: Err(TxScriptError::PubKeyFormat),

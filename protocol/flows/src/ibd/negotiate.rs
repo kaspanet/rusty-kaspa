@@ -6,9 +6,9 @@ use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_core::{debug, warn};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
-    common::{ProtocolError, DEFAULT_TIMEOUT},
+    common::{DEFAULT_TIMEOUT, ProtocolError},
     dequeue_with_timeout, make_message,
-    pb::{kaspad_message::Payload, RequestIbdChainBlockLocatorMessage},
+    pb::{RequestIbdChainBlockLocatorMessage, kaspad_message::Payload},
 };
 
 pub struct ChainNegotiationOutput {
@@ -17,6 +17,7 @@ pub struct ChainNegotiationOutput {
     // chain on block locator queries
     pub syncer_virtual_selected_parent: Hash,
     pub highest_known_syncer_chain_hash: Option<Hash>,
+    pub syncer_pruning_point: Hash,
 }
 
 impl IbdFlow {
@@ -36,6 +37,7 @@ impl IbdFlow {
         if locator_hashes.is_empty() {
             return Err(ProtocolError::Other("Expecting initial syncer chain block locator to contain at least one element"));
         }
+        let mut syncer_pruning_point = *locator_hashes.last().unwrap();
 
         debug!(
             "IBD chain negotiation with peer {} started and received {} hashes ({}, {})",
@@ -131,7 +133,7 @@ impl IbdFlow {
                         self.router, negotiation_restart_counter
                     )));
                 }
-                if negotiation_restart_counter > self.ctx.config.bps().upper_bound() {
+                if negotiation_restart_counter > self.ctx.config.bps() {
                     // bps is just an intuitive threshold here
                     warn!("IBD chain negotiation with syncer {} restarted {} times", self.router, negotiation_restart_counter);
                 } else {
@@ -157,11 +159,12 @@ impl IbdFlow {
                 initial_locator_len = locator_hashes.len();
                 // Reset syncer's virtual selected parent
                 syncer_virtual_selected_parent = locator_hashes[0];
+                syncer_pruning_point = *locator_hashes.last().unwrap();
             }
         }
 
         debug!("Found highest known syncer chain block {:?} from peer {}", highest_known_syncer_chain_hash, self.router);
-        Ok(ChainNegotiationOutput { syncer_virtual_selected_parent, highest_known_syncer_chain_hash })
+        Ok(ChainNegotiationOutput { syncer_virtual_selected_parent, highest_known_syncer_chain_hash, syncer_pruning_point })
     }
 
     async fn get_syncer_chain_block_locator(

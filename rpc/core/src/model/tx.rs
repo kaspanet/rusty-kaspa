@@ -8,7 +8,10 @@ use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
-use crate::prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId};
+use crate::{
+    RpcOptionalHeader, RpcOptionalTransaction,
+    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
+};
 
 /// Represents the ID of a Kaspa transaction
 pub type RpcTransactionId = TransactionId;
@@ -313,7 +316,7 @@ impl std::fmt::Debug for RpcTransaction {
             .field("gas", &self.gas)
             .field("payload", &self.payload.to_hex())
             .field("mass", &self.mass)
-            .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility 
+            .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
             .finish()
@@ -397,4 +400,32 @@ impl Deserializer for RpcTransactionVerboseData {
 pub struct RpcAcceptedTransactionIds {
     pub accepting_block_hash: RpcHash,
     pub accepted_transaction_ids: Vec<RpcTransactionId>,
+}
+
+/// Represents accepted transaction ids
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcChainBlockAcceptedTransactions {
+    pub chain_block_header: RpcOptionalHeader,
+    pub accepted_transactions: Vec<RpcOptionalTransaction>,
+}
+
+impl Serializer for RpcChainBlockAcceptedTransactions {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcOptionalHeader, &self.chain_block_header, writer)?;
+        serialize!(Vec<RpcOptionalTransaction>, &self.accepted_transactions, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcChainBlockAcceptedTransactions {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _struct_version = load!(u16, reader)?;
+        let chain_block_header = deserialize!(RpcOptionalHeader, reader)?;
+        let accepted_transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
+
+        Ok(Self { chain_block_header, accepted_transactions })
+    }
 }

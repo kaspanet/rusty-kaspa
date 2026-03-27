@@ -6,7 +6,7 @@ use crate::{error::Error, node::NodeDescriptor};
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_notify::{
     listener::ListenerLifespan,
-    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
 use kaspa_rpc_core::{
     api::ctl::RpcCtl,
@@ -372,6 +372,10 @@ impl KaspaRpcClient {
         Ok(())
     }
 
+    pub fn network_id(&self) -> Option<NetworkId> {
+        *self.inner.network_id.lock().unwrap()
+    }
+
     pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
         self.inner.network_id.lock().unwrap().replace(*network_id);
         Ok(())
@@ -437,6 +441,11 @@ impl KaspaRpcClient {
 
         self.inner.set_default_url(options.url.as_deref());
         self.inner.rpc_ctl.set_descriptor(options.url.clone());
+
+        // current url is populated by a an implemented trait when not forced in options
+        if let Some(ref url) = options.url {
+            self.inner.set_current_url(Some(url));
+        }
 
         // 1Gb message and frame size limits (on native and NodeJs platforms)
         let ws_config = WebSocketConfig {
@@ -647,6 +656,7 @@ impl RpcApi for KaspaRpcClient {
             GetUtxoReturnAddress,
             GetUtxosByAddresses,
             GetVirtualChainFromBlock,
+            GetVirtualChainFromBlockV2,
             ResolveFinalityConflict,
             Shutdown,
             SubmitBlock,

@@ -1,9 +1,9 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
+use crate::tx::{Fees, PaymentDestination, PaymentOutputs, generator as native};
 use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
-use crate::wasm::tx::generator::*;
 use crate::wasm::tx::IFees;
+use crate::wasm::tx::generator::*;
 // use crate::wasm::wallet::Account;
 use crate::wasm::UtxoContext;
 

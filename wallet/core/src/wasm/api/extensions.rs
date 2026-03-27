@@ -17,21 +17,13 @@ pub trait WalletApiObjectExtension {
 impl WalletApiObjectExtension for Object {
     fn get_secret(&self, key: &str) -> Result<Secret> {
         let string = self.get_value(key)?.as_string().ok_or(Error::InvalidArgument(key.to_string())).map(|s| s.trim().to_string())?;
-        if string.is_empty() {
-            Err(Error::SecretIsEmpty(key.to_string()))
-        } else {
-            Ok(Secret::from(string))
-        }
+        if string.is_empty() { Err(Error::SecretIsEmpty(key.to_string())) } else { Ok(Secret::from(string)) }
     }
 
     fn try_get_secret(&self, key: &str) -> Result<Option<Secret>> {
         let string = self.try_get_value(key)?.and_then(|value| value.as_string());
         if let Some(string) = string {
-            if string.is_empty() {
-                Err(Error::SecretIsEmpty(key.to_string()))
-            } else {
-                Ok(Some(Secret::from(string)))
-            }
+            if string.is_empty() { Err(Error::SecretIsEmpty(key.to_string())) } else { Ok(Some(Secret::from(string))) }
         } else {
             Ok(None)
         }
@@ -43,11 +35,7 @@ impl WalletApiObjectExtension for Object {
     }
 
     fn try_get_prv_key_data_id(&self, key: &str) -> Result<Option<PrvKeyDataId>> {
-        if let Some(value) = self.try_get_value(key)? {
-            Ok(Some(PrvKeyDataId::try_from(&value)?))
-        } else {
-            Ok(None)
-        }
+        if let Some(value) = self.try_get_value(key)? { Ok(Some(PrvKeyDataId::try_from(&value)?)) } else { Ok(None) }
     }
 
     fn get_prv_key_data_id(&self, key: &str) -> Result<PrvKeyDataId> {

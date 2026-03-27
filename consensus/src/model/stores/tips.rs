@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
+use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::CachedDbSetItem;
+use kaspa_database::prelude::DB;
 use kaspa_database::prelude::DbWriter;
 use kaspa_database::prelude::ReadLock;
 use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::StoreResultExtensions;
-use kaspa_database::prelude::DB;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_database::prelude::{BatchDbWriter, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -38,6 +39,7 @@ pub trait TipsStore: TipsStoreReader {
         self.prune_tips_with_writer(BatchDbWriter::new(batch), pruned_tips)
     }
     fn prune_tips_with_writer(&mut self, writer: impl DbWriter, pruned_tips: &[Hash]) -> StoreResult<()>;
+    fn delete_all_tips(&mut self, writer: &mut WriteBatch) -> StoreResult<()>;
 }
 
 /// A DB + cache implementation of `TipsStore` trait
@@ -57,7 +59,7 @@ impl DbTipsStore {
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.access.read().unwrap_option().is_some()
+        self.access.read().optional().unwrap().is_some()
     }
 
     pub fn init_batch(&mut self, batch: &mut WriteBatch, initial_tips: &[Hash]) -> StoreResult<()> {
@@ -92,6 +94,11 @@ impl TipsStore for DbTipsStore {
             return Ok(());
         }
         self.access.update(writer, &[], pruned_tips)?;
+        Ok(())
+    }
+    fn delete_all_tips(&mut self, writer: &mut WriteBatch) -> StoreResult<()> {
+        let tips = self.get()?.read().iter().copied().collect_vec();
+        self.access.update(BatchDbWriter::new(writer), &[], &tips)?;
         Ok(())
     }
 }

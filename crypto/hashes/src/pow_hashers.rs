@@ -69,7 +69,7 @@ mod keccak256 {
     #[cfg(all(target_arch = "x86_64", not(feature = "no-asm")))]
     #[inline(always)]
     pub(super) fn f1600(state: &mut [u64; 25]) {
-        extern "C" {
+        unsafe extern "C" {
             fn KeccakF1600(state: &mut [u64; 25]);
         }
         unsafe { KeccakF1600(state) }

@@ -1,15 +1,16 @@
 #[cfg(feature = "devnet-prealloc")]
 use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_initial_utxo_set};
-use super::{ctl::Ctl, Consensus};
+use super::{Consensus, ctl::Ctl};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use itertools::Itertools;
-use kaspa_consensus_core::{config::Config, mining_rules::MiningRules};
+use kaspa_consensus_core::{api::ConsensusApi, config::Config, mining_rules::MiningRules};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::{debug, time::unix_now, warn};
 use kaspa_database::{
     prelude::{
-        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
+        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DB, DirectDbWriter, RocksDbPreset, StoreError, StoreResult,
+        StoreResultExt,
     },
     registry::DatabaseStorePrefixes,
 };
@@ -59,7 +60,7 @@ pub struct MultiConsensusMetadata {
     version: u32,
 }
 
-const LATEST_DB_VERSION: u32 = 4;
+pub const LATEST_DB_VERSION: u32 = 6;
 impl Default for MultiConsensusMetadata {
     fn default() -> Self {
         Self {
@@ -92,7 +93,7 @@ impl MultiConsensusManagementStore {
     }
 
     fn init(&mut self) {
-        if self.metadata.read().unwrap_option().is_none() {
+        if self.metadata.read().optional().unwrap().is_none() {
             let mut batch = WriteBatch::default();
             let metadata = MultiConsensusMetadata::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
@@ -255,9 +256,13 @@ pub struct Factory {
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
     fd_budget: i32,
     mining_rules: Arc<MiningRules>,
+    rocksdb_preset: RocksDbPreset,
+    wal_dir: Option<PathBuf>,
+    cache_budget: Option<usize>,
 }
 
 impl Factory {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         management_db: Arc<DB>,
         config: &Config,
@@ -268,6 +273,9 @@ impl Factory {
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         fd_budget: i32,
         mining_rules: Arc<MiningRules>,
+        rocksdb_preset: RocksDbPreset,
+        wal_dir: Option<PathBuf>,
+        cache_budget: Option<usize>,
     ) -> Self {
         assert!(fd_budget > 0, "fd_budget has to be positive");
         let mut config = config.clone();
@@ -286,6 +294,9 @@ impl Factory {
             tx_script_cache_counters,
             fd_budget,
             mining_rules,
+            rocksdb_preset,
+            wal_dir,
+            cache_budget,
         };
         factory.delete_inactive_consensus_entries();
         factory
@@ -316,6 +327,9 @@ impl ConsensusFactory for Factory {
             .with_db_path(dir)
             .with_parallelism(self.db_parallelism)
             .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
+            .with_preset(self.rocksdb_preset)
+            .with_wal_dir(self.wal_dir.clone())
+            .with_cache_budget(self.cache_budget)
             .build()
             .unwrap();
 
@@ -351,6 +365,9 @@ impl ConsensusFactory for Factory {
             .with_db_path(dir)
             .with_parallelism(self.db_parallelism)
             .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
+            .with_preset(self.rocksdb_preset)
+            .with_wal_dir(self.wal_dir.clone())
+            .with_cache_budget(self.cache_budget)
             .build()
             .unwrap();
 
@@ -365,6 +382,10 @@ impl ConsensusFactory for Factory {
             entry.creation_timestamp,
             self.mining_rules.clone(),
         ));
+
+        // The default for the body_missing_anticone_set is an empty vector, which corresponds precisely to the state before a consensus commit
+        // But The default value for the pruning_utxoset_stable_flag is true, but a staging consensus does not have a utxo and hence the flag is dropped explicitly
+        consensus.set_pruning_utxoset_stable_flag(false);
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
     }

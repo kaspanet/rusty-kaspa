@@ -5,8 +5,8 @@ use kaspa_consensus_core::{
         utxo_view::UtxoView,
     },
 };
-use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_database::prelude::DB;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_hashes::Hash;
@@ -142,7 +142,7 @@ impl DbUtxoSetStore {
 
 impl UtxoView for DbUtxoSetStore {
     fn get(&self, outpoint: &TransactionOutpoint) -> Option<UtxoEntry> {
-        UtxoSetStoreReader::get(self, outpoint).map(|v| v.as_ref().clone()).unwrap_option()
+        UtxoSetStoreReader::get(self, outpoint).map(|v| v.as_ref().clone()).optional().unwrap()
     }
 }
 

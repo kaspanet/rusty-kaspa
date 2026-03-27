@@ -1,9 +1,9 @@
 target
 web-root
 **/.idea/
-**/.zed/
 /rust-toolchain
 /.vscode/
+.zed
 **/db-*
 /testing/integration/testdata/dags_for_json_tests/goref-mainnet
 /testing/integration/testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks
@@ -15,3 +15,4 @@ testing/integration/perflogs*
 Servers.toml
 release
 package-sizes.js
+rustbridge_*.log

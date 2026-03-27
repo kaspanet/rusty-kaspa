@@ -1,14 +1,14 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{Transaction, TransactionInput, TransactionOutpoint},
 };
 use kaspa_hashes::{HasherBase, TransactionID};
-use kaspa_mining::{model::topological_index::TopologicalIndex, FeerateTransactionKey, Frontier, Policy};
-use rand::{thread_rng, Rng};
+use kaspa_mining::{FeerateTransactionKey, Frontier, Policy, model::topological_index::TopologicalIndex};
+use rand::{Rng, thread_rng};
 use std::{
-    collections::{hash_set::Iter, HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_set::Iter},
     sync::Arc,
 };
 
@@ -102,7 +102,7 @@ pub fn bench_mempool_sampling(c: &mut Criterion) {
     }
 
     let len = cap;
-    let mut frontier = Frontier::default();
+    let mut frontier = Frontier::new(1.0);
     for item in map.values().take(len).cloned() {
         frontier.insert(item).then_some(()).unwrap();
     }
@@ -183,7 +183,7 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
     }
 
     for len in [100, 300, 350, 500, 1000, 2000, 5000, 10_000, 100_000, 500_000, 1_000_000].into_iter().rev() {
-        let mut frontier = Frontier::default();
+        let mut frontier = Frontier::new(1.0);
         for item in map.values().take(len).cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }
@@ -252,7 +252,7 @@ pub fn bench_inplace_sampling_worst_case(c: &mut Criterion) {
             map.insert(key.tx.id(), key);
         }
 
-        let mut frontier = Frontier::default();
+        let mut frontier = Frontier::new(1.0);
         for item in map.values().cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }

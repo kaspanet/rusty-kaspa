@@ -12,7 +12,7 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope};
-use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcTransactionId};
+use kaspa_rpc_core::{Notification, RpcTransactionId, api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
 use kaspad_lib::args::Args;
 use rand::thread_rng;
@@ -78,7 +78,7 @@ async fn daemon_mining_test() {
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
-        let header: Header = (&template.block.header).into();
+        let header: Header = (&template.block.header).try_into().unwrap();
         last_block_hash = Some(header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
 
@@ -142,7 +142,7 @@ async fn daemon_utxos_propagation_test() {
     };
     let total_fd_limit = 10;
 
-    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity().before();
+    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity();
     let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
     let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
@@ -189,7 +189,7 @@ async fn daemon_utxos_propagation_test() {
     let mut last_block_hash = None;
     for i in 0..initial_blocks {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
-        let header: Header = (&template.block.header).into();
+        let header: Header = (&template.block.header).try_into().unwrap();
         last_block_hash = Some(header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
 
@@ -218,7 +218,7 @@ async fn daemon_utxos_propagation_test() {
             async fn daa_score_reached(client: GrpcClient) -> bool {
                 let virtual_daa_score = client.get_server_info().await.unwrap().virtual_daa_score;
                 trace!("Virtual DAA score: {}", virtual_daa_score);
-                virtual_daa_score == SIMNET_PARAMS.coinbase_maturity().before()
+                virtual_daa_score == SIMNET_PARAMS.coinbase_maturity()
             }
             Box::pin(daa_score_reached(check_client.clone()))
         },

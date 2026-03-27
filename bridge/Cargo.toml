@@ -1,0 +1,79 @@
+[package]
+name = "kaspa-stratum-bridge"
+description = "Kaspa Stratum Bridge - Mining connectivity for Kaspa Stratum miners"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Kaspa dependencies - using workspace versions
+kaspa-consensus-core = { workspace = true }
+kaspa-hashes = { workspace = true }
+kaspa-pow = { workspace = true }
+kaspa-addresses = { workspace = true }
+kaspa-rpc-core = { workspace = true }
+kaspa-rpc-service = { workspace = true }
+kaspa-grpc-client = { workspace = true }
+kaspa-notify = { workspace = true }
+kaspa-core = { workspace = true }
+kaspa-utils = { workspace = true }
+kaspad = { workspace = true }
+kaspa-alloc = { workspace = true }
+dirs = { workspace = true }
+
+# External dependencies - using workspace versions where available
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+hex = { workspace = true }
+num-traits = { workspace = true }
+async-trait = { workspace = true }
+once_cell = { workspace = true }
+futures-util = { workspace = true }
+parking_lot = { workspace = true }
+regex = { workspace = true }
+uuid = { workspace = true }
+
+# CLI
+clap = { workspace = true, features = ["derive"] }
+
+# External dependencies not in workspace (add specific versions)
+anyhow = "1.0"
+tracing = "0.1"
+tracing-log = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+blake2 = "0.10"
+num-bigint = "0.4"
+prometheus = "0.13"
+serde_yaml = "0.9"
+faster-hex = "0.1"
+chrono = { workspace = true }
+include_dir = "0.7"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
+
+# For musl builds, we declare mimalloc without 'override' to override kaspa-alloc's version
+# The .cargo/config.toml linker flag handles any remaining conflicts
+[target.'cfg(all(not(target_os = "macos"), target_env = "musl"))'.dependencies]
+mimalloc = { version = "0.1.48", default-features = false }
+
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[[bin]]
+name = "stratum-bridge"
+path = "src/main.rs"
+
+[features]
+rkstratum_cpu_miner = []
+
+[lints]
+workspace = true

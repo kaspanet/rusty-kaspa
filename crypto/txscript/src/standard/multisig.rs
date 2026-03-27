@@ -70,16 +70,17 @@ pub fn multisig_redeem_script_ecdsa(pub_keys: impl Iterator<Item = impl Borrow<[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script, TxScriptEngine};
+    use crate::{TxScriptEngine, caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script};
     use core::str::FromStr;
     use kaspa_consensus_core::{
         hashing::{
-            sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
+            sighash::{SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash},
             sighash_type::SIG_HASH_ALL,
         },
         subnets::SubnetworkId,
         tx::*,
     };
+    use kaspa_utils::hex::FromHex;
     use rand::thread_rng;
     use secp256k1::Keypair;
     use std::{iter, iter::empty};
@@ -93,12 +94,12 @@ mod tests {
     fn kp() -> [Keypair; 3] {
         let kp1 = Keypair::from_seckey_slice(
             secp256k1::SECP256K1,
-            hex::decode("1d99c236b1f37b3b845336e6c568ba37e9ced4769d83b7a096eec446b940d160").unwrap().as_slice(),
+            Vec::from_hex("1d99c236b1f37b3b845336e6c568ba37e9ced4769d83b7a096eec446b940d160").unwrap().as_slice(),
         )
         .unwrap();
         let kp2 = Keypair::from_seckey_slice(
             secp256k1::SECP256K1,
-            hex::decode("349ca0c824948fed8c2c568ce205e9d9be4468ef099cad76e3e5ec918954aca4").unwrap().as_slice(),
+            Vec::from_hex("349ca0c824948fed8c2c568ce205e9d9be4468ef099cad76e3e5ec918954aca4").unwrap().as_slice(),
         )
         .unwrap();
         let kp3 = Keypair::new(secp256k1::SECP256K1, &mut thread_rng());
@@ -184,7 +185,7 @@ mod tests {
         let (input, entry) = tx.populated_inputs().next().unwrap();
 
         let cache = Cache::new(10_000);
-        let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &reused_values, &cache, false, false);
+        let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &reused_values, &cache);
         assert_eq!(engine.execute().is_ok(), is_ok);
     }
     #[test]

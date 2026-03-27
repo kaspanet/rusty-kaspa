@@ -6,7 +6,7 @@ use core::{
     fmt::{self, Display},
     str::FromStr,
 };
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 /// Prefix for all derivation paths.
 const PREFIX: &str = "m";

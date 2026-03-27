@@ -5,8 +5,8 @@ use itertools::Itertools;
 use kaspa_core::trace;
 use kaspa_utils::{any::type_name_short, channel::Channel, triggers::SingleTrigger};
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use tokio::task::JoinHandle;
 

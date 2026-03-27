@@ -45,6 +45,7 @@ paste.workspace = true
 rand.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
+serde_nested_with.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

@@ -1,5 +1,5 @@
-use crate::config::constants::consensus::*;
 use crate::KType;
+use crate::config::constants::consensus::*;
 
 /// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
 /// with probability less than `delta` (follows eq. 1 from section 4.2 of the PHANTOM paper)
@@ -90,7 +90,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn finality_depth() -> u64 {
-        BPS * NEW_FINALITY_DURATION
+        BPS * FINALITY_DURATION
     }
 
     pub const fn pruning_depth() -> u64 {
@@ -103,11 +103,7 @@ impl<const BPS: u64> Bps<BPS> {
             + 2 * Self::ghostdag_k() as u64
             + 2;
 
-        if lower_bound > BPS * NEW_PRUNING_DURATION {
-            lower_bound
-        } else {
-            BPS * NEW_PRUNING_DURATION
-        }
+        if lower_bound > BPS * PRUNING_DURATION { lower_bound } else { BPS * PRUNING_DURATION }
     }
 
     /// Sample rate for sampling blocks to the median time window (in block units, hence dependent on BPS)
@@ -121,7 +117,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn coinbase_maturity() -> u64 {
-        BPS * LEGACY_COINBASE_MATURITY
+        BPS * COINBASE_MATURITY_SECONDS
     }
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period.

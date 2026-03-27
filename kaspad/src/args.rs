@@ -1,4 +1,4 @@
-use clap::{arg, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, arg};
 use kaspa_consensus_core::{
     config::Config,
     network::{NetworkId, NetworkType},
@@ -8,7 +8,7 @@ use kaspa_notify::address::tracker::Tracker;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 use std::{ffi::OsString, fs};
 use toml::from_str;
 
@@ -91,6 +91,12 @@ pub struct Args {
     pub disable_grpc: bool,
     pub ram_scale: f64,
     pub retention_period_days: Option<f64>,
+
+    pub override_params_file: Option<String>,
+
+    pub rocksdb_preset: Option<String>,
+    pub rocksdb_wal_dir: Option<String>,
+    pub rocksdb_cache_size: Option<usize>,
 }
 
 impl Default for Args {
@@ -142,6 +148,10 @@ impl Default for Args {
             disable_grpc: false,
             ram_scale: 1.0,
             retention_period_days: None,
+            override_params_file: None,
+            rocksdb_preset: None,
+            rocksdb_wal_dir: None,
+            rocksdb_cache_size: None,
         }
     }
 }
@@ -201,14 +211,15 @@ pub fn cli() -> Command {
     let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
-        .arg(arg!(-C --configfile <CONFIG_FILE> "Path of config file."))
-        .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
-        .arg(arg!(--logdir <LOG_DIR> "Directory to log output."))
-        .arg(arg!(--nologfiles "Disable logging to files."))
+        .arg(arg!(-C --configfile <CONFIG_FILE> "Path of config file.").env("KASPAD_CONFIGFILE"))
+        .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data.").env("KASPAD_APPDIR"))
+        .arg(arg!(--logdir <LOG_DIR> "Directory to log output.").env("KASPAD_LOGDIR"))
+        .arg(arg!(--nologfiles "Disable logging to files.").env("KASPAD_NOLOGFILES"))
         .arg(
             Arg::new("async_threads")
                 .short('t')
                 .long("async-threads")
+                .env("KASPAD_ASYNC_THREADS")
                 .value_name("async_threads")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
@@ -218,6 +229,7 @@ pub fn cli() -> Command {
             Arg::new("log_level")
                 .short('d')
                 .long("loglevel")
+                .env("KASPAD_LOG_LEVEL")
                 .value_name("LEVEL")
                 .default_value("info")
                 .require_equals(true)
@@ -226,6 +238,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("rpclisten")
                 .long("rpclisten")
+                .env("KASPAD_RPCLISTEN")
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -235,6 +248,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("rpclisten-borsh")
                 .long("rpclisten-borsh")
+                .env("KASPAD_RPCLISTEN_BORSH")
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -246,6 +260,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("rpclisten-json")
                 .long("rpclisten-json")
+                .env("KASPAD_RPCLISTEN_JSON")
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -253,10 +268,11 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(WrpcNetAddress))
                 .help("Interface:port to listen for wRPC JSON connections (default port: 18110, testnet: 18210)."),
         )
-        .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
+        .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node").env("KASPAD_UNSAFERPC"))
         .arg(
             Arg::new("connect-peers")
                 .long("connect")
+                .env("KASPAD_CONNECTPEERS")
                 .value_name("IP[:PORT]")
                 .action(ArgAction::Append)
                 .require_equals(true)
@@ -266,6 +282,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("add-peers")
                 .long("addpeer")
+                .env("KASPAD_ADDPEERS")
                 .value_name("IP[:PORT]")
                 .action(ArgAction::Append)
                 .require_equals(true)
@@ -275,6 +292,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("listen")
                 .long("listen")
+                .env("KASPAD_LISTEN")
                 .value_name("IP[:PORT]")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
@@ -283,6 +301,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("outpeers")
                 .long("outpeers")
+                .env("KASPAD_OUTPEERS")
                 .value_name("outpeers")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
@@ -290,7 +309,8 @@ pub fn cli() -> Command {
         )
         .arg(
             Arg::new("maxinpeers")
-                .long("maxinpeers")
+                .long("maxinpeers") 
+                .env("KASPAD_MAXINPEERS")
                 .value_name("maxinpeers")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
@@ -299,47 +319,52 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("rpcmaxclients")
                 .long("rpcmaxclients")
+                .env("KASPAD_RPCMAXCLIENTS")
                 .value_name("rpcmaxclients")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help("Max number of RPC clients for standard connections (default: 128)."),
         )
-        .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
-        .arg(arg!(--"enable-unsynced-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
+        .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks.").env("KASPAD_RESET_DB"))
+        .arg(arg!(--"enable-unsynced-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)").env("KASPAD_ENABLE_UNSYNCED_MINING"))
         .arg(
             Arg::new("enable-mainnet-mining")
                 .long("enable-mainnet-mining")
+                .env("KASPAD_ENABLE_MAINNET_MINING")
                 .action(ArgAction::SetTrue)
                 .hide(true)
                 .help("Allow mainnet mining (currently enabled by default while the flag is kept for backwards compatibility)"),
         )
-        .arg(arg!(--utxoindex "Enable the UTXO index"))
+        .arg(arg!(--utxoindex "Enable the UTXO index").env("KASPAD_UTXOINDEX"))
         .arg(
             Arg::new("max-tracked-addresses")
                 .long("max-tracked-addresses")
+                .env("KASPAD_MAX_TRACKED_ADDRESSES")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help(format!("Max (preallocated) number of addresses being tracked for UTXO changed events (default: {}, maximum: {}). 
 Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0 memory footprint as long as unused but to sub-optimal footprint if used.", 
 0, Tracker::MAX_ADDRESS_UPPER_BOUND, Tracker::DEFAULT_MAX_ADDRESSES)),
         )
-        .arg(arg!(--testnet "Use the test network"))
+        .arg(arg!(--testnet "Use the test network").env("KASPAD_TESTNET"))
         .arg(
             Arg::new("netsuffix")
                 .long("netsuffix")
+                .env("KASPAD_NETSUFFIX")
                 .value_name("netsuffix")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(u32))
                 .help("Testnet network suffix number"),
         )
-        .arg(arg!(--devnet "Use the development test network"))
-        .arg(arg!(--simnet "Use the simulation test network"))
-        .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)"))
-        .arg(arg!(--sanity "Enable various sanity checks which might be compute-intensive (mostly performed during pruning)"))
-        .arg(arg!(--yes "Answer yes to all interactive console questions"))
+        .arg(arg!(--devnet "Use the development test network").env("KASPAD_DEVNET"))
+        .arg(arg!(--simnet "Use the simulation test network").env("KASPAD_SIMNET"))
+        .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)").env("KASPAD_ARCHIVAL"))
+        .arg(arg!(--sanity "Enable various sanity checks which might be compute-intensive (mostly performed during pruning)").env("KASPAD_SANITY"))
+        .arg(arg!(--yes "Answer yes to all interactive console questions").env("KASPAD_NONINTERACTIVE"))
         .arg(
             Arg::new("user_agent_comments")
                 .long("uacomment")
+                .env("KASPAD_USER_AGENT_COMMENTS")
                 .action(ArgAction::Append)
                 .require_equals(true)
                 .help("Comment to add to the user agent -- See BIP 14 for more information."),
@@ -347,26 +372,29 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(
             Arg::new("externalip")
                 .long("externalip")
+                .env("KASPAD_EXTERNALIP")
                 .value_name("externalip")
                 .require_equals(true)
                 .default_missing_value(None)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Add a socket address(ip:port) to the list of local addresses we claim to listen on to peers"),
         )
-        .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
+        .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage").env("KASPAD_PERF_METRICS"))
         .arg(
             Arg::new("perf-metrics-interval-sec")
                 .long("perf-metrics-interval-sec")
+                .env("KASPAD_PERF_METRICS_INTERVAL_SEC")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(u64))
                 .help("Interval in seconds for performance metrics collection."),
         )
-        .arg(arg!(--"disable-upnp" "Disable upnp"))
-        .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"))
-        .arg(arg!(--"nogrpc" "Disable gRPC server"))
+        .arg(arg!(--"disable-upnp" "Disable upnp").env("KASPAD_DISABLE_UPNP"))
+        .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers").env("KASPAD_NODNSSEED"))
+        .arg(arg!(--"nogrpc" "Disable gRPC server").env("KASPAD_NOGRPC"))
         .arg(
             Arg::new("ram-scale")
                 .long("ram-scale")
+                .env("KASPAD_RAM_SCALE")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(f64))
                 .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with
@@ -378,6 +406,40 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .require_equals(true)
                 .value_parser(clap::value_parser!(f64))
                 .help("The number of total days of data to keep.")
+        )
+        .arg(
+            Arg::new("override-params-file")
+                .long("override-params-file")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Path to a JSON file containing override parameters.")
+        )
+        .arg(
+            Arg::new("rocksdb-preset")
+                .long("rocksdb-preset")
+                .env("KASPAD_ROCKSDB_PRESET")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("RocksDB configuration preset: 'default' (SSD/NVMe) or 'hdd' (optimized for hard disk drives with BlobDB, compression, rate limiting). \
+                       HDD preset recommended for archival nodes on HDD storage (see docs/archival.md).")
+        )
+        .arg(
+            Arg::new("rocksdb-wal-dir")
+                .long("rocksdb-wal-dir")
+                .env("KASPAD_ROCKSDB_WAL_DIR")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Custom WAL (Write-Ahead Log) directory for RocksDB. Useful for hybrid setups: database on HDD, WAL on fast NVMe SSD. \
+                       Example: --rocksdb-wal-dir=/mnt/nvme/kaspa-wal")
+        )
+        .arg(
+            Arg::new("rocksdb-cache-size")
+                .long("rocksdb-cache-size")
+                .env("KASPAD_ROCKSDB_CACHE_SIZE")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("RocksDB block cache size in MB. Default: 256MB for HDD preset (scales with --ram-scale). \
+                       Increase for public RPC nodes with heavy query loads. Example: --rocksdb-cache-size=2048 for 2GB cache.")
         )
         ;
 
@@ -466,6 +528,10 @@ impl Args {
             prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: arg_match_unwrap_or::<u64>(&m, "prealloc-amount", defaults.prealloc_amount),
+            override_params_file: m.get_one::<String>("override-params-file").cloned(),
+            rocksdb_preset: m.get_one::<String>("rocksdb-preset").cloned().or(defaults.rocksdb_preset),
+            rocksdb_wal_dir: m.get_one::<String>("rocksdb-wal-dir").cloned().or(defaults.rocksdb_wal_dir),
+            rocksdb_cache_size: m.get_one::<usize>("rocksdb-cache-size").cloned().or(defaults.rocksdb_cache_size),
         };
 
         if arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", false) {

@@ -7,8 +7,8 @@ use kaspa_utils::{
     serde_bytes::FromHexVisitor,
 };
 use serde::{
-    de::{Error, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
+    de::{Error, Visitor},
 };
 use smallvec::SmallVec;
 use std::{
@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
 /// Size of the underlying script vector of a script.
-pub const SCRIPT_VECTOR_SIZE: usize = 36;
+pub const SCRIPT_VECTOR_SIZE: usize = 35;
 
 /// Used as the underlying type for script public key data, optimized for the common p2pk script size (34).
 pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;
@@ -415,7 +415,7 @@ mod tests {
         let vec = (0..SCRIPT_VECTOR_SIZE as u8).collect::<Vec<_>>();
         let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone()); // 0xc0de == 49374,
         let hex: String = serde_json::to_string(&spk).unwrap();
-        assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223\"", hex);
+        assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122\"", hex);
         let spk = serde_json::from_str::<ScriptPublicKey>(&hex).unwrap();
         assert_eq!(spk.version, 0xc0de);
         assert_eq!(spk.script.as_slice(), vec.as_slice());
@@ -453,7 +453,7 @@ mod tests {
         let version = 0xc0de;
         let vec: Vec<u8> = (0..SCRIPT_VECTOR_SIZE as u8).collect();
         let spk = ScriptPublicKey::from_vec(version, vec.clone());
-        let str = "c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223";
+        let str = "c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122";
         let js = to_value(&spk).unwrap();
         assert_eq!(js.as_string().unwrap(), str);
         let script_hex = spk.script_as_hex();
