@@ -22,7 +22,6 @@ wasm32-sdk = []
 [dependencies]
 blake2b_simd.workspace = true
 borsh.workspace = true
-bs58.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 hex.workspace = true
@@ -47,6 +46,7 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
+js-sys.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

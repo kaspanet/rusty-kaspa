@@ -1,14 +1,23 @@
 use crate::{TxScriptError, multi_sig::get_schnorr_multisig_params, opcodes::codes, parse_script};
+use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
 use std::{
     fmt::{Display, Formatter},
     marker::PhantomData,
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ScriptViewerOptions {
     /// if true, viewer tries to dissassemble a sub-script
     pub contains_redeem_script: bool,
+    /// prefix used when formatting Kaspa addresses
+    pub address_prefix: Prefix,
+}
+
+impl Default for ScriptViewerOptions {
+    fn default() -> Self {
+        Self { contains_redeem_script: false, address_prefix: Prefix::Mainnet }
+    }
 }
 
 pub struct ScriptViewer<'a, T, Reused> {
@@ -58,7 +67,10 @@ where
 
                 if self.options.contains_redeem_script {
                     // Try to disassemble the pushed data as a redeem script and keep it visually tied to the hex blob.
-                    let sub_viewer = ScriptViewer::<T, Reused>::new(data, ScriptViewerOptions { contains_redeem_script: false });
+                    let sub_viewer = ScriptViewer::<T, Reused>::new(
+                        data,
+                        ScriptViewerOptions { contains_redeem_script: false, address_prefix: self.options.address_prefix },
+                    );
                     if let Ok(sub_disassembly) = sub_viewer.try_to_string()
                         && sub_disassembly.contains("Op")
                     {
@@ -75,7 +87,7 @@ where
                         s.push(')');
                     }
                 }
-            } else if value == codes::OpCheckMultiSig || value == codes::OpCheckMultiSigVerify {
+            } else if value == codes::OpCheckMultiSig {
                 s.push_str(&opcode_display);
                 let multisig_parameters = get_schnorr_multisig_params(&opcodes, i)?;
                 s.push_str(&format!(
@@ -84,7 +96,8 @@ where
                 ));
 
                 for pubkey in multisig_parameters.signers_pubkey.iter() {
-                    s.push_str(&format!("\n// {}", bs58::encode(pubkey.serialize()).into_string()));
+                    let address = Address::new(self.options.address_prefix, Version::PubKey, pubkey.serialize().as_slice());
+                    s.push_str(&format!("\n// {address}"));
                 }
             } else {
                 s.push_str(&opcode_display);
@@ -119,18 +132,23 @@ mod tests {
     use crate::script_builder::ScriptBuilder;
     use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesSync, tx::ValidatedTransaction};
 
+    const MULTISIG_SIGNATURE_SCRIPT_HEX: &str = "4130ef124590e4e6627078a658e2eb0b89fe4733f40d8cbfe0d077ae16bb90afb0a5f10e5693352e4b9d19d77a98fe75e395ce60988a0750ab8603a252c9c7290401412294d292317d03d1a5f49a8204c35486da84bbbea604209637e2bbfb5bbfabb36bcb37fc90aeb9836ed950a42b87382880fbd926b362cdbca16e9db9891918850141c2d76d4c64c9b8a8a64fa34a69f7cea953c4f0e564463226d931481ee1fbccafd7c20500a699fc8a10d01d03219d25944081750cdbba89e6a5a64b3224f58a5a014c875320b0a2f302b97271d6d1f20f2168e8b86b037d42a52aaf7ca959bea8a8bbf859a220e040996f44024491881ad4d2f59d4397a5a1f2e169c55624cb9509693fbb7a14204e518f0ecb51eef7db45042e441bb4d99f2c68277359bea369fcb7c80bee5b0120924013135715c9a8076141a33d6528a13fa2e816d3f006897b6d6c8b1da90fd754ae";
+
     #[test]
     fn string_view_prints_multisig_parameters_for_signature_script_redeem_script() {
-        let script = hex::decode("4130ef124590e4e6627078a658e2eb0b89fe4733f40d8cbfe0d077ae16bb90afb0a5f10e5693352e4b9d19d77a98fe75e395ce60988a0750ab8603a252c9c7290401412294d292317d03d1a5f49a8204c35486da84bbbea604209637e2bbfb5bbfabb36bcb37fc90aeb9836ed950a42b87382880fbd926b362cdbca16e9db9891918850141c2d76d4c64c9b8a8a64fa34a69f7cea953c4f0e564463226d931481ee1fbccafd7c20500a699fc8a10d01d03219d25944081750cdbba89e6a5a64b3224f58a5a014c875320b0a2f302b97271d6d1f20f2168e8b86b037d42a52aaf7ca959bea8a8bbf859a220e040996f44024491881ad4d2f59d4397a5a1f2e169c55624cb9509693fbb7a14204e518f0ecb51eef7db45042e441bb4d99f2c68277359bea369fcb7c80bee5b0120924013135715c9a8076141a33d6528a13fa2e816d3f006897b6d6c8b1da90fd754ae").unwrap();
+        let script = hex::decode(MULTISIG_SIGNATURE_SCRIPT_HEX).unwrap();
         let mut builder = ScriptBuilder::new();
         builder.script_mut().extend_from_slice(&script);
 
-        let view =
-            builder.string_view::<ValidatedTransaction, SigHashReusedValuesSync>(ScriptViewerOptions { contains_redeem_script: true });
+        let view = builder.string_view::<ValidatedTransaction, SigHashReusedValuesSync>(ScriptViewerOptions {
+            contains_redeem_script: true,
+            ..Default::default()
+        });
 
         assert!(view.contains("OpPushData1 len=135 hex:"));
         assert!(view.contains("(redeem script:"));
         assert!(view.contains("OpCheckMultiSig"));
         assert!(view.contains("// 3 of 4"));
+        assert!(view.contains("kaspa:"));
     }
 }

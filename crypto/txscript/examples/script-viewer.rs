@@ -1,3 +1,4 @@
+use kaspa_addresses::Prefix;
 use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesSync, tx::ValidatedTransaction};
 use kaspa_txscript::{script_builder::ScriptBuilder, viewer::ScriptViewerOptions};
 
@@ -14,6 +15,9 @@ fn main() {
     // print the human readable form
     println!(
         "{}",
-        s.string_view::<ValidatedTransaction, SigHashReusedValuesSync>(ScriptViewerOptions { contains_redeem_script: true })
+        s.string_view::<ValidatedTransaction, SigHashReusedValuesSync>(ScriptViewerOptions {
+            contains_redeem_script: true,
+            address_prefix: Prefix::Mainnet
+        })
     );
 }
