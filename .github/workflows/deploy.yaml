@@ -77,7 +77,6 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           bash bridge/appimage/build.sh "${{ github.event.release.tag_name }}"
-          echo "appimage=${GITHUB_WORKSPACE}/stratum-bridge-${{ github.event.release.tag_name }}-x86_64.AppImage" >> $GITHUB_ENV
 
       - name: Pack AppImage tarball (preserves executable bit on Linux extract)
         if: runner.os == 'Linux' && steps.appimage.outcome == 'success'
@@ -127,13 +126,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload stratum-bridge AppImage release assets
+      # Ship only the tarball: raw .AppImage from browser/GitHub UI often loses +x; tar.gz preserves it on extract.
+      - name: Upload stratum-bridge AppImage release tarball
         if: runner.os == 'Linux' && steps.appimage.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ${{ env.appimage }}
-            ${{ env.appimage_tarball }}
+          files: ${{ env.appimage_tarball }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
