@@ -196,22 +196,15 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
     // Use a generous timeout: GitHub Actions and other busy hosts often exceed sub-second delivery.
     let notify_timeout = Duration::from_secs(5);
     for client in listening_clients.iter() {
-        let block_daa_score: u64 = match timeout(notify_timeout, client.block_added_listener().unwrap().receiver.recv())
-            .await
-            .unwrap()
-            .unwrap()
-        {
-            Notification::BlockAdded(BlockAddedNotification { block }) => {
-                assert_eq!(block.header.hash, block_hash);
-                block.header.daa_score
-            }
-            _ => panic!("wrong notification type"),
-        };
-        match timeout(notify_timeout, client.virtual_daa_score_changed_listener().unwrap().receiver.recv())
-            .await
-            .unwrap()
-            .unwrap()
-        {
+        let block_daa_score: u64 =
+            match timeout(notify_timeout, client.block_added_listener().unwrap().receiver.recv()).await.unwrap().unwrap() {
+                Notification::BlockAdded(BlockAddedNotification { block }) => {
+                    assert_eq!(block.header.hash, block_hash);
+                    block.header.daa_score
+                }
+                _ => panic!("wrong notification type"),
+            };
+        match timeout(notify_timeout, client.virtual_daa_score_changed_listener().unwrap().receiver.recv()).await.unwrap().unwrap() {
             Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification { virtual_daa_score }) => {
                 assert_eq!(virtual_daa_score, block_daa_score + 1);
             }
