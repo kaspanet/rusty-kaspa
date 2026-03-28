@@ -26,38 +26,72 @@ export interface ICovenantBinding {
 }
 "#;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Copy, BorshSerialize, BorshDeserialize, CastFromJs)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Copy, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CovenantBindingInner {
+    pub authorizing_input: u16,
+    pub covenant_id: Hash,
+}
+
+impl CovenantBindingInner {
+    pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
+        Self { authorizing_input, covenant_id }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, CastFromJs)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct CovenantBinding {
-    inner: CoreCovenantBinding,
+    inner: Arc<Mutex<CovenantBindingInner>>,
+}
+
+impl BorshSerialize for CovenantBinding {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        let inner = self.inner.lock().unwrap();
+        BorshSerialize::serialize(&*inner, writer)
+    }
+}
+
+impl BorshDeserialize for CovenantBinding {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let inner = CovenantBindingInner::deserialize_reader(reader)?;
+        Ok(Self { inner: Arc::new(Mutex::new(inner)) })
+    }
+}
+
+impl CovenantBinding {
+    pub fn inner(&self) -> MutexGuard<'_, CovenantBindingInner> {
+        self.inner.lock().unwrap()
+    }
 }
 
 #[wasm_bindgen]
 impl CovenantBinding {
     #[wasm_bindgen(constructor)]
     pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
-        Self { inner: CoreCovenantBinding::new(authorizing_input, covenant_id) }
+        let inner = Arc::new(Mutex::new(CovenantBindingInner::new(authorizing_input, covenant_id)));
+        Self { inner }
     }
 
     #[wasm_bindgen(setter, js_name = authorizingInput)]
     pub fn set_authorizing_input(&mut self, v: u16) {
-        self.inner.authorizing_input = v;
+        self.inner().authorizing_input = v;
     }
 
     #[wasm_bindgen(getter, js_name = authorizingInput)]
     pub fn get_authorizing_input(&self) -> u16 {
-        self.inner.authorizing_input
+        self.inner().authorizing_input
     }
 
     #[wasm_bindgen(setter, js_name = covenantId)]
     pub fn set_covenant_id(&mut self, v: Hash) {
-        self.inner.covenant_id = v;
+        self.inner().covenant_id = v;
     }
 
     #[wasm_bindgen(getter, js_name = covenantId)]
     pub fn get_covenant_id(&self) -> Hash {
-        self.inner.covenant_id
+        self.inner().covenant_id
     }
 
     #[wasm_bindgen(js_name = toJSON)]
@@ -70,14 +104,14 @@ impl CovenantBinding {
 }
 
 impl From<CoreCovenantBinding> for CovenantBinding {
-    fn from(value: CoreCovenantBinding) -> Self {
-        Self { inner: value }
+    fn from(covenant: CoreCovenantBinding) -> Self {
+        CovenantBinding::new(covenant.authorizing_input, covenant.covenant_id)
     }
 }
 
 impl From<CovenantBinding> for CoreCovenantBinding {
-    fn from(value: CovenantBinding) -> Self {
-        value.inner
+    fn from(covenant: CovenantBinding) -> Self {
+        CoreCovenantBinding::new(covenant.get_authorizing_input(), covenant.get_covenant_id())
     }
 }
 
@@ -92,7 +126,7 @@ impl TryCastFromJs for CovenantBinding {
             let Some(object) = Object::try_from(value.as_ref()) else { return Err(Self::Error::NotAnObject) };
             let authorizing_input = object.get_u16("authorizingInput")?;
             let covenant_id = object.get_value("covenantId")?.try_into_owned()?;
-            Ok(Self { inner: CoreCovenantBinding::new(authorizing_input, covenant_id) })
+            Ok(CovenantBinding::new(authorizing_input, covenant_id))
         })
     }
 }

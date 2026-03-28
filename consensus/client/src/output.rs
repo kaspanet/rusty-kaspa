@@ -115,7 +115,7 @@ impl TransactionOutput {
 
     #[wasm_bindgen(getter, js_name = covenant)]
     pub fn get_covenant(&self) -> Option<CovenantBinding> {
-        self.inner().covenant
+        self.inner().covenant.clone()
     }
 
     #[wasm_bindgen(setter, js_name = covenant)]
@@ -148,7 +148,7 @@ impl From<&TransactionOutput> for cctx::TransactionOutput {
         cctx::TransactionOutput::with_covenant(
             inner.value,
             inner.script_public_key.clone(),
-            inner.covenant.map(cctx::CovenantBinding::from),
+            inner.covenant.clone().map(cctx::CovenantBinding::from),
         )
     }
 }
