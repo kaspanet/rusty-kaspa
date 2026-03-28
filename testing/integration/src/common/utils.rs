@@ -192,9 +192,11 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
     let block_hash = header.hash;
     submitting_client.submit_block(template.block, false).await.unwrap();
 
-    // Wait for each listening client to get notified the submitted block was added to the DAG
+    // Wait for each listening client to get notified the submitted block was added to the DAG.
+    // Use a generous timeout: GitHub Actions and other busy hosts often exceed sub-second delivery.
+    let notify_timeout = Duration::from_secs(5);
     for client in listening_clients.iter() {
-        let block_daa_score: u64 = match timeout(Duration::from_millis(500), client.block_added_listener().unwrap().receiver.recv())
+        let block_daa_score: u64 = match timeout(notify_timeout, client.block_added_listener().unwrap().receiver.recv())
             .await
             .unwrap()
             .unwrap()
@@ -205,7 +207,7 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
             }
             _ => panic!("wrong notification type"),
         };
-        match timeout(Duration::from_millis(500), client.virtual_daa_score_changed_listener().unwrap().receiver.recv())
+        match timeout(notify_timeout, client.virtual_daa_score_changed_listener().unwrap().receiver.recv())
             .await
             .unwrap()
             .unwrap()
