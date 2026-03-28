@@ -79,6 +79,14 @@ jobs:
           bash bridge/appimage/build.sh "${{ github.event.release.tag_name }}"
           echo "appimage=${GITHUB_WORKSPACE}/stratum-bridge-${{ github.event.release.tag_name }}-x86_64.AppImage" >> $GITHUB_ENV
 
+      - name: Pack AppImage tarball (preserves executable bit on Linux extract)
+        if: runner.os == 'Linux' && steps.appimage.outcome == 'success'
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          IMG="stratum-bridge-${{ github.event.release.tag_name }}-x86_64.AppImage"
+          tar -czf "${IMG}.tar.gz" "$IMG"
+          echo "appimage_tarball=${GITHUB_WORKSPACE}/${IMG}.tar.gz" >> $GITHUB_ENV
+
       - name: Build on Windows
         if: runner.os == 'Windows'
         shell: bash
@@ -119,11 +127,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload stratum-bridge AppImage
+      - name: Upload stratum-bridge AppImage release assets
         if: runner.os == 'Linux' && steps.appimage.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.appimage }}
+          files: |
+            ${{ env.appimage }}
+            ${{ env.appimage_tarball }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
