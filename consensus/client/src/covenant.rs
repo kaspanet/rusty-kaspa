@@ -224,7 +224,7 @@ impl GenesisCovenantGroup {
         self.inner.authorizing_input = value;
     }
 
-    #[wasm_bindgen(setter = outputs, js_name = otuputs)]
+    #[wasm_bindgen(setter = outputs, js_name = outputs)]
     pub fn js_set_outputs(&mut self, outputs: NumberArray) -> ClientResult<()> {
         let outputs: Vec<u32> = serde_wasm_bindgen::from_value(outputs.into())?;
         self.inner.outputs = outputs;
@@ -232,7 +232,7 @@ impl GenesisCovenantGroup {
     }
 
     #[wasm_bindgen(getter, js_name = outputs)]
-    pub fn js_outputs(&self) -> NumberArray {
+    pub fn js_get_outputs(&self) -> NumberArray {
         serde_wasm_bindgen::to_value(&self.inner.outputs)
             .expect("serializing genesis covenant outputs should not fail")
             .unchecked_into()
@@ -329,7 +329,7 @@ mod tests {
     fn test_genesis_covenant_group_outputs_setter() {
         let mut group = construct_genesis_covenant_group(0, &[0, 1]);
 
-        group.set_outputs(to_js_array(&[3, 4, 5]).unchecked_into()).expect("set_outputs should succeed");
+        group.js_set_outputs(to_js_array(&[3, 4, 5]).unchecked_into()).expect("set_outputs should succeed");
 
         assert_eq!(get_genesis_covenant_group_outputs(&group), vec![3, 4, 5]);
     }
