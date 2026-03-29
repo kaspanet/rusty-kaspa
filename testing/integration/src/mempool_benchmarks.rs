@@ -384,8 +384,8 @@ async fn bench_bbt_latency_2() {
 /// Benchmark measuring KIP-21 SMT overhead — every tx gets a unique lane.
 ///
 /// The miner picks txs from the mempool, so lanes-per-block = txs-per-block
-/// (typically ~300 TPB from baseline). This measures the worst case where
-/// every transaction belongs to a distinct subnetwork.
+/// (typically ~300 TPB from baseline). This measures the case where
+/// each level draws transactions from a fixed-size random lane pool.
 ///
 /// Run with:
 /// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency_lanes --exact --nocapture --ignored`
@@ -397,8 +397,9 @@ async fn bench_bbt_latency_lanes() {
 
     const BLOCK_COUNT: usize = usize::MAX;
     const MEMPOOL_TARGET: u64 = 600_000;
-    const TX_COUNT: usize = 1_000_000;
-    const TX_LEVEL_WIDTH: usize = 300_000;
+    const TX_COUNT: usize = 1_200_000;
+    const TX_LEVEL_WIDTH: usize = 6_000;
+    const TX_LANES_PER_LEVEL: usize = 100;
     const TPS_PRESSURE: u64 = u64::MAX;
     const SUBMIT_BLOCK_CLIENTS: usize = 20;
     const SUBMIT_TX_CLIENTS: usize = 2;
@@ -422,9 +423,16 @@ async fn bench_bbt_latency_lanes() {
     let params: Params = network.into();
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
-    let txs = common::utils::generate_tx_dag_with_lanes(utxoset.clone(), schnorr_key, spk, TX_COUNT / TX_LEVEL_WIDTH, TX_LEVEL_WIDTH);
+    let txs = common::utils::generate_tx_dag_with_lanes(
+        utxoset.clone(),
+        schnorr_key,
+        spk,
+        TX_COUNT / TX_LEVEL_WIDTH,
+        TX_LEVEL_WIDTH,
+        TX_LANES_PER_LEVEL,
+    );
     common::utils::verify_tx_dag(&utxoset, &txs);
-    info!("Generated {} txs, each with a unique lane", txs.len());
+    info!("Generated {} txs using {} random lane ids per level", txs.len(), TX_LANES_PER_LEVEL);
 
     let client_manager = Arc::new(ClientManager::new(args));
     let mut tasks = TasksRunner::new(Some(DaemonTask::build(client_manager.clone())))
