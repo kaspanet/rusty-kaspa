@@ -30,8 +30,8 @@ use std::{
 };
 use tokio::time::timeout;
 
-pub(crate) const EXPAND_FACTOR: u64 = 1;
-pub(crate) const CONTRACT_FACTOR: u64 = 1;
+pub(crate) const EXPAND_FACTOR: u64 = 2;
+pub(crate) const CONTRACT_FACTOR: u64 = 2;
 
 const fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
     200 + 34 * num_outputs + 1000 * (num_inputs as u64)
