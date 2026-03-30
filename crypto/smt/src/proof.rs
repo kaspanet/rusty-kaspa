@@ -185,13 +185,22 @@ impl OwnedSmtProof {
                 let Some((&leaf_hash, rem)) = rem.split_first_chunk::<32>() else {
                     return Err(SmtProofError::SiblingCountMismatch { expected: 0, actual: 0 });
                 };
-                (ProofTerminal::CollapsedOther { depth, leaf: CollapsedLeaf { lane_key: Hash::from_bytes(lane_key), leaf_hash: Hash::from_bytes(leaf_hash) } }, rem)
+                (
+                    ProofTerminal::CollapsedOther {
+                        depth,
+                        leaf: CollapsedLeaf { lane_key: Hash::from_bytes(lane_key), leaf_hash: Hash::from_bytes(leaf_hash) },
+                    },
+                    rem,
+                )
             }
             _ => return Err(SmtProofError::SiblingCountMismatch { expected: bitmap_clear_count(&bitmap), actual: rem.len() / 32 }),
         };
         let (siblings, rem) = sibling_bytes.as_chunks::<32>();
         if !rem.is_empty() {
-            return Err(SmtProofError::SiblingCountMismatch { expected: bitmap_clear_count_before(&bitmap, terminal), actual: sibling_bytes.len() / 32 });
+            return Err(SmtProofError::SiblingCountMismatch {
+                expected: bitmap_clear_count_before(&bitmap, terminal),
+                actual: sibling_bytes.len() / 32,
+            });
         }
         let expected = bitmap_clear_count_before(&bitmap, terminal);
         if siblings.len() != expected {

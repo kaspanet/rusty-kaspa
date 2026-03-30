@@ -278,7 +278,7 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
     let height = DEPTH - 1 - depth;
     let subtree_key = BranchKey::new(height as u8, &updates[0].key);
 
-        let existing = read_node::<S>(store, changes, &subtree_key)?;
+    let existing = read_node::<S>(store, changes, &subtree_key)?;
 
     // Single update into empty subtree: immediate collapse
 
@@ -357,7 +357,9 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
 
         let result = match (&left_result, &right_result) {
             (NodeResult::Empty, NodeResult::Empty) => NodeResult::Empty,
-            (NodeResult::Collapsed(cl), NodeResult::Empty) | (NodeResult::Empty, NodeResult::Collapsed(cl)) => NodeResult::Collapsed(*cl),
+            (NodeResult::Collapsed(cl), NodeResult::Empty) | (NodeResult::Empty, NodeResult::Collapsed(cl)) => {
+                NodeResult::Collapsed(*cl)
+            }
             _ => NodeResult::Internal { hash: hash_node::<H>(left_hash, right_hash) },
         };
 
@@ -1846,8 +1848,7 @@ mod tests {
     /// Multiple leaves inserted incrementally: walk_up must match incremental SLO.
     #[test]
     fn walk_up_vs_slo_incremental_multi() {
-        let keys_and_leaves: Vec<(Hash, Hash)> =
-            (0u8..10).map(|i| (test_key(&[i]), test_leaf(&[i + 100]))).collect();
+        let keys_and_leaves: Vec<(Hash, Hash)> = (0u8..10).map(|i| (test_key(&[i]), test_leaf(&[i + 100]))).collect();
 
         // walk_up path
         let mut tree = Smt::new();
@@ -1859,8 +1860,7 @@ mod tests {
         let mut store = BTreeSmtStore::new();
         let mut slo_root = TestHasher::empty_root();
         for &(k, l) in &keys_and_leaves {
-            let (new_root, changes) =
-                compute_root_update::<TestHasher, _>(&store, slo_root, updates([(k, l)])).unwrap();
+            let (new_root, changes) = compute_root_update::<TestHasher, _>(&store, slo_root, updates([(k, l)])).unwrap();
             apply_changes(&mut store, &changes);
             slo_root = new_root;
         }
@@ -1871,8 +1871,7 @@ mod tests {
     /// Batch SLO must match walk_up for the same leaf set.
     #[test]
     fn walk_up_vs_slo_batch() {
-        let keys_and_leaves: Vec<(Hash, Hash)> =
-            (0u8..5).map(|i| (test_key(&[i]), test_leaf(&[i + 50]))).collect();
+        let keys_and_leaves: Vec<(Hash, Hash)> = (0u8..5).map(|i| (test_key(&[i]), test_leaf(&[i + 50]))).collect();
 
         let mut tree = Smt::new();
         for &(k, l) in &keys_and_leaves {
@@ -1880,12 +1879,8 @@ mod tests {
         }
 
         let store = BTreeSmtStore::new();
-        let (slo_root, _) = compute_root_update::<TestHasher, _>(
-            &store,
-            TestHasher::empty_root(),
-            updates(keys_and_leaves.clone()),
-        )
-        .unwrap();
+        let (slo_root, _) =
+            compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates(keys_and_leaves.clone())).unwrap();
 
         assert_eq!(tree.root(), slo_root, "walk_up and batch SLO must agree");
     }
@@ -1958,8 +1953,7 @@ mod tests {
             }
 
             let store = BTreeSmtStore::new();
-            let (slo_root, _) =
-                compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates(kv)).unwrap();
+            let (slo_root, _) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates(kv)).unwrap();
 
             assert_eq!(tree.root(), slo_root, "walk_up vs batch SLO mismatch for n={n}");
         }
