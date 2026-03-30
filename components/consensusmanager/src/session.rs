@@ -501,6 +501,32 @@ impl ConsensusSessionOwned {
     pub async fn async_get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
         self.clone().spawn_blocking(move |c| c.get_n_last_pruning_points(n)).await
     }
+    pub async fn async_clear_pruning_smt_stores(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_pruning_smt_stores()).await
+    }
+    pub async fn async_set_pruning_smt_stable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_smt_stable_flag(true)).await
+    }
+    pub async fn async_is_pruning_smt_stable(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_smt_stable()).await
+    }
+    pub async fn async_get_pruning_point_smt_metadata(
+        &self,
+        expected_pp: Hash,
+    ) -> ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+        self.clone().spawn_blocking(move |c| c.get_pruning_point_smt_metadata(expected_pp)).await
+    }
+
+    /// Iterate canonical SMT lanes in a blocking context, calling `f` for each.
+    /// Stops if `f` returns false (e.g. channel closed).
+    /// Must be called from a blocking context (e.g. `spawn_blocking`).
+    pub fn blocking_iter_smt_lanes(
+        &self,
+        expected_pp: Hash,
+        f: impl FnMut(kaspa_consensus_core::api::ImportLane) -> bool + Send + 'static,
+    ) {
+        self.consensus.as_ref().iter_pruning_point_smt_lanes(expected_pp, Box::new(f));
+    }
 }
 
 pub type ConsensusProxy = ConsensusSessionOwned;

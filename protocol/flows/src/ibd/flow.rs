@@ -144,6 +144,7 @@ impl IbdFlow {
                         self.router
                     );
 
+                    self.sync_new_smt_state(&session, pruning_point).await?;
                     self.sync_new_utxo_set(&session, pruning_point).await?;
                 }
                 // Once utxo is valid, simply sync missing headers
@@ -171,6 +172,7 @@ impl IbdFlow {
                         // Next, sync a utxoset corresponding to the new pruning point from the syncer.
                         // Note that the new pruning point's anticone need not be downloaded separately as in other IBD types
                         // as it was just downloaded as part of the headers proof.
+                        self.sync_new_smt_state(&session, negotiation_output.syncer_pruning_point).await?;
                         self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
                     }
                     Err(e) => {
@@ -186,6 +188,7 @@ impl IbdFlow {
                     Ok(()) => {
                         info!("header stage of pruning catchup from peer {} completed", self.router);
                         self.sync_missing_trusted_bodies(&session).await?;
+                        self.sync_new_smt_state(&session, negotiation_output.syncer_pruning_point).await?;
                         self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
                         // Note that pruning of old data will only occur once virtual has caught up sufficiently far
                     }
@@ -602,6 +605,69 @@ impl IbdFlow {
 
         self.sync_missing_relay_past_headers(consensus, syncer_virtual_selected_parent, relay_block.hash()).await?;
 
+        Ok(())
+    }
+
+    async fn sync_new_smt_state(&mut self, consensus: &ConsensusProxy, pruning_point: Hash) -> Result<(), ProtocolError> {
+        use super::streams::SmtStream;
+        use kaspa_p2p_lib::pb::RequestPruningPointSmtStateMessage;
+        use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
+
+        let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
+        if !self.ctx.config.covenants_activation.is_active(pp_header.daa_score) {
+            return Ok(());
+        }
+
+        consensus.async_clear_pruning_smt_stores().await;
+
+        info!("downloading the pruning point SMT state from {}", self.router);
+
+        self.router
+            .enqueue(make_message!(
+                Payload::RequestPruningPointSmtState,
+                RequestPruningPointSmtStateMessage { pruning_point_hash: Some(pruning_point.into()) }
+            ))
+            .await?;
+
+        let mut stream = SmtStream::new(&self.router, &mut self.incoming_route);
+
+        // Phase 0: receive and verify metadata
+        let md = stream.recv_metadata().await?;
+        let parent_header = consensus.async_get_header(pp_header.direct_parents()[0]).await.unwrap();
+        verify_smt_metadata(
+            &SmtMetadata {
+                lanes_root: &md.lanes_root,
+                payload_and_ctx_digest: &md.payload_and_ctx_digest,
+                parent_seq_commit: &md.parent_seq_commit,
+            },
+            pp_header.accepted_id_merkle_root,
+            parent_header.accepted_id_merkle_root,
+        )
+        .map_err(|e| ProtocolError::OtherOwned(format!("SMT metadata verification failed: {e}")))?;
+
+        let lanes_root = md.lanes_root;
+        let payload_and_ctx_digest = md.payload_and_ctx_digest;
+
+        // TODO: SMT is built in 3 places (block verification, virtual state, IBD import).
+        // All currently collect leaves into a BTreeMap then compute sequentially.
+        // Optimize: stream leaves directly into the processor, let it detect siblings
+        // vs empty and dispatch hash computation to a thread pool at each level.
+        let mut lanes = Vec::with_capacity(md.active_lanes_count as usize);
+        while let Some(lane) = stream.next().await? {
+            lanes.push(lane);
+        }
+
+        let lane_count = lanes.len();
+        let expected_count = md.active_lanes_count;
+        consensus
+            .clone()
+            .spawn_blocking(move |c| {
+                c.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, lanes)
+            })
+            .await?;
+        consensus.async_set_pruning_smt_stable().await;
+
+        info!("SMT state synced: {} lanes", lane_count);
         Ok(())
     }
 

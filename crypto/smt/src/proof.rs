@@ -1,50 +1,44 @@
 //! Sparse Merkle Tree proof types and `no_std` verification.
 //!
-//! # Proof format
+//! A proof consists of 256 sibling hashes compressed via a 32-byte bitmap.
+//! When a sibling equals the canonical empty subtree hash for its level,
+//! the bitmap bit is set and the sibling is omitted. This typically reduces
+//! proof size from 8 KiB to a few hundred bytes.
 //!
-//! A proof consists of 256 sibling hashes (one per tree level) compressed
-//! via a 32-byte bitmap. When a sibling is the canonical empty subtree hash
-//! for its level, the corresponding bitmap bit is set and the sibling is
-//! omitted from storage. This typically reduces proof size from 8 KiB to
-//! a few hundred bytes for sparse trees.
-//!
-//! # Types
-//!
-//! - [`SmtProof`] — borrowed view (`&[u8; 32]` bitmap + `&[Hash]` siblings).
-//!   Zero-alloc verification, usable in ZK guest programs without `alloc`.
-//! - [`OwnedSmtProof`] — owned (`[u8; 32]` + `Vec<Hash>`). Requires `alloc`.
-//!   Delegates to [`SmtProof`] via [`as_proof()`](OwnedSmtProof::as_proof).
+//! - [`SmtProof`] — borrowed view, zero-alloc, usable in `no_std` / ZK.
+//! - [`OwnedSmtProof`] — owned, delegates to `SmtProof` via `as_proof()`.
 
 use alloc::vec::Vec;
 use kaspa_hashes::{Hash, ZERO_HASH};
 
+use crate::store::{BranchChildren, BranchKey};
+use crate::tree::SmtBranchChanges;
 use crate::{DEPTH, SmtHasher, bit_at, hash_node};
 
-/// Errors that can occur when verifying or computing a root from an [`SmtProof`].
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SmtProofError {
-    /// The number of non-empty siblings does not match the bitmap.
     #[error("sibling count mismatch: bitmap implies {expected} non-empty siblings, but got {actual}")]
     SiblingCountMismatch { expected: usize, actual: usize },
 }
 
-/// Check whether the sibling at the given depth is an empty subtree hash.
 #[inline]
 fn is_empty_at_depth(bitmap: &[u8; 32], d: usize) -> bool {
     bitmap[d / 8] & (1 << (d % 8)) != 0
 }
 
-/// Number of clear bits in the bitmap (expected non-empty sibling count).
 fn bitmap_clear_count(bitmap: &[u8; 32]) -> usize {
     DEPTH - bitmap.iter().map(|b| b.count_ones() as usize).sum::<usize>()
 }
 
-/// Compute the Merkle root from a bitmap, siblings slice, key, and leaf hash.
+/// Compute the Merkle root from a proof.
+/// If `cache` is provided, each branch is looked up first (skip hash_node if found)
+/// and newly computed branches are inserted.
 fn compute_root_inner<H: SmtHasher>(
     bitmap: &[u8; 32],
     siblings: &[Hash],
     key: &Hash,
     leaf_hash: Option<Hash>,
+    mut cache: Option<&mut SmtBranchChanges>,
 ) -> Result<Hash, SmtProofError> {
     let expected = bitmap_clear_count(bitmap);
     if siblings.len() != expected {
@@ -52,31 +46,36 @@ fn compute_root_inner<H: SmtHasher>(
     }
 
     let mut current = leaf_hash.unwrap_or(ZERO_HASH);
-
-    // Siblings are stored shallowest-first (depth 0 first); we consume
-    // them deepest-first (depth 255 first) during the leaf-to-root walk.
     let mut sib_idx = siblings.len();
 
     for d in (0..DEPTH).rev() {
-        // level = height from leaf: depth 255 → level 0, depth 0 → level 255
-        let level = DEPTH - 1 - d;
+        let height = (DEPTH - 1 - d) as u8;
         let sibling = if is_empty_at_depth(bitmap, d) {
-            H::EMPTY_HASHES[level]
+            H::EMPTY_HASHES[height as usize]
         } else {
             sib_idx -= 1;
             siblings[sib_idx]
         };
 
-        current = if bit_at(key, d) { hash_node::<H>(sibling, current) } else { hash_node::<H>(current, sibling) };
+        let (left, right) = if bit_at(key, d) { (sibling, current) } else { (current, sibling) };
+
+        current = if let Some(ref mut cache) = cache {
+            let bk = BranchKey::new(height, key);
+            if let Some(cached) = cache.get(&bk) {
+                hash_node::<H>(cached.left, cached.right)
+            } else {
+                cache.insert(bk, BranchChildren { left, right });
+                hash_node::<H>(left, right)
+            }
+        } else {
+            hash_node::<H>(left, right)
+        };
     }
 
     Ok(current)
 }
 
-/// A borrowed compressed proof for a 256-bit Sparse Merkle Tree.
-///
-/// Zero-alloc: holds `&[u8; 32]` bitmap and `&[Hash]` siblings.
-/// Use this for verification in `no_std` / ZK contexts.
+/// Borrowed compressed proof for a 256-bit Sparse Merkle Tree.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SmtProof<'a> {
     pub bitmap: &'a [u8; 32],
@@ -84,31 +83,37 @@ pub struct SmtProof<'a> {
 }
 
 impl<'a> SmtProof<'a> {
-    /// Compute the Merkle root implied by this proof and the given leaf.
     pub fn compute_root<H: SmtHasher>(&self, key: &Hash, leaf_hash: Option<Hash>) -> Result<Hash, SmtProofError> {
-        compute_root_inner::<H>(self.bitmap, self.siblings, key, leaf_hash)
+        compute_root_inner::<H>(self.bitmap, self.siblings, key, leaf_hash, None)
     }
 
-    /// Verify that `key` maps to `leaf_hash` (or is absent) under the given `root`.
     pub fn verify<H: SmtHasher>(&self, key: &Hash, leaf_hash: Option<Hash>, root: Hash) -> Result<bool, SmtProofError> {
         Ok(self.compute_root::<H>(key, leaf_hash)? == root)
     }
 
-    /// Number of non-empty (explicitly stored) siblings.
+    /// Verify the proof while populating `cache` with intermediate branches.
+    /// Branches already in the cache are reused (hash_node skipped).
+    pub fn verify_cached<H: SmtHasher>(
+        &self,
+        key: &Hash,
+        leaf_hash: Option<Hash>,
+        root: Hash,
+        cache: &mut SmtBranchChanges,
+    ) -> Result<bool, SmtProofError> {
+        let computed = compute_root_inner::<H>(self.bitmap, self.siblings, key, leaf_hash, Some(cache))?;
+        Ok(computed == root)
+    }
+
     pub fn non_empty_count(&self) -> usize {
         self.siblings.len()
     }
 
-    /// Total number of empty (bitmap-compressed) siblings.
     pub fn empty_count(&self) -> usize {
         DEPTH - self.siblings.len()
     }
 }
 
-/// An owned compressed proof for a 256-bit Sparse Merkle Tree.
-///
-/// Owns its bitmap and siblings `Vec`. Created by [`SparseMerkleTree::prove`](crate::tree::SparseMerkleTree::prove).
-/// Use [`as_proof()`](Self::as_proof) to get a borrowed [`SmtProof`] view.
+/// Owned compressed proof for a 256-bit Sparse Merkle Tree.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OwnedSmtProof {
     pub bitmap: [u8; 32],
@@ -116,27 +121,43 @@ pub struct OwnedSmtProof {
 }
 
 impl OwnedSmtProof {
-    /// Borrow as a [`SmtProof`] view.
+    /// Parse from wire format: `bitmap[32] || siblings[N * 32]`.
+    /// Returns `Err` if the length is not `32 + N * 32` where N matches the bitmap.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, SmtProofError> {
+        let Some((&bitmap, sibling_bytes)) = data.split_first_chunk::<32>() else {
+            return Err(SmtProofError::SiblingCountMismatch { expected: 0, actual: 0 });
+        };
+        let (siblings, rem) = sibling_bytes.as_chunks::<32>();
+        if !rem.is_empty() {
+            return Err(SmtProofError::SiblingCountMismatch {
+                expected: bitmap_clear_count(&bitmap),
+                actual: sibling_bytes.len() / 32,
+            });
+        }
+        let expected = bitmap_clear_count(&bitmap);
+        if siblings.len() != expected {
+            return Err(SmtProofError::SiblingCountMismatch { expected, actual: siblings.len() });
+        }
+        let siblings = siblings.iter().copied().map(Hash::from_bytes).collect::<Vec<_>>();
+        Ok(Self { bitmap, siblings })
+    }
+
     pub fn as_proof(&self) -> SmtProof<'_> {
         SmtProof { bitmap: &self.bitmap, siblings: &self.siblings }
     }
 
-    /// Compute the Merkle root implied by this proof and the given leaf.
     pub fn compute_root<H: SmtHasher>(&self, key: &Hash, leaf_hash: Option<Hash>) -> Result<Hash, SmtProofError> {
-        compute_root_inner::<H>(&self.bitmap, &self.siblings, key, leaf_hash)
+        self.as_proof().compute_root::<H>(key, leaf_hash)
     }
 
-    /// Verify that `key` maps to `leaf_hash` (or is absent) under the given `root`.
     pub fn verify<H: SmtHasher>(&self, key: &Hash, leaf_hash: Option<Hash>, root: Hash) -> Result<bool, SmtProofError> {
-        Ok(self.compute_root::<H>(key, leaf_hash)? == root)
+        self.as_proof().verify::<H>(key, leaf_hash, root)
     }
 
-    /// Number of non-empty (explicitly stored) siblings.
     pub fn non_empty_count(&self) -> usize {
         self.siblings.len()
     }
 
-    /// Total number of empty (bitmap-compressed) siblings.
     pub fn empty_count(&self) -> usize {
         DEPTH - self.siblings.len()
     }

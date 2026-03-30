@@ -54,6 +54,10 @@ message KaspadMessage {
     RequestNextPruningPointAndItsAnticoneBlocksMessage requestNextPruningPointAndItsAnticoneBlocks = 56;
     BlockBodyMessage blockBody = 57;
     RequestBlockBodiesMessage requestBlockBodies = 58;
+    RequestPruningPointSmtStateMessage requestPruningPointSmtState = 59;
+    SmtMetadataMessage smtMetadata = 60;
+    SmtLaneEntryMessage smtLaneEntry = 61;
+    DoneSmtChunksMessage doneSmtChunks = 62;
   }
 }
 

@@ -48,6 +48,10 @@ pub struct Verified<T> {
 }
 
 impl<T> Verified<T> {
+    pub fn new(data: T, blue_score: u64, block_hash: Hash) -> Self {
+        Self { data, blue_score, block_hash }
+    }
+
     pub fn block_hash(&self) -> Hash {
         self.block_hash
     }

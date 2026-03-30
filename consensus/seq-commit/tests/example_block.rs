@@ -59,9 +59,9 @@ fn example_seq_commit_for_block() {
     // --- SMT carries forward from previous state (lane A already present) ---
     let key_a = lane_key(&lane_a);
     let prev_leaf_a =
-        smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &lane_a_prev_tip, blue_score: lane_a_prev_blue_score });
+        smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a, lane_tip: &lane_a_prev_tip, blue_score: lane_a_prev_blue_score });
     let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
-    smt.insert(key_a, prev_leaf_a).unwrap();
+    smt.insert(key_a, prev_leaf_a);
 
     // --- Selected parent block: 2 txs on lane A ---
     let selected_parent = MergedBlock {
@@ -134,11 +134,11 @@ fn example_seq_commit_for_block() {
 
     // --- Update SMT: lane A gets updated leaf, lane B is inserted as new ---
     let key_b = lane_key(&lane_b);
-    let new_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &tip_a, blue_score });
-    let new_leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b, blue_score });
+    let new_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a, lane_tip: &tip_a, blue_score });
+    let new_leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b, lane_tip: &tip_b, blue_score });
 
-    smt.insert(key_a, new_leaf_a).unwrap(); // update existing lane A
-    smt.insert(key_b, new_leaf_b).unwrap(); // insert new lane B
+    smt.insert(key_a, new_leaf_a); // update existing lane A
+    smt.insert(key_b, new_leaf_b); // insert new lane B
     let lanes_root = smt.root();
 
     // --- Miner payload: one leaf per merged block, in mergeset order ---
@@ -156,7 +156,8 @@ fn example_seq_commit_for_block() {
     let payload_root = miner_payload_root(payload_leaves.into_iter());
 
     // --- State root and final commitment ---
-    let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, context_hash: &ctx, payload_root: &payload_root });
+    let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&ctx, &payload_root);
+    let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &pd });
     let commitment = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
 
     // Recomputing with the same inputs yields the same result

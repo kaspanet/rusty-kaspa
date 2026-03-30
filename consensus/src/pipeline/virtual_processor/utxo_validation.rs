@@ -47,6 +47,24 @@ use rayon::prelude::*;
 use smallvec::{SmallVec, smallvec};
 use std::{iter::once, ops::Deref};
 
+/// Per-lane activity and miner payload data extracted from a mergeset.
+pub(super) struct MergesetSeqData {
+    /// Per-lane activity leaves: lane_id → [activity_leaf hashes].
+    /// BTreeMap gives sorted iteration over lanes.
+    pub lane_activities: std::collections::BTreeMap<[u8; 20], Vec<Hash>>,
+    /// One payload leaf hash per merged block, in mergeset order.
+    pub miner_payload_leaves: Vec<Hash>,
+}
+
+/// A resolved lane update ready for SMT processing.
+pub(super) struct ResolvedLaneUpdate {
+    pub lane_key: kaspa_smt_store::LaneKey,
+    pub lane_id: [u8; 20],
+    pub new_tip: Hash,
+    /// True if this lane had no active canonical version (new or reactivated).
+    pub is_new: bool,
+}
+
 pub(crate) mod crescendo {
     use kaspa_core::{info, log::CRESCENDO_KEYWORD};
     use std::sync::{
@@ -198,7 +216,7 @@ impl VirtualStateProcessor {
         ctx: &mut UtxoProcessingContext,
         selected_parent_utxo_view: &V,
         header: &Header,
-    ) -> BlockProcessResult<()> {
+    ) -> BlockProcessResult<Option<kaspa_smt_store::processor::SmtBuild>> {
         // Verify header UTXO commitment
         let expected_commitment = ctx.multiset_hash.finalize();
         if expected_commitment != header.utxo_commitment {
@@ -206,16 +224,12 @@ impl VirtualStateProcessor {
         }
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
-        let expected_accepted_id_merkle_root = if self.covenants_activation.is_active(header.daa_score) {
-            let digests = ctx
-                .accepted_tx_ids
-                .iter()
-                .copied()
-                .zip(ctx.accepted_tx_versions.iter().copied())
-                .map(|(txid, version)| seq_commit_tx_digest(txid, version));
-            self.calc_accepted_id_merkle_root(header.daa_score, digests, ctx.selected_parent())
+        let (expected_accepted_id_merkle_root, smt_build) = if self.covenants_activation.is_active(header.daa_score) {
+            // KIP-21: compute seq_commit from SMT lane processing
+            let (hash, build) = self.recompute_seq_commit(ctx, header)?;
+            (hash, Some(build))
         } else {
-            self.calc_accepted_id_merkle_root(header.daa_score, ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent())
+            (self.calc_accepted_id_merkle_root(header.daa_score, ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent()), None)
         };
 
         // Verify header accepted_id_merkle_root
@@ -272,7 +286,7 @@ impl VirtualStateProcessor {
             return Err(InvalidTransactionsInUtxoContext(txs.len() - 1 - validated_transactions.len(), txs.len() - 1));
         }
 
-        Ok(())
+        Ok(smt_build)
     }
 
     fn verify_header_pruning_point(
@@ -485,6 +499,176 @@ impl VirtualStateProcessor {
         )?;
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())
+    }
+
+    // =========================================================================
+    // KIP-21: Sequencing commitment — shared helpers
+    // =========================================================================
+
+    /// Collect per-lane activity leaves and miner payload leaves from the mergeset.
+    pub(super) fn collect_mergeset_seq_data(&self, ctx: &UtxoProcessingContext) -> MergesetSeqData {
+        use kaspa_seq_commit::hashing::{activity_leaf, miner_payload_leaf};
+        use kaspa_seq_commit::types::MinerPayloadLeafInput;
+
+        let mut lane_activities: std::collections::BTreeMap<[u8; 20], Vec<Hash>> = std::collections::BTreeMap::new();
+        let mut miner_payload_leaves = Vec::new();
+        let mut global_merge_idx: u32 = 0;
+
+        for block_acceptance in ctx.mergeset_acceptance_data.iter() {
+            let merged_block = block_acceptance.block_hash;
+            let merged_header = self.headers_store.get_header(merged_block).unwrap();
+            let block_txs = self.block_transactions_store.get(merged_block).unwrap();
+
+            let blue_work_bytes = merged_header.blue_work.to_le_bytes();
+            let coinbase_payload = &block_txs[0].payload;
+            let mpl = miner_payload_leaf(&MinerPayloadLeafInput {
+                block_hash: &merged_block,
+                blue_work_bytes: &blue_work_bytes,
+                payload: coinbase_payload,
+            });
+            miner_payload_leaves.push(mpl);
+
+            for accepted_tx in block_acceptance.accepted_transactions.iter() {
+                let tx = &block_txs[accepted_tx.index_within_block as usize];
+                let lane_id: [u8; 20] = *tx.subnetwork_id.as_bytes();
+                let tx_digest = seq_commit_tx_digest(accepted_tx.transaction_id, tx.version);
+                let al = activity_leaf(&tx_digest, global_merge_idx);
+                lane_activities.entry(lane_id).or_default().push(al);
+                global_merge_idx += 1;
+            }
+        }
+
+        MergesetSeqData { lane_activities, miner_payload_leaves }
+    }
+
+    /// Resolve lane activities into concrete lane updates: look up parent tips
+    /// from DB, compute new tips via `lane_tip_next`.
+    pub(super) fn resolve_lane_updates(
+        &self,
+        data: &MergesetSeqData,
+        context_hash: &Hash,
+        parent_blue_score: u64,
+        selected_parent: Hash,
+        parent_seq_commit: Hash,
+    ) -> Vec<ResolvedLaneUpdate> {
+        use kaspa_seq_commit::hashing::{activity_digest_lane, lane_key, lane_tip_next};
+        use kaspa_seq_commit::types::LaneTipInput;
+        let mut updates = Vec::with_capacity(data.lane_activities.len());
+
+        for (lane_id, activity_leaves) in &data.lane_activities {
+            let lk = lane_key(lane_id);
+            let ad = activity_digest_lane(activity_leaves.iter().copied());
+
+            // Look up current lane tip.
+            // New/reactivated lanes use parent_seq_commit as anchor (KIP-21 §5.1).
+            let existing = self
+                .smt_stores
+                .get_lane(lk, parent_blue_score.saturating_sub(self.finality_depth), |bh| self.is_smt_canonical(bh, selected_parent));
+            let is_new = existing.is_none();
+            let parent_ref = existing.map(|v| v.data().lane_tip_hash).unwrap_or(parent_seq_commit);
+
+            let new_tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_ref, lane_id, activity_digest: &ad, context_hash });
+
+            updates.push(ResolvedLaneUpdate { lane_key: lk, lane_id: *lane_id, new_tip, is_new });
+        }
+
+        updates
+    }
+
+    /// Build the SMT from lane updates + expirations, compute the final seq_commit hash.
+    ///
+    /// `parent_lanes_root` is the SMT root inherited from the selected parent block.
+    /// Works with an immutable view of DB state. Returns the commit hash and an `SmtBuild`
+    /// containing the diff (updated branches, lane versions, score index) for later persistence.
+    ///
+    /// TODO: SMT is built in 3 places (block verification, virtual state, IBD import).
+    /// All currently collect leaves into a BTreeMap then compute sequentially.
+    /// Optimize: stream leaves directly into the processor, let it detect siblings
+    /// vs empty and dispatch hash computation to a thread pool at each level.
+    pub(super) fn build_seq_commit(
+        &self,
+        parent_seq_commit: Hash,
+        context_hash: Hash,
+        current_blue_score: u64,
+        parent_blue_score: u64,
+        parent_lanes_root: Hash,
+        parent_active_lanes: u64,
+        lane_updates: &[ResolvedLaneUpdate],
+        miner_payload_leaves: Vec<Hash>,
+        selected_parent: Hash,
+    ) -> (Hash, kaspa_smt_store::processor::SmtBuild) {
+        use kaspa_seq_commit::hashing::{miner_payload_root, seq_commit, seq_state_root};
+        use kaspa_seq_commit::types::{SeqCommitInput, SeqState};
+        use kaspa_smt_store::processor::SmtProcessor;
+
+        // 1. Create processor starting from the parent's lanes root
+        let mut proc = SmtProcessor::new(&self.smt_stores, current_blue_score, self.finality_depth, parent_lanes_root);
+
+        // 2. Expire stale lanes
+        let expired_count = self.expire_stale_lanes(&mut proc, parent_blue_score, current_blue_score, selected_parent);
+
+        // 3. Apply lane updates
+        let new_lane_count = lane_updates.iter().filter(|lu| lu.is_new).count() as u64;
+        for lu in lane_updates {
+            proc.update_lane(lu.lane_key, lu.lane_id, lu.new_tip);
+        }
+
+        // 4. Build SMT (skips entirely when no pending leaves — no expirations, no touches)
+        let mut build = proc.build(|bh| self.is_smt_canonical(bh, selected_parent)).unwrap();
+
+        // 5. Compute final hash: payload_and_ctx_digest → state_root → seq_commit
+        let payload_root = miner_payload_root(miner_payload_leaves.into_iter());
+        let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&context_hash, &payload_root);
+        let state_root = seq_state_root(&SeqState { lanes_root: &build.root, payload_and_ctx_digest: &pd });
+        let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
+
+        // 6. Store metadata on the build for persistence
+        build.payload_and_ctx_digest = pd;
+        build.active_lanes_count = parent_active_lanes + new_lane_count - expired_count;
+
+        (commit, build)
+    }
+
+    /// KIP-21: Recompute the seq_commit for a chain block from its mergeset acceptance
+    /// data and SMT state. The caller compares the result against the header to verify
+    /// correctness. Returns the SmtBuild to flush so subsequent blocks can read updated state.
+    fn recompute_seq_commit(
+        &self,
+        ctx: &UtxoProcessingContext,
+        header: &Header,
+    ) -> BlockProcessResult<(Hash, kaspa_smt_store::processor::SmtBuild)> {
+        use kaspa_seq_commit::hashing::{mergeset_context_hash, seq_commit_timestamp};
+        use kaspa_seq_commit::types::MergesetContext;
+
+        let selected_parent = ctx.selected_parent();
+        let parent_header = self.headers_store.get_header(selected_parent).unwrap();
+        let current_blue_score = ctx.ghostdag_data.blue_score;
+
+        let context_hash = mergeset_context_hash(&MergesetContext {
+            timestamp: seq_commit_timestamp(parent_header.timestamp),
+            daa_score: header.daa_score,
+            blue_score: current_blue_score,
+        });
+
+        let parent_seq_commit = parent_header.accepted_id_merkle_root;
+        let data = self.collect_mergeset_seq_data(ctx);
+        let lane_updates =
+            self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
+        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
+
+        let (hash, build) = self.build_seq_commit(
+            parent_seq_commit,
+            context_hash,
+            current_blue_score,
+            parent_header.blue_score,
+            parent_lanes_root,
+            parent_active_lanes,
+            &lane_updates,
+            data.miner_payload_leaves,
+            selected_parent,
+        );
+
+        Ok((hash, build))
     }
 
     /// Calculates the accepted_id_merkle_root based on the current DAA score and the accepted tx ids

@@ -84,7 +84,6 @@ use once_cell::unsync::Lazy;
 use super::errors::{PruningImportError, PruningImportResult};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
-use kaspa_consensus_core::hashing::tx::seq_commit_tx_digest;
 use kaspa_consensus_core::tx::ValidatedTransaction;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
@@ -172,6 +171,10 @@ pub struct VirtualStateProcessor {
     // Covenants activation
     pub(crate) covenants_activation: ForkActivation,
 
+    // SMT stores
+    pub(super) smt_stores: Arc<kaspa_smt_store::processor::SmtStores>,
+    pub(super) smt_metadata_store: Arc<crate::model::stores::smt_metadata::DbSmtMetadataStore>,
+
     // Mining Rule
     _mining_rules: Arc<MiningRules>,
 }
@@ -240,6 +243,8 @@ impl VirtualStateProcessor {
             notification_root,
             counters,
             covenants_activation: params.covenants_activation,
+            smt_stores: storage.smt_stores.clone(),
+            smt_metadata_store: storage.smt_metadata_store.clone(),
             _mining_rules: mining_rules,
             finality_depth: params.finality_depth(),
         }
@@ -450,27 +455,32 @@ impl VirtualStateProcessor {
                     self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, pov_daa_score);
                     let res = self.verify_expected_utxo_state(&mut ctx, &selected_parent_utxo_view, &header);
 
-                    if let Err(rule_error) = res {
-                        info!("Block {} is disqualified from virtual chain: {}", current, rule_error);
-                        self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
-                        chain_disqualified_counter += 1;
-                    } else {
-                        debug!("VIRTUAL PROCESSOR, UTXO validated for {current}");
+                    match res {
+                        Err(rule_error) => {
+                            info!("Block {} is disqualified from virtual chain: {}", current, rule_error);
+                            self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
+                            chain_disqualified_counter += 1;
+                        }
+                        Ok(smt_build) => {
+                            debug!("VIRTUAL PROCESSOR, UTXO validated for {current}");
 
-                        // Accumulate the diff
-                        diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
-                        // Update the diff point
-                        diff_point = current;
-                        // Commit UTXO data for current chain block
-                        self.commit_utxo_state(
-                            current,
-                            ctx.mergeset_diff,
-                            ctx.multiset_hash,
-                            ctx.mergeset_acceptance_data,
-                            ctx.pruning_sample_from_pov.expect("verified"),
-                        );
-                        // Count the number of UTXO-processed chain blocks
-                        chain_block_counter += 1;
+                            // Accumulate the diff
+                            diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
+                            // Update the diff point
+                            diff_point = current;
+                            // Commit UTXO + SMT data for current chain block
+                            self.commit_utxo_state(
+                                current,
+                                ctx.mergeset_diff,
+                                ctx.multiset_hash,
+                                ctx.mergeset_acceptance_data,
+                                ctx.pruning_sample_from_pov.expect("verified"),
+                                smt_build,
+                                header.blue_score,
+                            );
+                            // Count the number of UTXO-processed chain blocks
+                            chain_block_counter += 1;
+                        }
                     }
                 }
                 Err(err) => panic!("unexpected error {err}"),
@@ -492,6 +502,8 @@ impl VirtualStateProcessor {
         multiset: MuHash,
         acceptance_data: AcceptanceData,
         pruning_sample_from_pov: Hash,
+        smt_build: Option<kaspa_smt_store::processor::SmtBuild>,
+        blue_score: u64,
     ) {
         let mut batch = WriteBatch::default();
         self.utxo_diffs_store.insert_batch(&mut batch, current, Arc::new(mergeset_diff)).unwrap();
@@ -499,6 +511,14 @@ impl VirtualStateProcessor {
         self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
         // Note we call idempotent since this field can be populated during IBD with headers proof
         self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).idempotent().unwrap();
+        // Flush SMT branch/lane/score-index changes (KIP-21) alongside UTXO data
+        if let Some(build) = smt_build {
+            let pd = build.payload_and_ctx_digest;
+            let alc = build.active_lanes_count;
+            let root = build.flush(&self.smt_stores, &mut batch, blue_score, current).unwrap();
+            use crate::model::stores::smt_metadata::SmtBlockMetadata;
+            self.smt_metadata_store.insert_batch(&mut batch, current, SmtBlockMetadata::new(root, pd, alc)).unwrap();
+        }
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
@@ -547,29 +567,144 @@ impl VirtualStateProcessor {
         // Update the accumulated diff
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
-        let accepted_tx_digests = if self.covenants_activation.is_active(virtual_daa_window.daa_score) {
-            ctx.accepted_tx_ids
-                .into_iter()
-                .zip(ctx.accepted_tx_versions)
-                .map(|(txid, version)| seq_commit_tx_digest(txid, version))
-                .collect()
+        let covenants_active = self.covenants_activation.is_active(virtual_daa_window.daa_score);
+
+        // Compute accepted_id_digests
+        let accepted_id_digests = if covenants_active {
+            let commit = self.compute_seq_commit(&ctx, &virtual_ghostdag_data, virtual_daa_window.daa_score);
+            // Post-KIP21: single-element vec containing the seq_commit.
+            // The virtual's SmtBuild is ephemeral — only chain blocks persist SMT state.
+            vec![commit]
         } else {
-            ctx.accepted_tx_ids
+            ctx.accepted_tx_ids.clone()
         };
 
         // Build the new virtual state
-        Ok(Arc::new(VirtualState::new(
+        let virtual_state = Arc::new(VirtualState::new(
             virtual_parents,
             virtual_daa_window.daa_score,
             virtual_bits,
             virtual_past_median_time,
             ctx.multiset_hash,
             ctx.mergeset_diff,
-            accepted_tx_digests,
+            accepted_id_digests,
             ctx.mergeset_rewards,
             virtual_daa_window.mergeset_non_daa,
             virtual_ghostdag_data,
-        )))
+        ));
+        Ok(virtual_state)
+    }
+
+    /// KIP-21: Compute the sequencing commitment for the virtual block.
+    fn compute_seq_commit(&self, ctx: &UtxoProcessingContext, virtual_ghostdag_data: &GhostdagData, daa_score: u64) -> Hash {
+        use kaspa_seq_commit::hashing::{mergeset_context_hash, seq_commit_timestamp};
+        use kaspa_seq_commit::types::MergesetContext;
+
+        let selected_parent = ctx.selected_parent();
+        let parent_header = self.headers_store.get_header(selected_parent).unwrap();
+        let current_blue_score = virtual_ghostdag_data.blue_score;
+
+        let context_hash = mergeset_context_hash(&MergesetContext {
+            timestamp: seq_commit_timestamp(parent_header.timestamp),
+            daa_score,
+            blue_score: current_blue_score,
+        });
+
+        let parent_seq_commit = parent_header.accepted_id_merkle_root;
+        let data = self.collect_mergeset_seq_data(ctx);
+        let lane_updates =
+            self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
+        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
+
+        let (commit, _build) = self.build_seq_commit(
+            parent_seq_commit,
+            context_hash,
+            current_blue_score,
+            parent_header.blue_score,
+            parent_lanes_root,
+            parent_active_lanes,
+            &lane_updates,
+            data.miner_payload_leaves,
+            selected_parent,
+        );
+        commit
+    }
+
+    /// Read stored SMT metadata for the pruning point.
+    pub fn get_pruning_point_smt_metadata(
+        &self,
+        expected_pruning_point: Hash,
+    ) -> kaspa_consensus_core::errors::consensus::ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+        use kaspa_consensus_core::api::SmtExportMetadata;
+        use kaspa_consensus_core::errors::consensus::ConsensusError;
+
+        let pp = self.pruning_point_store.read().pruning_point().unwrap();
+        if pp != expected_pruning_point {
+            return Err(ConsensusError::UnexpectedPruningPoint);
+        }
+
+        let meta = self
+            .smt_metadata_store
+            .get(pp)
+            .map_err(|_| ConsensusError::GeneralOwned(format!("SMT metadata not found for pruning point {pp}")))?;
+
+        let pp_header = self.headers_store.get_header(pp).unwrap();
+        let parent_seq_commit = self.headers_store.get_header(pp_header.direct_parents()[0]).unwrap().accepted_id_merkle_root;
+
+        Ok(SmtExportMetadata {
+            lanes_root: meta.lanes_root,
+            payload_and_ctx_digest: meta.payload_and_ctx_digest,
+            parent_seq_commit,
+            active_lanes_count: meta.active_lanes_count,
+        })
+    }
+
+    /// Check if `block_hash` is canonical for SMT lookups.
+    /// ZERO_HASH is treated as always canonical — it marks IBD-imported entries.
+    pub fn is_smt_canonical(&self, block_hash: Hash, selected_parent: Hash) -> bool {
+        block_hash == ZERO_HASH || self.reachability_service.is_chain_ancestor_of(block_hash, selected_parent)
+    }
+
+    /// Get the parent's lanes_root and active_lanes_count from the metadata store.
+    pub(super) fn get_parent_smt_metadata(&self, selected_parent: Hash) -> (Hash, u64) {
+        self.smt_metadata_store.get(selected_parent).map(|meta| (meta.lanes_root, meta.active_lanes_count)).unwrap_or_default() // genesis / pre-KIP21 fallback
+    }
+
+    /// Expire lanes that fall out of the active window between parent and current blue score.
+    /// Returns the number of lanes expired.
+    pub(super) fn expire_stale_lanes(
+        &self,
+        proc: &mut kaspa_smt_store::processor::SmtProcessor,
+        parent_blue_score: u64,
+        current_blue_score: u64,
+        selected_parent: Hash,
+    ) -> u64 {
+        let prev_min = parent_blue_score.saturating_sub(self.finality_depth);
+        let curr_min = current_blue_score.saturating_sub(self.finality_depth);
+
+        if curr_min <= prev_min {
+            return 0;
+        }
+
+        let mut expired = 0u64;
+        // Iterate score_index entries in [prev_min, curr_min) to find lanes that might expire
+        for entry in self.smt_stores.score_index.get_updated(curr_min.saturating_sub(1), prev_min) {
+            let entry = entry.unwrap();
+            // Only process canonical entries
+            if !self.is_smt_canonical(entry.block_hash(), selected_parent) {
+                continue;
+            }
+            for lk in entry.data().iter() {
+                // Check if this lane has a newer canonical version (within the active window)
+                let has_newer = self.smt_stores.get_lane(*lk, curr_min, |bh| self.is_smt_canonical(bh, selected_parent)).is_some();
+
+                if !has_newer {
+                    proc.expire_lane(*lk);
+                    expired += 1;
+                }
+            }
+        }
+        expired
     }
 
     fn commit_virtual_state(
@@ -587,7 +722,7 @@ impl VirtualStateProcessor {
         virtual_write.utxo_set.write_diff_batch(&mut batch, accumulated_diff).unwrap();
 
         // Update virtual state
-        virtual_write.state.set_batch(&mut batch, new_virtual_state).unwrap();
+        virtual_write.state.set_batch(&mut batch, new_virtual_state.clone()).unwrap();
 
         // Update the virtual selected chain
         selected_chain_write.apply_changes(&mut batch, chain_path).unwrap();
@@ -1087,14 +1222,21 @@ impl VirtualStateProcessor {
         assert_eq!(virtual_state.ghostdag_data.selected_parent, parents_by_level.get(0).unwrap()[0]);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
-        let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
-            virtual_state.daa_score,
-            virtual_state.accepted_tx_digests.iter().copied(),
-            virtual_state.ghostdag_data.selected_parent,
-        );
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
+
+        let accepted_id_merkle_root = if self.covenants_activation.is_active(virtual_state.daa_score) {
+            // Post-KIP21: accepted_id_digests[0] = seq_commit
+            virtual_state.accepted_id_digests[0]
+        } else {
+            self.calc_accepted_id_merkle_root(
+                virtual_state.daa_score,
+                virtual_state.accepted_id_digests.iter().copied(),
+                virtual_state.ghostdag_data.selected_parent,
+            )
+        };
+
         let header = Header::new_finalized(
             version,
             parents_by_level,
@@ -1145,7 +1287,7 @@ impl VirtualStateProcessor {
     /// Note that pruning point-related stores are initialized by `init`
     pub fn process_genesis(self: &Arc<Self>) {
         // Write the UTXO state of genesis
-        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default(), ZERO_HASH);
+        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default(), ZERO_HASH, None, 0);
 
         // Init the virtual selected chain store
         let mut batch = WriteBatch::default();

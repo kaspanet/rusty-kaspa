@@ -76,11 +76,11 @@ pub enum DatabaseStorePrefixes {
     CirculatingSupply = 194,
 
     // ---- SMT Versioned Store ----
-    SmtBranchHeads = 70,
     SmtBranchVersions = 71,
-    SmtLaneHeads = 72,
     SmtLaneVersions = 73,
     SmtScoreIndex = 74,
+    SmtSyncFlag = 75,
+    SmtSeqCommitMeta = 76,
 
     // ---- Separator ----
     /// Reserved as a separator

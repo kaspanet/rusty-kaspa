@@ -14,10 +14,12 @@ repository.workspace = true
 [dependencies]
 kaspa-hashes.workspace = true
 kaspa-merkle.workspace = true
+kaspa-smt.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 kaspa-consensus-core.workspace = true
-kaspa-smt.workspace = true
+kaspa-smt = { workspace = true, features = ["test-utils"] }
 
 [lints]
 workspace = true

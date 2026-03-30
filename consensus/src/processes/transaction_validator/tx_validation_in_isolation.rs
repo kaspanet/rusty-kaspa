@@ -155,7 +155,15 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
-    if tx.is_coinbase() || tx.subnetwork_id.is_native() { Ok(()) } else { Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)) }
+    if tx.is_coinbase() || tx.subnetwork_id.is_native() {
+        return Ok(());
+    }
+    // Non-native subnetworks (lanes) are allowed starting from the post-covenants
+    // hard fork tx version. Earlier versions must use SUBNETWORK_ID_NATIVE.
+    if tx.version >= TX_VERSION_POST_COV_HF {
+        return Ok(());
+    }
+    Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id))
 }
 
 fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {

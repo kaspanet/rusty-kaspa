@@ -47,6 +47,24 @@ pub struct BlockValidationFutures {
     pub virtual_state_task: BlockValidationFuture,
 }
 
+/// A lane to import during IBD SMT sync.
+#[derive(Clone, Debug)]
+pub struct ImportLane {
+    pub lane_id: [u8; 20],
+    pub lane_tip: Hash,
+    pub blue_score: u64,
+    pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
+}
+
+/// SMT metadata for IBD sync — verified against the pruning point header.
+#[derive(Clone, Debug)]
+pub struct SmtExportMetadata {
+    pub lanes_root: Hash,
+    pub payload_and_ctx_digest: Hash,
+    pub parent_seq_commit: Hash,
+    pub active_lanes_count: u64,
+}
+
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
 pub trait ConsensusApi: Send + Sync {
@@ -264,6 +282,30 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    /// Import SMT lane state at the pruning point. Builds the tree from lane
+    /// preimages, verifies root matches `lanes_root`, and flushes to DB.
+    fn import_pruning_point_smt(
+        &self,
+        _new_pruning_point: Hash,
+        _lanes_root: Hash,
+        _payload_and_ctx_digest: Hash,
+        _expected_lane_count: u64,
+        _lanes: Vec<ImportLane>,
+    ) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    /// Compute SMT metadata for the pruning point (for P2P streaming).
+    fn get_pruning_point_smt_metadata(&self, _expected_pruning_point: Hash) -> ConsensusResult<SmtExportMetadata> {
+        unimplemented!()
+    }
+
+    /// Iterate canonical SMT lanes at the pruning point, calling `f` for each.
+    /// Stops early if `f` returns false.
+    fn iter_pruning_point_smt_lanes(&self, _expected_pruning_point: Hash, _f: Box<dyn FnMut(ImportLane) -> bool + Send + 'static>) {
+        unimplemented!()
+    }
+
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         unimplemented!()
     }
@@ -408,6 +450,18 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn clear_pruning_utxo_set(&self) {
+        unimplemented!()
+    }
+
+    fn clear_pruning_smt_stores(&self) {
+        unimplemented!()
+    }
+
+    fn set_pruning_smt_stable_flag(&self, _val: bool) {
+        unimplemented!()
+    }
+
+    fn is_pruning_smt_stable(&self) -> bool {
         unimplemented!()
     }
 
