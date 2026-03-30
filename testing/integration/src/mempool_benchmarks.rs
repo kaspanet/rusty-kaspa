@@ -528,7 +528,7 @@ fn generate_stark_tx_dag(
                                 *o,
                                 signature_script.as_ref().clone(),
                                 0,
-                                TxInputMass::ComputeBudget(input_compute_budget),
+                                TxInputMass::ComputeBudget(input_compute_budget.into()),
                             ),
                             e.clone(),
                         )

@@ -316,19 +316,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
             ],
             vec![
@@ -684,7 +684,7 @@ mod tests {
                     tx.inputs[i].previous_outpoint.index = 2;
                 }
                 ModifyAction::ComputeBudget(i) => {
-                    tx.inputs[i].mass = TxInputMass::ComputeBudget(1234);
+                    tx.inputs[i].mass = TxInputMass::ComputeBudget(1234.into());
                 }
                 ModifyAction::AmountSpent(i) => {
                     entries[i].amount = 666;

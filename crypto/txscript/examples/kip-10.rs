@@ -101,7 +101,7 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        mass: TxInputMass::SigopCount(1),
+        mass: TxInputMass::SigopCount(1.into()),
     };
 
     // Create a transaction with the input and output
@@ -272,7 +272,7 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        mass: TxInputMass::SigopCount(1),
+        mass: TxInputMass::SigopCount(1.into()),
     };
 
     // Create a transaction with the input and output
@@ -427,7 +427,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&two_times_script)?.drain(),
         sequence: 4294967295,
-        mass: TxInputMass::SigopCount(1),
+        mass: TxInputMass::SigopCount(1.into()),
     };
 
     // Create a transaction with the input and output
@@ -576,7 +576,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        mass: TxInputMass::SigopCount(1),
+        mass: TxInputMass::SigopCount(1.into()),
     };
 
     // Create a transaction with the input and output

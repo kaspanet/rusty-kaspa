@@ -82,9 +82,9 @@ impl Signed {
 pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::Keypair) -> SignableTransaction {
     for i in 0..signable_tx.tx.inputs.len() {
         if signable_tx.tx.version < 1 {
-            signable_tx.tx.inputs[i].mass = TxInputMass::SigopCount(1);
+            signable_tx.tx.inputs[i].mass = TxInputMass::SigopCount(1.into());
         } else {
-            signable_tx.tx.inputs[i].mass = TxInputMass::ComputeBudget(100);
+            signable_tx.tx.inputs[i].mass = TxInputMass::ComputeBudget(100.into());
         }
     }
 
@@ -107,7 +107,7 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
         map.insert(schnorr_key.public_key().serialize(), schnorr_key);
     }
     for i in 0..mutable_tx.tx.inputs.len() {
-        mutable_tx.tx.inputs[i].mass = TxInputMass::SigopCount(1);
+        mutable_tx.tx.inputs[i].mass = TxInputMass::SigopCount(1.into());
     }
 
     let reused_values = SigHashReusedValuesUnsync::new();
@@ -207,19 +207,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
             ],
             vec![

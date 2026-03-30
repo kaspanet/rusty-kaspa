@@ -261,7 +261,7 @@ mod tests {
                     0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                 ],
                 sequence: u64::MAX,
-                mass: TxInputMass::SigopCount(0),
+                mass: TxInputMass::SigopCount(0.into()),
             }],
             vec![
                 TransactionOutput {
@@ -341,12 +341,12 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.version = 1;
-        tx.inputs[0].mass = TxInputMass::SigopCount(1);
+        tx.inputs[0].mass = TxInputMass::SigopCount(1.into());
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::SigOpCountInV1(_, _)));
 
         let mut tx = valid_tx.clone();
         tx.version = 0;
-        tx.inputs[0].mass = TxInputMass::ComputeBudget(1);
+        tx.inputs[0].mass = TxInputMass::ComputeBudget(1.into());
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::ComputeBudgetInV0(_, _)));
 
         let mut tx = valid_tx.clone();

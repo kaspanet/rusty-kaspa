@@ -630,7 +630,7 @@ fn generate_tx(
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::SigopCount(1),
+            mass: TxInputMass::SigopCount(1.into()),
         })
         .collect_vec();
 

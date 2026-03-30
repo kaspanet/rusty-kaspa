@@ -50,8 +50,8 @@ impl From<&TransactionInput> for protowire::TransactionInput {
             signature_script: input.signature_script.clone(),
             sequence: input.sequence,
             mass: match input.mass {
-                TxInputMass::SigopCount(count) => count as u32,
-                TxInputMass::ComputeBudget(budget) => budget as u32,
+                TxInputMass::SigopCount(count) => u8::from(count) as u32,
+                TxInputMass::ComputeBudget(budget) => u16::from(budget) as u32,
             },
         }
     }
@@ -152,9 +152,9 @@ impl TryFrom<ProtoInputWithVersion> for TransactionInput {
             signature_script: value.input.signature_script,
             sequence: value.input.sequence,
             mass: if TxInputMass::has_compute_budget_field(value.version as u16) {
-                TxInputMass::ComputeBudget(value.input.mass.try_into()?)
+                TxInputMass::ComputeBudget(u16::try_from(value.input.mass)?.into())
             } else {
-                TxInputMass::SigopCount(value.input.mass.try_into()?)
+                TxInputMass::SigopCount(u8::try_from(value.input.mass)?.into())
             },
         })
     }
@@ -217,7 +217,7 @@ mod tests {
                 TransactionOutpoint::new(Hash::from_u64_word(1), 0),
                 vec![],
                 0,
-                TxInputMass::ComputeBudget(12_345),
+                TxInputMass::ComputeBudget(12_345.into()),
             )],
             vec![],
             42,

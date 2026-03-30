@@ -268,9 +268,9 @@ impl From<TransactionInputWithVersion<'_>> for cctx::TransactionInput {
             signature_script: inner.signature_script.clone().unwrap_or_default(), // TODO - discuss: should this unwrap_or_default or return an error?
             sequence: inner.sequence,
             mass: if cctx::TxInputMass::has_compute_budget_field(value.version) {
-                cctx::TxInputMass::ComputeBudget(inner.compute_budget)
+                cctx::TxInputMass::ComputeBudget(inner.compute_budget.into())
             } else {
-                cctx::TxInputMass::SigopCount(inner.sig_op_count)
+                cctx::TxInputMass::SigopCount(inner.sig_op_count.into())
             },
         }
     }

@@ -1,3 +1,7 @@
+pub mod units;
+
+pub use units::{ComputeBudget, Gram, ScriptUnits, SigopCount};
+
 use crate::{
     config::params::Params,
     constants::{INPUT_COMPUTE_MASS_SCALE_FACTOR, TRANSIENT_BYTE_TO_MASS_FACTOR},
@@ -781,7 +785,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: i as u32 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 })
                 .collect(),
             outs.iter()

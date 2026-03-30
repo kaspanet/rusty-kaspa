@@ -13,7 +13,7 @@ fn constuct_tx() -> Transaction {
         previous_outpoint: TransactionOutpoint { transaction_id: Hash::from_bytes([0xFF; 32]), index: 0 },
         signature_script: vec![],
         sequence: 0,
-        mass: TxInputMass::SigopCount(1),
+        mass: TxInputMass::SigopCount(1.into()),
     }];
     let outputs =
         vec![TransactionOutput { value: 10000, script_public_key: ScriptPublicKey::from_vec(0, vec![0xff; 35]), covenant: None }];

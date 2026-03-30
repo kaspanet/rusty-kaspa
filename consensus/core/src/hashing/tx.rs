@@ -305,7 +305,7 @@ mod tests {
         // Version >= 1: tx::id excludes mass commitments while tx::hash commits to both mass and per input compute_budget
         let tx_v1_a = Transaction::new(
             1,
-            vec![TransactionInput::new_with_mass(TransactionOutpoint::default(), vec![], 0, TxInputMass::ComputeBudget(111))],
+            vec![TransactionInput::new_with_mass(TransactionOutpoint::default(), vec![], 0, TxInputMass::ComputeBudget(111.into()))],
             vec![],
             0,
             subnets::SUBNETWORK_ID_NATIVE,
@@ -315,7 +315,7 @@ mod tests {
         tx_v1_a.set_mass(0);
 
         let mut tx_v1_b = tx_v1_a.clone();
-        tx_v1_b.inputs[0].mass = TxInputMass::ComputeBudget(222);
+        tx_v1_b.inputs[0].mass = TxInputMass::ComputeBudget(222.into());
 
         // Test #11
         tests.push(Test {

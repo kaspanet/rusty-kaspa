@@ -198,10 +198,10 @@ pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_
 fn input_allowed_script_units(input: &TransactionInput, flags: EngineFlags) -> u64 {
     match input.mass {
         TxInputMass::SigopCount(count) => {
-            (count as u64).saturating_mul(flags.mass_per_sig_op)
+            (u8::from(count) as u64).saturating_mul(flags.mass_per_sig_op)
         }
         TxInputMass::ComputeBudget(compute_budget) => {
-            (compute_budget as u64).saturating_mul(INPUT_COMPUTE_MASS_SCALE_FACTOR)
+            (u16::from(compute_budget) as u64).saturating_mul(INPUT_COMPUTE_MASS_SCALE_FACTOR)
 
         }
     }
@@ -296,7 +296,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: TxInputMass::ComputeBudget(3),
+                mass: TxInputMass::ComputeBudget(3.into()),
             })
             .collect_vec();
 
@@ -320,7 +320,7 @@ mod tests {
 
         // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 0).
         let (mut tx, entries) = build_parallel_push_budget_test_tx(2);
-        tx.inputs[0].mass = TxInputMass::ComputeBudget(0);
+        tx.inputs[0].mass = TxInputMass::ComputeBudget(0.into());
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert_eq!(
@@ -331,7 +331,7 @@ mod tests {
         // (b) A few inputs together are all independently under budget and should pass.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(3));
+        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(3.into()));
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert!(result.is_ok());
@@ -339,7 +339,7 @@ mod tests {
         // (c) Everything is ok with a larger per-input budget as well.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(10));
+        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(10.into()));
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert!(result.is_ok());
@@ -391,9 +391,9 @@ mod tests {
                 signature_script: vec![],
                 sequence: 0,
                 mass: if TxInputMass::has_compute_budget_field(version) {
-                    TxInputMass::ComputeBudget(compute_budget)
+                    TxInputMass::ComputeBudget(compute_budget.into())
                 } else {
-                    TxInputMass::SigopCount(sig_op_count)
+                    TxInputMass::SigopCount(sig_op_count.into())
                 },
             };
             let output = TransactionOutput {
@@ -465,7 +465,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(1),
+                mass: TxInputMass::SigopCount(1.into()),
             }],
             vec![
                 TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2), covenant: None },
@@ -541,7 +541,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(1),
+                mass: TxInputMass::SigopCount(1.into()),
             }],
             vec![
                 TransactionOutput {
@@ -622,7 +622,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4),
+                mass: TxInputMass::SigopCount(4.into()),
             }],
             vec![
                 TransactionOutput {
@@ -703,7 +703,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4),
+                mass: TxInputMass::SigopCount(4.into()),
             }],
             vec![
                 TransactionOutput {
@@ -786,7 +786,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4),
+                mass: TxInputMass::SigopCount(4.into()),
             }],
             vec![
                 TransactionOutput {
@@ -869,7 +869,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4),
+                mass: TxInputMass::SigopCount(4.into()),
             }],
             vec![
                 TransactionOutput {
@@ -946,7 +946,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4),
+                mass: TxInputMass::SigopCount(4.into()),
             }],
             vec![TransactionOutput {
                 value: 2792999990000,
@@ -1012,19 +1012,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
             ],
             vec![

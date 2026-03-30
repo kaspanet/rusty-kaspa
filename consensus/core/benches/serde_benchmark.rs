@@ -27,7 +27,7 @@ fn serialize_benchmark(c: &mut Criterion) {
                 },
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
-                mass: TxInputMass::SigopCount(0),
+                mass: TxInputMass::SigopCount(0.into()),
             },
             TransactionInput {
                 previous_outpoint: TransactionOutpoint {
@@ -39,7 +39,7 @@ fn serialize_benchmark(c: &mut Criterion) {
                 },
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
-                mass: TxInputMass::SigopCount(0),
+                mass: TxInputMass::SigopCount(0.into()),
             },
         ],
         vec![
@@ -89,7 +89,7 @@ fn deserialize_benchmark(c: &mut Criterion) {
                 },
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
-                mass: TxInputMass::SigopCount(0),
+                mass: TxInputMass::SigopCount(0.into()),
             },
             TransactionInput {
                 previous_outpoint: TransactionOutpoint {
@@ -101,7 +101,7 @@ fn deserialize_benchmark(c: &mut Criterion) {
                 },
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
-                mass: TxInputMass::SigopCount(0),
+                mass: TxInputMass::SigopCount(0.into()),
             },
         ],
         vec![
