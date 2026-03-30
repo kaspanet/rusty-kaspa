@@ -3135,12 +3135,26 @@ impl Deserializer for FinalityConflictResolvedNotification {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyUtxosChangedRequest {
     pub addresses: Vec<RpcAddress>,
-    pub command: Command,
+    /// Optional: If provided, the node will first emit all currently known 
+    /// UTXOs for these addresses with a DAA score > this value.
+    pub start_daa_score: Option<u64>, 
 }
 
 impl NotifyUtxosChangedRequest {
-    pub fn new(addresses: Vec<RpcAddress>, command: Command) -> Self {
-        Self { addresses, command }
+    // Keep the old way working for existing code
+    pub fn new(addresses: Vec<RpcAddress>) -> Self {
+        Self { 
+            addresses, 
+            start_daa_score: None 
+        }
+    }
+
+    // returning UTXOs past a certain daa
+    pub fn with_start_score(addresses: Vec<RpcAddress>, score: u64) -> Self {
+        Self { 
+            addresses, 
+            start_daa_score: Some(score) 
+        }
     }
 }
 
