@@ -9,6 +9,7 @@ use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{TransactionQueryResult, TransactionType};
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
+use kaspa_consensus_core::utxo::utxo_diff::UtxoDiff;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -57,7 +58,7 @@ use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
 use kaspa_rpc_core::{
-    Notification, RpcError, RpcResult,
+    Notification, RpcError, RpcResult, UtxosChangedNotification;
     api::{
         connection::DynRpcConnection,
         ops::{RPC_API_REVISION, RPC_API_VERSION},
