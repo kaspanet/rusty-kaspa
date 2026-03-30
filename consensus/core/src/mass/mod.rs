@@ -41,7 +41,7 @@ fn transaction_input_estimated_serialized_size(input: &TransactionInput, version
     size += 8; // sequence (uint64)
 
     if version >= 1 {
-        size += 2; // compute_mass (u16)
+        size += 2; // compute_budget (u16)
     }
 
     size
@@ -327,11 +327,11 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let script_mass = if TxInputMass::has_compute_mass_field(tx.version) {
+        let script_mass = if TxInputMass::has_compute_budget_field(tx.version) {
             INPUT_COMPUTE_MASS_SCALE_FACTOR
                 * tx.inputs
                     .iter()
-                    .map(|input| input.mass.compute_mass().expect("v1 transactions are expected to have compute mass") as u64)
+                    .map(|input| input.mass.compute_budget().expect("v1 transactions are expected to have compute budget") as u64)
                     .sum::<u64>()
         } else {
             let total_sigops: u64 = tx

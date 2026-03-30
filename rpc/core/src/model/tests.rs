@@ -218,7 +218,7 @@ mod mockery {
                 signature_script: Hash::mock().as_bytes().to_vec(),
                 sequence: mock(),
                 sig_op_count: mock(),
-                compute_mass: mock(),
+                compute_budget: mock(),
                 verbose_data: mock(),
             }
         }
@@ -231,7 +231,7 @@ mod mockery {
                 signature_script: Some(Hash::mock().as_bytes().to_vec()),
                 sequence: mock(),
                 sig_op_count: mock(),
-                compute_mass: mock(),
+                compute_budget: mock(),
                 verbose_data: mock(),
             }
         }

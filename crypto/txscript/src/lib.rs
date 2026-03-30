@@ -937,7 +937,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 4294967295,
-                mass: TxInputMass::ComputeMass(0),
+                mass: TxInputMass::ComputeBudget(0),
             };
             let output = TransactionOutput {
                 value: 1000000000,
@@ -1033,7 +1033,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([7u8; 32]), index: 0 },
             signature_script: vec![OpTrue, OpTrue],
             sequence: 0,
-            mass: TxInputMass::ComputeMass(0),
+            mass: TxInputMass::ComputeBudget(0),
         };
 
         let output =
@@ -1103,7 +1103,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([9u8; 32]), index: 0 },
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::ComputeMass(0), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_mass.
+            mass: TxInputMass::ComputeBudget(0), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
         };
 
         let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };

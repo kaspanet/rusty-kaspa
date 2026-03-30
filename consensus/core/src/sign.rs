@@ -84,7 +84,7 @@ pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::Keypai
         if signable_tx.tx.version < 1 {
             signable_tx.tx.inputs[i].mass = TxInputMass::SigopCount(1);
         } else {
-            signable_tx.tx.inputs[i].mass = TxInputMass::ComputeMass(100);
+            signable_tx.tx.inputs[i].mass = TxInputMass::ComputeBudget(100);
         }
     }
 

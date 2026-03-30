@@ -200,8 +200,8 @@ fn input_allowed_script_units(input: &TransactionInput, flags: EngineFlags) -> u
         TxInputMass::SigopCount(count) => {
             (count as u64).saturating_mul(flags.mass_per_sig_op)
         }
-        TxInputMass::ComputeMass(compute_mass) => {
-            (compute_mass as u64).saturating_mul(INPUT_COMPUTE_MASS_SCALE_FACTOR)
+        TxInputMass::ComputeBudget(compute_budget) => {
+            (compute_budget as u64).saturating_mul(INPUT_COMPUTE_MASS_SCALE_FACTOR)
 
         }
     }
@@ -296,7 +296,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: TxInputMass::ComputeMass(3),
+                mass: TxInputMass::ComputeBudget(3),
             })
             .collect_vec();
 
@@ -318,9 +318,9 @@ mod tests {
         let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
         let flags = EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 };
 
-        // (a) One input alone is over budget when compute_mass=0 (allowed units per input = 0).
+        // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 0).
         let (mut tx, entries) = build_parallel_push_budget_test_tx(2);
-        tx.inputs[0].mass = TxInputMass::ComputeMass(0);
+        tx.inputs[0].mass = TxInputMass::ComputeBudget(0);
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert_eq!(
@@ -331,7 +331,7 @@ mod tests {
         // (b) A few inputs together are all independently under budget and should pass.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeMass(3));
+        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(3));
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert!(result.is_ok());
@@ -339,7 +339,7 @@ mod tests {
         // (c) Everything is ok with a larger per-input budget as well.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeMass(10));
+        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(10));
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert!(result.is_ok());
@@ -381,7 +381,7 @@ mod tests {
 
         for version in [0u16, 1u16] {
             let sig_op_count = if version == 0 { 1 } else { 0 };
-            let compute_mass = if version == 1 { (params.mass_per_sig_op / INPUT_COMPUTE_MASS_SCALE_FACTOR) as u16 } else { 0 };
+            let compute_budget = if version == 1 { (params.mass_per_sig_op / INPUT_COMPUTE_MASS_SCALE_FACTOR) as u16 } else { 0 };
 
             let input = TransactionInput {
                 previous_outpoint: TransactionOutpoint {
@@ -390,8 +390,8 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: if TxInputMass::has_compute_mass_field(version) {
-                    TxInputMass::ComputeMass(compute_mass)
+                mass: if TxInputMass::has_compute_budget_field(version) {
+                    TxInputMass::ComputeBudget(compute_budget)
                 } else {
                     TxInputMass::SigopCount(sig_op_count)
                 },
@@ -413,9 +413,9 @@ mod tests {
 
             let signed_tx = sign(MutableTransaction::with_entries(tx, vec![utxo_entry]), schnorr_key);
 
-            // Verify that `sign` didn't change the sig_op_count and compute_mass values.
+            // Verify that `sign` didn't change the sig_op_count and compute_budget values.
             assert_eq!(signed_tx.tx.inputs[0].mass.sig_op_count().unwrap_or(0), sig_op_count);
-            assert_eq!(signed_tx.tx.inputs[0].mass.compute_mass().unwrap_or(0), compute_mass);
+            assert_eq!(signed_tx.tx.inputs[0].mass.compute_budget().unwrap_or(0), compute_budget);
 
             let verifiable_tx = signed_tx.as_verifiable();
 

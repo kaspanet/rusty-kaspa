@@ -21,7 +21,7 @@ impl TryFrom<Transaction> for Inner {
 impl TryFrom<TransactionInput> for Input {
     type Error = Error;
     fn try_from(input: TransactionInput) -> std::result::Result<Input, Self::Error> {
-        let TransactionInputInner { previous_outpoint, signature_script: _, sequence: _, sig_op_count, compute_mass: _, utxo } =
+        let TransactionInputInner { previous_outpoint, signature_script: _, sequence: _, sig_op_count, compute_budget: _, utxo } =
             &*input.inner();
 
         let input = InputBuilder::default()
@@ -74,7 +74,7 @@ impl TryFrom<(cctx::Transaction, Vec<(&cctx::TransactionInput, &cctx::UtxoEntry)
                 InputBuilder::default()
                     .utxo_entry(utxo.to_owned().clone())
                     .previous_outpoint(input.previous_outpoint)
-                    .sig_op_count(input.mass.sig_op_count().unwrap_or(0)) // TODO: Add support for v1 transactions with TxInputMass::ComputeMass
+                    .sig_op_count(input.mass.sig_op_count().unwrap_or(0)) // TODO: Add support for v1 transactions with TxInputMass::ComputeBudget
                     .build()
                     .map_err(Error::TxToInnerConversionInputBuildingError)
                 // Handle the error

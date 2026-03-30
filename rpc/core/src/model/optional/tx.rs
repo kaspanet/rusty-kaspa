@@ -229,7 +229,7 @@ pub struct RpcOptionalTransactionInput {
     /// Level: High
     pub sig_op_count: Option<u8>,
     /// Level: High
-    pub compute_mass: Option<u16>,
+    pub compute_budget: Option<u16>,
     pub verbose_data: Option<RpcOptionalTransactionInputVerboseData>,
 }
 
@@ -240,7 +240,7 @@ impl std::fmt::Debug for RpcOptionalTransactionInput {
             .field("signature_script", &self.signature_script.as_ref().map(|v| v.to_hex()))
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.sig_op_count)
-            .field("compute_mass", &self.compute_mass)
+            .field("compute_budget", &self.compute_budget)
             .field("verbose_data", &self.verbose_data)
             .finish()
     }
@@ -253,7 +253,7 @@ impl From<TransactionInput> for RpcOptionalTransactionInput {
             signature_script: Some(input.signature_script),
             sequence: Some(input.sequence),
             sig_op_count: Some(input.mass.sig_op_count().unwrap_or(0)),
-            compute_mass: Some(input.mass.compute_mass().unwrap_or(0)),
+            compute_budget: Some(input.mass.compute_budget().unwrap_or(0)),
             verbose_data: None,
         }
     }
@@ -270,7 +270,7 @@ impl RpcOptionalTransactionInput {
             && self.signature_script.is_none()
             && self.sequence.is_none()
             && self.sig_op_count.is_none()
-            && self.compute_mass.is_none()
+            && self.compute_budget.is_none()
             && (self.verbose_data.is_none() || self.verbose_data.as_ref().is_some_and(|x| x.is_empty()))
     }
 }
@@ -282,7 +282,7 @@ impl Serializer for RpcOptionalTransactionInput {
         store!(Option<Vec<u8>>, &self.signature_script, writer)?;
         store!(Option<u64>, &self.sequence, writer)?;
         store!(Option<u8>, &self.sig_op_count, writer)?;
-        store!(Option<u16>, &self.compute_mass, writer)?;
+        store!(Option<u16>, &self.compute_budget, writer)?;
         serialize!(Option<RpcOptionalTransactionInputVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -296,10 +296,10 @@ impl Deserializer for RpcOptionalTransactionInput {
         let signature_script = load!(Option<Vec<u8>>, reader)?;
         let sequence = load!(Option<u64>, reader)?;
         let sig_op_count = load!(Option<u8>, reader)?;
-        let compute_mass = if version > 1 { load!(Option<u16>, reader)? } else { None }; // TODO(before merge): Check if it's correct
+        let compute_budget = if version > 1 { load!(Option<u16>, reader)? } else { None }; // TODO(before merge): Check if it's correct
         let verbose_data = deserialize!(Option<RpcOptionalTransactionInputVerboseData>, reader)?;
 
-        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, verbose_data })
+        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, verbose_data })
     }
 }
 

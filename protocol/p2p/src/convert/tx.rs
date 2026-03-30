@@ -51,7 +51,7 @@ impl From<&TransactionInput> for protowire::TransactionInput {
             sequence: input.sequence,
             mass: match input.mass {
                 TxInputMass::SigopCount(count) => count as u32,
-                TxInputMass::ComputeMass(mass) => mass as u32,
+                TxInputMass::ComputeBudget(budget) => budget as u32,
             },
         }
     }
@@ -151,8 +151,8 @@ impl TryFrom<ProtoInputWithVersion> for TransactionInput {
             previous_outpoint: value.input.previous_outpoint.try_into_ex()?,
             signature_script: value.input.signature_script,
             sequence: value.input.sequence,
-            mass: if TxInputMass::has_compute_mass_field(value.version as u16) {
-                TxInputMass::ComputeMass(value.input.mass.try_into()?)
+            mass: if TxInputMass::has_compute_budget_field(value.version as u16) {
+                TxInputMass::ComputeBudget(value.input.mass.try_into()?)
             } else {
                 TxInputMass::SigopCount(value.input.mass.try_into()?)
             },
@@ -210,14 +210,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_transaction_message_compute_mass_roundtrip() {
+    fn test_transaction_message_compute_budget_roundtrip() {
         let tx = Transaction::new(
             1,
             vec![TransactionInput::new_with_mass(
                 TransactionOutpoint::new(Hash::from_u64_word(1), 0),
                 vec![],
                 0,
-                TxInputMass::ComputeMass(12_345),
+                TxInputMass::ComputeBudget(12_345),
             )],
             vec![],
             42,
@@ -232,7 +232,7 @@ mod tests {
 
         let received = Transaction::try_from(message).unwrap();
         assert_eq!(received.inputs.len(), 1);
-        assert_eq!(received.inputs[0].mass.compute_mass(), Some(12_345));
+        assert_eq!(received.inputs[0].mass.compute_budget(), Some(12_345));
         assert_eq!(received.mass(), 54_321);
     }
 }

@@ -332,7 +332,7 @@ async fn daemon_utxos_propagation_test() {
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::ComputeMass(0),
+            mass: TxInputMass::ComputeBudget(0),
         })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
@@ -349,8 +349,8 @@ async fn daemon_utxos_propagation_test() {
     )
     .unwrap();
     let mut transaction = signed_tx.tx;
-    let per_input_compute_mass_commitment: u16 = 3000; // Some upper bound
-    transaction.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeMass(per_input_compute_mass_commitment));
+    let per_input_compute_budget_commitment: u16 = 3000; // Some upper bound
+    transaction.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(per_input_compute_budget_commitment));
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -566,7 +566,7 @@ async fn daemon_compute_mass_relay_test() {
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::ComputeMass(0),
+            mass: TxInputMass::ComputeBudget(0),
         })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
@@ -579,10 +579,10 @@ async fn daemon_compute_mass_relay_test() {
     )
     .unwrap();
     let mut transaction = signed_tx.tx;
-    transaction.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeMass(300));
+    transaction.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(300));
     assert!(
-        transaction.inputs.iter().any(|input| input.mass.compute_mass().unwrap() > 0),
-        "expected non-zero compute_mass commitment for v1 transaction"
+        transaction.inputs.iter().any(|input| input.mass.compute_budget().unwrap() > 0),
+        "expected non-zero compute_budget commitment for v1 transaction"
     );
     let transaction_id = transaction.id();
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
@@ -603,8 +603,8 @@ async fn daemon_compute_mass_relay_test() {
 
     let node1_entry = rpc_client1.get_mempool_entry(transaction_id, false, false).await.unwrap();
     assert_eq!(node1_entry.transaction.version, TX_VERSION_POST_COV_HF);
-    let node1_compute_mass = node1_entry.transaction.inputs[0].compute_mass;
-    assert!(node1_compute_mass > 0, "expected non-zero compute_mass on node #1 mempool tx");
+    let node1_compute_budget = node1_entry.transaction.inputs[0].compute_budget;
+    assert!(node1_compute_budget > 0, "expected non-zero compute_budget on node #1 mempool tx");
 
     let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
     let mined_header: Header = (&template.block.header).try_into().unwrap();
@@ -633,9 +633,9 @@ async fn daemon_compute_mass_relay_test() {
         .expect("node #2 block does not include the submitted transaction");
 
     assert_eq!(included_tx.version, TX_VERSION_POST_COV_HF);
-    let included_compute_mass = included_tx.inputs[0].compute_mass;
-    assert!(included_compute_mass > 0, "expected non-zero compute_mass on propagated block tx");
-    assert_eq!(included_compute_mass, node1_compute_mass);
+    let included_compute_budget = included_tx.inputs[0].compute_budget;
+    assert!(included_compute_budget > 0, "expected non-zero compute_budget on propagated block tx");
+    assert_eq!(included_compute_budget, node1_compute_budget);
 
     rpc_client1.disconnect().await.unwrap();
     rpc_client2.disconnect().await.unwrap();

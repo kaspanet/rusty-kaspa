@@ -155,7 +155,7 @@ pub struct RpcTransactionInput {
     pub sequence: u64,
     pub sig_op_count: u8,
     #[serde(default)]
-    pub compute_mass: u16,
+    pub compute_budget: u16,
     pub verbose_data: Option<RpcTransactionInputVerboseData>,
 }
 
@@ -166,7 +166,7 @@ impl std::fmt::Debug for RpcTransactionInput {
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.sig_op_count)
-            .field("compute_mass", &self.compute_mass)
+            .field("compute_budget", &self.compute_budget)
             .field("verbose_data", &self.verbose_data)
             .finish()
     }
@@ -179,7 +179,7 @@ impl From<TransactionInput> for RpcTransactionInput {
             signature_script: input.signature_script,
             sequence: input.sequence,
             sig_op_count: input.mass.sig_op_count().unwrap_or(0),
-            compute_mass: input.mass.compute_mass().unwrap_or(0),
+            compute_budget: input.mass.compute_budget().unwrap_or(0),
             verbose_data: None,
         }
     }
@@ -198,7 +198,7 @@ impl Serializer for RpcTransactionInput {
         store!(Vec<u8>, &self.signature_script, writer)?;
         store!(u64, &self.sequence, writer)?;
         store!(u8, &self.sig_op_count, writer)?;
-        store!(u16, &self.compute_mass, writer)?;
+        store!(u16, &self.compute_budget, writer)?;
         serialize!(Option<RpcTransactionInputVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -212,10 +212,10 @@ impl Deserializer for RpcTransactionInput {
         let signature_script = load!(Vec<u8>, reader)?;
         let sequence = load!(u64, reader)?;
         let sig_op_count = load!(u8, reader)?;
-        let compute_mass = if version > 1 { load!(u16, reader)? } else { 0 }; // TODO(before merge): Check if it's correct
+        let compute_budget = if version > 1 { load!(u16, reader)? } else { 0 }; // TODO(before merge): Check if it's correct
         let verbose_data = deserialize!(Option<RpcTransactionInputVerboseData>, reader)?;
 
-        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, verbose_data })
+        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, verbose_data })
     }
 }
 

@@ -106,8 +106,8 @@ fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, version:
     }
     hasher.update(input.sequence.to_le_bytes());
 
-    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && TxInputMass::has_compute_mass_field(version) {
-        hasher.write_u16(input.mass.compute_mass().unwrap_or(0));
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && TxInputMass::has_compute_budget_field(version) {
+        hasher.write_u16(input.mass.compute_budget().unwrap_or(0));
     }
 }
 
@@ -302,10 +302,10 @@ mod tests {
             expected_hash: "35cd215d90bca0781507f183d9ad8f27927c82857cf9fd8f38bf78570ba95f2c",
         });
 
-        // Version >= 1: tx::id excludes mass commitments while tx::hash commits to both mass and compute_mass
+        // Version >= 1: tx::id excludes mass commitments while tx::hash commits to both mass and per input compute_budget
         let tx_v1_a = Transaction::new(
             1,
-            vec![TransactionInput::new_with_mass(TransactionOutpoint::default(), vec![], 0, TxInputMass::ComputeMass(111))],
+            vec![TransactionInput::new_with_mass(TransactionOutpoint::default(), vec![], 0, TxInputMass::ComputeBudget(111))],
             vec![],
             0,
             subnets::SUBNETWORK_ID_NATIVE,
@@ -315,7 +315,7 @@ mod tests {
         tx_v1_a.set_mass(0);
 
         let mut tx_v1_b = tx_v1_a.clone();
-        tx_v1_b.inputs[0].mass = TxInputMass::ComputeMass(222);
+        tx_v1_b.inputs[0].mass = TxInputMass::ComputeBudget(222);
 
         // Test #11
         tests.push(Test {

@@ -390,8 +390,8 @@ impl ConsensusConverter {
             } else {
                 Default::default()
             },
-            compute_mass: if verbosity.include_sig_op_count.unwrap_or(false) {
-                Some(input.mass.compute_mass().unwrap_or(0))
+            compute_budget: if verbosity.include_sig_op_count.unwrap_or(false) {
+                Some(input.mass.compute_budget().unwrap_or(0))
             } else {
                 Default::default()
             }, // TODO: consider having a separate flag for compute_mass

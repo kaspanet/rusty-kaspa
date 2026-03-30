@@ -99,11 +99,11 @@ impl Display for TransactionOutpoint {
 }
 
 /// Encodes the mass commitment for a transaction input.
-/// Version 0 transactions use `SigopCount`, version >= 1 transactions use `ComputeMass`.
+/// Version 0 transactions use `SigopCount`, version >= 1 transactions use `ComputeBudget`.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Debug, Copy)]
 pub enum TxInputMass {
     SigopCount(u8),
-    ComputeMass(u16),
+    ComputeBudget(u16),
 }
 
 impl TxInputMass {
@@ -114,14 +114,14 @@ impl TxInputMass {
         }
     }
 
-    pub fn compute_mass(self) -> Option<u16> {
+    pub fn compute_budget(self) -> Option<u16> {
         match self {
-            Self::ComputeMass(n) => Some(n),
+            Self::ComputeBudget(n) => Some(n),
             _ => None,
         }
     }
 
-    pub fn has_compute_mass_field(version: u16) -> bool {
+    pub fn has_compute_budget_field(version: u16) -> bool {
         version >= 1
     }
 
@@ -150,13 +150,13 @@ impl TransactionInput {
         Self { previous_outpoint, signature_script, sequence, mass: TxInputMass::SigopCount(sig_op_count) }
     }
 
-    pub fn new_with_compute_mass(
+    pub fn new_with_compute_budget(
         previous_outpoint: TransactionOutpoint,
         signature_script: Vec<u8>,
         sequence: u64,
-        compute_mass: u16,
+        compute_budget: u16,
     ) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: TxInputMass::ComputeMass(compute_mass) }
+        Self { previous_outpoint, signature_script, sequence, mass: TxInputMass::ComputeBudget(compute_budget) }
     }
 }
 
@@ -167,7 +167,7 @@ impl std::fmt::Debug for TransactionInput {
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.mass.sig_op_count().unwrap_or_default())
-            .field("compute_mass", &self.mass.compute_mass().unwrap_or_default())
+            .field("compute_budget", &self.mass.compute_budget().unwrap_or_default())
             .finish()
     }
 }
