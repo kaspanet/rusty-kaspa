@@ -886,9 +886,10 @@ mod tests {
     use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+    use kaspa_consensus_core::mass::{ComputeBudget, SigopCount};
     use kaspa_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-        TransactionOutput, TxInputMass,
+        TransactionOutput,
     };
     use kaspa_core::assert_match;
     use kaspa_utils::hex::FromHex;
@@ -937,7 +938,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 4294967295,
-                mass: TxInputMass::ComputeBudget(0.into()),
+                mass: ComputeBudget(0).into(),
             };
             let output = TransactionOutput {
                 value: 1000000000,
@@ -1033,7 +1034,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([7u8; 32]), index: 0 },
             signature_script: vec![OpTrue, OpTrue],
             sequence: 0,
-            mass: TxInputMass::ComputeBudget(0.into()),
+            mass: ComputeBudget(0).into(),
         };
 
         let output =
@@ -1103,7 +1104,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([9u8; 32]), index: 0 },
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::ComputeBudget(0.into()), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
+            mass: ComputeBudget(0).into(), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
         };
 
         let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
@@ -1700,7 +1701,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(test.sig_op_limit.into()),
+                    mass: SigopCount(test.sig_op_limit).into(),
                 }],
                 vec![],
                 0,

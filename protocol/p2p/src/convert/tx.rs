@@ -1,6 +1,7 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use kaspa_consensus_core::{
+    mass::{ComputeBudget, SigopCount},
     subnets::SubnetworkId,
     tx::{
         CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
@@ -152,9 +153,9 @@ impl TryFrom<ProtoInputWithVersion> for TransactionInput {
             signature_script: value.input.signature_script,
             sequence: value.input.sequence,
             mass: if TxInputMass::has_compute_budget_field(value.version as u16) {
-                TxInputMass::ComputeBudget(u16::try_from(value.input.mass)?.into())
+                ComputeBudget(u16::try_from(value.input.mass)?).into()
             } else {
-                TxInputMass::SigopCount(u8::try_from(value.input.mass)?.into())
+                SigopCount(u8::try_from(value.input.mass)?).into()
             },
         })
     }
@@ -217,7 +218,7 @@ mod tests {
                 TransactionOutpoint::new(Hash::from_u64_word(1), 0),
                 vec![],
                 0,
-                TxInputMass::ComputeBudget(12_345.into()),
+                ComputeBudget(12_345).into(),
             )],
             vec![],
             42,

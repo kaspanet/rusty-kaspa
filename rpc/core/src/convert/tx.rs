@@ -4,6 +4,7 @@ use crate::{
     RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionOutput, RpcResult, RpcTransaction,
     RpcTransactionInput, RpcTransactionOutput,
 };
+use kaspa_consensus_core::mass::{ComputeBudget, SigopCount};
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, TxInputMass};
 
 struct RpcInputWithVersion {
@@ -18,9 +19,9 @@ impl From<RpcInputWithVersion> for TransactionInput {
             value.input.signature_script,
             value.input.sequence,
             if TxInputMass::has_compute_budget_field(value.version) {
-                TxInputMass::ComputeBudget(value.input.compute_budget.into())
+                ComputeBudget(value.input.compute_budget).into()
             } else {
-                TxInputMass::SigopCount(value.input.sig_op_count.into())
+                SigopCount(value.input.sig_op_count).into()
             },
         )
     }
@@ -48,9 +49,9 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
             value.input.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
 
         let mass = if TxInputMass::has_compute_budget_field(value.version) {
-            TxInputMass::ComputeBudget(value.input.compute_budget.unwrap_or_default().into())
+            ComputeBudget(value.input.compute_budget.unwrap_or_default()).into()
         } else {
-            TxInputMass::SigopCount(value.input.sig_op_count.unwrap_or_default().into())
+            SigopCount(value.input.sig_op_count.unwrap_or_default()).into()
         };
 
         Ok(TransactionInput::new_with_mass(previous_outpoint, signature_script, sequence, mass))

@@ -130,6 +130,18 @@ impl TxInputMass {
     }
 }
 
+impl From<SigopCount> for TxInputMass {
+    fn from(value: SigopCount) -> Self {
+        Self::SigopCount(value)
+    }
+}
+
+impl From<ComputeBudget> for TxInputMass {
+    fn from(value: ComputeBudget) -> Self {
+        Self::ComputeBudget(value)
+    }
+}
+
 /// Represents a Kaspa transaction input
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -147,7 +159,7 @@ impl TransactionInput {
     }
 
     pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: TxInputMass::SigopCount(sig_op_count.into()) }
+        Self { previous_outpoint, signature_script, sequence, mass: SigopCount(sig_op_count).into() }
     }
 
     pub fn new_with_compute_budget(
@@ -156,7 +168,7 @@ impl TransactionInput {
         sequence: u64,
         compute_budget: u16,
     ) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: TxInputMass::ComputeBudget(compute_budget.into()) }
+        Self { previous_outpoint, signature_script, sequence, mass: ComputeBudget(compute_budget).into() }
     }
 }
 

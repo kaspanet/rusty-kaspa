@@ -15,7 +15,7 @@ use kaspa_consensus::params::Params;
 use kaspa_consensus_core::constants::INPUT_COMPUTE_MASS_SCALE_FACTOR;
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
-    mass::MassCalculator,
+    mass::{ComputeBudget, MassCalculator},
     network::NetworkType,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry},
@@ -528,7 +528,7 @@ fn generate_stark_tx_dag(
                                 *o,
                                 signature_script.as_ref().clone(),
                                 0,
-                                TxInputMass::ComputeBudget(input_compute_budget.into()),
+                                ComputeBudget(input_compute_budget).into(),
                             ),
                             e.clone(),
                         )

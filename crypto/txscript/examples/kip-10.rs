@@ -4,9 +4,10 @@ use kaspa_consensus_core::{
         sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::SIG_HASH_ALL,
     },
+    mass::SigopCount,
     tx::{
         MutableTransaction, PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-        TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction,
+        TransactionOutput, UtxoEntry, VerifiableTransaction,
     },
 };
 use kaspa_txscript::{
@@ -101,7 +102,7 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        mass: TxInputMass::SigopCount(1.into()),
+        mass: SigopCount(1).into(),
     };
 
     // Create a transaction with the input and output
@@ -272,7 +273,7 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        mass: TxInputMass::SigopCount(1.into()),
+        mass: SigopCount(1).into(),
     };
 
     // Create a transaction with the input and output
@@ -427,7 +428,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&two_times_script)?.drain(),
         sequence: 4294967295,
-        mass: TxInputMass::SigopCount(1.into()),
+        mass: SigopCount(1).into(),
     };
 
     // Create a transaction with the input and output
@@ -576,7 +577,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        mass: TxInputMass::SigopCount(1.into()),
+        mass: SigopCount(1).into(),
     };
 
     // Create a transaction with the input and output

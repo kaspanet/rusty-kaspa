@@ -11,9 +11,10 @@ use kaspa_consensus_core::{
     config::params::OverrideParams,
     constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
     header::Header,
+    mass::ComputeBudget,
     sign::{sign, sign_with_multiple_v2},
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass},
+    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
@@ -332,7 +333,7 @@ async fn daemon_utxos_propagation_test() {
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::ComputeBudget(0.into()),
+            mass: ComputeBudget(0).into(),
         })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
@@ -350,10 +351,7 @@ async fn daemon_utxos_propagation_test() {
     .unwrap();
     let mut transaction = signed_tx.tx;
     let per_input_compute_budget_commitment: u16 = 3000; // Some upper bound
-    transaction
-        .inputs
-        .iter_mut()
-        .for_each(|input| input.mass = TxInputMass::ComputeBudget(per_input_compute_budget_commitment.into()));
+    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(per_input_compute_budget_commitment).into());
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -569,7 +567,7 @@ async fn daemon_compute_mass_relay_test() {
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::ComputeBudget(0.into()),
+            mass: ComputeBudget(0).into(),
         })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
@@ -582,7 +580,7 @@ async fn daemon_compute_mass_relay_test() {
     )
     .unwrap();
     let mut transaction = signed_tx.tx;
-    transaction.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(300.into()));
+    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(300).into());
     assert!(
         transaction.inputs.iter().any(|input| input.mass.compute_budget().unwrap() > 0),
         "expected non-zero compute_budget commitment for v1 transaction"
