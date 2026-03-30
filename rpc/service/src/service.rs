@@ -231,6 +231,38 @@ impl RpcCoreService {
         }
     }
 
+    pub async fn notify_utxos_changed(
+        &self, 
+        request: NotifyUtxosChangedRequest
+    ) -> RpcResult<NotifyUtxosChangedResponse> {
+        
+        // Ensure utxoindex exists (it's an Option in your constructor)
+        if let Some(ref utxoindex) = self.utxoindex {
+            if let Some(start_score) = request.start_daa_score {
+                for address in &request.addresses {
+                    // 1. Fetch from the index
+                    // Use .get_utxos_by_addresses (plural) or verify the trait method name
+                    let utxos = utxoindex.get_utxos_by_addresses(vec![address.clone()])?;
+                    
+                    // 2. Filter, Map, and Collect
+                    let added: Vec<RpcUtxoEntry> = utxos
+                        .into_iter()
+                        .filter(|(_addr, entry)| entry.block_daa_score > start_score)
+                        .map(|(_addr, entry)| entry.into()) 
+                        .collect();
+
+                    // 3. Push the "Initial Burst" 
+                    if !added.is_empty() {
+                        self.notifier.notify(Notification::UtxosChanged(UtxosChangedNotification {
+                            added,
+                            removed: vec![],
+                        })).await?;
+                    }
+                }
+            }
+        }
+
+    
     pub fn start_impl(&self) {
         self.notifier().start();
     }
