@@ -150,7 +150,7 @@ mod tests {
         let mut branches = ProofBranchCache::new();
         let ok = proof.as_proof().verify_cached::<SeqCommitActiveNode>(&lk, Some(leaf), root, &mut branches).unwrap();
         assert!(ok);
-        assert!(!branches.is_empty());
+        assert!(branches.len() <= proof.non_empty_count());
     }
 
     #[test]
