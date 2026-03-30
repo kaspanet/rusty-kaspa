@@ -512,6 +512,12 @@ message NotifyUtxosChangedRequestMessage {
   // UTXOs addresses to start/stop getting notified about
   // Leave empty to start/stop all updates
   repeated string addresses = 1;
+  // Optional historical catch-up lower bound (exclusive) for added UTXOs.
+  // When provided with command = NOTIFY_START, the server may emit an initial
+  // UTXOsChanged notification containing only entries with block_daa_score > start_daa_score.
+  //
+  // Notes:
+  // 1. Clients should de-duplicate by outpoint when merging catch-up and live notifications.
   optional uint64 start_daa_score = 2;
   RpcNotifyCommand command = 101;
 }

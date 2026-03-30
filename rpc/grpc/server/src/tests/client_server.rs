@@ -4,6 +4,7 @@ use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::scope::{NewBlockTemplateScope, Scope};
 use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::Notification;
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 use std::sync::Arc;
 
@@ -184,6 +185,44 @@ async fn test_client_server_notifications() {
 
     // Stop the server
     assert!(server.stop().await.is_ok(), "error stopping the server");
+    drop(server);
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+}
+
+#[tokio::test]
+async fn test_notify_utxos_changed_start_daa_score_catchup() {
+    kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
+
+    // Create and start a fake core service
+    let rpc_core_service = Arc::new(RpcCoreMock::new());
+    rpc_core_service.start();
+
+    // Create and start the server
+    let server = create_server(rpc_core_service.clone());
+
+    // Connect a direct-mode client
+    let client = create_client(server.serve_address()).await;
+
+    let address = "kaspa:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjellj43pf".try_into().unwrap();
+    assert!(client.start_notify_utxos_changed_with_catchup(vec![address], 50).await.is_ok());
+
+    // The custom server handler should emit an initial catch-up UtxosChanged notification.
+    let notification = client.notification_channel_receiver().recv().await.unwrap();
+    match notification {
+        Notification::UtxosChanged(notification) => {
+            assert_eq!(notification.added.len(), 1);
+            assert_eq!(notification.removed.len(), 0);
+            assert_eq!(notification.added[0].utxo_entry.block_daa_score, 51);
+        }
+        other => panic!("unexpected notification: {other:?}"),
+    }
+
+    // Stop the fake service
+    rpc_core_service.join().await;
+
+    // Stop the server
+    assert!(server.stop().await.is_ok(), "error stopping the server");
+    assert!(client.disconnect().await.is_ok(), "client failed to disconnect");
     drop(server);
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 }

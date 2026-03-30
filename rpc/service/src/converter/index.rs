@@ -3,7 +3,7 @@ use kaspa_consensus_core::config::Config;
 use kaspa_index_core::indexed_utxos::UtxoSetByScriptPublicKey;
 use kaspa_index_core::notification::{self as index_notify, Notification as IndexNotification};
 use kaspa_notify::converter::Converter;
-use kaspa_rpc_core::{Notification, RpcUtxosByAddressesEntry, UtxosChangedNotification, utxo_set_into_rpc};
+use kaspa_rpc_core::{Notification, RpcUtxosByAddressesEntry, UtxosChangedNotification, utxo_set_into_rpc, utxo_set_into_rpc_after_daa_score};
 use std::sync::Arc;
 
 /// Conversion of consensus_core to rpc_core structures
@@ -26,6 +26,14 @@ impl IndexConverter {
 
     pub fn get_utxos_by_addresses_entries(&self, item: &UtxoSetByScriptPublicKey) -> Vec<RpcUtxosByAddressesEntry> {
         utxo_set_into_rpc(item, Some(self.config.prefix()))
+    }
+
+    pub fn get_utxos_by_addresses_entries_after_daa_score(
+        &self,
+        item: &UtxoSetByScriptPublicKey,
+        start_daa_score: u64,
+    ) -> Vec<RpcUtxosByAddressesEntry> {
+        utxo_set_into_rpc_after_daa_score(item, Some(self.config.prefix()), start_daa_score)
     }
 }
 

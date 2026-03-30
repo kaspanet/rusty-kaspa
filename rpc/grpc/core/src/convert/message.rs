@@ -534,7 +534,11 @@ from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, prot
 });
 
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
-    Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
+    Self {
+        addresses: item.addresses.iter().map(|x| x.into()).collect(),
+        start_daa_score: item.start_daa_score,
+        command: item.command.into(),
+    }
 });
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::StopNotifyingUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
@@ -1040,12 +1044,14 @@ try_from!(item: &protowire::GetSyncStatusResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(item: &protowire::NotifyUtxosChangedRequestMessage, kaspa_rpc_core::NotifyUtxosChangedRequest, {
     Self {
         addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()?,
+        start_daa_score: item.start_daa_score,
         command: item.command.into(),
     }
 });
 try_from!(item: &protowire::StopNotifyingUtxosChangedRequestMessage, kaspa_rpc_core::NotifyUtxosChangedRequest, {
     Self {
         addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()?,
+        start_daa_score: None,
         command: Command::Stop,
     }
 });
@@ -1099,9 +1105,14 @@ try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa
 
 #[cfg(test)]
 mod tests {
-    use kaspa_rpc_core::{RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
+    use kaspa_notify::subscription::Command;
+    use kaspa_rpc_core::{NotifyUtxosChangedRequest, RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
 
-    use crate::protowire::{self, SubmitBlockResponseMessage, submit_block_response_message::RejectReason};
+    use crate::protowire::{self, NotifyUtxosChangedRequestMessage, SubmitBlockResponseMessage, submit_block_response_message::RejectReason};
+
+    fn sample_address() -> kaspa_rpc_core::RpcAddress {
+        "kaspa:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjellj43pf".try_into().unwrap()
+    }
 
     #[test]
     fn test_submit_block_response() {
@@ -1170,5 +1181,32 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_notify_utxos_changed_request_start_daa_score_to_protowire() {
+        let request = NotifyUtxosChangedRequest {
+            addresses: vec![sample_address()],
+            start_daa_score: Some(123),
+            command: Command::Start,
+        };
+
+        let message: NotifyUtxosChangedRequestMessage = (&request).into();
+        assert_eq!(message.addresses.len(), 1);
+        assert_eq!(message.start_daa_score, Some(123));
+    }
+
+    #[test]
+    fn test_notify_utxos_changed_request_start_daa_score_from_protowire() {
+        let message = NotifyUtxosChangedRequestMessage {
+            addresses: vec![sample_address().to_string()],
+            start_daa_score: Some(456),
+            command: protowire::RpcNotifyCommand::NotifyStart as i32,
+        };
+
+        let request = NotifyUtxosChangedRequest::try_from(&message).unwrap();
+        assert_eq!(request.addresses.len(), 1);
+        assert_eq!(request.start_daa_score, Some(456));
+        assert_eq!(request.command, Command::Start);
     }
 }

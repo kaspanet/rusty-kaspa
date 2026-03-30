@@ -14,7 +14,7 @@ use crate::{
 use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
 use kaspa_grpc_core::{ops::KaspadPayloadOps, protowire::NotifyFinalityConflictResponseMessage};
 use kaspa_notify::{scope::FinalityConflictResolvedScope, subscriber::SubscriptionManager};
-use kaspa_rpc_core::{SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
+use kaspa_rpc_core::{Notification, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse, UtxosChangedNotification};
 use kaspa_rpc_macros::build_grpc_server_interface;
 
 pub struct Factory {}
@@ -136,6 +136,47 @@ impl Factory {
             })
         });
         interface.replace_method(KaspadPayloadOps::NotifyFinalityConflict, method);
+
+        // Manually reimplementing NotifyUtxosChangedRequest to support optional historical catch-up
+        // while preserving a single subscribe command entry point in the service layer.
+        let method: KaspadMethod = Method::new(|server_ctx: ServerContext, connection: Connection, request: KaspadRequest| {
+            Box::pin(async move {
+                let mut response: KaspadResponse = match request.payload {
+                    Some(Payload::NotifyUtxosChangedRequest(ref request)) => {
+                        match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(request) {
+                            Ok(request) => {
+                                let listener_id = connection.get_or_register_listener_id()?;
+                                let mut catchup_added = vec![];
+                                let result = server_ctx
+                                    .core_service
+                                    .execute_utxos_changed_subscribe_command(listener_id, request)
+                                    .await
+                                    .map(|entries| {
+                                        catchup_added = entries;
+                                    });
+
+                                if result.is_ok() && !catchup_added.is_empty() {
+                                    let notification = Notification::UtxosChanged(UtxosChangedNotification {
+                                        added: Arc::new(catchup_added),
+                                        removed: Arc::new(vec![]),
+                                    });
+                                    connection.enqueue((&notification).into()).await?;
+                                }
+
+                                NotifyUtxosChangedResponseMessage::from(result).into()
+                            }
+                            Err(err) => NotifyUtxosChangedResponseMessage::from(err).into(),
+                        }
+                    }
+                    _ => {
+                        return Err(GrpcServerError::InvalidRequestPayload);
+                    }
+                };
+                response.id = request.id;
+                Ok(response)
+            })
+        });
+        interface.replace_method(KaspadPayloadOps::NotifyUtxosChanged, method);
 
         // Methods with special properties
         let network_bps = network_bps as usize;

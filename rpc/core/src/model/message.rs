@@ -3135,33 +3135,21 @@ impl Deserializer for FinalityConflictResolvedNotification {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyUtxosChangedRequest {
     pub addresses: Vec<RpcAddress>,
-    /// Optional: If provided, the node will first emit all currently known 
-    /// UTXOs for these addresses with a DAA score > this value.
-    pub start_daa_score: Option<u64>, 
+    pub start_daa_score: Option<u64>,
+    pub command: Command,
 }
 
 impl NotifyUtxosChangedRequest {
-    // Keep the old way working for existing code
-    pub fn new(addresses: Vec<RpcAddress>) -> Self {
-        Self { 
-            addresses, 
-            start_daa_score: None 
-        }
-    }
-
-    // returning UTXOs past a certain daa
-    pub fn with_start_score(addresses: Vec<RpcAddress>, score: u64) -> Self {
-        Self { 
-            addresses, 
-            start_daa_score: Some(score) 
-        }
+    pub fn new(addresses: Vec<RpcAddress>, start_daa_score: Option<u64>, command: Command) -> Self {
+        Self { addresses, start_daa_score, command }
     }
 }
 
 impl Serializer for NotifyUtxosChangedRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(Vec<RpcAddress>, &self.addresses, writer)?;
+        store!(Option<u64>, &self.start_daa_score, writer)?;
         store!(Command, &self.command, writer)?;
         Ok(())
     }
@@ -3169,10 +3157,11 @@ impl Serializer for NotifyUtxosChangedRequest {
 
 impl Deserializer for NotifyUtxosChangedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let addresses = load!(Vec<RpcAddress>, reader)?;
+        let start_daa_score = if version > 1 { load!(Option<u64>, reader)? } else { None };
         let command = load!(Command, reader)?;
-        Ok(Self { addresses, command })
+        Ok(Self { addresses, start_daa_score, command })
     }
 }
 

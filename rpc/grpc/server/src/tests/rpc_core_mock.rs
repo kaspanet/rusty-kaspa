@@ -5,7 +5,7 @@ use kaspa_notify::listener::{ListenerId, ListenerLifespan};
 use kaspa_notify::notifier::{Notifier, Notify};
 use kaspa_notify::scope::Scope;
 use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
+use kaspa_notify::subscription::{Command, MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_rpc_core::{RpcResult, notify::connection::ChannelConnection};
 use kaspa_rpc_core::{api::connection::DynRpcConnection, api::rpc::RpcApi, *};
 use std::sync::Arc;
@@ -398,5 +398,28 @@ impl RpcApi for RpcCoreMock {
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.core_notifier.try_stop_notify(id, scope)?;
         Ok(())
+    }
+
+    async fn execute_utxos_changed_subscribe_command(
+        &self,
+        id: ListenerId,
+        request: NotifyUtxosChangedRequest,
+    ) -> RpcResult<Vec<RpcUtxosByAddressesEntry>> {
+        let command = request.command;
+        self.execute_subscribe_command(id, request.clone().into(), command).await?;
+
+        if command != Command::Start {
+            return Ok(vec![]);
+        }
+
+        let Some(start_daa_score) = request.start_daa_score else {
+            return Ok(vec![]);
+        };
+
+        Ok(vec![RpcUtxosByAddressesEntry {
+            address: request.addresses.first().cloned(),
+            outpoint: RpcTransactionOutpoint { transaction_id: RpcHash::from_bytes([3u8; 32]), index: 0 },
+            utxo_entry: RpcUtxoEntry::new(123, Default::default(), start_daa_score + 1, false),
+        }])
     }
 }

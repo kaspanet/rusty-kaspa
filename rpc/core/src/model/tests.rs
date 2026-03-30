@@ -1397,7 +1397,7 @@ mod mockery {
 
     impl Mock for NotifyUtxosChangedRequest {
         fn mock() -> Self {
-            NotifyUtxosChangedRequest { addresses: mock(), command: Command::Start }
+            NotifyUtxosChangedRequest { addresses: mock(), start_daa_score: mock(), command: Command::Start }
         }
     }
 

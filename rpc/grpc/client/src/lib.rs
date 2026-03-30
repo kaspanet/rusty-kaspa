@@ -28,7 +28,7 @@ use kaspa_notify::{
     },
 };
 use kaspa_rpc_core::{
-    Notification,
+    Notification, RpcAddress,
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
@@ -226,6 +226,31 @@ impl GrpcClient {
 
     pub fn notification_mode(&self) -> NotificationMode {
         self.notification_mode
+    }
+
+    /// Starts UTXOsChanged notifications with an optional historical catch-up lower bound.
+    ///
+    /// Currently this helper is available in direct notification mode only.
+    pub async fn start_notify_utxos_changed_with_catchup(
+        &self,
+        addresses: Vec<RpcAddress>,
+        start_daa_score: u64,
+    ) -> RpcResult<()> {
+        match self.notification_mode {
+            NotificationMode::MultiListeners => Err(RpcError::UnsupportedFeature),
+            NotificationMode::Direct => {
+                if self.inner.will_reconnect() {
+                    let scope = Scope::UtxosChanged(kaspa_notify::scope::UtxosChangedScope::new(addresses.clone()));
+                    let event = scope.event_type();
+                    self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
+                        Mutation::new(Command::Start, scope),
+                        self.policies,
+                        &self.subscription_context,
+                    )?;
+                }
+                self.inner.start_notify_utxos_changed_to_client(addresses, start_daa_score).await
+            }
+        }
     }
 }
 
@@ -914,6 +939,12 @@ impl Inner {
     async fn start_notify_to_client(&self, scope: Scope) -> RpcResult<()> {
         let request = kaspad_request::Payload::from_notification_type(&scope, Command::Start);
         self.call((&request).into(), request).await?;
+        Ok(())
+    }
+
+    async fn start_notify_utxos_changed_to_client(&self, addresses: Vec<RpcAddress>, start_daa_score: u64) -> RpcResult<()> {
+        let request = NotifyUtxosChangedRequest::new(addresses, Some(start_daa_score), Command::Start);
+        self.call(KaspadPayloadOps::NotifyUtxosChanged, request).await?;
         Ok(())
     }
 
