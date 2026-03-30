@@ -184,38 +184,6 @@ pub fn generate_tx_dag_with_lanes(
     txs
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{generate_level_lane_assignments, make_lane_id};
-    use rand::{SeedableRng, rngs::SmallRng};
-    use std::collections::HashSet;
-
-    #[test]
-    fn level_lane_assignments_use_level_local_lane_pools() {
-        let mut rng = SmallRng::seed_from_u64(42);
-        let lanes_per_level = 4;
-
-        let level_0_assignments = generate_level_lane_assignments(0, 128, lanes_per_level, &mut rng);
-        let level_1_assignments = generate_level_lane_assignments(1, 128, lanes_per_level, &mut rng);
-
-        let level_0_pool: HashSet<_> = (0..lanes_per_level).map(|lane_idx| make_lane_id(0, lane_idx)).collect();
-        let level_1_pool: HashSet<_> = (0..lanes_per_level).map(|lane_idx| make_lane_id(1, lane_idx)).collect();
-
-        assert_eq!(level_0_pool.len(), lanes_per_level);
-        assert_eq!(level_1_pool.len(), lanes_per_level);
-        assert!(level_0_pool.is_disjoint(&level_1_pool));
-        assert!(level_0_assignments.iter().all(|lane_id| level_0_pool.contains(lane_id)));
-        assert!(level_1_assignments.iter().all(|lane_id| level_1_pool.contains(lane_id)));
-    }
-
-    #[test]
-    #[should_panic(expected = "lanes_per_level must be positive")]
-    fn level_lane_assignments_require_positive_lane_count() {
-        let mut rng = SmallRng::seed_from_u64(7);
-        let _ = generate_level_lane_assignments(0, 1, 0, &mut rng);
-    }
-}
-
 /// Sanity test verifying that the generated TX DAG is valid, topologically ordered and has no double spends
 pub fn verify_tx_dag(initial_utxoset: &UtxoCollection, txs: &[Arc<Transaction>]) {
     let mut prev_txs: HashMap<TransactionId, Arc<Transaction>> = HashMap::new();
@@ -330,5 +298,37 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
             }
             _ => panic!("wrong notification type"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{generate_level_lane_assignments, make_lane_id};
+    use rand::{SeedableRng, rngs::SmallRng};
+    use std::collections::HashSet;
+
+    #[test]
+    fn level_lane_assignments_use_level_local_lane_pools() {
+        let mut rng = SmallRng::seed_from_u64(42);
+        let lanes_per_level = 4;
+
+        let level_0_assignments = generate_level_lane_assignments(0, 128, lanes_per_level, &mut rng);
+        let level_1_assignments = generate_level_lane_assignments(1, 128, lanes_per_level, &mut rng);
+
+        let level_0_pool: HashSet<_> = (0..lanes_per_level).map(|lane_idx| make_lane_id(0, lane_idx)).collect();
+        let level_1_pool: HashSet<_> = (0..lanes_per_level).map(|lane_idx| make_lane_id(1, lane_idx)).collect();
+
+        assert_eq!(level_0_pool.len(), lanes_per_level);
+        assert_eq!(level_1_pool.len(), lanes_per_level);
+        assert!(level_0_pool.is_disjoint(&level_1_pool));
+        assert!(level_0_assignments.iter().all(|lane_id| level_0_pool.contains(lane_id)));
+        assert!(level_1_assignments.iter().all(|lane_id| level_1_pool.contains(lane_id)));
+    }
+
+    #[test]
+    #[should_panic(expected = "lanes_per_level must be positive")]
+    fn level_lane_assignments_require_positive_lane_count() {
+        let mut rng = SmallRng::seed_from_u64(7);
+        let _ = generate_level_lane_assignments(0, 1, 0, &mut rng);
     }
 }
