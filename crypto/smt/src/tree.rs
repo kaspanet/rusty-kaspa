@@ -17,7 +17,9 @@ use core::marker::PhantomData;
 use kaspa_hashes::Hash;
 
 use crate::proof::{OwnedSmtProof, ProofTerminal};
-use crate::store::{BTreeSmtStore, BranchChildren, BranchKey, CollapsedLeaf, LeafUpdate, Node, SmtStore, SortedLeafUpdates};
+use crate::store::{
+    BTreeSmtStore, BranchChildren, BranchKey, CollapsedLeaf, LeafUpdate, Node, SmtStore, SortedLeafUpdates, SortedLeafUpdatesRef,
+};
 use crate::{DEPTH, SmtHasher, bit_at, hash_node};
 
 /// A 256-bit Sparse Merkle Tree with incremental updates and cached root.
@@ -229,8 +231,7 @@ pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
         return Ok(current_root);
     }
 
-    let updates = leaf_updates.into_vec();
-    let result = compute_subtree::<H, S>(store, changes, &updates, 0)?;
+    let result = compute_subtree::<H, S>(store, changes, leaf_updates.as_sorted(), 0)?;
 
     // Convert the root-level NodeResult to a root hash
     match &result {
@@ -258,6 +259,59 @@ fn child_branch_key(parent: &BranchKey, right: bool, depth: usize) -> BranchKey 
     BranchKey { height: child_height, node_key: Hash::from_bytes(bytes) }
 }
 
+fn leaf_result(update: Option<&LeafUpdate>) -> NodeResult {
+    match update {
+        Some(u) if u.leaf_hash != kaspa_hashes::ZERO_HASH => {
+            NodeResult::Collapsed(CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash })
+        }
+        _ => NodeResult::Empty,
+    }
+}
+
+fn merged_node<H: SmtHasher>(left: &NodeResult, right: &NodeResult, height: usize) -> (NodeResult, Option<Node>) {
+    let result = match (left, right) {
+        (NodeResult::Empty, NodeResult::Empty) => NodeResult::Empty,
+        (NodeResult::Collapsed(cl), NodeResult::Empty) | (NodeResult::Empty, NodeResult::Collapsed(cl)) => NodeResult::Collapsed(*cl),
+        _ => {
+            let hash = hash_node::<H>(left.hash::<H>(height), right.hash::<H>(height));
+            NodeResult::Internal { hash }
+        }
+    };
+
+    let node = match &result {
+        NodeResult::Empty => None,
+        NodeResult::Collapsed(cl) => Some(Node::Collapsed(*cl)),
+        NodeResult::Internal { .. } => {
+            let left_hash = left.hash::<H>(height);
+            let right_hash = right.hash::<H>(height);
+            Some(Node::Internal(BranchChildren { left: left_hash, right: right_hash }))
+        }
+    };
+
+    (result, node)
+}
+
+fn record_change(changes: &mut SmtNodeChanges, subtree_key: BranchKey, existing: Option<Node>, new_node: Option<Node>) {
+    if existing != new_node {
+        changes.insert(subtree_key, new_node);
+    }
+}
+
+fn expand_singleton(existing: Option<Node>, updates: SortedLeafUpdatesRef<'_>) -> (Option<Node>, Option<SortedLeafUpdates>) {
+    match existing {
+        Some(Node::Collapsed(cl)) => {
+            let mut expanded = Vec::with_capacity(updates.len() + 1);
+            expanded.extend_from_slice(updates.as_slice());
+            if !updates.contains_key(&cl.lane_key) {
+                expanded.push(LeafUpdate { key: cl.lane_key, leaf_hash: cl.leaf_hash });
+            }
+            expanded.sort_unstable_by_key(|u| u.key);
+            (None, Some(SortedLeafUpdates::from_sorted_vec(expanded)))
+        }
+        _ => (existing, None),
+    }
+}
+
 /// Recursive top-down subtree computation.
 ///
 /// `updates` must be sorted by key and non-empty.
@@ -265,127 +319,52 @@ fn child_branch_key(parent: &BranchKey, right: bool, depth: usize) -> BranchKey 
 fn compute_subtree<H: SmtHasher, S: SmtStore>(
     store: &S,
     changes: &mut SmtNodeChanges,
-    updates: &[LeafUpdate],
+    updates: SortedLeafUpdatesRef<'_>,
     depth: usize,
 ) -> Result<NodeResult, S::Error> {
     debug_assert!(!updates.is_empty());
     let height = DEPTH - 1 - depth;
-    let subtree_key = BranchKey::new(height as u8, &updates[0].key);
+    let subtree_key = BranchKey::new(height as u8, &updates.first().unwrap().key);
 
     let existing = read_node::<S>(store, changes, &subtree_key)?;
 
-    // Single update into empty subtree: immediate collapse
-
-    if updates.len() == 1 && existing.is_none() {
-        let u = &updates[0];
-        if u.leaf_hash == kaspa_hashes::ZERO_HASH {
-            return Ok(NodeResult::Empty); // Deleting from empty — no-op
-        }
-        let cl = CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash };
-        changes.insert(subtree_key, Some(Node::Collapsed(cl)));
-        return Ok(NodeResult::Collapsed(cl));
-    }
-
-    // Same-key update of a collapsed node
-
-    if updates.len() == 1
-        && let Some(Node::Collapsed(existing_cl)) = existing
-        && updates[0].key == existing_cl.lane_key
+    if let Some(u) = updates.single()
+        && existing.is_none()
     {
-        let u = &updates[0];
         if u.leaf_hash == kaspa_hashes::ZERO_HASH {
-            changes.insert(subtree_key, None);
             return Ok(NodeResult::Empty);
         }
         let cl = CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash };
-        let node = Node::Collapsed(cl);
-        if existing != Some(node) {
-            changes.insert(subtree_key, Some(node));
-        }
+        record_change(changes, subtree_key, existing, Some(Node::Collapsed(cl)));
         return Ok(NodeResult::Collapsed(cl));
     }
 
-    // Expand collapsed node: inject existing leaf as phantom update
+    if let Some(u) = updates.single()
+        && let Some(Node::Collapsed(existing_cl)) = existing
+        && u.key == existing_cl.lane_key
+    {
+        let new_node = if u.leaf_hash == kaspa_hashes::ZERO_HASH {
+            None
+        } else {
+            Some(Node::Collapsed(CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash }))
+        };
+        record_change(changes, subtree_key, existing, new_node);
+        return Ok(leaf_result(Some(u)));
+    }
 
-    let effective_buf: Vec<LeafUpdate>;
-    let (updates, existing_is_expanded) = if let Some(Node::Collapsed(cl)) = existing {
-        let mut v = Vec::with_capacity(updates.len() + 1);
-        v.extend_from_slice(updates);
-        if !updates.iter().any(|u| u.key == cl.lane_key) {
-            v.push(LeafUpdate { key: cl.lane_key, leaf_hash: cl.leaf_hash });
-        }
-        v.sort_unstable_by_key(|u| u.key);
-        effective_buf = v;
-        (&effective_buf[..], true)
-    } else {
-        (updates, false)
-    };
+    let (existing_for_write, expanded_updates) = expand_singleton(existing, updates);
+    let updates = expanded_updates.as_ref().map(SortedLeafUpdates::as_sorted).unwrap_or(updates);
 
     if depth == DEPTH - 1 {
         debug_assert!(updates.len() <= 2);
-        let left_result = updates
-            .iter()
-            .find(|u| !bit_at(&u.key, depth))
-            .map(|u| {
-                if u.leaf_hash == kaspa_hashes::ZERO_HASH {
-                    NodeResult::Empty
-                } else {
-                    NodeResult::Collapsed(CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash })
-                }
-            })
-            .unwrap_or(NodeResult::Empty);
-        let right_result = updates
-            .iter()
-            .find(|u| bit_at(&u.key, depth))
-            .map(|u| {
-                if u.leaf_hash == kaspa_hashes::ZERO_HASH {
-                    NodeResult::Empty
-                } else {
-                    NodeResult::Collapsed(CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash })
-                }
-            })
-            .unwrap_or(NodeResult::Empty);
-
-        let left_hash = left_result.hash::<H>(0);
-        let right_hash = right_result.hash::<H>(0);
-
-        let result = match (&left_result, &right_result) {
-            (NodeResult::Empty, NodeResult::Empty) => NodeResult::Empty,
-            (NodeResult::Collapsed(cl), NodeResult::Empty) | (NodeResult::Empty, NodeResult::Collapsed(cl)) => {
-                NodeResult::Collapsed(*cl)
-            }
-            _ => NodeResult::Internal { hash: hash_node::<H>(left_hash, right_hash) },
-        };
-
-        let existing_for_write = if existing_is_expanded { None } else { existing };
-        match &result {
-            NodeResult::Empty => {
-                if existing_for_write.is_some() || existing_is_expanded {
-                    changes.insert(subtree_key, None);
-                }
-            }
-            NodeResult::Collapsed(cl) => {
-                let node = Node::Collapsed(*cl);
-                if existing_for_write != Some(node) {
-                    changes.insert(subtree_key, Some(node));
-                }
-            }
-            NodeResult::Internal { .. } => {
-                let node = Node::Internal(BranchChildren { left: left_hash, right: right_hash });
-                if existing_for_write != Some(node) {
-                    changes.insert(subtree_key, Some(node));
-                }
-            }
-        }
-
+        let left_result = leaf_result(updates.first_with_bit(depth, false));
+        let right_result = leaf_result(updates.first_with_bit(depth, true));
+        let (result, new_node) = merged_node::<H>(&left_result, &right_result, 0);
+        record_change(changes, subtree_key, existing_for_write, new_node);
         return Ok(result);
     }
 
-    // Split and recurse
-
-    let split_pos = updates.partition_point(|u| !bit_at(&u.key, depth));
-    let left_updates = &updates[..split_pos];
-    let right_updates = &updates[split_pos..];
+    let (left_updates, right_updates) = updates.partition_by_bit(depth);
 
     let left_result = if left_updates.is_empty() {
         read_child_result::<H, S>(store, changes, &subtree_key, false, depth)?
@@ -399,42 +378,8 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
         compute_subtree::<H, S>(store, changes, right_updates, depth + 1)?
     };
 
-    // Merge and write
-
-    let left_hash = left_result.hash::<H>(height);
-    let right_hash = right_result.hash::<H>(height);
-
-    let result = match (&left_result, &right_result) {
-        (NodeResult::Empty, NodeResult::Empty) => NodeResult::Empty,
-        (NodeResult::Collapsed(cl), NodeResult::Empty) | (NodeResult::Empty, NodeResult::Collapsed(cl)) => NodeResult::Collapsed(*cl),
-        _ => {
-            let hash = hash_node::<H>(left_hash, right_hash);
-            NodeResult::Internal { hash }
-        }
-    };
-
-    // Write to changes map (None when expanded, since the old Collapsed is being replaced)
-    let existing_for_write = if existing_is_expanded { None } else { existing };
-    match &result {
-        NodeResult::Empty => {
-            if existing_for_write.is_some() || existing_is_expanded {
-                changes.insert(subtree_key, None);
-            }
-        }
-        NodeResult::Collapsed(cl) => {
-            let node = Node::Collapsed(*cl);
-            if existing_for_write != Some(node) {
-                changes.insert(subtree_key, Some(node));
-            }
-        }
-        NodeResult::Internal { .. } => {
-            let node = Node::Internal(BranchChildren { left: left_hash, right: right_hash });
-            if existing_for_write != Some(node) {
-                changes.insert(subtree_key, Some(node));
-            }
-        }
-    }
-
+    let (result, new_node) = merged_node::<H>(&left_result, &right_result, height);
+    record_change(changes, subtree_key, existing_for_write, new_node);
     Ok(result)
 }
 
