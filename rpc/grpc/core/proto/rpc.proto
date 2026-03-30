@@ -512,6 +512,7 @@ message NotifyUtxosChangedRequestMessage {
   // UTXOs addresses to start/stop getting notified about
   // Leave empty to start/stop all updates
   repeated string addresses = 1;
+  optional uint64 start_daa_score = 2;
   RpcNotifyCommand command = 101;
 }
 
