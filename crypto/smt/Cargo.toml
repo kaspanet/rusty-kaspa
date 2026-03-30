@@ -13,12 +13,11 @@ repository.workspace = true
 default = ["std"]
 std = []
 test-utils = ["std"]
-zerocopy = ["dep:zerocopy"]
 
 [dependencies]
-kaspa-hashes.workspace = true
+kaspa-hashes = { workspace = true, features = ["zerocopy"] }
 thiserror.workspace = true
-zerocopy = { workspace = true, optional = true }
+zerocopy.workspace = true
 
 [build-dependencies]
 blake3.workspace = true

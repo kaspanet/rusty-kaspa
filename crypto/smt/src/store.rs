@@ -1,10 +1,10 @@
 //! Storage trait and in-memory implementation for the Sparse Merkle Tree.
 //!
-//! [`SmtStore`] is a **read-only** trait for branch node lookups, enabling both
+//! [`SmtStore`] is a **read-only** trait for node lookups, enabling both
 //! in-memory (`BTreeSmtStore`) and persistent (e.g. RocksDB) backends.
 //!
-//! Branch nodes are keyed by [`BranchKey`] `(height, node_key)` and store
-//! the `(left, right)` child hashes.
+//! Nodes are keyed by [`BranchKey`] `(height, node_key)` and can be
+//! either [`Node::Internal`] (two children) or [`Node::Collapsed`] (single-leaf subtree).
 
 use alloc::collections::BTreeMap;
 use core::convert::Infallible;
@@ -41,19 +41,64 @@ impl BranchKey {
     }
 }
 
-/// Children of a branch node in the sparse Merkle tree.
-///
-/// Used both as the in-memory representation and (with the `zerocopy` feature)
-/// as the on-disk format for branch version values.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "zerocopy",
-    derive(zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::KnownLayout, zerocopy::Immutable, zerocopy::Unaligned)
+/// Children of an internal branch node.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    zerocopy::FromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::KnownLayout,
+    zerocopy::Immutable,
+    zerocopy::Unaligned,
 )]
 #[repr(C)]
 pub struct BranchChildren {
     pub left: Hash,
     pub right: Hash,
+}
+
+/// A collapsed single-leaf subtree. Stores the leaf's tree key and precomputed hash.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    zerocopy::FromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::KnownLayout,
+    zerocopy::Immutable,
+    zerocopy::Unaligned,
+)]
+#[repr(C)]
+pub struct CollapsedLeaf {
+    pub lane_key: Hash,
+    pub leaf_hash: Hash,
+}
+
+/// A node in the sparse Merkle tree: either a standard internal branch
+/// or a collapsed single-leaf subtree.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    zerocopy::TryFromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::KnownLayout,
+    zerocopy::Immutable,
+    zerocopy::Unaligned,
+)]
+#[repr(u8)]
+pub enum Node {
+    /// Standard internal node with two children.
+    Internal(BranchChildren) = 0,
+    /// Collapsed single-leaf subtree.
+    Collapsed(CollapsedLeaf) = 1,
 }
 
 /// A single leaf update: set `key` to `leaf_hash` (or remove if `leaf_hash == ZERO_HASH`).
@@ -106,30 +151,31 @@ impl std::ops::Deref for SortedLeafUpdates {
     }
 }
 
-/// Read-only branch lookup for the Sparse Merkle Tree.
+/// Read-only node lookup for the Sparse Merkle Tree.
 ///
 /// This trait is intentionally immutable — tree computations read from the store
 /// and return diffs rather than mutating the store. This prevents bugs where
-/// unchanged branches are accidentally written.
+/// unchanged nodes are accidentally written.
 pub trait SmtStore {
     type Error: core::fmt::Debug + core::fmt::Display;
 
-    fn get_branch(&self, key: &BranchKey) -> Result<Option<BranchChildren>, Self::Error>;
+    /// Read a node (internal or collapsed) from the store.
+    fn get_node(&self, key: &BranchKey) -> Result<Option<Node>, Self::Error>;
 }
 
 /// In-memory SMT store backed by `BTreeMap`s.
 ///
-/// Implements [`SmtStore`] for read-only branch lookups.
-/// Mutations (`insert_leaf`, `insert_branch`, etc.) are inherent methods
+/// Implements [`SmtStore`] for read-only node lookups.
+/// Mutations (`insert_leaf`, `insert_node`) are inherent methods
 /// used by [`SparseMerkleTree`](crate::tree::SparseMerkleTree) in tests.
 pub struct BTreeSmtStore {
     pub(crate) leaves: BTreeMap<Hash, Hash>,
-    pub(crate) branches: BTreeMap<BranchKey, BranchChildren>,
+    pub(crate) nodes: BTreeMap<BranchKey, Node>,
 }
 
 impl BTreeSmtStore {
     pub fn new() -> Self {
-        Self { leaves: BTreeMap::new(), branches: BTreeMap::new() }
+        Self { leaves: BTreeMap::new(), nodes: BTreeMap::new() }
     }
 
     pub fn leaf_count(&self) -> usize {
@@ -152,8 +198,13 @@ impl BTreeSmtStore {
         }
     }
 
-    pub fn insert_branch(&mut self, key: BranchKey, children: BranchChildren) {
-        self.branches.insert(key, children);
+    pub fn insert_node(&mut self, key: BranchKey, node: Node) {
+        // Tombstone (Internal with both children ZERO_HASH) means delete
+        if node == (Node::Internal(BranchChildren { left: ZERO_HASH, right: ZERO_HASH })) {
+            self.nodes.remove(&key);
+        } else {
+            self.nodes.insert(key, node);
+        }
     }
 }
 
@@ -166,8 +217,8 @@ impl Default for BTreeSmtStore {
 impl SmtStore for BTreeSmtStore {
     type Error = Infallible;
 
-    fn get_branch(&self, key: &BranchKey) -> Result<Option<BranchChildren>, Self::Error> {
-        Ok(self.branches.get(key).copied())
+    fn get_node(&self, key: &BranchKey) -> Result<Option<Node>, Self::Error> {
+        Ok(self.nodes.get(key).copied())
     }
 }
 
@@ -231,15 +282,15 @@ mod tests {
     }
 
     #[test]
-    fn test_btree_store_branch_ops() {
+    fn test_btree_store_node_ops() {
         let mut store = BTreeSmtStore::new();
         let bk = BranchKey { height: 5, node_key: ZERO_HASH };
         let left = Hash::from_bytes([1; 32]);
         let right = Hash::from_bytes([2; 32]);
 
-        assert_eq!(store.get_branch(&bk).unwrap(), None);
+        assert_eq!(store.get_node(&bk).unwrap(), None);
 
-        store.insert_branch(bk, BranchChildren { left, right });
-        assert_eq!(store.get_branch(&bk).unwrap(), Some(BranchChildren { left, right }));
+        store.insert_node(bk, Node::Internal(BranchChildren { left, right }));
+        assert_eq!(store.get_node(&bk).unwrap(), Some(Node::Internal(BranchChildren { left, right })));
     }
 }

@@ -3,11 +3,11 @@ use std::sync::Arc;
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{FromBytes, IntoBytes, TryFromBytes};
 
 use crate::keys::BranchVersionKey;
 use crate::maybe_fork::{MaybeFork, Verified};
-use kaspa_smt::store::BranchChildren;
+use kaspa_smt::store::Node;
 
 /// Branch Versions.
 ///
@@ -35,7 +35,7 @@ impl DbBranchVersionStore {
         node_key: Hash,
         blue_score: u64,
         block_hash: Hash,
-        value: &BranchChildren,
+        value: &Node,
     ) -> StoreResult<()> {
         let key = BranchVersionKey::new(self.prefix, height, node_key, blue_score, block_hash);
         writer.put(key, value.as_bytes()).map_err(StoreError::DbError)
@@ -68,7 +68,7 @@ impl DbBranchVersionStore {
         node_key: Hash,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool,
-    ) -> StoreResult<Option<Verified<BranchChildren>>> {
+    ) -> StoreResult<Option<Verified<Node>>> {
         for entry in self.get_at(height, node_key, u64::MAX, min_blue_score) {
             let entry = entry?;
             if is_canonical(entry.block_hash()) {
@@ -80,7 +80,7 @@ impl DbBranchVersionStore {
 
     /// Iterate versions for `(height, node_key)` from `target_blue_score` downward.
     ///
-    /// Returns `MaybeFork<BranchChildren>` carrying both `score` and
+    /// Returns `MaybeFork<Node>` carrying both `score` and
     /// `block_hash` from the key. Caller verifies canonicality and
     /// picks the first match.
     pub fn get_at(
@@ -89,7 +89,7 @@ impl DbBranchVersionStore {
         node_key: Hash,
         target_blue_score: u64,
         min_blue_score: u64,
-    ) -> impl Iterator<Item = StoreResult<MaybeFork<BranchChildren>>> + '_ {
+    ) -> impl Iterator<Item = StoreResult<MaybeFork<Node>>> + '_ {
         let seek_key = BranchVersionKey::seek_key(self.prefix, height, node_key, target_blue_score);
         let mut entity_prefix = [0u8; BranchVersionKey::ENTITY_PREFIX_LEN];
         entity_prefix.copy_from_slice(&seek_key.as_ref()[..BranchVersionKey::ENTITY_PREFIX_LEN]);
@@ -108,7 +108,7 @@ impl DbBranchVersionStore {
                 return iter.status().err().map(|e| Err(StoreError::DbError(e)));
             }
 
-            let result = (|| -> StoreResult<Option<MaybeFork<BranchChildren>>> {
+            let result = (|| -> StoreResult<Option<MaybeFork<Node>>> {
                 let key_bytes = match iter.key() {
                     Some(k) => k,
                     None => return Ok(None),
@@ -131,8 +131,8 @@ impl DbBranchVersionStore {
                     Some(v) => v,
                     None => return Ok(None),
                 };
-                let version = BranchChildren::read_from_bytes(value_bytes)
-                    .map_err(|e| StoreError::DataInconsistency(format!("branch version value: {e}")))?;
+                let version =
+                    Node::try_read_from_bytes(value_bytes).map_err(|e| StoreError::DataInconsistency(format!("node value: {e}")))?;
                 Ok(Some(MaybeFork::new(version, blue_score, key.block_hash)))
             })();
 
@@ -169,18 +169,21 @@ mod tests {
         Hash::from_bytes([v; 32])
     }
 
+    fn internal(left: Hash, right: Hash) -> Node {
+        Node::Internal(kaspa_smt::store::BranchChildren { left, right })
+    }
+
     #[test]
     fn put_and_get_at() {
         let (_lt, store) = make_store();
-        let version = BranchChildren { left: hash(0xAA), right: hash(0xBB) };
+        let version = internal(hash(0xAA), hash(0xBB));
 
         store.put(DirectDbWriter::new(&store.db), 3, hash(0x11), 100, hash(0x22), &version).unwrap();
 
         let first = store.get_at(3, hash(0x11), 100, 0).next().unwrap().unwrap();
         assert_eq!(first.block_hash(), hash(0x22));
         assert_eq!(first.blue_score(), 100);
-        assert_eq!(first.data().left, hash(0xAA));
-        assert_eq!(first.data().right, hash(0xBB));
+        assert_eq!(*first.data(), internal(hash(0xAA), hash(0xBB)));
     }
 
     #[test]
@@ -189,7 +192,7 @@ mod tests {
         let node_key = hash(0x11);
 
         for (score, bh) in [(50, hash(0xA0)), (100, hash(0xA1)), (200, hash(0xA2))] {
-            let version = BranchChildren { left: hash(score as u8), right: hash(0xFF) };
+            let version = internal(hash(score as u8), hash(0xFF));
             store.put(DirectDbWriter::new(&store.db), 7, node_key, score, bh, &version).unwrap();
         }
 
@@ -210,13 +213,13 @@ mod tests {
 
         // First result data
         let first = store.get_at(7, node_key, 150, 0).next().unwrap().unwrap();
-        assert_eq!(first.data().left, hash(100));
+        assert_eq!(*first.data(), internal(hash(100), hash(0xFF)));
     }
 
     #[test]
     fn delete_entry() {
         let (_lt, store) = make_store();
-        let version = BranchChildren { left: hash(0xAA), right: hash(0xBB) };
+        let version = internal(hash(0xAA), hash(0xBB));
         store.put(DirectDbWriter::new(&store.db), 3, hash(0x11), 100, hash(0x22), &version).unwrap();
 
         assert!(store.get_at(3, hash(0x11), 100, 0).next().is_some());
@@ -236,28 +239,15 @@ mod tests {
         let fork_bh = hash(0xA2);
         let older_bh = hash(0xA0);
 
-        store
-            .put(
-                DirectDbWriter::new(&store.db),
-                7,
-                node_key,
-                100,
-                canonical_bh,
-                &BranchChildren { left: hash(0xCC), right: hash(0xDD) },
-            )
-            .unwrap();
-        store
-            .put(DirectDbWriter::new(&store.db), 7, node_key, 100, fork_bh, &BranchChildren { left: hash(0xEE), right: hash(0xFF) })
-            .unwrap();
-        store
-            .put(DirectDbWriter::new(&store.db), 7, node_key, 50, older_bh, &BranchChildren { left: hash(0x11), right: hash(0x22) })
-            .unwrap();
+        store.put(DirectDbWriter::new(&store.db), 7, node_key, 100, canonical_bh, &internal(hash(0xCC), hash(0xDD))).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 7, node_key, 100, fork_bh, &internal(hash(0xEE), hash(0xFF))).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 7, node_key, 50, older_bh, &internal(hash(0x11), hash(0x22))).unwrap();
 
         // Finds canonical at score 100 (searching from MAX down to 0)
         let result = store.get(7, node_key, 0, |bh| bh == canonical_bh).unwrap().unwrap();
         assert_eq!(result.block_hash(), canonical_bh);
         assert_eq!(result.blue_score(), 100);
-        assert_eq!(result.data().left, hash(0xCC));
+        assert_eq!(*result.data(), internal(hash(0xCC), hash(0xDD)));
 
         // Falls through to score 50 when score-100 blocks aren't canonical
         let result = store.get(7, node_key, 0, |bh| bh == older_bh).unwrap().unwrap();

@@ -36,7 +36,7 @@ use kaspa_consensus_core::{
     },
 };
 use kaspa_core::{info, trace};
-use kaspa_hashes::{Hash, SeqCommitmentMerkleBranchHash};
+use kaspa_hashes::{Hash, SeqCommitmentMerkleNodeBranch};
 use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
@@ -684,8 +684,8 @@ impl VirtualStateProcessor {
 
             kaspa_merkle::merkle_hash_with_hasher(
                 self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
-                kaspa_merkle::calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, HASH_SINGLE_ENTRY>(accepted_tx_digests),
-                SeqCommitmentMerkleBranchHash::new(),
+                kaspa_merkle::calc_merkle_root_with_hasher::<SeqCommitmentMerkleNodeBranch, HASH_SINGLE_ENTRY>(accepted_tx_digests),
+                SeqCommitmentMerkleNodeBranch::new(),
             )
         } else {
             kaspa_merkle::merkle_hash(

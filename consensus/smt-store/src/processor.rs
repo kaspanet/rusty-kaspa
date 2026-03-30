@@ -21,8 +21,8 @@ use kaspa_database::prelude::{BatchDbWriter, DB, StoreError, StoreResult};
 use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
-use kaspa_smt::store::{BranchChildren, BranchKey, SmtStore, SortedLeafUpdates};
-use kaspa_smt::tree::{SmtBranchChanges, compute_root_update};
+use kaspa_smt::store::{BranchKey, Node, SmtStore, SortedLeafUpdates};
+use kaspa_smt::tree::{SmtNodeChanges, compute_root_update};
 use rocksdb::WriteBatch;
 
 use crate::branch_version_store::DbBranchVersionStore;
@@ -42,9 +42,9 @@ struct VersionedBranchReader<'a, F: Fn(Hash) -> bool> {
 impl<F: Fn(Hash) -> bool> SmtStore for VersionedBranchReader<'_, F> {
     type Error = StoreError;
 
-    fn get_branch(&self, key: &BranchKey) -> Result<Option<BranchChildren>, StoreError> {
+    fn get_node(&self, key: &BranchKey) -> Result<Option<Node>, StoreError> {
         let entity = BranchEntity { height: key.height, node_key: key.node_key };
-        Ok(self.stores.get_branch(entity, self.min_blue_score, |bh| (self.is_canonical)(bh)).map(|v| *v.data()))
+        Ok(self.stores.get_node(entity, self.min_blue_score, |bh| (self.is_canonical)(bh)).map(|v| *v.data()))
     }
 }
 
@@ -68,13 +68,13 @@ impl SmtStores {
         }
     }
 
-    /// Find the latest canonical branch version, checking cache first then DB.
-    pub fn get_branch(
+    /// Find the latest canonical node version, checking cache first then DB.
+    pub fn get_node(
         &self,
         entity: BranchEntity,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool,
-    ) -> Option<Verified<BranchChildren>> {
+    ) -> Option<Verified<Node>> {
         if let Some((score, block_hash, value)) = self.branch_cache.lock().get(entity, u64::MAX, min_blue_score, &mut is_canonical) {
             return Some(Verified::new(*value, score, block_hash));
         }
@@ -278,7 +278,7 @@ impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
         if self.lane_changes.is_empty() {
             return Ok(SmtBuild {
                 root: self.current_lanes_root,
-                branch_changes: SmtBranchChanges::new(),
+                node_changes: SmtNodeChanges::new(),
                 lane_changes: self.lane_changes,
                 payload_and_ctx_digest: ZERO_HASH,
                 active_lanes_count: 0,
@@ -291,21 +291,15 @@ impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
             min_blue_score: self.blue_score.saturating_sub(self.inactivity_threshold),
             is_canonical,
         };
-        let (root, branch_changes) = compute_root_update::<SeqCommitActiveNode, _>(&reader, self.current_lanes_root, leaf_updates)?;
-        Ok(SmtBuild {
-            root,
-            branch_changes,
-            lane_changes: self.lane_changes,
-            payload_and_ctx_digest: ZERO_HASH,
-            active_lanes_count: 0,
-        })
+        let (root, node_changes) = compute_root_update::<SeqCommitActiveNode, _>(&reader, self.current_lanes_root, leaf_updates)?;
+        Ok(SmtBuild { root, node_changes, lane_changes: self.lane_changes, payload_and_ctx_digest: ZERO_HASH, active_lanes_count: 0 })
     }
 }
 
-/// Result of building an SMT: root hash + changed branches + lane changes + metadata.
+/// Result of building an SMT: root hash + changed nodes + lane changes + metadata.
 pub struct SmtBuild<C: LaneChanges = BlockLaneChanges> {
     pub root: Hash,
-    branch_changes: SmtBranchChanges,
+    node_changes: SmtNodeChanges,
     lane_changes: C,
     /// Set by `build_seq_commit` after computing the seq_commit components.
     pub payload_and_ctx_digest: Hash,
@@ -314,12 +308,12 @@ pub struct SmtBuild<C: LaneChanges = BlockLaneChanges> {
 
 impl<C: LaneChanges> SmtBuild<C> {
     pub fn diff_branch_count(&self) -> usize {
-        self.branch_changes.len()
+        self.node_changes.len()
     }
 
-    /// Persist the build's branch/lane/score-index diff to a `WriteBatch` and populate caches.
+    /// Persist the build's node/lane/score-index diff to a `WriteBatch` and populate caches.
     ///
-    /// `branch_blue_score` versions the branches. Lane and score_index
+    /// `branch_blue_score` versions the nodes. Lane and score_index
     /// blue_scores are determined by the `LaneChanges` implementation.
     /// Metadata is written separately by the caller via `DbSmtMetadataStore`.
     pub fn flush(
@@ -331,13 +325,13 @@ impl<C: LaneChanges> SmtBuild<C> {
     ) -> StoreResult<Hash> {
         let root = self.root;
 
-        for (bk, children) in &self.branch_changes {
-            stores.branch_version.put(BatchDbWriter::new(batch), bk.height, bk.node_key, branch_blue_score, block_hash, children)?;
+        for (bk, node) in &self.node_changes {
+            stores.branch_version.put(BatchDbWriter::new(batch), bk.height, bk.node_key, branch_blue_score, block_hash, node)?;
         }
         {
             let mut bc = stores.branch_cache.lock();
-            for (bk, children) in &self.branch_changes {
-                bc.insert(BranchEntity { height: bk.height, node_key: bk.node_key }, branch_blue_score, block_hash, *children);
+            for (bk, node) in &self.node_changes {
+                bc.insert(BranchEntity { height: bk.height, node_key: bk.node_key }, branch_blue_score, block_hash, *node);
             }
         }
 

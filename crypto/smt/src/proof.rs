@@ -12,7 +12,8 @@ use alloc::vec::Vec;
 use kaspa_hashes::{Hash, ZERO_HASH};
 
 use crate::store::{BranchChildren, BranchKey};
-use crate::tree::SmtBranchChanges;
+/// Branch cache for proof verification short-circuiting.
+pub type ProofBranchCache = alloc::collections::BTreeMap<BranchKey, BranchChildren>;
 use crate::{DEPTH, SmtHasher, bit_at, hash_node};
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -38,7 +39,7 @@ fn compute_root_inner<H: SmtHasher>(
     siblings: &[Hash],
     key: &Hash,
     leaf_hash: Option<Hash>,
-    mut cache: Option<&mut SmtBranchChanges>,
+    mut cache: Option<&mut ProofBranchCache>,
 ) -> Result<Hash, SmtProofError> {
     let expected = bitmap_clear_count(bitmap);
     if siblings.len() != expected {
@@ -98,7 +99,7 @@ impl<'a> SmtProof<'a> {
         key: &Hash,
         leaf_hash: Option<Hash>,
         root: Hash,
-        cache: &mut SmtBranchChanges,
+        cache: &mut ProofBranchCache,
     ) -> Result<bool, SmtProofError> {
         let computed = compute_root_inner::<H>(self.bitmap, self.siblings, key, leaf_hash, Some(cache))?;
         Ok(computed == root)

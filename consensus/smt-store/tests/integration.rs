@@ -4,14 +4,23 @@ use std::sync::Arc;
 
 use kaspa_database::create_temp_db;
 use kaspa_database::prelude::{ConnBuilder, DB};
-use kaspa_hashes::{Hash, SeqCommitActiveNode};
+use kaspa_hashes::{Hash, SeqCommitActiveNode, SeqCommitmentMerkleNodeLeaf};
 use kaspa_seq_commit::hashing::{lane_key, smt_leaf_hash};
 use kaspa_seq_commit::types::SmtLeafInput;
 use kaspa_smt::SmtHasher;
-use kaspa_smt::tree::SparseMerkleTree;
+use kaspa_smt::store::{BTreeSmtStore, LeafUpdate, Node, SortedLeafUpdates};
+use kaspa_smt::tree::{SparseMerkleTree, compute_root_update};
 use rocksdb::WriteBatch;
 
 use kaspa_smt_store::processor::{SmtProcessor, SmtStores};
+
+/// Build a reference SLO root from leaf updates using the in-memory store.
+fn slo_root(updates: Vec<LeafUpdate>) -> Hash {
+    let store = BTreeSmtStore::new();
+    let sorted = SortedLeafUpdates::from_unsorted(updates);
+    let (root, _) = compute_root_update::<SeqCommitActiveNode, _>(&store, SeqCommitActiveNode::empty_root(), sorted).unwrap();
+    root
+}
 
 fn hash(v: u8) -> Hash {
     Hash::from_bytes([v; 32])
@@ -82,13 +91,10 @@ fn processor_two_lanes_matches_in_memory() {
     let build = proc.build(|_| true).unwrap();
     let proc_root = build.root;
 
-    // Same via in-memory SMT
-    let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
+    // Same via SLO reference
     let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_a, lane_tip: &tip_a, blue_score });
     let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_b, lane_tip: &tip_b, blue_score });
-    smt.insert(key_a, leaf_a);
-    smt.insert(key_b, leaf_b);
-    let mem_root = smt.root();
+    let mem_root = slo_root(vec![LeafUpdate { key: key_a, leaf_hash: leaf_a }, LeafUpdate { key: key_b, leaf_hash: leaf_b }]);
 
     assert_eq!(proc_root, mem_root);
     assert_ne!(proc_root, empty_root);
@@ -130,14 +136,12 @@ fn processor_second_block_reads_from_db() {
     build2.flush(&stores, &mut batch, bs2, block2_hash).unwrap();
     db.write(batch).unwrap();
 
-    // Verify: rebuild from scratch in memory
-    let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
+    // Verify: rebuild from scratch via SLO reference
     let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_a, lane_tip: &tip_a1, blue_score: bs1 });
     let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_b, lane_tip: &tip_b, blue_score: bs2 });
-    smt.insert(key_a, leaf_a);
-    smt.insert(key_b, leaf_b);
+    let expected = slo_root(vec![LeafUpdate { key: key_a, leaf_hash: leaf_a }, LeafUpdate { key: key_b, leaf_hash: leaf_b }]);
 
-    assert_eq!(root2, smt.root());
+    assert_eq!(root2, expected);
     assert_ne!(root1, root2);
 }
 
@@ -175,12 +179,11 @@ fn processor_update_same_lane_across_blocks() {
     build2.flush(&stores, &mut batch, bs2, block2_hash).unwrap();
     db.write(batch).unwrap();
 
-    // Verify against in-memory SMT with only the final state
-    let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
+    // Verify against SLO reference with only the final state
     let leaf2 = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id, lane_tip: &tip2, blue_score: bs2 });
-    smt.insert(key, leaf2);
+    let expected = slo_root(vec![LeafUpdate { key, leaf_hash: leaf2 }]);
 
-    assert_eq!(root2, smt.root());
+    assert_eq!(root2, expected);
     assert_ne!(root1, root2);
 }
 
@@ -371,9 +374,8 @@ fn single_touch_updates_only_path_branches() {
     proc.update_lane(lane_key(&[0x01; 20]), [0x01; 20], hash(0xAA));
     let build = proc.build(|_| true).unwrap();
 
-    // A single lane insert walks 256 levels.
-    // Each level produces one branch in the diff.
-    assert_eq!(build.diff_branch_count(), 256, "single leaf should produce 256 branch changes");
+    // SLO: a single lane collapses into one Collapsed node at the root level.
+    assert_eq!(build.diff_branch_count(), 1, "single leaf should produce 1 collapsed node (SLO)");
     assert_ne!(build.root, empty_root);
 }
 
@@ -587,12 +589,20 @@ fn zero_hash_block_hash_branches_are_readable() {
     build.flush(&stores, &mut batch, bs, ZERO_HASH).unwrap();
     db.write(batch).unwrap();
 
-    let root_branch = stores.branch_version.get(255, Hash::from_bytes([0; 32]), 0, |bh| bh == kaspa_hashes::ZERO_HASH).unwrap();
-    assert!(root_branch.is_some());
+    let root_node = stores.branch_version.get(255, Hash::from_bytes([0; 32]), 0, |bh| bh == kaspa_hashes::ZERO_HASH).unwrap();
+    assert!(root_node.is_some());
 
-    let children = root_branch.unwrap();
-    let derived = kaspa_smt::hash_node::<SeqCommitActiveNode>(children.data().left, children.data().right);
-    assert_eq!(derived, root);
+    // With SLO, a single lane produces a Collapsed node at the root
+    match root_node.unwrap().into_parts().0 {
+        Node::Collapsed(cl) => {
+            let derived = kaspa_smt::hash_node::<SeqCommitmentMerkleNodeLeaf>(cl.lane_key, cl.leaf_hash);
+            assert_eq!(derived, root);
+        }
+        Node::Internal(bc) => {
+            let derived = kaspa_smt::hash_node::<SeqCommitActiveNode>(bc.left, bc.right);
+            assert_eq!(derived, root);
+        }
+    }
 }
 
 /// ImportLaneChanges produces the correct root when lanes have different blue_scores.
@@ -610,10 +620,9 @@ fn import_lane_changes_per_lane_blue_score() {
     let bs_a = 500u64;
     let bs_b = 800u64;
 
-    let mut ref_tree = SparseMerkleTree::<SeqCommitActiveNode>::new();
-    ref_tree.insert(lk_a, smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a_id, lane_tip: &tip_a, blue_score: bs_a }));
-    ref_tree.insert(lk_b, smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b_id, lane_tip: &tip_b, blue_score: bs_b }));
-    let expected_root = ref_tree.root();
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a_id, lane_tip: &tip_a, blue_score: bs_a });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b_id, lane_tip: &tip_b, blue_score: bs_b });
+    let expected_root = slo_root(vec![LeafUpdate { key: lk_a, leaf_hash: leaf_a }, LeafUpdate { key: lk_b, leaf_hash: leaf_b }]);
 
     // BlockLaneChanges (uniform) produces a different root
     let mut block_proc = SmtProcessor::new(&stores, 1000, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());

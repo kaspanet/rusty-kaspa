@@ -13,7 +13,7 @@ repository.workspace = true
 kaspa-database.workspace = true
 kaspa-hashes = { workspace = true, features = ["zerocopy"] }
 kaspa-seq-commit.workspace = true
-kaspa-smt = { workspace = true, features = ["zerocopy"] }
+kaspa-smt.workspace = true
 kaspa-utils = { workspace = true, features = ["sysinfo"] }
 parking_lot.workspace = true
 rocksdb.workspace = true

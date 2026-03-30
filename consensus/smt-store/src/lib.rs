@@ -16,5 +16,8 @@ pub type LaneKey = Hash;
 /// Block hash identifying a specific version.
 pub type BlockHash = Hash;
 
-/// Re-export the branch changes map type from kaspa-smt.
-pub use kaspa_smt::tree::SmtBranchChanges;
+/// Re-export node changes map type.
+pub use kaspa_smt::tree::SmtNodeChanges;
+
+/// Re-export Node enum.
+pub use kaspa_smt::store::Node;
