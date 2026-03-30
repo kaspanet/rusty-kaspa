@@ -158,7 +158,7 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
 use crate::values::LaneVersion;
 use kaspa_smt::store::Node;
 
-pub type BranchVersionCache = VersionedCache<BranchEntity, Node>;
+pub type BranchVersionCache = VersionedCache<BranchEntity, Option<Node>>;
 pub type LaneVersionCache = VersionedCache<Hash, LaneVersion>;
 
 #[cfg(test)]

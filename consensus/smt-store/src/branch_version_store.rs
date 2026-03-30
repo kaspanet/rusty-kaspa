@@ -35,10 +35,13 @@ impl DbBranchVersionStore {
         node_key: Hash,
         blue_score: u64,
         block_hash: Hash,
-        value: &Node,
+        value: Option<Node>,
     ) -> StoreResult<()> {
         let key = BranchVersionKey::new(self.prefix, height, node_key, blue_score, block_hash);
-        writer.put(key, value.as_bytes()).map_err(StoreError::DbError)
+        match value {
+            Some(node) => writer.put(key, node.as_bytes()).map_err(StoreError::DbError),
+            None => writer.put(key, []).map_err(StoreError::DbError),
+        }
     }
 
     pub fn delete(&self, mut writer: impl DbWriter, height: u8, node_key: Hash, blue_score: u64, block_hash: Hash) -> StoreResult<()> {
@@ -68,7 +71,7 @@ impl DbBranchVersionStore {
         node_key: Hash,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool,
-    ) -> StoreResult<Option<Verified<Node>>> {
+    ) -> StoreResult<Option<Verified<Option<Node>>>> {
         for entry in self.get_at(height, node_key, u64::MAX, min_blue_score) {
             let entry = entry?;
             if is_canonical(entry.block_hash()) {
@@ -89,7 +92,7 @@ impl DbBranchVersionStore {
         node_key: Hash,
         target_blue_score: u64,
         min_blue_score: u64,
-    ) -> impl Iterator<Item = StoreResult<MaybeFork<Node>>> + '_ {
+    ) -> impl Iterator<Item = StoreResult<MaybeFork<Option<Node>>>> + '_ {
         let seek_key = BranchVersionKey::seek_key(self.prefix, height, node_key, target_blue_score);
         let mut entity_prefix = [0u8; BranchVersionKey::ENTITY_PREFIX_LEN];
         entity_prefix.copy_from_slice(&seek_key.as_ref()[..BranchVersionKey::ENTITY_PREFIX_LEN]);
@@ -108,7 +111,7 @@ impl DbBranchVersionStore {
                 return iter.status().err().map(|e| Err(StoreError::DbError(e)));
             }
 
-            let result = (|| -> StoreResult<Option<MaybeFork<Node>>> {
+            let result = (|| -> StoreResult<Option<MaybeFork<Option<Node>>>> {
                 let key_bytes = match iter.key() {
                     Some(k) => k,
                     None => return Ok(None),
@@ -131,8 +134,14 @@ impl DbBranchVersionStore {
                     Some(v) => v,
                     None => return Ok(None),
                 };
-                let version =
-                    Node::try_read_from_bytes(value_bytes).map_err(|e| StoreError::DataInconsistency(format!("node value: {e}")))?;
+                let version = if value_bytes.is_empty() {
+                    None
+                } else {
+                    Some(
+                        Node::try_read_from_bytes(value_bytes)
+                            .map_err(|e| StoreError::DataInconsistency(format!("node value: {e}")))?,
+                    )
+                };
                 Ok(Some(MaybeFork::new(version, blue_score, key.block_hash)))
             })();
 
@@ -178,12 +187,12 @@ mod tests {
         let (_lt, store) = make_store();
         let version = internal(hash(0xAA), hash(0xBB));
 
-        store.put(DirectDbWriter::new(&store.db), 3, hash(0x11), 100, hash(0x22), &version).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 3, hash(0x11), 100, hash(0x22), Some(version)).unwrap();
 
         let first = store.get_at(3, hash(0x11), 100, 0).next().unwrap().unwrap();
         assert_eq!(first.block_hash(), hash(0x22));
         assert_eq!(first.blue_score(), 100);
-        assert_eq!(*first.data(), internal(hash(0xAA), hash(0xBB)));
+        assert_eq!(*first.data(), Some(internal(hash(0xAA), hash(0xBB))));
     }
 
     #[test]
@@ -193,7 +202,7 @@ mod tests {
 
         for (score, bh) in [(50, hash(0xA0)), (100, hash(0xA1)), (200, hash(0xA2))] {
             let version = internal(hash(score as u8), hash(0xFF));
-            store.put(DirectDbWriter::new(&store.db), 7, node_key, score, bh, &version).unwrap();
+            store.put(DirectDbWriter::new(&store.db), 7, node_key, score, bh, Some(version)).unwrap();
         }
 
         // target_blue_score=150 → score=100 then score=50
@@ -213,14 +222,14 @@ mod tests {
 
         // First result data
         let first = store.get_at(7, node_key, 150, 0).next().unwrap().unwrap();
-        assert_eq!(*first.data(), internal(hash(100), hash(0xFF)));
+        assert_eq!(*first.data(), Some(internal(hash(100), hash(0xFF))));
     }
 
     #[test]
     fn delete_entry() {
         let (_lt, store) = make_store();
         let version = internal(hash(0xAA), hash(0xBB));
-        store.put(DirectDbWriter::new(&store.db), 3, hash(0x11), 100, hash(0x22), &version).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 3, hash(0x11), 100, hash(0x22), Some(version)).unwrap();
 
         assert!(store.get_at(3, hash(0x11), 100, 0).next().is_some());
 
@@ -239,15 +248,15 @@ mod tests {
         let fork_bh = hash(0xA2);
         let older_bh = hash(0xA0);
 
-        store.put(DirectDbWriter::new(&store.db), 7, node_key, 100, canonical_bh, &internal(hash(0xCC), hash(0xDD))).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 7, node_key, 100, fork_bh, &internal(hash(0xEE), hash(0xFF))).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 7, node_key, 50, older_bh, &internal(hash(0x11), hash(0x22))).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 7, node_key, 100, canonical_bh, Some(internal(hash(0xCC), hash(0xDD)))).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 7, node_key, 100, fork_bh, Some(internal(hash(0xEE), hash(0xFF)))).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 7, node_key, 50, older_bh, Some(internal(hash(0x11), hash(0x22)))).unwrap();
 
         // Finds canonical at score 100 (searching from MAX down to 0)
         let result = store.get(7, node_key, 0, |bh| bh == canonical_bh).unwrap().unwrap();
         assert_eq!(result.block_hash(), canonical_bh);
         assert_eq!(result.blue_score(), 100);
-        assert_eq!(*result.data(), internal(hash(0xCC), hash(0xDD)));
+        assert_eq!(*result.data(), Some(internal(hash(0xCC), hash(0xDD))));
 
         // Falls through to score 50 when score-100 blocks aren't canonical
         let result = store.get(7, node_key, 0, |bh| bh == older_bh).unwrap().unwrap();
@@ -258,5 +267,20 @@ mod tests {
 
         // No canonical match at all
         assert!(store.get(7, node_key, 0, |_| false).unwrap().is_none());
+    }
+
+    #[test]
+    fn put_none_blocks_fallback_to_older_node() {
+        let (_lt, store) = make_store();
+        let node_key = hash(0x11);
+        let older_bh = hash(0xA0);
+        let delete_bh = hash(0xA1);
+
+        store.put(DirectDbWriter::new(&store.db), 7, node_key, 100, older_bh, Some(internal(hash(0xCC), hash(0xDD)))).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 7, node_key, 200, delete_bh, None).unwrap();
+
+        let deleted = store.get(7, node_key, 0, |bh| bh == delete_bh).unwrap().unwrap();
+        assert_eq!(deleted.blue_score(), 200);
+        assert_eq!(*deleted.data(), None);
     }
 }

@@ -101,6 +101,14 @@ pub enum Node {
     Collapsed(CollapsedLeaf) = 1,
 }
 
+impl Node {
+    /// Sentinel used by tree diffs to represent node deletion.
+    #[inline]
+    pub fn is_tombstone(&self) -> bool {
+        matches!(self, Self::Internal(BranchChildren { left, right }) if *left == ZERO_HASH && *right == ZERO_HASH)
+    }
+}
+
 /// A single leaf update: set `key` to `leaf_hash` (or remove if `leaf_hash == ZERO_HASH`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafUpdate {
@@ -198,12 +206,14 @@ impl BTreeSmtStore {
         }
     }
 
-    pub fn insert_node(&mut self, key: BranchKey, node: Node) {
-        // Tombstone (Internal with both children ZERO_HASH) means delete
-        if node == (Node::Internal(BranchChildren { left: ZERO_HASH, right: ZERO_HASH })) {
-            self.nodes.remove(&key);
-        } else {
-            self.nodes.insert(key, node);
+    pub fn insert_node(&mut self, key: BranchKey, node: Option<Node>) {
+        match node {
+            Some(node) => {
+                self.nodes.insert(key, node);
+            }
+            None => {
+                self.nodes.remove(&key);
+            }
         }
     }
 }
@@ -290,7 +300,7 @@ mod tests {
 
         assert_eq!(store.get_node(&bk).unwrap(), None);
 
-        store.insert_node(bk, Node::Internal(BranchChildren { left, right }));
+        store.insert_node(bk, Some(Node::Internal(BranchChildren { left, right })));
         assert_eq!(store.get_node(&bk).unwrap(), Some(Node::Internal(BranchChildren { left, right })));
     }
 }

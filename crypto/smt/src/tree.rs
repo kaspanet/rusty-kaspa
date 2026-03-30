@@ -171,15 +171,10 @@ impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
     }
 }
 
-/// Map of changed nodes: `BranchKey → Node`.
+/// Map of changed nodes: `BranchKey → Option<Node>`.
 ///
-/// A tombstone entry (`Node::Internal` with both children `ZERO_HASH`)
-/// means "this node was deleted." Stores should remove the entry rather than
-/// persist the tombstone value.
-pub type SmtNodeChanges = BTreeMap<BranchKey, Node>;
-
-/// Tombstone sentinel: signals that a node was deleted. Not a valid tree node.
-const TOMBSTONE: Node = Node::Internal(BranchChildren { left: kaspa_hashes::ZERO_HASH, right: kaspa_hashes::ZERO_HASH });
+/// `None` means "this node was deleted".
+pub type SmtNodeChanges = BTreeMap<BranchKey, Option<Node>>;
 
 /// Result of computing a subtree — propagated upward during recursion.
 enum NodeResult {
@@ -246,10 +241,9 @@ pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
 }
 
 /// Read a node from the changes map first, then the store.
-/// Tombstone entries are treated as absent (deleted).
 fn read_node<S: SmtStore>(store: &S, changes: &SmtNodeChanges, bk: &BranchKey) -> Result<Option<Node>, S::Error> {
     if let Some(&nk) = changes.get(bk) {
-        return Ok(if nk == TOMBSTONE { None } else { Some(nk) });
+        return Ok(nk);
     }
     store.get_node(bk)
 }
@@ -288,7 +282,7 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
             return Ok(NodeResult::Empty); // Deleting from empty — no-op
         }
         let cl = CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash };
-        changes.insert(subtree_key, Node::Collapsed(cl));
+        changes.insert(subtree_key, Some(Node::Collapsed(cl)));
         return Ok(NodeResult::Collapsed(cl));
     }
 
@@ -300,13 +294,13 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
     {
         let u = &updates[0];
         if u.leaf_hash == kaspa_hashes::ZERO_HASH {
-            changes.insert(subtree_key, TOMBSTONE);
+            changes.insert(subtree_key, None);
             return Ok(NodeResult::Empty);
         }
         let cl = CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash };
         let node = Node::Collapsed(cl);
         if existing != Some(node) {
-            changes.insert(subtree_key, node);
+            changes.insert(subtree_key, Some(node));
         }
         return Ok(NodeResult::Collapsed(cl));
     }
@@ -367,19 +361,19 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
         match &result {
             NodeResult::Empty => {
                 if existing_for_write.is_some() || existing_is_expanded {
-                    changes.insert(subtree_key, TOMBSTONE);
+                    changes.insert(subtree_key, None);
                 }
             }
             NodeResult::Collapsed(cl) => {
                 let node = Node::Collapsed(*cl);
                 if existing_for_write != Some(node) {
-                    changes.insert(subtree_key, node);
+                    changes.insert(subtree_key, Some(node));
                 }
             }
             NodeResult::Internal { .. } => {
                 let node = Node::Internal(BranchChildren { left: left_hash, right: right_hash });
                 if existing_for_write != Some(node) {
-                    changes.insert(subtree_key, node);
+                    changes.insert(subtree_key, Some(node));
                 }
             }
         }
@@ -424,19 +418,19 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
     match &result {
         NodeResult::Empty => {
             if existing_for_write.is_some() || existing_is_expanded {
-                changes.insert(subtree_key, TOMBSTONE);
+                changes.insert(subtree_key, None);
             }
         }
         NodeResult::Collapsed(cl) => {
             let node = Node::Collapsed(*cl);
             if existing_for_write != Some(node) {
-                changes.insert(subtree_key, node);
+                changes.insert(subtree_key, Some(node));
             }
         }
         NodeResult::Internal { .. } => {
             let node = Node::Internal(BranchChildren { left: left_hash, right: right_hash });
             if existing_for_write != Some(node) {
-                changes.insert(subtree_key, node);
+                changes.insert(subtree_key, Some(node));
             }
         }
     }
@@ -1550,7 +1544,7 @@ mod tests {
         assert_eq!(changes.len(), 1, "single leaf should produce one collapsed node");
         let (&bk, &nk) = changes.iter().next().unwrap();
         assert_eq!(bk.height, 255);
-        assert!(matches!(nk, Node::Collapsed(cl) if cl.lane_key == k1 && cl.leaf_hash == l1));
+        assert!(matches!(nk, Some(Node::Collapsed(cl)) if cl.lane_key == k1 && cl.leaf_hash == l1));
 
         // Root should not be the empty root
         assert_ne!(root, TestHasher::empty_root());
@@ -1570,8 +1564,8 @@ mod tests {
         assert_ne!(root, TestHasher::empty_root());
 
         // There should be collapsed nodes for each leaf and internal nodes above
-        let collapsed_count = changes.values().filter(|n| matches!(n, Node::Collapsed(_))).count();
-        let internal_count = changes.values().filter(|n| matches!(n, Node::Internal(_))).count();
+        let collapsed_count = changes.values().filter(|n| matches!(n, Some(Node::Collapsed(_)))).count();
+        let internal_count = changes.values().filter(|n| matches!(n, Some(Node::Internal(_)))).count();
         assert_eq!(collapsed_count, 2, "two leaves should produce two collapsed nodes");
         assert!(internal_count >= 1, "at least one internal node above the divergence point");
     }
@@ -1620,7 +1614,7 @@ mod tests {
 
         // After expiring one of two, we should be back to a single-leaf tree
         // The remaining leaf should be represented as a single collapsed node at root
-        let collapsed_count = changes2.values().filter(|n| matches!(n, Node::Collapsed(_))).count();
+        let collapsed_count = changes2.values().filter(|n| matches!(n, Some(Node::Collapsed(_)))).count();
         assert!(collapsed_count >= 1, "surviving leaf should collapse upward");
 
         // Root should match inserting just k2 from scratch
@@ -1649,7 +1643,7 @@ mod tests {
         let (root2, changes2) = compute_root_update::<TestHasher, _>(&store2, root1, updates([(k2, l2)])).unwrap();
 
         // Should have two collapsed nodes and at least one internal
-        let collapsed_count = changes2.values().filter(|n| matches!(n, Node::Collapsed(_))).count();
+        let collapsed_count = changes2.values().filter(|n| matches!(n, Some(Node::Collapsed(_)))).count();
         assert!(collapsed_count >= 1, "expansion should produce collapsed nodes");
 
         // Root should match inserting both from scratch
@@ -1680,7 +1674,7 @@ mod tests {
         assert_ne!(root2, root1, "updating leaf value should change root");
 
         // Should still be a single collapsed node
-        let collapsed_count = changes2.values().filter(|n| matches!(n, Node::Collapsed(_))).count();
+        let collapsed_count = changes2.values().filter(|n| matches!(n, Some(Node::Collapsed(_)))).count();
         assert_eq!(collapsed_count, 1, "same-key update should remain collapsed");
 
         // Match inserting k1 with l2 from scratch

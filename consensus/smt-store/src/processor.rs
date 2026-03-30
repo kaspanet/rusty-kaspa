@@ -44,7 +44,7 @@ impl<F: Fn(Hash) -> bool> SmtStore for VersionedBranchReader<'_, F> {
 
     fn get_node(&self, key: &BranchKey) -> Result<Option<Node>, StoreError> {
         let entity = BranchEntity { height: key.height, node_key: key.node_key };
-        Ok(self.stores.get_node(entity, self.min_blue_score, |bh| (self.is_canonical)(bh)).map(|v| *v.data()))
+        Ok(self.stores.get_node(entity, self.min_blue_score, |bh| (self.is_canonical)(bh)).and_then(|v| *v.data()))
     }
 }
 
@@ -74,7 +74,7 @@ impl SmtStores {
         entity: BranchEntity,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool,
-    ) -> Option<Verified<Node>> {
+    ) -> Option<Verified<Option<Node>>> {
         if let Some((score, block_hash, value)) = self.branch_cache.lock().get(entity, u64::MAX, min_blue_score, &mut is_canonical) {
             return Some(Verified::new(*value, score, block_hash));
         }
@@ -326,7 +326,7 @@ impl<C: LaneChanges> SmtBuild<C> {
         let root = self.root;
 
         for (bk, node) in &self.node_changes {
-            stores.branch_version.put(BatchDbWriter::new(batch), bk.height, bk.node_key, branch_blue_score, block_hash, node)?;
+            stores.branch_version.put(BatchDbWriter::new(batch), bk.height, bk.node_key, branch_blue_score, block_hash, *node)?;
         }
         {
             let mut bc = stores.branch_cache.lock();
