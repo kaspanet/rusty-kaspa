@@ -197,10 +197,10 @@ pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_
 #[inline]
 fn input_allowed_script_units(input: &TransactionInput, flags: EngineFlags) -> u64 {
     match input.mass {
-        TxInputMass::SigopCount(count) => (u8::from(count) as u64)
-            .saturating_mul(flags.sigop_script_units)
-            .saturating_add(free_script_units_per_input(flags.sigop_script_units).value()),
-        TxInputMass::ComputeBudget(compute_budget) => compute_budget.allowed_script_units(flags.sigop_script_units).value(),
+        TxInputMass::SigopCount(count) => {
+            (u8::from(count) as u64).saturating_mul(flags.sigop_script_units).saturating_add(free_script_units_per_input().value())
+        }
+        TxInputMass::ComputeBudget(compute_budget) => compute_budget.allowed_script_units().value(),
     }
 }
 
@@ -244,6 +244,7 @@ mod tests {
     use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
     use core::str::FromStr;
     use itertools::Itertools;
+    use kaspa_consensus_core::mass::{ComputeBudget, free_script_units_per_input};
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{
@@ -252,7 +253,7 @@ mod tests {
     };
     use kaspa_consensus_core::{
         config::params::ForkActivation,
-        mass::{GRAMS_PER_COMPUTE_BUDGET_UNIT, MassCalculator},
+        mass::{GRAMS_PER_COMPUTE_BUDGET_UNIT, MassCalculator, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT},
     };
     use kaspa_core::assert_match;
     use kaspa_txscript::opcodes::codes::OpDup;
@@ -275,10 +276,15 @@ mod tests {
         (tx2, entries2)
     }
 
+    /// Builds inputs whose script consumes exactly one compute-budget unit worth of script units,
+    /// so the test can check per-input budget enforcement around that boundary.
     fn build_parallel_push_budget_test_tx(num_inputs: usize) -> (Transaction, Vec<UtxoEntry>) {
         assert!(num_inputs > CHECK_SCRIPTS_PARALLELISM_THRESHOLD);
 
-        let script_public_key = ScriptPublicKey::new(0, SmallVec::from_slice(&[0x03, 0x01, 0x02, 0x03]));
+        let script_public_key = ScriptPublicKey::new(
+            0,
+            ScriptBuilder::new().add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize]).unwrap().drain().into(),
+        );
         let outputs = vec![TransactionOutput {
             value: 1,
             script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&[0x51])),
@@ -313,24 +319,25 @@ mod tests {
     #[test]
     fn check_scripts_parallel_budget_behavior() {
         let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
-        // Setting sigop_script_units to zero also zeroes the per-input free allowance,
-        // which lets this test exercise tight push-byte bounds without extra headroom.
-        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0 };
+        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
 
-        // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 0).
+        // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 999).
         let (mut tx, entries) = build_parallel_push_budget_test_tx(2);
-        tx.inputs[0].mass = TxInputMass::ComputeBudget(0.into());
+        tx.inputs[0].mass = ComputeBudget(0).into();
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert_eq!(
             result,
-            Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededScriptUnitsLimit { used_units: 3, allowed_units: 0 }))
+            Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededScriptUnitsLimit {
+                used_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
+                allowed_units: free_script_units_per_input().value()
+            }))
         );
 
         // (b) A few inputs together are all independently under budget and should pass.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(1.into()));
+        tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(1).into());
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert!(result.is_ok());
@@ -338,7 +345,7 @@ mod tests {
         // (c) Everything is ok with a larger per-input budget as well.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(10.into()));
+        tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(10).into());
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert!(result.is_ok());

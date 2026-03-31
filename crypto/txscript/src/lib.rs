@@ -897,7 +897,7 @@ mod tests {
     use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
-    use kaspa_consensus_core::mass::{ComputeBudget, ScriptUnits, SigopCount};
+    use kaspa_consensus_core::mass::{ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, ScriptUnits, SigopCount};
     use kaspa_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
         TransactionOutput,
@@ -1040,7 +1040,7 @@ mod tests {
     fn test_used_script_units_can_drive_compute_budget_selection() {
         let sig_cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let script = ScriptBuilder::new().add_data(&[42u8; 100]).unwrap().drain();
+        let script = ScriptBuilder::new().add_data(&vec![42u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize]).unwrap().drain();
         let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0 };
 
         let mut unrestricted_vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
@@ -1050,11 +1050,10 @@ mod tests {
             flags,
         );
         assert!(unrestricted_vm.execute().is_ok());
-        assert_eq!(unrestricted_vm.used_script_units(), 100);
+        assert_eq!(unrestricted_vm.used_script_units(), SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT);
 
         let required_units = ScriptUnits(unrestricted_vm.used_script_units());
-        let budget =
-            ComputeBudget::checked_covering_script_units(required_units, flags.sigop_script_units).expect("expected budget to fit");
+        let budget = ComputeBudget::checked_covering_script_units(required_units).expect("expected budget to fit");
         assert_eq!(budget, ComputeBudget(1));
 
         let mut exact_vm =
@@ -1062,7 +1061,7 @@ mod tests {
                 &script,
                 &reused_values,
                 &sig_cache,
-                budget.allowed_script_units(flags.sigop_script_units).value(),
+                budget.allowed_script_units().value(),
                 flags,
             );
         assert!(exact_vm.execute().is_ok());
@@ -1072,10 +1071,16 @@ mod tests {
                 &script,
                 &reused_values,
                 &sig_cache,
-                ComputeBudget(0).allowed_script_units(flags.sigop_script_units).value(),
+                ComputeBudget(0).allowed_script_units().value(),
                 flags,
             );
-        assert_eq!(underbudget_vm.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 100, allowed_units: 0 }));
+        assert_eq!(
+            underbudget_vm.execute(),
+            Err(TxScriptError::ExceededScriptUnitsLimit {
+                used_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
+                allowed_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1
+            })
+        );
     }
 
     #[test]
