@@ -6,6 +6,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct LaneVersion {
+    // TODO: possible to remove, if we use lane_key for IBD and make `smt_leaf_hash` and `lane_tip_next` use lane_key instead of lane_id
     /// Raw 20-byte subnetwork ID. Needed for IBD state reconstruction —
     /// can't reverse `lane_key = H_lane_key(lane_id)`.
     pub lane_id: [u8; 20],
