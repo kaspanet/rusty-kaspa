@@ -350,7 +350,7 @@ async fn daemon_utxos_propagation_test() {
     )
     .unwrap();
     let mut transaction = signed_tx.tx;
-    let per_input_compute_budget_commitment: u16 = 3000; // Some upper bound
+    let per_input_compute_budget_commitment: u16 = 300; // ~30k-gram per-input upper bound
     transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(per_input_compute_budget_commitment).into());
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
