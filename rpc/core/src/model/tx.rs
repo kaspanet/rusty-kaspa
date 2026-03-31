@@ -193,13 +193,13 @@ impl RpcTransactionInput {
 
 impl Serializer for RpcTransactionInput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &2, writer)?; // TODO(before merge): Check if it's correct
+        store!(u8, &2, writer)?;
         serialize!(RpcTransactionOutpoint, &self.previous_outpoint, writer)?;
         store!(Vec<u8>, &self.signature_script, writer)?;
         store!(u64, &self.sequence, writer)?;
         store!(u8, &self.sig_op_count, writer)?;
-        store!(u16, &self.compute_budget, writer)?;
         serialize!(Option<RpcTransactionInputVerboseData>, &self.verbose_data, writer)?;
+        store!(u16, &self.compute_budget, writer)?;
 
         Ok(())
     }
@@ -212,8 +212,8 @@ impl Deserializer for RpcTransactionInput {
         let signature_script = load!(Vec<u8>, reader)?;
         let sequence = load!(u64, reader)?;
         let sig_op_count = load!(u8, reader)?;
-        let compute_budget = if version > 1 { load!(u16, reader)? } else { 0 }; // TODO(before merge): Check if it's correct
         let verbose_data = deserialize!(Option<RpcTransactionInputVerboseData>, reader)?;
+        let compute_budget = if version > 1 { load!(u16, reader)? } else { 0 };
 
         Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, verbose_data })
     }
