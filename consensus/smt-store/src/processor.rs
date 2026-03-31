@@ -121,6 +121,7 @@ pub trait LaneChanges {
     fn flush_lanes(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()>;
     fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()>;
     fn is_empty(&self) -> bool;
+    fn len(&self) -> usize;
 }
 
 /// Lane changes within a single block. All lanes share the block's blue_score.
@@ -185,6 +186,10 @@ impl LaneChanges for BlockLaneChanges {
     fn is_empty(&self) -> bool {
         self.changes.is_empty()
     }
+
+    fn len(&self) -> usize {
+        self.changes.len()
+    }
 }
 
 /// Lane imports with per-lane blue_score. No expirations.
@@ -237,6 +242,10 @@ impl LaneChanges for ImportLaneChanges {
 
     fn is_empty(&self) -> bool {
         self.changes.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.changes.len()
     }
 }
 
@@ -307,6 +316,10 @@ pub struct SmtBuild<C: LaneChanges = BlockLaneChanges> {
 }
 
 impl<C: LaneChanges> SmtBuild<C> {
+    pub fn lane_update_count(&self) -> usize {
+        self.lane_changes.len()
+    }
+
     pub fn diff_branch_count(&self) -> usize {
         self.node_changes.len()
     }

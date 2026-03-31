@@ -166,7 +166,7 @@ pub struct VirtualStateProcessor {
     notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters
-    counters: Arc<ProcessingCounters>,
+    pub(super) counters: Arc<ProcessingCounters>,
 
     // Covenants activation
     pub(crate) covenants_activation: ForkActivation,
@@ -419,8 +419,9 @@ impl VirtualStateProcessor {
         let mut diff_point = split_point;
 
         // Walk back up to the new virtual selected parent candidate
-        let mut chain_block_counter = 0;
-        let mut chain_disqualified_counter = 0;
+        let mut chain_block_counter = 0u64;
+        let mut chain_disqualified_counter = 0u64;
+        let mut lane_update_counter = 0u64;
         for (selected_parent, current) in self.reachability_service.forward_chain_iterator(split_point, to, true).tuple_windows() {
             if selected_parent != diff_point {
                 // This indicates that the selected parent is disqualified, propagate up and continue
@@ -468,6 +469,10 @@ impl VirtualStateProcessor {
                             diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
                             // Update the diff point
                             diff_point = current;
+                            // Count lane updates from verified chain blocks
+                            if let Some(ref build) = smt_build {
+                                lane_update_counter += build.lane_update_count() as u64;
+                            }
                             // Commit UTXO + SMT data for current chain block
                             self.commit_utxo_state(
                                 current,
@@ -488,6 +493,7 @@ impl VirtualStateProcessor {
         }
         // Report counters
         self.counters.chain_block_counts.fetch_add(chain_block_counter, Ordering::Relaxed);
+        self.counters.lane_update_counts.fetch_add(lane_update_counter, Ordering::Relaxed);
         if chain_disqualified_counter > 0 {
             self.counters.chain_disqualified_counts.fetch_add(chain_disqualified_counter, Ordering::Relaxed);
         }
