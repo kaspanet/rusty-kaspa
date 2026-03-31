@@ -580,7 +580,7 @@ async fn daemon_compute_mass_relay_test() {
     )
     .unwrap();
     let mut transaction = signed_tx.tx;
-    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(300).into());
+    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(30).into());
     assert!(
         transaction.inputs.iter().any(|input| input.mass.compute_budget().unwrap() > 0),
         "expected non-zero compute_budget commitment for v1 transaction"

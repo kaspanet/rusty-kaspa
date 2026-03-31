@@ -293,7 +293,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: TxInputMass::ComputeBudget(3.into()),
+                mass: TxInputMass::ComputeBudget(1.into()),
             })
             .collect_vec();
 
@@ -330,7 +330,7 @@ mod tests {
         // (b) A few inputs together are all independently under budget and should pass.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(3.into()));
+        tx.inputs.iter_mut().for_each(|input| input.mass = TxInputMass::ComputeBudget(1.into()));
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert!(result.is_ok());

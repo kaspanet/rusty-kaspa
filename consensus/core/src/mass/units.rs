@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-pub const GRAMS_PER_COMPUTE_BUDGET_UNIT: u64 = 10;
+pub const GRAMS_PER_COMPUTE_BUDGET_UNIT: u64 = 100;
 pub const SCRIPT_UNITS_PER_GRAM: u64 = 10;
 pub const SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT: u64 = GRAMS_PER_COMPUTE_BUDGET_UNIT * SCRIPT_UNITS_PER_GRAM;
 /// A fixed per-input execution allowance applied before any committed compute budget.
@@ -161,8 +161,8 @@ mod tests {
         assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(0), sigop_script_units), Some(ComputeBudget(0)));
         assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(9_999), sigop_script_units), Some(ComputeBudget(0)));
         assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(10_000), sigop_script_units), Some(ComputeBudget(1)));
-        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(10_099), sigop_script_units), Some(ComputeBudget(1)));
-        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(10_100), sigop_script_units), Some(ComputeBudget(2)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(10_999), sigop_script_units), Some(ComputeBudget(1)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(11_000), sigop_script_units), Some(ComputeBudget(2)));
     }
 
     #[test]
