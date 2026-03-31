@@ -12,13 +12,12 @@ use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
-use kaspa_consensus_core::constants::INPUT_COMPUTE_MASS_SCALE_FACTOR;
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
-    mass::{ComputeBudget, MassCalculator},
+    mass::{ComputeBudget, MassCalculator, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT},
     network::NetworkType,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry},
+    tx::{MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry},
     utxo::{
         utxo_collection::{UtxoCollection, UtxoCollectionExtensions},
         utxo_diff::UtxoDiff,
@@ -459,7 +458,7 @@ async fn bench_bbt_latency_stark() {
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
     let output_spk = pay_to_address_script(&prealloc_address);
-    let input_compute_budget = (ZkTag::R0Succinct.cost() * 2 / INPUT_COMPUTE_MASS_SCALE_FACTOR) as u16; // We take some safety margin.
+    let input_compute_budget = (ZkTag::R0Succinct.cost() as f64 * 1.1 / SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as f64) as u16; // 1.1 is a margin for push data costs
     let txs = generate_stark_tx_dag(
         utxoset.clone(),
         stark_signature_script,
