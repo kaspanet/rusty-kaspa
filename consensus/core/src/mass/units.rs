@@ -9,10 +9,10 @@ pub const SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT: u64 = GRAMS_PER_COMPUTE_BUDGET_U
 /// so version-0 transactions did not need to explicitly budget for stack work. After lifting
 /// several of those limits and introducing stack pricing, legacy version-0 wallets still commit
 /// only a sigop count. This free allowance keeps such transactions valid as long as they perform
-/// only minimal stack work. The allowance is set just below the cost of one additional sigop.
+/// only minimal stack work. The allowance is set to one script unit less than the cost of one sigop.
 #[inline(always)]
 pub const fn free_script_units_per_input(sigop_script_units: u64) -> ScriptUnits {
-    ScriptUnits(sigop_script_units.saturating_sub(SCRIPT_UNITS_PER_GRAM))
+    ScriptUnits(sigop_script_units.saturating_sub(1))
 }
 
 #[derive(
