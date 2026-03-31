@@ -68,6 +68,13 @@ impl ComputeBudget {
     pub const fn allowed_script_units(self, sigop_script_units: u64) -> ScriptUnits {
         ScriptUnits(self.to_script_units().value() + free_script_units_per_input(sigop_script_units).value())
     }
+
+    #[inline]
+    pub fn checked_covering_script_units(required_script_units: ScriptUnits, sigop_script_units: u64) -> Option<Self> {
+        let charged_units = required_script_units.value().saturating_sub(free_script_units_per_input(sigop_script_units).value());
+        let budget_units = charged_units.div_ceil(SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT);
+        u16::try_from(budget_units).ok().map(Self)
+    }
 }
 
 impl From<u16> for ComputeBudget {
@@ -140,5 +147,33 @@ impl From<ScriptUnits> for u64 {
     #[inline(always)]
     fn from(value: ScriptUnits) -> Self {
         value.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ComputeBudget, ScriptUnits};
+
+    #[test]
+    fn checked_covering_script_units_respects_free_allowance_boundaries() {
+        let sigop_script_units = 10_000;
+
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(0), sigop_script_units), Some(ComputeBudget(0)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(9_999), sigop_script_units), Some(ComputeBudget(0)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(10_000), sigop_script_units), Some(ComputeBudget(1)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(10_099), sigop_script_units), Some(ComputeBudget(1)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(10_100), sigop_script_units), Some(ComputeBudget(2)));
+    }
+
+    #[test]
+    fn checked_covering_script_units_returns_none_on_budget_overflow() {
+        let sigop_script_units = 10_000;
+        let max_coverable = ComputeBudget(u16::MAX).allowed_script_units(sigop_script_units).value();
+
+        assert_eq!(
+            ComputeBudget::checked_covering_script_units(ScriptUnits(max_coverable), sigop_script_units),
+            Some(ComputeBudget(u16::MAX))
+        );
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(max_coverable + 1), sigop_script_units), None);
     }
 }
