@@ -1,6 +1,20 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
+pub const GRAMS_PER_COMPUTE_BUDGET_UNIT: u64 = 10;
+pub const SCRIPT_UNITS_PER_GRAM: u64 = 10;
+pub const SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT: u64 = GRAMS_PER_COMPUTE_BUDGET_UNIT * SCRIPT_UNITS_PER_GRAM;
+/// A fixed per-input execution allowance applied before any committed compute budget.
+/// Before the covenants hard fork, script execution was primarily bounded by fixed engine limits,
+/// so version-0 transactions did not need to explicitly budget for stack work. After lifting
+/// several of those limits and introducing stack pricing, legacy version-0 wallets still commit
+/// only a sigop count. This free allowance keeps such transactions valid as long as they perform
+/// only minimal stack work. The allowance is set just below the cost of one additional sigop.
+#[inline(always)]
+pub const fn free_script_units_per_input(sigop_script_units: u64) -> ScriptUnits {
+    ScriptUnits(sigop_script_units.saturating_sub(SCRIPT_UNITS_PER_GRAM))
+}
+
 #[derive(
     Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
@@ -39,6 +53,21 @@ impl ComputeBudget {
     pub const fn value(self) -> u16 {
         self.0
     }
+
+    #[inline(always)]
+    pub const fn to_grams(self) -> Gram {
+        Gram(self.0 as u64 * GRAMS_PER_COMPUTE_BUDGET_UNIT)
+    }
+
+    #[inline(always)]
+    pub const fn to_script_units(self) -> ScriptUnits {
+        ScriptUnits(self.0 as u64 * SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT)
+    }
+
+    #[inline(always)]
+    pub const fn allowed_script_units(self, sigop_script_units: u64) -> ScriptUnits {
+        ScriptUnits(self.to_script_units().value() + free_script_units_per_input(sigop_script_units).value())
+    }
 }
 
 impl From<u16> for ComputeBudget {
@@ -65,6 +94,11 @@ impl Gram {
     #[inline(always)]
     pub const fn value(self) -> u64 {
         self.0
+    }
+
+    #[inline(always)]
+    pub const fn to_script_units(self) -> ScriptUnits {
+        ScriptUnits(self.0 * SCRIPT_UNITS_PER_GRAM)
     }
 }
 

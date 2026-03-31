@@ -1,10 +1,13 @@
 pub mod units;
 
-pub use units::{ComputeBudget, Gram, ScriptUnits, SigopCount};
+pub use units::{
+    ComputeBudget, GRAMS_PER_COMPUTE_BUDGET_UNIT, Gram, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits,
+    SigopCount, free_script_units_per_input,
+};
 
 use crate::{
     config::params::Params,
-    constants::{INPUT_COMPUTE_MASS_SCALE_FACTOR, TRANSIENT_BYTE_TO_MASS_FACTOR},
+    constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     subnets::SUBNETWORK_ID_SIZE,
     tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction},
 };
@@ -332,7 +335,7 @@ impl MassCalculator {
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
         let script_mass = if TxInputMass::has_compute_budget_field(tx.version) {
-            INPUT_COMPUTE_MASS_SCALE_FACTOR
+            GRAMS_PER_COMPUTE_BUDGET_UNIT
                 * tx.inputs
                     .iter()
                     .map(|input| input.mass.compute_budget().expect("v1 transactions are expected to have compute budget") as u64)

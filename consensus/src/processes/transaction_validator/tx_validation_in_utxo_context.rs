@@ -1,12 +1,11 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
-    constants::INPUT_COMPUTE_MASS_SCALE_FACTOR,
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
+    mass::{Gram, free_script_units_per_input},
     tx::{TransactionInput, TxInputMass, VerifiableTransaction},
 };
 use kaspa_txscript::{
-    COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR, EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine,
-    covenants::CovenantsContext,
+    EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine, covenants::CovenantsContext,
 };
 use kaspa_txscript_errors::TxScriptError;
 use rayon::ThreadPool;
@@ -170,7 +169,8 @@ impl TransactionValidator {
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
         let covenants_enabled = self.covenants_activation.is_active(block_daa_score);
-        let flags: EngineFlags = EngineFlags { covenants_enabled, mass_per_sig_op: self.mass_per_sig_op };
+        let flags: EngineFlags =
+            EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).to_script_units().value() };
 
         check_scripts(tx, ctx, flags)
     }
@@ -197,17 +197,11 @@ pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_
 #[inline]
 fn input_allowed_script_units(input: &TransactionInput, flags: EngineFlags) -> u64 {
     match input.mass {
-        TxInputMass::SigopCount(count) => {
-            (u8::from(count) as u64).saturating_mul(flags.mass_per_sig_op)
-        }
-        TxInputMass::ComputeBudget(compute_budget) => {
-            (u16::from(compute_budget) as u64).saturating_mul(INPUT_COMPUTE_MASS_SCALE_FACTOR)
-
-        }
+        TxInputMass::SigopCount(count) => (u8::from(count) as u64)
+            .saturating_mul(flags.sigop_script_units)
+            .saturating_add(free_script_units_per_input(flags.sigop_script_units).value()),
+        TxInputMass::ComputeBudget(compute_budget) => compute_budget.allowed_script_units(flags.sigop_script_units).value(),
     }
-    .saturating_add(flags.mass_per_sig_op.saturating_sub(1)) // To preserve backward compatility with the scheme that only took the number of sigops into account, we add (mass_per_sig_op-1)*COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR to the allowed
-                                                                // units, so most transactions that were previously allowed will still be allowed.
-    .saturating_mul(COMPUTE_MASS_TO_SCRIPT_UNITS_FACTOR)
 }
 
 pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxUnsync<'_>, flags: EngineFlags) -> TxResult<()> {
@@ -256,7 +250,10 @@ mod tests {
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId, TransactionInput,
         TransactionOutpoint, TransactionOutput, TxInputMass, UtxoEntry,
     };
-    use kaspa_consensus_core::{config::params::ForkActivation, constants::INPUT_COMPUTE_MASS_SCALE_FACTOR, mass::MassCalculator};
+    use kaspa_consensus_core::{
+        config::params::ForkActivation,
+        mass::{GRAMS_PER_COMPUTE_BUDGET_UNIT, MassCalculator},
+    };
     use kaspa_core::assert_match;
     use kaspa_txscript::opcodes::codes::OpDup;
     use kaspa_txscript::{
@@ -316,7 +313,9 @@ mod tests {
     #[test]
     fn check_scripts_parallel_budget_behavior() {
         let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
-        let flags = EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 };
+        // Setting sigop_script_units to zero also zeroes the per-input free allowance,
+        // which lets this test exercise tight push-byte bounds without extra headroom.
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0 };
 
         // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 0).
         let (mut tx, entries) = build_parallel_push_budget_test_tx(2);
@@ -381,7 +380,7 @@ mod tests {
 
         for version in [0u16, 1u16] {
             let sig_op_count = if version == 0 { 1 } else { 0 };
-            let compute_budget = if version == 1 { (params.mass_per_sig_op / INPUT_COMPUTE_MASS_SCALE_FACTOR) as u16 } else { 0 };
+            let compute_budget = if version == 1 { (params.mass_per_sig_op / GRAMS_PER_COMPUTE_BUDGET_UNIT) as u16 } else { 0 };
 
             let input = TransactionInput {
                 previous_outpoint: TransactionOutpoint {

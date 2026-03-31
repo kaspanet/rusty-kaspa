@@ -57,7 +57,7 @@ fn benchmark_r0_batch_parallelism(c: &mut Criterion) {
                             script,
                             &reused_values,
                             &cache,
-                            EngineFlags { covenants_enabled: true, mass_per_sig_op: 0 },
+                            EngineFlags { covenants_enabled: true, ..Default::default() },
                         );
                         vm.execute().is_ok()
                     })
