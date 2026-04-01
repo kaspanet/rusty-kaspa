@@ -10,18 +10,17 @@ use std::sync::Arc;
 /// Per-block SMT metadata stored alongside the seq_commit.
 ///
 /// `payload_and_ctx_digest` is `H_seq(context_hash, payload_root)` — the inner hash
-/// of `seq_state_root`. Combined with `lanes_root` and `parent_seq_commit`,
-/// the full seq_commit can be verified without access to block transactions.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// of `seq_state_root`. The `lanes_root` is stored in the branch version store
+/// at depth=0 and read via `SmtStores::get_lanes_root`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SmtBlockMetadata {
-    pub lanes_root: Hash,
     pub payload_and_ctx_digest: Hash,
     pub active_lanes_count: u64,
 }
 
 impl SmtBlockMetadata {
-    pub fn new(lanes_root: Hash, payload_and_ctx_digest: Hash, active_lanes_count: u64) -> Self {
-        Self { lanes_root, payload_and_ctx_digest, active_lanes_count }
+    pub fn new(payload_and_ctx_digest: Hash, active_lanes_count: u64) -> Self {
+        Self { payload_and_ctx_digest, active_lanes_count }
     }
 }
 

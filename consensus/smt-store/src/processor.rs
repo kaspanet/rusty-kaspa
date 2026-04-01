@@ -21,6 +21,7 @@ use kaspa_database::prelude::{BatchDbWriter, DB, StoreError, StoreResult};
 use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
+use kaspa_smt::SmtHasher;
 use kaspa_smt::store::{BranchKey, Node, SmtStore, SortedLeafUpdates};
 use kaspa_smt::tree::{SmtNodeChanges, compute_root_update};
 use rocksdb::WriteBatch;
@@ -92,6 +93,22 @@ impl SmtStores {
             return Some(Verified::new(*value, score, block_hash));
         }
         self.lane_version.get(lane_key, min_blue_score, is_canonical).unwrap()
+    }
+
+    /// Read the lanes root hash from the branch store at depth=0.
+    /// Returns the empty root if no root node exists.
+    pub fn get_lanes_root(&self, min_blue_score: u64, is_canonical: impl FnMut(Hash) -> bool) -> Hash {
+        let root_entity = BranchEntity { depth: 0, node_key: Hash::from_bytes([0; 32]) };
+        match self.get_node(root_entity, min_blue_score, is_canonical) {
+            Some(v) => match *v.data() {
+                Some(Node::Internal(hash)) => hash,
+                Some(Node::Collapsed(cl)) => {
+                    kaspa_smt::hash_node::<kaspa_hashes::SeqCommitmentMerkleNodeLeaf>(cl.lane_key, cl.leaf_hash)
+                }
+                None => kaspa_hashes::SeqCommitActiveNode::empty_root(),
+            },
+            None => kaspa_hashes::SeqCommitActiveNode::empty_root(),
+        }
     }
 
     pub fn evict_caches_below_score(&self, min_score: u64) {

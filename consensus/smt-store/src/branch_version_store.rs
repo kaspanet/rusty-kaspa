@@ -134,12 +134,14 @@ impl DbBranchVersionStore {
                     Some(v) => v,
                     None => return Ok(None),
                 };
-                let node = if value_bytes.is_empty() {
-                    None
-                } else {
-                    Some(Node::from_bytes(value_bytes)
-                        .ok_or_else(|| StoreError::DataInconsistency(format!("invalid node value length: {}", value_bytes.len())))?)
-                };
+                let node =
+                    if value_bytes.is_empty() {
+                        None
+                    } else {
+                        Some(Node::from_bytes(value_bytes).ok_or_else(|| {
+                            StoreError::DataInconsistency(format!("invalid node value length: {}", value_bytes.len()))
+                        })?)
+                    };
                 Ok(Some(MaybeFork::new(node, blue_score, key.block_hash)))
             })();
 

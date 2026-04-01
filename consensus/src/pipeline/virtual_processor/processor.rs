@@ -521,9 +521,9 @@ impl VirtualStateProcessor {
         if let Some(build) = smt_build {
             let pd = build.payload_and_ctx_digest;
             let alc = build.active_lanes_count;
-            let root = build.flush(&self.smt_stores, &mut batch, blue_score, current).unwrap();
+            build.flush(&self.smt_stores, &mut batch, blue_score, current).unwrap();
             use crate::model::stores::smt_metadata::SmtBlockMetadata;
-            self.smt_metadata_store.insert_batch(&mut batch, current, SmtBlockMetadata::new(root, pd, alc)).unwrap();
+            self.smt_metadata_store.insert_batch(&mut batch, current, SmtBlockMetadata::new(pd, alc)).unwrap();
         }
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
@@ -657,8 +657,11 @@ impl VirtualStateProcessor {
         let pp_header = self.headers_store.get_header(pp).unwrap();
         let parent_seq_commit = self.headers_store.get_header(pp_header.direct_parents()[0]).unwrap().accepted_id_merkle_root;
 
+        let min_score = pp_header.blue_score.saturating_sub(self.finality_depth);
+        let lanes_root = self.smt_stores.get_lanes_root(min_score, |bh| self.is_smt_canonical(bh, pp));
+
         Ok(SmtExportMetadata {
-            lanes_root: meta.lanes_root,
+            lanes_root,
             payload_and_ctx_digest: meta.payload_and_ctx_digest,
             parent_seq_commit,
             active_lanes_count: meta.active_lanes_count,
@@ -671,9 +674,12 @@ impl VirtualStateProcessor {
         block_hash == ZERO_HASH || self.reachability_service.is_chain_ancestor_of(block_hash, selected_parent)
     }
 
-    /// Get the parent's lanes_root and active_lanes_count from the metadata store.
+    /// Get the parent's lanes_root and active_lanes_count.
+    /// lanes_root comes from the branch version store; active_lanes_count from metadata.
     pub(super) fn get_parent_smt_metadata(&self, selected_parent: Hash) -> (Hash, u64) {
-        self.smt_metadata_store.get(selected_parent).map(|meta| (meta.lanes_root, meta.active_lanes_count)).unwrap_or_default() // genesis / pre-KIP21 fallback
+        let active_lanes_count = self.smt_metadata_store.get(selected_parent).map(|meta| meta.active_lanes_count).unwrap_or(0);
+        let lanes_root = self.smt_stores.get_lanes_root(0, |bh| self.is_smt_canonical(bh, selected_parent));
+        (lanes_root, active_lanes_count)
     }
 
     /// Expire lanes that fall out of the active window between parent and current blue score.

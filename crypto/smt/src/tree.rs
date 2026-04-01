@@ -17,9 +17,7 @@ use core::marker::PhantomData;
 use kaspa_hashes::Hash;
 
 use crate::proof::{OwnedSmtProof, ProofTerminal};
-use crate::store::{
-    BTreeSmtStore, BranchKey, CollapsedLeaf, LeafUpdate, Node, SmtStore, SortedLeafUpdates, SortedLeafUpdatesRef,
-};
+use crate::store::{BTreeSmtStore, BranchKey, CollapsedLeaf, LeafUpdate, Node, SmtStore, SortedLeafUpdates, SortedLeafUpdatesRef};
 use crate::{DEPTH, SmtHasher, bit_at, hash_node};
 
 /// A 256-bit Sparse Merkle Tree with incremental updates and cached root.

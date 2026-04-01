@@ -1136,11 +1136,11 @@ impl ConsensusApi for Consensus {
         }
 
         let mut batch = rocksdb::WriteBatch::default();
-        let root = build.flush(&self.storage.smt_stores, &mut batch, pp_header.blue_score, ZERO_HASH).unwrap();
+        build.flush(&self.storage.smt_stores, &mut batch, pp_header.blue_score, ZERO_HASH).unwrap();
         use crate::model::stores::smt_metadata::SmtBlockMetadata;
         self.storage
             .smt_metadata_store
-            .insert_batch(&mut batch, new_pruning_point, SmtBlockMetadata::new(root, payload_and_ctx_digest, actual_count))
+            .insert_batch(&mut batch, new_pruning_point, SmtBlockMetadata::new(payload_and_ctx_digest, actual_count))
             .unwrap();
         self.db.write(batch).unwrap();
 
