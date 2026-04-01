@@ -231,7 +231,7 @@ pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
         return Ok(current_root);
     }
 
-    let result = compute_subtree::<H, S>(store, changes, leaf_updates.as_sorted(), 0)?;
+    let result = compute_subtree::<H, S>(store, changes, leaf_updates.as_ref(), 0)?;
 
     // Convert the root-level NodeResult to a root hash
     match &result {
@@ -297,18 +297,19 @@ fn record_change(changes: &mut SmtNodeChanges, subtree_key: BranchKey, existing:
     }
 }
 
-fn expand_singleton(existing: Option<Node>, updates: SortedLeafUpdatesRef<'_>) -> (Option<Node>, Option<SortedLeafUpdates>) {
+fn expand_singleton(existing: Option<Node>, updates: SortedLeafUpdatesRef) -> (Option<Node>, SortedLeafUpdates) {
     match existing {
-        Some(Node::Collapsed(cl)) => {
-            let mut expanded = Vec::with_capacity(updates.len() + 1);
-            expanded.extend_from_slice(updates.as_slice());
-            if !updates.contains_key(&cl.lane_key) {
+        Some(Node::Collapsed(cl)) => match updates.binary_search_by_key(&cl.lane_key) {
+            Err(at) => {
+                let mut expanded = Vec::with_capacity(updates.len() + 1);
+                expanded.extend_from_slice(&updates.as_slice()[..at]);
                 expanded.push(LeafUpdate { key: cl.lane_key, leaf_hash: cl.leaf_hash });
+                expanded.extend_from_slice(&updates.as_slice()[at..]);
+                (None, SortedLeafUpdates::from_sorted_vec(expanded))
             }
-            expanded.sort_unstable_by_key(|u| u.key);
-            (None, Some(SortedLeafUpdates::from_sorted_vec(expanded)))
-        }
-        _ => (existing, None),
+            Ok(_) => (None, SortedLeafUpdates::from_sorted_vec(updates.as_slice().to_vec())),
+        },
+        other => (other, SortedLeafUpdates::from_sorted_vec(updates.as_slice().to_vec())),
     }
 }
 
@@ -352,8 +353,7 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
         return Ok(leaf_result(Some(u)));
     }
 
-    let (existing_for_write, expanded_updates) = expand_singleton(existing, updates);
-    let updates = expanded_updates.as_ref().map(SortedLeafUpdates::as_sorted).unwrap_or(updates);
+    let (existing_for_write, updates) = expand_singleton(existing, updates);
 
     if depth == DEPTH - 1 {
         debug_assert!(updates.len() <= 2);

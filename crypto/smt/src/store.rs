@@ -127,6 +127,7 @@ pub struct SortedLeafUpdates(std::vec::Vec<LeafUpdate>);
 
 /// Borrowed view over sorted, unique-by-key leaf updates.
 #[derive(Clone, Copy)]
+#[repr(transparent)]
 pub struct SortedLeafUpdatesRef<'a>(&'a [LeafUpdate]);
 
 impl SortedLeafUpdates {
@@ -155,12 +156,33 @@ impl SortedLeafUpdates {
         self.0
     }
 
-    pub fn as_sorted(&self) -> SortedLeafUpdatesRef<'_> {
+    pub fn as_ref(&self) -> SortedLeafUpdatesRef<'_> {
         SortedLeafUpdatesRef(&self.0)
     }
 
     pub(crate) fn from_sorted_vec(v: std::vec::Vec<LeafUpdate>) -> Self {
         Self(v)
+    }
+
+    pub fn single(&self) -> Option<&LeafUpdate> {
+        match self.0.as_slice() {
+            [u] => Some(u),
+            _ => None,
+        }
+    }
+
+    pub fn contains_key(&self, key: &Hash) -> bool {
+        self.0.binary_search_by_key(key, |u| u.key).is_ok()
+    }
+
+    pub fn partition_by_bit(&self, depth: usize) -> (SortedLeafUpdatesRef<'_>, SortedLeafUpdatesRef<'_>) {
+        let split_pos = self.0.partition_point(|u| !crate::bit_at(&u.key, depth));
+        (SortedLeafUpdatesRef(&self.0[..split_pos]), SortedLeafUpdatesRef(&self.0[split_pos..]))
+    }
+
+    pub fn first_with_bit(&self, depth: usize, right: bool) -> Option<&LeafUpdate> {
+        let (left, right_slice) = self.partition_by_bit(depth);
+        if right { right_slice.first() } else { left.first() }
     }
 }
 
@@ -195,8 +217,8 @@ impl<'a> SortedLeafUpdatesRef<'a> {
         }
     }
 
-    pub fn contains_key(self, key: &Hash) -> bool {
-        self.0.binary_search_by_key(key, |u| u.key).is_ok()
+    pub fn binary_search_by_key(self, key: &Hash) -> Result<usize, usize> {
+        self.0.binary_search_by_key(key, |u| u.key)
     }
 
     pub fn partition_by_bit(self, depth: usize) -> (Self, Self) {
