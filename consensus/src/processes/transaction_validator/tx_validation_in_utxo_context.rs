@@ -283,7 +283,15 @@ mod tests {
 
         let script_public_key = ScriptPublicKey::new(
             0,
-            ScriptBuilder::new().add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize]).unwrap().drain().into(),
+            ScriptBuilder::new()
+                .add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize])
+                .unwrap()
+                .add_op(OpDup)
+                .unwrap()
+                .add_op(OpDrop)
+                .unwrap()
+                .drain()
+                .into(),
         );
         let outputs = vec![TransactionOutput {
             value: 1,

@@ -360,6 +360,16 @@ impl Stack {
     }
 
     #[inline]
+    pub fn push_item_unmetered<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
+    where
+        Vec<u8>: OpcodeData<T>,
+    {
+        let v: Vec<u8> = OpcodeData::serialize(&item)?;
+        Vec::push(&mut self.inner, v);
+        Ok(())
+    }
+
+    #[inline]
     pub fn drop_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= SIZE {
             true => {
