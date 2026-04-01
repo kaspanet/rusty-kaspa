@@ -55,6 +55,7 @@ impl MemSizeEstimator for i64 {}
 impl MemSizeEstimator for i32 {}
 impl MemSizeEstimator for i16 {}
 impl MemSizeEstimator for i8 {}
+impl MemSizeEstimator for () {}
 
 impl<T> MemSizeEstimator for Vec<T> {
     fn estimate_mem_units(&self) -> usize {

@@ -500,6 +500,33 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetVirtualChainFromBlockV2Request,
     ) -> RpcResult<GetVirtualChainFromBlockV2Response>;
 
+    async fn get_transaction(
+        &self,
+        transaction_id: RpcTransactionId,
+        include_unaccepted: bool,
+        transaction_verbosity: Option<RpcDataVerbosityLevel>,
+        include_inclusion_data: bool,
+        include_acceptance_data: bool,
+        include_conf_count: bool,
+    ) -> RpcResult<GetTransactionResponse> {
+        self.get_transaction_call(
+            None,
+            GetTransactionRequest {
+                transaction_id,
+                include_unaccepted,
+                transaction_verbosity,
+                include_inclusion_data,
+                include_acceptance_data,
+                include_conf_count,
+            },
+        )
+        .await
+    }
+    async fn get_transaction_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetTransactionRequest,
+    ) -> RpcResult<GetTransactionResponse>;
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

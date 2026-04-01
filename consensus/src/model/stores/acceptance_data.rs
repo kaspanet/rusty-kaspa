@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 pub trait AcceptanceDataStoreReader {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError>;
+    fn iterator(&self) -> impl Iterator<Item = (Hash, Arc<AcceptanceData>)> + '_;
 }
 
 pub trait AcceptanceDataStore: AcceptanceDataStoreReader {
@@ -68,6 +69,14 @@ impl DbAcceptanceDataStore {
 impl AcceptanceDataStoreReader for DbAcceptanceDataStore {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError> {
         Ok(self.access.read(hash)?.0)
+    }
+
+    fn iterator(&self) -> impl Iterator<Item = (Hash, Arc<AcceptanceData>)> + '_ {
+        self.access.iterator().map(|item| {
+            let (key, val) = item.unwrap();
+            let hash = Hash::from_slice(&key);
+            (hash, val.0)
+        })
     }
 }
 

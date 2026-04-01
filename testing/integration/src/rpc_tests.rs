@@ -1,3 +1,4 @@
+use core::panic;
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
@@ -49,6 +50,7 @@ async fn sanity_test() {
         enable_unsynced_mining: true,
         block_template_cache_lifetime: Some(0),
         utxoindex: true,
+        txindex: true,
         unsafe_rpc: true,
         ..Default::default()
     };
@@ -245,6 +247,7 @@ async fn sanity_test() {
                     assert_eq!(response.server_version, kaspa_core::kaspad_env::version().to_string());
                     assert_eq!(response.mempool_size, 0);
                     assert!(response.is_utxo_indexed);
+                    assert!(response.is_tx_indexed);
                     assert!(response.has_message_id);
                     assert!(response.has_notify_command);
                 })
@@ -608,6 +611,7 @@ async fn sanity_test() {
                 tst!(op, {
                     let response = rpc_client.get_server_info_call(None, GetServerInfoRequest {}).await.unwrap();
                     assert!(response.has_utxo_index); // we set utxoindex above
+                    assert!(response.has_tx_index); // txindex is enabled for these tests
                     assert_eq!(response.network_id, network_id);
                 })
             }
@@ -708,6 +712,32 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetTransaction => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_transaction_call(
+                            None,
+                            GetTransactionRequest {
+                                transaction_id: 0.into(),
+                                include_unaccepted: true,
+                                transaction_verbosity: Some(kaspa_rpc_core::RpcDataVerbosityLevel::Full),
+                                include_inclusion_data: true,
+                                include_acceptance_data: true,
+                                include_conf_count: true,
+                            },
+                        )
+                        .await;
+                    // Test Get Transaction:
+                    assert!(response.is_ok_and(|res| res.transaction_data.is_some_and(|d| {
+                        d.acceptance_data.is_none()
+                            && d.inclusion_data.is_empty()
+                            && d.conf_count.is_none()
+                            && d.transactions.is_empty()
+                    })));
+                })
+            }
+
             KaspadPayloadOps::NotifyBlockAdded => {
                 let rpc_client = client.clone();
                 let id = listener_id;
@@ -764,7 +794,15 @@ async fn sanity_test() {
                 let id = listener_id;
                 tst!(op, {
                     rpc_client
-                        .start_notify(id, VirtualChainChangedScope { include_accepted_transaction_ids: false }.into())
+                        .start_notify(
+                            id,
+                            VirtualChainChangedScope {
+                                active: true,
+                                include_accepted_transaction_ids: false,
+                                include_accepting_blue_scores: false,
+                            }
+                            .into(),
+                        )
                         .await
                         .unwrap();
                 })

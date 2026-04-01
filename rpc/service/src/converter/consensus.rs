@@ -15,19 +15,20 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusProxy};
 use kaspa_hashes::Hash;
+use kaspa_index_core::indexed_transactions::{TxAcceptanceData, TxInclusionData};
 use kaspa_math::Uint256;
 use kaspa_mining::model::{TransactionIdSet, owner_txs::OwnerTransactions};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
     BlockAddedNotification, Notification, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData,
-    RpcChainBlockAcceptedTransactions, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
-    RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction, RpcOptionalTransactionInput,
-    RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput, RpcOptionalTransactionOutputVerboseData,
-    RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData, RpcResult, RpcTransaction,
-    RpcTransactionInput, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput,
-    RpcTransactionOutputVerboseData, RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity,
-    RpcTransactionVerboseData, RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity,
-    RpcUtxoEntryVerbosity,
+    RpcChainBlockAcceptedTransactions, RpcDataVerbosityLevel, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry,
+    RpcMempoolEntryByAddress, RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction,
+    RpcOptionalTransactionInput, RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput,
+    RpcOptionalTransactionOutputVerboseData, RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData,
+    RpcResult, RpcTransaction, RpcTransactionAcceptanceData, RpcTransactionData, RpcTransactionInclusionData, RpcTransactionInput,
+    RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput, RpcTransactionOutputVerboseData,
+    RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity, RpcTransactionVerboseData,
+    RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity, RpcUtxoEntryVerbosity,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
@@ -121,6 +122,14 @@ impl ConsensusConverter {
         transaction_ids.iter().map(|x| self.get_mempool_entry(consensus, transactions.get(x).expect("transaction exists"))).collect()
     }
 
+    pub async fn get_transaction_from_transaction_data(
+        &self,
+        consensus: &ConsensusProxy,
+        transaction_data: &RpcTransactionInclusionData,
+    ) -> RpcResult<Transaction> {
+        Ok(consensus.async_get_block_body(transaction_data.including_block_hash).await?[transaction_data.index_within_block as usize]
+            .clone())
+    }
     /// Converts a consensus [`Transaction`] into an [`RpcTransaction`], optionally including verbose data.
     ///
     /// _GO-KASPAD: PopulateTransactionWithVerboseData
@@ -154,6 +163,130 @@ impl ConsensusConverter {
         } else {
             transaction.into()
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn get_transaction_data(
+        &self,
+        consensus: &ConsensusProxy,
+        transaction_id: TransactionId,
+        sink_hash: Option<Hash>,
+        sink_blue_score: Option<u64>,
+        accepted_transaction_data: Vec<TxAcceptanceData>,
+        included_transaction_data: Vec<TxInclusionData>,
+        include_unaccepted: bool,
+        transaction_verbosity: Option<RpcDataVerbosityLevel>,
+        include_inclusion_data: bool,
+        include_acceptance_data: bool,
+        include_conf_count: bool,
+    ) -> RpcResult<RpcTransactionData> {
+        let (accepted_acceptance_data, _sink, sink_blue_score) = if include_acceptance_data
+            || include_conf_count
+            || !include_unaccepted
+            || transaction_verbosity.is_some_and(|v| RpcTransactionVerbosity::from(v).requires_populated_transaction())
+        {
+            let (sink, sink_blue_score) = (
+                sink_hash.ok_or_else(|| RpcError::ConsensusConverterNotFound("sink hash".to_string()))?,
+                sink_blue_score.ok_or_else(|| RpcError::ConsensusConverterNotFound("sink blue score".to_string()))?,
+            );
+            let accepted_acceptance_data =
+                self.find_canonical_accepted_acceptance_data(consensus, sink, &accepted_transaction_data).await?;
+            (accepted_acceptance_data, Some(sink), Some(sink_blue_score))
+        } else {
+            (None, None, None)
+        };
+
+        // Populate mergeset acceptance data if required, and available.
+        let mbad = if !include_unaccepted || transaction_verbosity.is_some_and(|v| !matches!(v, RpcDataVerbosityLevel::None)) {
+            if let Some(ref inner) = accepted_acceptance_data {
+                Some(&consensus.async_get_block_acceptance_data(inner.block_hash).await?[inner.mergeset_index as usize])
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let included_transaction_data =
+            if include_inclusion_data || transaction_verbosity.is_some_and(|v| !matches!(v, RpcDataVerbosityLevel::None)) {
+                let mut included_transaction_data: Vec<RpcTransactionInclusionData> =
+                    included_transaction_data.into_iter().map(RpcTransactionInclusionData::from).collect();
+                if !include_unaccepted {
+                    included_transaction_data.retain(|x| mbad.is_some_and(|mbad| x.including_block_hash == mbad.block_hash));
+                };
+                included_transaction_data
+            } else {
+                vec![]
+            };
+
+        // Populate transactions according to verbosity.
+        let transactions: Vec<RpcOptionalTransaction> =
+            if transaction_verbosity.is_some_and(|v| !matches!(v, RpcDataVerbosityLevel::None)) {
+                let tx_verbosity = RpcTransactionVerbosity::from(transaction_verbosity.unwrap());
+
+                // if required try to fetch a signable transaction to get entries.
+                let maybe_signable = if tx_verbosity.requires_populated_transaction() {
+                    if let (Some(mbad_ref), Some(accepted_ref)) = (mbad.as_ref(), accepted_acceptance_data.as_ref()) {
+                        let res = consensus
+                            .async_get_transactions_by_block_acceptance_data(
+                                accepted_ref.block_hash,
+                                (*mbad_ref).clone(),
+                                Some(vec![transaction_id]),
+                                TransactionType::SignableTransaction,
+                            )
+                            .await?;
+                        match res {
+                            TransactionQueryResult::SignableTransaction(s_txs) => s_txs.first().cloned(),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let mut converted: Vec<RpcOptionalTransaction> = Vec::new();
+                for inclusion_tx_data in &included_transaction_data {
+                    let tx = self.get_transaction_from_transaction_data(consensus, inclusion_tx_data).await?;
+                    let entries = maybe_signable.as_ref().map(|s| s.entries.clone()).unwrap_or_default();
+                    let mut signable_tx = SignableTransaction::new(tx);
+                    signable_tx.entries = entries;
+
+                    converted.push({
+                        self.convert_signable_transaction_with_verbosity(
+                            consensus,
+                            &signable_tx,
+                            Some(inclusion_tx_data.including_block_hash),
+                            if tx_verbosity.requires_block_time() {
+                                consensus.async_get_header(inclusion_tx_data.including_block_hash).await?.timestamp
+                            } else {
+                                0
+                            },
+                            &tx_verbosity,
+                        )
+                        .await?
+                    });
+                }
+                converted
+            } else {
+                Vec::new()
+            };
+
+        let conf_count = if include_conf_count {
+            accepted_acceptance_data
+                .as_ref()
+                .map(|acceptance_data| sink_blue_score.unwrap().saturating_sub(acceptance_data.blue_score))
+        } else {
+            None
+        };
+
+        Ok(RpcTransactionData {
+            transactions,
+            inclusion_data: included_transaction_data,
+            acceptance_data: accepted_acceptance_data.map(RpcTransactionAcceptanceData::from),
+            conf_count,
+        })
     }
 
     fn get_transaction_input(&self, input: &TransactionInput) -> RpcTransactionInput {
@@ -654,6 +787,20 @@ impl ConsensusConverter {
             };
         }
         Ok(rpc_acceptance_data)
+    }
+
+    pub async fn find_canonical_accepted_acceptance_data(
+        &self,
+        consensus: &ConsensusProxy,
+        pov_sink: Hash,
+        rpc_acceptance_data: &[TxAcceptanceData],
+    ) -> RpcResult<Option<TxAcceptanceData>> {
+        for data in rpc_acceptance_data.iter() {
+            if consensus.async_is_chain_ancestor_of(data.block_hash, pov_sink).await? {
+                return Ok(Some(data.clone()));
+            }
+        }
+        Ok(None) // not found
     }
 }
 

@@ -7,6 +7,7 @@ use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
+use kaspa_consensus::model::stores::acceptance_data::AcceptanceDataStoreReader;
 use kaspa_consensus::model::stores::block_transactions::{
     BlockTransactionsStore, BlockTransactionsStoreReader, DbBlockTransactionsStore,
 };
@@ -33,7 +34,8 @@ use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::mining_rules::MiningRules;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::{
-    MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    MutableTransaction, ScriptPublicKey, Transaction, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoEntry,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
@@ -43,6 +45,7 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::RpcHeader;
+use kaspa_txindex::model::{TxAcceptanceData, TxInclusionData};
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
@@ -62,6 +65,8 @@ use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_txindex::TxIndex;
+use kaspa_txindex::api::{TxIndexApi, TxIndexProxy, TxIndexTestAPI};
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::OpTrue;
 use kaspa_txscript::script_builder::ScriptBuilderResult;
@@ -737,12 +742,15 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let external_block_store = DbBlockTransactionsStore::new(external_storage, CachePolicy::Count(config.perf.block_data_cache_size));
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let (_txindex_db_lifetime, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
+    let txindex = TxIndex::new(consensus_manager.clone(), txindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(
         &notify_service.notifier(),
         subscription_context.clone(),
         Some(UtxoIndexProxy::new(utxoindex.clone())),
+        Some(TxIndexProxy::new(txindex.clone())),
     ));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
@@ -855,6 +863,10 @@ async fn json_test(file_path: &str, concurrency: bool) {
         }
     }
 
+    // wait for txindex to potentially finish native pruning, else we might have a race condition influencing assertions.
+    let txindex_prune_guard = txindex.read().get_pruning_lock();
+    let _ = txindex_prune_guard.lock().await;
+
     core.shutdown();
     core.join(joins);
 
@@ -869,6 +881,120 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
+    drop(virtual_utxos);
+    drop(utxoindex_utxos);
+
+    let (txindex_sink, txindex_sink_blue_score) = txindex.read().get_sink_with_blue_score().unwrap();
+    let consensus_sink = tc.get_sink();
+    let consensus_sink_blue_score = tc.get_sink_blue_score();
+    assert_eq!(txindex_sink, consensus_sink);
+    assert_eq!(txindex_sink_blue_score, consensus_sink_blue_score);
+
+    let txindex_tips = txindex.read().get_tips().unwrap().unwrap();
+    let consensus_tips = tc.body_tips();
+    assert_eq!(txindex_tips.len(), consensus_tips.len());
+    assert_eq!(txindex_tips, consensus_tips.into());
+
+    let txindex_retention_root = txindex.read().get_retention_root().unwrap().unwrap();
+    let consensus_retention_root = tc.get_retention_period_root();
+    let consensus_retention_root_blue_score = tc.headers_store.get_blue_score(consensus_retention_root).unwrap();
+    let consensus_retention_root_daa_score = tc.headers_store.get_daa_score(consensus_retention_root).unwrap();
+    assert_eq!(txindex_retention_root, consensus_retention_root);
+
+    let txindex_accepted_tx_refs = txindex.read().get_all_transaction_acceptance_refs().unwrap();
+
+    let mut txindex_tx_acceptance_data = HashMap::new();
+    for tx_ref in &txindex_accepted_tx_refs {
+        let acceptance_data_list = txindex.read().get_accepted_transaction_data(tx_ref.transaction_id).unwrap();
+        for tad in acceptance_data_list {
+            match txindex_tx_acceptance_data.entry(tx_ref.transaction_id) {
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    let new_hashset: HashSet<TxAcceptanceData> = HashSet::from_iter(vec![tad]);
+                    e.insert(new_hashset);
+                }
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    e.get_mut().insert(tad);
+                }
+            }
+        }
+    }
+    drop(txindex_accepted_tx_refs);
+    let headers_store = tc.headers_store.clone();
+    let mut consensus_tx_acceptance_data = HashMap::new();
+    for (accepting_hash, acceptance_data) in tc.acceptance_data_store.iterator() {
+        let accepting_blue_score = headers_store.get_blue_score(accepting_hash).unwrap();
+        if consensus_retention_root_blue_score <= accepting_blue_score {
+            // we don't expect complete pruning parity
+            for (mergeset_index, mbad) in acceptance_data.iter().enumerate() {
+                for at in &mbad.accepted_transactions {
+                    let tx_ad = TxAcceptanceData {
+                        block_hash: accepting_hash,
+                        blue_score: accepting_blue_score,
+                        mergeset_index: mergeset_index.try_into().unwrap(),
+                    };
+                    match consensus_tx_acceptance_data.entry(at.transaction_id) {
+                        std::collections::hash_map::Entry::Vacant(e) => {
+                            let new_hashset: HashSet<TxAcceptanceData> = HashSet::from_iter(vec![tx_ad]);
+                            e.insert(new_hashset);
+                        }
+                        std::collections::hash_map::Entry::Occupied(mut e) => {
+                            e.get_mut().insert(tx_ad);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assert_eq!(txindex_tx_acceptance_data.len(), consensus_tx_acceptance_data.len());
+    assert_eq!(txindex_tx_acceptance_data, consensus_tx_acceptance_data);
+    drop(txindex_tx_acceptance_data);
+    drop(consensus_tx_acceptance_data);
+    let txindex_included_tx_refs = txindex.read().get_all_transaction_inclusion_refs().unwrap();
+    let mut txindex_tx_inclusion_data = HashMap::new();
+    for tx_ref in &txindex_included_tx_refs {
+        let inclusion_data_list = txindex.read().get_included_transaction_data(tx_ref.transaction_id).unwrap();
+        for tid in inclusion_data_list {
+            match txindex_tx_inclusion_data.entry(tx_ref.transaction_id) {
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    let new_hashset: HashSet<TxInclusionData> = HashSet::from_iter(vec![tid]);
+                    e.insert(new_hashset);
+                }
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    e.get_mut().insert(tid);
+                }
+            }
+        }
+    }
+    drop(txindex_included_tx_refs);
+    let headers_store = tc.headers_store.clone();
+
+    let mut consensus_included_tx_data = HashMap::new();
+    for (hash, block_body) in tc.block_transactions_store.iterator() {
+        let block_daa_score = headers_store.get_daa_score(hash).unwrap();
+        if consensus_retention_root_daa_score <= block_daa_score {
+            for (tx_index, tx) in block_body.iter().enumerate() {
+                let tx_inclusion_data = TxInclusionData {
+                    block_hash: hash,
+                    daa_score: block_daa_score,
+                    index_within_block: tx_index as TransactionIndexType,
+                };
+                match consensus_included_tx_data.entry(tx.id()) {
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        let new_hashset: HashSet<TxInclusionData> = HashSet::from_iter(vec![tx_inclusion_data]);
+                        e.insert(new_hashset);
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut e) => {
+                        e.get_mut().insert(tx_inclusion_data);
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(txindex_tx_inclusion_data.len(), consensus_included_tx_data.len());
+    assert_eq!(txindex_tx_inclusion_data, consensus_included_tx_data);
+    drop(txindex_tx_inclusion_data);
+    drop(consensus_included_tx_data);
 }
 
 fn submit_header_chunk(

@@ -29,13 +29,14 @@ async fn check_node_status() -> RpcResult<()> {
             .unwrap();
 
     // Retrieve and show Kaspa node information
-    let GetServerInfoResponse { is_synced, server_version, network_id, has_utxo_index, .. } = client.get_server_info().await?;
+    let GetServerInfoResponse { is_synced, server_version, network_id, has_utxo_index, has_tx_index, .. } =
+        client.get_server_info().await?;
 
     println!("Node version: {server_version}");
     println!("Network: {network_id}");
     println!("Node is synced: {is_synced}");
     println!("Node is indexing UTXOs: {has_utxo_index}");
-
+    println!("Node is indexing Txs: {has_tx_index}");
     // Retrieve and show Kaspa network information
     let GetBlockDagInfoResponse {
         block_count,

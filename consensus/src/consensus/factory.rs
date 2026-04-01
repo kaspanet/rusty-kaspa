@@ -353,7 +353,10 @@ impl ConsensusFactory for Factory {
             self.management_store.write().save_new_active_consensus(entry).unwrap();
         }
 
-        (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
+        (
+            ConsensusInstance::new(session_lock, consensus.clone() as Arc<dyn ConsensusApi>),
+            Arc::new(Ctl::new(self.management_store.clone(), db, consensus)),
+        )
     }
 
     fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
