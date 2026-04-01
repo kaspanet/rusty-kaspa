@@ -5,36 +5,36 @@ use crate::reverse_blue_score::ReverseBlueScore;
 
 /// Branch version key.
 ///
-/// Layout: `prefix(1) | height(1) | node_key(32) | rev_blue_score(8) | block_hash(32)` = 74 bytes.
+/// Layout: `prefix(1) | depth(1) | node_key(32) | rev_blue_score(8) | block_hash(32)` = 74 bytes.
 /// Uses [`ReverseBlueScore`] so forward iteration yields latest versions first.
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Clone, Copy)]
 #[repr(C)]
 pub struct BranchVersionKey {
     pub prefix: u8,
-    pub height: u8,
+    pub depth: u8,
     pub node_key: Hash,
     pub rev_blue_score: ReverseBlueScore,
     pub block_hash: Hash,
 }
 
 impl BranchVersionKey {
-    pub fn new(prefix: u8, height: u8, node_key: Hash, blue_score: u64, block_hash: Hash) -> Self {
-        Self { prefix, height, node_key, rev_blue_score: ReverseBlueScore::new(blue_score), block_hash }
+    pub fn new(prefix: u8, depth: u8, node_key: Hash, blue_score: u64, block_hash: Hash) -> Self {
+        Self { prefix, depth, node_key, rev_blue_score: ReverseBlueScore::new(blue_score), block_hash }
     }
 
     /// Build a seek key for finding versions at or before `target_blue_score`.
     /// block_hash is zeroed so the seek lands at the start of that score.
-    pub fn seek_key(prefix: u8, height: u8, node_key: Hash, target_blue_score: u64) -> Self {
+    pub fn seek_key(prefix: u8, depth: u8, node_key: Hash, target_blue_score: u64) -> Self {
         Self {
             prefix,
-            height,
+            depth,
             node_key,
             rev_blue_score: ReverseBlueScore::new(target_blue_score),
             block_hash: Hash::from_bytes([0; 32]),
         }
     }
 
-    /// Entity prefix: `prefix(1) | height(1) | node_key(32)` = 34 bytes.
+    /// Entity prefix: `prefix(1) | depth(1) | node_key(32)` = 34 bytes.
     pub const ENTITY_PREFIX_LEN: usize = 1 + 1 + 32;
 }
 
@@ -149,7 +149,7 @@ mod tests {
         let bytes = key.as_bytes();
         assert_eq!(bytes.len(), 74);
         assert_eq!(bytes[0], 0x47); // prefix
-        assert_eq!(bytes[1], 7); // height
+        assert_eq!(bytes[1], 7); // depth
         assert_eq!(&bytes[2..34], &[0x11; 32]); // node_key
         let rev = u64::MAX - 1000;
         assert_eq!(&bytes[34..42], &rev.to_be_bytes());

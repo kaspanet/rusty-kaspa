@@ -18,7 +18,7 @@ use kaspa_hashes::Hash;
 
 use crate::proof::{OwnedSmtProof, ProofTerminal};
 use crate::store::{
-    BTreeSmtStore, BranchChildren, BranchKey, CollapsedLeaf, LeafUpdate, Node, SmtStore, SortedLeafUpdates, SortedLeafUpdatesRef,
+    BTreeSmtStore, BranchKey, CollapsedLeaf, LeafUpdate, Node, SmtStore, SortedLeafUpdates, SortedLeafUpdatesRef,
 };
 use crate::{DEPTH, SmtHasher, bit_at, hash_node};
 
@@ -72,28 +72,48 @@ impl<H: SmtHasher, S: SmtStore> SparseMerkleTree<H, S> {
     /// Walks from root to leaf reading stored branch nodes.
     /// Handles both `Internal` and `Collapsed` (SLO) nodes.
     pub fn prove(&self, key: &Hash) -> Result<OwnedSmtProof, S::Error> {
-        let empty_hashes = &H::EMPTY_HASHES;
         let mut bitmap = [0u8; 32];
         let mut siblings = Vec::new();
         let mut terminal = ProofTerminal::Full;
 
         for depth in 0..DEPTH {
-            let height = DEPTH - 1 - depth;
-            let branch_key = BranchKey::new(height as u8, key);
+            let branch_key = BranchKey::new(depth as u8, key);
             let goes_right = bit_at(key, depth);
 
             match self.store.get_node(&branch_key)? {
-                Some(Node::Internal(bc)) => {
-                    let sibling = if goes_right { bc.left } else { bc.right };
-                    if sibling == empty_hashes[height] {
-                        bitmap[depth / 8] |= 1 << (depth % 8);
+                Some(Node::Internal(_)) => {
+                    if depth == DEPTH - 1 {
+                        // Leaf-parent (depth 255): children are leaves, not branch nodes.
+                        // Use get_leaf instead of child_branch_key to avoid depth+1 overflow.
+                        // Compute sibling key (differs only in the last bit).
+                        let mut sib_bytes = key.as_bytes();
+                        sib_bytes[depth / 8] ^= 0x80 >> (depth % 8);
+                        let sibling_leaf_key = Hash::from_bytes(sib_bytes);
+                        match self.store.get_leaf(&sibling_leaf_key)? {
+                            None => {
+                                bitmap[depth / 8] |= 1 << (depth % 8);
+                            }
+                            Some(leaf_hash) => {
+                                siblings.push(hash_node::<H::CollapsedHasher>(sibling_leaf_key, leaf_hash));
+                            }
+                        }
                     } else {
-                        siblings.push(sibling);
+                        // Read the sibling node directly.
+                        let sibling_key = child_branch_key(&branch_key, !goes_right, depth);
+                        match self.store.get_node(&sibling_key)? {
+                            None => {
+                                bitmap[depth / 8] |= 1 << (depth % 8);
+                            }
+                            Some(Node::Internal(hash)) => {
+                                siblings.push(hash);
+                            }
+                            Some(Node::Collapsed(cl)) => {
+                                siblings.push(hash_node::<H::CollapsedHasher>(cl.lane_key, cl.leaf_hash));
+                            }
+                        }
                     }
                 }
                 Some(Node::Collapsed(cl)) => {
-                    // The subtree at this height has exactly one leaf.
-                    // Find the depth where the collapsed key and the proof key diverge.
                     if cl.lane_key == *key {
                         for d in depth..DEPTH {
                             bitmap[d / 8] |= 1 << (d % 8);
@@ -108,7 +128,6 @@ impl<H: SmtHasher, S: SmtStore> SparseMerkleTree<H, S> {
                     break;
                 }
                 None => {
-                    // Empty subtree — all siblings from here down are empty.
                     for d in depth..DEPTH {
                         bitmap[d / 8] |= 1 << (d % 8);
                     }
@@ -189,10 +208,14 @@ enum NodeResult {
 }
 
 impl NodeResult {
-    /// Compute the hash this node contributes to its parent at the given child `height`.
-    fn hash<H: SmtHasher>(&self, subtree_height: usize) -> Hash {
+    /// Compute the hash this node contributes to its parent at the given `parent_depth`.
+    ///
+    /// Indexes `EMPTY_HASHES[DEPTH - 1 - parent_depth]`: safe because
+    /// `parent_depth` ranges from 0 (root) to `DEPTH - 1` (leaf-parent),
+    /// yielding indices 255..=0, all within the 257-element array.
+    fn hash<H: SmtHasher>(&self, parent_depth: usize) -> Hash {
         match self {
-            NodeResult::Empty => H::EMPTY_HASHES[subtree_height],
+            NodeResult::Empty => H::EMPTY_HASHES[DEPTH - 1 - parent_depth],
             NodeResult::Collapsed(cl) => hash_node::<H::CollapsedHasher>(cl.lane_key, cl.leaf_hash),
             NodeResult::Internal { hash } => *hash,
         }
@@ -250,13 +273,19 @@ fn read_node<S: SmtStore>(store: &S, changes: &SmtNodeChanges, bk: &BranchKey) -
 }
 
 /// Compute the BranchKey for a child of `parent` on the given side.
+///
+/// # Overflow safety
+/// `parent.depth + 1` is safe because this is never called at the leaf-parent
+/// level (depth 255). In `prove()`, depth 255 is handled via `get_leaf` instead.
+/// In `compute_subtree`, depth 255 is handled by the `depth == DEPTH - 1` early return.
 fn child_branch_key(parent: &BranchKey, right: bool, depth: usize) -> BranchKey {
-    let child_height = parent.height - 1;
+    debug_assert!(parent.depth < 255, "child_branch_key called at leaf-parent level");
+    let child_depth = parent.depth + 1;
     let mut bytes = parent.node_key.as_bytes();
     if right {
         bytes[depth / 8] |= 0x80 >> (depth % 8);
     }
-    BranchKey { height: child_height, node_key: Hash::from_bytes(bytes) }
+    BranchKey { depth: child_depth, node_key: Hash::from_bytes(bytes) }
 }
 
 fn leaf_result(update: Option<&LeafUpdate>) -> NodeResult {
@@ -268,12 +297,12 @@ fn leaf_result(update: Option<&LeafUpdate>) -> NodeResult {
     }
 }
 
-fn merged_node<H: SmtHasher>(left: &NodeResult, right: &NodeResult, height: usize) -> (NodeResult, Option<Node>) {
+fn merged_node<H: SmtHasher>(left: &NodeResult, right: &NodeResult, depth: usize) -> (NodeResult, Option<Node>) {
     let result = match (left, right) {
         (NodeResult::Empty, NodeResult::Empty) => NodeResult::Empty,
         (NodeResult::Collapsed(cl), NodeResult::Empty) | (NodeResult::Empty, NodeResult::Collapsed(cl)) => NodeResult::Collapsed(*cl),
         _ => {
-            let hash = hash_node::<H>(left.hash::<H>(height), right.hash::<H>(height));
+            let hash = hash_node::<H>(left.hash::<H>(depth), right.hash::<H>(depth));
             NodeResult::Internal { hash }
         }
     };
@@ -281,11 +310,7 @@ fn merged_node<H: SmtHasher>(left: &NodeResult, right: &NodeResult, height: usiz
     let node = match &result {
         NodeResult::Empty => None,
         NodeResult::Collapsed(cl) => Some(Node::Collapsed(*cl)),
-        NodeResult::Internal { .. } => {
-            let left_hash = left.hash::<H>(height);
-            let right_hash = right.hash::<H>(height);
-            Some(Node::Internal(BranchChildren { left: left_hash, right: right_hash }))
-        }
+        NodeResult::Internal { hash } => Some(Node::Internal(*hash)),
     };
 
     (result, node)
@@ -324,8 +349,7 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
     depth: usize,
 ) -> Result<NodeResult, S::Error> {
     debug_assert!(!updates.is_empty());
-    let height = DEPTH - 1 - depth;
-    let subtree_key = BranchKey::new(height as u8, &updates.first().unwrap().key);
+    let subtree_key = BranchKey::new(depth as u8, &updates.first().unwrap().key);
 
     let existing = read_node::<S>(store, changes, &subtree_key)?;
 
@@ -355,11 +379,14 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
 
     let (existing_for_write, updates) = expand_singleton(existing, updates);
 
+    // Leaf-parent level: resolve directly from updates, no child nodes.
+    // This early return guards `child_branch_key` and `read_sibling_result`
+    // below from being called at depth 255 (which would overflow depth+1).
     if depth == DEPTH - 1 {
         debug_assert!(updates.len() <= 2);
         let left_result = leaf_result(updates.first_with_bit(depth, false));
         let right_result = leaf_result(updates.first_with_bit(depth, true));
-        let (result, new_node) = merged_node::<H>(&left_result, &right_result, 0);
+        let (result, new_node) = merged_node::<H>(&left_result, &right_result, DEPTH - 1);
         record_change(changes, subtree_key, existing_for_write, new_node);
         return Ok(result);
     }
@@ -367,54 +394,38 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
     let (left_updates, right_updates) = updates.partition_by_bit(depth);
 
     let left_result = if left_updates.is_empty() {
-        read_child_result::<H, S>(store, changes, &subtree_key, false, depth)?
+        read_sibling_result::<H, S>(store, changes, &subtree_key, false, depth)?
     } else {
         compute_subtree::<H, S>(store, changes, left_updates, depth + 1)?
     };
 
     let right_result = if right_updates.is_empty() {
-        read_child_result::<H, S>(store, changes, &subtree_key, true, depth)?
+        read_sibling_result::<H, S>(store, changes, &subtree_key, true, depth)?
     } else {
         compute_subtree::<H, S>(store, changes, right_updates, depth + 1)?
     };
 
-    let (result, new_node) = merged_node::<H>(&left_result, &right_result, height);
+    let (result, new_node) = merged_node::<H>(&left_result, &right_result, depth);
     record_change(changes, subtree_key, existing_for_write, new_node);
     Ok(result)
 }
 
-/// Read the existing child result on the side that has no updates.
+/// Read an existing sibling node directly.
 ///
-/// Reads the actual child node from the store to accurately determine
-/// whether it's Collapsed (enabling collapse-upward) or Internal.
-fn read_child_result<H: SmtHasher, S: SmtStore>(
+/// Called when one side of a branch has no updates. Reads the sibling
+/// node by its own key (1 read) instead of extracting from the parent.
+fn read_sibling_result<H: SmtHasher, S: SmtStore>(
     store: &S,
     changes: &SmtNodeChanges,
     parent_key: &BranchKey,
-    right: bool,
+    sibling_is_right: bool,
     depth: usize,
 ) -> Result<NodeResult, S::Error> {
-    let existing = read_node::<S>(store, changes, parent_key)?;
-    match existing {
+    let sibling_key = child_branch_key(parent_key, sibling_is_right, depth);
+    match read_node::<S>(store, changes, &sibling_key)? {
         None => Ok(NodeResult::Empty),
-        Some(Node::Collapsed(cl)) => {
-            if bit_at(&cl.lane_key, depth) == right {
-                Ok(NodeResult::Collapsed(cl))
-            } else {
-                Ok(NodeResult::Empty)
-            }
-        }
-        Some(Node::Internal(bc)) => {
-            let child_hash = if right { bc.right } else { bc.left };
-            if child_hash == H::EMPTY_HASHES[parent_key.height as usize] {
-                return Ok(NodeResult::Empty);
-            }
-            let child_key = child_branch_key(parent_key, right, depth);
-            match read_node::<S>(store, changes, &child_key)? {
-                Some(Node::Collapsed(cl)) => Ok(NodeResult::Collapsed(cl)),
-                _ => Ok(NodeResult::Internal { hash: child_hash }),
-            }
-        }
+        Some(Node::Collapsed(cl)) => Ok(NodeResult::Collapsed(cl)),
+        Some(Node::Internal(hash)) => Ok(NodeResult::Internal { hash }),
     }
 }
 
@@ -1485,10 +1496,10 @@ mod tests {
         let store = BTreeSmtStore::new();
         let (root, changes) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1)])).unwrap();
 
-        // Should produce a single Collapsed entry at the root level (height 255)
+        // Should produce a single Collapsed entry at the root level (depth 0)
         assert_eq!(changes.len(), 1, "single leaf should produce one collapsed node");
         let (&bk, &nk) = changes.iter().next().unwrap();
-        assert_eq!(bk.height, 255);
+        assert_eq!(bk.depth, 0);
         assert!(matches!(nk, Some(Node::Collapsed(cl)) if cl.lane_key == k1 && cl.leaf_hash == l1));
 
         // Root should not be the empty root

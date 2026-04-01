@@ -43,7 +43,7 @@ impl<F: Fn(Hash) -> bool> SmtStore for VersionedBranchReader<'_, F> {
     type Error = StoreError;
 
     fn get_node(&self, key: &BranchKey) -> Result<Option<Node>, StoreError> {
-        let entity = BranchEntity { height: key.height, node_key: key.node_key };
+        let entity = BranchEntity { depth: key.depth, node_key: key.node_key };
         Ok(self.stores.get_node(entity, self.min_blue_score, |bh| (self.is_canonical)(bh)).and_then(|v| *v.data()))
     }
 }
@@ -78,7 +78,7 @@ impl SmtStores {
         if let Some((score, block_hash, value)) = self.branch_cache.lock().get(entity, u64::MAX, min_blue_score, &mut is_canonical) {
             return Some(Verified::new(*value, score, block_hash));
         }
-        self.branch_version.get(entity.height, entity.node_key, min_blue_score, is_canonical).unwrap()
+        self.branch_version.get(entity.depth, entity.node_key, min_blue_score, is_canonical).unwrap()
     }
 
     /// Find the latest canonical lane version, checking cache first then DB.
@@ -339,12 +339,12 @@ impl<C: LaneChanges> SmtBuild<C> {
         let root = self.root;
 
         for (bk, node) in &self.node_changes {
-            stores.branch_version.put(BatchDbWriter::new(batch), bk.height, bk.node_key, branch_blue_score, block_hash, *node)?;
+            stores.branch_version.put(BatchDbWriter::new(batch), bk.depth, bk.node_key, branch_blue_score, block_hash, *node)?;
         }
         {
             let mut bc = stores.branch_cache.lock();
             for (bk, node) in &self.node_changes {
-                bc.insert(BranchEntity { height: bk.height, node_key: bk.node_key }, branch_blue_score, block_hash, *node);
+                bc.insert(BranchEntity { depth: bk.depth, node_key: bk.node_key }, branch_blue_score, block_hash, *node);
             }
         }
 

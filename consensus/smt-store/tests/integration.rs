@@ -218,7 +218,7 @@ fn processor_flush_writes_correct_data() {
     assert_eq!(si_entry.data(), &vec![key]);
 
     // Verify root-level branch version was written
-    let root_branch = stores.branch_version.get(255, Hash::from_bytes([0; 32]), 0, |_| true).unwrap();
+    let root_branch = stores.branch_version.get(0, Hash::from_bytes([0; 32]), 0, |_| true).unwrap();
     assert!(root_branch.is_some());
 }
 
@@ -244,12 +244,12 @@ fn inactivity_threshold_hides_stale_branches() {
     db.write(batch).unwrap();
 
     // At blue_score=100: the root-level branch should be visible (min_blue_score=0)
-    let root_branch = stores.branch_version.get(255, Hash::from_bytes([0; 32]), 0, |_| true).unwrap();
+    let root_branch = stores.branch_version.get(0, Hash::from_bytes([0; 32]), 0, |_| true).unwrap();
     assert!(root_branch.is_some(), "branch should be visible at same blue_score");
 
     // At blue_score=100 + THRESHOLD + 1: beyond inactivity window
     let far_future_min = (old_blue_score + TEST_THRESHOLD + 1).saturating_sub(TEST_THRESHOLD);
-    let root_branch_far = stores.branch_version.get(255, Hash::from_bytes([0; 32]), far_future_min, |_| true).unwrap();
+    let root_branch_far = stores.branch_version.get(0, Hash::from_bytes([0; 32]), far_future_min, |_| true).unwrap();
     assert!(root_branch_far.is_none(), "branch should be hidden beyond inactivity threshold");
 }
 
@@ -588,7 +588,7 @@ fn zero_hash_block_hash_branches_are_readable() {
     build.flush(&stores, &mut batch, bs, ZERO_HASH).unwrap();
     db.write(batch).unwrap();
 
-    let root_node = stores.branch_version.get(255, Hash::from_bytes([0; 32]), 0, |bh| bh == kaspa_hashes::ZERO_HASH).unwrap();
+    let root_node = stores.branch_version.get(0, Hash::from_bytes([0; 32]), 0, |bh| bh == kaspa_hashes::ZERO_HASH).unwrap();
     assert!(root_node.is_some());
 
     // With SLO, a single lane produces a Collapsed node at the root
@@ -597,9 +597,8 @@ fn zero_hash_block_hash_branches_are_readable() {
             let derived = kaspa_smt::hash_node::<SeqCommitmentMerkleNodeLeaf>(cl.lane_key, cl.leaf_hash);
             assert_eq!(derived, root);
         }
-        Some(Node::Internal(bc)) => {
-            let derived = kaspa_smt::hash_node::<SeqCommitActiveNode>(bc.left, bc.right);
-            assert_eq!(derived, root);
+        Some(Node::Internal(hash)) => {
+            assert_eq!(hash, root);
         }
         None => panic!("root node unexpectedly marked deleted"),
     }

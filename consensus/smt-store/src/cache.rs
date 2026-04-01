@@ -18,15 +18,15 @@ impl EntityKey for Hash {
     const MIN: Self = Hash::from_bytes([0x00; 32]);
 }
 
-/// Branch entity key: `(height, node_key)`.
+/// Branch entity key: `(depth, node_key)`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BranchEntity {
-    pub height: u8,
+    pub depth: u8,
     pub node_key: Hash,
 }
 
 impl EntityKey for BranchEntity {
-    const MIN: Self = Self { height: 0, node_key: Hash::from_bytes([0x00; 32]) };
+    const MIN: Self = Self { depth: 0, node_key: Hash::from_bytes([0x00; 32]) };
 }
 
 /// Key for entity-ordered lookup: iterate versions of an entity newest-first.
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn branch_entity_key() {
         let mut cache = VersionedCache::<BranchEntity, u64>::new(100);
-        let entity = BranchEntity { height: 255, node_key: hash(0) };
+        let entity = BranchEntity { depth: 0, node_key: hash(0) };
         let bh = hash(0x11);
 
         cache.insert(entity, 100, bh, 42);

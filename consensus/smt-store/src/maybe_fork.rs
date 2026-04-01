@@ -36,6 +36,11 @@ impl<T> MaybeFork<T> {
     pub fn into_verified(self) -> Verified<T> {
         Verified { data: self.data, blue_score: self.blue_score, block_hash: self.block_hash }
     }
+
+    /// Map the inner data, preserving score and block_hash.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> MaybeFork<U> {
+        MaybeFork { data: f(self.data), blue_score: self.blue_score, block_hash: self.block_hash }
+    }
 }
 
 /// Version entry whose canonicality has been verified.
@@ -66,5 +71,10 @@ impl<T> Verified<T> {
 
     pub fn into_parts(self) -> (T, u64, Hash) {
         (self.data, self.blue_score, self.block_hash)
+    }
+
+    /// Map the inner data, preserving score and block_hash.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Verified<U> {
+        Verified { data: f(self.data), blue_score: self.blue_score, block_hash: self.block_hash }
     }
 }

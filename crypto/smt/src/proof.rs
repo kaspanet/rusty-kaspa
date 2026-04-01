@@ -11,9 +11,9 @@
 use alloc::vec::Vec;
 use kaspa_hashes::{Hash, ZERO_HASH};
 
-use crate::store::{BranchChildren, BranchKey, CollapsedLeaf};
+use crate::store::{BranchKey, CollapsedLeaf};
 /// Branch cache for proof verification short-circuiting.
-pub type ProofBranchCache = alloc::collections::BTreeMap<BranchKey, BranchChildren>;
+pub type ProofBranchCache = alloc::collections::BTreeMap<BranchKey, Hash>;
 use crate::{DEPTH, SmtHasher, bit_at, hash_node};
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -83,10 +83,12 @@ fn compute_root_inner<H: SmtHasher>(
     let mut sib_idx = siblings.len();
     let limit = terminal.depth();
 
+    // d ranges from limit-1 down to 0. limit <= DEPTH (256).
+    // EMPTY_HASHES[DEPTH - 1 - d]: d < DEPTH, so index is in 0..=255 (safe).
+    // BranchKey::new(d as u8, ..): d < 256, so u8 cast is safe.
     for d in (0..limit).rev() {
-        let height = (DEPTH - 1 - d) as u8;
         let sibling = if is_empty_at_depth(bitmap, d) {
-            H::EMPTY_HASHES[height as usize]
+            H::EMPTY_HASHES[DEPTH - 1 - d]
         } else {
             sib_idx -= 1;
             siblings[sib_idx]
@@ -95,12 +97,13 @@ fn compute_root_inner<H: SmtHasher>(
         let (left, right) = if bit_at(key, d) { (sibling, current) } else { (current, sibling) };
 
         current = if let Some(ref mut cache) = cache {
-            let bk = BranchKey::new(height, key);
-            if let Some(cached) = cache.get(&bk) {
-                hash_node::<H>(cached.left, cached.right)
+            let bk = BranchKey::new(d as u8, key);
+            if let Some(&cached_hash) = cache.get(&bk) {
+                cached_hash
             } else {
-                cache.insert(bk, BranchChildren { left, right });
-                hash_node::<H>(left, right)
+                let node_hash = hash_node::<H>(left, right);
+                cache.insert(bk, node_hash);
+                node_hash
             }
         } else {
             hash_node::<H>(left, right)
