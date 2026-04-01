@@ -453,12 +453,14 @@ opcode_list! {
     // Stack opcodes.
     opcode OpToAltStack<0x6b, 1>(self, vm) {
         let [item] = vm.dstack.pop_raw()?;
-        vm.astack.push(item)
+        // Pure move between stacks, so we don't consume script units.
+        vm.astack.push_unmetered(item)
     }
 
     opcode OpFromAltStack<0x6c, 1>(self, vm) {
         let last = vm.astack.pop()?;
-        vm.dstack.push(last)
+        // Pure move between stacks, so we don't consume script units.
+        vm.dstack.push_unmetered(last)
     }
 
     opcode Op2Drop<0x6d, 1>(self, vm) vm.dstack.drop_items::<2>()
@@ -506,8 +508,7 @@ opcode_list! {
         if  loc < 0 || loc as usize >= vm.dstack.len() {
             return Err(TxScriptError::InvalidState("roll at an invalid location".to_string()));
         }
-        let item = vm.dstack.remove(vm.dstack.len()-(loc as usize)-1);
-        vm.dstack.push(item)
+        vm.dstack.roll(loc as usize)
     }
 
     opcode OpRot<0x7b, 1>(self, vm) vm.dstack.rot_items::<1>()
