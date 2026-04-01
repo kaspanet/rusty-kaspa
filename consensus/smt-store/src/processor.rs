@@ -30,7 +30,7 @@ use crate::cache::{BranchEntity, BranchVersionCache, LaneVersionCache};
 use crate::lane_version_store::DbLaneVersionStore;
 use crate::maybe_fork::Verified;
 use crate::score_index::DbScoreIndex;
-use crate::values::LaneVersion;
+use crate::values::LaneTipHash;
 use crate::{BlockHash, LaneKey};
 
 struct VersionedBranchReader<'a, F: Fn(Hash) -> bool> {
@@ -87,7 +87,7 @@ impl SmtStores {
         lane_key: LaneKey,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool,
-    ) -> Option<Verified<LaneVersion>> {
+    ) -> Option<Verified<LaneTipHash>> {
         if let Some((score, block_hash, value)) = self.lane_cache.lock().get(lane_key, u64::MAX, min_blue_score, &mut is_canonical) {
             return Some(Verified::new(*value, score, block_hash));
         }
@@ -116,7 +116,7 @@ impl SmtStores {
 pub trait LaneChanges {
     type LaneMeta;
 
-    fn update(&mut self, lane_key: LaneKey, lane_id: [u8; 20], lane_tip_hash: Hash, meta: Self::LaneMeta);
+    fn update(&mut self, lane_key: LaneKey, lane_tip_hash: Hash, meta: Self::LaneMeta);
     fn to_leaf_updates(&self) -> SortedLeafUpdates;
     fn flush_lanes(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()>;
     fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()>;
@@ -127,7 +127,7 @@ pub trait LaneChanges {
 /// Lane changes within a single block. All lanes share the block's blue_score.
 pub struct BlockLaneChanges {
     blue_score: u64,
-    changes: BTreeMap<LaneKey, Option<LaneVersion>>,
+    changes: BTreeMap<LaneKey, Option<LaneTipHash>>,
 }
 
 impl BlockLaneChanges {
@@ -143,28 +143,28 @@ impl BlockLaneChanges {
 impl LaneChanges for BlockLaneChanges {
     type LaneMeta = ();
 
-    fn update(&mut self, lane_key: LaneKey, lane_id: [u8; 20], lane_tip_hash: Hash, _extra: ()) {
-        self.changes.insert(lane_key, Some(LaneVersion { lane_id, lane_tip_hash }));
+    fn update(&mut self, lane_key: LaneKey, lane_tip_hash: Hash, _extra: ()) {
+        self.changes.insert(lane_key, Some(lane_tip_hash));
     }
 
     fn to_leaf_updates(&self) -> SortedLeafUpdates {
         let bs = self.blue_score;
-        SortedLeafUpdates::from_sorted_map(&self.changes, |_key, change| match change {
-            Some(v) => smt_leaf_hash(&SmtLeafInput { lane_id: &v.lane_id, lane_tip: &v.lane_tip_hash, blue_score: bs }),
+        SortedLeafUpdates::from_sorted_map(&self.changes, |key, change| match change {
+            Some(tip) => smt_leaf_hash(&SmtLeafInput { lane_key: key, lane_tip: tip, blue_score: bs }),
             None => ZERO_HASH,
         })
     }
 
     fn flush_lanes(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
-        for (lane_key, version) in &self.changes {
-            if let Some(v) = version {
-                stores.lane_version.put(BatchDbWriter::new(batch), *lane_key, self.blue_score, block_hash, v)?;
+        for (lane_key, tip) in &self.changes {
+            if let Some(tip) = tip {
+                stores.lane_version.put(BatchDbWriter::new(batch), *lane_key, self.blue_score, block_hash, tip)?;
             }
         }
         let mut lc = stores.lane_cache.lock();
-        for (lane_key, version) in &self.changes {
-            if let Some(v) = version {
-                lc.insert(*lane_key, self.blue_score, block_hash, *v);
+        for (lane_key, tip) in &self.changes {
+            if let Some(tip) = tip {
+                lc.insert(*lane_key, self.blue_score, block_hash, *tip);
             }
         }
         Ok(())
@@ -195,7 +195,7 @@ impl LaneChanges for BlockLaneChanges {
 /// Lane imports with per-lane blue_score. No expirations.
 #[derive(Default)]
 pub struct ImportLaneChanges {
-    changes: BTreeMap<LaneKey, (LaneVersion, u64)>,
+    changes: BTreeMap<LaneKey, (LaneTipHash, u64)>,
 }
 
 impl ImportLaneChanges {
@@ -207,23 +207,23 @@ impl ImportLaneChanges {
 impl LaneChanges for ImportLaneChanges {
     type LaneMeta = u64;
 
-    fn update(&mut self, lane_key: LaneKey, lane_id: [u8; 20], lane_tip_hash: Hash, blue_score: u64) {
-        self.changes.insert(lane_key, (LaneVersion { lane_id, lane_tip_hash }, blue_score));
+    fn update(&mut self, lane_key: LaneKey, lane_tip_hash: Hash, blue_score: u64) {
+        self.changes.insert(lane_key, (lane_tip_hash, blue_score));
     }
 
     fn to_leaf_updates(&self) -> SortedLeafUpdates {
-        SortedLeafUpdates::from_sorted_map(&self.changes, |_key, (v, bs)| {
-            smt_leaf_hash(&SmtLeafInput { lane_id: &v.lane_id, lane_tip: &v.lane_tip_hash, blue_score: *bs })
+        SortedLeafUpdates::from_sorted_map(&self.changes, |key, (tip, bs)| {
+            smt_leaf_hash(&SmtLeafInput { lane_key: key, lane_tip: tip, blue_score: *bs })
         })
     }
 
     fn flush_lanes(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
-        for (lane_key, (v, bs)) in &self.changes {
-            stores.lane_version.put(BatchDbWriter::new(batch), *lane_key, *bs, block_hash, v)?;
+        for (lane_key, (tip, bs)) in &self.changes {
+            stores.lane_version.put(BatchDbWriter::new(batch), *lane_key, *bs, block_hash, tip)?;
         }
         let mut lc = stores.lane_cache.lock();
-        for (lane_key, (v, bs)) in &self.changes {
-            lc.insert(*lane_key, *bs, block_hash, *v);
+        for (lane_key, (tip, bs)) in &self.changes {
+            lc.insert(*lane_key, *bs, block_hash, *tip);
         }
         Ok(())
     }
@@ -263,8 +263,8 @@ impl<'a> SmtProcessor<'a, BlockLaneChanges> {
         Self { stores, blue_score, inactivity_threshold, current_lanes_root, lane_changes: BlockLaneChanges::new(blue_score) }
     }
 
-    pub fn update_lane(&mut self, lane_key: LaneKey, lane_id: [u8; 20], lane_tip_hash: Hash) {
-        self.lane_changes.update(lane_key, lane_id, lane_tip_hash, ());
+    pub fn update_lane(&mut self, lane_key: LaneKey, lane_tip_hash: Hash) {
+        self.lane_changes.update(lane_key, lane_tip_hash, ());
     }
 
     pub fn expire_lane(&mut self, lane_key: LaneKey) {
@@ -277,8 +277,8 @@ impl<'a> SmtProcessor<'a, ImportLaneChanges> {
         Self { stores, blue_score, inactivity_threshold, current_lanes_root, lane_changes: ImportLaneChanges::new() }
     }
 
-    pub fn update_lane(&mut self, lane_key: LaneKey, lane_id: [u8; 20], lane_tip_hash: Hash, blue_score: u64) {
-        self.lane_changes.update(lane_key, lane_id, lane_tip_hash, blue_score);
+    pub fn update_lane(&mut self, lane_key: LaneKey, lane_tip_hash: Hash, blue_score: u64) {
+        self.lane_changes.update(lane_key, lane_tip_hash, blue_score);
     }
 }
 

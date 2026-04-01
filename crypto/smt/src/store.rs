@@ -101,14 +101,6 @@ pub enum Node {
     Collapsed(CollapsedLeaf) = 1,
 }
 
-impl Node {
-    /// Sentinel used by tree diffs to represent node deletion.
-    #[inline]
-    pub fn is_tombstone(&self) -> bool {
-        matches!(self, Self::Internal(BranchChildren { left, right }) if *left == ZERO_HASH && *right == ZERO_HASH)
-    }
-}
-
 /// A single leaf update: set `key` to `leaf_hash` (or remove if `leaf_hash == ZERO_HASH`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafUpdate {

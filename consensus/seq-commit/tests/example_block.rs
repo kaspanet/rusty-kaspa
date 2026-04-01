@@ -59,7 +59,7 @@ fn example_seq_commit_for_block() {
     // --- SMT carries forward from previous state (lane A already present) ---
     let key_a = lane_key(&lane_a);
     let prev_leaf_a =
-        smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a, lane_tip: &lane_a_prev_tip, blue_score: lane_a_prev_blue_score });
+        smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &lane_a_prev_tip, blue_score: lane_a_prev_blue_score });
     let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
     smt.insert(key_a, prev_leaf_a);
 
@@ -134,8 +134,8 @@ fn example_seq_commit_for_block() {
 
     // --- Update SMT: lane A gets updated leaf, lane B is inserted as new ---
     let key_b = lane_key(&lane_b);
-    let new_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a, lane_tip: &tip_a, blue_score });
-    let new_leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b, lane_tip: &tip_b, blue_score });
+    let new_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &tip_a, blue_score });
+    let new_leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b, blue_score });
 
     smt.insert(key_a, new_leaf_a); // update existing lane A
     smt.insert(key_b, new_leaf_b); // insert new lane B

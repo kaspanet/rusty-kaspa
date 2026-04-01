@@ -50,7 +50,7 @@ pub struct BlockValidationFutures {
 /// A lane to import during IBD SMT sync.
 #[derive(Clone, Debug)]
 pub struct ImportLane {
-    pub lane_id: [u8; 20],
+    pub lane_key: Hash,
     pub lane_tip: Hash,
     pub blue_score: u64,
     pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,

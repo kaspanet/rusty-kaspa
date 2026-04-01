@@ -1111,7 +1111,6 @@ impl ConsensusApi for Consensus {
         lanes: Vec<kaspa_consensus_core::api::ImportLane>,
     ) -> PruningImportResult<()> {
         use kaspa_hashes::ZERO_HASH;
-        use kaspa_seq_commit::hashing::lane_key;
         use kaspa_smt::SmtHasher;
         use kaspa_smt_store::processor::SmtProcessor;
 
@@ -1121,7 +1120,7 @@ impl ConsensusApi for Consensus {
         let finality_depth = self.config.params.finality_depth();
         let mut proc = SmtProcessor::new_import(&self.storage.smt_stores, pp_header.blue_score, finality_depth, empty_root);
         for lane in &lanes {
-            proc.update_lane(lane_key(&lane.lane_id), lane.lane_id, lane.lane_tip, lane.blue_score);
+            proc.update_lane(lane.lane_key, lane.lane_tip, lane.blue_score);
         }
         let build = proc.build(|_| true).map_err(|e| PruningImportError::SmtStoreError(format!("{e}")))?;
 
@@ -1173,9 +1172,8 @@ impl ConsensusApi for Consensus {
         for result in
             self.storage.smt_stores.lane_version.iter_all_canonical(min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))
         {
-            let (_lk, v) = result.unwrap();
-            let lane =
-                ImportLane { lane_id: v.data().lane_id, lane_tip: v.data().lane_tip_hash, blue_score: v.blue_score(), proof: None };
+            let (lk, v) = result.unwrap();
+            let lane = ImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof: None };
             if !f(lane) {
                 break;
             }

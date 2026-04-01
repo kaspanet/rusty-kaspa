@@ -42,9 +42,9 @@ fn walk_up_always_insert_same_root() {
     let k2 = lane_key(&[0x02; 20]);
     let k3 = lane_key(&[0x03; 20]);
 
-    let l1 = smt_leaf_hash(&SmtLeafInput { lane_id: &[0x01; 20], lane_tip: &hash(0xA1), blue_score: 100 });
-    let l2 = smt_leaf_hash(&SmtLeafInput { lane_id: &[0x02; 20], lane_tip: &hash(0xA2), blue_score: 100 });
-    let l3 = smt_leaf_hash(&SmtLeafInput { lane_id: &[0x03; 20], lane_tip: &hash(0xA3), blue_score: 100 });
+    let l1 = smt_leaf_hash(&SmtLeafInput { lane_key: &k1, lane_tip: &hash(0xA1), blue_score: 100 });
+    let l2 = smt_leaf_hash(&SmtLeafInput { lane_key: &k2, lane_tip: &hash(0xA2), blue_score: 100 });
+    let l3 = smt_leaf_hash(&SmtLeafInput { lane_key: &k3, lane_tip: &hash(0xA3), blue_score: 100 });
 
     tree.insert(k1, l1);
     tree.insert(k2, l2);
@@ -52,7 +52,7 @@ fn walk_up_always_insert_same_root() {
     let root_3 = tree.root();
 
     // Update l1 to new value
-    let l1_new = smt_leaf_hash(&SmtLeafInput { lane_id: &[0x01; 20], lane_tip: &hash(0xB1), blue_score: 200 });
+    let l1_new = smt_leaf_hash(&SmtLeafInput { lane_key: &k1, lane_tip: &hash(0xB1), blue_score: 200 });
     tree.insert(k1, l1_new);
     let root_updated = tree.root();
 
@@ -86,14 +86,14 @@ fn processor_two_lanes_matches_in_memory() {
 
     // Process via SmtProcessor
     let mut proc = SmtProcessor::new(&stores, blue_score, TEST_THRESHOLD, empty_root);
-    proc.update_lane(key_a, lane_id_a, tip_a);
-    proc.update_lane(key_b, lane_id_b, tip_b);
+    proc.update_lane(key_a, tip_a);
+    proc.update_lane(key_b, tip_b);
     let build = proc.build(|_| true).unwrap();
     let proc_root = build.root;
 
     // Same via SLO reference
-    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_a, lane_tip: &tip_a, blue_score });
-    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_b, lane_tip: &tip_b, blue_score });
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &tip_a, blue_score });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b, blue_score });
     let mem_root = slo_root(vec![LeafUpdate { key: key_a, leaf_hash: leaf_a }, LeafUpdate { key: key_b, leaf_hash: leaf_b }]);
 
     assert_eq!(proc_root, mem_root);
@@ -118,7 +118,7 @@ fn processor_second_block_reads_from_db() {
     let tip_a1 = hash(0xA1);
     let bs1 = 100u64;
     let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
-    proc1.update_lane(key_a, lane_id_a, tip_a1);
+    proc1.update_lane(key_a, tip_a1);
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
     let mut batch = WriteBatch::default();
@@ -129,7 +129,7 @@ fn processor_second_block_reads_from_db() {
     let tip_b = hash(0xB1);
     let bs2 = 200u64;
     let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
-    proc2.update_lane(key_b, lane_id_b, tip_b);
+    proc2.update_lane(key_b, tip_b);
     let build2 = proc2.build(|_| true).unwrap();
     let root2 = build2.root;
     let mut batch = WriteBatch::default();
@@ -137,8 +137,8 @@ fn processor_second_block_reads_from_db() {
     db.write(batch).unwrap();
 
     // Verify: rebuild from scratch via SLO reference
-    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_a, lane_tip: &tip_a1, blue_score: bs1 });
-    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id_b, lane_tip: &tip_b, blue_score: bs2 });
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &tip_a1, blue_score: bs1 });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b, blue_score: bs2 });
     let expected = slo_root(vec![LeafUpdate { key: key_a, leaf_hash: leaf_a }, LeafUpdate { key: key_b, leaf_hash: leaf_b }]);
 
     assert_eq!(root2, expected);
@@ -161,7 +161,7 @@ fn processor_update_same_lane_across_blocks() {
     let tip1 = hash(0xA1);
     let bs1 = 100u64;
     let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
-    proc1.update_lane(key, lane_id, tip1);
+    proc1.update_lane(key, tip1);
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
     let mut batch = WriteBatch::default();
@@ -172,7 +172,7 @@ fn processor_update_same_lane_across_blocks() {
     let tip2 = hash(0xB2);
     let bs2 = 200u64;
     let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
-    proc2.update_lane(key, lane_id, tip2);
+    proc2.update_lane(key, tip2);
     let build2 = proc2.build(|_| true).unwrap();
     let root2 = build2.root;
     let mut batch = WriteBatch::default();
@@ -180,7 +180,7 @@ fn processor_update_same_lane_across_blocks() {
     db.write(batch).unwrap();
 
     // Verify against SLO reference with only the final state
-    let leaf2 = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id, lane_tip: &tip2, blue_score: bs2 });
+    let leaf2 = smt_leaf_hash(&SmtLeafInput { lane_key: &key, lane_tip: &tip2, blue_score: bs2 });
     let expected = slo_root(vec![LeafUpdate { key, leaf_hash: leaf2 }]);
 
     assert_eq!(root2, expected);
@@ -201,7 +201,7 @@ fn processor_flush_writes_correct_data() {
     let empty_root = SeqCommitActiveNode::empty_root();
 
     let mut proc = SmtProcessor::new(&stores, blue_score, TEST_THRESHOLD, empty_root);
-    proc.update_lane(key, lane_id, tip);
+    proc.update_lane(key, tip);
     let build = proc.build(|_| true).unwrap();
     let mut batch = WriteBatch::default();
     build.flush(&stores, &mut batch, blue_score, block_hash).unwrap();
@@ -209,8 +209,7 @@ fn processor_flush_writes_correct_data() {
 
     // Verify lane version was written
     let lane_ver = stores.lane_version.get(key, 0, |bh| bh == block_hash).unwrap().unwrap();
-    assert_eq!(lane_ver.data().lane_id, lane_id);
-    assert_eq!(lane_ver.data().lane_tip_hash, tip);
+    assert_eq!(*lane_ver.data(), tip);
     assert_eq!(lane_ver.blue_score(), blue_score);
 
     // Verify score index entry
@@ -238,7 +237,7 @@ fn inactivity_threshold_hides_stale_branches() {
 
     // Write a lane at blue_score=100
     let mut proc = SmtProcessor::new(&stores, old_blue_score, TEST_THRESHOLD, empty_root);
-    proc.update_lane(key, lane_id, tip);
+    proc.update_lane(key, tip);
     let build = proc.build(|_| true).unwrap();
     let mut batch = WriteBatch::default();
     build.flush(&stores, &mut batch, old_blue_score, block_hash).unwrap();
@@ -260,7 +259,7 @@ fn from_root_constructor() {
     let mut tree = SparseMerkleTree::<SeqCommitActiveNode>::new();
     let lid = [0x01; 20];
     let key = lane_key(&lid);
-    let leaf = smt_leaf_hash(&SmtLeafInput { lane_id: &lid, lane_tip: &hash(0xAA), blue_score: 100 });
+    let leaf = smt_leaf_hash(&SmtLeafInput { lane_key: &key, lane_tip: &hash(0xAA), blue_score: 100 });
     tree.insert(key, leaf);
     let root = tree.root();
     let store = tree.into_store();
@@ -280,7 +279,7 @@ fn build_root_matches_flush() {
     let blue_score = 100u64;
 
     let mut proc = SmtProcessor::new(&stores, blue_score, TEST_THRESHOLD, empty_root);
-    proc.update_lane(lane_key(&[0x01; 20]), [0x01; 20], hash(0xAA));
+    proc.update_lane(lane_key(&[0x01; 20]), hash(0xAA));
     let build = proc.build(|_| true).unwrap();
     let root_from_build = build.root;
 
@@ -306,7 +305,7 @@ fn expire_lane_removes_from_tree() {
     // Block 1: insert a lane
     let bs1 = 100u64;
     let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
-    proc1.update_lane(key, lane_id, hash(0xAA));
+    proc1.update_lane(key, hash(0xAA));
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
     let mut batch = WriteBatch::default();
@@ -343,7 +342,7 @@ fn empty_build_reuses_root() {
     // Block 1: insert a lane
     let bs1 = 100u64;
     let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
-    proc1.update_lane(key, lane_id, hash(0xAA));
+    proc1.update_lane(key, hash(0xAA));
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
     let mut batch = WriteBatch::default();
@@ -371,7 +370,7 @@ fn single_touch_updates_only_path_branches() {
     let bs = 100u64;
 
     let mut proc = SmtProcessor::new(&stores, bs, TEST_THRESHOLD, empty_root);
-    proc.update_lane(lane_key(&[0x01; 20]), [0x01; 20], hash(0xAA));
+    proc.update_lane(lane_key(&[0x01; 20]), hash(0xAA));
     let build = proc.build(|_| true).unwrap();
 
     // SLO: a single lane collapses into one Collapsed node at the root level.
@@ -395,8 +394,8 @@ fn untouched_subtree_not_in_diff() {
 
     // Block 1: insert both lanes
     let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
-    proc1.update_lane(key_a, lane_a, hash(0xAA));
-    proc1.update_lane(key_b, lane_b, hash(0xBB));
+    proc1.update_lane(key_a, hash(0xAA));
+    proc1.update_lane(key_b, hash(0xBB));
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
     let mut batch = WriteBatch::default();
@@ -406,7 +405,7 @@ fn untouched_subtree_not_in_diff() {
     // Block 2: only touch lane A
     let bs2 = 200u64;
     let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
-    proc2.update_lane(key_a, lane_a, hash(0xCC));
+    proc2.update_lane(key_a, hash(0xCC));
     let build2 = proc2.build(|_| true).unwrap();
 
     // The diff should contain at most 256 branches (lane A's path),
@@ -431,8 +430,8 @@ fn flush_rebuild_roundtrip() {
 
     // Build and flush
     let mut proc = SmtProcessor::new(&stores, bs, TEST_THRESHOLD, empty_root);
-    proc.update_lane(key_a, lane_a, hash(0xAA));
-    proc.update_lane(key_b, lane_b, hash(0xBB));
+    proc.update_lane(key_a, hash(0xAA));
+    proc.update_lane(key_b, hash(0xBB));
     let build = proc.build(|_| true).unwrap();
     let original_root = build.root;
     let mut batch = WriteBatch::default();
@@ -475,7 +474,7 @@ fn export_import_roundtrip() {
     for block in &blocks {
         let mut proc = SmtProcessor::new(&stores, block.blue_score, TEST_THRESHOLD, current_root);
         for (lid, tip) in &block.lanes {
-            proc.update_lane(lane_key(lid), *lid, *tip);
+            proc.update_lane(lane_key(lid), *tip);
         }
         let build = proc.build(|_| true).unwrap();
         current_root = build.root;
@@ -494,7 +493,7 @@ fn export_import_roundtrip() {
     for lid in &lane_ids {
         let lk = lane_key(lid);
         if let Some(v) = stores.get_lane(lk, 0, |_| true) {
-            exported.push((*lid, v.data().lane_tip_hash, v.blue_score()));
+            exported.push((*lid, *v.data(), v.blue_score()));
         }
     }
     assert_eq!(exported.len(), 5, "all 5 lanes should have canonical versions");
@@ -506,7 +505,7 @@ fn export_import_roundtrip() {
     let pp_blue_score = 500; // latest block's blue_score
     let mut import_proc = SmtProcessor::new_import(&import_stores, pp_blue_score, TEST_THRESHOLD, empty_root);
     for (lid, tip, bs) in &exported {
-        import_proc.update_lane(lane_key(lid), *lid, *tip, *bs);
+        import_proc.update_lane(lane_key(lid), *tip, *bs);
     }
     let import_build = import_proc.build(|_| true).unwrap();
     assert_eq!(import_build.root, final_root, "import must reproduce the same root");
@@ -521,7 +520,7 @@ fn export_import_roundtrip() {
         let lk = lane_key(lid);
         let v = import_stores.get_lane(lk, 0, |bh| bh == ZERO_HASH);
         assert!(v.is_some(), "lane {:02x} must be readable", lid[0]);
-        assert_eq!(v.as_ref().unwrap().data().lane_tip_hash, *tip);
+        assert_eq!(v.as_ref().unwrap().data(), tip);
         assert_eq!(v.unwrap().blue_score(), *bs);
     }
 
@@ -531,11 +530,11 @@ fn export_import_roundtrip() {
     let new_tip = hash(0xFE);
 
     let mut orig_next = SmtProcessor::new(&stores, next_bs, TEST_THRESHOLD, final_root);
-    orig_next.update_lane(lane_key(&new_lane_id), new_lane_id, new_tip);
+    orig_next.update_lane(lane_key(&new_lane_id), new_tip);
     let orig_next_build = orig_next.build(|_| true).unwrap();
 
     let mut import_next = SmtProcessor::new(&import_stores, next_bs, TEST_THRESHOLD, final_root);
-    import_next.update_lane(lane_key(&new_lane_id), new_lane_id, new_tip);
+    import_next.update_lane(lane_key(&new_lane_id), new_tip);
     let import_next_build = import_next.build(|bh| bh == ZERO_HASH).unwrap();
 
     assert_eq!(orig_next_build.root, import_next_build.root, "next block must produce same root on original and imported stores");
@@ -556,7 +555,7 @@ fn zero_hash_block_hash_lanes_are_readable() {
     let bs = 500u64;
 
     let mut proc = SmtProcessor::new(&stores, bs, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());
-    proc.update_lane(lk, lane_id, tip);
+    proc.update_lane(lk, tip);
     let build = proc.build(|_| true).unwrap();
     let mut batch = WriteBatch::default();
     build.flush(&stores, &mut batch, bs, ZERO_HASH).unwrap();
@@ -564,7 +563,7 @@ fn zero_hash_block_hash_lanes_are_readable() {
 
     let result = stores.get_lane(lk, 0, |bh| bh == kaspa_hashes::ZERO_HASH);
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data().lane_tip_hash, tip);
+    assert_eq!(*result.unwrap().data(), tip);
 }
 
 /// Branches written with ZERO_HASH block_hash are readable when the caller
@@ -582,7 +581,7 @@ fn zero_hash_block_hash_branches_are_readable() {
     let bs = 500u64;
 
     let mut proc = SmtProcessor::new(&stores, bs, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());
-    proc.update_lane(lk, lane_id, tip);
+    proc.update_lane(lk, tip);
     let build = proc.build(|_| true).unwrap();
     let root = build.root;
     let mut batch = WriteBatch::default();
@@ -621,21 +620,21 @@ fn import_lane_changes_per_lane_blue_score() {
     let bs_a = 500u64;
     let bs_b = 800u64;
 
-    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a_id, lane_tip: &tip_a, blue_score: bs_a });
-    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b_id, lane_tip: &tip_b, blue_score: bs_b });
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &lk_a, lane_tip: &tip_a, blue_score: bs_a });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &lk_b, lane_tip: &tip_b, blue_score: bs_b });
     let expected_root = slo_root(vec![LeafUpdate { key: lk_a, leaf_hash: leaf_a }, LeafUpdate { key: lk_b, leaf_hash: leaf_b }]);
 
     // BlockLaneChanges (uniform) produces a different root
     let mut block_proc = SmtProcessor::new(&stores, 1000, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());
-    block_proc.update_lane(lk_a, lane_a_id, tip_a);
-    block_proc.update_lane(lk_b, lane_b_id, tip_b);
+    block_proc.update_lane(lk_a, tip_a);
+    block_proc.update_lane(lk_b, tip_b);
     let block_build = block_proc.build(|_| true).unwrap();
     assert_ne!(block_build.root, expected_root);
 
     // ImportLaneChanges (per-lane) matches the reference
     let mut import_proc = SmtProcessor::new_import(&stores, 1000, TEST_THRESHOLD, SeqCommitActiveNode::empty_root());
-    import_proc.update_lane(lk_a, lane_a_id, tip_a, bs_a);
-    import_proc.update_lane(lk_b, lane_b_id, tip_b, bs_b);
+    import_proc.update_lane(lk_a, tip_a, bs_a);
+    import_proc.update_lane(lk_b, tip_b, bs_b);
     let import_build = import_proc.build(|_| true).unwrap();
     assert_eq!(import_build.root, expected_root);
 }
@@ -663,8 +662,8 @@ fn deletion_roundtrip_root_vectors() {
     let tip_c1 = hash(0xC1);
 
     let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
-    proc1.update_lane(key_a, lane_a, tip_a1);
-    proc1.update_lane(key_b, lane_b, tip_b1);
+    proc1.update_lane(key_a, tip_a1);
+    proc1.update_lane(key_b, tip_b1);
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
     let mut batch1 = WriteBatch::default();
@@ -680,27 +679,27 @@ fn deletion_roundtrip_root_vectors() {
     db.write(batch2).unwrap();
 
     let mut proc3 = SmtProcessor::new(&stores, bs3, TEST_THRESHOLD, root2);
-    proc3.update_lane(key_b, lane_b, tip_b2);
-    proc3.update_lane(key_c, lane_c, tip_c1);
+    proc3.update_lane(key_b, tip_b2);
+    proc3.update_lane(key_c, tip_c1);
     let build3 = proc3.build(|_| true).unwrap();
     let root3 = build3.root;
 
     let golden_root1 = Hash::from_bytes([
-        48, 85, 113, 198, 22, 112, 24, 148, 7, 171, 172, 33, 53, 96, 110, 102, 63, 96, 66, 131, 7, 81, 185, 123, 228, 97, 158, 105,
-        217, 199, 103, 189,
+        103, 221, 82, 192, 161, 54, 15, 168, 219, 140, 22, 26, 136, 210, 167, 8, 74, 189, 20, 161, 163, 171, 181, 102, 29, 96, 55, 7,
+        118, 93, 188, 79,
     ]);
     let golden_root2 = Hash::from_bytes([
-        162, 241, 15, 49, 174, 134, 248, 158, 247, 34, 0, 40, 105, 19, 51, 224, 114, 9, 119, 70, 210, 127, 231, 56, 84, 164, 233, 189,
-        74, 244, 88, 186,
+        219, 28, 118, 85, 160, 216, 255, 28, 207, 198, 11, 164, 58, 134, 112, 26, 147, 5, 117, 210, 22, 69, 6, 132, 35, 18, 117, 36,
+        5, 170, 42, 98,
     ]);
     let golden_root3 = Hash::from_bytes([
-        60, 57, 61, 53, 15, 147, 204, 234, 17, 179, 26, 17, 149, 15, 122, 141, 31, 211, 61, 64, 101, 209, 11, 33, 192, 243, 255, 159,
-        236, 213, 165, 69,
+        196, 156, 211, 198, 72, 126, 80, 10, 205, 223, 34, 241, 32, 30, 129, 78, 56, 27, 30, 174, 29, 254, 2, 187, 112, 134, 252, 3,
+        11, 151, 58, 42,
     ]);
 
-    let leaf_b1 = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b, lane_tip: &tip_b1, blue_score: bs1 });
-    let leaf_b2 = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b, lane_tip: &tip_b2, blue_score: bs3 });
-    let leaf_c1 = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_c, lane_tip: &tip_c1, blue_score: bs3 });
+    let leaf_b1 = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b1, blue_score: bs1 });
+    let leaf_b2 = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b2, blue_score: bs3 });
+    let leaf_c1 = smt_leaf_hash(&SmtLeafInput { lane_key: &key_c, lane_tip: &tip_c1, blue_score: bs3 });
     let expected_root2 = slo_root(vec![LeafUpdate { key: key_b, leaf_hash: leaf_b1 }]);
     let expected_root3 = slo_root(vec![LeafUpdate { key: key_b, leaf_hash: leaf_b2 }, LeafUpdate { key: key_c, leaf_hash: leaf_c1 }]);
 
@@ -734,12 +733,6 @@ fn empty_subtree_then_resplit_uses_persisted_deletion_marker() {
     key_e_bytes[0] = 0x20;
     let key_e = Hash::from_bytes(key_e_bytes);
 
-    let lane_a = [0x01; 20];
-    let lane_b = [0x02; 20];
-    let lane_c = [0x03; 20];
-    let lane_d = [0x04; 20];
-    let lane_e = [0x05; 20];
-
     let tip_a = hash(0xA1);
     let tip_b = hash(0xB1);
     let tip_c = hash(0xC1);
@@ -752,10 +745,10 @@ fn empty_subtree_then_resplit_uses_persisted_deletion_marker() {
 
     // Block 1: split both root children.
     let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
-    proc1.update_lane(key_a, lane_a, tip_a);
-    proc1.update_lane(key_b, lane_b, tip_b);
-    proc1.update_lane(key_c, lane_c, tip_c);
-    proc1.update_lane(key_d, lane_d, tip_d);
+    proc1.update_lane(key_a, tip_a);
+    proc1.update_lane(key_b, tip_b);
+    proc1.update_lane(key_c, tip_c);
+    proc1.update_lane(key_d, tip_d);
     let build1 = proc1.build(|_| true).unwrap();
     let root1 = build1.root;
     let mut batch1 = WriteBatch::default();
@@ -775,26 +768,26 @@ fn empty_subtree_then_resplit_uses_persisted_deletion_marker() {
     // Block 3: re-enter the previously emptied left subtree.
     // This must not fall back to block 1's old split state for the left child.
     let mut proc3 = SmtProcessor::new(&stores, bs3, TEST_THRESHOLD, root2);
-    proc3.update_lane(key_e, lane_e, tip_e);
+    proc3.update_lane(key_e, tip_e);
     let build3 = proc3.build(|_| true).unwrap();
     let root3 = build3.root;
 
     let golden_root1 = Hash::from_bytes([
-        175, 127, 131, 2, 249, 121, 49, 182, 82, 18, 195, 42, 41, 55, 28, 95, 130, 131, 248, 174, 45, 230, 101, 155, 73, 100, 107,
-        116, 17, 82, 221, 217,
+        176, 56, 49, 46, 29, 249, 152, 242, 86, 36, 110, 40, 204, 131, 128, 220, 164, 121, 58, 177, 229, 193, 57, 153, 228, 51, 164,
+        148, 214, 57, 245, 73,
     ]);
     let golden_root2 = Hash::from_bytes([
-        103, 39, 46, 233, 58, 221, 116, 70, 91, 148, 162, 217, 182, 187, 175, 121, 125, 47, 146, 6, 115, 114, 32, 184, 165, 32, 149,
-        118, 111, 29, 191, 100,
+        212, 216, 72, 24, 169, 249, 220, 254, 213, 104, 139, 238, 27, 147, 128, 142, 114, 54, 138, 116, 0, 151, 47, 232, 70, 122, 88,
+        177, 84, 109, 157, 251,
     ]);
     let golden_root3 = Hash::from_bytes([
-        62, 157, 110, 226, 123, 208, 145, 55, 32, 186, 237, 162, 1, 221, 138, 85, 232, 70, 80, 70, 118, 248, 172, 159, 152, 191, 165,
-        213, 83, 10, 144, 62,
+        161, 100, 209, 156, 166, 239, 129, 108, 19, 148, 177, 218, 49, 113, 23, 206, 236, 125, 115, 134, 29, 254, 70, 191, 79, 239,
+        177, 185, 45, 68, 3, 233,
     ]);
 
-    let leaf_c = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_c, lane_tip: &tip_c, blue_score: bs1 });
-    let leaf_d = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_d, lane_tip: &tip_d, blue_score: bs1 });
-    let leaf_e = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_e, lane_tip: &tip_e, blue_score: bs3 });
+    let leaf_c = smt_leaf_hash(&SmtLeafInput { lane_key: &key_c, lane_tip: &tip_c, blue_score: bs1 });
+    let leaf_d = smt_leaf_hash(&SmtLeafInput { lane_key: &key_d, lane_tip: &tip_d, blue_score: bs1 });
+    let leaf_e = smt_leaf_hash(&SmtLeafInput { lane_key: &key_e, lane_tip: &tip_e, blue_score: bs3 });
     let expected_root2 = slo_root(vec![LeafUpdate { key: key_c, leaf_hash: leaf_c }, LeafUpdate { key: key_d, leaf_hash: leaf_d }]);
     let expected_root3 = slo_root(vec![
         LeafUpdate { key: key_c, leaf_hash: leaf_c },

@@ -323,7 +323,7 @@ message SmtMetadataMessage {
 }
 
 message SmtLaneEntryMessage {
-  bytes data = 1;         // 52 bytes: lane_id[20] || lane_tip[32]
+  bytes data = 1;         // 64 bytes: lane_key[32] || lane_tip[32]
   uint64 blueScore = 2;
   bytes proof = 3;        // optional: bitmap[32] || terminal_tag[1] || terminal_payload || siblings[N * 32]
 }

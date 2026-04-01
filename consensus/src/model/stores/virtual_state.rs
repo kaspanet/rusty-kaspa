@@ -111,7 +111,7 @@ impl VirtualState {
                     });
                     kaspa_smt::store::LeafUpdate {
                         key: lk,
-                        leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_id, lane_tip: &tip, blue_score }),
+                        leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip: &tip, blue_score }),
                     }
                 },
             ));
