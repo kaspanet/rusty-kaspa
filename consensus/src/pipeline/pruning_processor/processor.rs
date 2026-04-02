@@ -577,6 +577,17 @@ impl PruningProcessor {
             self.assert_data_rebuilding(data, new_pruning_point);
         }
 
+        // Prune SMT lane/branch version stores and score index.
+        // Cutoff = pp.blue_score − finality_depth: the lowest score any future
+        // SMT lookup could reference (all lookups use min_blue_score = current − finality_depth,
+        // and all future blocks are above the pruning point).
+        {
+            let pp_header = self.headers_store.get_header(new_pruning_point).unwrap();
+            let smt_cutoff = pp_header.blue_score.saturating_sub(self.config.params.finality_depth());
+            info!("SMT pruning: cutoff_blue_score={}", smt_cutoff);
+            self.smt_stores.prune(&self.db, smt_cutoff);
+        }
+
         {
             // Set the retention checkpoint to the new retention root only after we successfully pruned its past
             let mut pruning_point_write = self.pruning_point_store.write();

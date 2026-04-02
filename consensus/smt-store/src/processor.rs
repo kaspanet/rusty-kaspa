@@ -12,12 +12,12 @@
 //! - [`BlockLaneChanges`] (default) — single-block processing, all lanes share one blue_score.
 //! - [`ImportLaneChanges`] — IBD import, each lane carries its own blue_score.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use kaspa_database::prelude::{BatchDbWriter, DB, StoreError, StoreResult};
+use kaspa_database::prelude::{BatchDbWriter, DB, DirectDbWriter, StoreError, StoreResult};
 use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
@@ -114,6 +114,107 @@ impl SmtStores {
     pub fn evict_caches_below_score(&self, min_score: u64) {
         self.branch_cache.lock().evict_below_score(min_score);
         self.lane_cache.lock().evict_below_score(min_score);
+    }
+
+    /// Prune all lane-version, branch-version, and score-index entries whose
+    /// blue_score is at or below `cutoff_blue_score`.
+    ///
+    /// The score index is the discovery mechanism: it records which lane_keys
+    /// were touched at each blue_score (both `LeafUpdate` and `Structural`
+    /// kinds). For every discovered lane_key we:
+    ///   - delete its lane-version entries at scores ≤ cutoff,
+    ///   - derive the 256 branch keys (`BranchKey::new(depth, &lane_key)`)
+    ///     and delete their branch-version entries at scores ≤ cutoff.
+    ///
+    /// Work is batched into chunks of score-index entries to bound
+    /// `WriteBatch` memory. After all chunks, the score index itself is
+    /// range-deleted and caches are evicted.
+    pub fn prune(&self, db: &DB, cutoff_blue_score: u64) {
+        // Number of score-index entries to accumulate before flushing a WriteBatch.
+        const CHUNK_ENTRIES: usize = 500;
+
+        let mut lane_keys: BTreeSet<Hash> = BTreeSet::new();
+        let mut entries_in_chunk = 0usize;
+        let mut total_lane_deletes = 0u64;
+        let mut total_branch_deletes = 0u64;
+        let mut chunks_written = 0u64;
+
+        // Iterate both LeafUpdate and Structural entries at scores ≤ cutoff
+        for entry in self.score_index.get_all(cutoff_blue_score, 0) {
+            let entry = entry.unwrap();
+            for lk in entry.data().iter() {
+                lane_keys.insert(*lk);
+            }
+            entries_in_chunk += 1;
+
+            if entries_in_chunk >= CHUNK_ENTRIES {
+                let (ld, bd) = self.prune_chunk(db, &lane_keys, cutoff_blue_score);
+                total_lane_deletes += ld;
+                total_branch_deletes += bd;
+                chunks_written += 1;
+                lane_keys.clear();
+                entries_in_chunk = 0;
+            }
+        }
+
+        // Flush remaining lane_keys
+        if !lane_keys.is_empty() {
+            let (ld, bd) = self.prune_chunk(db, &lane_keys, cutoff_blue_score);
+            total_lane_deletes += ld;
+            total_branch_deletes += bd;
+            chunks_written += 1;
+        }
+
+        // Range-delete score-index entries at scores ≤ cutoff (single tombstone)
+        self.score_index.delete_range(DirectDbWriter::new(db), cutoff_blue_score).unwrap();
+        self.evict_caches_below_score(cutoff_blue_score);
+
+        log::info!(
+            "SMT pruning complete: {} chunks, {} lane version deletes, {} branch version deletes (cutoff={})",
+            chunks_written,
+            total_lane_deletes,
+            total_branch_deletes,
+            cutoff_blue_score
+        );
+    }
+
+    /// Delete lane-version and branch-version entries for the given lane_keys
+    /// at scores ≤ `cutoff`, writing all deletes into a single `WriteBatch`.
+    fn prune_chunk(&self, db: &DB, lane_keys: &BTreeSet<Hash>, cutoff: u64) -> (u64, u64) {
+        let mut batch = WriteBatch::default();
+        let mut lane_deletes = 0u64;
+        let mut branch_deletes = 0u64;
+
+        for lane_key in lane_keys {
+            for v in self.lane_version.get_at(*lane_key, cutoff, 0) {
+                let v = v.unwrap();
+                self.lane_version.delete(BatchDbWriter::new(&mut batch), *lane_key, v.blue_score(), v.block_hash()).unwrap();
+                lane_deletes += 1;
+            }
+        }
+
+        // Derive branch keys at all 256 depths from each lane_key. BTreeSet
+        // deduplicates: at low depths many lane_keys map to the same node_key
+        // (e.g. depth 0 always maps to ZERO_HASH).
+        let mut branch_entities: BTreeSet<BranchKey> = BTreeSet::new();
+        for lane_key in lane_keys {
+            for depth in 0..=255u8 {
+                branch_entities.insert(BranchKey::new(depth, lane_key));
+            }
+        }
+
+        for bk in &branch_entities {
+            for v in self.branch_version.get_at(bk.depth, bk.node_key, cutoff, 0) {
+                let v = v.unwrap();
+                self.branch_version
+                    .delete(BatchDbWriter::new(&mut batch), bk.depth, bk.node_key, v.blue_score(), v.block_hash())
+                    .unwrap();
+                branch_deletes += 1;
+            }
+        }
+
+        db.write(batch).unwrap();
+        (lane_deletes, branch_deletes)
     }
 
     /// Clear all versioned SMT stores and caches. Used before IBD SMT sync.

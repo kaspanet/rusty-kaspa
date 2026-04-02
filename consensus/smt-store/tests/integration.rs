@@ -949,3 +949,70 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
     let leaf_keys3: std::collections::HashSet<Hash> = entries3.iter().flat_map(|e| e.data().iter()).copied().collect();
     assert!(leaf_keys3.contains(&key_c), "LeafUpdate must record lane C (split trigger)");
 }
+
+/// Prune version stores: entries at/below cutoff are deleted, entries above remain.
+#[test]
+fn prune_removes_old_versions_keeps_new() {
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+    let empty_root = SeqCommitActiveNode::empty_root();
+
+    let key_a = lane_key(&[0x01; 20]);
+    let key_b = lane_key(&[0x02; 20]);
+
+    // Block 1 at score 100: insert A and B
+    let bs1 = 100u64;
+    let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
+    proc1.update_lane(key_a, hash(0xA1));
+    proc1.update_lane(key_b, hash(0xB1));
+    let build1 = proc1.build(|_| true).unwrap();
+    let root1 = build1.root;
+    let mut batch = WriteBatch::default();
+    build1.flush(&stores, &mut batch, bs1, hash(0x11)).unwrap();
+    db.write(batch).unwrap();
+
+    // Block 2 at score 500: update A
+    let bs2 = 500u64;
+    let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
+    proc2.update_lane(key_a, hash(0xA2));
+    let build2 = proc2.build(|_| true).unwrap();
+    let root2 = build2.root;
+    let mut batch = WriteBatch::default();
+    build2.flush(&stores, &mut batch, bs2, hash(0x22)).unwrap();
+    db.write(batch).unwrap();
+
+    // Before pruning: both versions of A exist, B has one version
+    assert!(stores.lane_version.get_at(key_a, bs1, 0).next().is_some(), "A at score 100 should exist");
+    assert!(stores.lane_version.get_at(key_a, bs2, bs2).next().is_some(), "A at score 500 should exist");
+    assert!(stores.lane_version.get_at(key_b, bs1, 0).next().is_some(), "B at score 100 should exist");
+
+    // Score index: entries at both scores
+    assert!(stores.score_index.get_all(bs1, bs1).next().is_some(), "score index at 100 should exist");
+    assert!(stores.score_index.get_all(bs2, bs2).next().is_some(), "score index at 500 should exist");
+
+    // Prune at cutoff=200: should delete score 100 data, keep score 500
+    stores.prune(&db, 200);
+
+    // After pruning: A's old version at 100 is gone, new version at 500 remains
+    assert!(stores.lane_version.get_at(key_a, 200, 0).next().is_none(), "A at score 100 should be pruned");
+    assert!(stores.lane_version.get_at(key_a, bs2, bs2).next().is_some(), "A at score 500 should remain");
+
+    // B's version at 100 is also gone
+    assert!(stores.lane_version.get_at(key_b, 200, 0).next().is_none(), "B at score 100 should be pruned");
+
+    // Score index at 100 is range-deleted, at 500 remains
+    assert!(stores.score_index.get_all(200, 0).next().is_none(), "score index at 100 should be pruned");
+    assert!(stores.score_index.get_all(bs2, bs2).next().is_some(), "score index at 500 should remain");
+
+    // Branch versions at score 100 are gone, but score 500 remain
+    let root_key = Hash::from_bytes([0; 32]);
+    assert!(stores.branch_version.get_at(0, root_key, 200, 0).next().is_none(), "root branch at score 100 should be pruned");
+    assert!(stores.branch_version.get_at(0, root_key, bs2, bs2).next().is_some(), "root branch at score 500 should remain");
+
+    // The tree is still functional: we can build on top of root2
+    let bs3 = 600u64;
+    let mut proc3 = SmtProcessor::new(&stores, bs3, TEST_THRESHOLD, root2);
+    proc3.update_lane(key_a, hash(0xA3));
+    let build3 = proc3.build(|_| true).unwrap();
+    assert_ne!(build3.root, root2, "updating A should change the root");
+}
