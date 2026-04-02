@@ -276,7 +276,7 @@ sysinfo = "0.31.2"
 tempfile = "3.8.1"
 textwrap = "0.16.0"
 thiserror = { version = "2.0.18", default-features = false }
-tokio = { version = "1.33.0", features = ["sync", "rt-multi-thread"] }
+tokio = { version = "1.33.0", features = ["sync"] }
 tokio-stream = "0.1.14"
 toml = "0.8.8"
 tonic = { version = "0.12.3", features = ["tls-webpki-roots", "gzip", "transport"] }
