@@ -579,11 +579,6 @@ impl VirtualStateProcessor {
     /// `parent_lanes_root` is the SMT root inherited from the selected parent block.
     /// Works with an immutable view of DB state. Returns the commit hash and an `SmtBuild`
     /// containing the diff (updated branches, lane versions, score index) for later persistence.
-    ///
-    /// TODO: SMT is built in 3 places (block verification, virtual state, IBD import).
-    /// All currently collect leaves into a BTreeMap then compute sequentially.
-    /// Optimize: stream leaves directly into the processor, let it detect siblings
-    /// vs empty and dispatch hash computation to a thread pool at each level.
     pub(super) fn build_seq_commit(
         &self,
         parent_seq_commit: Hash,
