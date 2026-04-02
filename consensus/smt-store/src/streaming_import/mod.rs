@@ -8,6 +8,8 @@ mod db_sink;
 
 use std::time::Instant;
 
+use std::collections::BTreeMap;
+
 use kaspa_database::prelude::{BatchDbWriter, DB, StoreError};
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
@@ -18,6 +20,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::prelude::IndexedParallelIterator;
 use rocksdb::WriteBatch;
 
+use crate::keys::ScoreIndexKind;
 use crate::processor::SmtStores;
 use crate::{BlockHash, LaneKey};
 
@@ -77,7 +80,9 @@ pub fn streaming_import(
     let sink = DbSink::new(db, stores, blue_score, block_hash, max_batch_entries);
     let mut builder = StreamingSmtBuilder::<SeqCommitActiveNode, _>::new(total_count, sink);
     let mut lane_batch = WriteBatch::default();
-    let mut lane_batch_count = 0usize;
+    let mut batch_count = 0usize;
+    let mut batch_id = 0u32;
+    let mut score_groups: BTreeMap<u64, Vec<Hash>> = BTreeMap::new();
     let mut lanes_imported = 0u64;
     let mut progress = ImportProgress::new(total_count);
 
@@ -94,7 +99,14 @@ pub fn streaming_import(
             })
             .collect_into_vec(leaf_hashes);
 
-        write_lane_versions(db, stores, block_hash, chunk, &mut lane_batch, &mut lane_batch_count, max_batch_entries)?;
+        write_lane_versions(stores, block_hash, chunk, &mut lane_batch, &mut batch_count)?;
+        write_score_index(stores, blue_score, block_hash, chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;
+
+        if batch_count >= max_batch_entries {
+            db.write(std::mem::take(&mut lane_batch)).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
+            batch_count = 0;
+        }
+        batch_id += 1;
 
         for (lane_key, leaf_hash) in leaf_hashes {
             builder.feed(*lane_key, *leaf_hash)?;
@@ -117,21 +129,51 @@ pub fn streaming_import(
 
     let (root, mut sink) = builder.finish()?;
     sink.flush_batch().map_err(StreamError::Sink)?;
-    flush_lane_batch(db, lane_batch, lane_batch_count)?;
-
-    // TODO(KIP-21): re-enable score_index writes once batch optimization is implemented
+    flush_lane_batch(db, lane_batch, batch_count)?;
 
     Ok(StreamingImportResult { root, lanes_imported, nodes_written: sink.nodes_written() })
 }
 
+fn write_score_index(
+    stores: &SmtStores,
+    pp_blue_score: u64,
+    block_hash: BlockHash,
+    chunk: &[StreamingImportLane],
+    score_groups: &mut BTreeMap<u64, Vec<Hash>>,
+    batch: &mut WriteBatch,
+    batch_count: &mut usize,
+    batch_id: u32,
+) -> Result<(), StreamError<StoreError>> {
+    // LeafUpdate: grouped by each lane's own blue_score
+    score_groups.clear();
+    for lane in chunk {
+        score_groups.entry(lane.blue_score).or_default().push(lane.lane_key);
+    }
+    for (bs, keys) in score_groups.iter() {
+        stores
+            .score_index
+            .put_batched(BatchDbWriter::new(batch), *bs, ScoreIndexKind::LeafUpdate, block_hash, keys, batch_id)
+            .map_err(StreamError::Sink)?;
+        *batch_count += 1;
+    }
+
+    // Structural: all lanes at the pruning point's blue_score (tree is built at this point)
+    let all_keys: Vec<Hash> = chunk.iter().map(|l| l.lane_key).collect();
+    stores
+        .score_index
+        .put_batched(BatchDbWriter::new(batch), pp_blue_score, ScoreIndexKind::Structural, block_hash, &all_keys, batch_id)
+        .map_err(StreamError::Sink)?;
+    *batch_count += 1;
+
+    Ok(())
+}
+
 fn write_lane_versions(
-    db: &DB,
     stores: &SmtStores,
     block_hash: BlockHash,
     chunk: &[StreamingImportLane],
     lane_batch: &mut WriteBatch,
     lane_batch_count: &mut usize,
-    max_batch_entries: usize,
 ) -> Result<(), StreamError<StoreError>> {
     for lane in chunk {
         stores
@@ -139,10 +181,6 @@ fn write_lane_versions(
             .put(BatchDbWriter::new(lane_batch), lane.lane_key, lane.blue_score, block_hash, &lane.lane_tip)
             .map_err(StreamError::Sink)?;
         *lane_batch_count += 1;
-        if *lane_batch_count >= max_batch_entries {
-            db.write(std::mem::take(lane_batch)).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
-            *lane_batch_count = 0;
-        }
     }
     Ok(())
 }

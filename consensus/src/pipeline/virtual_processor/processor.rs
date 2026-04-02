@@ -700,7 +700,7 @@ impl VirtualStateProcessor {
 
         let mut expired = 0u64;
         // Iterate score_index entries in [prev_min, curr_min) to find lanes that might expire
-        for entry in self.smt_stores.score_index.get_updated(curr_min.saturating_sub(1), prev_min) {
+        for entry in self.smt_stores.score_index.get_leaf_updates(curr_min.saturating_sub(1), prev_min) {
             let entry = entry.unwrap();
             // Only process canonical entries
             if !self.is_smt_canonical(entry.block_hash(), selected_parent) {

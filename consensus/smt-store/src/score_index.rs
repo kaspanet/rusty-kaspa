@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
-use crate::keys::{LaneChangeKind, ScoreIndexKey};
+use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind};
 use crate::maybe_fork::MaybeFork;
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
-use zerocopy::{FromBytes, IntoBytes, TryFromBytes};
+use zerocopy::{FromBytes, IntoBytes};
 
 /// Append-only score index.
 ///
-/// Records lane changes per block, keyed by `(rev_blue_score, block_hash, kind)`.
+/// Records lane changes per block, keyed by `(rev_blue_score, kind, block_hash)`.
 /// Each block may produce two entries:
-/// - `kind=Updated` — lanes that received an active update
-/// - `kind=Expired` — lanes that were expired (removed from the tree)
+/// - `LeafUpdate` — lanes inserted or updated (score = lane's blue_score)
+/// - `Structural` — tree structure changed: expiration, merge/split (score = block's blue_score)
 ///
 /// These are **historical records** of what happened at a given score,
 /// not a reflection of current lane state.
@@ -36,7 +36,7 @@ impl DbScoreIndex {
         &self,
         mut writer: impl DbWriter,
         blue_score: u64,
-        kind: LaneChangeKind,
+        kind: ScoreIndexKind,
         block_hash: Hash,
         lane_keys: &[Hash],
     ) -> StoreResult<()> {
@@ -45,12 +45,29 @@ impl DbScoreIndex {
         writer.put(key, value).map_err(StoreError::DbError)
     }
 
-    /// Iterate **updated** lane records from `target_blue_score` downward.
+    /// Write lane keys with a batch_id suffix to prevent key collisions during IBD.
     ///
-    /// Returns historical records of lanes that received an active update
-    /// at each score. Used by `expire_stale_lanes` to find lanes whose
+    /// Uses [`BatchedScoreIndexKey`] (46 bytes) instead of [`ScoreIndexKey`] (42 bytes),
+    /// ensuring unique keys when multiple chunks share the same `(blue_score, kind, block_hash)`.
+    pub fn put_batched(
+        &self,
+        mut writer: impl DbWriter,
+        blue_score: u64,
+        kind: ScoreIndexKind,
+        block_hash: Hash,
+        lane_keys: &[Hash],
+        batch_id: u32,
+    ) -> StoreResult<()> {
+        let key = BatchedScoreIndexKey::new(self.prefix, blue_score, kind, block_hash, batch_id);
+        let value = lane_keys.as_bytes();
+        writer.put(key, value).map_err(StoreError::DbError)
+    }
+
+    /// Iterate `LeafUpdate` entries from `target_blue_score` downward.
+    ///
+    /// Skips `Structural` entries. Used by expiration logic to find lanes whose
     /// last active update is falling out of the inactivity window.
-    pub fn get_updated(
+    pub fn get_leaf_updates(
         &self,
         target_blue_score: u64,
         min_blue_score: u64,
@@ -82,7 +99,7 @@ impl DbScoreIndex {
                     done = true;
                     return None;
                 }
-                let key = match ScoreIndexKey::try_ref_from_bytes(key_bytes) {
+                let key = match ScoreIndexKey::try_ref_from_key_bytes(key_bytes) {
                     Ok(k) => k,
                     Err(e) => {
                         done = true;
@@ -94,8 +111,8 @@ impl DbScoreIndex {
                     done = true;
                     return None;
                 }
-                if key.kind != LaneChangeKind::Updated {
-                    // Seek past the Expired group to the next lower score's Updated entries
+                if key.kind != ScoreIndexKind::LeafUpdate {
+                    // Seek past the Structural group to the next lower score's LeafUpdate entries
                     if blue_score > min_blue_score {
                         iter.seek(ScoreIndexKey::seek_key(prefix, blue_score - 1));
                     } else {
@@ -121,16 +138,15 @@ impl DbScoreIndex {
         })
     }
 
-    /// Iterate **all** lane change records (both updated and expired) from `target_blue_score` downward.
+    /// Iterate **all** entries (both `LeafUpdate` and `Structural`) from `target_blue_score` downward.
     ///
-    /// Returns historical records of all lane changes. For pruning:
-    /// - `Updated` records → delete lane + branch versions at that `(blue_score, block_hash)`
-    /// - `Expired` records → delete branch versions only (no lane version was written)
+    /// Returns `(lane_keys, blue_score, block_hash)` for pruning lane_version and branch_version
+    /// stores. The score index itself is pruned separately via [`delete_range`].
     pub fn get_all(
         &self,
         target_blue_score: u64,
         min_blue_score: u64,
-    ) -> impl Iterator<Item = StoreResult<(LaneChangeKind, MaybeFork<Vec<Hash>>)>> + '_ {
+    ) -> impl Iterator<Item = StoreResult<MaybeFork<Vec<Hash>>>> + '_ {
         let seek_key = ScoreIndexKey::seek_key(self.prefix, target_blue_score);
         let score_prefix = [self.prefix];
 
@@ -148,12 +164,12 @@ impl DbScoreIndex {
                 return iter.status().err().map(|e| Err(StoreError::DbError(e)));
             }
 
-            let result = (|| -> StoreResult<Option<(LaneChangeKind, MaybeFork<Vec<Hash>>)>> {
+            let result = (|| -> StoreResult<Option<MaybeFork<Vec<Hash>>>> {
                 let Some(key_bytes) = iter.key() else { return Ok(None) };
                 if !key_bytes.starts_with(&score_prefix) {
                     return Ok(None);
                 }
-                let key = ScoreIndexKey::try_ref_from_bytes(key_bytes)
+                let key = ScoreIndexKey::try_ref_from_key_bytes(key_bytes)
                     .map_err(|e| StoreError::DataInconsistency(format!("score index key: {e}")))?;
                 let blue_score = key.rev_blue_score.blue_score();
                 if blue_score < min_blue_score {
@@ -162,7 +178,7 @@ impl DbScoreIndex {
                 let Some(value_bytes) = iter.value() else { return Ok(None) };
                 let lane_keys = <[Hash]>::ref_from_bytes(value_bytes)
                     .map_err(|e| StoreError::DataInconsistency(format!("score index value: {e}")))?;
-                Ok(Some((key.kind, MaybeFork::new(lane_keys.to_vec(), blue_score, key.block_hash))))
+                Ok(Some(MaybeFork::new(lane_keys.to_vec(), blue_score, key.block_hash)))
             })();
 
             match result {
@@ -211,27 +227,27 @@ mod tests {
     }
 
     #[test]
-    fn put_and_get_updated() {
+    fn put_and_get_leaf_updates() {
         let (_lt, store) = make_store();
         let block = hash(0xBB);
         let lanes = vec![hash(0x11), hash(0x22)];
 
-        store.put(DirectDbWriter::new(&store.db), 100, LaneChangeKind::Updated, block, &lanes).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &lanes).unwrap();
 
-        let results: Vec<_> = store.get_updated(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.get_leaf_updates(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].data().len(), 2);
     }
 
     #[test]
-    fn get_updated_skips_expired() {
+    fn get_leaf_updates_skips_structural() {
         let (_lt, store) = make_store();
         let block = hash(0xBB);
 
-        store.put(DirectDbWriter::new(&store.db), 100, LaneChangeKind::Updated, block, &[hash(0x11)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 100, LaneChangeKind::Expired, block, &[hash(0x22)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &[hash(0x22)]).unwrap();
 
-        let updated: Vec<_> = store.get_updated(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let updated: Vec<_> = store.get_leaf_updates(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(updated.len(), 1);
         assert_eq!(updated[0].data(), &[hash(0x11)]);
     }
@@ -241,26 +257,24 @@ mod tests {
         let (_lt, store) = make_store();
         let block = hash(0xBB);
 
-        store.put(DirectDbWriter::new(&store.db), 100, LaneChangeKind::Updated, block, &[hash(0x11)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 100, LaneChangeKind::Expired, block, &[hash(0x22)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &[hash(0x22)]).unwrap();
 
         let all: Vec<_> = store.get_all(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(all.len(), 2);
-        assert_eq!(all[0].0, LaneChangeKind::Updated);
-        assert_eq!(all[0].1.data(), &[hash(0x11)]);
-        assert_eq!(all[1].0, LaneChangeKind::Expired);
-        assert_eq!(all[1].1.data(), &[hash(0x22)]);
+        assert_eq!(all[0].data(), &[hash(0x11)]);
+        assert_eq!(all[1].data(), &[hash(0x22)]);
     }
 
     #[test]
-    fn mixed_scores_updated_only() {
+    fn mixed_scores_leaf_updates_only() {
         let (_lt, store) = make_store();
 
-        store.put(DirectDbWriter::new(&store.db), 50, LaneChangeKind::Updated, hash(0xA0), &[hash(0x01)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 50, LaneChangeKind::Expired, hash(0xA0), &[hash(0x02)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 100, LaneChangeKind::Updated, hash(0xA1), &[hash(0x03)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::Structural, hash(0xA0), &[hash(0x02)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, hash(0xA1), &[hash(0x03)]).unwrap();
 
-        let updated: Vec<_> = store.get_updated(200, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let updated: Vec<_> = store.get_leaf_updates(200, 0).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(updated.len(), 2);
         assert_eq!(updated[0].data(), &[hash(0x03)]); // score 100 first (newest)
         assert_eq!(updated[1].data(), &[hash(0x01)]); // score 50 second
@@ -270,13 +284,65 @@ mod tests {
     fn delete_range_prunes_both_kinds() {
         let (_lt, store) = make_store();
 
-        store.put(DirectDbWriter::new(&store.db), 50, LaneChangeKind::Updated, hash(0xA0), &[hash(0x01)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 50, LaneChangeKind::Expired, hash(0xA0), &[hash(0x02)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 200, LaneChangeKind::Updated, hash(0xA2), &[hash(0x03)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::Structural, hash(0xA0), &[hash(0x02)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 200, ScoreIndexKind::LeafUpdate, hash(0xA2), &[hash(0x03)]).unwrap();
 
         store.delete_range(DirectDbWriter::new(&store.db), 100).unwrap();
 
         // Score 50 entries (both kinds) should be gone
+        assert!(store.get_all(100, 0).next().is_none());
+
+        // Score 200 should remain
+        let results: Vec<_> = store.get_all(200, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn put_batched_prevents_collision() {
+        let (_lt, store) = make_store();
+        let block = hash(0xBB);
+
+        // Two batched writes at same (score, kind, block_hash) with different batch_ids
+        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)], 0).unwrap();
+        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x22)], 1).unwrap();
+
+        let results: Vec<_> = store.get_leaf_updates(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(results.len(), 2);
+        // Both entries are present (order depends on batch_id suffix)
+        let all_lanes: Vec<_> = results.iter().flat_map(|r| r.data().iter()).copied().collect();
+        assert!(all_lanes.contains(&hash(0x11)));
+        assert!(all_lanes.contains(&hash(0x22)));
+    }
+
+    #[test]
+    fn mixed_key_lengths_readable() {
+        let (_lt, store) = make_store();
+        let block = hash(0xBB);
+
+        // Normal 42-byte key
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)]).unwrap();
+        // Batched 46-byte key at same score
+        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x22)], 0).unwrap();
+
+        let updated: Vec<_> = store.get_leaf_updates(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(updated.len(), 2);
+
+        let all: Vec<_> = store.get_all(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn delete_range_handles_batched_entries() {
+        let (_lt, store) = make_store();
+
+        store.put_batched(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)], 0).unwrap();
+        store.put_batched(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x02)], 1).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 200, ScoreIndexKind::LeafUpdate, hash(0xA2), &[hash(0x03)]).unwrap();
+
+        store.delete_range(DirectDbWriter::new(&store.db), 100).unwrap();
+
+        // Batched score 50 entries should be gone
         assert!(store.get_all(100, 0).next().is_none());
 
         // Score 200 should remain

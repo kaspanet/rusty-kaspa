@@ -188,14 +188,14 @@ impl LaneChanges for BlockLaneChanges {
     }
 
     fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
-        use crate::keys::LaneChangeKind;
+        use crate::keys::ScoreIndexKind;
         let updated: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| v.as_ref().map(|_| *k)).collect();
         let expired: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| if v.is_none() { Some(*k) } else { None }).collect();
         if !updated.is_empty() {
-            stores.score_index.put(BatchDbWriter::new(batch), self.blue_score, LaneChangeKind::Updated, block_hash, &updated)?;
+            stores.score_index.put(BatchDbWriter::new(batch), self.blue_score, ScoreIndexKind::LeafUpdate, block_hash, &updated)?;
         }
         if !expired.is_empty() {
-            stores.score_index.put(BatchDbWriter::new(batch), self.blue_score, LaneChangeKind::Expired, block_hash, &expired)?;
+            stores.score_index.put(BatchDbWriter::new(batch), self.blue_score, ScoreIndexKind::Structural, block_hash, &expired)?;
         }
         Ok(())
     }
@@ -246,13 +246,13 @@ impl LaneChanges for ImportLaneChanges {
     }
 
     fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
-        use crate::keys::LaneChangeKind;
+        use crate::keys::ScoreIndexKind;
         let mut groups: BTreeMap<u64, Vec<LaneKey>> = BTreeMap::new();
         for (lane_key, (_, bs)) in &self.changes {
             groups.entry(*bs).or_default().push(*lane_key);
         }
         for (bs, keys) in &groups {
-            stores.score_index.put(BatchDbWriter::new(batch), *bs, LaneChangeKind::Updated, block_hash, keys)?;
+            stores.score_index.put(BatchDbWriter::new(batch), *bs, ScoreIndexKind::LeafUpdate, block_hash, keys)?;
         }
         Ok(())
     }

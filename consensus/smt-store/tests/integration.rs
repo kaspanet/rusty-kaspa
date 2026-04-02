@@ -214,7 +214,7 @@ fn processor_flush_writes_correct_data() {
     assert_eq!(lane_ver.blue_score(), blue_score);
 
     // Verify score index entry
-    let si_entry = stores.score_index.get_updated(blue_score, 0).next().unwrap().unwrap();
+    let si_entry = stores.score_index.get_leaf_updates(blue_score, 0).next().unwrap().unwrap();
     assert_eq!(si_entry.block_hash(), block_hash);
     assert_eq!(si_entry.data(), &vec![key]);
 
@@ -851,4 +851,101 @@ fn streaming_import_matches_export_roundtrip_root() {
     let result = streaming_import(&db2, &import_stores, 400, ZERO_HASH, exported.len() as u64, exported.into_iter(), 64).unwrap();
     assert_eq!(result.root, final_root);
     assert_eq!(result.lanes_imported, 4);
+
+    // Collect all expected lane keys
+    let expected_keys: std::collections::HashSet<Hash> = (1u8..=4).map(|i| lane_key(&[i; 20])).collect();
+
+    // Verify LeafUpdate entries: every lane appears, grouped by its own blue_score
+    let leaf_updates: Vec<_> = import_stores.score_index.get_leaf_updates(u64::MAX, 0).collect::<Result<Vec<_>, _>>().unwrap();
+    let leaf_lane_keys: std::collections::HashSet<Hash> = leaf_updates.iter().flat_map(|e| e.data().iter()).copied().collect();
+    assert_eq!(leaf_lane_keys, expected_keys, "LeafUpdate entries must cover all imported lanes");
+
+    // Verify Structural entries: every lane appears at pp_blue_score=400
+    let all_entries: Vec<_> = import_stores.score_index.get_all(u64::MAX, 0).collect::<Result<Vec<_>, _>>().unwrap();
+    let structural_lane_keys: std::collections::HashSet<Hash> = all_entries
+        .iter()
+        .filter(|e| e.blue_score() == 400) // structural entries are at pp_blue_score
+        .flat_map(|e| e.data().iter())
+        .copied()
+        .collect();
+    assert_eq!(structural_lane_keys, expected_keys, "Structural entries must cover all imported lanes at pp_blue_score");
+}
+
+/// Verify score index tracks structural changes through collapsed node split and merge.
+///
+/// Block 1: Insert A, B → internal root (two leaves).
+/// Block 2: Expire A → root collapses to single collapsed node (B only).
+///          Structural entry records A (expiration caused the collapse).
+/// Block 3: Insert C (sibling of B) → collapsed node splits back to internal.
+///          LeafUpdate entry records C (insertion caused the split).
+///
+/// The score index implicitly covers all structural changes because:
+/// - Expiration → Structural entry with the expired lane_key
+/// - Insertion causing split → LeafUpdate entry with the new lane_key
+///   (branch nodes along the new lane's path are discoverable for pruning)
+#[test]
+fn score_index_tracks_collapsed_node_split_and_merge() {
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+    let empty_root = SeqCommitActiveNode::empty_root();
+
+    // Keys chosen so A and B share a prefix (force internal node), C is a sibling of B
+    let key_a = Hash::from_bytes([0x00; 32]);
+    let mut key_b_bytes = [0x00; 32];
+    key_b_bytes[0] = 0x80;
+    let key_b = Hash::from_bytes(key_b_bytes);
+    let mut key_c_bytes = [0x00; 32];
+    key_c_bytes[0] = 0xC0;
+    let key_c = Hash::from_bytes(key_c_bytes);
+
+    let tip = hash(0xAA);
+    let bs1 = 100u64;
+    let bs2 = 200u64;
+    let bs3 = 300u64;
+
+    // Block 1: Insert A and B → root is internal
+    let mut proc1 = SmtProcessor::new(&stores, bs1, TEST_THRESHOLD, empty_root);
+    proc1.update_lane(key_a, tip);
+    proc1.update_lane(key_b, tip);
+    let build1 = proc1.build(|_| true).unwrap();
+    let root1 = build1.root;
+    let mut batch1 = WriteBatch::default();
+    build1.flush(&stores, &mut batch1, bs1, hash(0x11)).unwrap();
+    db.write(batch1).unwrap();
+
+    // Block 1 score index: LeafUpdate with [A, B]
+    let entries1: Vec<_> = stores.score_index.get_leaf_updates(bs1, bs1).collect::<Result<Vec<_>, _>>().unwrap();
+    assert_eq!(entries1.len(), 1);
+    let keys1: std::collections::HashSet<Hash> = entries1[0].data().iter().copied().collect();
+    assert!(keys1.contains(&key_a));
+    assert!(keys1.contains(&key_b));
+
+    // Block 2: Expire A → root collapses (B is now a single collapsed node)
+    let mut proc2 = SmtProcessor::new(&stores, bs2, TEST_THRESHOLD, root1);
+    proc2.expire_lane(key_a);
+    let build2 = proc2.build(|_| true).unwrap();
+    let root2 = build2.root;
+    let mut batch2 = WriteBatch::default();
+    build2.flush(&stores, &mut batch2, bs2, hash(0x22)).unwrap();
+    db.write(batch2).unwrap();
+
+    // Block 2 score index: Structural entry with [A] (expiration caused collapse)
+    let all2: Vec<_> = stores.score_index.get_all(bs2, bs2).collect::<Result<Vec<_>, _>>().unwrap();
+    let structural_keys2: std::collections::HashSet<Hash> =
+        all2.iter().filter(|e| e.blue_score() == bs2).flat_map(|e| e.data().iter()).copied().collect();
+    assert!(structural_keys2.contains(&key_a), "Structural entry must record expired lane A (collapse trigger)");
+
+    // Block 3: Insert C → collapsed node (B) splits back to internal
+    let mut proc3 = SmtProcessor::new(&stores, bs3, TEST_THRESHOLD, root2);
+    proc3.update_lane(key_c, tip);
+    let build3 = proc3.build(|_| true).unwrap();
+    let _root3 = build3.root;
+    let mut batch3 = WriteBatch::default();
+    build3.flush(&stores, &mut batch3, bs3, hash(0x33)).unwrap();
+    db.write(batch3).unwrap();
+
+    // Block 3 score index: LeafUpdate with [C] (insertion caused split)
+    let entries3: Vec<_> = stores.score_index.get_leaf_updates(bs3, bs3).collect::<Result<Vec<_>, _>>().unwrap();
+    let leaf_keys3: std::collections::HashSet<Hash> = entries3.iter().flat_map(|e| e.data().iter()).copied().collect();
+    assert!(leaf_keys3.contains(&key_c), "LeafUpdate must record lane C (split trigger)");
 }
