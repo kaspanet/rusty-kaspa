@@ -36,7 +36,7 @@ use kaspa_consensus_core::{
     },
 };
 use kaspa_core::{info, trace};
-use kaspa_hashes::{Hash, SeqCommitMerkleBranch};
+use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
