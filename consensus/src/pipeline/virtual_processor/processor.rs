@@ -1243,7 +1243,6 @@ impl VirtualStateProcessor {
             virtual_state.accepted_id_digests[0]
         } else {
             self.calc_accepted_id_merkle_root(
-                virtual_state.daa_score,
                 virtual_state.accepted_id_digests.iter().copied(),
                 virtual_state.ghostdag_data.selected_parent,
             )

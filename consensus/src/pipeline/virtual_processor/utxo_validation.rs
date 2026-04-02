@@ -228,7 +228,7 @@ impl VirtualStateProcessor {
             let (hash, build) = self.recompute_seq_commit(ctx, header)?;
             (hash, Some(build))
         } else {
-            (self.calc_accepted_id_merkle_root(header.daa_score, ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent()), None)
+            (self.calc_accepted_id_merkle_root(ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent()), None)
         };
 
         // Verify header accepted_id_merkle_root
@@ -674,24 +674,13 @@ impl VirtualStateProcessor {
     /// refer KIP-15 for more details
     pub(super) fn calc_accepted_id_merkle_root(
         &self,
-        daa_score: u64, // virtual in case of template, block in case of verification
         accepted_tx_digests: impl ExactSizeIterator<Item = Hash>,
         selected_parent: Hash,
     ) -> Hash {
-        if self.covenants_activation.is_active(daa_score) {
-            const HASH_SINGLE_ENTRY: bool = true;
-
-            kaspa_merkle::merkle_hash_with_hasher(
-                self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
-                kaspa_merkle::calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, HASH_SINGLE_ENTRY>(accepted_tx_digests),
-                SeqCommitMerkleBranch::new(),
-            )
-        } else {
-            kaspa_merkle::merkle_hash(
-                self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
-                kaspa_merkle::calc_merkle_root(accepted_tx_digests),
-            )
-        }
+        kaspa_merkle::merkle_hash(
+            self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
+            kaspa_merkle::calc_merkle_root(accepted_tx_digests),
+        )
     }
 }
 
