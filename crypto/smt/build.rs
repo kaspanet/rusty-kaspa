@@ -8,7 +8,7 @@
 /// Each entry is `(hasher_name, domain_bytes, collapsed_hasher_name)`.
 /// `collapsed_hasher_name` is the associated `CollapsedHasher` type used
 /// for collapsed (single-leaf subtree) nodes in the SLO optimization.
-const KNOWN_HASHERS: &[(&str, &[u8], &str)] = &[("SeqCommitActiveNode", b"SeqCommitActiveNode", "SeqCommitmentMerkleNodeLeaf")];
+const KNOWN_HASHERS: &[(&str, &[u8], &str)] = &[("SeqCommitActiveNode", b"SeqCommitActiveNode", "SeqCommitActiveCollapsedNode")];
 
 const DEPTH: usize = 256;
 

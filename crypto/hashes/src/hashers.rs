@@ -37,9 +37,8 @@ sha256_hasher! {
 }
 
 blake3_hasher! {
-    struct SeqCommitmentMerkleNodeBranch => b"SeqCommitmentMerkleBranchHash", // todo rename. for miner payload, activity
-    struct SeqCommitmentMerkleNodeLeaf => b"SeqCommitmentMerkleNodeLeaf",
-    struct SeqCommitmentMerkleLeafHash => b"SeqCommitmentMerkleLeafHash", // todo remove me
+    struct SeqCommitTxDigest => b"SeqCommitTxDigest",
+    struct SeqCommitMerkleBranch => b"SeqCommitmentMerkleBranchHash",
     struct PayloadDigest => b"PayloadDigest",
     struct TransactionRest => b"TransactionRest",
     struct TransactionV1Id => b"TransactionV1Id",
@@ -49,8 +48,10 @@ blake3_hasher! {
     struct SeqCommitMergesetContext => b"SeqCommitMergesetContext",
     struct SeqCommitMinerPayload => b"SeqCommitMinerPayload",
     struct SeqCommitMinerPayloadLeaf => b"SeqCommitMinerPayloadLeaf",
+
     struct SeqCommitActiveLeaf => b"SeqCommitActiveLeaf",
     struct SeqCommitActiveNode => b"SeqCommitActiveNode",
+    struct SeqCommitActiveCollapsedNode => b"SeqCommitActiveCollapsedNode",
 }
 
 #[macro_export]

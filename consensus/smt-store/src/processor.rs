@@ -103,7 +103,7 @@ impl SmtStores {
             Some(v) => match *v.data() {
                 Some(Node::Internal(hash)) => hash,
                 Some(Node::Collapsed(cl)) => {
-                    kaspa_smt::hash_node::<kaspa_hashes::SeqCommitmentMerkleNodeLeaf>(cl.lane_key, cl.leaf_hash)
+                    kaspa_smt::hash_node::<kaspa_hashes::SeqCommitActiveCollapsedNode>(cl.lane_key, cl.leaf_hash)
                 }
                 None => kaspa_hashes::SeqCommitActiveNode::empty_root(),
             },

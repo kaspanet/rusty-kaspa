@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use kaspa_database::create_temp_db;
 use kaspa_database::prelude::{ConnBuilder, DB};
-use kaspa_hashes::{Hash, SeqCommitActiveNode, SeqCommitmentMerkleNodeLeaf};
+use kaspa_hashes::{Hash, SeqCommitActiveCollapsedNode, SeqCommitActiveNode};
 use kaspa_seq_commit::hashing::{lane_key, smt_leaf_hash};
 use kaspa_seq_commit::types::SmtLeafInput;
 use kaspa_smt::SmtHasher;
@@ -595,7 +595,7 @@ fn zero_hash_block_hash_branches_are_readable() {
     // With SLO, a single lane produces a Collapsed node at the root
     match root_node.unwrap().into_parts().0 {
         Some(Node::Collapsed(cl)) => {
-            let derived = kaspa_smt::hash_node::<SeqCommitmentMerkleNodeLeaf>(cl.lane_key, cl.leaf_hash);
+            let derived = kaspa_smt::hash_node::<SeqCommitActiveCollapsedNode>(cl.lane_key, cl.leaf_hash);
             assert_eq!(derived, root);
         }
         Some(Node::Internal(hash)) => {
@@ -685,16 +685,16 @@ fn deletion_roundtrip_root_vectors() {
     let root3 = build3.root;
 
     let golden_root1 = Hash::from_bytes([
-        103, 221, 82, 192, 161, 54, 15, 168, 219, 140, 22, 26, 136, 210, 167, 8, 74, 189, 20, 161, 163, 171, 181, 102, 29, 96, 55, 7,
-        118, 93, 188, 79,
+        207, 64, 111, 19, 9, 137, 165, 4, 26, 110, 108, 54, 234, 65, 77, 124, 48, 129, 47, 118, 143, 150, 56, 54, 168, 7, 100, 70, 83,
+        200, 73, 131,
     ]);
     let golden_root2 = Hash::from_bytes([
-        219, 28, 118, 85, 160, 216, 255, 28, 207, 198, 11, 164, 58, 134, 112, 26, 147, 5, 117, 210, 22, 69, 6, 132, 35, 18, 117, 36,
-        5, 170, 42, 98,
+        215, 146, 115, 227, 191, 235, 131, 187, 204, 237, 140, 72, 193, 179, 183, 159, 36, 161, 249, 251, 74, 151, 48, 217, 165, 103,
+        228, 6, 207, 57, 203, 81,
     ]);
     let golden_root3 = Hash::from_bytes([
-        196, 156, 211, 198, 72, 126, 80, 10, 205, 223, 34, 241, 32, 30, 129, 78, 56, 27, 30, 174, 29, 254, 2, 187, 112, 134, 252, 3,
-        11, 151, 58, 42,
+        193, 185, 171, 95, 112, 136, 5, 91, 188, 177, 41, 40, 153, 220, 38, 225, 208, 91, 88, 54, 143, 80, 129, 67, 139, 150, 133, 152,
+        53, 230, 113, 122,
     ]);
 
     let leaf_b1 = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b1, blue_score: bs1 });
@@ -703,11 +703,11 @@ fn deletion_roundtrip_root_vectors() {
     let expected_root2 = slo_root(vec![LeafUpdate { key: key_b, leaf_hash: leaf_b1 }]);
     let expected_root3 = slo_root(vec![LeafUpdate { key: key_b, leaf_hash: leaf_b2 }, LeafUpdate { key: key_c, leaf_hash: leaf_c1 }]);
 
+    assert_eq!(root2, expected_root2);
+    assert_eq!(root3, expected_root3);
     assert_eq!(root1, golden_root1);
     assert_eq!(root2, golden_root2);
     assert_eq!(root3, golden_root3);
-    assert_eq!(root2, expected_root2);
-    assert_eq!(root3, expected_root3);
 }
 
 #[test]
@@ -773,16 +773,16 @@ fn empty_subtree_then_resplit_uses_persisted_deletion_marker() {
     let root3 = build3.root;
 
     let golden_root1 = Hash::from_bytes([
-        176, 56, 49, 46, 29, 249, 152, 242, 86, 36, 110, 40, 204, 131, 128, 220, 164, 121, 58, 177, 229, 193, 57, 153, 228, 51, 164,
-        148, 214, 57, 245, 73,
+        116, 234, 231, 168, 80, 90, 38, 161, 68, 146, 104, 71, 136, 224, 137, 16, 129, 71, 95, 86, 155, 91, 205, 228, 252, 109, 42,
+        131, 19, 125, 206, 187,
     ]);
     let golden_root2 = Hash::from_bytes([
-        212, 216, 72, 24, 169, 249, 220, 254, 213, 104, 139, 238, 27, 147, 128, 142, 114, 54, 138, 116, 0, 151, 47, 232, 70, 122, 88,
-        177, 84, 109, 157, 251,
+        252, 128, 194, 143, 8, 135, 150, 27, 8, 197, 234, 235, 15, 193, 175, 247, 112, 47, 33, 62, 167, 27, 147, 182, 186, 241, 195,
+        125, 114, 106, 216, 160,
     ]);
     let golden_root3 = Hash::from_bytes([
-        161, 100, 209, 156, 166, 239, 129, 108, 19, 148, 177, 218, 49, 113, 23, 206, 236, 125, 115, 134, 29, 254, 70, 191, 79, 239,
-        177, 185, 45, 68, 3, 233,
+        214, 238, 35, 243, 61, 126, 31, 94, 199, 236, 101, 211, 43, 198, 106, 45, 177, 196, 65, 134, 188, 168, 49, 97, 168, 129, 32,
+        247, 128, 163, 56, 142,
     ]);
 
     let leaf_c = smt_leaf_hash(&SmtLeafInput { lane_key: &key_c, lane_tip: &tip_c, blue_score: bs1 });
@@ -795,11 +795,11 @@ fn empty_subtree_then_resplit_uses_persisted_deletion_marker() {
         LeafUpdate { key: key_e, leaf_hash: leaf_e },
     ]);
 
+    assert_eq!(root2, expected_root2);
+    assert_eq!(root3, expected_root3);
     assert_eq!(root1, golden_root1);
     assert_eq!(root2, golden_root2);
     assert_eq!(root3, golden_root3);
-    assert_eq!(root2, expected_root2);
-    assert_eq!(root3, expected_root3);
 }
 
 #[test]

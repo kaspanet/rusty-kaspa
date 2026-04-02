@@ -2,7 +2,7 @@
 
 use kaspa_hashes::{
     Hash, HasherBase, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip, SeqCommitMergesetContext,
-    SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf, SeqCommitmentMerkleNodeBranch,
+    SeqCommitMerkleBranch, SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf,
 };
 use kaspa_merkle::calc_merkle_root_with_hasher;
 
@@ -37,11 +37,11 @@ pub fn activity_leaf(tx_digest: &Hash, merge_idx: u32) -> Hash {
 
 /// Compute the activity digest for a lane's transactions in a mergeset block.
 ///
-/// Merkle root over the activity leaves using `H_seq` (SeqCommitmentMerkleNodeBranch).
+/// Merkle root over the activity leaves using `H_seq` (SeqCommitMerkleBranch).
 /// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
 #[inline]
 pub fn activity_digest_lane(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<SeqCommitmentMerkleNodeBranch, true>(leaves)
+    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
 }
 
 /// Compute the next lane tip: `H_lane_tip(parent_ref || lane_id || activity_digest || context_hash)`.
@@ -79,11 +79,11 @@ pub fn miner_payload_leaf(input: &MinerPayloadLeafInput<'_>) -> Hash {
 
 /// Compute the miner payload root from payload leaves.
 ///
-/// Merkle root using `H_seq` (SeqCommitmentMerkleNodeBranch).
+/// Merkle root using `H_seq` (SeqCommitMerkleBranch).
 /// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
 #[inline]
 pub fn miner_payload_root(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<SeqCommitmentMerkleNodeBranch, true>(leaves)
+    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
 }
 
 /// Compute the SMT leaf hash for an active lane:
@@ -101,7 +101,7 @@ pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
 /// that can be stored and reused without access to block transactions.
 #[inline]
 pub fn payload_and_context_digest(context_hash: &Hash, payload_root: &Hash) -> Hash {
-    let mut hasher = SeqCommitmentMerkleNodeBranch::new();
+    let mut hasher = SeqCommitMerkleBranch::new();
     hasher.update(context_hash).update(payload_root);
     hasher.finalize()
 }
@@ -109,7 +109,7 @@ pub fn payload_and_context_digest(context_hash: &Hash, payload_root: &Hash) -> H
 /// Compute the seq-state root: `H_seq(lanes_root, payload_and_ctx_digest)`.
 #[inline]
 pub fn seq_state_root(state: &SeqState<'_>) -> Hash {
-    let mut hasher = SeqCommitmentMerkleNodeBranch::new();
+    let mut hasher = SeqCommitMerkleBranch::new();
     hasher.update(state.lanes_root).update(state.payload_and_ctx_digest);
     hasher.finalize()
 }
@@ -117,7 +117,7 @@ pub fn seq_state_root(state: &SeqState<'_>) -> Hash {
 /// Compute the final sequencing commitment: `H_seq(parent_seq_commit, state_root)`.
 #[inline]
 pub fn seq_commit(input: &SeqCommitInput<'_>) -> Hash {
-    let mut hasher = SeqCommitmentMerkleNodeBranch::new();
+    let mut hasher = SeqCommitMerkleBranch::new();
     hasher.update(input.parent_seq_commit).update(input.state_root);
     hasher.finalize()
 }
@@ -176,7 +176,7 @@ mod tests {
         let leaf = h(1);
         let root = activity_digest_lane(core::iter::once(leaf));
         let expected = {
-            let mut hasher = SeqCommitmentMerkleNodeBranch::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(leaf).update(ZERO_HASH);
             hasher.finalize()
         };
@@ -189,7 +189,7 @@ mod tests {
         let b = h(2);
         let root = activity_digest_lane([a, b].into_iter());
         let expected = {
-            let mut hasher = SeqCommitmentMerkleNodeBranch::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(a).update(b);
             hasher.finalize()
         };
@@ -279,7 +279,7 @@ mod tests {
         let leaf = h(1);
         let root = miner_payload_root(core::iter::once(leaf));
         let expected = {
-            let mut hasher = SeqCommitmentMerkleNodeBranch::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(leaf).update(ZERO_HASH);
             hasher.finalize()
         };
@@ -320,7 +320,7 @@ mod tests {
         let pd = payload_and_context_digest(&ch, &pr);
         let state = SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd };
         let expected = {
-            let mut hasher = SeqCommitmentMerkleNodeBranch::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(state.lanes_root).update(state.payload_and_ctx_digest);
             hasher.finalize()
         };
@@ -342,7 +342,7 @@ mod tests {
         let (p, s) = (h(1), h(2));
         let input = SeqCommitInput { parent_seq_commit: &p, state_root: &s };
         let expected = {
-            let mut hasher = SeqCommitmentMerkleNodeBranch::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(input.parent_seq_commit).update(input.state_root);
             hasher.finalize()
         };

@@ -57,9 +57,9 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
     use core::iter;
-    use kaspa_hashes::{HasherBase, SeqCommitmentMerkleNodeBranch, TransactionHash};
+    use kaspa_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
     fn seq_comm_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
-        calc_merkle_root_with_hasher::<SeqCommitmentMerkleNodeBranch, true>(hashes)
+        calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(hashes)
     }
     fn make_hash(data: &[u8]) -> Hash {
         let mut hasher = TransactionHash::new();
@@ -82,7 +82,7 @@ mod tests {
         let expected = entry;
         assert_eq!(root, expected);
 
-        let expected = merkle_hash_with_hasher(entry, ZERO_HASH, SeqCommitmentMerkleNodeBranch::default());
+        let expected = merkle_hash_with_hasher(entry, ZERO_HASH, SeqCommitMerkleBranch::default());
         let seq_comm_root = seq_comm_merkle_root(iter::once(entry));
         assert_eq!(seq_comm_root, expected, "Single entry should return merkle hash of entry with ZERO_HASH");
     }
@@ -97,7 +97,7 @@ mod tests {
         assert_eq!(root, expected, "Two entries should hash directly together");
 
         let seq_root = seq_comm_merkle_root([h1, h2].into_iter());
-        let seq_expected = merkle_hash_with_hasher(h1, h2, SeqCommitmentMerkleNodeBranch::default());
+        let seq_expected = merkle_hash_with_hasher(h1, h2, SeqCommitMerkleBranch::default());
         assert_eq!(seq_root, seq_expected, "Two entries should hash directly together for seq_comm");
     }
 

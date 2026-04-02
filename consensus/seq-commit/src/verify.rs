@@ -5,7 +5,7 @@
 
 use crate::hashing::seq_state_root;
 use crate::types::SeqState;
-use kaspa_hashes::{Hash, HasherBase, SeqCommitmentMerkleNodeBranch};
+use kaspa_hashes::{Hash, HasherBase, SeqCommitMerkleBranch};
 
 /// Metadata sent before lane entries, verified against the pruning point header.
 #[derive(Clone, Copy, Debug)]
@@ -52,7 +52,7 @@ pub fn verify_smt_metadata(
         seq_state_root(&SeqState { lanes_root: metadata.lanes_root, payload_and_ctx_digest: metadata.payload_and_ctx_digest });
 
     let computed = {
-        let mut h = SeqCommitmentMerkleNodeBranch::new();
+        let mut h = SeqCommitMerkleBranch::new();
         h.update(metadata.parent_seq_commit).update(state_root);
         h.finalize()
     };
@@ -111,7 +111,7 @@ mod tests {
         let pd = payload_and_context_digest(&ch, &pr);
         let sr = seq_state_root(&SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd });
         let sc = {
-            let mut h = SeqCommitmentMerkleNodeBranch::new();
+            let mut h = SeqCommitMerkleBranch::new();
             h.update(ps).update(sr);
             h.finalize()
         };

@@ -438,10 +438,6 @@ pub trait VerifiableTransaction {
         self.tx().payload_digest()
     }
 
-    fn seq_commit_digest(&self) -> Hash {
-        self.tx().seq_commit_digest()
-    }
-
     fn version(&self) -> u16 {
         self.tx().version
     }
