@@ -15,7 +15,7 @@ kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-p2p-lib.workspace = true
 kaspa-p2p-mining.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["fd_budget"]}
 kaspa-utils-tower.workspace = true
 kaspa-hashes.workspace = true
 kaspa-muhash.workspace = true

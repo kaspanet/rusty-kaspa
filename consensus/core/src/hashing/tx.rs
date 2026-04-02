@@ -3,7 +3,7 @@ use crate::{
     mass::transaction_estimated_serialized_size,
     tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
-use kaspa_hashes::{Hash, Hasher, HasherBase, PayloadDigest, SeqCommitmentMerkleLeafHash};
+use kaspa_hashes::{Hash, Hasher, HasherBase, PayloadDigest, SeqCommitTxDigest};
 
 bitflags::bitflags! {
     /// A bitmask defining which transaction fields we want to encode and which to ignore.
@@ -179,7 +179,7 @@ pub fn payload_digest(payload: &[u8]) -> Hash {
 }
 
 pub fn seq_commit_tx_digest(txid: TransactionId, version: u16) -> Hash {
-    let mut hasher = SeqCommitmentMerkleLeafHash::new();
+    let mut hasher = SeqCommitTxDigest::new();
     hasher.update(txid).update(version.to_le_bytes());
     hasher.finalize()
 }

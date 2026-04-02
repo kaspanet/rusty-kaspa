@@ -59,7 +59,7 @@ fn example_seq_commit_for_block() {
     // --- SMT carries forward from previous state (lane A already present) ---
     let key_a = lane_key(&lane_a);
     let prev_leaf_a =
-        smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a, lane_tip: &lane_a_prev_tip, blue_score: lane_a_prev_blue_score });
+        smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &lane_a_prev_tip, blue_score: lane_a_prev_blue_score });
     let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
     smt.insert(key_a, prev_leaf_a);
 
@@ -126,16 +126,14 @@ fn example_seq_commit_for_block() {
     // --- Lane tips ---
     // Lane A: already active → parent_ref = previous lane_tip_hash
     let tip_a =
-        lane_tip_next(&LaneTipInput { parent_ref: &lane_a_prev_tip, lane_id: &lane_a, activity_digest: &ad_a, context_hash: &ctx });
+        lane_tip_next(&LaneTipInput { parent_ref: &lane_a_prev_tip, lane_key: &key_a, activity_digest: &ad_a, context_hash: &ctx });
 
     // Lane B: new lane → parent_ref = SeqCommit(parent(B)), the global anchor
-    let tip_b =
-        lane_tip_next(&LaneTipInput { parent_ref: &parent_seq_commit, lane_id: &lane_b, activity_digest: &ad_b, context_hash: &ctx });
-
-    // --- Update SMT: lane A gets updated leaf, lane B is inserted as new ---
     let key_b = lane_key(&lane_b);
-    let new_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_a, lane_tip: &tip_a, blue_score });
-    let new_leaf_b = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_b, lane_tip: &tip_b, blue_score });
+    let tip_b =
+        lane_tip_next(&LaneTipInput { parent_ref: &parent_seq_commit, lane_key: &key_b, activity_digest: &ad_b, context_hash: &ctx });
+    let new_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &tip_a, blue_score });
+    let new_leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b, blue_score });
 
     smt.insert(key_a, new_leaf_a); // update existing lane A
     smt.insert(key_b, new_leaf_b); // insert new lane B

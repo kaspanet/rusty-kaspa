@@ -2,7 +2,7 @@
 
 use kaspa_hashes::{
     Hash, HasherBase, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip, SeqCommitMergesetContext,
-    SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf, SeqCommitmentMerkleBranchHash,
+    SeqCommitMerkleBranch, SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf,
 };
 use kaspa_merkle::calc_merkle_root_with_hasher;
 
@@ -37,18 +37,18 @@ pub fn activity_leaf(tx_digest: &Hash, merge_idx: u32) -> Hash {
 
 /// Compute the activity digest for a lane's transactions in a mergeset block.
 ///
-/// Merkle root over the activity leaves using `H_seq` (SeqCommitmentMerkleBranchHash).
+/// Merkle root over the activity leaves using `H_seq` (SeqCommitMerkleBranch).
 /// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
 #[inline]
 pub fn activity_digest_lane(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, true>(leaves)
+    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
 }
 
-/// Compute the next lane tip: `H_lane_tip(parent_ref || lane_id || activity_digest || context_hash)`.
+/// Compute the next lane tip: `H_lane_tip(parent_ref || lane_key || activity_digest || context_hash)`.
 #[inline]
 pub fn lane_tip_next(input: &LaneTipInput) -> Hash {
     let mut hasher = SeqCommitLaneTip::new();
-    hasher.update(input.parent_ref).update(input.lane_id).update(input.activity_digest).update(input.context_hash);
+    hasher.update(input.parent_ref).update(input.lane_key).update(input.activity_digest).update(input.context_hash);
     hasher.finalize()
 }
 
@@ -79,22 +79,19 @@ pub fn miner_payload_leaf(input: &MinerPayloadLeafInput<'_>) -> Hash {
 
 /// Compute the miner payload root from payload leaves.
 ///
-/// Merkle root using `H_seq` (SeqCommitmentMerkleBranchHash).
+/// Merkle root using `H_seq` (SeqCommitMerkleBranch).
 /// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
 #[inline]
 pub fn miner_payload_root(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, true>(leaves)
+    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
 }
 
 /// Compute the SMT leaf hash for an active lane:
-/// `H_active_leaf(lane_id_bytes(20) || lane_tip_hash(32) || le_u64(blue_score))`.
-///
-/// Per KIP-21 §6.2: the leaf payload uses the raw 20-byte `lane_id`,
-/// NOT the 32-byte `lane_key` (which is only the SMT path key).
+/// `H_active_leaf(lane_key(32) || lane_tip_hash(32) || le_u64(blue_score))`.
 #[inline]
 pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
     let mut hasher = SeqCommitActiveLeaf::new();
-    hasher.update(input.lane_id).update(input.lane_tip).update(input.blue_score.to_le_bytes());
+    hasher.update(input.lane_key).update(input.lane_tip).update(input.blue_score.to_le_bytes());
     hasher.finalize()
 }
 
@@ -104,7 +101,7 @@ pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
 /// that can be stored and reused without access to block transactions.
 #[inline]
 pub fn payload_and_context_digest(context_hash: &Hash, payload_root: &Hash) -> Hash {
-    let mut hasher = SeqCommitmentMerkleBranchHash::new();
+    let mut hasher = SeqCommitMerkleBranch::new();
     hasher.update(context_hash).update(payload_root);
     hasher.finalize()
 }
@@ -112,7 +109,7 @@ pub fn payload_and_context_digest(context_hash: &Hash, payload_root: &Hash) -> H
 /// Compute the seq-state root: `H_seq(lanes_root, payload_and_ctx_digest)`.
 #[inline]
 pub fn seq_state_root(state: &SeqState<'_>) -> Hash {
-    let mut hasher = SeqCommitmentMerkleBranchHash::new();
+    let mut hasher = SeqCommitMerkleBranch::new();
     hasher.update(state.lanes_root).update(state.payload_and_ctx_digest);
     hasher.finalize()
 }
@@ -120,7 +117,7 @@ pub fn seq_state_root(state: &SeqState<'_>) -> Hash {
 /// Compute the final sequencing commitment: `H_seq(parent_seq_commit, state_root)`.
 #[inline]
 pub fn seq_commit(input: &SeqCommitInput<'_>) -> Hash {
-    let mut hasher = SeqCommitmentMerkleBranchHash::new();
+    let mut hasher = SeqCommitMerkleBranch::new();
     hasher.update(input.parent_seq_commit).update(input.state_root);
     hasher.finalize()
 }
@@ -179,7 +176,7 @@ mod tests {
         let leaf = h(1);
         let root = activity_digest_lane(core::iter::once(leaf));
         let expected = {
-            let mut hasher = SeqCommitmentMerkleBranchHash::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(leaf).update(ZERO_HASH);
             hasher.finalize()
         };
@@ -192,7 +189,7 @@ mod tests {
         let b = h(2);
         let root = activity_digest_lane([a, b].into_iter());
         let expected = {
-            let mut hasher = SeqCommitmentMerkleBranchHash::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(a).update(b);
             hasher.finalize()
         };
@@ -202,17 +199,19 @@ mod tests {
     #[test]
     fn test_lane_tip_next_golden() {
         let expected = Hash::from_bytes([
-            0xa9, 0xe0, 0x7f, 0x56, 0x97, 0x00, 0xc5, 0x09, 0xe0, 0x51, 0x66, 0x74, 0x72, 0x6b, 0x36, 0xd1, 0x19, 0x8a, 0xae, 0xb1,
-            0x19, 0x4c, 0x88, 0x3f, 0xa3, 0x51, 0x75, 0x67, 0x68, 0x12, 0xfd, 0x78,
+            0x38, 0x79, 0x35, 0x76, 0xd5, 0x45, 0xd2, 0x95, 0x2d, 0xf3, 0x1b, 0x7c, 0x57, 0x19, 0x3a, 0x49, 0x2f, 0x9c, 0x5b, 0x8c,
+            0x09, 0xdd, 0xae, 0xb2, 0x27, 0x4e, 0x4e, 0x23, 0xed, 0xbc, 0x3f, 0x43,
         ]);
-        let input = LaneTipInput { parent_ref: &h(1), lane_id: &[0x55; 20], activity_digest: &h(2), context_hash: &h(3) };
+        let lk = lane_key(&[0x55; 20]);
+        let input = LaneTipInput { parent_ref: &h(1), lane_key: &lk, activity_digest: &h(2), context_hash: &h(3) };
         assert_eq!(lane_tip_next(&input), expected);
     }
 
     #[test]
     fn test_lane_tip_next_different_parents() {
-        let a = LaneTipInput { parent_ref: &h(1), lane_id: &[0x55; 20], activity_digest: &h(2), context_hash: &h(3) };
-        let b = LaneTipInput { parent_ref: &h(10), lane_id: &[0x55; 20], activity_digest: &h(2), context_hash: &h(3) };
+        let lk = lane_key(&[0x55; 20]);
+        let a = LaneTipInput { parent_ref: &h(1), lane_key: &lk, activity_digest: &h(2), context_hash: &h(3) };
+        let b = LaneTipInput { parent_ref: &h(10), lane_key: &lk, activity_digest: &h(2), context_hash: &h(3) };
         assert_ne!(lane_tip_next(&a), lane_tip_next(&b));
     }
 
@@ -282,35 +281,28 @@ mod tests {
         let leaf = h(1);
         let root = miner_payload_root(core::iter::once(leaf));
         let expected = {
-            let mut hasher = SeqCommitmentMerkleBranchHash::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(leaf).update(ZERO_HASH);
             hasher.finalize()
         };
         assert_eq!(root, expected);
     }
 
-    fn lid(b: u8) -> LaneId {
-        let mut id = [0u8; 20];
-        id[0] = b;
-        id
-    }
-
     #[test]
     fn test_smt_leaf_hash_golden() {
-        // Golden value updated: leaf now hashes lane_id(20B) not lane_key(32B)
-        let result = smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(2), blue_score: 100 });
+        let result = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
         // Verify determinism
-        let result2 = smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(2), blue_score: 100 });
+        let result2 = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
         assert_eq!(result, result2);
         assert_ne!(result, ZERO_HASH);
     }
 
     #[test]
     fn test_smt_leaf_hash_different_inputs() {
-        let base = smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(2), blue_score: 100 });
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_id: &lid(10), lane_tip: &h(2), blue_score: 100 }));
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(20), blue_score: 100 }));
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_id: &lid(1), lane_tip: &h(2), blue_score: 200 }));
+        let base = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(10), lane_tip: &h(2), blue_score: 100 }));
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(20), blue_score: 100 }));
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 200 }));
     }
 
     #[test]
@@ -330,7 +322,7 @@ mod tests {
         let pd = payload_and_context_digest(&ch, &pr);
         let state = SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd };
         let expected = {
-            let mut hasher = SeqCommitmentMerkleBranchHash::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(state.lanes_root).update(state.payload_and_ctx_digest);
             hasher.finalize()
         };
@@ -352,7 +344,7 @@ mod tests {
         let (p, s) = (h(1), h(2));
         let input = SeqCommitInput { parent_seq_commit: &p, state_root: &s };
         let expected = {
-            let mut hasher = SeqCommitmentMerkleBranchHash::new();
+            let mut hasher = SeqCommitMerkleBranch::new();
             hasher.update(input.parent_seq_commit).update(input.state_root);
             hasher.finalize()
         };
@@ -379,10 +371,9 @@ mod tests {
         let ad = activity_digest_lane(core::iter::once(al));
         let ctx = mergeset_context_hash(&MergesetContext { timestamp: 1_700_000_000, daa_score: 100_000, blue_score: 50_000 });
 
-        let _lk = lane_key(&lane_id);
-        let tip =
-            lane_tip_next(&LaneTipInput { parent_ref: &parent_commit, lane_id: &lane_id, activity_digest: &ad, context_hash: &ctx });
-        let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_id: &lane_id, lane_tip: &tip, blue_score: 50_000 });
+        let lk = lane_key(&lane_id);
+        let tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_commit, lane_key: &lk, activity_digest: &ad, context_hash: &ctx });
+        let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip: &tip, blue_score: 50_000 });
 
         let h1 = h(1);
         let mpl = miner_payload_leaf(&MinerPayloadLeafInput { block_hash: &h1, blue_work_bytes: &[0x01, 0x00], payload: b"coinbase" });

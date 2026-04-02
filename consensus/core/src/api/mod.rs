@@ -50,7 +50,7 @@ pub struct BlockValidationFutures {
 /// A lane to import during IBD SMT sync.
 #[derive(Clone, Debug)]
 pub struct ImportLane {
-    pub lane_id: [u8; 20],
+    pub lane_key: Hash,
     pub lane_tip: Hash,
     pub blue_score: u64,
     pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
@@ -290,7 +290,7 @@ pub trait ConsensusApi: Send + Sync {
         _lanes_root: Hash,
         _payload_and_ctx_digest: Hash,
         _expected_lane_count: u64,
-        _lanes: Vec<ImportLane>,
+        _rx: tokio::sync::mpsc::Receiver<ImportLane>,
     ) -> PruningImportResult<()> {
         unimplemented!()
     }

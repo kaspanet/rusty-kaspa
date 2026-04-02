@@ -30,6 +30,7 @@ extern crate std;
 
 pub mod proof;
 pub mod store;
+pub mod streaming;
 pub mod tree;
 
 use kaspa_hashes::{Hash, Hasher};
@@ -79,6 +80,12 @@ fn compute_empty_hashes<H: Hasher>() -> alloc::boxed::Box<[Hash; DEPTH + 1]> {
 /// Implementations for all BLAKE3-based hashers in `kaspa-hashes` are
 /// generated at build time via `build.rs`.
 pub trait SmtHasher: Hasher {
+    /// Hasher used for collapsed (single-leaf subtree) nodes.
+    ///
+    /// Domain-separated from the internal branch hasher to prevent
+    /// second-preimage attacks between branch and collapsed nodes.
+    type CollapsedHasher: Hasher;
+
     /// Indexed by level (height from leaf):
     /// - `[0]` = `ZERO_HASH` (canonical empty leaf)
     /// - `[i]` = `hash_node(empty[i-1], empty[i-1])`

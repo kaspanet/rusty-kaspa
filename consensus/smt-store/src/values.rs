@@ -1,40 +1,32 @@
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
+use kaspa_hashes::Hash;
 
-/// Lane version value.
+/// Lane version value — just the tip hash.
 ///
-/// Layout: `lane_id(20) | lane_tip_hash(32)` = 52 bytes.
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct LaneVersion {
-    /// Raw 20-byte subnetwork ID. Needed for IBD state reconstruction —
-    /// can't reverse `lane_key = H_lane_key(lane_id)`.
-    pub lane_id: [u8; 20],
-    pub lane_tip_hash: kaspa_hashes::Hash,
-}
+/// The lane_key (SMT position) is already the DB key, and blue_score
+/// is encoded in the key as well. No need to store lane_id separately
+/// since H_leaf now uses lane_key instead of lane_id.
+pub type LaneTipHash = Hash;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use kaspa_hashes::Hash;
-    use kaspa_smt::store::BranchChildren;
+    use kaspa_smt::store::{CollapsedLeaf, Node};
 
     #[test]
-    fn branch_children_round_trip() {
-        use zerocopy::IntoBytes;
-        let v = BranchChildren { left: Hash::from_bytes([0x11; 32]), right: Hash::from_bytes([0x22; 32]) };
-        let bytes = v.as_bytes();
-        assert_eq!(bytes.len(), size_of::<BranchChildren>());
-        let parsed = BranchChildren::read_from_bytes(bytes).unwrap();
-        assert_eq!(parsed, v);
+    fn node_internal_round_trip() {
+        let hash = Hash::from_bytes([0x42; 32]);
+        let node = Node::Internal(hash);
+        let bytes = node.to_bytes();
+        assert_eq!(bytes.len(), 32);
+        assert_eq!(Node::from_bytes(&bytes), Some(node));
     }
 
     #[test]
-    fn lane_version_round_trip() {
-        let v = LaneVersion { lane_id: [0x55; 20], lane_tip_hash: Hash::from_bytes([0x66; 32]) };
-        let bytes = v.as_bytes();
-        assert_eq!(bytes.len(), size_of::<LaneVersion>());
-        let parsed = LaneVersion::read_from_bytes(bytes).unwrap();
-        assert_eq!(parsed.lane_id, [0x55; 20]);
-        assert_eq!(parsed.lane_tip_hash, Hash::from_bytes([0x66; 32]));
+    fn node_collapsed_round_trip() {
+        let cl = CollapsedLeaf { lane_key: Hash::from_bytes([0x11; 32]), leaf_hash: Hash::from_bytes([0x22; 32]) };
+        let node = Node::Collapsed(cl);
+        let bytes = node.to_bytes();
+        assert_eq!(bytes.len(), 64);
+        assert_eq!(Node::from_bytes(&bytes), Some(node));
     }
 }

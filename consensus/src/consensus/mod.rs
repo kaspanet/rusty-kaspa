@@ -1098,38 +1098,38 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
-    // TODO: SMT is built in 3 places (block verification, virtual state, IBD import).
-    // All currently collect leaves into a BTreeMap then compute sequentially.
-    // Optimize: stream leaves directly into the processor, let it detect siblings
-    // vs empty and dispatch hash computation to a thread pool at each level.
     fn import_pruning_point_smt(
         &self,
         new_pruning_point: Hash,
         lanes_root: Hash,
         payload_and_ctx_digest: Hash,
         expected_lane_count: u64,
-        lanes: Vec<kaspa_consensus_core::api::ImportLane>,
+        mut rx: tokio::sync::mpsc::Receiver<kaspa_consensus_core::api::ImportLane>,
     ) -> PruningImportResult<()> {
         use kaspa_hashes::ZERO_HASH;
-        use kaspa_seq_commit::hashing::lane_key;
-        use kaspa_smt::SmtHasher;
-        use kaspa_smt_store::processor::SmtProcessor;
+        use kaspa_smt_store::streaming_import::{StreamingImportLane, streaming_import};
 
         let pp_header = self.storage.headers_store.get_header(new_pruning_point).unwrap();
-        let empty_root = kaspa_hashes::SeqCommitActiveNode::empty_root();
+        let result = streaming_import(
+            &self.db,
+            &self.storage.smt_stores,
+            pp_header.blue_score,
+            ZERO_HASH,
+            expected_lane_count,
+            std::iter::from_fn(|| rx.blocking_recv()).map(|lane| StreamingImportLane {
+                lane_key: lane.lane_key,
+                lane_tip: lane.lane_tip,
+                blue_score: lane.blue_score,
+            }),
+            4096,
+        )
+        .map_err(|e| PruningImportError::SmtStoreError(format!("{e}")))?;
 
-        let finality_depth = self.config.params.finality_depth();
-        let mut proc = SmtProcessor::new_import(&self.storage.smt_stores, pp_header.blue_score, finality_depth, empty_root);
-        for lane in &lanes {
-            proc.update_lane(lane_key(&lane.lane_id), lane.lane_id, lane.lane_tip, lane.blue_score);
+        if result.root != lanes_root {
+            return Err(PruningImportError::SmtRootMismatch { expected: lanes_root, computed: result.root });
         }
-        let build = proc.build(|_| true).map_err(|e| PruningImportError::SmtStoreError(format!("{e}")))?;
 
-        if build.root != lanes_root {
-            return Err(PruningImportError::SmtRootMismatch { expected: lanes_root, computed: build.root });
-        }
-
-        let actual_count = lanes.len() as u64;
+        let actual_count = result.lanes_imported;
         if actual_count != expected_lane_count {
             return Err(PruningImportError::SmtStoreError(format!(
                 "active lanes count mismatch: expected {expected_lane_count}, got {actual_count}"
@@ -1137,15 +1137,14 @@ impl ConsensusApi for Consensus {
         }
 
         let mut batch = rocksdb::WriteBatch::default();
-        let root = build.flush(&self.storage.smt_stores, &mut batch, pp_header.blue_score, ZERO_HASH).unwrap();
         use crate::model::stores::smt_metadata::SmtBlockMetadata;
         self.storage
             .smt_metadata_store
-            .insert_batch(&mut batch, new_pruning_point, SmtBlockMetadata::new(root, payload_and_ctx_digest, actual_count))
+            .insert_batch(&mut batch, new_pruning_point, SmtBlockMetadata::new(payload_and_ctx_digest, actual_count))
             .unwrap();
         self.db.write(batch).unwrap();
 
-        info!("Imported SMT state for pruning point {}: {} lanes, root {}", new_pruning_point, lanes.len(), lanes_root);
+        info!("Imported SMT state for pruning point {}: {} lanes, root {}", new_pruning_point, actual_count, lanes_root);
         Ok(())
     }
 
@@ -1173,9 +1172,8 @@ impl ConsensusApi for Consensus {
         for result in
             self.storage.smt_stores.lane_version.iter_all_canonical(min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))
         {
-            let (_lk, v) = result.unwrap();
-            let lane =
-                ImportLane { lane_id: v.data().lane_id, lane_tip: v.data().lane_tip_hash, blue_score: v.blue_score(), proof: None };
+            let (lk, v) = result.unwrap();
+            let lane = ImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof: None };
             if !f(lane) {
                 break;
             }

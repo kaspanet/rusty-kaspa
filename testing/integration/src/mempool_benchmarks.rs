@@ -399,7 +399,7 @@ async fn bench_bbt_latency_lanes() {
     const MEMPOOL_TARGET: u64 = 600_000;
     const TX_COUNT: usize = 1_200_000;
     const TX_LEVEL_WIDTH: usize = 6_000;
-    const TX_LANES_PER_LEVEL: usize = 100;
+    const TX_LANES_PER_LEVEL: usize = 200;
     const TPS_PRESSURE: u64 = u64::MAX;
     const SUBMIT_BLOCK_CLIENTS: usize = 20;
     const SUBMIT_TX_CLIENTS: usize = 2;

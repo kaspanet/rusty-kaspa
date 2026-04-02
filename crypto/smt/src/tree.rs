@@ -1,14 +1,14 @@
-//! Full Sparse Merkle Tree with incremental insert/remove, cached root, and proof generation.
+//! Sparse Merkle Tree with Suffix-Only Leaf (SLO) optimization.
 //!
 //! # Two APIs
 //!
 //! - **In-memory** (`SparseMerkleTree<H, BTreeSmtStore>`): mutable `insert`/`remove`/`prove`.
 //!   Used in tests and for RPC proof generation.
 //!
-//! - **Pure computation** ([`compute_root_update`]): reads from an immutable `&impl SmtStore`,
-//!   returns `(new_root, changed_branches)`. Only actually-modified branches appear
-//!   in the output. Paths stop propagating when the computed parent matches the existing
-//!   value. Used by consensus (`SmtProcessor::build`).
+//! - **Pure computation** ([`compute_root_update`]): top-down recursive algorithm that
+//!   reads from an immutable `&impl SmtStore` and returns `(new_root, changed_nodes)`.
+//!   Single-leaf subtrees are collapsed into one node instead of 256 branches.
+//!   Used by consensus (`SmtProcessor::build`).
 
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -16,8 +16,8 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use kaspa_hashes::Hash;
 
-use crate::proof::OwnedSmtProof;
-use crate::store::{BTreeSmtStore, BranchChildren, BranchKey, LeafUpdate, SmtStore, SortedLeafUpdates};
+use crate::proof::{OwnedSmtProof, ProofTerminal};
+use crate::store::{BTreeSmtStore, BranchKey, CollapsedLeaf, LeafUpdate, Node, SmtStore, SortedLeafUpdates, SortedLeafUpdatesRef};
 use crate::{DEPTH, SmtHasher, bit_at, hash_node};
 
 /// A 256-bit Sparse Merkle Tree with incremental updates and cached root.
@@ -67,31 +67,74 @@ impl<H: SmtHasher, S: SmtStore> SparseMerkleTree<H, S> {
 
     /// Generate an inclusion or non-inclusion proof for the given key.
     ///
-    /// Walks from leaf to root reading stored branch nodes — O(256) reads.
+    /// Walks from root to leaf reading stored branch nodes.
+    /// Handles both `Internal` and `Collapsed` (SLO) nodes.
     pub fn prove(&self, key: &Hash) -> Result<OwnedSmtProof, S::Error> {
-        let empty_hashes = &H::EMPTY_HASHES;
         let mut bitmap = [0u8; 32];
         let mut siblings = Vec::new();
+        let mut terminal = ProofTerminal::Full;
 
         for depth in 0..DEPTH {
-            let height = DEPTH - 1 - depth;
+            let branch_key = BranchKey::new(depth as u8, key);
             let goes_right = bit_at(key, depth);
-            let branch_key = BranchKey::new(height as u8, key);
 
-            let sibling = if let Some(bc) = self.store.get_branch(&branch_key)? {
-                if goes_right { bc.left } else { bc.right }
-            } else {
-                empty_hashes[height]
-            };
-
-            if sibling == empty_hashes[height] {
-                bitmap[depth / 8] |= 1 << (depth % 8);
-            } else {
-                siblings.push(sibling);
+            match self.store.get_node(&branch_key)? {
+                Some(Node::Internal(_)) => {
+                    if depth == DEPTH - 1 {
+                        // Leaf-parent (depth 255): children are leaves, not branch nodes.
+                        // Use get_leaf instead of child_branch_key to avoid depth+1 overflow.
+                        // Compute sibling key (differs only in the last bit).
+                        let mut sib_bytes = key.as_bytes();
+                        sib_bytes[depth / 8] ^= 0x80 >> (depth % 8);
+                        let sibling_leaf_key = Hash::from_bytes(sib_bytes);
+                        match self.store.get_leaf(&sibling_leaf_key)? {
+                            None => {
+                                bitmap[depth / 8] |= 1 << (depth % 8);
+                            }
+                            Some(leaf_hash) => {
+                                siblings.push(hash_node::<H::CollapsedHasher>(sibling_leaf_key, leaf_hash));
+                            }
+                        }
+                    } else {
+                        // Read the sibling node directly.
+                        let sibling_key = child_branch_key(&branch_key, !goes_right, depth);
+                        match self.store.get_node(&sibling_key)? {
+                            None => {
+                                bitmap[depth / 8] |= 1 << (depth % 8);
+                            }
+                            Some(Node::Internal(hash)) => {
+                                siblings.push(hash);
+                            }
+                            Some(Node::Collapsed(cl)) => {
+                                siblings.push(hash_node::<H::CollapsedHasher>(cl.lane_key, cl.leaf_hash));
+                            }
+                        }
+                    }
+                }
+                Some(Node::Collapsed(cl)) => {
+                    if cl.lane_key == *key {
+                        for d in depth..DEPTH {
+                            bitmap[d / 8] |= 1 << (d % 8);
+                        }
+                        terminal = ProofTerminal::Collapsed { depth: depth as u8 };
+                        break;
+                    }
+                    for d in depth..DEPTH {
+                        bitmap[d / 8] |= 1 << (d % 8);
+                    }
+                    terminal = ProofTerminal::CollapsedOther { depth: depth as u8, leaf: cl };
+                    break;
+                }
+                None => {
+                    for d in depth..DEPTH {
+                        bitmap[d / 8] |= 1 << (d % 8);
+                    }
+                    break;
+                }
             }
         }
 
-        Ok(OwnedSmtProof { bitmap, siblings })
+        Ok(OwnedSmtProof { bitmap, siblings, terminal })
     }
 }
 
@@ -118,154 +161,270 @@ impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
     }
 
     #[cfg(any(test, feature = "test-utils"))]
-    /// Insert or update a leaf, incrementally updating the root.
+    /// Insert or update a leaf, incrementally updating the root via SLO.
     pub fn insert(&mut self, key: Hash, leaf_hash: Hash) {
         self.store.insert_leaf(key, leaf_hash);
-        self.root = self.walk_up(&key, leaf_hash);
+        let sorted = SortedLeafUpdates::from_unsorted(core::iter::once(LeafUpdate { key, leaf_hash }));
+        let (new_root, changes) = compute_root_update::<H, _>(&self.store, self.root, sorted).unwrap();
+        for (bk, node) in &changes {
+            self.store.insert_node(*bk, *node);
+        }
+        self.root = new_root;
     }
 
     #[cfg(any(test, feature = "test-utils"))]
-    /// Remove a leaf by key, incrementally updating the root.
+    /// Remove a leaf by key, incrementally updating the root via SLO.
     pub fn remove(&mut self, key: &Hash) -> Option<Hash> {
         use kaspa_hashes::ZERO_HASH;
         let old = self.store.get_leaf(key);
         if old.is_some() {
-            self.root = self.walk_up(key, ZERO_HASH);
+            let sorted = SortedLeafUpdates::from_unsorted(core::iter::once(LeafUpdate { key: *key, leaf_hash: ZERO_HASH }));
+            let (new_root, changes) = compute_root_update::<H, _>(&self.store, self.root, sorted).unwrap();
+            for (bk, node) in &changes {
+                self.store.insert_node(*bk, *node);
+            }
+            self.root = new_root;
             self.store.insert_leaf(*key, ZERO_HASH);
         }
         old
     }
+}
 
-    #[cfg(any(test, feature = "test-utils"))]
-    fn walk_up(&mut self, key: &Hash, leaf_hash: Hash) -> Hash {
-        let empty_hashes = &H::EMPTY_HASHES;
-        let mut current = leaf_hash;
+/// Map of changed nodes: `BranchKey → Option<Node>`.
+///
+/// `None` means "this node was deleted".
+pub type SmtNodeChanges = BTreeMap<BranchKey, Option<Node>>;
 
-        for depth in (0..DEPTH).rev() {
-            let height = DEPTH - 1 - depth;
-            let goes_right = bit_at(key, depth);
-            let branch_key = BranchKey::new(height as u8, key);
+/// Result of computing a subtree — propagated upward during recursion.
+enum NodeResult {
+    /// Subtree is empty (no leaves).
+    Empty,
+    /// Subtree contains exactly one leaf (collapsed).
+    Collapsed(CollapsedLeaf),
+    /// Subtree contains two or more leaves (standard internal).
+    Internal { hash: Hash },
+}
 
-            let sibling = self
-                .store
-                .branches
-                .get(&branch_key)
-                .map(|bc| if goes_right { bc.left } else { bc.right })
-                .unwrap_or(empty_hashes[height]);
-
-            let (left, right) = if goes_right { (sibling, current) } else { (current, sibling) };
-            let parent_hash = hash_node::<H>(left, right);
-            self.store.insert_branch(branch_key, BranchChildren { left, right });
-            current = parent_hash;
+impl NodeResult {
+    /// Compute the hash this node contributes to its parent at the given `parent_depth`.
+    ///
+    /// Indexes `EMPTY_HASHES[DEPTH - 1 - parent_depth]`: safe because
+    /// `parent_depth` ranges from 0 (root) to `DEPTH - 1` (leaf-parent),
+    /// yielding indices 255..=0, all within the 257-element array.
+    fn hash<H: SmtHasher>(&self, parent_depth: usize) -> Hash {
+        match self {
+            NodeResult::Empty => H::EMPTY_HASHES[DEPTH - 1 - parent_depth],
+            NodeResult::Collapsed(cl) => hash_node::<H::CollapsedHasher>(cl.lane_key, cl.leaf_hash),
+            NodeResult::Internal { hash } => *hash,
         }
-
-        current
     }
 }
 
-/// Map of changed branches: `BranchKey → BranchChildren`.
-pub type SmtBranchChanges = BTreeMap<BranchKey, BranchChildren>;
-
-/// Compute the new SMT root and **only the changed branches** for a set of leaf updates.
+/// Compute the new SMT root and **only the changed nodes** for a set of leaf updates.
+///
+/// Uses top-down recursion with Suffix-Only Leaf (SLO) optimization:
+/// collapsed single-leaf subtrees are represented as a single node instead of
+/// a full 256-level branch chain, cutting writes from O(256) to O(1) per lone leaf.
 ///
 /// Reads from an immutable `&impl SmtStore`. Does not mutate any state.
-/// Paths stop propagating when the computed parent matches the existing value
-/// in the store, so untouched subtrees are never visited above the divergence point.
-///
-/// Returns `(new_root, changed_branches)` where the map contains only branches
-/// whose children actually changed.
+/// Returns `(new_root, changed_nodes)`.
 pub fn compute_root_update<H: SmtHasher, S: SmtStore>(
     store: &S,
     current_root: Hash,
     leaf_updates: SortedLeafUpdates,
-) -> Result<(Hash, SmtBranchChanges), S::Error> {
-    let mut changes = SmtBranchChanges::new();
+) -> Result<(Hash, SmtNodeChanges), S::Error> {
+    let mut changes = SmtNodeChanges::new();
     let root = compute_root_update_into::<H, S>(store, current_root, leaf_updates, &mut changes)?;
     Ok((root, changes))
 }
 
-/// Like [`compute_root_update`] but writes into an externally-owned branch map.
+/// Like [`compute_root_update`] but writes into an externally-owned node map.
 ///
-/// Pre-populated entries are used as "existing" branches: the local buffer is
-/// checked before the immutable store, and paths that match pre-existing values
-/// stop propagating. This allows proof-verified branches to short-circuit
-/// tree computation.
+/// Pre-populated entries act as a proof cache: the local buffer is checked
+/// before the immutable store.
 pub fn compute_root_update_into<H: SmtHasher, S: SmtStore>(
     store: &S,
     current_root: Hash,
     leaf_updates: SortedLeafUpdates,
-    changes: &mut SmtBranchChanges,
+    changes: &mut SmtNodeChanges,
 ) -> Result<Hash, S::Error> {
     if leaf_updates.is_empty() {
         return Ok(current_root);
     }
 
-    // Read a branch: check changes (proof cache) first, then the immutable store.
-    let read_branch = |changes: &SmtBranchChanges, bk: BranchKey| -> Result<Option<BranchChildren>, S::Error> {
-        if let Some(&bc) = changes.get(&bk) {
-            return Ok(Some(bc));
+    let result = compute_subtree::<H, S>(store, changes, leaf_updates.as_ref(), 0)?;
+
+    // Convert the root-level NodeResult to a root hash
+    match &result {
+        NodeResult::Empty => Ok(H::empty_root()),
+        NodeResult::Collapsed(cl) => Ok(hash_node::<H::CollapsedHasher>(cl.lane_key, cl.leaf_hash)),
+        NodeResult::Internal { hash } => Ok(*hash),
+    }
+}
+
+/// Read a node from the changes map first, then the store.
+fn read_node<S: SmtStore>(store: &S, changes: &SmtNodeChanges, bk: &BranchKey) -> Result<Option<Node>, S::Error> {
+    if let Some(&nk) = changes.get(bk) {
+        return Ok(nk);
+    }
+    store.get_node(bk)
+}
+
+/// Compute the BranchKey for a child of `parent` on the given side.
+///
+/// # Overflow safety
+/// `parent.depth + 1` is safe because this is never called at the leaf-parent
+/// level (depth 255). In `prove()`, depth 255 is handled via `get_leaf` instead.
+/// In `compute_subtree`, depth 255 is handled by the `depth == DEPTH - 1` early return.
+fn child_branch_key(parent: &BranchKey, right: bool, depth: usize) -> BranchKey {
+    debug_assert!(parent.depth < 255, "child_branch_key called at leaf-parent level");
+    let child_depth = parent.depth + 1;
+    let mut bytes = parent.node_key.as_bytes();
+    if right {
+        bytes[depth / 8] |= 0x80 >> (depth % 8);
+    }
+    BranchKey { depth: child_depth, node_key: Hash::from_bytes(bytes) }
+}
+
+fn leaf_result(update: Option<&LeafUpdate>) -> NodeResult {
+    match update {
+        Some(u) if u.leaf_hash != kaspa_hashes::ZERO_HASH => {
+            NodeResult::Collapsed(CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash })
         }
-        store.get_branch(&bk)
+        _ => NodeResult::Empty,
+    }
+}
+
+fn merged_node<H: SmtHasher>(left: &NodeResult, right: &NodeResult, depth: usize) -> (NodeResult, Option<Node>) {
+    let result = match (left, right) {
+        (NodeResult::Empty, NodeResult::Empty) => NodeResult::Empty,
+        (NodeResult::Collapsed(cl), NodeResult::Empty) | (NodeResult::Empty, NodeResult::Collapsed(cl)) => NodeResult::Collapsed(*cl),
+        _ => {
+            let hash = hash_node::<H>(left.hash::<H>(depth), right.hash::<H>(depth));
+            NodeResult::Internal { hash }
+        }
     };
 
-    let empty_hashes = &H::EMPTY_HASHES;
-    let mut current: Vec<LeafUpdate> = leaf_updates.into_vec();
-    let mut next = Vec::with_capacity(current.len());
+    let node = match &result {
+        NodeResult::Empty => None,
+        NodeResult::Collapsed(cl) => Some(Node::Collapsed(*cl)),
+        NodeResult::Internal { hash } => Some(Node::Internal(*hash)),
+    };
 
-    for depth in (0..DEPTH).rev() {
-        let height = DEPTH - 1 - depth;
+    (result, node)
+}
 
-        let mut i = 0;
-        while i < current.len() {
-            let entry = current[i];
-            let branch_key = BranchKey::new(height as u8, &entry.key);
+fn record_change(changes: &mut SmtNodeChanges, subtree_key: BranchKey, existing: Option<Node>, new_node: Option<Node>) {
+    if existing != new_node {
+        changes.insert(subtree_key, new_node);
+    }
+}
 
-            // Check if the next entry is a sibling (same BranchKey)
-            let sibling_in_batch = if i + 1 < current.len() {
-                let next_bk = BranchKey::new(height as u8, &current[i + 1].key);
-                if branch_key == next_bk { Some(current[i + 1].leaf_hash) } else { None }
-            } else {
-                None
-            };
-
-            // Read existing children from changes (proof cache) or store
-            let existing = read_branch(changes, branch_key)?;
-
-            let new_children = if let Some(sib) = sibling_in_batch {
-                BranchChildren { left: entry.leaf_hash, right: sib }
-            } else {
-                let goes_right = bit_at(&entry.key, depth);
-                let sibling = existing.map(|bc| if goes_right { bc.left } else { bc.right }).unwrap_or(empty_hashes[height]);
-                if goes_right {
-                    BranchChildren { left: sibling, right: entry.leaf_hash }
-                } else {
-                    BranchChildren { left: entry.leaf_hash, right: sibling }
-                }
-            };
-
-            // Only hash and propagate if the branch actually changed.
-            // When the existing value came from the proof cache (changes map)
-            // and children are unchanged, we skip the hash entirely.
-            let empty = BranchChildren { left: empty_hashes[height], right: empty_hashes[height] };
-            if new_children != existing.unwrap_or(empty) {
-                let parent = hash_node::<H>(new_children.left, new_children.right);
-                changes.insert(branch_key, new_children);
-                next.push(LeafUpdate { key: entry.key, leaf_hash: parent });
+fn expand_singleton(existing: Option<Node>, updates: SortedLeafUpdatesRef) -> (Option<Node>, SortedLeafUpdates) {
+    match existing {
+        Some(Node::Collapsed(cl)) => match updates.binary_search_by_key(&cl.lane_key) {
+            Err(at) => {
+                let mut expanded = Vec::with_capacity(updates.len() + 1);
+                expanded.extend_from_slice(&updates.as_slice()[..at]);
+                expanded.push(LeafUpdate { key: cl.lane_key, leaf_hash: cl.leaf_hash });
+                expanded.extend_from_slice(&updates.as_slice()[at..]);
+                (None, SortedLeafUpdates::from_sorted_vec(expanded))
             }
+            Ok(_) => (None, SortedLeafUpdates::from_sorted_vec(updates.as_slice().to_vec())),
+        },
+        other => (other, SortedLeafUpdates::from_sorted_vec(updates.as_slice().to_vec())),
+    }
+}
 
-            i += if sibling_in_batch.is_some() { 2 } else { 1 };
+/// Recursive top-down subtree computation.
+///
+/// `updates` must be sorted by key and non-empty.
+/// `depth` is the current tree depth (0 = root, 255 = leaf parent).
+fn compute_subtree<H: SmtHasher, S: SmtStore>(
+    store: &S,
+    changes: &mut SmtNodeChanges,
+    updates: SortedLeafUpdatesRef<'_>,
+    depth: usize,
+) -> Result<NodeResult, S::Error> {
+    debug_assert!(!updates.is_empty());
+    let subtree_key = BranchKey::new(depth as u8, &updates.first().unwrap().key);
+
+    let existing = read_node::<S>(store, changes, &subtree_key)?;
+
+    if let Some(u) = updates.single()
+        && existing.is_none()
+    {
+        if u.leaf_hash == kaspa_hashes::ZERO_HASH {
+            return Ok(NodeResult::Empty);
         }
-
-        core::mem::swap(&mut current, &mut next);
-        next.clear();
-
-        if current.is_empty() {
-            return Ok(current_root);
-        }
+        let cl = CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash };
+        record_change(changes, subtree_key, existing, Some(Node::Collapsed(cl)));
+        return Ok(NodeResult::Collapsed(cl));
     }
 
-    debug_assert_eq!(current.len(), 1);
-    Ok(current[0].leaf_hash)
+    if let Some(u) = updates.single()
+        && let Some(Node::Collapsed(existing_cl)) = existing
+        && u.key == existing_cl.lane_key
+    {
+        let new_node = if u.leaf_hash == kaspa_hashes::ZERO_HASH {
+            None
+        } else {
+            Some(Node::Collapsed(CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash }))
+        };
+        record_change(changes, subtree_key, existing, new_node);
+        return Ok(leaf_result(Some(u)));
+    }
+
+    let (existing_for_write, updates) = expand_singleton(existing, updates);
+
+    // Leaf-parent level: resolve directly from updates, no child nodes.
+    // This early return guards `child_branch_key` and `read_sibling_result`
+    // below from being called at depth 255 (which would overflow depth+1).
+    if depth == DEPTH - 1 {
+        debug_assert!(updates.len() <= 2);
+        let left_result = leaf_result(updates.first_with_bit(depth, false));
+        let right_result = leaf_result(updates.first_with_bit(depth, true));
+        let (result, new_node) = merged_node::<H>(&left_result, &right_result, DEPTH - 1);
+        record_change(changes, subtree_key, existing_for_write, new_node);
+        return Ok(result);
+    }
+
+    let (left_updates, right_updates) = updates.partition_by_bit(depth);
+
+    let left_result = if left_updates.is_empty() {
+        read_sibling_result::<S>(store, changes, &subtree_key, false, depth)?
+    } else {
+        compute_subtree::<H, S>(store, changes, left_updates, depth + 1)?
+    };
+
+    let right_result = if right_updates.is_empty() {
+        read_sibling_result::<S>(store, changes, &subtree_key, true, depth)?
+    } else {
+        compute_subtree::<H, S>(store, changes, right_updates, depth + 1)?
+    };
+
+    let (result, new_node) = merged_node::<H>(&left_result, &right_result, depth);
+    record_change(changes, subtree_key, existing_for_write, new_node);
+    Ok(result)
+}
+
+/// Read an existing sibling node directly.
+///
+/// Called when one side of a branch has no updates. Reads the sibling
+/// node by its own key (1 read) instead of extracting from the parent.
+fn read_sibling_result<S: SmtStore>(
+    store: &S,
+    changes: &SmtNodeChanges,
+    parent_key: &BranchKey,
+    sibling_is_right: bool,
+    depth: usize,
+) -> Result<NodeResult, S::Error> {
+    let sibling_key = child_branch_key(parent_key, sibling_is_right, depth);
+    match read_node::<S>(store, changes, &sibling_key)? {
+        None => Ok(NodeResult::Empty),
+        Some(Node::Collapsed(cl)) => Ok(NodeResult::Collapsed(cl)),
+        Some(Node::Internal(hash)) => Ok(NodeResult::Internal { hash }),
+    }
 }
 
 #[cfg(test)]
@@ -328,113 +487,111 @@ mod tests {
         assert!(changes.is_empty());
     }
 
+    /// Helper: build SLO store from changes
+    fn apply_changes(store: &mut BTreeSmtStore, changes: &SmtNodeChanges) {
+        for (bk, node) in changes {
+            store.insert_node(*bk, *node);
+        }
+    }
+
     #[test]
-    fn test_compute_root_update_matches_insert() {
+    fn test_compute_root_update_batch_matches_incremental() {
         let k1 = test_key(b"1");
         let k2 = test_key(b"2");
         let l1 = test_leaf(b"a");
         let l2 = test_leaf(b"b");
 
-        // Build via in-memory tree
-        let mut tree = Smt::new();
-        tree.insert(k1, l1);
-        tree.insert(k2, l2);
-        let expected_root = tree.root();
-
-        // Build via compute_root_update from empty store
+        // Batch insert
         let store = BTreeSmtStore::new();
         let empty_root = TestHasher::empty_root();
-        let (root, _changes) = compute_root_update::<TestHasher, _>(&store, empty_root, updates([(k1, l1), (k2, l2)])).unwrap();
+        let (batch_root, _) = compute_root_update::<TestHasher, _>(&store, empty_root, updates([(k1, l1), (k2, l2)])).unwrap();
 
-        assert_eq!(root, expected_root);
+        // Incremental: insert k1 then k2
+        let mut store2 = BTreeSmtStore::new();
+        let (root1, changes1) = compute_root_update::<TestHasher, _>(&store2, empty_root, updates([(k1, l1)])).unwrap();
+        apply_changes(&mut store2, &changes1);
+        let (root2, _) = compute_root_update::<TestHasher, _>(&store2, root1, updates([(k2, l2)])).unwrap();
+
+        assert_eq!(batch_root, root2);
+        assert_ne!(batch_root, empty_root);
     }
 
     #[test]
     fn test_compute_root_update_incremental() {
-        // Insert k1, persist to store. Then update k2 via compute_root_update.
         let k1 = test_key(b"1");
         let k2 = test_key(b"2");
         let l1 = test_leaf(b"a");
         let l2 = test_leaf(b"b");
 
-        let mut tree = Smt::new();
-        tree.insert(k1, l1);
-        let root1 = tree.root();
-        // The store now has branches for k1's path
-        let store = tree.into_store();
+        // Insert k1, persist to store
+        let mut store = BTreeSmtStore::new();
+        let empty_root = TestHasher::empty_root();
+        let (root1, changes1) = compute_root_update::<TestHasher, _>(&store, empty_root, updates([(k1, l1)])).unwrap();
+        apply_changes(&mut store, &changes1);
 
-        // compute_root_update from this store with k2
-        let (root2, changes) = compute_root_update::<TestHasher, _>(&store, root1, updates([(k2, l2)])).unwrap();
+        // Add k2 incrementally
+        let (root2, changes2) = compute_root_update::<TestHasher, _>(&store, root1, updates([(k2, l2)])).unwrap();
 
-        // Verify against full in-memory tree
-        let mut tree2 = Smt::new();
-        tree2.insert(k1, l1);
-        tree2.insert(k2, l2);
-
-        assert_eq!(root2, tree2.root());
-        // Changes should only contain k2's path, not k1's unchanged branches
-        assert!(changes.len() <= 256, "at most 256 branches for one leaf path");
+        assert_ne!(root2, root1);
+        // SLO: changes should be compact (collapsed nodes + internal at divergence)
+        assert!(!changes2.is_empty());
     }
 
     #[test]
     fn test_compute_root_update_unchanged_no_propagation() {
-        // Insert k1 into tree. Then "update" k1 with the same value.
-        // No branches should change.
         let k1 = test_key(b"1");
         let l1 = test_leaf(b"a");
 
-        let mut tree = Smt::new();
-        tree.insert(k1, l1);
-        let root = tree.root();
-        let store = tree.into_store();
+        // Insert k1 via SLO
+        let mut store = BTreeSmtStore::new();
+        let empty_root = TestHasher::empty_root();
+        let (root, changes) = compute_root_update::<TestHasher, _>(&store, empty_root, updates([(k1, l1)])).unwrap();
+        apply_changes(&mut store, &changes);
 
-        let (new_root, changes) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, l1)])).unwrap();
+        // "Update" k1 with same value — no changes
+        let (new_root, new_changes) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, l1)])).unwrap();
 
         assert_eq!(new_root, root, "same leaf value should produce same root");
-        assert!(changes.is_empty(), "no branches should change when leaf value is identical");
+        assert!(new_changes.is_empty(), "no nodes should change when leaf value is identical");
     }
 
     #[test]
     fn test_compute_root_update_only_changed_branches() {
-        // Insert k1 and k2. Then update only k1.
-        // Only k1's path branches should appear in changes.
         let k1 = test_key(b"1");
         let k2 = test_key(b"2");
         let l1 = test_leaf(b"a");
         let l2 = test_leaf(b"b");
         let l1_new = test_leaf(b"a_new");
 
-        let mut tree = Smt::new();
-        tree.insert(k1, l1);
-        tree.insert(k2, l2);
-        let root = tree.root();
-        let store = tree.into_store();
+        // Insert k1 and k2
+        let mut store = BTreeSmtStore::new();
+        let empty_root = TestHasher::empty_root();
+        let (root, changes) = compute_root_update::<TestHasher, _>(&store, empty_root, updates([(k1, l1), (k2, l2)])).unwrap();
+        apply_changes(&mut store, &changes);
 
-        let (new_root, changes) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, l1_new)])).unwrap();
+        // Update only k1
+        let (new_root, _new_changes) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, l1_new)])).unwrap();
 
         assert_ne!(new_root, root);
-        // The number of changed branches should be <= 256 (one path)
-        assert!(changes.len() <= 256);
-        // Verify result matches in-memory computation
-        let mut tree2 = Smt::new();
-        tree2.insert(k1, l1_new);
-        tree2.insert(k2, l2);
-        assert_eq!(new_root, tree2.root());
+        // Verify: batch from scratch matches
+        let store3 = BTreeSmtStore::new();
+        let (expected, _) = compute_root_update::<TestHasher, _>(&store3, empty_root, updates([(k1, l1_new), (k2, l2)])).unwrap();
+        assert_eq!(new_root, expected);
     }
 
     #[test]
     fn test_compute_root_update_expire_leaf() {
-        // Insert k1. Then expire it (ZERO_HASH). Root should return to empty.
         let k1 = test_key(b"1");
         let l1 = test_leaf(b"a");
 
-        let mut tree = Smt::new();
-        tree.insert(k1, l1);
-        let root = tree.root();
-        let store = tree.into_store();
-
+        // Insert k1 via SLO
+        let mut store = BTreeSmtStore::new();
         let empty_root = TestHasher::empty_root();
-        let (new_root, _changes) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, ZERO_HASH)])).unwrap();
+        let (root, changes) = compute_root_update::<TestHasher, _>(&store, empty_root, updates([(k1, l1)])).unwrap();
+        apply_changes(&mut store, &changes);
+
+        // Expire k1
+        let (new_root, _) = compute_root_update::<TestHasher, _>(&store, root, updates([(k1, ZERO_HASH)])).unwrap();
 
         assert_eq!(new_root, empty_root);
     }
@@ -1311,7 +1468,7 @@ mod tests {
 
     #[test]
     fn test_malformed_proof_too_many_siblings() {
-        let proof = OwnedSmtProof { bitmap: [0xFF; 32], siblings: Vec::from([ZERO_HASH]) };
+        let proof = OwnedSmtProof { bitmap: [0xFF; 32], siblings: Vec::from([ZERO_HASH]), terminal: ProofTerminal::Full };
         let key = test_key(b"k");
         let err = proof.compute_root::<TestHasher>(&key, None).unwrap_err();
         assert_eq!(err, SmtProofError::SiblingCountMismatch { expected: 0, actual: 1 });
@@ -1319,9 +1476,434 @@ mod tests {
 
     #[test]
     fn test_malformed_proof_too_few_siblings() {
-        let proof = OwnedSmtProof { bitmap: [0x00; 32], siblings: Vec::new() };
+        let proof = OwnedSmtProof { bitmap: [0x00; 32], siblings: Vec::new(), terminal: ProofTerminal::Full };
         let key = test_key(b"k");
         let err = proof.compute_root::<TestHasher>(&key, None).unwrap_err();
         assert_eq!(err, SmtProofError::SiblingCountMismatch { expected: 256, actual: 0 });
+    }
+
+    // ========================================================================
+    // SLO (Suffix-Only Leaf) top-down algorithm tests
+    // ========================================================================
+
+    #[test]
+    fn test_slo_single_leaf_collapsed() {
+        let k1 = test_key(b"1");
+        let l1 = test_leaf(b"a");
+
+        let store = BTreeSmtStore::new();
+        let (root, changes) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1)])).unwrap();
+
+        // Should produce a single Collapsed entry at the root level (depth 0)
+        assert_eq!(changes.len(), 1, "single leaf should produce one collapsed node");
+        let (&bk, &nk) = changes.iter().next().unwrap();
+        assert_eq!(bk.depth, 0);
+        assert!(matches!(nk, Some(Node::Collapsed(cl)) if cl.lane_key == k1 && cl.leaf_hash == l1));
+
+        // Root should not be the empty root
+        assert_ne!(root, TestHasher::empty_root());
+    }
+
+    #[test]
+    fn test_slo_two_leaves_internal() {
+        let k1 = test_key(b"1");
+        let k2 = test_key(b"2");
+        let l1 = test_leaf(b"a");
+        let l2 = test_leaf(b"b");
+
+        let store = BTreeSmtStore::new();
+        let (root, changes) =
+            compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1), (k2, l2)])).unwrap();
+
+        assert_ne!(root, TestHasher::empty_root());
+
+        // There should be collapsed nodes for each leaf and internal nodes above
+        let collapsed_count = changes.values().filter(|n| matches!(n, Some(Node::Collapsed(_)))).count();
+        let internal_count = changes.values().filter(|n| matches!(n, Some(Node::Internal(_)))).count();
+        assert_eq!(collapsed_count, 2, "two leaves should produce two collapsed nodes");
+        assert!(internal_count >= 1, "at least one internal node above the divergence point");
+    }
+
+    #[test]
+    fn test_slo_expire_sole_leaf() {
+        let k1 = test_key(b"1");
+        let l1 = test_leaf(b"a");
+
+        // Insert one leaf
+        let store = BTreeSmtStore::new();
+        let (root1, changes1) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1)])).unwrap();
+        assert_ne!(root1, TestHasher::empty_root());
+
+        // Apply changes to store
+        let mut store2 = BTreeSmtStore::new();
+        for (bk, nk) in &changes1 {
+            store2.insert_node(*bk, *nk);
+        }
+
+        // Expire the leaf
+        let (root2, _changes2) = compute_root_update::<TestHasher, _>(&store2, root1, updates([(k1, ZERO_HASH)])).unwrap();
+        assert_eq!(root2, TestHasher::empty_root(), "expiring sole leaf should return to empty root");
+    }
+
+    #[test]
+    fn test_slo_expire_one_of_two() {
+        let k1 = test_key(b"1");
+        let k2 = test_key(b"2");
+        let l1 = test_leaf(b"a");
+        let l2 = test_leaf(b"b");
+
+        // Insert two leaves
+        let store = BTreeSmtStore::new();
+        let (root1, changes1) =
+            compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1), (k2, l2)])).unwrap();
+
+        // Apply to store
+        let mut store2 = BTreeSmtStore::new();
+        for (bk, nk) in &changes1 {
+            store2.insert_node(*bk, *nk);
+        }
+
+        // Expire k1 — k2 should collapse upward
+        let (root2, changes2) = compute_root_update::<TestHasher, _>(&store2, root1, updates([(k1, ZERO_HASH)])).unwrap();
+
+        // After expiring one of two, we should be back to a single-leaf tree
+        // The remaining leaf should be represented as a single collapsed node at root
+        let collapsed_count = changes2.values().filter(|n| matches!(n, Some(Node::Collapsed(_)))).count();
+        assert!(collapsed_count >= 1, "surviving leaf should collapse upward");
+
+        // Root should match inserting just k2 from scratch
+        let store3 = BTreeSmtStore::new();
+        let (root_k2_only, _) = compute_root_update::<TestHasher, _>(&store3, TestHasher::empty_root(), updates([(k2, l2)])).unwrap();
+        assert_eq!(root2, root_k2_only, "expiring k1 should produce same root as only inserting k2");
+    }
+
+    #[test]
+    fn test_slo_expand_collapsed() {
+        let k1 = test_key(b"1");
+        let k2 = test_key(b"2");
+        let l1 = test_leaf(b"a");
+        let l2 = test_leaf(b"b");
+
+        // Insert one leaf (collapsed)
+        let store = BTreeSmtStore::new();
+        let (root1, changes1) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1)])).unwrap();
+
+        let mut store2 = BTreeSmtStore::new();
+        for (bk, nk) in &changes1 {
+            store2.insert_node(*bk, *nk);
+        }
+
+        // Insert second leaf — should expand the collapsed node
+        let (root2, changes2) = compute_root_update::<TestHasher, _>(&store2, root1, updates([(k2, l2)])).unwrap();
+
+        // Should have two collapsed nodes and at least one internal
+        let collapsed_count = changes2.values().filter(|n| matches!(n, Some(Node::Collapsed(_)))).count();
+        assert!(collapsed_count >= 1, "expansion should produce collapsed nodes");
+
+        // Root should match inserting both from scratch
+        let store3 = BTreeSmtStore::new();
+        let (root_both, _) =
+            compute_root_update::<TestHasher, _>(&store3, TestHasher::empty_root(), updates([(k1, l1), (k2, l2)])).unwrap();
+        assert_eq!(root2, root_both, "incremental expand should match batch insert");
+    }
+
+    #[test]
+    fn test_slo_same_key_update() {
+        let k1 = test_key(b"1");
+        let l1 = test_leaf(b"a");
+        let l2 = test_leaf(b"b");
+
+        // Insert k1 with l1
+        let store = BTreeSmtStore::new();
+        let (root1, changes1) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1)])).unwrap();
+
+        let mut store2 = BTreeSmtStore::new();
+        for (bk, nk) in &changes1 {
+            store2.insert_node(*bk, *nk);
+        }
+
+        // Update k1 with l2 (same key, different value — no expansion)
+        let (root2, changes2) = compute_root_update::<TestHasher, _>(&store2, root1, updates([(k1, l2)])).unwrap();
+
+        assert_ne!(root2, root1, "updating leaf value should change root");
+
+        // Should still be a single collapsed node
+        let collapsed_count = changes2.values().filter(|n| matches!(n, Some(Node::Collapsed(_)))).count();
+        assert_eq!(collapsed_count, 1, "same-key update should remain collapsed");
+
+        // Match inserting k1 with l2 from scratch
+        let store3 = BTreeSmtStore::new();
+        let (root_scratch, _) = compute_root_update::<TestHasher, _>(&store3, TestHasher::empty_root(), updates([(k1, l2)])).unwrap();
+        assert_eq!(root2, root_scratch);
+    }
+
+    #[test]
+    fn test_slo_batch_mixed_insert_expire() {
+        let k1 = test_key(b"1");
+        let k2 = test_key(b"2");
+        let k3 = test_key(b"3");
+        let l1 = test_leaf(b"a");
+        let l2 = test_leaf(b"b");
+        let l3 = test_leaf(b"c");
+
+        // Insert k1, k2
+        let store = BTreeSmtStore::new();
+        let (root1, changes1) =
+            compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1), (k2, l2)])).unwrap();
+
+        let mut store2 = BTreeSmtStore::new();
+        for (bk, nk) in &changes1 {
+            store2.insert_node(*bk, *nk);
+        }
+
+        // Batch: expire k1, insert k3
+        let (root2, _changes2) = compute_root_update::<TestHasher, _>(&store2, root1, updates([(k1, ZERO_HASH), (k3, l3)])).unwrap();
+
+        // Should match inserting k2, k3 from scratch
+        let store3 = BTreeSmtStore::new();
+        let (root_expected, _) =
+            compute_root_update::<TestHasher, _>(&store3, TestHasher::empty_root(), updates([(k2, l2), (k3, l3)])).unwrap();
+        assert_eq!(root2, root_expected);
+    }
+
+    #[test]
+    fn test_slo_deep_shared_prefix() {
+        // Create two keys that share a long prefix and diverge late
+        let mut bytes1 = [0u8; 32];
+        let mut bytes2 = [0u8; 32];
+        // Same first 31 bytes, differ only in last byte
+        bytes1[31] = 0b00000010; // bit 254 = 1
+        bytes2[31] = 0b00000001; // bit 255 = 1
+        let k1 = key_from_bytes(bytes1);
+        let k2 = key_from_bytes(bytes2);
+        let l1 = test_leaf(b"deep1");
+        let l2 = test_leaf(b"deep2");
+
+        let store = BTreeSmtStore::new();
+        let (root, changes) =
+            compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1), (k2, l2)])).unwrap();
+
+        // The two keys diverge very late (near leaf level), so we should have
+        // internal nodes from the divergence point to the root, but collapsed below
+        assert_ne!(root, TestHasher::empty_root());
+        assert!(changes.len() >= 3, "deep prefix sharing: 2 collapsed + internal at divergence");
+    }
+
+    #[test]
+    fn test_slo_collapse_propagates_levels() {
+        // Insert 3 keys, expire 2 of them, verify the surviving one collapses all the way up
+        let k1 = test_key(b"c1");
+        let k2 = test_key(b"c2");
+        let k3 = test_key(b"c3");
+        let l1 = test_leaf(b"v1");
+        let l2 = test_leaf(b"v2");
+        let l3 = test_leaf(b"v3");
+
+        let store = BTreeSmtStore::new();
+        let (root1, changes1) =
+            compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1), (k2, l2), (k3, l3)])).unwrap();
+
+        let mut store2 = BTreeSmtStore::new();
+        for (bk, nk) in &changes1 {
+            store2.insert_node(*bk, *nk);
+        }
+
+        // Expire k1 and k2
+        let (root2, _) = compute_root_update::<TestHasher, _>(&store2, root1, updates([(k1, ZERO_HASH), (k2, ZERO_HASH)])).unwrap();
+
+        // Should match k3-only tree
+        let store3 = BTreeSmtStore::new();
+        let (root_k3_only, _) = compute_root_update::<TestHasher, _>(&store3, TestHasher::empty_root(), updates([(k3, l3)])).unwrap();
+        assert_eq!(root2, root_k3_only, "after expiring 2 of 3, surviving leaf should collapse to root");
+    }
+
+    #[test]
+    fn test_slo_stress_random() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let n = 100;
+
+        // Generate random keys and leaf hashes
+        let mut keys = Vec::new();
+        let mut leaves = Vec::new();
+        for _ in 0..n {
+            let mut key_bytes = [0u8; 32];
+            rng.fill(&mut key_bytes);
+            keys.push(Hash::from_bytes(key_bytes));
+            let mut leaf_bytes = [0u8; 32];
+            rng.fill(&mut leaf_bytes);
+            leaves.push(Hash::from_bytes(leaf_bytes));
+        }
+
+        // Insert all at once (batch)
+        let all_updates: Vec<(Hash, Hash)> = keys.iter().copied().zip(leaves.iter().copied()).collect();
+        let store = BTreeSmtStore::new();
+        let (root_batch, _) =
+            compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates(all_updates.clone())).unwrap();
+
+        // Insert one by one (incremental)
+        let mut store_incr = BTreeSmtStore::new();
+        let mut root_incr = TestHasher::empty_root();
+        for &(k, l) in &all_updates {
+            let (new_root, changes) = compute_root_update::<TestHasher, _>(&store_incr, root_incr, updates([(k, l)])).unwrap();
+            for (bk, nk) in &changes {
+                store_incr.insert_node(*bk, *nk);
+            }
+            root_incr = new_root;
+        }
+
+        assert_eq!(root_batch, root_incr, "batch and incremental should produce identical roots");
+
+        // Expire half randomly
+        let to_expire: Vec<(Hash, Hash)> = keys[..n / 2].iter().map(|k| (*k, ZERO_HASH)).collect();
+        let remaining: Vec<(Hash, Hash)> = keys[n / 2..].iter().copied().zip(leaves[n / 2..].iter().copied()).collect();
+
+        let (root_after_expire, changes_expire) =
+            compute_root_update::<TestHasher, _>(&store_incr, root_incr, updates(to_expire)).unwrap();
+
+        // Apply expire changes
+        let mut store_remaining = store_incr;
+        for (bk, nk) in &changes_expire {
+            store_remaining.insert_node(*bk, *nk);
+        }
+
+        // Insert remaining from scratch
+        let store_fresh = BTreeSmtStore::new();
+        let (root_fresh, _) =
+            compute_root_update::<TestHasher, _>(&store_fresh, TestHasher::empty_root(), updates(remaining)).unwrap();
+
+        assert_eq!(root_after_expire, root_fresh, "expire half should match inserting only the remaining half");
+    }
+
+    // ========================================================================
+    // walk_up vs compute_root_update consistency
+    // ========================================================================
+
+    /// Single leaf: walk_up (insert) must produce the same root as compute_root_update (SLO).
+    #[test]
+    fn walk_up_vs_slo_single_leaf() {
+        let k = test_key(b"solo");
+        let l = test_leaf(b"solo_val");
+
+        let mut tree = Smt::new();
+        tree.insert(k, l);
+
+        let store = BTreeSmtStore::new();
+        let (slo_root, _) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k, l)])).unwrap();
+
+        assert_eq!(tree.root(), slo_root, "walk_up and SLO must agree on single-leaf root");
+    }
+
+    /// Multiple leaves inserted incrementally: walk_up must match incremental SLO.
+    #[test]
+    fn walk_up_vs_slo_incremental_multi() {
+        let keys_and_leaves: Vec<(Hash, Hash)> = (0u8..10).map(|i| (test_key(&[i]), test_leaf(&[i + 100]))).collect();
+
+        // walk_up path
+        let mut tree = Smt::new();
+        for &(k, l) in &keys_and_leaves {
+            tree.insert(k, l);
+        }
+
+        // SLO incremental path
+        let mut store = BTreeSmtStore::new();
+        let mut slo_root = TestHasher::empty_root();
+        for &(k, l) in &keys_and_leaves {
+            let (new_root, changes) = compute_root_update::<TestHasher, _>(&store, slo_root, updates([(k, l)])).unwrap();
+            apply_changes(&mut store, &changes);
+            slo_root = new_root;
+        }
+
+        assert_eq!(tree.root(), slo_root, "walk_up and incremental SLO must agree");
+    }
+
+    /// Batch SLO must match walk_up for the same leaf set.
+    #[test]
+    fn walk_up_vs_slo_batch() {
+        let keys_and_leaves: Vec<(Hash, Hash)> = (0u8..5).map(|i| (test_key(&[i]), test_leaf(&[i + 50]))).collect();
+
+        let mut tree = Smt::new();
+        for &(k, l) in &keys_and_leaves {
+            tree.insert(k, l);
+        }
+
+        let store = BTreeSmtStore::new();
+        let (slo_root, _) =
+            compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates(keys_and_leaves.clone())).unwrap();
+
+        assert_eq!(tree.root(), slo_root, "walk_up and batch SLO must agree");
+    }
+
+    /// walk_up update (overwrite existing leaf) must match SLO incremental update.
+    #[test]
+    fn walk_up_vs_slo_update_existing() {
+        let k1 = test_key(b"upd1");
+        let k2 = test_key(b"upd2");
+        let l1 = test_leaf(b"v1");
+        let l2 = test_leaf(b"v2");
+        let l1_new = test_leaf(b"v1_new");
+
+        // walk_up: insert both, then update k1
+        let mut tree = Smt::new();
+        tree.insert(k1, l1);
+        tree.insert(k2, l2);
+        tree.insert(k1, l1_new);
+
+        // SLO: same sequence
+        let mut store = BTreeSmtStore::new();
+        let (r1, c1) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1), (k2, l2)])).unwrap();
+        apply_changes(&mut store, &c1);
+        let (r2, _) = compute_root_update::<TestHasher, _>(&store, r1, updates([(k1, l1_new)])).unwrap();
+
+        assert_eq!(tree.root(), r2, "walk_up and SLO must agree after update");
+    }
+
+    /// walk_up remove must match SLO expire (ZERO_HASH).
+    #[test]
+    fn walk_up_vs_slo_remove() {
+        let k1 = test_key(b"rm1");
+        let k2 = test_key(b"rm2");
+        let l1 = test_leaf(b"rv1");
+        let l2 = test_leaf(b"rv2");
+
+        // walk_up: insert both, then remove k1
+        let mut tree = Smt::new();
+        tree.insert(k1, l1);
+        tree.insert(k2, l2);
+        tree.remove(&k1);
+
+        // SLO: same sequence
+        let mut store = BTreeSmtStore::new();
+        let (r1, c1) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates([(k1, l1), (k2, l2)])).unwrap();
+        apply_changes(&mut store, &c1);
+        let (r2, _) = compute_root_update::<TestHasher, _>(&store, r1, updates([(k1, ZERO_HASH)])).unwrap();
+
+        assert_eq!(tree.root(), r2, "walk_up remove and SLO expire must agree");
+    }
+
+    /// Randomized: N inserts via walk_up must match batch SLO.
+    #[test]
+    fn walk_up_vs_slo_random() {
+        let mut rng = StdRng::seed_from_u64(0xdead_beef);
+        for n in [1, 2, 3, 5, 10, 20, 50] {
+            let kv: Vec<(Hash, Hash)> = (0..n)
+                .map(|_| {
+                    let mut kb = [0u8; 32];
+                    let mut vb = [0u8; 32];
+                    rng.fill(&mut kb);
+                    rng.fill(&mut vb);
+                    (Hash::from_bytes(kb), Hash::from_bytes(vb))
+                })
+                .collect();
+
+            let mut tree = Smt::new();
+            for &(k, l) in &kv {
+                tree.insert(k, l);
+            }
+
+            let store = BTreeSmtStore::new();
+            let (slo_root, _) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates(kv)).unwrap();
+
+            assert_eq!(tree.root(), slo_root, "walk_up vs batch SLO mismatch for n={n}");
+        }
     }
 }

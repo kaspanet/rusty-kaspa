@@ -36,7 +36,7 @@ use kaspa_consensus_core::{
     },
 };
 use kaspa_core::{info, trace};
-use kaspa_hashes::{Hash, SeqCommitmentMerkleBranchHash};
+use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
@@ -59,7 +59,6 @@ pub(super) struct MergesetSeqData {
 /// A resolved lane update ready for SMT processing.
 pub(super) struct ResolvedLaneUpdate {
     pub lane_key: kaspa_smt_store::LaneKey,
-    pub lane_id: [u8; 20],
     pub new_tip: Hash,
     /// True if this lane had no active canonical version (new or reactivated).
     pub is_new: bool,
@@ -229,7 +228,7 @@ impl VirtualStateProcessor {
             let (hash, build) = self.recompute_seq_commit(ctx, header)?;
             (hash, Some(build))
         } else {
-            (self.calc_accepted_id_merkle_root(header.daa_score, ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent()), None)
+            (self.calc_accepted_id_merkle_root(ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent()), None)
         };
 
         // Verify header accepted_id_merkle_root
@@ -565,11 +564,11 @@ impl VirtualStateProcessor {
                 .smt_stores
                 .get_lane(lk, parent_blue_score.saturating_sub(self.finality_depth), |bh| self.is_smt_canonical(bh, selected_parent));
             let is_new = existing.is_none();
-            let parent_ref = existing.map(|v| v.data().lane_tip_hash).unwrap_or(parent_seq_commit);
+            let parent_ref = existing.map(|v| *v.data()).unwrap_or(parent_seq_commit);
 
-            let new_tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_ref, lane_id, activity_digest: &ad, context_hash });
+            let new_tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_ref, lane_key: &lk, activity_digest: &ad, context_hash });
 
-            updates.push(ResolvedLaneUpdate { lane_key: lk, lane_id: *lane_id, new_tip, is_new });
+            updates.push(ResolvedLaneUpdate { lane_key: lk, new_tip, is_new });
         }
 
         updates
@@ -610,7 +609,7 @@ impl VirtualStateProcessor {
         // 3. Apply lane updates
         let new_lane_count = lane_updates.iter().filter(|lu| lu.is_new).count() as u64;
         for lu in lane_updates {
-            proc.update_lane(lu.lane_key, lu.lane_id, lu.new_tip);
+            proc.update_lane(lu.lane_key, lu.new_tip);
         }
 
         // 4. Build SMT (skips entirely when no pending leaves — no expirations, no touches)
@@ -675,24 +674,13 @@ impl VirtualStateProcessor {
     /// refer KIP-15 for more details
     pub(super) fn calc_accepted_id_merkle_root(
         &self,
-        daa_score: u64, // virtual in case of template, block in case of verification
         accepted_tx_digests: impl ExactSizeIterator<Item = Hash>,
         selected_parent: Hash,
     ) -> Hash {
-        if self.covenants_activation.is_active(daa_score) {
-            const HASH_SINGLE_ENTRY: bool = true;
-
-            kaspa_merkle::merkle_hash_with_hasher(
-                self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
-                kaspa_merkle::calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, HASH_SINGLE_ENTRY>(accepted_tx_digests),
-                SeqCommitmentMerkleBranchHash::new(),
-            )
-        } else {
-            kaspa_merkle::merkle_hash(
-                self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
-                kaspa_merkle::calc_merkle_root(accepted_tx_digests),
-            )
-        }
+        kaspa_merkle::merkle_hash(
+            self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
+            kaspa_merkle::calc_merkle_root(accepted_tx_digests),
+        )
     }
 }
 

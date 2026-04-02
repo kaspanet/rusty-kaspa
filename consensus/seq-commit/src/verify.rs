@@ -1,11 +1,11 @@
 //! IBD SMT verification — metadata check.
 //!
 //! Proof verification with branch caching uses [`SmtProof::compute_root_with_visitor`]
-//! from `kaspa-smt` with `&mut SmtBranchChanges` as the visitor.
+//! from `kaspa-smt` with `&mut ProofBranchCache` as the visitor.
 
 use crate::hashing::seq_state_root;
 use crate::types::SeqState;
-use kaspa_hashes::{Hash, HasherBase, SeqCommitmentMerkleBranchHash};
+use kaspa_hashes::{Hash, HasherBase, SeqCommitMerkleBranch};
 
 /// Metadata sent before lane entries, verified against the pruning point header.
 #[derive(Clone, Copy, Debug)]
@@ -52,7 +52,7 @@ pub fn verify_smt_metadata(
         seq_state_root(&SeqState { lanes_root: metadata.lanes_root, payload_and_ctx_digest: metadata.payload_and_ctx_digest });
 
     let computed = {
-        let mut h = SeqCommitmentMerkleBranchHash::new();
+        let mut h = SeqCommitMerkleBranch::new();
         h.update(metadata.parent_seq_commit).update(state_root);
         h.finalize()
     };
@@ -71,7 +71,7 @@ mod tests {
     use crate::hashing::{lane_key, payload_and_context_digest, smt_leaf_hash};
     use crate::types::{LaneId, SmtLeafInput};
     use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
-    use kaspa_smt::tree::SmtBranchChanges;
+    use kaspa_smt::proof::ProofBranchCache;
     use kaspa_smt::tree::SparseMerkleTree;
 
     type Smt = SparseMerkleTree<SeqCommitActiveNode>;
@@ -89,7 +89,8 @@ mod tests {
     }
 
     fn lh(lane_id: &LaneId, lane_tip: &Hash, blue_score: u64) -> Hash {
-        smt_leaf_hash(&SmtLeafInput { lane_id, lane_tip, blue_score })
+        let lk = lane_key(lane_id);
+        smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip, blue_score })
     }
 
     fn build_ref(entries: &[(LaneId, Hash, u64)]) -> (Hash, Smt) {
@@ -110,7 +111,7 @@ mod tests {
         let pd = payload_and_context_digest(&ch, &pr);
         let sr = seq_state_root(&SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd });
         let sc = {
-            let mut h = SeqCommitmentMerkleBranchHash::new();
+            let mut h = SeqCommitMerkleBranch::new();
             h.update(ps).update(sr);
             h.finalize()
         };
@@ -147,10 +148,10 @@ mod tests {
         let leaf = lh(&lid(1), &tip(10), 100);
         let proof = tree.prove(&lk).unwrap();
 
-        let mut branches = SmtBranchChanges::new();
+        let mut branches = ProofBranchCache::new();
         let ok = proof.as_proof().verify_cached::<SeqCommitActiveNode>(&lk, Some(leaf), root, &mut branches).unwrap();
         assert!(ok);
-        assert!(!branches.is_empty());
+        assert!(branches.len() <= proof.non_empty_count());
     }
 
     #[test]
@@ -159,7 +160,7 @@ mod tests {
         let lk = lane_key(&lid(1));
         let proof = tree.prove(&lk).unwrap();
 
-        let mut branches = SmtBranchChanges::new();
+        let mut branches = ProofBranchCache::new();
         let ok =
             proof.as_proof().verify_cached::<SeqCommitActiveNode>(&lk, Some(Hash::from_bytes([99; 32])), root, &mut branches).unwrap();
         assert!(!ok);
@@ -170,7 +171,7 @@ mod tests {
         let entries = [(lid(1), tip(10), 100), (lid(2), tip(20), 200)];
         let (root, tree) = build_ref(&entries);
 
-        let mut branches = SmtBranchChanges::new();
+        let mut branches = ProofBranchCache::new();
 
         let lk0 = lane_key(&lid(1));
         let proof0 = tree.prove(&lk0).unwrap();

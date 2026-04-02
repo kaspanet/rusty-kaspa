@@ -7,7 +7,7 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     dequeue, make_message,
-    pb::{DoneSmtChunksMessage, SmtLaneEntryMessage, SmtMetadataMessage, UnexpectedPruningPointMessage, kaspad_message::Payload},
+    pb::{SmtLaneEntryMessage, SmtMetadataMessage, UnexpectedPruningPointMessage, kaspad_message::Payload},
 };
 use std::sync::Arc;
 
@@ -71,8 +71,8 @@ impl RequestPruningPointSmtStateFlow {
 
         let mut lane_count = 0usize;
         while let Some(lane) = rx.recv().await {
-            let mut data = Vec::with_capacity(52);
-            data.extend_from_slice(&lane.lane_id);
+            let mut data = Vec::with_capacity(64);
+            data.extend_from_slice(&lane.lane_key.as_bytes());
             data.extend_from_slice(&lane.lane_tip.as_bytes());
             self.router
                 .enqueue(make_message!(
@@ -84,7 +84,6 @@ impl RequestPruningPointSmtStateFlow {
         }
 
         debug!("Finished sending SMT state for pruning point {}: {} lanes", expected_pp, lane_count);
-        self.router.enqueue(make_message!(Payload::DoneSmtChunks, DoneSmtChunksMessage {})).await?;
         Ok(())
     }
 

@@ -105,13 +105,13 @@ impl VirtualState {
                     let ad = activity_digest_lane(leaves.iter().copied());
                     let tip = lane_tip_next(&LaneTipInput {
                         parent_ref: &parent_seq_commit,
-                        lane_id,
+                        lane_key: &lk,
                         activity_digest: &ad,
                         context_hash: &context_hash,
                     });
                     kaspa_smt::store::LeafUpdate {
                         key: lk,
-                        leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_id, lane_tip: &tip, blue_score }),
+                        leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip: &tip, blue_score }),
                     }
                 },
             ));

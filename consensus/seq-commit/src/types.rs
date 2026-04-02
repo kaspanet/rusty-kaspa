@@ -17,7 +17,7 @@ pub struct MergesetContext {
 #[derive(Clone, Copy, Debug)]
 pub struct LaneTipInput<'a> {
     pub parent_ref: &'a Hash,
-    pub lane_id: &'a LaneId,
+    pub lane_key: &'a Hash,
     pub activity_digest: &'a Hash,
     pub context_hash: &'a Hash,
 }
@@ -32,10 +32,10 @@ pub struct MinerPayloadLeafInput<'a> {
 
 /// Input for computing an SMT leaf hash for an active lane.
 ///
-/// Per KIP-21 §6.2: `leaf_payload = lane_id_bytes(20) || lane_tip_hash(32) || le_u64(blue_score)`.
+/// `leaf_payload = lane_key(32) || lane_tip_hash(32) || le_u64(blue_score)`.
 #[derive(Clone, Copy, Debug)]
 pub struct SmtLeafInput<'a> {
-    pub lane_id: &'a LaneId,
+    pub lane_key: &'a Hash,
     pub lane_tip: &'a Hash,
     pub blue_score: u64,
 }

@@ -2963,6 +2963,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "thiserror 2.0.18",
+ "tokio",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "web-sys",
@@ -3625,12 +3626,16 @@ dependencies = [
 name = "kaspa-smt-store"
 version = "1.1.0"
 dependencies = [
+ "kaspa-core",
  "kaspa-database",
  "kaspa-hashes",
  "kaspa-seq-commit",
  "kaspa-smt",
  "kaspa-utils",
+ "log",
  "parking_lot",
+ "rand 0.8.5",
+ "rayon",
  "rocksdb",
  "zerocopy 0.8.42",
 ]

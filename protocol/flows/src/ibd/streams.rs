@@ -249,15 +249,16 @@ impl<'a, 'b> SmtStream<'a, 'b> {
         match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
             Ok(Some(msg)) => match msg.payload {
                 Some(Payload::SmtLaneEntry(payload)) => {
-                    let Some((&lane_id, rem)) = payload.data.split_first_chunk::<20>() else {
-                        return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_id"));
+                    let Some((&key_bytes, rem)) = payload.data.split_first_chunk::<32>() else {
+                        return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_key"));
                     };
                     let Some(&tip_bytes) = rem.first_chunk::<32>() else {
                         return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_tip"));
                     };
                     if rem.len() != 32 {
-                        return Err(ProtocolError::Other("SmtLaneEntry data must be exactly 52 bytes"));
+                        return Err(ProtocolError::Other("SmtLaneEntry data must be exactly 64 bytes"));
                     }
+                    let lane_key = Hash::from_bytes(key_bytes);
                     let lane_tip = Hash::from_bytes(tip_bytes);
 
                     // TODO: sender does not generate proofs yet — re-enable once the sender flow includes SMT proofs
@@ -271,17 +272,10 @@ impl<'a, 'b> SmtStream<'a, 'b> {
                     };
 
                     self.lane_count += 1;
-                    Ok(Some(kaspa_consensus_core::api::ImportLane { lane_id, lane_tip, blue_score: payload.blue_score, proof }))
-                }
-                Some(Payload::DoneSmtChunks(_)) => {
-                    info!("Finished receiving SMT state. Total lanes: {}", self.lane_count);
-                    Ok(None)
+                    Ok(Some(kaspa_consensus_core::api::ImportLane { lane_key, lane_tip, blue_score: payload.blue_score, proof }))
                 }
                 Some(Payload::UnexpectedPruningPoint(_)) => Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint)),
-                _ => Err(ProtocolError::UnexpectedMessage(
-                    stringify!(Payload::SmtLaneEntry | Payload::DoneSmtChunks),
-                    msg.payload.as_ref().map(|v| v.into()),
-                )),
+                _ => Err(ProtocolError::UnexpectedMessage(stringify!(Payload::SmtLaneEntry), msg.payload.as_ref().map(|v| v.into()))),
             },
             Ok(None) => Err(ProtocolError::ConnectionClosed),
             Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
