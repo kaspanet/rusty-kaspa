@@ -20,6 +20,7 @@ pub enum StreamError<E: fmt::Debug> {
     DuplicateKey,
     AlreadyFinalized,
     NotFinalized,
+    ProofFailed(alloc::string::String),
     Sink(E),
 }
 
@@ -30,6 +31,7 @@ impl<E: fmt::Debug> fmt::Display for StreamError<E> {
             Self::DuplicateKey => write!(f, "duplicate key"),
             Self::AlreadyFinalized => write!(f, "feed() called after finalization"),
             Self::NotFinalized => write!(f, "finish() called before all leaves were fed"),
+            Self::ProofFailed(msg) => write!(f, "proof verification failed: {msg}"),
             Self::Sink(e) => write!(f, "sink error: {e:?}"),
         }
     }

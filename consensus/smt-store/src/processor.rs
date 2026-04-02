@@ -22,8 +22,9 @@ use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
 use kaspa_smt::SmtHasher;
+use kaspa_smt::proof::OwnedSmtProof;
 use kaspa_smt::store::{BranchKey, Node, SmtStore, SortedLeafUpdates};
-use kaspa_smt::tree::{SmtNodeChanges, compute_root_update};
+use kaspa_smt::tree::{SmtNodeChanges, SparseMerkleTree, compute_root_update};
 use rocksdb::WriteBatch;
 
 use crate::branch_version_store::DbBranchVersionStore;
@@ -109,6 +110,14 @@ impl SmtStores {
             },
             None => kaspa_hashes::SeqCommitActiveNode::empty_root(),
         }
+    }
+
+    /// Generate an inclusion proof for `lane_key` in the current canonical tree.
+    pub fn prove_lane(&self, lane_key: &Hash, min_blue_score: u64, is_canonical: impl Fn(Hash) -> bool) -> StoreResult<OwnedSmtProof> {
+        let reader = VersionedBranchReader { stores: self, min_blue_score, is_canonical };
+        // Root value is unused by `prove` — it walks the store directly.
+        let tree = SparseMerkleTree::<SeqCommitActiveNode, _>::with_store(reader);
+        tree.prove(lane_key)
     }
 
     pub fn evict_caches_below_score(&self, min_score: u64) {

@@ -841,14 +841,15 @@ fn streaming_import_matches_export_roundtrip_root() {
     for lid in (1u8..=4).map(|i| [i; 20]) {
         let lk = lane_key(&lid);
         if let Some(v) = stores.get_lane(lk, 0, |_| true) {
-            exported.push(StreamingImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score() });
+            exported.push(StreamingImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof: None });
         }
     }
     exported.sort_by_key(|lane| lane.lane_key);
 
     let (_lt2, db2) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let import_stores = make_stores(&db2);
-    let result = streaming_import(&db2, &import_stores, 400, ZERO_HASH, exported.len() as u64, exported.into_iter(), 64).unwrap();
+    let result =
+        streaming_import(&db2, &import_stores, 400, ZERO_HASH, exported.len() as u64, ZERO_HASH, exported.into_iter(), 64).unwrap();
     assert_eq!(result.root, final_root);
     assert_eq!(result.lanes_imported, 4);
 

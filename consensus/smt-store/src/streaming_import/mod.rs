@@ -14,6 +14,7 @@ use kaspa_database::prelude::{BatchDbWriter, DB, StoreError};
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
+use kaspa_smt::proof::OwnedSmtProof;
 use kaspa_smt::streaming::{StreamError, StreamingSmtBuilder};
 use log::info;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -30,6 +31,7 @@ pub struct StreamingImportLane {
     pub lane_key: LaneKey,
     pub lane_tip: Hash,
     pub blue_score: u64,
+    pub proof: Option<OwnedSmtProof>,
 }
 
 pub struct StreamingImportResult {
@@ -70,6 +72,7 @@ pub fn streaming_import(
     blue_score: u64,
     block_hash: BlockHash,
     total_count: u64,
+    lanes_root: Hash,
     lanes: impl Iterator<Item = StreamingImportLane>,
     max_batch_entries: usize,
 ) -> Result<StreamingImportResult, StreamError<StoreError>> {
@@ -89,7 +92,9 @@ pub fn streaming_import(
     let mut chunk = Vec::with_capacity(max_batch_entries);
     let mut leaf_hashes = Vec::with_capacity(max_batch_entries);
 
-    let mut step = |chunk: &mut Vec<_>, leaf_hashes: &mut Vec<_>| -> Result<(), StreamError<StoreError>> {
+    let mut step = |chunk: &mut Vec<StreamingImportLane>,
+                    leaf_hashes: &mut Vec<(Hash, Hash)>|
+     -> Result<(), StreamError<StoreError>> {
         chunk
             .par_iter()
             .map(|lane: &StreamingImportLane| {
@@ -98,6 +103,14 @@ pub fn streaming_import(
                 (lane.lane_key, leaf_hash)
             })
             .collect_into_vec(leaf_hashes);
+
+        // Verify proofs against the expected lanes_root.
+        for (lane, &(lane_key, leaf_hash)) in chunk.iter().zip(leaf_hashes.iter()) {
+            let Some(proof) = &lane.proof else { continue };
+            let Ok(true) = proof.verify::<SeqCommitActiveNode>(&lane_key, Some(leaf_hash), lanes_root) else {
+                return Err(StreamError::ProofFailed(format!("lane {lane_key}")));
+            };
+        }
 
         write_lane_versions(stores, block_hash, chunk, &mut lane_batch, &mut batch_count)?;
         write_score_index(stores, blue_score, block_hash, chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;

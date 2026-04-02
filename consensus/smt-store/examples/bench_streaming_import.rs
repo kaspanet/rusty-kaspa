@@ -41,7 +41,7 @@ fn main() {
 
     let batch_size = 8192;
     let t_import = Instant::now();
-    let result = streaming_import(&db, &stores, 100, ZERO_HASH, lane_count, lanes, batch_size).unwrap();
+    let result = streaming_import(&db, &stores, 100, ZERO_HASH, lane_count, ZERO_HASH, lanes, batch_size).unwrap();
     let import_ms = t_import.elapsed().as_millis();
 
     let rss_after = current_rss_mb();
@@ -103,6 +103,7 @@ fn read_lane_data(path: &PathBuf) -> impl Iterator<Item = StreamingImportLane> {
                 lane_key: Hash::from_bytes(kbuf),
                 lane_tip: Hash::from_bytes(tbuf),
                 blue_score: u64::from_le_bytes(buf8),
+                proof: None,
             })
         } else {
             None

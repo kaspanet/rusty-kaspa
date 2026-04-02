@@ -47,6 +47,10 @@ pub struct BlockValidationFutures {
     pub virtual_state_task: BlockValidationFuture,
 }
 
+/// A proof is attached to the first lane and every `SMT_PROOF_INTERVAL`-th lane
+/// during IBD SMT export. The importer verifies these against `lanes_root`.
+pub const SMT_PROOF_INTERVAL: usize = 1024;
+
 /// A lane to import during IBD SMT sync.
 #[derive(Clone, Debug)]
 pub struct ImportLane {

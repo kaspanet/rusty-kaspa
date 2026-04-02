@@ -1116,10 +1116,15 @@ impl ConsensusApi for Consensus {
             pp_header.blue_score,
             ZERO_HASH,
             expected_lane_count,
-            std::iter::from_fn(|| rx.blocking_recv()).map(|lane| StreamingImportLane {
-                lane_key: lane.lane_key,
-                lane_tip: lane.lane_tip,
-                blue_score: lane.blue_score,
+            lanes_root,
+            std::iter::from_fn(|| {
+                let lane = rx.blocking_recv()?;
+                Some(StreamingImportLane {
+                    lane_key: lane.lane_key,
+                    lane_tip: lane.lane_tip,
+                    blue_score: lane.blue_score,
+                    proof: lane.proof,
+                })
             }),
             4096,
         )
@@ -1160,7 +1165,7 @@ impl ConsensusApi for Consensus {
         expected_pruning_point: Hash,
         mut f: Box<dyn FnMut(kaspa_consensus_core::api::ImportLane) -> bool + Send + 'static>,
     ) {
-        use kaspa_consensus_core::api::ImportLane;
+        use kaspa_consensus_core::api::{ImportLane, SMT_PROOF_INTERVAL};
 
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if pp != expected_pruning_point {
@@ -1169,11 +1174,20 @@ impl ConsensusApi for Consensus {
         let pp_header = self.storage.headers_store.get_header(pp).unwrap();
         let min_score = pp_header.blue_score.saturating_sub(self.config.params.finality_depth());
 
-        for result in
-            self.storage.smt_stores.lane_version.iter_all_canonical(min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))
+        for (lane_idx, result) in self
+            .storage
+            .smt_stores
+            .lane_version
+            .iter_all_canonical(min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))
+            .enumerate()
         {
             let (lk, v) = result.unwrap();
-            let lane = ImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof: None };
+            let proof = if lane_idx.is_multiple_of(SMT_PROOF_INTERVAL) {
+                Some(self.storage.smt_stores.prove_lane(&lk, min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp)).unwrap())
+            } else {
+                None
+            };
+            let lane = ImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof };
             if !f(lane) {
                 break;
             }

@@ -74,10 +74,11 @@ impl RequestPruningPointSmtStateFlow {
             let mut data = Vec::with_capacity(64);
             data.extend_from_slice(&lane.lane_key.as_bytes());
             data.extend_from_slice(&lane.lane_tip.as_bytes());
+            let proof_bytes = lane.proof.as_ref().map(|p| p.to_bytes()).unwrap_or_default();
             self.router
                 .enqueue(make_message!(
                     Payload::SmtLaneEntry,
-                    SmtLaneEntryMessage { data, blue_score: lane.blue_score, proof: Vec::new() }
+                    SmtLaneEntryMessage { data, blue_score: lane.blue_score, proof: proof_bytes }
                 ))
                 .await?;
             lane_count += 1;
