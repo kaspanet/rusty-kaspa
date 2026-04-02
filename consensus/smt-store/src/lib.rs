@@ -8,6 +8,7 @@ pub mod maybe_fork;
 pub mod processor;
 pub mod reverse_blue_score;
 pub mod score_index;
+pub mod streaming_import;
 pub mod values;
 
 /// SMT key for a lane: `H_lane_key(lane_id)`. 256-bit position in the tree.

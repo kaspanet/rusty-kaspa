@@ -30,6 +30,7 @@ extern crate std;
 
 pub mod proof;
 pub mod store;
+pub mod streaming;
 pub mod tree;
 
 use kaspa_hashes::{Hash, Hasher};

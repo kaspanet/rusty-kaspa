@@ -13,6 +13,7 @@ use kaspa_smt::tree::{SparseMerkleTree, compute_root_update};
 use rocksdb::WriteBatch;
 
 use kaspa_smt_store::processor::{SmtProcessor, SmtStores};
+use kaspa_smt_store::streaming_import::{StreamingImportLane, streaming_import};
 
 /// Build a reference SLO root from leaf updates using the in-memory store.
 fn slo_root(updates: Vec<LeafUpdate>) -> Hash {
@@ -799,4 +800,55 @@ fn empty_subtree_then_resplit_uses_persisted_deletion_marker() {
     assert_eq!(root3, golden_root3);
     assert_eq!(root2, expected_root2);
     assert_eq!(root3, expected_root3);
+}
+
+#[test]
+fn streaming_import_matches_export_roundtrip_root() {
+    use kaspa_hashes::ZERO_HASH;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+    let empty_root = SeqCommitActiveNode::empty_root();
+
+    struct BlockSpec {
+        blue_score: u64,
+        block_hash: Hash,
+        lanes: Vec<([u8; 20], Hash)>,
+    }
+
+    let blocks = vec![
+        BlockSpec { blue_score: 100, block_hash: hash(0x11), lanes: vec![([0x01; 20], hash(0xA1))] },
+        BlockSpec { blue_score: 200, block_hash: hash(0x22), lanes: vec![([0x02; 20], hash(0xA2)), ([0x03; 20], hash(0xA3))] },
+        BlockSpec { blue_score: 300, block_hash: hash(0x33), lanes: vec![([0x01; 20], hash(0xB1))] },
+        BlockSpec { blue_score: 400, block_hash: hash(0x44), lanes: vec![([0x04; 20], hash(0xA4))] },
+    ];
+
+    let mut current_root = empty_root;
+    for block in &blocks {
+        let mut proc = SmtProcessor::new(&stores, block.blue_score, TEST_THRESHOLD, current_root);
+        for (lid, tip) in &block.lanes {
+            proc.update_lane(lane_key(lid), *tip);
+        }
+        let build = proc.build(|_| true).unwrap();
+        current_root = build.root;
+        let mut batch = WriteBatch::default();
+        build.flush(&stores, &mut batch, block.blue_score, block.block_hash).unwrap();
+        db.write(batch).unwrap();
+    }
+
+    let final_root = current_root;
+    let mut exported = Vec::new();
+    for lid in (1u8..=4).map(|i| [i; 20]) {
+        let lk = lane_key(&lid);
+        if let Some(v) = stores.get_lane(lk, 0, |_| true) {
+            exported.push(StreamingImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score() });
+        }
+    }
+    exported.sort_by_key(|lane| lane.lane_key);
+
+    let (_lt2, db2) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let import_stores = make_stores(&db2);
+    let result = streaming_import(&db2, &import_stores, 400, ZERO_HASH, exported.len() as u64, exported.into_iter(), 64).unwrap();
+    assert_eq!(result.root, final_root);
+    assert_eq!(result.lanes_imported, 4);
 }

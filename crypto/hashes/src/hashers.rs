@@ -37,9 +37,9 @@ sha256_hasher! {
 }
 
 blake3_hasher! {
-    struct SeqCommitmentMerkleNodeBranch => b"SeqCommitmentMerkleBranchHash",
-    struct SeqCommitmentMerkleLeafHash => b"SeqCommitmentMerkleLeafHash",
+    struct SeqCommitmentMerkleNodeBranch => b"SeqCommitmentMerkleBranchHash", // todo rename. for miner payload, activity
     struct SeqCommitmentMerkleNodeLeaf => b"SeqCommitmentMerkleNodeLeaf",
+    struct SeqCommitmentMerkleLeafHash => b"SeqCommitmentMerkleLeafHash", // todo remove me
     struct PayloadDigest => b"PayloadDigest",
     struct TransactionRest => b"TransactionRest",
     struct TransactionV1Id => b"TransactionV1Id",

@@ -647,24 +647,25 @@ impl IbdFlow {
 
         let lanes_root = md.lanes_root;
         let payload_and_ctx_digest = md.payload_and_ctx_digest;
-
-        // TODO: SMT is built in 3 places (block verification, virtual state, IBD import).
-        // All currently collect leaves into a BTreeMap then compute sequentially.
-        // Optimize: stream leaves directly into the processor, let it detect siblings
-        // vs empty and dispatch hash computation to a thread pool at each level.
-        let mut lanes = Vec::with_capacity(md.active_lanes_count as usize);
-        while let Some(lane) = stream.next().await? {
-            lanes.push(lane);
-        }
-
-        let lane_count = lanes.len();
         let expected_count = md.active_lanes_count;
-        consensus
-            .clone()
-            .spawn_blocking(move |c| {
-                c.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, lanes)
-            })
-            .await?;
+
+        let (tx, rx) = tokio::sync::mpsc::channel(256);
+
+        let builder_handle = consensus.clone().spawn_blocking(move |c| {
+            c.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, rx)
+        });
+
+        let mut lane_count = 0u64;
+        while let Some(lane) = stream.next().await? {
+            tx.send(lane).await.map_err(|_| ProtocolError::Other("streaming SMT builder stopped unexpectedly"))?;
+            lane_count += 1;
+            if lane_count == expected_count {
+                break;
+            }
+        }
+        drop(tx);
+
+        builder_handle.await?;
         consensus.async_set_pruning_smt_stable().await;
 
         info!("SMT state synced: {} lanes", lane_count);

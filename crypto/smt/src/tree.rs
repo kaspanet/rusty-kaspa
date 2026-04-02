@@ -392,13 +392,13 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
     let (left_updates, right_updates) = updates.partition_by_bit(depth);
 
     let left_result = if left_updates.is_empty() {
-        read_sibling_result::<H, S>(store, changes, &subtree_key, false, depth)?
+        read_sibling_result::<S>(store, changes, &subtree_key, false, depth)?
     } else {
         compute_subtree::<H, S>(store, changes, left_updates, depth + 1)?
     };
 
     let right_result = if right_updates.is_empty() {
-        read_sibling_result::<H, S>(store, changes, &subtree_key, true, depth)?
+        read_sibling_result::<S>(store, changes, &subtree_key, true, depth)?
     } else {
         compute_subtree::<H, S>(store, changes, right_updates, depth + 1)?
     };
@@ -412,7 +412,7 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
 ///
 /// Called when one side of a branch has no updates. Reads the sibling
 /// node by its own key (1 read) instead of extracting from the parent.
-fn read_sibling_result<H: SmtHasher, S: SmtStore>(
+fn read_sibling_result<S: SmtStore>(
     store: &S,
     changes: &SmtNodeChanges,
     parent_key: &BranchKey,

@@ -7,7 +7,7 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     dequeue, make_message,
-    pb::{DoneSmtChunksMessage, SmtLaneEntryMessage, SmtMetadataMessage, UnexpectedPruningPointMessage, kaspad_message::Payload},
+    pb::{SmtLaneEntryMessage, SmtMetadataMessage, UnexpectedPruningPointMessage, kaspad_message::Payload},
 };
 use std::sync::Arc;
 
@@ -84,7 +84,6 @@ impl RequestPruningPointSmtStateFlow {
         }
 
         debug!("Finished sending SMT state for pruning point {}: {} lanes", expected_pp, lane_count);
-        self.router.enqueue(make_message!(Payload::DoneSmtChunks, DoneSmtChunksMessage {})).await?;
         Ok(())
     }
 

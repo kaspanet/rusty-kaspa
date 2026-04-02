@@ -274,15 +274,8 @@ impl<'a, 'b> SmtStream<'a, 'b> {
                     self.lane_count += 1;
                     Ok(Some(kaspa_consensus_core::api::ImportLane { lane_key, lane_tip, blue_score: payload.blue_score, proof }))
                 }
-                Some(Payload::DoneSmtChunks(_)) => {
-                    info!("Finished receiving SMT state. Total lanes: {}", self.lane_count);
-                    Ok(None)
-                }
                 Some(Payload::UnexpectedPruningPoint(_)) => Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint)),
-                _ => Err(ProtocolError::UnexpectedMessage(
-                    stringify!(Payload::SmtLaneEntry | Payload::DoneSmtChunks),
-                    msg.payload.as_ref().map(|v| v.into()),
-                )),
+                _ => Err(ProtocolError::UnexpectedMessage(stringify!(Payload::SmtLaneEntry), msg.payload.as_ref().map(|v| v.into()))),
             },
             Ok(None) => Err(ProtocolError::ConnectionClosed),
             Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),

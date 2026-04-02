@@ -290,7 +290,7 @@ pub trait ConsensusApi: Send + Sync {
         _lanes_root: Hash,
         _payload_and_ctx_digest: Hash,
         _expected_lane_count: u64,
-        _lanes: Vec<ImportLane>,
+        _rx: tokio::sync::mpsc::Receiver<ImportLane>,
     ) -> PruningImportResult<()> {
         unimplemented!()
     }
