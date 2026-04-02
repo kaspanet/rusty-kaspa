@@ -17,7 +17,7 @@ pub struct MergesetContext {
 #[derive(Clone, Copy, Debug)]
 pub struct LaneTipInput<'a> {
     pub parent_ref: &'a Hash,
-    pub lane_id: &'a LaneId,
+    pub lane_key: &'a Hash,
     pub activity_digest: &'a Hash,
     pub context_hash: &'a Hash,
 }

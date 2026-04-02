@@ -44,11 +44,11 @@ pub fn activity_digest_lane(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash
     calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
 }
 
-/// Compute the next lane tip: `H_lane_tip(parent_ref || lane_id || activity_digest || context_hash)`.
+/// Compute the next lane tip: `H_lane_tip(parent_ref || lane_key || activity_digest || context_hash)`.
 #[inline]
 pub fn lane_tip_next(input: &LaneTipInput) -> Hash {
     let mut hasher = SeqCommitLaneTip::new();
-    hasher.update(input.parent_ref).update(input.lane_id).update(input.activity_digest).update(input.context_hash);
+    hasher.update(input.parent_ref).update(input.lane_key).update(input.activity_digest).update(input.context_hash);
     hasher.finalize()
 }
 
@@ -199,17 +199,19 @@ mod tests {
     #[test]
     fn test_lane_tip_next_golden() {
         let expected = Hash::from_bytes([
-            0xa9, 0xe0, 0x7f, 0x56, 0x97, 0x00, 0xc5, 0x09, 0xe0, 0x51, 0x66, 0x74, 0x72, 0x6b, 0x36, 0xd1, 0x19, 0x8a, 0xae, 0xb1,
-            0x19, 0x4c, 0x88, 0x3f, 0xa3, 0x51, 0x75, 0x67, 0x68, 0x12, 0xfd, 0x78,
+            0x38, 0x79, 0x35, 0x76, 0xd5, 0x45, 0xd2, 0x95, 0x2d, 0xf3, 0x1b, 0x7c, 0x57, 0x19, 0x3a, 0x49, 0x2f, 0x9c, 0x5b, 0x8c,
+            0x09, 0xdd, 0xae, 0xb2, 0x27, 0x4e, 0x4e, 0x23, 0xed, 0xbc, 0x3f, 0x43,
         ]);
-        let input = LaneTipInput { parent_ref: &h(1), lane_id: &[0x55; 20], activity_digest: &h(2), context_hash: &h(3) };
+        let lk = lane_key(&[0x55; 20]);
+        let input = LaneTipInput { parent_ref: &h(1), lane_key: &lk, activity_digest: &h(2), context_hash: &h(3) };
         assert_eq!(lane_tip_next(&input), expected);
     }
 
     #[test]
     fn test_lane_tip_next_different_parents() {
-        let a = LaneTipInput { parent_ref: &h(1), lane_id: &[0x55; 20], activity_digest: &h(2), context_hash: &h(3) };
-        let b = LaneTipInput { parent_ref: &h(10), lane_id: &[0x55; 20], activity_digest: &h(2), context_hash: &h(3) };
+        let lk = lane_key(&[0x55; 20]);
+        let a = LaneTipInput { parent_ref: &h(1), lane_key: &lk, activity_digest: &h(2), context_hash: &h(3) };
+        let b = LaneTipInput { parent_ref: &h(10), lane_key: &lk, activity_digest: &h(2), context_hash: &h(3) };
         assert_ne!(lane_tip_next(&a), lane_tip_next(&b));
     }
 
@@ -370,8 +372,7 @@ mod tests {
         let ctx = mergeset_context_hash(&MergesetContext { timestamp: 1_700_000_000, daa_score: 100_000, blue_score: 50_000 });
 
         let lk = lane_key(&lane_id);
-        let tip =
-            lane_tip_next(&LaneTipInput { parent_ref: &parent_commit, lane_id: &lane_id, activity_digest: &ad, context_hash: &ctx });
+        let tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_commit, lane_key: &lk, activity_digest: &ad, context_hash: &ctx });
         let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip: &tip, blue_score: 50_000 });
 
         let h1 = h(1);

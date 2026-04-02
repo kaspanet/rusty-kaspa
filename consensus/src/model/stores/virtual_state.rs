@@ -105,7 +105,7 @@ impl VirtualState {
                     let ad = activity_digest_lane(leaves.iter().copied());
                     let tip = lane_tip_next(&LaneTipInput {
                         parent_ref: &parent_seq_commit,
-                        lane_id,
+                        lane_key: &lk,
                         activity_digest: &ad,
                         context_hash: &context_hash,
                     });

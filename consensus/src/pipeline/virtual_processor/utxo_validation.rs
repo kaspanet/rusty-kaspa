@@ -566,7 +566,7 @@ impl VirtualStateProcessor {
             let is_new = existing.is_none();
             let parent_ref = existing.map(|v| *v.data()).unwrap_or(parent_seq_commit);
 
-            let new_tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_ref, lane_id, activity_digest: &ad, context_hash });
+            let new_tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_ref, lane_key: &lk, activity_digest: &ad, context_hash });
 
             updates.push(ResolvedLaneUpdate { lane_key: lk, new_tip, is_new });
         }
