@@ -235,16 +235,8 @@ fn run_chain_test(n: usize) {
 }
 
 #[test]
-fn chain_2_blocks() {
-    run_chain_test(2);
-}
-
-#[test]
-fn chain_5_blocks() {
-    run_chain_test(5);
-}
-
-#[test]
-fn chain_10_blocks() {
-    run_chain_test(10);
+fn chain_blocks() {
+    for i in [2, 5, 10] {
+        run_chain_test(i);
+    }
 }
