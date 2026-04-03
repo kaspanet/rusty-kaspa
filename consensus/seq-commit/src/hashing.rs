@@ -2,9 +2,9 @@
 
 use kaspa_hashes::{
     Hash, HasherBase, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip, SeqCommitMergesetContext,
-    SeqCommitMerkleBranch, SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf,
+    SeqCommitMerkleBranch, SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf, SeqCommitTxDigest,
 };
-use kaspa_merkle::calc_merkle_root_with_hasher;
+use kaspa_merkle::{StreamingMerkleBuilder, calc_merkle_root_with_hasher};
 
 use crate::types::{LaneId, LaneTipInput, MergesetContext, MinerPayloadLeafInput, SeqCommitInput, SeqState, SmtLeafInput};
 
@@ -17,6 +17,14 @@ use crate::types::{LaneId, LaneTipInput, MergesetContext, MinerPayloadLeafInput,
 #[inline]
 pub fn seq_commit_timestamp(selected_parent_timestamp: u64) -> u64 {
     selected_parent_timestamp
+}
+
+/// Compute the tx digest for sequencing: `H_tx_digest(tx_id || le_u16(version))`.
+#[inline]
+pub fn seq_commit_tx_digest(tx_id: &Hash, version: u16) -> Hash {
+    let mut hasher = SeqCommitTxDigest::new();
+    hasher.update(tx_id).update(version.to_le_bytes());
+    hasher.finalize()
 }
 
 /// Compute the SMT key for a lane: `H_lane_key(lane_id)`.
@@ -43,6 +51,12 @@ pub fn activity_leaf(tx_digest: &Hash, merge_idx: u32) -> Hash {
 pub fn activity_digest_lane(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
     calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
 }
+
+/// Streaming activity digest builder for no-heap environments (ZK guests).
+///
+/// Produces the same root as [`activity_digest_lane`] but processes leaves
+/// one at a time without heap allocation.
+pub type ActivityDigestBuilder = StreamingMerkleBuilder<SeqCommitMerkleBranch>;
 
 /// Compute the next lane tip: `H_lane_tip(parent_ref || lane_key || activity_digest || context_hash)`.
 #[inline]

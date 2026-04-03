@@ -94,6 +94,9 @@ fn example_seq_commit_for_block() {
     let mut lane_a_leaves = Vec::new();
     let mut lane_b_leaves = Vec::new();
 
+    let mut lane_a_activity_builder = ActivityDigestBuilder::new();
+    let mut lane_b_activity_builder = ActivityDigestBuilder::new();
+
     for block in &mergeset {
         for tx in &block.accepted_txs {
             let digest = seq_commit_tx_digest(tx.id(), tx.version);
@@ -101,8 +104,10 @@ fn example_seq_commit_for_block() {
 
             let lid = tx.subnetwork_id.into_bytes();
             if lid == lane_a {
+                lane_a_activity_builder.add_leaf(leaf);
                 lane_a_leaves.push(leaf);
             } else {
+                lane_b_activity_builder.add_leaf(leaf);
                 lane_b_leaves.push(leaf);
             }
             merge_idx += 1;
@@ -116,6 +121,10 @@ fn example_seq_commit_for_block() {
     // --- One activity digest per lane (across the entire AcceptedTxList) ---
     let ad_a = activity_digest_lane(lane_a_leaves.into_iter());
     let ad_b = activity_digest_lane(lane_b_leaves.into_iter());
+    let ad_streaming_a = lane_a_activity_builder.finalize();
+    let ad_streaming_b = lane_b_activity_builder.finalize();
+    assert_eq!(ad_a, ad_streaming_a);
+    assert_eq!(ad_b, ad_streaming_b);
 
     // --- Mergeset context (properties of the accepting block B) ---
     let timestamp = 1_700_000_000u64;
