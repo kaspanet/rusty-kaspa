@@ -257,6 +257,7 @@ async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(config.block_wait_time);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut was_synced = true;
             loop {
                 if let Some(ref mut rx) = shutdown_rx_poll {
                     tokio::select! {
@@ -266,11 +267,31 @@ async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
                             }
                         }
                         _ = interval.tick() => {
+                            if !kaspa_api_poll.is_node_synced_for_mining().await {
+                                if was_synced {
+                                    warn!(
+                                        "Kaspa is not mining-ready — pausing template polling until sync, P2P IBD, and block/header parity match"
+                                    );
+                                    was_synced = false;
+                                }
+                                continue;
+                            }
+                            was_synced = true;
                             client_handler_poll.new_block_available(Arc::clone(&kaspa_api_poll)).await;
                         }
                     }
                 } else {
                     interval.tick().await;
+                    if !kaspa_api_poll.is_node_synced_for_mining().await {
+                        if was_synced {
+                            warn!(
+                                "Kaspa is not mining-ready — pausing template polling until sync, P2P IBD, and block/header parity match"
+                            );
+                            was_synced = false;
+                        }
+                        continue;
+                    }
+                    was_synced = true;
                     client_handler_poll.new_block_available(Arc::clone(&kaspa_api_poll)).await;
                 }
             }
