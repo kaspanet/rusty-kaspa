@@ -3,8 +3,12 @@
 extern crate alloc;
 extern crate core;
 
+pub mod streaming;
+
 use alloc::vec;
 use kaspa_hashes::{Hash, Hasher, MerkleBranchHash, ZERO_HASH};
+
+pub use streaming::StreamingMerkleBuilder;
 
 pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     calc_merkle_root_with_hasher::<MerkleBranchHash, false>(hashes)
