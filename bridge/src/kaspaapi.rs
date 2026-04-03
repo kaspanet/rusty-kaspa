@@ -410,79 +410,85 @@ impl KaspaApi {
         }
     }
 
+    /// One RPC round-trip to refresh [`NODE_STATUS`] (console `[NODE]` line and `/api/status`).
+    /// The background poller runs every 10s; call this when mining-ready flips so the snapshot
+    /// matches [`is_node_synced_for_mining`] instead of lagging by up to one interval.
+    async fn refresh_node_status_snapshot(&self) {
+        let connected = self.client.is_connected();
+
+        let server_info_fut = self.client.get_server_info_call(None, GetServerInfoRequest {});
+        let dag_info_fut = self.client.get_block_dag_info_call(None, GetBlockDagInfoRequest {});
+        let peers_fut = self.client.get_connected_peer_info_call(None, GetConnectedPeerInfoRequest {});
+        let info_fut = self.client.get_info_call(None, GetInfoRequest {});
+        let sink_bs_fut = self.client.get_sink_blue_score_call(None, GetSinkBlueScoreRequest {});
+        let sync_fut = self.client.get_sync_status();
+
+        let (server_info, dag_info, peers_info, info_resp, sink_bs_resp, sync_res) =
+            tokio::join!(server_info_fut, dag_info_fut, peers_fut, info_fut, sink_bs_fut, sync_fut);
+
+        let mut snapshot = NODE_STATUS.lock();
+        snapshot.last_updated = Some(Instant::now());
+        snapshot.last_updated_unix_ms = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as u64);
+        snapshot.is_connected = connected;
+
+        // Prefer `getSyncStatus` over `getServerInfo.is_synced`; clear "synced" while any peer is
+        // the P2P IBD peer, or while DAG bodies lag headers (`block_count != header_count`).
+        let mut synced = match sync_res {
+            Ok(v) => Some(v),
+            Err(_) => server_info.as_ref().ok().map(|s| s.is_synced),
+        };
+        if let Ok(peers) = &peers_info
+            && synced == Some(true)
+            && peers.peer_info.iter().any(|p| p.is_ibd_peer)
+        {
+            synced = Some(false);
+        }
+        if let Ok(dag) = &dag_info
+            && synced == Some(true)
+            && dag.block_count != dag.header_count
+        {
+            synced = Some(false);
+        }
+        snapshot.is_synced = synced;
+
+        if let Ok(server_info) = server_info {
+            snapshot.network_id = Some(format!("{:?}", server_info.network_id));
+            snapshot.server_version = Some(server_info.server_version);
+            snapshot.virtual_daa_score = Some(server_info.virtual_daa_score);
+        }
+
+        if let Ok(dag) = dag_info {
+            snapshot.block_count = Some(dag.block_count);
+            snapshot.header_count = Some(dag.header_count);
+            snapshot.difficulty = Some(dag.difficulty);
+            snapshot.tip_hash = dag.tip_hashes.first().map(|h| format!("{}", h));
+            if snapshot.virtual_daa_score.is_none() {
+                snapshot.virtual_daa_score = Some(dag.virtual_daa_score);
+            }
+            if snapshot.network_id.is_none() {
+                snapshot.network_id = Some(format!("{:?}", dag.network));
+            }
+        }
+
+        if let Ok(peers) = peers_info {
+            snapshot.peers = Some(peers.peer_info.len());
+        }
+
+        if let Ok(info) = info_resp {
+            snapshot.mempool_size = Some(info.mempool_size);
+            if snapshot.server_version.is_none() {
+                snapshot.server_version = Some(info.server_version);
+            }
+        }
+
+        snapshot.sink_blue_score = sink_bs_resp.ok().map(|r| r.blue_score);
+    }
+
     async fn start_node_status_thread(self: Arc<Self>) {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             interval.tick().await;
-
-            let connected = self.client.is_connected();
-
-            let server_info_fut = self.client.get_server_info_call(None, GetServerInfoRequest {});
-            let dag_info_fut = self.client.get_block_dag_info_call(None, GetBlockDagInfoRequest {});
-            let peers_fut = self.client.get_connected_peer_info_call(None, GetConnectedPeerInfoRequest {});
-            let info_fut = self.client.get_info_call(None, GetInfoRequest {});
-            let sink_bs_fut = self.client.get_sink_blue_score_call(None, GetSinkBlueScoreRequest {});
-            let sync_fut = self.client.get_sync_status();
-
-            let (server_info, dag_info, peers_info, info_resp, sink_bs_resp, sync_res) =
-                tokio::join!(server_info_fut, dag_info_fut, peers_fut, info_fut, sink_bs_fut, sync_fut);
-
-            let mut snapshot = NODE_STATUS.lock();
-            snapshot.last_updated = Some(Instant::now());
-            snapshot.last_updated_unix_ms = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as u64);
-            snapshot.is_connected = connected;
-
-            // Prefer `getSyncStatus` over `getServerInfo.is_synced`; clear "synced" while any peer is
-            // the P2P IBD peer, or while DAG bodies lag headers (`block_count != header_count`).
-            let mut synced = match sync_res {
-                Ok(v) => Some(v),
-                Err(_) => server_info.as_ref().ok().map(|s| s.is_synced),
-            };
-            if let Ok(peers) = &peers_info
-                && synced == Some(true)
-                && peers.peer_info.iter().any(|p| p.is_ibd_peer)
-            {
-                synced = Some(false);
-            }
-            if let Ok(dag) = &dag_info
-                && synced == Some(true)
-                && dag.block_count != dag.header_count
-            {
-                synced = Some(false);
-            }
-            snapshot.is_synced = synced;
-
-            if let Ok(server_info) = server_info {
-                snapshot.network_id = Some(format!("{:?}", server_info.network_id));
-                snapshot.server_version = Some(server_info.server_version);
-                snapshot.virtual_daa_score = Some(server_info.virtual_daa_score);
-            }
-
-            if let Ok(dag) = dag_info {
-                snapshot.block_count = Some(dag.block_count);
-                snapshot.header_count = Some(dag.header_count);
-                snapshot.difficulty = Some(dag.difficulty);
-                snapshot.tip_hash = dag.tip_hashes.first().map(|h| format!("{}", h));
-                if snapshot.virtual_daa_score.is_none() {
-                    snapshot.virtual_daa_score = Some(dag.virtual_daa_score);
-                }
-                if snapshot.network_id.is_none() {
-                    snapshot.network_id = Some(format!("{:?}", dag.network));
-                }
-            }
-
-            if let Ok(peers) = peers_info {
-                snapshot.peers = Some(peers.peer_info.len());
-            }
-
-            if let Ok(info) = info_resp {
-                snapshot.mempool_size = Some(info.mempool_size);
-                if snapshot.server_version.is_none() {
-                    snapshot.server_version = Some(info.server_version);
-                }
-            }
-
-            snapshot.sink_blue_score = sink_bs_resp.ok().map(|r| r.blue_score);
+            self.refresh_node_status_snapshot().await;
         }
     }
 
@@ -751,7 +757,10 @@ impl KaspaApi {
             if ready {
                 match stable_since {
                     None => stable_since = Some(now),
-                    Some(t0) if now.duration_since(t0) >= MIN_MINING_READY_STABLE => return true,
+                    Some(t0) if now.duration_since(t0) >= MIN_MINING_READY_STABLE => {
+                        self.refresh_node_status_snapshot().await;
+                        return true;
+                    }
                     Some(_) => {}
                 }
             } else {
