@@ -117,7 +117,7 @@ pub struct LeafUpdate {
 ///
 /// Derefs to `[LeafUpdate]` for read access. No `DerefMut` — mutation could break
 /// the sorted/unique invariants.
-pub struct SortedLeafUpdates(std::vec::Vec<LeafUpdate>);
+pub struct SortedLeafUpdates(alloc::vec::Vec<LeafUpdate>);
 
 /// Borrowed view over sorted, unique-by-key leaf updates.
 #[derive(Clone, Copy)]
@@ -133,7 +133,7 @@ impl SortedLeafUpdates {
 
     /// Build from an unsorted iterator. Sorts and deduplicates (last wins).
     pub fn from_unsorted(iter: impl IntoIterator<Item = LeafUpdate>) -> Self {
-        let mut v: std::vec::Vec<LeafUpdate> = iter.into_iter().collect();
+        let mut v: alloc::vec::Vec<LeafUpdate> = iter.into_iter().collect();
         v.sort_unstable_by_key(|u| u.key);
         v.dedup_by(|later, earlier| {
             if later.key == earlier.key {
@@ -146,7 +146,7 @@ impl SortedLeafUpdates {
         Self(v)
     }
 
-    pub fn into_vec(self) -> std::vec::Vec<LeafUpdate> {
+    pub fn into_vec(self) -> alloc::vec::Vec<LeafUpdate> {
         self.0
     }
 
@@ -154,7 +154,7 @@ impl SortedLeafUpdates {
         SortedLeafUpdatesRef(&self.0)
     }
 
-    pub(crate) fn from_sorted_vec(v: std::vec::Vec<LeafUpdate>) -> Self {
+    pub(crate) fn from_sorted_vec(v: alloc::vec::Vec<LeafUpdate>) -> Self {
         Self(v)
     }
 
@@ -180,7 +180,7 @@ impl SortedLeafUpdates {
     }
 }
 
-impl std::ops::Deref for SortedLeafUpdates {
+impl core::ops::Deref for SortedLeafUpdates {
     type Target = [LeafUpdate];
     fn deref(&self) -> &[LeafUpdate] {
         &self.0

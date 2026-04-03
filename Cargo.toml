@@ -104,12 +104,12 @@ kaspa-database = { version = "1.1.0", path = "database" }
 kaspa-grpc-client = { version = "1.1.0", path = "rpc/grpc/client" }
 kaspa-grpc-core = { version = "1.1.0", path = "rpc/grpc/core" }
 kaspa-grpc-server = { version = "1.1.0", path = "rpc/grpc/server" }
-kaspa-hashes = { version = "1.1.0", path = "crypto/hashes" }
+kaspa-hashes = { version = "1.1.0", path = "crypto/hashes", default-features = false }
 kaspa-index-core = { version = "1.1.0", path = "indexes/core" }
 kaspa-index-processor = { version = "1.1.0", path = "indexes/processor" }
 kaspa-math = { version = "1.1.0", path = "math" }
 kaspa-merkle = { version = "1.1.0", path = "crypto/merkle" }
-kaspa-smt = { version = "1.1.0", path = "crypto/smt" }
+kaspa-smt = { version = "1.1.0", path = "crypto/smt", default-features = false }
 kaspa-smt-store = { version = "1.1.0", path = "consensus/smt-store" }
 kaspa-metrics-core = { version = "1.1.0", path = "metrics/core" }
 kaspa-mining = { version = "1.1.0", path = "mining" }
