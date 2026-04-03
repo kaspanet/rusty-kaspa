@@ -1,11 +1,11 @@
-use crate::constants::{MAX_SOMPI, TX_VERSION_POST_COV_HF};
-use kaspa_consensus_core::tx::Transaction;
-use std::collections::HashSet;
-
 use super::{
     TransactionValidator,
     errors::{TxResult, TxRuleError},
 };
+use crate::constants::{MAX_SOMPI, TX_VERSION_POST_COV_HF};
+use kaspa_consensus_core::subnets::{CoinbaseSubnetwork, NativeSubnetwork, Subnetwork};
+use kaspa_consensus_core::tx::Transaction;
+use std::collections::HashSet;
 
 impl TransactionValidator {
     /// Performs a variety of transaction validation checks which are independent of any
@@ -155,15 +155,16 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
-    if tx.is_coinbase() || tx.subnetwork_id.is_native() {
-        return Ok(());
+    const ZEROES: &[u8; 19] = &[0; 19];
+
+    match tx.subnetwork_id.as_bytes() {
+        // Native and coinbase (reserved) subnetwork IDs are always allowed
+        [NativeSubnetwork::FIRST_BYTE, rest @ ..] | [CoinbaseSubnetwork::FIRST_BYTE, rest @ ..] if rest == ZEROES => Ok(()),
+        // Post-covenants HF (KIP-21): any non-reserved subnetwork ID is allowed as a lane selector.
+        // Reserved IDs (`x || 0x00..0x00`) are excluded - they are for system usage by consensus.
+        [_x, rest @ ..] if tx.version >= TX_VERSION_POST_COV_HF && rest != ZEROES => Ok(()),
+        _ => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
     }
-    // Non-native subnetworks (lanes) are allowed starting from the post-covenants
-    // hard fork tx version. Earlier versions must use SUBNETWORK_ID_NATIVE.
-    if tx.version >= TX_VERSION_POST_COV_HF {
-        return Ok(());
-    }
-    Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id))
 }
 
 fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {

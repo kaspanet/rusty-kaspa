@@ -143,10 +143,36 @@ impl FromHex for SubnetworkId {
 }
 
 /// The default subnetwork ID which is used for transactions without related payload data
-pub const SUBNETWORK_ID_NATIVE: SubnetworkId = SubnetworkId::from_byte(0);
+pub const SUBNETWORK_ID_NATIVE: SubnetworkId = NativeSubnetwork::SUBNETWORK_ID;
 
 /// The subnetwork ID which is used for the coinbase transaction
-pub const SUBNETWORK_ID_COINBASE: SubnetworkId = SubnetworkId::from_byte(1);
+pub const SUBNETWORK_ID_COINBASE: SubnetworkId = CoinbaseSubnetwork::SUBNETWORK_ID;
 
 /// The subnetwork ID which is used for adding new sub networks to the registry
-pub const SUBNETWORK_ID_REGISTRY: SubnetworkId = SubnetworkId::from_byte(2);
+pub const SUBNETWORK_ID_REGISTRY: SubnetworkId = RegistrySubnetwork::SUBNETWORK_ID;
+
+/// Uninhabited marker types for reserved system subnetworks.
+/// Per KIP-21, subnetwork IDs of the form `x || 0x00..0x00` (first byte `x` followed
+/// by 19 zero bytes) are reserved for system usage by consensus.
+pub enum NativeSubnetwork {}
+
+pub enum CoinbaseSubnetwork {}
+
+pub enum RegistrySubnetwork {}
+
+pub trait Subnetwork {
+    const FIRST_BYTE: u8;
+    const SUBNETWORK_ID: SubnetworkId = SubnetworkId::from_byte(Self::FIRST_BYTE);
+}
+
+impl Subnetwork for NativeSubnetwork {
+    const FIRST_BYTE: u8 = 0;
+}
+
+impl Subnetwork for CoinbaseSubnetwork {
+    const FIRST_BYTE: u8 = 1;
+}
+
+impl Subnetwork for RegistrySubnetwork {
+    const FIRST_BYTE: u8 = 2;
+}
