@@ -3296,6 +3296,20 @@
     "EQUALVERIFY"
   ],
   [
+    "1",
+    "0x05 0x0000000000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "Without covenants, PICK rejects a 5-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x05 0x0000008000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "Without covenants, PICK rejects a 5-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
     "",
     "0 ROLL",
     "",
@@ -4260,7 +4274,7 @@
     "",
     "OK",
     "10,001-byte scriptPubKey TODO(pre-covpp): add script size check"
-  ],  
+  ],
   [
     "1",
     "VER",

@@ -3310,6 +3310,62 @@
     "EQUALVERIFY"
   ],
   [
+    "1",
+    "0x05 0x0000000000 PICK EQUAL",
+    "",
+    "OK",
+    "With covenants enabled, PICK accepts a 5-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x06 0x000000000000 PICK EQUAL",
+    "",
+    "OK",
+    "With covenants enabled, PICK accepts a 6-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x07 0x00000000000000 PICK EQUAL",
+    "",
+    "OK",
+    "With covenants enabled, PICK accepts a 7-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x08 0x0000000000000000 PICK EQUAL",
+    "",
+    "OK",
+    "With covenants enabled, PICK accepts an 8-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x05 0x0000008000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "With covenants enabled, PICK rejects a 5-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
+    "1",
+    "0x06 0x000000800000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "With covenants enabled, PICK rejects a 6-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
+    "1",
+    "0x07 0x00000080000000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "With covenants enabled, PICK rejects a 7-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
+    "1",
+    "0x08 0x0000008000000000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "With covenants enabled, PICK rejects an 8-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
     "",
     "0 ROLL",
     "",
