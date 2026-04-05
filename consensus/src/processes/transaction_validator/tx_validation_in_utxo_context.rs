@@ -1,7 +1,7 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
-    mass::{Gram, ScriptUnits, free_script_units_per_input},
+    mass::Gram,
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_txscript::{

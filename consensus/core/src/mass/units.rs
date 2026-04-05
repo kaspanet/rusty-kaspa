@@ -197,7 +197,7 @@ impl From<ScriptUnits> for u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{mass::free_script_units_per_input, tx::TxInputMass};
+    use crate::tx::TxInputMass;
 
     use super::{ComputeBudget, ScriptUnits};
 

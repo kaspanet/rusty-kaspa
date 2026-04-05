@@ -1121,8 +1121,8 @@ mod tests {
         assert_eq!(
             underbudget_vm.execute(),
             Err(TxScriptError::ExceededScriptUnitsLimit {
-                used_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT.into(),
-                allowed_units: (SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1).into()
+                used_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
+                allowed_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1
             })
         );
     }
