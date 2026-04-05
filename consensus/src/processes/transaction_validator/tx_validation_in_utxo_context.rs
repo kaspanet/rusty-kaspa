@@ -1,7 +1,7 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
-    mass::{Gram, free_script_units_per_input},
+    mass::{Gram, ScriptUnits, free_script_units_per_input},
     tx::{TransactionInput, TxInputMass, VerifiableTransaction},
 };
 use kaspa_txscript::{
@@ -169,8 +169,7 @@ impl TransactionValidator {
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
         let covenants_enabled = self.covenants_activation.is_active(block_daa_score);
-        let flags: EngineFlags =
-            EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).to_script_units().value() };
+        let flags: EngineFlags = EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).to_script_units() };
 
         check_scripts(tx, ctx, flags)
     }
@@ -195,12 +194,15 @@ pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_
 }
 
 #[inline]
-fn input_allowed_script_units(input: &TransactionInput, flags: EngineFlags) -> u64 {
+fn input_allowed_script_units(input: &TransactionInput, flags: EngineFlags) -> ScriptUnits {
     match input.mass {
         TxInputMass::SigopCount(count) => {
-            (u8::from(count) as u64).saturating_mul(flags.sigop_script_units).saturating_add(free_script_units_per_input().value())
+            // TODO(before merge): Make a dedicated allowed_script_units for TxInputMass
+            ScriptUnits(
+                (u8::from(count) as u64).saturating_mul(flags.sigop_script_units.0).saturating_add(free_script_units_per_input().0),
+            )
         }
-        TxInputMass::ComputeBudget(compute_budget) => compute_budget.allowed_script_units().value(),
+        TxInputMass::ComputeBudget(compute_budget) => compute_budget.allowed_script_units(),
     }
 }
 
@@ -338,7 +340,7 @@ mod tests {
             result,
             Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededScriptUnitsLimit {
                 used_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
-                allowed_units: free_script_units_per_input().value()
+                allowed_units: free_script_units_per_input().0
             }))
         );
 

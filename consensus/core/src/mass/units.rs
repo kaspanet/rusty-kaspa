@@ -68,7 +68,7 @@ impl ComputeBudget {
 
     #[inline(always)]
     pub const fn allowed_script_units(self) -> ScriptUnits {
-        ScriptUnits(self.to_script_units().value() + free_script_units_per_input().value())
+        self.to_script_units().saturating_add(free_script_units_per_input())
     }
 
     /// Returns the smallest compute budget whose allowed script units cover the required execution.
@@ -77,9 +77,8 @@ impl ComputeBudget {
         // for the current consts where free_budget = single_budget_units - 1
         // the formula below is equivalent to ordinary floor division:
         //                  required_script_units / single_budget_units
-        let charged_units = required_script_units.value().saturating_sub(free_script_units_per_input().value());
-        let budget_units = charged_units.div_ceil(SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT);
-        u16::try_from(budget_units).ok().map(Self)
+        let charged_units = required_script_units.saturating_sub(free_script_units_per_input());
+        ComputeBudget::try_from(charged_units).ok()
     }
 }
 
@@ -87,6 +86,16 @@ impl From<u16> for ComputeBudget {
     #[inline(always)]
     fn from(value: u16) -> Self {
         Self(value)
+    }
+}
+
+impl TryFrom<ScriptUnits> for ComputeBudget {
+    type Error = std::num::TryFromIntError;
+
+    #[inline]
+    fn try_from(units: ScriptUnits) -> Result<Self, Self::Error> {
+        let scaled = units.0.div_ceil(SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT);
+        Ok(Self(u16::try_from(scaled)?))
     }
 }
 
@@ -136,9 +145,34 @@ impl From<Gram> for u64 {
 pub struct ScriptUnits(pub u64);
 
 impl ScriptUnits {
+    pub const fn saturating_add(self, other: ScriptUnits) -> Self {
+        Self(self.0.saturating_add(other.0))
+    }
+
+    pub const fn saturating_sub(self, other: ScriptUnits) -> Self {
+        Self(self.0.saturating_sub(other.0))
+    }
+
+    pub fn checked_sub(self, other: ScriptUnits) -> Option<Self> {
+        self.0.checked_sub(other.0).map(Self)
+    }
+}
+
+impl std::ops::Add for ScriptUnits {
+    type Output = Self;
+
     #[inline(always)]
-    pub const fn value(self) -> u64 {
-        self.0
+    fn add(self, other: Self) -> Self {
+        Self(self.0 + other.0)
+    }
+}
+
+impl std::ops::Sub for ScriptUnits {
+    type Output = Self;
+
+    #[inline(always)]
+    fn sub(self, other: Self) -> Self {
+        Self(self.0 - other.0)
     }
 }
 
@@ -171,9 +205,9 @@ mod tests {
 
     #[test]
     fn checked_covering_script_units_returns_none_on_budget_overflow() {
-        let max_coverable = ComputeBudget(u16::MAX).allowed_script_units().value();
+        let max_coverable = ComputeBudget(u16::MAX).allowed_script_units();
 
-        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(max_coverable)), Some(ComputeBudget(u16::MAX)));
-        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(max_coverable + 1)), None);
+        assert_eq!(ComputeBudget::checked_covering_script_units(max_coverable), Some(ComputeBudget(u16::MAX)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(max_coverable.saturating_add(ScriptUnits(1))), None);
     }
 }
