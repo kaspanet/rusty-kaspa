@@ -8,7 +8,9 @@
 
 mod script_public_key;
 
-use crate::mass::{ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount};
+use crate::mass::{
+    ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
+};
 use crate::{
     errors::tx::PopulateGenesisCovenantsError,
     hashing,
@@ -127,6 +129,11 @@ impl TxInputMass {
 
     pub fn has_sig_op_count_field(version: u16) -> bool {
         version == 0
+    }
+
+    pub fn allowed_script_units(self) -> ScriptUnits {
+        let script_units = ScriptUnits::from(self);
+        script_units.saturating_add(free_script_units_per_input())
     }
 }
 

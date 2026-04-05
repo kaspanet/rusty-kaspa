@@ -901,7 +901,7 @@ mod tests {
     use kaspa_consensus_core::mass::{ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SigopCount};
     use kaspa_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-        TransactionOutput,
+        TransactionOutput, TxInputMass,
     };
     use kaspa_core::assert_match;
     use kaspa_utils::hex::FromHex;
@@ -1105,7 +1105,7 @@ mod tests {
                 &script,
                 &reused_values,
                 &sig_cache,
-                budget.allowed_script_units(),
+                TxInputMass::from(ComputeBudget(1)).allowed_script_units(),
                 flags,
             );
         assert!(exact_vm.execute().is_ok());
@@ -1115,7 +1115,7 @@ mod tests {
                 &script,
                 &reused_values,
                 &sig_cache,
-                ComputeBudget(0).allowed_script_units(),
+                TxInputMass::from(ComputeBudget(0)).allowed_script_units(),
                 flags,
             );
         assert_eq!(

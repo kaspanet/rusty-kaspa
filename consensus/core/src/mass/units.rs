@@ -69,17 +69,6 @@ impl ComputeBudget {
         Gram(self.0 as u64 * GRAMS_PER_COMPUTE_BUDGET_UNIT)
     }
 
-    #[inline(always)]
-    pub const fn to_script_units(self) -> ScriptUnits {
-        ScriptUnits(self.0 as u64 * SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT)
-    }
-
-    // TODO(before-merge): Remove this function.
-    #[inline(always)]
-    pub const fn allowed_script_units(self) -> ScriptUnits {
-        self.to_script_units().saturating_add(free_script_units_per_input())
-    }
-
     /// Returns the smallest compute budget whose allowed script units cover the required execution.
     #[inline]
     pub fn checked_covering_script_units(required_script_units: ScriptUnits) -> Option<Self> {
@@ -208,6 +197,8 @@ impl From<ScriptUnits> for u64 {
 
 #[cfg(test)]
 mod tests {
+    use crate::{mass::free_script_units_per_input, tx::TxInputMass};
+
     use super::{ComputeBudget, ScriptUnits};
 
     #[test]
@@ -221,7 +212,7 @@ mod tests {
 
     #[test]
     fn checked_covering_script_units_returns_none_on_budget_overflow() {
-        let max_coverable = ComputeBudget(u16::MAX).allowed_script_units();
+        let max_coverable = TxInputMass::from(ComputeBudget(u16::MAX)).allowed_script_units();
 
         assert_eq!(ComputeBudget::checked_covering_script_units(max_coverable), Some(ComputeBudget(u16::MAX)));
         assert_eq!(ComputeBudget::checked_covering_script_units(max_coverable.saturating_add(ScriptUnits(1))), None);
