@@ -360,6 +360,16 @@ impl Stack {
     }
 
     #[inline]
+    pub fn push_item_unmetered<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
+    where
+        Vec<u8>: OpcodeData<T>,
+    {
+        let v: Vec<u8> = OpcodeData::serialize(&item)?;
+        Vec::push(&mut self.inner, v);
+        Ok(())
+    }
+
+    #[inline]
     pub fn drop_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= SIZE {
             true => {
@@ -400,10 +410,21 @@ impl Stack {
     pub fn rot_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 3 * SIZE {
             true => {
-                let drained = self.inner.drain(self.len() - 3 * SIZE..self.len() - 2 * SIZE).collect::<Vec<StackEntry>>();
-                let added_bytes = total_bytes(&drained);
-                self.add_pushed_bytes(added_bytes);
-                self.inner.extend(drained);
+                // Rotate the trailing `3 * SIZE` frame left by `SIZE`, moving the oldest group to the top.
+                //
+                // SIZE = 1:
+                //   stack: [a, b, c, d, e, f]
+                //                   [d, e, f]
+                //                    << 1
+                //       -> [a, b, c, e, f, d]
+                //
+                // SIZE = 2:
+                //   stack: [a, b, c, d, e, f]
+                //          [a, b, c, d, e, f]
+                //           << 2
+                //       -> [c, d, e, f, a, b]
+                let len = self.len();
+                self.inner[len - 3 * SIZE..].rotate_left(SIZE);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(3 * SIZE, self.len())),
@@ -414,14 +435,38 @@ impl Stack {
     pub fn swap_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 2 * SIZE {
             true => {
-                let drained = self.inner.drain(self.len() - 2 * SIZE..self.len() - SIZE).collect::<Vec<StackEntry>>();
-                let added_bytes = total_bytes(&drained);
-                self.add_pushed_bytes(added_bytes);
-                self.inner.extend(drained);
+                // Rotate the trailing `2 * SIZE` frame left by `SIZE`, swapping the top two groups.
+                //
+                // SIZE = 1:
+                //   stack: [a, b, c, d]
+                //                [c, d]
+                //                 << 1
+                //       -> [a, b, d, c]
+                //
+                // SIZE = 2:
+                //   stack: [a, b, c, d, e, f]
+                //                [c, d, e, f]
+                //                 << 2
+                //       -> [a, b, e, f, c, d]
+                let len = self.len();
+                self.inner[len - 2 * SIZE..].rotate_left(SIZE);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(2 * SIZE, self.len())),
         }
+    }
+
+    #[inline]
+    pub fn roll(&mut self, loc: usize) -> Result<(), TxScriptError> {
+        if loc >= self.len() {
+            return Err(TxScriptError::InvalidStackOperation(loc, self.len()));
+        }
+        if loc == 0 {
+            return Ok(());
+        }
+        let from = self.len() - loc - 1;
+        self.inner[from..].rotate_left(1);
+        Ok(())
     }
 
     pub fn clear(&mut self) {
@@ -441,6 +486,14 @@ impl Stack {
             return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
         }
         self.add_pushed_bytes(item.len());
+        self.inner.push(item);
+        Ok(())
+    }
+
+    pub fn push_unmetered(&mut self, item: StackEntry) -> Result<(), TxScriptError> {
+        if item.len() > self.max_element_size() {
+            return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
+        }
         self.inner.push(item);
         Ok(())
     }

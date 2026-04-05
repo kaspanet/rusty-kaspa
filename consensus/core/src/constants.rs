@@ -41,8 +41,3 @@ pub const SEQUENCE_LOCK_TIME_DISABLED: u64 = 1 << 63;
 /// UNACCEPTED_DAA_SCORE is used to for UtxoEntries that were created by
 /// transactions in the mempool, or otherwise not-yet-accepted transactions.
 pub const UNACCEPTED_DAA_SCORE: u64 = u64::MAX;
-
-/// INPUT_COMPUTE_MASS_SCALE_FACTOR is the factor by which the compute mass of
-/// transaction inputs is scaled when calculating total transaction mass.
-/// This allows using a u16 for the compute mass in transaction inputs.
-pub const INPUT_COMPUTE_MASS_SCALE_FACTOR: u64 = 10;

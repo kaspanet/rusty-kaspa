@@ -381,7 +381,7 @@ impl Transaction {
                     Some(input.signature_script.clone()),
                     input.sequence,
                     input.mass.sig_op_count().unwrap_or(0),
-                    input.mass.compute_mass().unwrap_or(0),
+                    input.mass.compute_budget().unwrap_or(0),
                     utxo,
                 )
             })

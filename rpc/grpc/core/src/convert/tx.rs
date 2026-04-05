@@ -41,7 +41,7 @@ from!(item: &kaspa_rpc_core::RpcTransactionInput, protowire::RpcTransactionInput
         signature_script: item.signature_script.to_rpc_hex(),
         sequence: item.sequence,
         sig_op_count: item.sig_op_count.into(),
-        compute_mass: item.compute_mass.into(),
+        compute_budget: item.compute_budget.into(),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
@@ -52,7 +52,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalTransactionInput, protowire::RpcTransact
         signature_script: item.signature_script.as_ref().map(|x| x.to_rpc_hex()).unwrap_or_default(),
         sequence: item.sequence.unwrap_or_default(),
         sig_op_count: item.sig_op_count.map(|x| x.into()).unwrap_or_default(),
-        compute_mass: item.compute_mass.map(|x| x.into()).unwrap_or_default(),
+        compute_budget: item.compute_budget.map(|x| x.into()).unwrap_or_default(),
         verbose_data: item.verbose_data.as_ref().map(protowire::RpcTransactionInputVerboseData::from),
     }
 });
@@ -259,7 +259,7 @@ try_from!(item: &protowire::RpcTransactionInput, kaspa_rpc_core::RpcOptionalTran
             .signature_script)?),
         sequence: Some(item.sequence),
         sig_op_count: Some(item.sig_op_count.try_into()?),
-        compute_mass: Some(item.compute_mass.try_into()?),
+        compute_budget: Some(item.compute_budget.try_into()?),
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionInputVerboseData::try_from).transpose()?,
     }
 });
@@ -274,7 +274,7 @@ try_from!(item: &protowire::RpcTransactionInput, kaspa_rpc_core::RpcTransactionI
         signature_script: Vec::from_rpc_hex(&item.signature_script)?,
         sequence: item.sequence,
         sig_op_count: item.sig_op_count.try_into()?,
-        compute_mass: item.compute_mass.try_into()?,
+        compute_budget: item.compute_budget.try_into()?,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcTransactionInputVerboseData::try_from).transpose()?,
     }
 });
@@ -457,7 +457,7 @@ mod tests {
     use kaspa_rpc_core::RpcTransaction;
 
     #[test]
-    fn test_rpc_transaction_compute_mass_roundtrip() {
+    fn test_rpc_transaction_compute_budget_roundtrip() {
         let tx = RpcTransaction {
             version: 1,
             inputs: vec![kaspa_rpc_core::RpcTransactionInput {
@@ -468,7 +468,7 @@ mod tests {
                 signature_script: vec![],
                 sequence: 0,
                 sig_op_count: 0,
-                compute_mass: 222,
+                compute_budget: 222,
                 verbose_data: None,
             }],
             outputs: vec![],
@@ -481,10 +481,10 @@ mod tests {
         };
 
         let wire: protowire::RpcTransaction = (&tx).into();
-        assert_eq!(wire.inputs[0].compute_mass, 222);
+        assert_eq!(wire.inputs[0].compute_budget, 222);
 
         let decoded = RpcTransaction::try_from(&wire).unwrap();
-        assert_eq!(decoded.inputs[0].compute_mass, 222);
+        assert_eq!(decoded.inputs[0].compute_budget, 222);
         assert_eq!(decoded.mass, 111);
     }
 }

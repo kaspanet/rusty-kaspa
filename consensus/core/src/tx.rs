@@ -8,7 +8,7 @@
 
 mod script_public_key;
 
-use crate::mass::{ContextualMasses, Mass, MassCofactors, NonContextualMasses};
+use crate::mass::{ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, SigopCount};
 use crate::{
     errors::tx::PopulateGenesisCovenantsError,
     hashing,
@@ -99,34 +99,46 @@ impl Display for TransactionOutpoint {
 }
 
 /// Encodes the mass commitment for a transaction input.
-/// Version 0 transactions use `SigopCount`, version >= 1 transactions use `ComputeMass`.
+/// Version 0 transactions use `SigopCount`, version >= 1 transactions use `ComputeBudget`.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Debug, Copy)]
 pub enum TxInputMass {
-    SigopCount(u8),
-    ComputeMass(u16),
+    SigopCount(SigopCount),
+    ComputeBudget(ComputeBudget),
 }
 
 impl TxInputMass {
     pub fn sig_op_count(self) -> Option<u8> {
         match self {
-            Self::SigopCount(n) => Some(n),
+            Self::SigopCount(n) => Some(n.into()),
             _ => None,
         }
     }
 
-    pub fn compute_mass(self) -> Option<u16> {
+    pub fn compute_budget(self) -> Option<u16> {
         match self {
-            Self::ComputeMass(n) => Some(n),
+            Self::ComputeBudget(n) => Some(n.into()),
             _ => None,
         }
     }
 
-    pub fn has_compute_mass_field(version: u16) -> bool {
+    pub fn has_compute_budget_field(version: u16) -> bool {
         version >= 1
     }
 
     pub fn has_sig_op_count_field(version: u16) -> bool {
         version == 0
+    }
+}
+
+impl From<SigopCount> for TxInputMass {
+    fn from(value: SigopCount) -> Self {
+        Self::SigopCount(value)
+    }
+}
+
+impl From<ComputeBudget> for TxInputMass {
+    fn from(value: ComputeBudget) -> Self {
+        Self::ComputeBudget(value)
     }
 }
 
@@ -147,16 +159,16 @@ impl TransactionInput {
     }
 
     pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: TxInputMass::SigopCount(sig_op_count) }
+        Self { previous_outpoint, signature_script, sequence, mass: SigopCount(sig_op_count).into() }
     }
 
-    pub fn new_with_compute_mass(
+    pub fn new_with_compute_budget(
         previous_outpoint: TransactionOutpoint,
         signature_script: Vec<u8>,
         sequence: u64,
-        compute_mass: u16,
+        compute_budget: u16,
     ) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: TxInputMass::ComputeMass(compute_mass) }
+        Self { previous_outpoint, signature_script, sequence, mass: ComputeBudget(compute_budget).into() }
     }
 }
 
@@ -167,7 +179,7 @@ impl std::fmt::Debug for TransactionInput {
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.mass.sig_op_count().unwrap_or_default())
-            .field("compute_mass", &self.mass.compute_mass().unwrap_or_default())
+            .field("compute_budget", &self.mass.compute_budget().unwrap_or_default())
             .finish()
     }
 }
@@ -775,7 +787,7 @@ mod tests {
                         0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
                     ],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(3),
+                    mass: TxInputMass::SigopCount(3.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint {
@@ -790,7 +802,7 @@ mod tests {
                         0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
                     ],
                     sequence: 4,
-                    mass: TxInputMass::SigopCount(5),
+                    mass: TxInputMass::SigopCount(5.into()),
                 },
             ],
             vec![

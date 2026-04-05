@@ -1,6 +1,13 @@
+pub mod units;
+
+pub use units::{
+    ComputeBudget, GRAMS_PER_COMPUTE_BUDGET_UNIT, Gram, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits,
+    SigopCount, free_script_units_per_input,
+};
+
 use crate::{
     config::params::Params,
-    constants::{INPUT_COMPUTE_MASS_SCALE_FACTOR, TRANSIENT_BYTE_TO_MASS_FACTOR},
+    constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     subnets::SUBNETWORK_ID_SIZE,
     tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction},
 };
@@ -41,7 +48,7 @@ fn transaction_input_estimated_serialized_size(input: &TransactionInput, version
     size += 8; // sequence (uint64)
 
     if version >= 1 {
-        size += 2; // compute_mass (u16)
+        size += 2; // compute_budget (u16)
     }
 
     size
@@ -327,11 +334,11 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let script_mass = if TxInputMass::has_compute_mass_field(tx.version) {
-            INPUT_COMPUTE_MASS_SCALE_FACTOR
+        let script_mass = if TxInputMass::has_compute_budget_field(tx.version) {
+            GRAMS_PER_COMPUTE_BUDGET_UNIT
                 * tx.inputs
                     .iter()
-                    .map(|input| input.mass.compute_mass().expect("v1 transactions are expected to have compute mass") as u64)
+                    .map(|input| input.mass.compute_budget().expect("v1 transactions are expected to have compute budget") as u64)
                     .sum::<u64>()
         } else {
             let total_sigops: u64 = tx
@@ -781,7 +788,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: i as u32 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 })
                 .collect(),
             outs.iter()

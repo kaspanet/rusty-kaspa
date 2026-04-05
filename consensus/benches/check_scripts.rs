@@ -37,7 +37,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
             previous_outpoint: dummy_prev_out,
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::SigopCount(1),
+            mass: TxInputMass::SigopCount(1.into()),
         });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {
@@ -56,7 +56,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
             previous_outpoint: dummy_prev_out,
             signature_script: vec![],
             sequence: 0,
-            mass: TxInputMass::SigopCount(1),
+            mass: TxInputMass::SigopCount(1.into()),
         });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {

@@ -4,6 +4,7 @@ use crate::{
     RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionOutput, RpcResult, RpcTransaction,
     RpcTransactionInput, RpcTransactionOutput,
 };
+use kaspa_consensus_core::mass::{ComputeBudget, SigopCount};
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, TxInputMass};
 
 struct RpcInputWithVersion {
@@ -17,10 +18,10 @@ impl From<RpcInputWithVersion> for TransactionInput {
             value.input.previous_outpoint.into(),
             value.input.signature_script,
             value.input.sequence,
-            if TxInputMass::has_compute_mass_field(value.version) {
-                TxInputMass::ComputeMass(value.input.compute_mass)
+            if TxInputMass::has_compute_budget_field(value.version) {
+                ComputeBudget(value.input.compute_budget).into()
             } else {
-                TxInputMass::SigopCount(value.input.sig_op_count)
+                SigopCount(value.input.sig_op_count).into()
             },
         )
     }
@@ -47,10 +48,10 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
         let sequence =
             value.input.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
 
-        let mass = if TxInputMass::has_compute_mass_field(value.version) {
-            TxInputMass::ComputeMass(value.input.compute_mass.unwrap_or_default())
+        let mass = if TxInputMass::has_compute_budget_field(value.version) {
+            ComputeBudget(value.input.compute_budget.unwrap_or_default()).into()
         } else {
-            TxInputMass::SigopCount(value.input.sig_op_count.unwrap_or_default())
+            SigopCount(value.input.sig_op_count.unwrap_or_default()).into()
         };
 
         Ok(TransactionInput::new_with_mass(previous_outpoint, signature_script, sequence, mass))
@@ -95,7 +96,7 @@ impl From<&TransactionInput> for RpcTransactionInput {
             signature_script: item.signature_script.clone(),
             sequence: item.sequence,
             sig_op_count: item.mass.sig_op_count().unwrap_or(0),
-            compute_mass: item.mass.compute_mass().unwrap_or(0),
+            compute_budget: item.mass.compute_budget().unwrap_or(0),
             verbose_data: None,
         }
     }
@@ -171,7 +172,7 @@ impl From<&TransactionInput> for RpcOptionalTransactionInput {
             signature_script: Some(item.signature_script.clone()),
             sequence: Some(item.sequence),
             sig_op_count: Some(item.mass.sig_op_count().unwrap_or(0)),
-            compute_mass: Some(item.mass.compute_mass().unwrap_or(0)),
+            compute_budget: Some(item.mass.compute_budget().unwrap_or(0)),
             verbose_data: None,
         }
     }

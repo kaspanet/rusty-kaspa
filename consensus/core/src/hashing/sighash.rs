@@ -316,19 +316,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(0),
+                    mass: TxInputMass::SigopCount(0.into()),
                 },
             ],
             vec![
@@ -403,7 +403,7 @@ mod tests {
             NoAction,
             Output(usize),
             Input(usize),
-            ComputeMass(usize),
+            ComputeBudget(usize),
             AmountSpent(usize),
             PrevScriptPublicKey(usize),
             Sequence(usize),
@@ -448,7 +448,7 @@ mod tests {
                 populated_tx: &native_populated_tx,
                 hash_type: SIG_HASH_ALL,
                 input_index: 0,
-                action: ModifyAction::ComputeMass(1),
+                action: ModifyAction::ComputeBudget(1),
                 expected_hash: "03b7ac6927b2b67100734c3cc313ff8c2e8b3ce3e746d46dd660b706a916b1f5", // shouldn't change the hash
             },
             TestVector {
@@ -683,8 +683,8 @@ mod tests {
                 ModifyAction::Input(i) => {
                     tx.inputs[i].previous_outpoint.index = 2;
                 }
-                ModifyAction::ComputeMass(i) => {
-                    tx.inputs[i].mass = TxInputMass::ComputeMass(1234);
+                ModifyAction::ComputeBudget(i) => {
+                    tx.inputs[i].mass = TxInputMass::ComputeBudget(1234.into());
                 }
                 ModifyAction::AmountSpent(i) => {
                     entries[i].amount = 666;

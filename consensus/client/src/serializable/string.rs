@@ -86,7 +86,7 @@ pub struct SerializableTransactionInput {
     pub index: SignedTransactionIndexType,
     pub sequence: String,
     pub sig_op_count: u8,
-    pub compute_mass: u16,
+    pub compute_budget: u16,
     #[serde(with = "hex::serde")]
     pub signature_script: Vec<u8>,
     pub utxo: SerializableUtxoEntry,
@@ -102,7 +102,7 @@ impl SerializableTransactionInput {
             signature_script: input.signature_script.clone(),
             sequence: input.sequence.to_string(),
             sig_op_count: input.mass.sig_op_count().unwrap_or(0),
-            compute_mass: input.mass.compute_mass().unwrap_or(0),
+            compute_budget: input.mass.compute_budget().unwrap_or(0),
             utxo: utxo.clone(),
         }
     }
@@ -141,10 +141,10 @@ impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
             previous_outpoint: cctx::TransactionOutpoint { transaction_id: input.transaction_id, index: input.index },
             signature_script: input.signature_script,
             sequence: input.sequence.parse()?,
-            mass: if cctx::TxInputMass::has_compute_mass_field(value.version) {
-                cctx::TxInputMass::ComputeMass(input.compute_mass)
+            mass: if cctx::TxInputMass::has_compute_budget_field(value.version) {
+                cctx::TxInputMass::ComputeBudget(input.compute_budget.into())
             } else {
-                cctx::TxInputMass::SigopCount(input.sig_op_count)
+                cctx::TxInputMass::SigopCount(input.sig_op_count.into())
             },
         })
     }
@@ -162,7 +162,7 @@ impl TryFrom<&SerializableTransactionInput> for TransactionInput {
             signature_script: (!serializable_input.signature_script.is_empty()).then_some(serializable_input.signature_script.clone()),
             sequence: serializable_input.sequence.parse()?,
             sig_op_count: serializable_input.sig_op_count,
-            compute_mass: serializable_input.compute_mass,
+            compute_budget: serializable_input.compute_budget,
             utxo: Some(utxo),
         };
 
@@ -183,7 +183,7 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
             signature_script: inner.signature_script.clone().unwrap_or_default(),
             sequence: inner.sequence.to_string(),
             sig_op_count: inner.sig_op_count,
-            compute_mass: inner.compute_mass,
+            compute_budget: inner.compute_budget,
             utxo,
         })
     }

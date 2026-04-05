@@ -22,7 +22,7 @@ export interface ITransactionInput {
     signatureScript?: HexString;
     sequence: bigint;
     sigOpCount: number;
-    computeMass?: number;
+    computeBudget?: number;
     utxo?: UtxoEntryReference;
 
     /** Optional verbose data provided by RPC */
@@ -63,7 +63,7 @@ pub struct TransactionInputInner {
     pub sequence: u64,
     pub sig_op_count: u8,
     #[serde(default)]
-    pub compute_mass: u16,
+    pub compute_budget: u16,
     pub utxo: Option<UtxoEntryReference>,
 }
 
@@ -73,10 +73,10 @@ impl TransactionInputInner {
         signature_script: Option<Vec<u8>>,
         sequence: u64,
         sig_op_count: u8,
-        compute_mass: u16,
+        compute_budget: u16,
         utxo: Option<UtxoEntryReference>,
     ) -> Self {
-        Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, utxo }
+        Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, utxo }
     }
 }
 
@@ -94,10 +94,10 @@ impl TransactionInput {
         signature_script: Option<Vec<u8>>,
         sequence: u64,
         sig_op_count: u8,
-        compute_mass: u16,
+        compute_budget: u16,
         utxo: Option<UtxoEntryReference>,
     ) -> Self {
-        let inner = TransactionInputInner::new(previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, utxo);
+        let inner = TransactionInputInner::new(previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, utxo);
         Self { inner: Arc::new(Mutex::new(inner)) }
     }
 
@@ -181,14 +181,14 @@ impl TransactionInput {
         self.inner().sig_op_count = sig_op_count;
     }
 
-    #[wasm_bindgen(getter = computeMass)]
-    pub fn get_compute_mass(&self) -> u16 {
-        self.inner().compute_mass
+    #[wasm_bindgen(getter = computeBudget)]
+    pub fn get_compute_budget(&self) -> u16 {
+        self.inner().compute_budget
     }
 
-    #[wasm_bindgen(setter = computeMass)]
-    pub fn set_compute_mass(&mut self, compute_mass: u16) {
-        self.inner().compute_mass = compute_mass;
+    #[wasm_bindgen(setter = computeBudget)]
+    pub fn set_compute_budget(&mut self, compute_budget: u16) {
+        self.inner().compute_budget = compute_budget;
     }
 
     #[wasm_bindgen(getter = utxo)]
@@ -225,9 +225,9 @@ impl TryCastFromJs for TransactionInput {
                 let signature_script = object.get_vec_u8("signatureScript").ok();
                 let sequence = object.get_u64("sequence")?;
                 let sig_op_count = object.get_u8("sigOpCount")?;
-                let compute_mass = object.get_u16("computeMass").unwrap_or_default();
+                let compute_budget = object.get_u16("computeBudget").unwrap_or_default();
                 let utxo = object.try_cast_into::<UtxoEntryReference>("utxo")?;
-                Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count, compute_mass, utxo).into())
+                Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, utxo).into())
             } else {
                 Err("TransactionInput must be an object".into())
             }
@@ -242,7 +242,7 @@ impl From<cctx::TransactionInput> for TransactionInput {
             signature_script: Some(tx_input.signature_script),
             sequence: tx_input.sequence,
             sig_op_count: tx_input.mass.sig_op_count().unwrap_or(0),
-            compute_mass: tx_input.mass.compute_mass().unwrap_or(0),
+            compute_budget: tx_input.mass.compute_budget().unwrap_or(0),
             utxo: None,
         };
         TransactionInput::new_with_inner(inner)
@@ -267,10 +267,10 @@ impl From<TransactionInputWithVersion<'_>> for cctx::TransactionInput {
             previous_outpoint: inner.previous_outpoint.clone().into(),
             signature_script: inner.signature_script.clone().unwrap_or_default(), // TODO - discuss: should this unwrap_or_default or return an error?
             sequence: inner.sequence,
-            mass: if cctx::TxInputMass::has_compute_mass_field(value.version) {
-                cctx::TxInputMass::ComputeMass(inner.compute_mass)
+            mass: if cctx::TxInputMass::has_compute_budget_field(value.version) {
+                cctx::TxInputMass::ComputeBudget(inner.compute_budget.into())
             } else {
-                cctx::TxInputMass::SigopCount(inner.sig_op_count)
+                cctx::TxInputMass::SigopCount(inner.sig_op_count.into())
             },
         }
     }
