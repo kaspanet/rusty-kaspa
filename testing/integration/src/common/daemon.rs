@@ -6,7 +6,7 @@ use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_utils::triggers::Listener;
+use kaspa_utils::{networking::ContextualNetAddress, triggers::Listener};
 use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
@@ -96,25 +96,26 @@ pub struct Daemon {
     _appdir_tempdir: TempDir,
 }
 
+fn free_port() -> u16 {
+    loop {
+        let port = rand::random::<u16>() % (u16::MAX - 1024) + 1024;
+        if let Ok(listener) = std::net::TcpListener::bind(format!("127.0.0.1:{}", port)) {
+            drop(listener);
+            return port;
+        }
+    }
+}
+
+fn port_from_address(addr: Option<ContextualNetAddress>) -> u16 {
+    addr.and_then(|x| if x.has_port() { Some(x.normalize(0).port) } else { None }).unwrap_or_else(|| free_port())
+}
+
 impl Daemon {
     pub fn fill_args_with_random_ports(args: &mut Args) {
-        // This should ask the OS to allocate free port for socket 1 to 4.
-        let socket1 = std::net::TcpListener::bind(format!("127.0.0.1:{}", args.rpclisten.map_or(0, |x| x.normalize(0).port))).unwrap();
-        let rpc_port = socket1.local_addr().unwrap().port();
-
-        let socket2 = std::net::TcpListener::bind(format!("127.0.0.1:{}", args.listen.map_or(0, |x| x.normalize(0).port))).unwrap();
-        let p2p_port = socket2.local_addr().unwrap().port();
-
-        let socket3 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let rpc_json_port = socket3.local_addr().unwrap().port();
-
-        let socket4 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let rpc_borsh_port = socket4.local_addr().unwrap().port();
-
-        drop(socket1);
-        drop(socket2);
-        drop(socket3);
-        drop(socket4);
+        let rpc_port = port_from_address(args.rpclisten);
+        let p2p_port = port_from_address(args.listen);
+        let rpc_json_port = free_port();
+        let rpc_borsh_port = free_port();
 
         args.rpclisten = Some(format!("0.0.0.0:{rpc_port}").try_into().unwrap());
         args.listen = Some(format!("0.0.0.0:{p2p_port}").try_into().unwrap());
