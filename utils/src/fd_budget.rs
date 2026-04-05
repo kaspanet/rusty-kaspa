@@ -61,10 +61,14 @@ pub fn try_set_fd_limit(limit: u64) -> std::io::Result<u64> {
     }
 }
 
+// Many tests can be run in parallel, and each of them may acquire some FDs, so we set a lower limit for tests to avoid hitting the actual OS limit.
+// Note: Integration tests need to explicitly use this constant and not `limit()`, since they set `#[cfg(test)]` to false.
+pub const TEST_FD_LIMIT: i32 = 100;
+
 pub fn limit() -> i32 {
     cfg_if::cfg_if! {
         if #[cfg(test)] {
-            100
+            TEST_FD_LIMIT
         }
         else if #[cfg(target_os = "windows")] {
             rlimit::getmaxstdio() as i32
@@ -76,10 +80,6 @@ pub fn limit() -> i32 {
             512
         }
     }
-}
-
-pub fn remainder() -> i32 {
-    limit() - ACQUIRED_FD.load(Ordering::Relaxed)
 }
 
 #[cfg(test)]

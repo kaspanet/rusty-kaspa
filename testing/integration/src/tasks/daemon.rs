@@ -7,7 +7,7 @@ use clap::Parser;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_core::{trace, warn};
-use kaspa_utils::{fd_budget, triggers::SingleTrigger};
+use kaspa_utils::{fd_budget::TEST_FD_LIMIT, triggers::SingleTrigger};
 use kaspad_lib::args::Args;
 use std::{iter::once, sync::Arc};
 use tokio::task::JoinHandle;
@@ -148,7 +148,7 @@ impl DaemonTask {
 impl Task for DaemonTask {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
         let ready_signal = self.ready_signal.trigger.clone();
-        let fd_total_budget = fd_budget::limit();
+        let fd_total_budget = TEST_FD_LIMIT;
         let mut daemon = Daemon::with_manager(self.client_manager.clone(), fd_total_budget);
         let task = tokio::spawn(async move {
             warn!("Daemon task starting...");
