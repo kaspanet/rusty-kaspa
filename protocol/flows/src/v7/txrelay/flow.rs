@@ -90,11 +90,14 @@ impl RelayTransactionsFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        // If our node has disabled transaction relay, drain inv messages without acting on them
+        // If our node has disabled transaction relay, reject inv messages from peers.
+        // The disable_relay_tx flag is communicated during the handshake, so well-behaved
+        // peers should never send us tx invs. If they do, it's a protocol violation.
         if self.ctx.config.disable_relay_tx {
-            loop {
-                let _ = dequeue!(self.invs_route, Payload::InvTransactions)?;
-            }
+            let _ = dequeue!(self.invs_route, Payload::InvTransactions)?;
+            return Err(ProtocolError::Other(
+                "peer sent tx inv despite our disable_relay_tx flag in the handshake",
+            ));
         }
 
         // trace!("Starting relay transactions flow with {}", self.router.identity());
