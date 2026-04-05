@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub const GRAMS_PER_COMPUTE_BUDGET_UNIT: u64 = 100;
 pub const SCRIPT_UNITS_PER_GRAM: u64 = 10;
 pub const SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT: u64 = GRAMS_PER_COMPUTE_BUDGET_UNIT * SCRIPT_UNITS_PER_GRAM;
+pub const SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT: u64 = 10000;
 
 /// A fixed per-input script execution allowance applied before committed compute budget.
 /// This is primarily intended to preserve leeway for legacy sigop-count inputs.
@@ -44,6 +45,13 @@ impl From<SigopCount> for u8 {
     }
 }
 
+impl From<SigopCount> for ScriptUnits {
+    #[inline(always)]
+    fn from(value: SigopCount) -> Self {
+        ScriptUnits(value.0 as u64 * SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT)
+    }
+}
+
 #[derive(
     Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
@@ -66,6 +74,7 @@ impl ComputeBudget {
         ScriptUnits(self.0 as u64 * SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT)
     }
 
+    // TODO(before-merge): Remove this function.
     #[inline(always)]
     pub const fn allowed_script_units(self) -> ScriptUnits {
         self.to_script_units().saturating_add(free_script_units_per_input())
@@ -96,6 +105,13 @@ impl TryFrom<ScriptUnits> for ComputeBudget {
     fn try_from(units: ScriptUnits) -> Result<Self, Self::Error> {
         let scaled = units.0.div_ceil(SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT);
         Ok(Self(u16::try_from(scaled)?))
+    }
+}
+
+impl From<ComputeBudget> for ScriptUnits {
+    #[inline(always)]
+    fn from(value: ComputeBudget) -> Self {
+        ScriptUnits(value.0 as u64 * SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT)
     }
 }
 

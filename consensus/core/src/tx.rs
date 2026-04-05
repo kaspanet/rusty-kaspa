@@ -8,7 +8,7 @@
 
 mod script_public_key;
 
-use crate::mass::{ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, SigopCount};
+use crate::mass::{ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount};
 use crate::{
     errors::tx::PopulateGenesisCovenantsError,
     hashing,
@@ -139,6 +139,15 @@ impl From<SigopCount> for TxInputMass {
 impl From<ComputeBudget> for TxInputMass {
     fn from(value: ComputeBudget) -> Self {
         Self::ComputeBudget(value)
+    }
+}
+
+impl From<TxInputMass> for ScriptUnits {
+    fn from(value: TxInputMass) -> Self {
+        match value {
+            TxInputMass::SigopCount(count) => ScriptUnits::from(count),
+            TxInputMass::ComputeBudget(budget) => ScriptUnits::from(budget),
+        }
     }
 }
 

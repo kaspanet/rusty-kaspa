@@ -2,7 +2,7 @@ use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIM
 use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     mass::{Gram, ScriptUnits, free_script_units_per_input},
-    tx::{TransactionInput, TxInputMass, VerifiableTransaction},
+    tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_txscript::{
     EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine, covenants::CovenantsContext,
@@ -194,21 +194,13 @@ pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_
 }
 
 #[inline]
-fn input_allowed_script_units(input: &TransactionInput, flags: EngineFlags) -> ScriptUnits {
-    match input.mass {
-        TxInputMass::SigopCount(count) => {
-            // TODO(before merge): Make a dedicated allowed_script_units for TxInputMass
-            ScriptUnits(
-                (u8::from(count) as u64).saturating_mul(flags.sigop_script_units.0).saturating_add(free_script_units_per_input().0),
-            )
-        }
-        TxInputMass::ComputeBudget(compute_budget) => compute_budget.allowed_script_units(),
-    }
+fn input_allowed_script_units(input: &TransactionInput) -> ScriptUnits {
+    ScriptUnits::from(input.mass).saturating_add(free_script_units_per_input())
 }
 
 pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxUnsync<'_>, flags: EngineFlags) -> TxResult<()> {
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        let allowed_script_units = input_allowed_script_units(input, flags);
+        let allowed_script_units = input_allowed_script_units(input);
         let mut vm =
             TxScriptEngine::from_transaction_input_with_allowed_script_units(tx, input, i, entry, ctx, flags, allowed_script_units);
         vm.execute().map_err(|err| map_script_err(err, input))?;
@@ -219,7 +211,7 @@ pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxU
 pub fn check_scripts_par_iter(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtxSync<'_>, flags: EngineFlags) -> TxResult<()> {
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        let allowed_script_units = input_allowed_script_units(input, flags);
+        let allowed_script_units = input_allowed_script_units(input);
         let mut vm =
             TxScriptEngine::from_transaction_input_with_allowed_script_units(tx, input, idx, utxo, ctx, flags, allowed_script_units);
         vm.execute().map_err(|err| map_script_err(err, input))
