@@ -107,7 +107,7 @@ fn free_port() -> u16 {
 }
 
 fn port_from_address(addr: Option<ContextualNetAddress>) -> u16 {
-    addr.and_then(|x| if x.has_port() { Some(x.normalize(0).port) } else { None }).unwrap_or_else(|| free_port())
+    addr.and_then(|x| if x.has_port() { Some(x.normalize(0).port) } else { None }).unwrap_or_else(free_port)
 }
 
 impl Daemon {
