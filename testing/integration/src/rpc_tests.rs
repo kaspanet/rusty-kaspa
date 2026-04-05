@@ -16,7 +16,7 @@ use kaspa_notify::{
     },
 };
 use kaspa_rpc_core::{Notification, api::rpc::RpcApi, model::*};
-use kaspa_utils::{fd_budget::TEST_FD_LIMIT, networking::ContextualNetAddress};
+use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
 use tokio::task::JoinHandle;
 
@@ -53,7 +53,7 @@ async fn sanity_test() {
         ..Default::default()
     };
 
-    let fd_total_budget = TEST_FD_LIMIT;
+    let fd_total_budget = fd_budget::test_limit();
     let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
     let client = daemon.start().await;
     let (sender, _) = async_channel::unbounded();
