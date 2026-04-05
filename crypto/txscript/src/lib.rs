@@ -31,6 +31,7 @@ use kaspa_consensus_core::hashing::sighash::{
     SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
 };
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
+use kaspa_consensus_core::mass::Gram;
 use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use kaspa_utils::hex::ToHex;
@@ -104,7 +105,7 @@ pub struct EngineFlags {
 
 impl Default for EngineFlags {
     fn default() -> Self {
-        Self { covenants_enabled: false, sigop_script_units: 10_000 }
+        Self { covenants_enabled: false, sigop_script_units: Gram(1000).to_script_units().value() }
     }
 }
 
