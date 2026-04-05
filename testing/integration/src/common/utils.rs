@@ -192,7 +192,7 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
     let block_hash = header.hash;
     submitting_client.submit_block(template.block, false).await.unwrap();
 
-    let timeout_duration = Duration::from_millis(5000);
+    let timeout_duration = Duration::from_millis(10_000);
 
     // Wait for each listening client to get notified the submitted block was added to the DAG
     for client in listening_clients.iter() {
