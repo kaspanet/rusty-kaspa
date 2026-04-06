@@ -245,7 +245,7 @@ mod tests {
         mass::{GRAMS_PER_COMPUTE_BUDGET_UNIT, MassCalculator, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT},
     };
     use kaspa_core::assert_match;
-    use kaspa_txscript::opcodes::codes::OpDup;
+    use kaspa_txscript::opcodes::codes::{OpCheckSigVerify, OpDup};
     use kaspa_txscript::{
         EngineCtx, EngineFlags,
         opcodes::codes::{OpCheckSig, OpDrop},
@@ -430,6 +430,78 @@ mod tests {
                 "expected sigop budget enforcement for tx version {version}"
             );
         }
+    }
+
+    // This test shows that it's possible to decouple sigop_script_units and SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT:
+    // SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT is used as a conversion factor for legacy v0 sigop-count inputs, while
+    // sigop_script_units goal is to determine the price of a signature operation.
+    // Thus, the test shows that by halving the sigop_script_units from the default 10,000 to 5,000, the same
+    // input with 1 sigop-count budget, can now suffice for two sigops instead of one.
+    #[test]
+    fn check_scripts_v0_sigop_count_input_fails_by_default_and_succeeds_with_5000_sigop_script_units() {
+        let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
+
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &[7u8; 32]).unwrap();
+        let (x_only_pubkey, _) = schnorr_key.x_only_public_key();
+        let two_sigops_script = ScriptBuilder::new()
+            .add_op(OpDup)
+            .unwrap()
+            .add_data(&x_only_pubkey.serialize())
+            .unwrap()
+            .add_op(OpCheckSigVerify)
+            .unwrap()
+            .add_data(&x_only_pubkey.serialize())
+            .unwrap()
+            .add_op(OpCheckSig)
+            .unwrap()
+            .drain();
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([11u8; 32]), index: 0 },
+                signature_script: vec![],
+                sequence: 0,
+                mass: TxInputMass::SigopCount(1.into()),
+            }],
+            vec![TransactionOutput {
+                value: 1,
+                script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&[0x51])),
+                covenant: None,
+            }],
+            0,
+            SubnetworkId::default(),
+            0,
+            vec![],
+        );
+
+        let utxo_entry = UtxoEntry {
+            amount: 1,
+            script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&two_sigops_script)),
+            block_daa_score: 0,
+            is_coinbase: false,
+            covenant_id: None,
+        };
+
+        let signed_tx = sign(MutableTransaction::with_entries(tx, vec![utxo_entry]), schnorr_key);
+        assert_eq!(signed_tx.tx.version, 0);
+        assert_eq!(signed_tx.tx.inputs[0].mass.sig_op_count().unwrap_or(0), 1);
+
+        let verifiable_tx = signed_tx.as_verifiable();
+
+        assert_eq!(
+            check_scripts(&verifiable_tx, EngineCtx::new(&sig_cache), EngineFlags::default()),
+            Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededSigOpLimit(1)))
+        );
+
+        assert_eq!(
+            check_scripts(
+                &verifiable_tx,
+                EngineCtx::new(&sig_cache),
+                EngineFlags { covenants_enabled: true, sigop_script_units: 5_000.into() }
+            ),
+            Ok(())
+        );
     }
 
     #[test]

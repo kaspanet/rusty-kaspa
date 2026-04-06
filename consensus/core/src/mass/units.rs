@@ -4,7 +4,11 @@ use serde::{Deserialize, Serialize};
 pub const GRAMS_PER_COMPUTE_BUDGET_UNIT: u64 = 100;
 pub const SCRIPT_UNITS_PER_GRAM: u64 = 10;
 pub const SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT: u64 = GRAMS_PER_COMPUTE_BUDGET_UNIT * SCRIPT_UNITS_PER_GRAM;
-pub const SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT: u64 = 10000;
+
+/// Legacy v0 sigop-count inputs stay pegged to the historical 1000-gram sigop price.
+/// So SigopCount(1) equals one actual sigop only while mass_per_sig_op == 1000;
+/// that mismatch is acceptable because v0 is a deprecated compatibility path.
+pub const SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT: u64 = 1000 * SCRIPT_UNITS_PER_GRAM;
 
 /// A fixed per-input script execution allowance applied before committed compute budget.
 /// This is primarily intended to preserve leeway for legacy sigop-count inputs.
