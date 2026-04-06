@@ -584,8 +584,8 @@ opcode_list! {
     opcode OpInvert<0x83, 1>(self, vm){
         if vm.flags.covenants_enabled{
             let data = vm.dstack.pop()?;
-            let r: Vec<u8> = data.into_iter().map(|b| !b).collect();
-            vm.dstack.push(r.into())
+            let r: StackEntry = data.into_iter().map(|b| !b).collect();
+            vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -598,8 +598,8 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("AND operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
-            vm.dstack.push(r.into())
+            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
+            vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -612,8 +612,8 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("OR operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
-            vm.dstack.push(r.into())
+            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
+            vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -626,8 +626,8 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("XOR operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
-            vm.dstack.push(r.into())
+            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
+            vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -638,8 +638,8 @@ opcode_list! {
             true => {
                 let pair = vm.dstack.split_off(vm.dstack.len() - 2);
                 match pair[0] == pair[1] {
-                    true => vm.dstack.push(vec![1].into()),
-                    false => vm.dstack.push(vec![].into()),
+                    true => vm.dstack.push(([1]).as_slice().into()),
+                    false => vm.dstack.push(([]).as_slice().into()),
                 }
             }
             false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len()))
@@ -869,7 +869,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [data, key] = vm.dstack.pop_raw()?;
             let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
-            vm.dstack.push(hash.as_bytes().to_vec().into())
+            vm.dstack.push(hash.as_bytes().into())
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
@@ -879,7 +879,7 @@ opcode_list! {
         let [last] = vm.dstack.pop_raw()?;
         let mut hasher = Sha256::new();
         hasher.update(last);
-        vm.dstack.push(hasher.finalize().to_vec().into())
+        vm.dstack.push(hasher.finalize().as_slice().into())
     }
 
     opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
@@ -890,7 +890,7 @@ opcode_list! {
         let [last] = vm.dstack.pop_raw()?;
         //let hash = blake2b(last.as_slice());
         let hash = Params::new().hash_length(32).to_state().update(&last).finalize();
-        vm.dstack.push(hash.as_bytes().to_vec().into())
+        vm.dstack.push(hash.as_bytes().into())
     }
 
     opcode OpCheckSigECDSA<0xab, 1>(self, vm) {
