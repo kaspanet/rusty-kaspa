@@ -1642,7 +1642,7 @@ pub fn to_small_int<T: VerifiableTransaction, Reused: SigHashReusedValues>(opcod
 #[cfg(test)]
 mod test {
     use crate::caches::Cache;
-    use crate::data_stack::Stack;
+    use crate::data_stack::{Stack, StackEntry};
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
     use crate::{EngineContext, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str};
     use kaspa_addresses::{Address, Prefix, Version};
@@ -3744,10 +3744,10 @@ mod test {
 
                             // Check the result matches expectations
                             if let Some(ref expected_spk) = expected_result.expected_spk {
-                                assert_eq!(vm.dstack.inner(), vec![expected_spk.clone()]);
+                                assert_eq!(vm.dstack.inner(), vec![StackEntry::from_vec(expected_spk.clone())]);
                             }
                             if let Some(ref expected_amount) = expected_result.expected_amount {
-                                assert_eq!(vm.dstack.inner(), vec![expected_amount.clone()]);
+                                assert_eq!(vm.dstack.inner(), vec![StackEntry::from_vec(expected_amount.clone())]);
                             }
                             vm.dstack.clear();
                         }
@@ -3958,7 +3958,7 @@ mod test {
                 op_input_count.execute(&mut vm).unwrap();
                 assert_eq!(
                     vm.dstack.inner(),
-                    vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
+                    vec![<StackEntry as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
                     "Input count mismatch for {} inputs",
                     input_count
                 );
@@ -3968,7 +3968,7 @@ mod test {
                 op_output_count.execute(&mut vm).unwrap();
                 assert_eq!(
                     vm.dstack.inner(),
-                    vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
+                    vec![<StackEntry as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
                     "Output count mismatch for {} outputs",
                     output_count
                 );

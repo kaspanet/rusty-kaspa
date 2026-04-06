@@ -250,6 +250,7 @@ mod tests {
         EngineCtx, EngineFlags,
         opcodes::codes::{OpCheckSig, OpDrop},
         script_builder::ScriptBuilder,
+        standard::{pay_to_script_hash_script, pay_to_script_hash_signature_script},
     };
     use kaspa_txscript_errors::TxScriptError;
     use secp256k1::Secp256k1;
@@ -270,18 +271,15 @@ mod tests {
     fn build_parallel_push_budget_test_tx(num_inputs: usize) -> (Transaction, Vec<UtxoEntry>) {
         assert!(num_inputs > CHECK_SCRIPTS_PARALLELISM_THRESHOLD);
 
-        let script_public_key = ScriptPublicKey::new(
-            0,
-            ScriptBuilder::new()
-                .add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize])
-                .unwrap()
-                .add_op(OpDup)
-                .unwrap()
-                .add_op(OpDrop)
-                .unwrap()
-                .drain()
-                .into(),
-        );
+        let redeem_script = ScriptBuilder::new()
+            .add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize])
+            .unwrap()
+            .add_op(OpDup)
+            .unwrap()
+            .add_op(OpDrop)
+            .unwrap()
+            .drain();
+        let script_public_key = pay_to_script_hash_script(&redeem_script);
         let outputs = vec![TransactionOutput {
             value: 1,
             script_public_key: ScriptPublicKey::new(0, SmallVec::from_slice(&[0x51])),
@@ -294,7 +292,7 @@ mod tests {
                     transaction_id: TransactionId::from_bytes([(i as u8).wrapping_add(1); 32]),
                     index: 0,
                 },
-                signature_script: vec![],
+                signature_script: pay_to_script_hash_signature_script(redeem_script.clone(), vec![]).expect("the script is canonical"),
                 sequence: 0,
                 mass: TxInputMass::ComputeBudget(1.into()),
             })
@@ -325,7 +323,7 @@ mod tests {
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert_match!(
             result,
-            Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededScriptUnitsLimit { allowed_units, .. }))
+            Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { allowed_units, .. }))
                 if allowed_units == free_script_units_per_input().0
         );
 
@@ -334,8 +332,7 @@ mod tests {
         let mut tx = tx;
         tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(1).into());
         let populated_tx = PopulatedTransaction::new(&tx, entries);
-        let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
-        assert!(result.is_ok());
+        let _ = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags).expect("should succceed");
 
         // (c) Everything is ok with a larger per-input budget as well.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);

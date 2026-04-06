@@ -105,6 +105,13 @@ impl From<Vec<StackEntry>> for Stack {
     }
 }
 
+#[cfg(test)]
+impl From<Vec<Vec<u8>>> for Stack {
+    fn from(inner: Vec<Vec<u8>>) -> Self {
+        Self::from(inner.into_iter().map(SmallVec::from_vec).collect::<Vec<_>>())
+    }
+}
+
 impl From<Stack> for Vec<StackEntry> {
     fn from(stack: Stack) -> Self {
         stack.inner
@@ -266,6 +273,22 @@ impl OpcodeData<bool> for StackEntry {
             true => SmallVec::from_slice(&[1]),
             false => SmallVec::new(),
         })
+    }
+}
+
+#[cfg(test)]
+impl<T> OpcodeData<T> for Vec<u8>
+where
+    StackEntry: OpcodeData<T>,
+{
+    #[inline]
+    fn deserialize(&self, enforce_minimal: bool) -> Result<T, TxScriptError> {
+        <StackEntry as OpcodeData<T>>::deserialize(&StackEntry::from_slice(self), enforce_minimal)
+    }
+
+    #[inline]
+    fn serialize(from: &T) -> Result<Self, SerializationError> {
+        <StackEntry as OpcodeData<T>>::serialize(from).map(|v| v.into_vec())
     }
 }
 

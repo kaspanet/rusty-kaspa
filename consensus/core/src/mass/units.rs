@@ -210,10 +210,10 @@ mod tests {
     #[test]
     fn checked_covering_script_units_respects_free_allowance_boundaries() {
         assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(0)), Some(ComputeBudget(0)));
-        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(999)), Some(ComputeBudget(0)));
-        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(1_000)), Some(ComputeBudget(1)));
-        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(1_999)), Some(ComputeBudget(1)));
-        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(2_000)), Some(ComputeBudget(2)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(9999)), Some(ComputeBudget(0)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(10_000)), Some(ComputeBudget(1)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(19_999)), Some(ComputeBudget(1)));
+        assert_eq!(ComputeBudget::checked_covering_script_units(ScriptUnits(20_000)), Some(ComputeBudget(2)));
     }
 
     #[test]

@@ -35,18 +35,6 @@ impl TryFrom<Vec<u8>> for Fr {
     }
 }
 
-impl OpcodeData<Fr> for Vec<u8> {
-    fn deserialize(&self, _: bool) -> Result<Fr, TxScriptError> {
-        Fr::try_from(self.as_slice()).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))
-    }
-
-    fn serialize(from: &Fr) -> Result<Self, SerializationError> {
-        let mut bytes = Vec::new();
-        from.0.serialize_uncompressed(&mut bytes).map_err(|_| SerializationError::ArkSerialization)?;
-        Ok(bytes)
-    }
-}
-
 impl OpcodeData<Fr> for StackEntry {
     fn deserialize(&self, _: bool) -> Result<Fr, TxScriptError> {
         Fr::try_from(self.as_slice()).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))
