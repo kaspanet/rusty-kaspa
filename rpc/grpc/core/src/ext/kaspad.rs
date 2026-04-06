@@ -47,6 +47,7 @@ impl kaspad_request::Payload {
             }
             Scope::UtxosChanged(scope) => kaspad_request::Payload::NotifyUtxosChangedRequest(NotifyUtxosChangedRequestMessage {
                 addresses: scope.addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
+                start_daa_score: None,
                 command: command.into(),
             }),
             Scope::SinkBlueScoreChanged(_) => {

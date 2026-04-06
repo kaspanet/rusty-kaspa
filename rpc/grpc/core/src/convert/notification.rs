@@ -82,7 +82,7 @@ from!(item: Command, RpcNotifyCommand, {
 });
 
 from!(item: &StopNotifyingUtxosChangedRequestMessage, NotifyUtxosChangedRequestMessage, {
-    Self { addresses: item.addresses.clone(), command: Command::Stop.into() }
+    Self { addresses: item.addresses.clone(), start_daa_score: None, command: Command::Stop.into() }
 });
 
 from!(_item: &StopNotifyingPruningPointUtxoSetOverrideRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage, {

@@ -82,9 +82,11 @@ impl From<&consensus_notify::FinalityConflictResolvedNotification> for FinalityC
 }
 
 impl From<&consensus_notify::UtxosChangedNotification> for UtxosChangedNotification {
-    fn from(_: &consensus_notify::UtxosChangedNotification) -> Self {
-        // TODO: investigate if this conversion is possible
-        UtxosChangedNotification::default()
+    fn from(item: &consensus_notify::UtxosChangedNotification) -> Self {
+        Self {
+            added: item.added.iter().map(|entry| entry.into()).collect(),
+            removed: item.removed.iter().map(|entry| entry.into()).collect(),
+        }
     }
 }
 

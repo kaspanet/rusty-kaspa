@@ -525,6 +525,19 @@ pub trait RpcApi: Sync + Send + AnySync {
             Command::Stop => self.stop_notify(id, scope).await,
         }
     }
+
+    /// Execute a UTXOs-changed subscription command and optionally return historical catch-up entries.
+    ///
+    /// The default implementation performs a regular subscribe/unsubscribe flow and returns no catch-up entries.
+    async fn execute_utxos_changed_subscribe_command(
+        &self,
+        id: ListenerId,
+        request: NotifyUtxosChangedRequest,
+    ) -> RpcResult<Vec<RpcUtxosByAddressesEntry>> {
+        let command = request.command;
+        self.execute_subscribe_command(id, request.into(), command).await?;
+        Ok(vec![])
+    }
 }
 
 pub type DynRpcService = Arc<dyn RpcApi>;

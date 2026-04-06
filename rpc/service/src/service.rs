@@ -9,6 +9,7 @@ use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{TransactionQueryResult, TransactionType};
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
+use kaspa_consensus_core::utxo::utxo_diff::UtxoDiff;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -42,7 +43,7 @@ use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::listener::ListenerLifespan;
 use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
+use kaspa_notify::subscription::{Command, MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_notify::{
     collector::DynCollector,
     connection::ChannelType,
@@ -57,7 +58,7 @@ use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
 use kaspa_rpc_core::{
-    Notification, RpcError, RpcResult,
+    Notification, RpcError, RpcResult, UtxosChangedNotification;
     api::{
         connection::DynRpcConnection,
         ops::{RPC_API_REVISION, RPC_API_VERSION},
@@ -74,7 +75,7 @@ use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::time::Duration;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     iter::once,
     sync::{Arc, atomic::Ordering},
     vec,
@@ -230,6 +231,38 @@ impl RpcCoreService {
         }
     }
 
+    pub async fn notify_utxos_changed(
+        &self, 
+        request: NotifyUtxosChangedRequest
+    ) -> RpcResult<NotifyUtxosChangedResponse> {
+        
+        // Ensure utxoindex exists (it's an Option in your constructor)
+        if let Some(ref utxoindex) = self.utxoindex {
+            if let Some(start_score) = request.start_daa_score {
+                for address in &request.addresses {
+                    // 1. Fetch from the index
+                    // Use .get_utxos_by_addresses (plural) or verify the trait method name
+                    let utxos = utxoindex.get_utxos_by_addresses(vec![address.clone()])?;
+                    
+                    // 2. Filter, Map, and Collect
+                    let added: Vec<RpcUtxoEntry> = utxos
+                        .into_iter()
+                        .filter(|(_addr, entry)| entry.block_daa_score > start_score)
+                        .map(|(_addr, entry)| entry.into()) 
+                        .collect();
+
+                    // 3. Push the "Initial Burst" 
+                    if !added.is_empty() {
+                        self.notifier.notify(Notification::UtxosChanged(UtxosChangedNotification {
+                            added,
+                            removed: vec![],
+                        })).await?;
+                    }
+                }
+            }
+        }
+
+    
     pub fn start_impl(&self) {
         self.notifier().start();
     }
@@ -284,6 +317,17 @@ impl RpcCoreService {
             (false, true) => Ok(TransactionQuery::All),
             (false, false) => Ok(TransactionQuery::TransactionsOnly),
         }
+    }
+
+    #[inline(always)]
+    fn should_collect_utxos_catchup(command: Command, start_daa_score: Option<u64>) -> Option<u64> {
+        if command == Command::Start { start_daa_score } else { None }
+    }
+
+    fn dedup_utxo_entries_by_outpoint(mut entries: Vec<RpcUtxosByAddressesEntry>) -> Vec<RpcUtxosByAddressesEntry> {
+        let mut seen = HashSet::with_capacity(entries.len());
+        entries.retain(|entry| seen.insert(entry.outpoint));
+        entries
     }
 }
 
@@ -1309,6 +1353,34 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(())
     }
 
+    async fn execute_utxos_changed_subscribe_command(
+        &self,
+        id: ListenerId,
+        request: NotifyUtxosChangedRequest,
+    ) -> RpcResult<Vec<RpcUtxosByAddressesEntry>> {
+        let command = request.command;
+        self.execute_subscribe_command(id, request.clone().into(), command).await?;
+
+        let Some(start_daa_score) = Self::should_collect_utxos_catchup(command, request.start_daa_score) else {
+            return Ok(vec![]);
+        };
+
+        // Catch-up requires a local UTXO index, but subscription can still proceed without it.
+        if !self.config.utxoindex || self.utxoindex.is_none() {
+            return Ok(vec![]);
+        }
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // Historical catch-up requires a stable consensus/index view.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
+        let entries = self.index_converter.get_utxos_by_addresses_entries_after_daa_score(&entry_map, start_daa_score);
+        Ok(Self::dedup_utxo_entries_by_outpoint(entries))
+    }
+
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         match scope {
@@ -1333,6 +1405,53 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier.clone().stop_notify(id, scope).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::tx::TransactionId;
+
+    fn sample_outpoint(byte: u8, index: u32) -> RpcTransactionOutpoint {
+        RpcTransactionOutpoint { transaction_id: TransactionId::from_slice(&[byte; 32]), index }
+    }
+
+    #[test]
+    fn should_collect_utxos_catchup_only_on_start_with_threshold() {
+        assert_eq!(RpcCoreService::should_collect_utxos_catchup(Command::Stop, Some(1)), None);
+        assert_eq!(RpcCoreService::should_collect_utxos_catchup(Command::Start, None), None);
+        assert_eq!(RpcCoreService::should_collect_utxos_catchup(Command::Start, Some(42)), Some(42));
+    }
+
+    #[test]
+    fn dedup_utxo_entries_by_outpoint_keeps_first_entry() {
+        let outpoint_a = sample_outpoint(1, 0);
+        let outpoint_b = sample_outpoint(2, 0);
+
+        let entries = vec![
+            RpcUtxosByAddressesEntry {
+                address: None,
+                outpoint: outpoint_a,
+                utxo_entry: RpcUtxoEntry::new(10, Default::default(), 100, false),
+            },
+            RpcUtxosByAddressesEntry {
+                address: None,
+                outpoint: outpoint_a,
+                utxo_entry: RpcUtxoEntry::new(11, Default::default(), 101, false),
+            },
+            RpcUtxosByAddressesEntry {
+                address: None,
+                outpoint: outpoint_b,
+                utxo_entry: RpcUtxoEntry::new(20, Default::default(), 200, false),
+            },
+        ];
+
+        let deduped = RpcCoreService::dedup_utxo_entries_by_outpoint(entries);
+        assert_eq!(deduped.len(), 2);
+        assert_eq!(deduped[0].outpoint, outpoint_a);
+        assert_eq!(deduped[0].utxo_entry.amount, 10);
+        assert_eq!(deduped[1].outpoint, outpoint_b);
     }
 }
 
