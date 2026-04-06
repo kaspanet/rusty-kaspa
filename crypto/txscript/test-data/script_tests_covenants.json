@@ -4295,13 +4295,15 @@
     "1",
     "IF 0xd9 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "INVALID_STACK_OPERATION",
+    "OpBlake3 is enabled under covenant flags"
   ],
   [
     "1",
     "IF 0xda ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "INVALID_STACK_OPERATION",
+    "OpBlake3WithKey is enabled under covenant flags"
   ],
   [
     "1",
