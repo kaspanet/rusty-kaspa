@@ -1,8 +1,8 @@
 use crate::RpcError;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::{
-    header::{CompressedParents, Header},
     BlueWorkType,
+    header::{CompressedParents, Header},
 };
 use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
@@ -52,11 +52,7 @@ pub struct RpcHeader {
 
 impl RpcHeader {
     pub fn direct_parents(&self) -> &[Hash] {
-        if self.parents_by_level.is_empty() {
-            &[]
-        } else {
-            &self.parents_by_level[0]
-        }
+        if self.parents_by_level.is_empty() { &[] } else { &self.parents_by_level[0] }
     }
 }
 

@@ -3,8 +3,8 @@
 //!
 
 use hexplay::{
-    color::{Color, Spec},
     HexView, HexViewBuilder,
+    color::{Color, Spec},
 };
 use std::ops::Range;
 use std::str::FromStr;
@@ -37,10 +37,10 @@ impl HexViewConfig {
             builder = builder.row_width(width);
         }
 
-        if let Some(colors) = self.colors {
-            if !colors.is_empty() {
-                builder = builder.add_colors(colors);
-            }
+        if let Some(colors) = self.colors
+            && !colors.is_empty()
+        {
+            builder = builder.add_colors(colors);
         }
 
         builder.finish()

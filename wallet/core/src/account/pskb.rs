@@ -10,7 +10,7 @@ use crate::tx::PaymentOutputs;
 use futures::stream;
 use kaspa_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
 use kaspa_consensus_client::UtxoEntry as ClientUTXO;
-use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
+use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
 use kaspa_consensus_core::tx::VerifiableTransaction;
 use kaspa_consensus_core::tx::{TransactionInput, UtxoEntry};
 use kaspa_txscript::extract_script_pub_key_address;
@@ -19,8 +19,8 @@ use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_wallet_core::tx::{Generator, GeneratorSettings, PaymentDestination, PendingTransaction};
 pub use kaspa_wallet_pskt::bundle::Bundle;
 use kaspa_wallet_pskt::bundle::{script_sig_to_address, unlock_utxo_outputs_as_batch_transaction_pskb};
-use kaspa_wallet_pskt::prelude::lock_script_sig_templating_bytes;
 use kaspa_wallet_pskt::prelude::KeySource;
+use kaspa_wallet_pskt::prelude::lock_script_sig_templating_bytes;
 use kaspa_wallet_pskt::prelude::{Finalizer, Inner, SignInputOk, Signature, Signer};
 pub use kaspa_wallet_pskt::pskt::{Creator, PSKT};
 use secp256k1::schnorr;
@@ -197,10 +197,10 @@ pub async fn pskb_signer_for_address(
     // in case of keypair account, we don't have a derivation path,
     // so we need to skip the key source
     let mut key_source = None;
-    if let Some(key_fingerprint) = key_fingerprint {
-        if let Some(derivation_path) = derivation_path {
-            key_source = Some(KeySource { key_fingerprint, derivation_path: derivation_path.clone() });
-        }
+    if let Some(key_fingerprint) = key_fingerprint
+        && let Some(derivation_path) = derivation_path
+    {
+        key_source = Some(KeySource { key_fingerprint, derivation_path: derivation_path.clone() });
     }
 
     // Process each PSKT in the bundle
@@ -386,11 +386,7 @@ pub fn pskt_to_pending_transaction(
         .enumerate()
         .find_map(|(idx, output)| {
             if let Ok(address) = extract_script_pub_key_address(&output.script_public_key, change_address.prefix) {
-                if address == change_address {
-                    Some((Some(idx), output.value))
-                } else {
-                    None
-                }
+                if address == change_address { Some((Some(idx), output.value)) } else { None }
             } else {
                 None
             }

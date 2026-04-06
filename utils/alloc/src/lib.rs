@@ -1,6 +1,6 @@
 #[cfg(not(feature = "heap"))]
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-extern "C" {
+unsafe extern "C" {
     fn mi_option_set_enabled(_: mi_option_e, val: bool);
 }
 

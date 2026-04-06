@@ -3,8 +3,8 @@ use kaspa_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
 use super::{
-    errors::{TxResult, TxRuleError},
     TransactionValidator,
+    errors::{TxResult, TxRuleError},
 };
 
 impl TransactionValidator {
@@ -164,15 +164,15 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
 #[cfg(test)]
 mod tests {
     use kaspa_consensus_core::{
-        subnets::{SubnetworkId, SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
+        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec},
     };
     use kaspa_core::assert_match;
 
     use crate::{
         constants::TX_VERSION,
         params::MAINNET_PARAMS,
-        processes::transaction_validator::{errors::TxRuleError, TransactionValidator},
+        processes::transaction_validator::{TransactionValidator, errors::TxRuleError},
     };
 
     #[test]

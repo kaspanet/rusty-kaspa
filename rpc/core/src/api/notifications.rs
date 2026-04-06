@@ -6,11 +6,11 @@ use crate::model::message::*;
 use derive_more::Display;
 use kaspa_notify::{
     events::EventType,
-    notification::{full_featured, Notification as NotificationTrait},
+    notification::{Notification as NotificationTrait, full_featured},
     subscription::{
+        Subscription,
         context::SubscriptionContext,
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
-        Subscription,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -83,14 +83,15 @@ impl NotificationTrait for Notification {
     ) -> Option<Self> {
         match subscription.active() {
             true => {
-                if let Notification::VirtualChainChanged(ref payload) = self {
-                    if !subscription.include_accepted_transaction_ids() && !payload.accepted_transaction_ids.is_empty() {
-                        return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
-                            removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
-                            added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
-                            accepted_transaction_ids: Arc::new(vec![]),
-                        }));
-                    }
+                if let Notification::VirtualChainChanged(payload) = self
+                    && !subscription.include_accepted_transaction_ids()
+                    && !payload.accepted_transaction_ids.is_empty()
+                {
+                    return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
+                        removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
+                        added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
+                        accepted_transaction_ids: Arc::new(vec![]),
+                    }));
                 }
                 Some(self.clone())
             }

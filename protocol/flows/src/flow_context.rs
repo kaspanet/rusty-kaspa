@@ -29,11 +29,11 @@ use kaspa_mining::mempool::tx::{Orphan, Priority};
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::RbfPolicy};
 use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
+    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
     common::ProtocolError,
     convert::model::version::Version,
     make_message,
-    pb::{kaspad_message::Payload, InvRelayBlockMessage},
-    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
+    pb::{InvRelayBlockMessage, kaspad_message::Payload},
 };
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_utils::iter::IterExtensions;
@@ -46,16 +46,16 @@ use std::{
     iter::once,
     ops::Deref,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     RwLock as AsyncRwLock,
+    mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
 };
-use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
+use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
@@ -134,11 +134,7 @@ impl BlockEventLogger {
 
                 impl Display for LogHash {
                     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        if let Some(hash) = self.op {
-                            hash.fmt(f)
-                        } else {
-                            Ok(())
-                        }
+                        if let Some(hash) = self.op { hash.fmt(f) } else { Ok(()) }
                     }
                 }
 
@@ -401,20 +397,12 @@ impl FlowContext {
 
     /// If IBD is running, returns the IBD peer we are syncing from
     pub fn ibd_peer_key(&self) -> Option<PeerKey> {
-        if self.is_ibd_running() {
-            self.ibd_metadata.read().map(|md| md.peer)
-        } else {
-            None
-        }
+        if self.is_ibd_running() { self.ibd_metadata.read().map(|md| md.peer) } else { None }
     }
 
     /// If IBD is running, returns the DAA score of the relay block which triggered it
     pub fn ibd_relay_daa_score(&self) -> Option<u64> {
-        if self.is_ibd_running() {
-            self.ibd_metadata.read().map(|md| md.daa_score)
-        } else {
-            None
-        }
+        if self.is_ibd_running() { self.ibd_metadata.read().map(|md| md.daa_score) } else { None }
     }
 
     fn try_adding_request_impl(req: Hash, map: &Arc<Mutex<HashMap<Hash, RequestScopeMetadata>>>) -> Option<RequestScope<Hash>> {
@@ -502,7 +490,7 @@ impl FlowContext {
             return Err(err)?;
         }
         // Broadcast as soon as the block has been validated and inserted into the DAG
-        self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
+        self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) }), None).await;
 
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
         self.log_block_event(BlockLogEvent::Submit(hash));
@@ -544,7 +532,7 @@ impl FlowContext {
             .iter()
             .map(|(b, _)| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
             .collect();
-        self.hub.broadcast_many(msgs).await;
+        self.hub.broadcast_many(msgs, None).await;
 
         // Process blocks in topological order
         blocks.sort_by(|a, b| a.0.header.blue_work.partial_cmp(&b.0.header.blue_work).unwrap());

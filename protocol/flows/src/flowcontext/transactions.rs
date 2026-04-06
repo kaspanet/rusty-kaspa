@@ -3,9 +3,8 @@ use itertools::Itertools;
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
-    make_message,
-    pb::{kaspad_message::Payload, InvTransactionsMessage, KaspadMessage},
-    Hub,
+    Hub, make_message,
+    pb::{InvTransactionsMessage, KaspadMessage, kaspad_message::Payload},
 };
 use std::time::{Duration, Instant};
 
@@ -56,7 +55,7 @@ impl TransactionsSpread {
 
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
     pub fn should_rebroadcast(&self) -> bool {
-        self.scanning_job_count % REBROADCAST_FREQUENCY == 0
+        self.scanning_job_count.is_multiple_of(REBROADCAST_FREQUENCY)
     }
 
     pub fn mempool_scanning_job_count(&self) -> u64 {
@@ -99,7 +98,7 @@ impl TransactionsSpread {
             // TODO: Figure out a better number
             self.hub.broadcast_to_some_peers(msg, 8).await
         } else {
-            self.hub.broadcast(msg).await
+            self.hub.broadcast(msg, None).await
         }
     }
 }

@@ -1,5 +1,5 @@
 use std::{
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
     time::{Duration, Instant},
 };
 
@@ -21,7 +21,7 @@ use kaspa_core::{
 };
 use kaspa_p2p_lib::Hub;
 
-use crate::rules::{mining_rule::MiningRule, sync_rate_rule::SyncRateRule, ExtraData};
+use crate::rules::{ExtraData, mining_rule::MiningRule, sync_rate_rule::SyncRateRule};
 
 const RULE_ENGINE: &str = "mining-rule-engine";
 pub const SNAPSHOT_INTERVAL: u64 = 10;

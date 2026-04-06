@@ -1,7 +1,7 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
+    rand_core::{RngCore, SeedableRng},
 };
 
 use kaspa_muhash::MuHash;

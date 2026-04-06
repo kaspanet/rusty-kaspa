@@ -1,4 +1,4 @@
-use indexmap::{map::Entry::Occupied, IndexMap};
+use indexmap::{IndexMap, map::Entry::Occupied};
 use kaspa_consensus_core::{
     api::{BlockValidationFuture, BlockValidationFutures},
     block::Block,
@@ -97,10 +97,10 @@ impl OrphanBlocksPool {
                 let rand_index = rand::thread_rng().gen_range(0..self.orphans.len());
                 if !orphan_ancestors.is_empty() {
                     // IndexMap has no API for getting a removable Entry by index
-                    if let Some(rand_hash) = self.orphans.get_index(rand_index).map(|(&h, _)| h) {
-                        if orphan_ancestors.contains(&rand_hash) {
-                            continue; // Do not evict an ancestor of this new orphan
-                        }
+                    if let Some(rand_hash) = self.orphans.get_index(rand_index).map(|(&h, _)| h)
+                        && orphan_ancestors.contains(&rand_hash)
+                    {
+                        continue; // Do not evict an ancestor of this new orphan
                     }
                 }
                 if let Some((evicted, _)) = self.orphans.swap_remove_index(rand_index) {
@@ -172,11 +172,7 @@ impl OrphanBlocksPool {
             }
         }
 
-        if roots.is_empty() {
-            FindRootsOutput::NoRoots(orphan_ancestors)
-        } else {
-            FindRootsOutput::Roots(roots, orphan_ancestors)
-        }
+        if roots.is_empty() { FindRootsOutput::NoRoots(orphan_ancestors) } else { FindRootsOutput::Roots(roots, orphan_ancestors) }
     }
 
     pub async fn unorphan_blocks(
@@ -212,11 +208,7 @@ impl OrphanBlocksPool {
 
     fn iterate_child_orphans(&self, hash: Hash) -> impl Iterator<Item = Hash> + '_ {
         self.orphans.iter().filter_map(move |(&orphan_hash, orphan_block)| {
-            if orphan_block.block.header.direct_parents().contains(&hash) {
-                Some(orphan_hash)
-            } else {
-                None
-            }
+            if orphan_block.block.header.direct_parents().contains(&hash) { Some(orphan_hash) } else { None }
         })
     }
 

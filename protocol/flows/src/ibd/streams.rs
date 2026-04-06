@@ -9,14 +9,14 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{debug, info};
 use kaspa_p2p_lib::{
-    common::{ProtocolError, DEFAULT_TIMEOUT},
+    IncomingRoute, Router,
+    common::{DEFAULT_TIMEOUT, ProtocolError},
     convert::{header::HeaderFormat, header::Versioned, model::trusted::TrustedDataEntry},
     make_message,
     pb::{
-        kaspad_message::Payload, RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage,
-        RequestNextPruningPointUtxoSetChunkMessage,
+        RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage, RequestNextPruningPointUtxoSetChunkMessage,
+        kaspad_message::Payload,
     },
-    IncomingRoute, Router,
 };
 use std::sync::Arc;
 use tokio::time::timeout;
@@ -67,7 +67,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
         // Request the next batch only if the stream is still live
         if let Ok(Some(_)) = res {
             self.i += 1;
-            if self.i % IBD_BATCH_SIZE == 0 {
+            if self.i.is_multiple_of(IBD_BATCH_SIZE) {
                 info!("Downloaded {} blocks from the pruning point anticone", self.i - 1);
                 self.router
                     .enqueue(make_message!(
@@ -186,7 +186,7 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
         if let Ok(Some(chunk)) = res {
             self.i += 1;
             self.utxo_count += chunk.len();
-            if self.i % IBD_BATCH_SIZE == 0 {
+            if self.i.is_multiple_of(IBD_BATCH_SIZE) {
                 info!("Received {} UTXO set chunks so far, totaling in {} UTXOs", self.i, self.utxo_count);
                 self.router
                     .enqueue(make_message!(

@@ -9,8 +9,8 @@ use serde_nested_with::serde_nested;
 use workflow_serializer::prelude::*;
 
 use crate::{
-    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
     RpcError, RpcResult, RpcScriptPublicKey, RpcTransactionId,
+    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -94,19 +94,13 @@ impl Serializer for RpcOptionalUtxoEntry {
 impl Deserializer for RpcOptionalUtxoEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
+        let amount = load!(Option<u64>, reader)?;
+        let script_public_key = load!(Option<ScriptPublicKey>, reader)?;
+        let block_daa_score = load!(Option<u64>, reader)?;
+        let is_coinbase = load!(Option<bool>, reader)?;
+        let verbose_data = deserialize!(Option<RpcOptionalUtxoEntryVerboseData>, reader)?;
 
-        match _version {
-            1 => {
-                let amount = load!(Option<u64>, reader)?;
-                let script_public_key = load!(Option<ScriptPublicKey>, reader)?;
-                let block_daa_score = load!(Option<u64>, reader)?;
-                let is_coinbase = load!(Option<bool>, reader)?;
-                let verbose_data = deserialize!(Option<RpcOptionalUtxoEntryVerboseData>, reader)?;
-
-                Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data })
-            }
-            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
-        }
+        Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data })
     }
 }
 
@@ -205,14 +199,10 @@ impl Serializer for RpcOptionalTransactionOutpoint {
 impl Deserializer for RpcOptionalTransactionOutpoint {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
-        match _version {
-            1 => {
-                let transaction_id = load!(Option<TransactionId>, reader)?;
-                let index = load!(Option<TransactionIndexType>, reader)?;
-                Ok(Self { transaction_id, index })
-            }
-            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
-        }
+        let transaction_id = load!(Option<TransactionId>, reader)?;
+        let index = load!(Option<TransactionIndexType>, reader)?;
+
+        Ok(Self { transaction_id, index })
     }
 }
 
@@ -288,19 +278,13 @@ impl Serializer for RpcOptionalTransactionInput {
 impl Deserializer for RpcOptionalTransactionInput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
+        let previous_outpoint = deserialize!(Option<RpcOptionalTransactionOutpoint>, reader)?;
+        let signature_script = load!(Option<Vec<u8>>, reader)?;
+        let sequence = load!(Option<u64>, reader)?;
+        let sig_op_count = load!(Option<u8>, reader)?;
+        let verbose_data = deserialize!(Option<RpcOptionalTransactionInputVerboseData>, reader)?;
 
-        Ok(match _version {
-            1 => {
-                let previous_outpoint = deserialize!(Option<RpcOptionalTransactionOutpoint>, reader)?;
-                let signature_script = load!(Option<Vec<u8>>, reader)?;
-                let sequence = load!(Option<u64>, reader)?;
-                let sig_op_count = load!(Option<u8>, reader)?;
-                let verbose_data = deserialize!(Option<RpcOptionalTransactionInputVerboseData>, reader)?;
-
-                Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data }
-            }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
-        })
+        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data })
     }
 }
 
@@ -376,16 +360,11 @@ impl Serializer for RpcOptionalTransactionOutput {
 impl Deserializer for RpcOptionalTransactionOutput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
-        Ok(match _version {
-            1 => {
-                let value = load!(Option<u64>, reader)?;
-                let script_public_key = load!(Option<RpcScriptPublicKey>, reader)?;
-                let verbose_data = deserialize!(Option<RpcOptionalTransactionOutputVerboseData>, reader)?;
+        let value = load!(Option<u64>, reader)?;
+        let script_public_key = load!(Option<RpcScriptPublicKey>, reader)?;
+        let verbose_data = deserialize!(Option<RpcOptionalTransactionOutputVerboseData>, reader)?;
 
-                Self { value, script_public_key, verbose_data }
-            }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
-        })
+        Ok(Self { value, script_public_key, verbose_data })
     }
 }
 
@@ -418,14 +397,9 @@ impl Serializer for RpcOptionalTransactionOutputVerboseData {
 impl Deserializer for RpcOptionalTransactionOutputVerboseData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
-        Ok(match _version {
-            1 => {
-                let script_public_key_type = load!(Option<RpcScriptClass>, reader)?;
-                let script_public_key_address = load!(Option<Address>, reader)?;
-                Self { script_public_key_type, script_public_key_address }
-            }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
-        })
+        let script_public_key_type = load!(Option<RpcScriptClass>, reader)?;
+        let script_public_key_address = load!(Option<Address>, reader)?;
+        Ok(Self { script_public_key_type, script_public_key_address })
     }
 }
 
@@ -502,24 +476,18 @@ impl Serializer for RpcOptionalTransaction {
 impl Deserializer for RpcOptionalTransaction {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _struct_version = load!(u16, reader)?;
-        Ok(match _struct_version {
-            1 => {
-                let version = load!(Option<u16>, reader)?;
-                let inputs = deserialize!(Vec<RpcOptionalTransactionInput>, reader)?;
-                let outputs = deserialize!(Vec<RpcOptionalTransactionOutput>, reader)?;
-                let lock_time = load!(Option<u64>, reader)?;
-                let subnetwork_id = load!(Option<RpcSubnetworkId>, reader)?;
-                let gas = load!(Option<u64>, reader)?;
-                let payload = load!(Option<Vec<u8>>, reader)?;
-                let mass = load!(Option<u64>, reader)?;
-                let verbose_data = deserialize!(Option<RpcOptionalTransactionVerboseData>, reader)?;
 
-                Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data }
-            }
-            _ => {
-                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _struct_version)))
-            }
-        })
+        let version = load!(Option<u16>, reader)?;
+        let inputs = deserialize!(Vec<RpcOptionalTransactionInput>, reader)?;
+        let outputs = deserialize!(Vec<RpcOptionalTransactionOutput>, reader)?;
+        let lock_time = load!(Option<u64>, reader)?;
+        let subnetwork_id = load!(Option<RpcSubnetworkId>, reader)?;
+        let gas = load!(Option<u64>, reader)?;
+        let payload = load!(Option<Vec<u8>>, reader)?;
+        let mass = load!(Option<u64>, reader)?;
+        let verbose_data = deserialize!(Option<RpcOptionalTransactionVerboseData>, reader)?;
+
+        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data })
     }
 }
 
@@ -569,18 +537,13 @@ impl Serializer for RpcOptionalTransactionVerboseData {
 impl Deserializer for RpcOptionalTransactionVerboseData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
-        Ok(match _version {
-            1 => {
-                let transaction_id = load!(Option<RpcTransactionId>, reader)?;
-                let hash = load!(Option<RpcHash>, reader)?;
-                let compute_mass = load!(Option<u64>, reader)?;
-                let block_hash = load!(Option<RpcHash>, reader)?;
-                let block_time = load!(Option<u64>, reader)?;
+        let transaction_id = load!(Option<RpcTransactionId>, reader)?;
+        let hash = load!(Option<RpcHash>, reader)?;
+        let compute_mass = load!(Option<u64>, reader)?;
+        let block_hash = load!(Option<RpcHash>, reader)?;
+        let block_time = load!(Option<u64>, reader)?;
 
-                Self { transaction_id, hash, compute_mass, block_hash, block_time }
-            }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
-        })
+        Ok(Self { transaction_id, hash, compute_mass, block_hash, block_time })
     }
 }
 

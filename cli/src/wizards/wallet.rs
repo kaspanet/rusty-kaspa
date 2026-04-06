@@ -4,7 +4,7 @@ use crate::result::Result;
 use kaspa_bip32::{Language, Mnemonic, WordCount};
 use kaspa_wallet_core::storage::keydata::PrvKeyDataVariantKind;
 use kaspa_wallet_core::{
-    storage::{make_filename, Hint},
+    storage::{Hint, make_filename},
     wallet::WalletGuard,
 };
 

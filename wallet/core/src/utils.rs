@@ -6,7 +6,7 @@ use crate::result::Result;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::constants::*;
 use kaspa_consensus_core::network::NetworkType;
-use separator::{separated_float, separated_int, separated_uint_with_output, Separatable};
+use separator::{Separatable, separated_float, separated_int, separated_uint_with_output};
 use workflow_log::style;
 
 pub fn try_kaspa_str_to_sompi<S: Into<String>>(s: S) -> Result<Option<u64>> {

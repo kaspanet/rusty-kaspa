@@ -7,8 +7,8 @@ mod u3072;
 use crate::u3072::U3072;
 use kaspa_hashes::{Hash, Hasher, HasherBase, MuHashElementHash, MuHashFinalizeHash};
 use kaspa_math::Uint3072;
-use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use rand_chacha::rand_core::{RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Display;
@@ -110,11 +110,7 @@ impl MuHash {
     #[inline]
     pub fn deserialize(data: [u8; SERIALIZED_MUHASH_SIZE]) -> Result<Self, OverflowError> {
         let numerator = U3072::from_le_bytes(data);
-        if numerator.is_overflow() {
-            Err(OverflowError)
-        } else {
-            Ok(Self { numerator, denominator: U3072::one() })
-        }
+        if numerator.is_overflow() { Err(OverflowError) } else { Ok(Self { numerator, denominator: U3072::one() }) }
     }
 }
 
@@ -127,11 +123,7 @@ impl TryFrom<MuHash> for Uint3072 {
     type Error = MuHashError;
 
     fn try_from(value: MuHash) -> Result<Self, Self::Error> {
-        if value.denominator == U3072::one() {
-            Ok(value.numerator.into())
-        } else {
-            Err(MuHashError::NonNormalizedValue)
-        }
+        if value.denominator == U3072::one() { Ok(value.numerator.into()) } else { Err(MuHashError::NonNormalizedValue) }
     }
 }
 
@@ -186,7 +178,7 @@ impl Default for MuHash {
 #[cfg(test)]
 mod tests {
     use crate::OverflowError;
-    use crate::{MuHash, EMPTY_MUHASH, U3072};
+    use crate::{EMPTY_MUHASH, MuHash, U3072};
     use kaspa_hashes::Hash;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
@@ -282,8 +274,8 @@ mod tests {
                     assert_eq!(res, out);
                 }
             }
-            let x = element_from_byte(rng.gen()); // x=X
-            let y = element_from_byte(rng.gen()); // x=X, y=Y
+            let x = element_from_byte(rng.r#gen()); // x=X
+            let y = element_from_byte(rng.r#gen()); // x=X, y=Y
             let mut z = MuHash::new(); // x=X, y=X, z=1
             let mut yx = MuHash::new(); // x=X, y=Y, z=1 yx=1
             yx.add_element(&y); // x=X, y=X, z=1, yx=Y

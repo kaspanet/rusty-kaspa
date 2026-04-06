@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     model::stores::{
+        DB,
         acceptance_data::DbAcceptanceDataStore,
         block_transactions::DbBlockTransactionsStore,
         block_window_cache::BlockWindowCacheStore,
@@ -21,13 +22,12 @@ use crate::{
         utxo_diffs::DbUtxoDiffsStore,
         utxo_multisets::DbUtxoMultisetsStore,
         virtual_state::{LkgVirtualState, VirtualStores},
-        DB,
     },
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
-use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
+use kaspa_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -35,7 +35,7 @@ use std::{ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
-    db: Arc<DB>,
+    _db: Arc<DB>,
 
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -229,7 +229,7 @@ impl ConsensusStorage {
         relations::init(reachability_relations_store.write().deref_mut());
 
         Arc::new(Self {
-            db,
+            _db: db,
             statuses_store,
             relations_store,
             reachability_relations_store,

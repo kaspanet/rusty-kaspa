@@ -11,17 +11,17 @@ use futures_util::future::{join_all, try_join_all};
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
-use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer};
+use kaspa_p2p_lib::{ConnectionError, Peer, common::ProtocolError};
 use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
 use tokio::{
     select,
     sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
         Mutex as TokioMutex,
+        mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
     },
-    time::{interval, MissedTickBehavior},
+    time::{MissedTickBehavior, interval},
 };
 
 pub struct ConnectionManager {
@@ -168,7 +168,6 @@ impl ConnectionManager {
 
         let mut missing_connections = self.outbound_target - active_outbound.len();
         let mut addr_iter = self.address_manager.lock().iterate_prioritized_random_addresses(active_outbound);
-
         let mut progressing = true;
         let mut connecting = true;
         while connecting && missing_connections > 0 {
@@ -206,7 +205,6 @@ impl ConnectionManager {
                     addr_iter.len(),
                 );
             }
-
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
                 match res {
                     Ok(_) => {

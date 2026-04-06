@@ -1,21 +1,40 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //!
 //! Kaspa [`Address`] implementation.
 //!
 //! In it's string form, the Kaspa [`Address`] is represented by a `bech32`-encoded
-//! address string combined with a network type.  The `bech32` string encoding is
+//! address string combined with a network type. The `bech32` string encoding is
 //! comprised of a public key, the public key version and the resulting checksum.
 //!
 
+extern crate alloc;
+
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::{
+    cmp,
+    fmt::{self, Display, Formatter},
+    marker::PhantomData,
+    str,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
-use std::fmt::{Display, Formatter};
 use thiserror::Error;
-use wasm_bindgen::prelude::*;
-use workflow_wasm::{
-    convert::{Cast, CastFromJs, TryCastFromJs},
-    extensions::object::*,
-};
+
+#[cfg(feature = "wasm32-sdk")]
+use wasm_bindgen::prelude::wasm_bindgen;
+#[cfg(feature = "wasm32-sdk")]
+use workflow_wasm::convert::CastFromJs;
+
+#[cfg(feature = "wasm32-sdk")]
+mod wasm;
+#[cfg(feature = "wasm32-sdk")]
+pub use self::wasm::*;
 
 mod bech32;
 
@@ -24,42 +43,26 @@ mod bech32;
 pub enum AddressError {
     #[error("The address has an invalid prefix {0}")]
     InvalidPrefix(String),
-
     #[error("The address prefix is missing")]
     MissingPrefix,
-
     #[error("The address has an invalid version {0}")]
     InvalidVersion(u8),
-
     #[error("The address has an invalid version {0}")]
     InvalidVersionString(String),
-
     #[error("The address contains an invalid character {0}")]
     DecodingError(char),
-
     #[error("The address checksum is invalid (must be exactly 8 bytes)")]
     BadChecksumSize,
-
     #[error("The address checksum is invalid")]
     BadChecksum,
-
     #[error("The address payload is invalid")]
     BadPayload,
-
     #[error("The address is invalid")]
     InvalidAddress,
-
     #[error("The address array is invalid")]
     InvalidAddressArray,
-
     #[error("{0}")]
     WASM(String),
-}
-
-impl From<workflow_wasm::error::Error> for AddressError {
-    fn from(e: workflow_wasm::error::Error) -> Self {
-        AddressError::WASM(e.to_string())
-    }
 }
 
 /// Address prefix identifying the network type this address belongs to (such as `kaspa`, `kaspatest`, `kaspasim`, `kaspadev`).
@@ -104,7 +107,7 @@ impl Prefix {
 }
 
 impl Display for Prefix {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -134,7 +137,7 @@ impl TryFrom<&str> for Prefix {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
 #[borsh(use_discriminant = true)]
-#[wasm_bindgen(js_name = "AddressVersion")]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = "AddressVersion"))]
 pub enum Version {
     /// PubKey addresses always have the version byte set to 0
     PubKey = 0,
@@ -152,7 +155,7 @@ impl TryFrom<&str> for Version {
             "PubKey" => Ok(Version::PubKey),
             "PubKeyECDSA" => Ok(Version::PubKeyECDSA),
             "ScriptHash" => Ok(Version::ScriptHash),
-            _ => Err(AddressError::InvalidVersionString(value.to_owned())),
+            _ => Err(AddressError::InvalidVersionString(value.to_string())),
         }
     }
 }
@@ -181,7 +184,7 @@ impl TryFrom<u8> for Version {
 }
 
 impl Display for Version {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Version::PubKey => write!(f, "PubKey"),
             Version::PubKeyECDSA => write!(f, "PubKeyECDSA"),
@@ -202,19 +205,19 @@ pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 /// Kaspa [`Address`] struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
 ///
 /// @category Address
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, CastFromJs)]
-#[wasm_bindgen(inspectable)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[cfg_attr(feature = "wasm32-sdk", derive(CastFromJs), wasm_bindgen(inspectable))]
 pub struct Address {
-    #[wasm_bindgen(skip)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(skip))]
     pub prefix: Prefix,
-    #[wasm_bindgen(skip)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(skip))]
     pub version: Version,
-    #[wasm_bindgen(skip)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(skip))]
     pub payload: PayloadVec,
 }
 
-impl std::fmt::Debug for Address {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Address {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.version == Version::PubKey {
             write!(f, "{}", String::from(self))
         } else {
@@ -230,55 +233,16 @@ impl Address {
         }
         Self { prefix, payload: PayloadVec::from_slice(payload), version }
     }
-}
-
-#[wasm_bindgen]
-impl Address {
-    #[wasm_bindgen(constructor)]
-    pub fn constructor(address: &str) -> Address {
-        address.try_into().unwrap_or_else(|err| panic!("Address::constructor() - address error `{}`: {err}", address))
-    }
-
-    #[wasm_bindgen(js_name=validate)]
-    pub fn validate(address: &str) -> bool {
-        Self::try_from(address).is_ok()
-    }
-
-    /// Convert an address to a string.
-    #[wasm_bindgen(js_name = toString)]
-    pub fn address_to_string(&self) -> String {
-        self.into()
-    }
-
-    #[wasm_bindgen(getter, js_name = "version")]
-    pub fn version_to_string(&self) -> String {
-        self.version.to_string()
-    }
-
-    #[wasm_bindgen(getter, js_name = "prefix")]
-    pub fn prefix_to_string(&self) -> String {
-        self.prefix.to_string()
-    }
-
-    #[wasm_bindgen(setter, js_name = "setPrefix")]
-    pub fn set_prefix_from_str(&mut self, prefix: &str) {
-        self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
-    }
-
-    #[wasm_bindgen(getter, js_name = "payload")]
-    pub fn payload_to_string(&self) -> String {
-        self.encode_payload()
-    }
 
     pub fn short(&self, n: usize) -> String {
         let payload = self.encode_payload();
-        let n = std::cmp::min(n, payload.len() / 4);
+        let n = cmp::min(n, payload.len() / 4);
         format!("{}:{}....{}", self.prefix, &payload[0..n], &payload[payload.len() - n..])
     }
 }
 
 impl Display for Address {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", String::from(self))
     }
 }
@@ -289,7 +253,7 @@ impl Display for Address {
 //
 
 impl BorshSerialize for Address {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
         borsh::BorshSerialize::serialize(&self.prefix, writer)?;
         borsh::BorshSerialize::serialize(&self.version, writer)?;
         // Vectors and slices are all serialized internally the same way
@@ -299,7 +263,7 @@ impl BorshSerialize for Address {
 }
 
 impl BorshDeserialize for Address {
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
         let prefix: Prefix = borsh::BorshDeserialize::deserialize_reader(reader)?;
         let version: Version = borsh::BorshDeserialize::deserialize_reader(reader)?;
         let payload: Vec<u8> = borsh::BorshDeserialize::deserialize_reader(reader)?;
@@ -354,32 +318,27 @@ impl<'de> Deserialize<'de> for Address {
     {
         #[derive(Default)]
         pub struct AddressVisitor<'de> {
-            marker: std::marker::PhantomData<Address>,
-            lifetime: std::marker::PhantomData<&'de ()>,
+            marker: PhantomData<Address>,
+            lifetime: PhantomData<&'de ()>,
         }
+
         impl<'de> serde::de::Visitor<'de> for AddressVisitor<'de> {
             type Value = Address;
 
-            fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map; number-type - pointer")
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map")
-                }
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map; number-type - pointer")
             }
 
             // TODO: see related comment in script_public_key.rs
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(all(feature = "wasm32-sdk", target_arch = "wasm32"))]
             fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
                 self.visit_u32(v as u32)
             }
-            #[cfg(target_arch = "wasm32")]
+
+            #[cfg(all(feature = "wasm32-sdk", target_arch = "wasm32"))]
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
@@ -387,30 +346,34 @@ impl<'de> Deserialize<'de> for Address {
                 self.visit_u32(v as u32)
             }
 
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(all(feature = "wasm32-sdk", target_arch = "wasm32"))]
             fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
                 self.visit_u32(v as u32)
             }
-            #[cfg(target_arch = "wasm32")]
+
+            #[cfg(all(feature = "wasm32-sdk", target_arch = "wasm32"))]
             fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
                 self.visit_u32(v as u32)
             }
-            #[cfg(target_arch = "wasm32")]
+
+            #[cfg(all(feature = "wasm32-sdk", target_arch = "wasm32"))]
             fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
                 use wasm_bindgen::convert::RefFromWasmAbi;
-                let instance_ref = unsafe { Self::Value::ref_from_abi(v) }; // todo add checks for safecast
+
+                let instance_ref = unsafe { Self::Value::ref_from_abi(v) }; // TODO: add checks for safecast
                 Ok(instance_ref.clone())
             }
-            #[cfg(target_arch = "wasm32")]
+
+            #[cfg(all(feature = "wasm32-sdk", target_arch = "wasm32"))]
             fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
@@ -443,7 +406,7 @@ impl<'de> Deserialize<'de> for Address {
             where
                 E: serde::de::Error,
             {
-                let str = std::str::from_utf8(v).map_err(serde::de::Error::custom)?;
+                let str = str::from_utf8(v).map_err(serde::de::Error::custom)?;
                 Address::try_from(str).map_err(serde::de::Error::custom)
             }
 
@@ -451,7 +414,7 @@ impl<'de> Deserialize<'de> for Address {
             where
                 E: serde::de::Error,
             {
-                let str = std::str::from_utf8(v).map_err(serde::de::Error::custom)?;
+                let str = str::from_utf8(v).map_err(serde::de::Error::custom)?;
                 Address::try_from(str).map_err(serde::de::Error::custom)
             }
 
@@ -459,7 +422,7 @@ impl<'de> Deserialize<'de> for Address {
             where
                 E: serde::de::Error,
             {
-                let str = std::str::from_utf8(&v).map_err(serde::de::Error::custom)?;
+                let str = str::from_utf8(&v).map_err(serde::de::Error::custom)?;
                 Address::try_from(str).map_err(serde::de::Error::custom)
             }
 
@@ -471,19 +434,16 @@ impl<'de> Deserialize<'de> for Address {
                 let mut payload: Option<String> = None;
 
                 while let Some((key, value)) = access.next_entry::<String, String>()? {
-                    #[cfg(test)]
-                    web_sys::console::log_3(&"key value: ".into(), &key.clone().into(), &value.clone().into());
-
                     match key.as_ref() {
                         "prefix" => {
-                            prefix = Some(value.to_string());
+                            prefix = Some(value);
                         }
                         "payload" => {
-                            payload = Some(value.to_string());
+                            payload = Some(value);
                         }
                         "version" => continue,
                         unknown_field => {
-                            return Err(serde::de::Error::unknown_field(unknown_field, &["prefix", "payload", "version"]))
+                            return Err(serde::de::Error::unknown_field(unknown_field, &["prefix", "payload", "version"]));
                         }
                     }
                     if prefix.is_some() && payload.is_some() {
@@ -504,64 +464,12 @@ impl<'de> Deserialize<'de> for Address {
     }
 }
 
-impl TryCastFromJs for Address {
-    type Error = AddressError;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
-    where
-        R: AsRef<JsValue> + 'a,
-    {
-        Self::resolve(value, || {
-            if let Some(string) = value.as_ref().as_string() {
-                Address::try_from(string.trim())
-            } else if let Some(object) = js_sys::Object::try_from(value.as_ref()) {
-                let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
-                let payload = object.get_string("payload")?; //.as_str();
-                Address::decode_payload(prefix, &payload)
-            } else {
-                Err(AddressError::InvalidAddress)
-            }
-        })
-    }
-}
-
-#[wasm_bindgen]
-extern "C" {
-    /// WASM (TypeScript) type representing an Address-like object: `Address | string`.
-    ///
-    /// @category Address
-    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address | string")]
-    pub type AddressT;
-    /// WASM (TypeScript) type representing an array of Address-like objects: `(Address | string)[]`.
-    ///
-    /// @category Address
-    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "(Address | string)[]")]
-    pub type AddressOrStringArrayT;
-    /// WASM (TypeScript) type representing an array of [`Address`] objects: `Address[]`.
-    ///
-    /// @category Address
-    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[]")]
-    pub type AddressArrayT;
-    /// WASM (TypeScript) type representing an [`Address`] or an undefined value: `Address | undefined`.
-    ///
-    /// @category Address
-    #[wasm_bindgen(typescript_type = "Address | undefined")]
-    pub type AddressOrUndefinedT;
-}
-
-impl TryFrom<AddressOrStringArrayT> for Vec<Address> {
-    type Error = AddressError;
-    fn try_from(js_value: AddressOrStringArrayT) -> Result<Self, Self::Error> {
-        if js_value.is_array() {
-            js_value.iter().map(Address::try_owned_from).collect::<Result<Vec<Address>, AddressError>>()
-        } else {
-            Err(AddressError::InvalidAddressArray)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use crate::*;
+    use alloc::vec;
 
     fn cases() -> Vec<(Address, &'static str)> {
         // cspell:disable
@@ -636,63 +544,5 @@ mod tests {
         let address: Result<Address, AddressError> = address_str.try_into();
         assert_eq!(Err(AddressError::BadChecksum), address);
         // cspell:enable
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    use js_sys::Object;
-    #[cfg(target_arch = "wasm32")]
-    use wasm_bindgen::{JsValue, __rt::IntoJsResult};
-    #[cfg(target_arch = "wasm32")]
-    use wasm_bindgen_test::wasm_bindgen_test;
-    #[cfg(target_arch = "wasm32")]
-    use workflow_wasm::{extensions::ObjectExtension, serde::from_value, serde::to_value};
-
-    #[cfg(target_arch = "wasm32")]
-    #[wasm_bindgen_test]
-    pub fn test_wasm_serde_constructor() {
-        let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
-        let a = Address::constructor(str);
-        let value = to_value(&a).unwrap();
-
-        assert_eq!(JsValue::from_str("string"), value.js_typeof());
-        assert_eq!(value, JsValue::from_str(str));
-        assert_eq!(a, from_value(value).unwrap());
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    #[wasm_bindgen_test]
-    pub fn test_wasm_js_serde_object() {
-        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
-
-        use web_sys::console;
-        console::log_4(
-            &"address: ".into(),
-            &expected.version_to_string().into(),
-            &expected.prefix_to_string().into(),
-            &expected.payload_to_string().into(),
-        );
-
-        let obj = Object::new();
-        obj.set("version", &JsValue::from_str("PubKey")).unwrap();
-        obj.set("prefix", &JsValue::from_str("kaspa")).unwrap();
-        obj.set("payload", &JsValue::from_str("qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j")).unwrap();
-
-        assert_eq!(JsValue::from_str("object"), obj.js_typeof());
-
-        let obj_js = obj.into_js_result().unwrap();
-        let actual = from_value(obj_js).unwrap();
-        assert_eq!(expected, actual);
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    #[wasm_bindgen_test]
-    pub fn test_wasm_serde_object() {
-        use wasm_bindgen::convert::IntoWasmAbi;
-
-        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
-        let wasm_js_value: JsValue = expected.clone().into_abi().into();
-
-        let actual = from_value(wasm_js_value).unwrap();
-        assert_eq!(expected, actual);
     }
 }

@@ -1,8 +1,8 @@
 use crate::mempool::{
+    Mempool,
     errors::{RuleError, RuleResult},
     model::tx::{DoubleSpend, MempoolTransaction, TxRemovalReason},
     tx::RbfPolicy,
-    Mempool,
 };
 use kaspa_consensus_core::tx::{MutableTransaction, Transaction};
 use std::sync::Arc;

@@ -1,7 +1,7 @@
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     hashing::{
-        sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
+        sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::SIG_HASH_ALL,
     },
     tx::{
@@ -10,6 +10,7 @@ use kaspa_consensus_core::{
     },
 };
 use kaspa_txscript::{
+    TxScriptEngine,
     caches::Cache,
     opcodes::codes::{
         OpCheckSig, OpCheckSigVerify, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpGreaterThanOrEqual, OpIf, OpSub, OpTrue,
@@ -17,7 +18,6 @@ use kaspa_txscript::{
     },
     pay_to_address_script, pay_to_script_hash_script,
     script_builder::{ScriptBuilder, ScriptBuilderResult},
-    TxScriptEngine,
 };
 use kaspa_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
 use rand::thread_rng;

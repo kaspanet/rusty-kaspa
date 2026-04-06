@@ -1,13 +1,13 @@
 use std::sync::atomic::Ordering;
 
 use crate::mempool::{
+    Mempool,
     errors::{RuleError, RuleResult},
     model::{
         pool::Pool,
         tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
     },
     tx::{Orphan, Priority, RbfPolicy},
-    Mempool,
 };
 use kaspa_consensus_core::{
     api::ConsensusApi,

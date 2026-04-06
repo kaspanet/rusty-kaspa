@@ -1,10 +1,9 @@
 use std::{collections::HashMap, fmt::Display};
 
 use crate::{
-    constants,
+    BlueWorkType, constants,
     errors::{coinbase::CoinbaseError, tx::TxRuleError},
     tx::{TransactionId, TransactionOutpoint},
-    BlueWorkType,
 };
 use itertools::Itertools;
 use kaspa_hashes::Hash;

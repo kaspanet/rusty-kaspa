@@ -43,16 +43,16 @@ impl Notifier {
     }
 
     pub fn notify(&self, kind: Notification) {
-        if let Some(elements) = self.inner.elements.lock().unwrap().as_ref() {
-            if let Some(el) = elements.get(&kind) {
-                el.class_list().add_1("show").unwrap();
-                let el = Sendable(el.clone());
-                spawn(async move {
-                    yield_executor().await;
-                    sleep(Duration::from_millis(10)).await;
-                    el.class_list().remove_1("show").unwrap();
-                })
-            }
+        if let Some(elements) = self.inner.elements.lock().unwrap().as_ref()
+            && let Some(el) = elements.get(&kind)
+        {
+            el.class_list().add_1("show").unwrap();
+            let el = Sendable(el.clone());
+            spawn(async move {
+                yield_executor().await;
+                sleep(Duration::from_millis(10)).await;
+                el.class_list().remove_1("show").unwrap();
+            })
         }
     }
 
@@ -63,11 +63,11 @@ impl Notifier {
 
     pub async fn show(&self, kind: Notification) -> NotifierGuard {
         // let mut inner = self.inner();
-        if let Some(elements) = self.inner.elements.lock().unwrap().as_ref() {
-            if let Some(el) = elements.get(&kind) {
-                el.class_list().add_1("show").unwrap();
-                self.inner.current.lock().unwrap().replace(el.clone());
-            }
+        if let Some(elements) = self.inner.elements.lock().unwrap().as_ref()
+            && let Some(el) = elements.get(&kind)
+        {
+            el.class_list().add_1("show").unwrap();
+            self.inner.current.lock().unwrap().replace(el.clone());
         }
 
         yield_executor().await;

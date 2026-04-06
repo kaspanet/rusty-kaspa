@@ -38,14 +38,14 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::{
+    MiningCounters,
     manager::{MiningManager, MiningManagerProxy},
     monitor::MiningMonitor,
-    MiningCounters,
 };
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
-use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
+use kaspa_utxoindex::{UtxoIndex, api::UtxoIndexProxy};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
 /// Desired soft FD limit that needs to be configured
@@ -161,11 +161,7 @@ pub fn get_app_dir_from_args(args: &Args) -> PathBuf {
         .clone()
         .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
         .replace('~', get_home_dir().as_path().to_str().unwrap());
-    if app_dir.is_empty() {
-        get_app_dir()
-    } else {
-        PathBuf::from(app_dir)
-    }
+    if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) }
 }
 
 /// Get the log directory from the supplied [`Args`].
@@ -176,8 +172,8 @@ pub fn get_log_dir(args: &Args) -> Option<String> {
     // Logs directory is usually under the application directory, unless otherwise specified
     let log_dir = args.logdir.clone().unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
     let log_dir = if log_dir.is_empty() { app_dir.join(network.to_prefixed()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
-    let log_dir = if args.no_log_files { None } else { log_dir.to_str().map(String::from) };
-    log_dir
+
+    if args.no_log_files { None } else { log_dir.to_str().map(String::from) }
 }
 
 impl Runtime {
@@ -365,8 +361,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
 
-    if !args.archival && args.retention_period_days.is_some() {
-        let retention_period_days = args.retention_period_days.unwrap();
+    if !args.archival
+        && let Some(retention_period_days) = args.retention_period_days
+    {
         // Look only at post-fork values (which are the worst-case)
         let finality_depth = config.finality_depth();
         let target_time_per_block = config.target_time_per_block(); // in ms
@@ -537,7 +534,10 @@ Do you confirm? (y/n)";
     }
 
     if !args.archival && MultiConsensusManagementStore::new(meta_db.clone()).is_archival_node().unwrap() {
-        get_user_approval_or_exit("--archival is set to false although the node was previously archival. Proceeding may delete archived data. Do you confirm? (y/n)", args.yes);
+        get_user_approval_or_exit(
+            "--archival is set to false although the node was previously archival. Proceeding may delete archived data. Do you confirm? (y/n)",
+            args.yes,
+        );
     }
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
@@ -720,7 +720,7 @@ Do you confirm? (y/n)";
     async_runtime.register(mining_rule_engine);
 
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
-                                       // Register wRPC servers based on command line arguments
+    // Register wRPC servers based on command line arguments
     [
         (args.rpclisten_borsh.clone(), WrpcEncoding::Borsh, wrpc_borsh_counters),
         (args.rpclisten_json.clone(), WrpcEncoding::SerdeJson, wrpc_json_counters),

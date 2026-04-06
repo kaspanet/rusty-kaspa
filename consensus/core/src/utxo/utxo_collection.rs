@@ -33,11 +33,7 @@ impl UtxoView for UtxoCollection {
 
 impl UtxoCollectionExtensions for UtxoCollection {
     fn contains_with_daa_score(&self, outpoint: &TransactionOutpoint, daa_score: u64) -> bool {
-        if let Some(entry) = self.get(outpoint) {
-            entry.block_daa_score == daa_score
-        } else {
-            false
-        }
+        if let Some(entry) = self.get(outpoint) { entry.block_daa_score == daa_score } else { false }
     }
 
     fn add_collection(&mut self, other: &Self) {
@@ -71,10 +67,10 @@ impl UtxoCollectionExtensions for UtxoCollection {
         // We prefer iterating over the smaller set
         if self.len() <= other.len() {
             for (k, v1) in self.iter() {
-                if let Some(v2) = other.get(k) {
-                    if rule(k, v1, v2) {
-                        return Some(*k);
-                    }
+                if let Some(v2) = other.get(k)
+                    && rule(k, v1, v2)
+                {
+                    return Some(*k);
                 }
             }
         } else {

@@ -2,9 +2,9 @@ use crate::{
     common::{
         args::ArgsBuilder,
         daemon::{ClientManager, Daemon},
-        utils::{generate_tx_dag, verify_tx_dag, CONTRACT_FACTOR},
+        utils::{CONTRACT_FACTOR, generate_tx_dag, verify_tx_dag},
     },
-    tasks::{block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask, Stopper, TasksRunner},
+    tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
 };
 use futures_util::future::join_all;
 use kaspa_addresses::Address;
@@ -14,8 +14,8 @@ use kaspa_consensus_core::network::NetworkType;
 use kaspa_core::info;
 use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_txscript::pay_to_address_script;
-use rand::thread_rng;
 use rand::Rng;
+use rand::thread_rng;
 use std::{
     sync::Arc,
     time::{Duration, Instant},

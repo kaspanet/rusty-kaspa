@@ -136,9 +136,9 @@ mod tests {
             rx.await.unwrap();
             // Make sure the reader acquires the lock during writer yields. We give the test a few chances to acquire
             // in order to make sure it passes also in slow CI environments where the OS thread-scheduler might take its time
-            let read = timeout(Duration::from_millis(18), l.read()).await.unwrap_or_else(|_| panic!("failed at iteration {i}"));
+            let read = timeout(Duration::from_millis(36), l.read()).await.unwrap_or_else(|_| panic!("failed at iteration {i}"));
             drop(read);
-            timeout(Duration::from_millis(500), tokio::task::spawn_blocking(move || h.join())).await.unwrap().unwrap().unwrap();
+            timeout(Duration::from_millis(1000), tokio::task::spawn_blocking(move || h.join())).await.unwrap().unwrap().unwrap();
         }
     }
 

@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use js_sys::Array;
-use kaspa_consensus_client::{sign_with_multiple_v3, Transaction};
+use kaspa_consensus_client::{Transaction, sign_with_multiple_v3};
 use kaspa_consensus_core::hashing::wasm::SighashType;
 use kaspa_consensus_core::sign::sign_input;
 use kaspa_consensus_core::tx::PopulatedTransaction;
