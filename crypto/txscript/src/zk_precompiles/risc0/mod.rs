@@ -20,11 +20,13 @@ pub mod receipt_claim;
 pub struct R0SuccinctPrecompile;
 pub use error::R0Error;
 
-fn parse_digest(bytes: Vec<u8>) -> Result<Digest, R0Error> {
-    Digest::try_from(bytes).map_err(R0Error::Digest)
+fn parse_digest(bytes: impl AsRef<[u8]>) -> Result<Digest, R0Error> {
+    let bytes = bytes.as_ref();
+    Digest::try_from(bytes).map_err(|_| R0Error::InvalidDigestLength(bytes.len()))
 }
 
-fn parse_seal(bytes: Vec<u8>) -> Result<Vec<u32>, R0Error> {
+fn parse_seal(bytes: impl AsRef<[u8]>) -> Result<Vec<u32>, R0Error> {
+    let bytes = bytes.as_ref();
     let (chunks, remaining) = bytes.as_chunks::<4>();
     if !remaining.is_empty() {
         // we require no remainder
@@ -34,7 +36,8 @@ fn parse_seal(bytes: Vec<u8>) -> Result<Vec<u32>, R0Error> {
     }
 }
 
-fn parse_hashfn(bytes: Vec<u8>) -> Result<HashFnId, R0Error> {
+fn parse_hashfn(bytes: impl AsRef<[u8]>) -> Result<HashFnId, R0Error> {
+    let bytes = bytes.as_ref();
     if bytes.len() != 1 {
         return Err(R0Error::InvalidHashFnEncoding(bytes.len()));
     }
@@ -42,19 +45,21 @@ fn parse_hashfn(bytes: Vec<u8>) -> Result<HashFnId, R0Error> {
     HashFnId::try_from(bytes[0])
 }
 
-fn parse_merkle_index(bytes: Vec<u8>) -> Result<u32, R0Error> {
+fn parse_merkle_index(bytes: impl AsRef<[u8]>) -> Result<u32, R0Error> {
+    let bytes = bytes.as_ref();
     if bytes.len() != 4 {
         return Err(R0Error::InvalidMerkleIndexLength(bytes.len()));
     }
 
-    Ok(u32::from_le_bytes(bytes.as_slice().try_into().expect("index is 4 bytes")))
+    Ok(u32::from_le_bytes(bytes.try_into().expect("index is 4 bytes")))
 }
 
-fn parse_digest_list(bytes: Vec<u8>) -> Result<Vec<Digest>, R0Error> {
+fn parse_digest_list(bytes: impl AsRef<[u8]>) -> Result<Vec<Digest>, R0Error> {
+    let bytes = bytes.as_ref();
     let (chunks, remaining) = bytes.as_chunks::<DIGEST_BYTES>();
     if !remaining.is_empty() {
         // we require no remainder
-        Err(R0Error::InvalidDigestLength(bytes.len()))
+        Err(R0Error::InvalidDigestListLength(bytes.len()))
     } else {
         Ok(chunks.iter().copied().map(Digest::from).collect())
     }

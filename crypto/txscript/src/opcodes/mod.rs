@@ -4,7 +4,7 @@ use crate::zk_precompiles::{parse_tag, verify_zk};
 use crate::{
     EngineFlags, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED,
     SEQUENCE_LOCK_TIME_MASK, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError,
-    data_stack::{OpcodeData, serialize_i64},
+    data_stack::{OpcodeData, StackEntry, serialize_i64},
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -211,7 +211,7 @@ fn push_literal_data<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     data: Vec<u8>,
     vm: &mut TxScriptEngine<T, Reused>,
 ) -> OpCodeResult {
-    vm.dstack.push_unmetered(data)
+    vm.dstack.push_unmetered(data.into())
 }
 
 #[inline]
@@ -219,7 +219,7 @@ fn push_data<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     data: Vec<u8>,
     vm: &mut TxScriptEngine<T, Reused>,
 ) -> OpCodeResult {
-    vm.dstack.push(data)
+    vm.dstack.push(data.into())
 }
 
 // Literal opcode numbers are already paid for in script size, so this push does not consume script units.
@@ -490,7 +490,7 @@ opcode_list! {
 
     opcode OpIfDup<0x73, 1>(self, vm) {
         let [result] = vm.dstack.peek_raw()?;
-        if <Vec<u8> as OpcodeData<bool>>::deserialize(&result, !vm.flags.covenants_enabled)? {
+        if <StackEntry as OpcodeData<bool>>::deserialize(&result, !vm.flags.covenants_enabled)? {
             vm.dstack.push(result)?;
         }
         Ok(())
@@ -561,7 +561,7 @@ opcode_list! {
             let data = vm.dstack.pop()?;
             let [start, end] = i32s_to_usizes([start, end])?;
             let substr = substring(&data, start, end)?;
-            vm.dstack.push(substr)
+            vm.dstack.push(substr.into())
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -585,7 +585,7 @@ opcode_list! {
         if vm.flags.covenants_enabled{
             let data = vm.dstack.pop()?;
             let r: Vec<u8> = data.into_iter().map(|b| !b).collect();
-            vm.dstack.push(r)
+            vm.dstack.push(r.into())
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -599,7 +599,7 @@ opcode_list! {
                 return Err(TxScriptError::InvalidState("AND operands must be of equal length".to_string()));
             }
             let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
-            vm.dstack.push(r)
+            vm.dstack.push(r.into())
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -613,7 +613,7 @@ opcode_list! {
                 return Err(TxScriptError::InvalidState("OR operands must be of equal length".to_string()));
             }
             let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
-            vm.dstack.push(r)
+            vm.dstack.push(r.into())
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -627,7 +627,7 @@ opcode_list! {
                 return Err(TxScriptError::InvalidState("XOR operands must be of equal length".to_string()));
             }
             let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
-            vm.dstack.push(r)
+            vm.dstack.push(r.into())
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -638,8 +638,8 @@ opcode_list! {
             true => {
                 let pair = vm.dstack.split_off(vm.dstack.len() - 2);
                 match pair[0] == pair[1] {
-                    true => vm.dstack.push(vec![1]),
-                    false => vm.dstack.push(vec![]),
+                    true => vm.dstack.push(vec![1].into()),
+                    false => vm.dstack.push(vec![].into()),
                 }
             }
             false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len()))
@@ -869,7 +869,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [data, key] = vm.dstack.pop_raw()?;
             let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
-            vm.dstack.push(hash.as_bytes().to_vec())
+            vm.dstack.push(hash.as_bytes().to_vec().into())
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
@@ -879,7 +879,7 @@ opcode_list! {
         let [last] = vm.dstack.pop_raw()?;
         let mut hasher = Sha256::new();
         hasher.update(last);
-        vm.dstack.push(hasher.finalize().to_vec())
+        vm.dstack.push(hasher.finalize().to_vec().into())
     }
 
     opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
@@ -890,7 +890,7 @@ opcode_list! {
         let [last] = vm.dstack.pop_raw()?;
         //let hash = blake2b(last.as_slice());
         let hash = Params::new().hash_length(32).to_state().update(&last).finalize();
-        vm.dstack.push(hash.as_bytes().to_vec())
+        vm.dstack.push(hash.as_bytes().to_vec().into())
     }
 
     opcode OpCheckSigECDSA<0xab, 1>(self, vm) {
@@ -975,7 +975,7 @@ opcode_list! {
                     return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {lock_time_bytes:x?} is longer then 8 bytes")))
                 }
                 lock_time_bytes.resize(8, 0);
-                let stack_lock_time = u64::from_le_bytes(lock_time_bytes.try_into().expect("checked vector size"));
+                let stack_lock_time = u64::from_le_bytes(lock_time_bytes.as_slice().try_into().expect("checked vector size"));
 
                 // The lock time field of a transaction is either a DAA score at
                 // which the transaction is finalized or a timestamp depending on if the
@@ -1029,7 +1029,7 @@ opcode_list! {
                 // Don't use makeScriptNum here, since sequence is not an actual number, minimal encoding rules don't apply to it,
                 // and is more convenient to be represented as an unsigned int.
                 sequence_bytes.resize(8, 0);
-                let stack_sequence = u64::from_le_bytes(sequence_bytes.try_into().expect("ensured size checks"));
+                let stack_sequence = u64::from_le_bytes(sequence_bytes.as_slice().try_into().expect("ensured size checks"));
 
                 // To provide for future soft-fork extensibility, if the
                 // operand has the disabled lock-time flag set,
@@ -1226,7 +1226,7 @@ opcode_list! {
                 let utxo = usize::try_from(idx).ok()
                     .and_then(|idx| tx.utxo(idx))
                     .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
-                vm.dstack.push(utxo.script_public_key.to_bytes())
+                vm.dstack.push(utxo.script_public_key.to_bytes().into())
             },
             _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
         }
@@ -1281,7 +1281,7 @@ opcode_list! {
                 let output = usize::try_from(idx).ok()
                     .and_then(|idx| tx.outputs().get(idx))
                     .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
-                vm.dstack.push(output.script_public_key.to_bytes())
+                vm.dstack.push(output.script_public_key.to_bytes().into())
             },
             _ => Err(TxScriptError::InvalidSource("OpTxOutputSpk only applies to transaction inputs".to_string()))
         }
@@ -1433,7 +1433,7 @@ opcode_list! {
             }
             let [num]: [i64; 1] = vm.dstack.pop_items()?;
             let r = serialize_i64(num, Some(size))?;
-            vm.dstack.push(r)
+            vm.dstack.push(r.into())
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }

@@ -3,6 +3,7 @@ use core::fmt::Debug;
 use core::iter;
 use kaspa_hashes::Hash;
 use kaspa_txscript_errors::SerializationError;
+use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::num::TryFromIntError;
 use std::ops::{Deref, Index};
@@ -61,7 +62,7 @@ fn total_bytes(items: &[StackEntry]) -> usize {
     items.iter().map(|item| item.len()).sum()
 }
 
-pub type StackEntry = Vec<u8>;
+pub type StackEntry = SmallVec<[u8; 8]>;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Stack {
@@ -244,7 +245,7 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for StackEntry {
         if bytes.len() > LEN {
             return Err(SerializationError::NumberTooLong(from.0, LEN));
         }
-        Ok(bytes)
+        Ok(SmallVec::from_vec(bytes))
     }
 }
 
@@ -262,8 +263,8 @@ impl OpcodeData<bool> for StackEntry {
     #[inline]
     fn serialize(from: &bool) -> Result<Self, SerializationError> {
         Ok(match from {
-            true => vec![1],
-            false => vec![],
+            true => SmallVec::from_slice(&[1]),
+            false => SmallVec::new(),
         })
     }
 }
@@ -276,7 +277,7 @@ impl OpcodeData<Hash> for StackEntry {
 
     #[inline]
     fn serialize(from: &Hash) -> Result<Self, SerializationError> {
-        Ok(from.as_bytes().to_vec())
+        Ok(from.as_bytes().as_slice().into())
     }
 }
 
@@ -317,7 +318,7 @@ impl Stack {
     #[inline]
     pub fn pop_items<const SIZE: usize, T: Debug>(&mut self) -> Result<[T; SIZE], TxScriptError>
     where
-        Vec<u8>: OpcodeData<T>,
+        StackEntry: OpcodeData<T>,
     {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
@@ -337,7 +338,7 @@ impl Stack {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
-        Ok(<[Vec<u8>; SIZE]>::try_from(self.inner.split_off(self.len() - SIZE)).expect("Already exact item"))
+        Ok(<[StackEntry; SIZE]>::try_from(self.inner.split_off(self.len() - SIZE)).expect("Already exact item"))
     }
 
     #[inline]
@@ -345,15 +346,15 @@ impl Stack {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
-        Ok(<[Vec<u8>; SIZE]>::try_from(self.inner[self.len() - SIZE..].to_vec()).expect("Already exact item"))
+        Ok(<[StackEntry; SIZE]>::try_from(self.inner[self.len() - SIZE..].to_vec()).expect("Already exact item"))
     }
 
     #[inline]
     pub fn push_item<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
     where
-        Vec<u8>: OpcodeData<T>,
+        StackEntry: OpcodeData<T>,
     {
-        let v: Vec<u8> = OpcodeData::serialize(&item)?;
+        let v: StackEntry = OpcodeData::serialize(&item)?;
         self.add_pushed_bytes(v.len());
         Vec::push(&mut self.inner, v);
         Ok(())
@@ -362,9 +363,9 @@ impl Stack {
     #[inline]
     pub fn push_item_unmetered<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
     where
-        Vec<u8>: OpcodeData<T>,
+        StackEntry: OpcodeData<T>,
     {
-        let v: Vec<u8> = OpcodeData::serialize(&item)?;
+        let v: StackEntry = OpcodeData::serialize(&item)?;
         Vec::push(&mut self.inner, v);
         Ok(())
     }
