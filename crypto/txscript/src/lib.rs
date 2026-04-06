@@ -66,6 +66,8 @@ pub const SEQUENCE_LOCK_TIME_MASK: u64 = 0x00000000ffffffff;
 pub const LOCK_TIME_THRESHOLD: u64 = 500_000_000_000;
 pub const MAX_PUB_KEYS_PER_MUTLTISIG: i32 = 20;
 
+const STANDARD_SCRIPT_PUB_KEY_MAX_SIZE: usize = 35;
+
 // The last opcode that does not count toward operations.
 // Note that this includes OP_RESERVED which counts as a push operation.
 pub const NO_COST_OPCODE: u8 = 0x60;
@@ -105,7 +107,7 @@ pub struct EngineFlags {
 
 impl Default for EngineFlags {
     fn default() -> Self {
-        Self { covenants_enabled: false, sigop_script_units: Gram(1000).to_script_units() }
+        Self { covenants_enabled: false, sigop_script_units: Gram(1000).into() }
     }
 }
 
@@ -620,16 +622,29 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     fn execute_inner(&mut self) -> Result<(), TxScriptError> {
-        let (scripts, is_p2sh) = match &self.script_source {
+        let (scripts, is_p2sh, utxo_spk_script_units) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                     trace!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
                     return Ok(());
                 }
-                (vec![input.signature_script.as_slice(), utxo_entry.script_public_key.script()], *is_p2sh)
+
+                // To avoid breaking the old pricing, we only charge for the part of the script public key
+                // that exceeds the standard maximum size. Therefore, the only transactions that are affected
+                // by this change are those with non-standard script public keys.
+                let utxo_spk_script_grams =
+                    utxo_entry.script_public_key.script().len().saturating_sub(STANDARD_SCRIPT_PUB_KEY_MAX_SIZE);
+
+                (
+                    vec![input.signature_script.as_slice(), utxo_entry.script_public_key.script()],
+                    *is_p2sh,
+                    Gram(utxo_spk_script_grams as u64).into(),
+                )
             }
-            ScriptSource::StandAloneScripts(scripts) => (scripts.clone(), false),
+            ScriptSource::StandAloneScripts(scripts) => (scripts.clone(), false, 0.into()),
         };
+
+        self.consume_script_units(utxo_spk_script_units)?;
 
         // TODO: run all in same iterator?
         // When both the signature script and public key script are empty the
@@ -896,6 +911,7 @@ mod tests {
 
     use super::*;
     use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
+    use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
     use kaspa_consensus_core::mass::{ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SigopCount};
@@ -1497,6 +1513,24 @@ mod tests {
                     check
                 )
             }
+        }
+    }
+
+    #[test]
+    fn test_standard_script_pub_key_sizes() {
+        let p2pk = pay_to_address_script(&Address::new(Prefix::Mainnet, Version::PubKey, &[0u8; 32]));
+        let p2pk_ecdsa = pay_to_address_script(&Address::new(Prefix::Mainnet, Version::PubKeyECDSA, &[0u8; 33]));
+        let p2sh = pay_to_address_script(&Address::new(Prefix::Mainnet, Version::ScriptHash, &[0u8; 32]));
+
+        let tests =
+            [("p2pk", p2pk.script().len(), 34), ("p2pk_ecdsa", p2pk_ecdsa.script().len(), 35), ("p2sh", p2sh.script().len(), 35)];
+
+        for (name, len, expected_len) in tests {
+            assert_eq!(len, expected_len, "{name} length changed");
+            assert!(
+                len <= STANDARD_SCRIPT_PUB_KEY_MAX_SIZE,
+                "{name} length {len} exceeds STANDARD_SCRIPT_PUB_KEY_MAX_SIZE ({STANDARD_SCRIPT_PUB_KEY_MAX_SIZE})"
+            );
         }
     }
 

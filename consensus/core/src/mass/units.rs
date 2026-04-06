@@ -122,11 +122,6 @@ impl Gram {
     pub const fn value(self) -> u64 {
         self.0
     }
-
-    #[inline(always)]
-    pub const fn to_script_units(self) -> ScriptUnits {
-        ScriptUnits(self.0 * SCRIPT_UNITS_PER_GRAM)
-    }
 }
 
 impl From<u64> for Gram {
@@ -140,6 +135,13 @@ impl From<Gram> for u64 {
     #[inline(always)]
     fn from(value: Gram) -> Self {
         value.0
+    }
+}
+
+impl From<Gram> for ScriptUnits {
+    #[inline(always)]
+    fn from(value: Gram) -> Self {
+        Self(value.0 * SCRIPT_UNITS_PER_GRAM)
     }
 }
 

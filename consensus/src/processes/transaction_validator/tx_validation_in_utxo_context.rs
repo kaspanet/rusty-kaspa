@@ -169,7 +169,7 @@ impl TransactionValidator {
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
         let covenants_enabled = self.covenants_activation.is_active(block_daa_score);
-        let flags: EngineFlags = EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).to_script_units() };
+        let flags: EngineFlags = EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).into() };
 
         check_scripts(tx, ctx, flags)
     }
