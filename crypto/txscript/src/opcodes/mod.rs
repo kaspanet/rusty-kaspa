@@ -1589,8 +1589,29 @@ opcode_list! {
         }
     }
 
-    opcode OpUnknown217<0xd9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown218<0xda, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpBlake3<0xd9, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            let [data] = vm.dstack.pop_raw()?;
+            let hash = blake3::hash(&data);
+            vm.dstack.push(hash.as_bytes().to_vec())
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpBlake3WithKey<0xda, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            let [data, key] = vm.dstack.pop_raw()?;
+            let key: &[u8; blake3::KEY_LEN] = key.as_slice().try_into().map_err(|_| {
+                TxScriptError::MalformedPush(blake3::KEY_LEN, key.len())
+            })?;
+            let hash = blake3::keyed_hash(key, &data);
+            vm.dstack.push(hash.as_bytes().to_vec())
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
     opcode OpUnknown219<0xdb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown220<0xdc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown221<0xdd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1648,7 +1669,9 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{EngineContext, EngineFlags, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str};
+    use crate::{
+        EngineContext, EngineFlags, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str,
+    };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
@@ -1800,8 +1823,8 @@ mod test {
             opcodes::OpOutputAuthorizingInput::empty().expect("Should accept empty"),
             opcodes::OpCheckSigFromStack::empty().expect("Should accept empty"),
             opcodes::OpCheckSigFromStackECDSA::empty().expect("Should accept empty"),
-            opcodes::OpUnknown217::empty().expect("Should accept empty"),
-            opcodes::OpUnknown218::empty().expect("Should accept empty"),
+            opcodes::OpBlake3::empty().expect("Should accept empty"),
+            opcodes::OpBlake3WithKey::empty().expect("Should accept empty"),
             opcodes::OpUnknown219::empty().expect("Should accept empty"),
             opcodes::OpUnknown220::empty().expect("Should accept empty"),
             opcodes::OpUnknown221::empty().expect("Should accept empty"),
@@ -3450,7 +3473,82 @@ mod test {
             }],
             flags,
         );
+    }
 
+    #[test]
+    fn test_opblake3() {
+        let flags = EngineFlags { covenants_enabled: true };
+
+        run_success_test_cases_with_flags(
+            vec![
+                TestCase {
+                    code: opcodes::OpBlake3::empty().expect("Should accept empty"),
+                    init: vec![b"".to_vec()],
+                    dstack: vec![vec![
+                        175, 19, 73, 185, 245, 249, 161, 166, 160, 64, 77, 234, 54, 220, 201, 73, 155, 203, 37, 201, 173, 193, 18,
+                        183, 204, 154, 147, 202, 228, 31, 50, 98,
+                    ]],
+                },
+                TestCase {
+                    code: opcodes::OpBlake3::empty().expect("Should accept empty"),
+                    init: vec![b"abc".to_vec()],
+                    dstack: vec![vec![
+                        100, 55, 179, 172, 56, 70, 81, 51, 255, 182, 59, 117, 39, 58, 141, 181, 72, 197, 88, 70, 93, 121, 219, 3, 253,
+                        53, 156, 108, 213, 189, 157, 133,
+                    ]],
+                },
+            ],
+            flags,
+        );
+
+        run_error_test_cases_with_flags(
+            vec![ErrorTestCase {
+                code: opcodes::OpBlake3::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(1, 0),
+            }],
+            flags,
+        );
+    }
+
+    #[test]
+    fn test_opblake3_with_key() {
+        let flags = EngineFlags { covenants_enabled: true };
+
+        // 32-byte key (valid)
+        run_success_test_cases_with_flags(
+            vec![TestCase {
+                code: opcodes::OpBlake3WithKey::empty().expect("Should accept empty"),
+                init: vec![b"test data".to_vec(), vec![0x42; 32]],
+                dstack: vec![vec![
+                    63, 39, 61, 140, 214, 251, 247, 204, 249, 152, 157, 234, 49, 16, 83, 196, 154, 89, 145, 71, 67, 172, 184, 53, 84,
+                    158, 214, 16, 111, 60, 37, 84,
+                ]],
+            }],
+            flags,
+        );
+
+        // Wrong key sizes: 0, 1, and 33 bytes
+        run_error_test_cases_with_flags(
+            vec![
+                ErrorTestCase {
+                    code: opcodes::OpBlake3WithKey::empty().expect("Should accept empty"),
+                    init: vec![b"test data".to_vec(), vec![]],
+                    error: TxScriptError::MalformedPush(32, 0),
+                },
+                ErrorTestCase {
+                    code: opcodes::OpBlake3WithKey::empty().expect("Should accept empty"),
+                    init: vec![b"test data".to_vec(), vec![0x42]],
+                    error: TxScriptError::MalformedPush(32, 1),
+                },
+                ErrorTestCase {
+                    code: opcodes::OpBlake3WithKey::empty().expect("Should accept empty"),
+                    init: vec![b"test data".to_vec(), vec![0x42; 33]],
+                    error: TxScriptError::MalformedPush(32, 33),
+                },
+            ],
+            flags,
+        );
     }
 
     #[test]
