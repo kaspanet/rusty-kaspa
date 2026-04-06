@@ -848,6 +848,9 @@ opcode_list! {
     opcode OpBlake2bWithKey<0xa7, 1>(self, vm) {
         if vm.flags.covenants_enabled {
             let [data, key] = vm.dstack.pop_raw()?;
+            if key.len() > blake2b_simd::KEYBYTES {
+                return Err(TxScriptError::ElementTooBig(key.len(), blake2b_simd::KEYBYTES))
+            }
             let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
             vm.dstack.push(hash.as_bytes().to_vec())
         } else {
@@ -1645,7 +1648,7 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{EngineContext, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str};
+    use crate::{EngineContext, EngineFlags, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
@@ -1668,13 +1671,17 @@ mod test {
     }
 
     fn run_success_test_cases(tests: Vec<TestCase>) {
+        run_success_test_cases_with_flags(tests, Default::default());
+    }
+
+    fn run_success_test_cases_with_flags(tests: Vec<TestCase>, flags: EngineFlags) {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         let ctx = EngineContext::new(&cache).with_reused(&reused_values);
         for TestCase { init, code, dstack } in tests {
             let init: Stack = init.into();
             let dstack = dstack.into();
-            let mut vm = TxScriptEngine::new(ctx, Default::default());
+            let mut vm = TxScriptEngine::new(ctx, flags);
             vm.dstack = init.clone();
             code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
             assert_eq!(vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
@@ -1682,11 +1689,15 @@ mod test {
     }
 
     fn run_error_test_cases(tests: Vec<ErrorTestCase>) {
+        run_error_test_cases_with_flags(tests, Default::default());
+    }
+
+    fn run_error_test_cases_with_flags(tests: Vec<ErrorTestCase>, flags: EngineFlags) {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         let ctx = EngineContext::new(&cache).with_reused(&reused_values);
         for ErrorTestCase { init, code, error } in tests {
-            let mut vm = TxScriptEngine::new(ctx, Default::default());
+            let mut vm = TxScriptEngine::new(ctx, flags);
             vm.dstack = init.clone().into();
             assert_eq!(
                 code.execute(&mut vm)
@@ -3405,6 +3416,41 @@ mod test {
             init: vec![],
             error: TxScriptError::InvalidStackOperation(1, 0),
         }]);
+    }
+
+    #[test]
+    fn test_opblake2b_with_key() {
+        let flags = EngineFlags { covenants_enabled: true };
+
+        // 0-byte key
+        run_success_test_cases_with_flags(
+            vec![TestCase {
+                code: opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
+                init: vec![b"test data".to_vec(), vec![]],
+                dstack: vec![b"\xea\xb9\x49\x77\xa1\x77\x91\xd0\xc0\x89\xfe\x9e\x39\x32\x61\xb3\xab\x66\x7c\xf0\xe8\x45\x66\x32\xa8\x42\xd9\x05\xc4\x68\xcf\x65".to_vec()],
+            }],
+            flags,
+        );
+
+        // 1-byte key
+        run_success_test_cases_with_flags(
+            vec![TestCase {
+                code: opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
+                init: vec![b"test data".to_vec(), vec![0x42]],
+                dstack: vec![b"\x67\x2d\x66\x42\x00\xef\x89\x4a\x0b\x43\x14\xdf\xbc\xab\xe7\xd9\xb7\xf4\x41\xb3\x4a\xca\x3f\x1b\x43\x02\xbf\x25\x95\x56\x11\xca".to_vec()],
+            }],
+            flags,
+        );
+
+        run_error_test_cases_with_flags(
+            vec![ErrorTestCase {
+                code: opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
+                init: vec![b"test data".to_vec(), vec![0x42; 65]],
+                error: TxScriptError::ElementTooBig(65, 64),
+            }],
+            flags,
+        );
+
     }
 
     #[test]
