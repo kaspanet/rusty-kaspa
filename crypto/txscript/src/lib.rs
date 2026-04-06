@@ -912,9 +912,10 @@ mod tests {
     use super::*;
     use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
     use kaspa_addresses::{Address, Prefix, Version};
+    use kaspa_consensus_core::config::params::MAINNET_PARAMS;
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
-    use kaspa_consensus_core::mass::{ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SigopCount};
+    use kaspa_consensus_core::mass::{ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, SigopCount};
     use kaspa_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
         TransactionOutput, TxInputMass,
@@ -1141,6 +1142,67 @@ mod tests {
                 allowed_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1
             })
         );
+    }
+
+    #[test]
+    fn test_non_standard_utxo_script_pub_key_size_counts_toward_used_script_units() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        let tests = [
+            (10usize, 11usize, 0u64),
+            (33usize, 34usize, 0u64),
+            (34usize, 35usize, 0u64),
+            (35usize, 36usize, 100u64),
+            (100usize, 102usize, 6_700u64),
+        ];
+
+        for (pushed_bytes, expected_script_len, expected_used_units) in tests {
+            let utxo_script = ScriptBuilder::new().add_data(&vec![1u8; pushed_bytes]).unwrap().drain();
+            assert_eq!(utxo_script.len(), expected_script_len, "unexpected encoded script length for {pushed_bytes} pushed bytes");
+
+            let mass_per_byte = MAINNET_PARAMS.mass_per_tx_byte;
+            assert_eq!(mass_per_byte, 1);
+
+            let script_units_per_byte = SCRIPT_UNITS_PER_GRAM * mass_per_byte;
+
+            // The script engine assumes mass_per_byte=1, so this assertion should fail if that ever changes.
+            assert_eq!(
+                expected_used_units,
+                (expected_script_len.saturating_sub(STANDARD_SCRIPT_PUB_KEY_MAX_SIZE)) as u64 * script_units_per_byte
+            );
+
+            let input = TransactionInput {
+                previous_outpoint: TransactionOutpoint {
+                    transaction_id: TransactionId::from_bytes([pushed_bytes as u8; 32]),
+                    index: 0,
+                },
+                signature_script: vec![],
+                sequence: 0,
+                mass: SigopCount(0).into(),
+            };
+            let output =
+                TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
+            let tx = Transaction::new(0, vec![input.clone()], vec![output], 0, Default::default(), 0, vec![]);
+            let utxo_entry = UtxoEntry::new(1, ScriptPublicKey::new(0, utxo_script.into()), 0, false, None);
+            let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &populated_tx,
+                &input,
+                0,
+                &utxo_entry,
+                EngineCtx::new(&sig_cache).with_reused(&reused_values),
+                EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() },
+            );
+
+            assert_eq!(vm.execute(), Ok(()), "execution failed for SPK_LEN={expected_script_len}");
+            assert_eq!(
+                vm.used_script_units(),
+                ScriptUnits(expected_used_units),
+                "wrong used script units for SPK_LEN={expected_script_len}"
+            );
+        }
     }
 
     #[test]
