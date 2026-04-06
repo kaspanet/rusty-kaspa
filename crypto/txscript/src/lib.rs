@@ -1162,7 +1162,9 @@ mod tests {
         let utxo_entry = UtxoEntry::new(output.value, output.script_public_key.clone(), 0, false, None);
         let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
-        let too_tight_budget = 9_999.into();
+        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
+
+        let too_tight_budget = flags.sigop_script_units - ScriptUnits(1);
         let mut vm_too_tight = TxScriptEngine::from_transaction_input_with_allowed_script_units(
             &populated_tx,
             &input,
@@ -1175,9 +1177,9 @@ mod tests {
 
         assert_eq!(
             vm_too_tight.execute(),
-            Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 10_000, allowed_units: too_tight_budget.0 })
+            Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 100_000, allowed_units: too_tight_budget.0 })
         );
-        let exact_budget = 10_000.into();
+        let exact_budget = flags.sigop_script_units;
         let mut vm_exact = TxScriptEngine::from_transaction_input_with_allowed_script_units(
             &populated_tx,
             &input,

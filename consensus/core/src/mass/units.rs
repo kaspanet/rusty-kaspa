@@ -2,7 +2,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 pub const GRAMS_PER_COMPUTE_BUDGET_UNIT: u64 = 100;
-pub const SCRIPT_UNITS_PER_GRAM: u64 = 10;
+pub const SCRIPT_UNITS_PER_GRAM: u64 = 100;
 pub const SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT: u64 = GRAMS_PER_COMPUTE_BUDGET_UNIT * SCRIPT_UNITS_PER_GRAM;
 
 /// Legacy v0 sigop-count inputs stay pegged to the historical 1000-gram sigop price.

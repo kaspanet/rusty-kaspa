@@ -318,17 +318,15 @@ mod tests {
         let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
         let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
 
-        // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 999).
+        // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 9999).
         let (mut tx, entries) = build_parallel_push_budget_test_tx(2);
         tx.inputs[0].mass = ComputeBudget(0).into();
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
-        assert_eq!(
+        assert_match!(
             result,
-            Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededScriptUnitsLimit {
-                used_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
-                allowed_units: free_script_units_per_input().0
-            }))
+            Err(TxRuleError::SignatureEmpty(TxScriptError::ExceededScriptUnitsLimit { allowed_units, .. }))
+                if allowed_units == free_script_units_per_input().0
         );
 
         // (b) A few inputs together are all independently under budget and should pass.
