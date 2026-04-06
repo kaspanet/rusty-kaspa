@@ -151,11 +151,11 @@ fn check_minimal_data_encoding(v: &[u8]) -> Result<(), TxScriptError> {
 }
 
 #[inline]
-pub fn serialize_i64(from: i64, size: Option<usize>) -> Result<Vec<u8>, SerializationError> {
+pub fn serialize_i64(from: i64, size: Option<usize>) -> Result<StackEntry, SerializationError> {
     let sign = from.signum();
     let mut positive = from.unsigned_abs();
     let mut last_saturated = false;
-    let mut number_vec: Vec<u8> = Vec::with_capacity(size.unwrap_or(8));
+    let mut number_vec = StackEntry::with_capacity(size.unwrap_or(8));
     number_vec.extend(iter::from_fn(move || {
         if positive == 0 {
             if last_saturated {
@@ -252,7 +252,7 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for StackEntry {
         if bytes.len() > LEN {
             return Err(SerializationError::NumberTooLong(from.0, LEN));
         }
-        Ok(SmallVec::from_vec(bytes))
+        Ok(bytes)
     }
 }
 
@@ -589,7 +589,7 @@ mod tests {
         for test in tests {
             let serialized: Vec<u8> = OpcodeData::<i64>::serialize(&test.num).unwrap();
             assert_eq!(serialized, test.serialized);
-            assert_eq!(serialize_i64(test.num, Some(test.serialized.len())).unwrap(), test.serialized);
+            assert_eq!(serialize_i64(test.num, Some(test.serialized.len())).unwrap().into_vec(), test.serialized);
             if !test.serialized.is_empty() {
                 serialize_i64(test.num, Some(test.serialized.len() - 1)).unwrap_err();
                 // The default i64 serialization is minimal and cannot be encoded with less bytes.

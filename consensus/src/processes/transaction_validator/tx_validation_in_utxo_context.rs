@@ -332,15 +332,14 @@ mod tests {
         let mut tx = tx;
         tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(1).into());
         let populated_tx = PopulatedTransaction::new(&tx, entries);
-        let _ = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags).expect("should succceed");
+        check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags).expect("should succceed");
 
         // (c) Everything is ok with a larger per-input budget as well.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
         tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(10).into());
         let populated_tx = PopulatedTransaction::new(&tx, entries);
-        let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
-        assert!(result.is_ok());
+        check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags).expect("should succeed");
     }
 
     #[test]

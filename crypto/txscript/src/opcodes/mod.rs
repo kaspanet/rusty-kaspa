@@ -1433,7 +1433,7 @@ opcode_list! {
             }
             let [num]: [i64; 1] = vm.dstack.pop_items()?;
             let r = serialize_i64(num, Some(size))?;
-            vm.dstack.push(r.into())
+            vm.dstack.push(r)
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
