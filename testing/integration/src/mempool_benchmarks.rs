@@ -15,7 +15,7 @@ use kaspa_consensus::params::Params;
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
     hashing::sighash::SigHashReusedValuesUnsync,
-    mass::{ComputeBudget, MassCalculator, ScriptUnits},
+    mass::{ComputeBudget, MassCalculator, ScriptUnits, transaction_estimated_serialized_size},
     network::NetworkType,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{
@@ -546,6 +546,7 @@ fn generate_stark_tx_dag(
     let mass_cofactors = params.block_mass_limits.cofactors();
 
     let mut txs = Vec::with_capacity(target_levels * target_width);
+    let mut logged_first_provisional_tx = false;
 
     for i in 0..target_levels {
         let mut utxo_diff = UtxoDiff::default();
@@ -577,7 +578,22 @@ fn generate_stark_tx_dag(
                     .collect::<Vec<_>>();
                 let provisional_tx =
                     Transaction::new(TX_VERSION_POST_COV_HF, inputs, provisional_outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
-                let fee = mass_calculator.calc_non_contextual_masses(&provisional_tx).normalized_max(&mass_cofactors);
+                let provisional_tx_non_contextual_masses = mass_calculator.calc_non_contextual_masses(&provisional_tx);
+                let provisional_tx_mass_normalized = provisional_tx_non_contextual_masses.normalized_max(&mass_cofactors);
+                if !logged_first_provisional_tx {
+                    let provisional_tx_size = transaction_estimated_serialized_size(&provisional_tx);
+                    let provisional_tx_total_budget: u64 =
+                        provisional_tx.inputs.iter().map(|input| u64::from(input.mass.compute_budget().unwrap())).sum();
+                    info!(
+                        "First provisional tx: non_contextual=({}), normalized_non_contextual_max={}, size={}, total_budget={}",
+                        provisional_tx_non_contextual_masses,
+                        provisional_tx_mass_normalized,
+                        provisional_tx_size,
+                        provisional_tx_total_budget
+                    );
+                    logged_first_provisional_tx = true;
+                }
+                let fee = provisional_tx_mass_normalized;
                 let total_out = total_in.saturating_sub(fee);
                 let outputs = (0..num_outputs)
                     .map(|_| TransactionOutput {
