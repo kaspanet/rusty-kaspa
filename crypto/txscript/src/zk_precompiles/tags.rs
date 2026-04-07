@@ -1,3 +1,5 @@
+use kaspa_consensus_core::mass::{Gram, ScriptUnits};
+
 use crate::zk_precompiles::error::ZkIntegrityError;
 
 #[derive(Copy, Clone)]
@@ -24,24 +26,27 @@ impl ZkTag {
     /// Prices are based on benchmarks and estimations of verification complexity.
     ///
     /// Values are priced in script units.
-    pub fn cost(&self) -> u64 {
+    pub fn cost(&self) -> ScriptUnits {
         match self {
-            ZkTag::Groth16 => 1_400_000,
-            ZkTag::R0Succinct => 2_500_000,
+            ZkTag::Groth16 => Gram(1000 * 140),
+            ZkTag::R0Succinct => Gram(1000 * 250),
         }
+        .into()
     }
 
-    pub fn max_cost() -> u64 {
-        2_500_000 // The highest cost among supported tags
+    pub fn max_cost() -> ScriptUnits {
+        Gram(1000 * 250).into() // The highest cost among supported tags
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use kaspa_consensus_core::mass::ScriptUnits;
+
     use super::ZkTag;
 
-    fn expected_max_cost() -> u64 {
-        let mut max_cost = 0;
+    fn expected_max_cost() -> ScriptUnits {
+        let mut max_cost = ScriptUnits(0);
 
         for tag in [ZkTag::Groth16, ZkTag::R0Succinct] {
             // Intentionally exhaustive match so adding a new enum variant

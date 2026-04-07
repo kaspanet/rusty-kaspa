@@ -266,20 +266,20 @@ pub fn estimate_script_units_upper_bound<T: VerifiableTransaction, Reused: SigHa
     signature_script: &[u8],
     prev_script_public_key: &ScriptPublicKey,
     sigop_script_units: u64,
-) -> u64 {
+) -> ScriptUnits {
     let sig_op_upper_bound = get_sig_op_count_upper_bound::<T, Reused>(signature_script, prev_script_public_key);
-    let sig_op_units = sig_op_upper_bound.saturating_mul(sigop_script_units);
+    let sig_op_units = ScriptUnits(sig_op_upper_bound.saturating_mul(sigop_script_units));
     let total_script_len = (signature_script.len() + prev_script_public_key.script().len()) as u64;
     let zk_units = get_zk_script_units_upper_bound::<T, Reused>(signature_script, prev_script_public_key);
 
-    sig_op_units.saturating_add(total_script_len * 100) // Multiplying by 100 is a heuristic to estimate how costly the script is going to be.
+    sig_op_units.saturating_add((total_script_len * 100).into()) // Multiplying by 100 is a heuristic to estimate how costly the script is going to be.
     .saturating_add(zk_units)
 }
 
 pub fn get_zk_script_units_upper_bound<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     signature_script: &[u8],
     prev_script_public_key: &ScriptPublicKey,
-) -> u64 {
+) -> ScriptUnits {
     let is_p2sh = ScriptClass::is_pay_to_script_hash(prev_script_public_key.script());
     let script_pub_key_ops = parse_script::<T, Reused>(prev_script_public_key.script()).collect_vec();
     if !is_p2sh {
@@ -290,7 +290,7 @@ pub fn get_zk_script_units_upper_bound<T: VerifiableTransaction, Reused: SigHash
     // otherwise there is no redeem script candidate and the conservative upper bound is zero.
     let signature_script_ops = parse_script::<T, Reused>(signature_script).collect_vec();
     if signature_script_ops.is_empty() || signature_script_ops.iter().any(|op| op.is_err()) {
-        return 0;
+        return ScriptUnits(0);
     }
 
     let p2sh_script = signature_script_ops.last().expect("checked if empty above").as_ref().expect("checked if err above").get_data();
@@ -301,8 +301,8 @@ pub fn get_zk_script_units_upper_bound<T: VerifiableTransaction, Reused: SigHash
 
 fn get_zk_script_units_upper_bound_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     opcodes: &[Result<DynOpcodeImplementation<T, Reused>, TxScriptError>],
-) -> u64 {
-    let mut zk_units: u64 = 0;
+) -> ScriptUnits {
+    let mut zk_units: ScriptUnits = ScriptUnits(0);
 
     for (i, op) in opcodes.iter().enumerate() {
         match op {

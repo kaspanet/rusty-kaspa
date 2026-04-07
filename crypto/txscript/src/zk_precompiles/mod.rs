@@ -8,6 +8,7 @@ use crate::{
     data_stack::Stack,
     zk_precompiles::{error::ZkIntegrityError, groth16::Groth16Precompile, risc0::R0SuccinctPrecompile, tags::ZkTag},
 };
+use kaspa_consensus_core::mass::ScriptUnits;
 use kaspa_txscript_errors::TxScriptError;
 
 trait ZkPrecompile {
@@ -39,6 +40,6 @@ pub(crate) fn verify_zk(tag: ZkTag, dstack: &mut Stack) -> Result<(), TxScriptEr
 /**
  * A helper function to compute the cost (in script units) of a ZK proof based on its tag.
  */
-pub fn compute_zk_cost(tag: u8) -> u64 {
+pub fn compute_zk_cost(tag: u8) -> ScriptUnits {
     ZkTag::try_from(tag).map(|t| t.cost()).unwrap_or(ZkTag::max_cost()) // Default to max cost for unknown tags
 }
