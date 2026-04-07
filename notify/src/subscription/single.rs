@@ -383,11 +383,17 @@ impl Display for UtxosChangedSubscription {
 
 impl Drop for UtxosChangedSubscription {
     fn drop(&mut self) {
-        trace!(
-            "UtxosChangedSubscription: {} in total (drop {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1,
-            self
-        );
+        // TODO: subscriptions were updated with `UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1`
+        // before, but due to some race condition it overflowed in some cases. Since the counter is only used for
+        // logging purposes, we can afford to have an inaccurate count rather than risking an underflow panic.
+        // It's still worth investigating the root cause of the race condition and fixing it.
+        let subscriptions =
+            match UTXOS_CHANGED_SUBSCRIPTIONS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| count.checked_sub(1)) {
+                Ok(previous) => previous - 1,
+                Err(current) => current,
+            };
+
+        trace!("UtxosChangedSubscription: {} in total (drop {})", subscriptions, self);
     }
 }
 
