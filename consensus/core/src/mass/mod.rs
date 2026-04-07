@@ -8,6 +8,7 @@ pub use units::{
 use crate::{
     config::params::Params,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
+    mass::units::GRAMS_PER_SIGOP_COUNT_UNIT,
     subnets::SUBNETWORK_ID_SIZE,
     tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction},
 };
@@ -346,7 +347,7 @@ impl MassCalculator {
                 .iter()
                 .map(|input| input.mass.sig_op_count().expect("v0 transactions are expected to have sig op count") as u64)
                 .sum();
-            total_sigops * self.mass_per_sig_op
+            total_sigops * GRAMS_PER_SIGOP_COUNT_UNIT
         };
 
         let compute_mass = compute_mass_for_size + total_script_public_key_mass + script_mass;

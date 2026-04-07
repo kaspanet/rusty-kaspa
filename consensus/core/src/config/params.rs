@@ -675,7 +675,6 @@ pub const TESTNET12_PARAMS: Params = Params {
 
     // Transient mass is increased for stark proofs
     block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
-    mass_per_script_pub_key_byte: 0,
 
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),

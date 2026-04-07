@@ -1,5 +1,5 @@
 use crate::constants::{MAX_SOMPI, TX_VERSION_POST_COV_HF};
-use kaspa_consensus_core::tx::{Transaction, TxInputMass};
+use kaspa_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
 use super::{
@@ -159,7 +159,7 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
-    if TxInputMass::has_compute_budget_field(tx.version) {
+    if tx.version > 0 {
         for (i, input) in tx.inputs.iter().enumerate() {
             if let Some(sig_op_count) = input.mass.sig_op_count() {
                 return Err(TxRuleError::SigOpCountInV1(i, sig_op_count));
@@ -169,12 +169,6 @@ fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
         for (i, input) in tx.inputs.iter().enumerate() {
             if let Some(compute_budget) = input.mass.compute_budget() {
                 return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
-            }
-        }
-
-        for (i, output) in tx.outputs.iter().enumerate() {
-            if output.covenant.is_some() {
-                return Err(TxRuleError::CovenantBindingInPreCovTxVersion(i));
             }
         }
     }
