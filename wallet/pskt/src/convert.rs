@@ -51,7 +51,7 @@ impl TryFrom<TransactionOutput> for Output {
         let output = OutputBuilder::default()
             .amount(*value)
             .script_public_key(script_public_key.clone())
-            .covenant(*covenant)
+            .covenant(covenant.map(cctx::CovenantBinding::from))
         // .redeem_script
         // .bip32_derivations
         // .proprietaries

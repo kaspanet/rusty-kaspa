@@ -193,24 +193,19 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
     let block_hash = header.hash;
     submitting_client.submit_block(template.block, false).await.unwrap();
 
+    let timeout_duration = Duration::from_millis(10_000);
+
     // Wait for each listening client to get notified the submitted block was added to the DAG
     for client in listening_clients.iter() {
-        let block_daa_score: u64 = match timeout(Duration::from_millis(500), client.block_added_listener().unwrap().receiver.recv())
-            .await
-            .unwrap()
-            .unwrap()
-        {
-            Notification::BlockAdded(BlockAddedNotification { block }) => {
-                assert_eq!(block.header.hash, block_hash);
-                block.header.daa_score
-            }
-            _ => panic!("wrong notification type"),
-        };
-        match timeout(Duration::from_millis(500), client.virtual_daa_score_changed_listener().unwrap().receiver.recv())
-            .await
-            .unwrap()
-            .unwrap()
-        {
+        let block_daa_score: u64 =
+            match timeout(timeout_duration, client.block_added_listener().unwrap().receiver.recv()).await.unwrap().unwrap() {
+                Notification::BlockAdded(BlockAddedNotification { block }) => {
+                    assert_eq!(block.header.hash, block_hash);
+                    block.header.daa_score
+                }
+                _ => panic!("wrong notification type"),
+            };
+        match timeout(timeout_duration, client.virtual_daa_score_changed_listener().unwrap().receiver.recv()).await.unwrap().unwrap() {
             Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification { virtual_daa_score }) => {
                 assert_eq!(virtual_daa_score, block_daa_score + 1);
             }

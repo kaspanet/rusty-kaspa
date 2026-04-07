@@ -223,7 +223,12 @@ impl OpcodeData<i64> for StackEntry {
 impl OpcodeData<i32> for StackEntry {
     #[inline]
     fn deserialize(&self, enforce_minimal: bool) -> Result<i32, TxScriptError> {
-        OpcodeData::<SizedEncodeInt<4>>::deserialize(self, enforce_minimal).map(|v| v.try_into().expect("number is within i32 range"))
+        if enforce_minimal {
+            OpcodeData::<SizedEncodeInt<4>>::deserialize(self, true).map(|v| v.try_into().expect("number is within i32 range"))
+        } else {
+            OpcodeData::<SizedEncodeInt<8>>::deserialize(self, false)
+                .and_then(|v| v.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string())))
+        }
     }
 
     #[inline]
