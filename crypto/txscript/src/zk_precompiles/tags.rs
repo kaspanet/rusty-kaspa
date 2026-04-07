@@ -41,7 +41,10 @@ impl ZkTag {
 
 #[cfg(test)]
 mod tests {
-    use kaspa_consensus_core::mass::ScriptUnits;
+    use kaspa_consensus_core::{
+        config::params::MAINNET_PARAMS,
+        mass::{SCRIPT_UNITS_PER_GRAM, ScriptUnits},
+    };
 
     use super::ZkTag;
 
@@ -67,5 +70,21 @@ mod tests {
     #[test]
     fn max_cost_matches_hardcoded_value() {
         assert_eq!(ZkTag::max_cost(), expected_max_cost());
+    }
+
+    fn cost_block_capacity(tag: ZkTag) -> u64 {
+        let compute_mass_limit = MAINNET_PARAMS.block_mass_limits.compute;
+        let cost_in_compute_mass = u64::from(tag.cost()) / SCRIPT_UNITS_PER_GRAM;
+        compute_mass_limit / cost_in_compute_mass
+    }
+
+    #[test]
+    fn groth16_cost_block_capacity_matches_hardcoded_value() {
+        assert_eq!(cost_block_capacity(ZkTag::Groth16), 3);
+    }
+
+    #[test]
+    fn r0_succinct_cost_block_capacity_matches_hardcoded_value() {
+        assert_eq!(cost_block_capacity(ZkTag::R0Succinct), 2);
     }
 }
