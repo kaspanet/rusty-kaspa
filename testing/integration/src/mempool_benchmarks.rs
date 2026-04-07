@@ -14,10 +14,14 @@ use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
-    mass::{ComputeBudget, MassCalculator, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT},
+    hashing::sighash::SigHashReusedValuesUnsync,
+    mass::{ComputeBudget, MassCalculator, ScriptUnits},
     network::NetworkType,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry},
+    tx::{
+        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
+        TransactionOutput, UtxoEntry,
+    },
     utxo::{
         utxo_collection::{UtxoCollection, UtxoCollectionExtensions},
         utxo_diff::UtxoDiff,
@@ -30,9 +34,9 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{Notification, RpcError, api::rpc::RpcApi};
 use kaspa_txscript::{
-    extract_script_pub_key_address, opcodes::codes::OpZkPrecompile, pay_to_address_script, pay_to_script_hash_script,
-    pay_to_script_hash_signature_script, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag,
-    zk_precompiles::tests::helpers::load_stark_fields,
+    EngineCtx, EngineFlags, TxScriptEngine, caches::Cache, extract_script_pub_key_address, opcodes::codes::OpZkPrecompile,
+    pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script, script_builder::ScriptBuilder,
+    zk_precompiles::tags::ZkTag, zk_precompiles::tests::helpers::load_stark_fields,
 };
 use kaspa_utils::fd_budget;
 use kaspad_lib::args::Args;
@@ -458,7 +462,38 @@ async fn bench_bbt_latency_stark() {
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
     let output_spk = pay_to_address_script(&prealloc_address);
-    let input_compute_budget = (ZkTag::R0Succinct.cost() as f64 * 1.1 / SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as f64) as u16; // 1.1 is a margin for push data costs
+
+    let required_script_units: ScriptUnits = {
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([0u8; 32]), index: 0 },
+            signature_script: stark_signature_script.clone(),
+            sequence: 0,
+            mass: ComputeBudget(0).into(),
+        };
+
+        let tx = Transaction::new(1, vec![input.clone()], vec![], 0, Default::default(), 0, vec![]);
+        let utxo_entry = UtxoEntry::new(0, stark_spk.clone(), 0, false, None);
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut unrestricted_vm = TxScriptEngine::from_transaction_input(
+            &populated_tx,
+            &input,
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            EngineFlags { covenants_enabled: true, ..Default::default() },
+            // ScriptUnits(u64::MAX),
+        );
+        unrestricted_vm.execute().unwrap();
+        unrestricted_vm.used_script_units()
+    };
+
+    assert!(required_script_units.0 < (ZkTag::R0Succinct.cost().0 as f64 * 1.1) as u64); // 1.1 is a margin for push data costs
+
+    let input_compute_budget =
+        ComputeBudget::checked_covering_script_units(required_script_units).expect("expected compute budget to fit");
     let txs = generate_stark_tx_dag(
         utxoset.clone(),
         stark_signature_script,
@@ -499,7 +534,7 @@ fn generate_stark_tx_dag(
     mut utxoset: UtxoCollection,
     signature_script: Vec<u8>,
     output_spk: ScriptPublicKey,
-    input_compute_budget: u16,
+    input_compute_budget: ComputeBudget,
     target_levels: usize,
     target_width: usize,
     params: &Params,
@@ -523,12 +558,7 @@ fn generate_stark_tx_dag(
                 c.into_iter()
                     .map(|(o, e)| {
                         (
-                            TransactionInput::new_with_mass(
-                                *o,
-                                signature_script.as_ref().clone(),
-                                0,
-                                ComputeBudget(input_compute_budget).into(),
-                            ),
+                            TransactionInput::new_with_mass(*o, signature_script.as_ref().clone(), 0, input_compute_budget.into()),
                             e.clone(),
                         )
                     })
