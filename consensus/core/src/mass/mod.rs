@@ -300,20 +300,18 @@ impl Mass {
 pub struct MassCalculator {
     mass_per_tx_byte: u64,
     mass_per_script_pub_key_byte: u64,
-    mass_per_sig_op: u64,
     storage_mass_parameter: u64,
 }
 
 impl MassCalculator {
-    pub fn new(mass_per_tx_byte: u64, mass_per_script_pub_key_byte: u64, mass_per_sig_op: u64, storage_mass_parameter: u64) -> Self {
-        Self { mass_per_tx_byte, mass_per_script_pub_key_byte, mass_per_sig_op, storage_mass_parameter }
+    pub fn new(mass_per_tx_byte: u64, mass_per_script_pub_key_byte: u64, storage_mass_parameter: u64) -> Self {
+        Self { mass_per_tx_byte, mass_per_script_pub_key_byte, storage_mass_parameter }
     }
 
     pub fn new_with_consensus_params(consensus_params: &Params) -> Self {
         Self {
             mass_per_tx_byte: consensus_params.mass_per_tx_byte,
             mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
-            mass_per_sig_op: consensus_params.mass_per_sig_op,
             storage_mass_parameter: consensus_params.storage_mass_parameter,
         }
     }
@@ -592,7 +590,7 @@ mod tests {
                 }
             }
 
-            let mc = MassCalculator::new(0, 0, 0, self.storage_mass_parameter);
+            let mc = MassCalculator::new(0, 0, self.storage_mass_parameter);
 
             let mass1 = mc.calc_contextual_masses(&tx1.as_verifiable());
             let mass2 = mc.calc_contextual_masses(&tx2.as_verifiable());
@@ -728,26 +726,26 @@ mod tests {
         // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
         //
 
-        let storage_mass = MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 10u64.pow(12)).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0); // Compounds from 3 to 2, with symmetric outputs and no fee, should be zero
 
         // Create asymmetry
         tx.tx.outputs[0].value = 50;
         tx.tx.outputs[1].value = 550;
         let storage_mass_parameter = 10u64.pow(12);
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, storage_mass_parameter / 50 + storage_mass_parameter / 550 - 3 * (storage_mass_parameter / 200));
 
         // Create a tx with more outs than ins
         let base_value = 10_000 * SOMPI_PER_KASPA;
         let mut tx = generate_tx_from_amounts(&[base_value, base_value, base_value * 2], &[base_value; 4]);
         let storage_mass_parameter = STORAGE_MASS_PARAMETER;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 4); // Inputs are above C so they don't contribute negative mass, 4 outputs exactly equal C each charge 1
 
         let mut tx2 = tx.clone();
         tx2.tx.outputs[0].value = 10 * SOMPI_PER_KASPA;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx2.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx2.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 1003);
 
         // Increase values over the lim
@@ -755,7 +753,7 @@ mod tests {
             out.value += 1
         }
         tx.entries[0].as_mut().unwrap().amount += tx.tx.outputs.len() as u64;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Now create 2:2 transaction
@@ -763,19 +761,19 @@ mod tests {
         let mut tx = generate_tx_from_amounts(&[100, 200], &[50, 250]);
         let storage_mass_parameter = 10u64.pow(12);
 
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 9000000000);
 
         // Set outputs to be equal to inputs
         tx.tx.outputs[0].value = 100;
         tx.tx.outputs[1].value = 200;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Remove an output and make sure the other is small enough to make storage mass greater than zero
         tx.tx.outputs.pop();
         tx.tx.outputs[0].value = 50;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 5000000000);
     }
 

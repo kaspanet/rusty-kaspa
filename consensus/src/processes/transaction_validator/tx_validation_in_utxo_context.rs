@@ -354,7 +354,7 @@ mod tests {
             params.coinbase_maturity(),
             params.ghostdag_k,
             Default::default(),
-            MassCalculator::new(0, 0, 0, 0),
+            MassCalculator::new(0, 0, 0),
             ForkActivation::always(),
             params.mass_per_sig_op,
         );

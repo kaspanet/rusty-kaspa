@@ -76,7 +76,7 @@ impl TransactionValidator {
             coinbase_maturity,
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
-            mass_calculator: MassCalculator::new(0, 0, 0, 0),
+            mass_calculator: MassCalculator::new(0, 0, 0),
             covenants_activation: ForkActivation::never(),
             mass_per_sig_op: 0,
         }
