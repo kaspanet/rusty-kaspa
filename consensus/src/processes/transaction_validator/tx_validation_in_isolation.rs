@@ -171,6 +171,12 @@ fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
                 return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
             }
         }
+
+        for (i, output) in tx.outputs.iter().enumerate() {
+            if output.covenant.is_some() {
+                return Err(TxRuleError::CovenantBindingInV0(i));
+            }
+        }
     }
 
     Ok(())

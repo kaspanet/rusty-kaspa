@@ -101,8 +101,8 @@ pub enum TxRuleError {
     #[error("fee rate per contextual mass gram is not greater than the fee rate of the replaced transaction")]
     FeerateTooLow,
 
-    #[error("transaction output #{0} has covenant field but transaction version is below 1")]
-    CovenantBindingInPreCovTxVersion(usize),
+    #[error("transaction output #{0} has covenant field but transaction version is 0")]
+    CovenantBindingInV0(usize),
 
     #[error("transaction input #{0} has a sig op count field with value {1} in version 1 transaction")]
     SigOpCountInV1(usize, u8),
