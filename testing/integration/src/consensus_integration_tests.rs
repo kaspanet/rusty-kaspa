@@ -28,10 +28,13 @@ use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
+use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing;
 use kaspa_consensus_core::header::Header;
+use kaspa_consensus_core::mass::BlockMassLimits;
 use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::mining_rules::MiningRules;
+use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId};
 use kaspa_consensus_core::tx::{
     MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
@@ -67,6 +70,7 @@ use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::{Op0, OpCat, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
+use kaspa_txscript_errors::TxScriptError;
 use kaspa_utxoindex::UtxoIndex;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use serde::{Deserialize, Serialize};
@@ -75,6 +79,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::u64;
 use std::{
     collections::HashMap,
     fs::File,
@@ -1874,6 +1879,120 @@ async fn payload_for_native_tx_test() {
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&tx_id)); // covenants not enabled yet, so accepted_tx_digests contains txid
+}
+
+fn build_p2pk_block(
+    mass_per_sig_op: u64,
+    tx_count: usize,
+) -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Vec<Transaction>, Block) {
+    let secp = secp256k1::Secp256k1::new();
+    let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+    let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+    let p2pk_script = ScriptPublicKey::from_vec(
+        0,
+        std::iter::once(0x20).chain(keypair.x_only_public_key().0.serialize()).chain(std::iter::once(0xac)).collect(),
+    );
+    let initial_utxo_collection = (0..16)
+        .map(|i| {
+            (
+                TransactionOutpoint::new((i + 1).into(), 0),
+                UtxoEntry {
+                    amount: SOMPI_PER_KASPA / 10,
+                    script_public_key: p2pk_script.clone(),
+                    block_daa_score: 0,
+                    is_coinbase: false,
+                    covenant_id: None,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            let mut genesis_multiset = MuHash::new();
+            initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
+                genesis_multiset.add_utxo(outpoint, utxo);
+            });
+            p.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&p.genesis).into();
+            p.genesis.hash = genesis_header.hash;
+            p.mass_per_sig_op = mass_per_sig_op;
+            p.block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
+            p.covenants_activation = ForkActivation::always();
+        })
+        .build();
+
+    let consensus = TestConsensus::new(&config);
+    let mut genesis_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
+    let wait_handles = consensus.init();
+
+    let transactions = initial_utxo_collection
+        .iter()
+        .take(tx_count)
+        .map(|(outpoint, utxo)| {
+            let unsigned_tx = Transaction::new(
+                0,
+                vec![TransactionInput::new(*outpoint, vec![], 0, 0)],
+                vec![TransactionOutput::new(utxo.amount, p2pk_script.clone())],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, vec![utxo.clone()]), keypair).tx;
+            assert_eq!(signed_tx.inputs[0].mass.sig_op_count(), Some(1));
+            signed_tx
+        })
+        .collect::<Vec<_>>();
+
+    let mut block = consensus.build_utxo_valid_block_with_parents(
+        1.into(),
+        vec![config.genesis.hash],
+        MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]),
+        vec![],
+    );
+    block.transactions.extend(transactions.iter().cloned());
+    block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
+
+    (consensus, wait_handles, transactions, block.to_immutable())
+}
+
+#[tokio::test]
+async fn mass_per_sig_op_does_not_change_block_capacity() {
+    init_allocator_with_default_settings();
+
+    for mass_per_sig_op in [0, 500, 1000] {
+        let (consensus, wait_handles, _, six_tx_block) = build_p2pk_block(mass_per_sig_op, 6);
+        assert_match!(
+            consensus.validate_and_insert_block(six_tx_block).virtual_state_task.await,
+            Ok(BlockStatus::StatusUTXOValid),
+            "expected 6 p2pk txs to fit for mass_per_sig_op={mass_per_sig_op}"
+        );
+        consensus.shutdown(wait_handles);
+
+        let (consensus, wait_handles, _, seven_tx_block) = build_p2pk_block(mass_per_sig_op, 7);
+        assert_match!(
+            consensus.validate_and_insert_block(seven_tx_block).virtual_state_task.await,
+            Err(RuleError::ExceedsComputeMassLimit(_, 10_000))
+        );
+        consensus.shutdown(wait_handles);
+    }
+
+    // We check that once mass_per_sig_op is raised to 2000, 6 transactions still fit into a block, but the script engine rejects them since the previous budget is not enough to cover the sig ops.
+    let (consensus, wait_handles, transactions, six_tx_block) = build_p2pk_block(2000, 6);
+    let mut tx = MutableTransaction::from_tx(transactions[0].clone());
+    assert_match!(
+        consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()),
+        Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { .. }))
+    );
+    assert_match!(
+        consensus.validate_and_insert_block(six_tx_block).virtual_state_task.await,
+        Ok(BlockStatus::StatusDisqualifiedFromChain)
+    );
+    consensus.shutdown(wait_handles);
 }
 
 /// Tests runtime signature operation counting by verifying that:
