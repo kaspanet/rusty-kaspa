@@ -851,7 +851,7 @@ opcode_list! {
 
             // Consume the tag cost
             // TODO(before-merge): Change tag.cost() to return ScriptUnits.
-            vm.consume_script_units(tag.cost().into())?;
+            vm.consume_script_units(tag.cost())?;
 
             // Verify the ZK proof
             verify_zk(tag, &mut vm.dstack)?;

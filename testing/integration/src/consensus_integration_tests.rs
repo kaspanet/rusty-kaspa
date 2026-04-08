@@ -92,7 +92,6 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::u64;
 use std::{
     collections::HashMap,
     fs::File,
