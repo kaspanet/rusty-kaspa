@@ -4,7 +4,7 @@ use crate::{
         sighash_type::{SIG_HASH_ALL, SigHashType},
     },
     mass::{ComputeBudget, SigopCount},
-    tx::{SignableTransaction, VerifiableTransaction},
+    tx::{SignableTransaction, TxInputMass, VerifiableTransaction},
 };
 use itertools::Itertools;
 use std::collections::BTreeMap;
@@ -81,12 +81,14 @@ impl Signed {
 
 /// Sign a transaction using schnorr
 pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::Keypair) -> SignableTransaction {
+    let input_mass = if TxInputMass::version_expects_compute_budget_field(signable_tx.tx.version) {
+        // Assumes grams per sigop = 1000 and 1 compute budget = 100 gram
+        ComputeBudget(10).into()
+    } else {
+        SigopCount(1).into()
+    };
     for i in 0..signable_tx.tx.inputs.len() {
-        if signable_tx.tx.version < 1 {
-            signable_tx.tx.inputs[i].mass = SigopCount(1).into();
-        } else {
-            signable_tx.tx.inputs[i].mass = ComputeBudget(10).into();
-        }
+        signable_tx.tx.inputs[i].mass = input_mass;
     }
 
     let reused_values = SigHashReusedValuesUnsync::new();
@@ -108,14 +110,14 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
         map.insert(schnorr_key.public_key().serialize(), schnorr_key);
     }
 
-    if mutable_tx.tx.version < 1 {
-        for i in 0..mutable_tx.tx.inputs.len() {
-            mutable_tx.tx.inputs[i].mass = SigopCount(1).into();
-        }
+    let input_mass = if TxInputMass::version_expects_compute_budget_field(mutable_tx.tx.version) {
+        // Assumes grams per sigop = 1000 and 1 compute budget = 100 gram
+        ComputeBudget(10).into()
     } else {
-        for i in 0..mutable_tx.tx.inputs.len() {
-            mutable_tx.tx.inputs[i].mass = ComputeBudget(10).into();
-        }
+        SigopCount(1).into()
+    };
+    for i in 0..mutable_tx.tx.inputs.len() {
+        mutable_tx.tx.inputs[i].mass = input_mass;
     }
 
     let reused_values = SigHashReusedValuesUnsync::new();
@@ -194,7 +196,11 @@ pub fn verify(tx: &impl VerifiableTransaction) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{subnets::SubnetworkId, tx::*};
+    use crate::{
+        mass::{ComputeBudget, GRAMS_PER_COMPUTE_BUDGET_UNIT, SigopCount},
+        subnets::SubnetworkId,
+        tx::*,
+    };
     use secp256k1::{Secp256k1, rand};
     use std::str::FromStr;
 
@@ -316,7 +322,7 @@ mod tests {
             SignableTransaction::with_entries(build_unsigned_tx(1), vec![entry.clone()]),
             secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &secret_key),
         );
-        assert_eq!(signed_v1.tx.inputs[0].mass, ComputeBudget(10).into());
+        assert_eq!(signed_v1.tx.inputs[0].mass, ComputeBudget(1000u16.div_ceil(GRAMS_PER_COMPUTE_BUDGET_UNIT as u16)).into());
 
         let signed_multi_v0 = sign_with_multiple(
             SignableTransaction::with_entries(build_unsigned_tx(0), vec![entry.clone()]),
@@ -326,6 +332,6 @@ mod tests {
 
         let signed_multi_v1 =
             sign_with_multiple(SignableTransaction::with_entries(build_unsigned_tx(1), vec![entry]), vec![secret_key.secret_bytes()]);
-        assert_eq!(signed_multi_v1.tx.inputs[0].mass, ComputeBudget(10).into());
+        assert_eq!(signed_multi_v1.tx.inputs[0].mass, ComputeBudget(1000u16.div_ceil(GRAMS_PER_COMPUTE_BUDGET_UNIT as u16)).into());
     }
 }

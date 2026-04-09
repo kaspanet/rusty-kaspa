@@ -599,7 +599,7 @@ impl Consensus {
             return Err(TxRuleError::TooManyOutputs(transaction.outputs.len(), self.config.params.max_tx_outputs));
         }
 
-        if TxInputMass::has_compute_budget_field(transaction.version) {
+        if TxInputMass::version_expects_compute_budget_field(transaction.version) {
             for (i, input) in transaction.inputs.iter().enumerate() {
                 if let Some(sig_op_count) = input.mass.sig_op_count() {
                     return Err(TxRuleError::SigopCountInV1(i, sig_op_count));

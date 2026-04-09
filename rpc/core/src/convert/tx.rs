@@ -20,7 +20,7 @@ impl TryFrom<RpcInputWithVersion> for TransactionInput {
     type Error = RpcError;
 
     fn try_from(value: RpcInputWithVersion) -> RpcResult<Self> {
-        let mass = if TxInputMass::has_compute_budget_field(value.version) {
+        let mass = if TxInputMass::version_expects_compute_budget_field(value.version) {
             if value.input.sig_op_count != 0 {
                 return Err(invalid_input_mass_variant("sig_op_count", value.version));
             }
@@ -62,7 +62,7 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
         let sequence =
             value.input.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
 
-        let mass = if TxInputMass::has_compute_budget_field(value.version) {
+        let mass = if TxInputMass::version_expects_compute_budget_field(value.version) {
             if value.input.sig_op_count.is_some() {
                 return Err(invalid_input_mass_variant("sig_op_count", value.version));
             }

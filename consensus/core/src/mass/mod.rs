@@ -333,7 +333,7 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let script_mass = if TxInputMass::has_compute_budget_field(tx.version) {
+        let script_mass = if TxInputMass::version_expects_compute_budget_field(tx.version) {
             GRAMS_PER_COMPUTE_BUDGET_UNIT
                 * tx.inputs
                     .iter()
