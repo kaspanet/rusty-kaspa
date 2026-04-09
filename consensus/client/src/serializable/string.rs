@@ -3,6 +3,8 @@
 //! where all large integer values (`u64`) are serialized to and from JSON as strings.
 //!
 
+use super::invalid_input_mass_variant;
+use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
 use crate::{
@@ -142,8 +144,14 @@ impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
             signature_script: input.signature_script,
             sequence: input.sequence.parse()?,
             mass: if cctx::TxInputMass::version_expects_compute_budget_field(value.version) {
+                if input.sig_op_count != 0 {
+                    return Err(invalid_input_mass_variant("sig_op_count", value.version));
+                }
                 cctx::TxInputMass::ComputeBudget(input.compute_budget.into())
             } else {
+                if input.compute_budget != 0 {
+                    return Err(invalid_input_mass_variant("compute_budget", value.version));
+                }
                 cctx::TxInputMass::SigopCount(input.sig_op_count.into())
             },
         })
