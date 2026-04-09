@@ -12,18 +12,32 @@ struct RpcInputWithVersion {
     input: RpcTransactionInput,
 }
 
-impl From<RpcInputWithVersion> for TransactionInput {
-    fn from(value: RpcInputWithVersion) -> Self {
-        TransactionInput::new_with_mass(
+fn invalid_input_mass_variant(field: &str, version: u16) -> RpcError {
+    RpcError::General(format!("RpcTransactionInput.{field} is inconsistent with transaction version {version}"))
+}
+
+impl TryFrom<RpcInputWithVersion> for TransactionInput {
+    type Error = RpcError;
+
+    fn try_from(value: RpcInputWithVersion) -> RpcResult<Self> {
+        let mass = if TxInputMass::has_compute_budget_field(value.version) {
+            if value.input.sig_op_count != 0 {
+                return Err(invalid_input_mass_variant("sig_op_count", value.version));
+            }
+            ComputeBudget(value.input.compute_budget).into()
+        } else {
+            if value.input.compute_budget != 0 {
+                return Err(invalid_input_mass_variant("compute_budget", value.version));
+            }
+            SigopCount(value.input.sig_op_count).into()
+        };
+
+        Ok(TransactionInput::new_with_mass(
             value.input.previous_outpoint.into(),
             value.input.signature_script,
             value.input.sequence,
-            if TxInputMass::has_compute_budget_field(value.version) {
-                ComputeBudget(value.input.compute_budget).into()
-            } else {
-                SigopCount(value.input.sig_op_count).into()
-            },
-        )
+            mass,
+        ))
     }
 }
 
@@ -49,8 +63,14 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
             value.input.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
 
         let mass = if TxInputMass::has_compute_budget_field(value.version) {
+            if value.input.sig_op_count.is_some() {
+                return Err(invalid_input_mass_variant("sig_op_count", value.version));
+            }
             ComputeBudget(value.input.compute_budget.unwrap_or_default()).into()
         } else {
+            if value.input.compute_budget.is_some() {
+                return Err(invalid_input_mass_variant("compute_budget", value.version));
+            }
             SigopCount(value.input.sig_op_count.unwrap_or_default()).into()
         };
 
@@ -112,7 +132,10 @@ impl TryFrom<RpcTransaction> for Transaction {
         let version = item.version;
         let transaction = Transaction::new(
             version,
-            item.inputs.into_iter().map(|input| RpcInputWithVersion { version, input }.into()).collect(),
+            item.inputs
+                .into_iter()
+                .map(|input| RpcInputWithVersion { version, input }.try_into())
+                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
             item.outputs
                 .into_iter()
                 .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
