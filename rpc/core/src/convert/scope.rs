@@ -45,7 +45,9 @@ macro_rules! from {
     };
 }
 
-from!(BlockAdded);
+from!(item: BlockAdded, {
+    Self { payload_prefixes: item.payload_prefixes }
+});
 from!(item: VirtualChainChanged, {
     Self::new(item.include_accepted_transaction_ids)
 });

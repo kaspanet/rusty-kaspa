@@ -68,6 +68,7 @@ use kaspa_rpc_core::{
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
+
 use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
@@ -415,10 +416,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         // TODO: test
         let session = self.consensus_manager.consensus().session().await;
         let block = session.async_get_block_even_if_header_only(request.hash).await?;
+
         Ok(GetBlockResponse {
             block: self
                 .consensus_converter
-                .get_block(&session, &block, request.include_transactions, request.include_transactions)
+                .get_block(
+                    &session,
+                    &block,
+                    request.include_transactions,
+                    request.include_transactions,
+                    request.tx_payload_prefixes.as_holder(),
+                )
                 .await?,
         })
     }
@@ -474,7 +482,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 let block = session.async_get_block_even_if_header_only(hash).await?;
                 let rpc_block = self
                     .consensus_converter
-                    .get_block(&session, &block, request.include_transactions, request.include_transactions)
+                    .get_block(
+                        &session,
+                        &block,
+                        request.include_transactions,
+                        request.include_transactions,
+                        request.tx_payload_prefixes.as_holder(),
+                    )
                     .await?;
                 blocks.push(rpc_block)
             }
