@@ -848,6 +848,9 @@ opcode_list! {
     opcode OpBlake2bWithKey<0xa7, 1>(self, vm) {
         if vm.flags.covenants_enabled {
             let [data, key] = vm.dstack.pop_raw()?;
+            if key.len() > blake2b_simd::KEYBYTES {
+                return Err(TxScriptError::ElementTooBig(key.len(), blake2b_simd::KEYBYTES))
+            }
             let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
             vm.dstack.push(hash.as_bytes().to_vec())
         } else {
@@ -1586,8 +1589,29 @@ opcode_list! {
         }
     }
 
-    opcode OpUnknown217<0xd9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown218<0xda, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpBlake3<0xd9, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            let [data] = vm.dstack.pop_raw()?;
+            let hash = blake3::hash(&data);
+            vm.dstack.push(hash.as_bytes().to_vec())
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpBlake3WithKey<0xda, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            let [data, key] = vm.dstack.pop_raw()?;
+            let key: &[u8; blake3::KEY_LEN] = key.as_slice().try_into().map_err(|_| {
+                TxScriptError::MalformedPush(blake3::KEY_LEN, key.len())
+            })?;
+            let hash = blake3::keyed_hash(key, &data);
+            vm.dstack.push(hash.as_bytes().to_vec())
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
     opcode OpUnknown219<0xdb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown220<0xdc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown221<0xdd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1645,7 +1669,9 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{EngineContext, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str};
+    use crate::{
+        EngineContext, EngineFlags, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str,
+    };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
@@ -1668,13 +1694,17 @@ mod test {
     }
 
     fn run_success_test_cases(tests: Vec<TestCase>) {
+        run_success_test_cases_with_flags(tests, Default::default());
+    }
+
+    fn run_success_test_cases_with_flags(tests: Vec<TestCase>, flags: EngineFlags) {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         let ctx = EngineContext::new(&cache).with_reused(&reused_values);
         for TestCase { init, code, dstack } in tests {
             let init: Stack = init.into();
             let dstack = dstack.into();
-            let mut vm = TxScriptEngine::new(ctx, Default::default());
+            let mut vm = TxScriptEngine::new(ctx, flags);
             vm.dstack = init.clone();
             code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
             assert_eq!(vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
@@ -1682,11 +1712,15 @@ mod test {
     }
 
     fn run_error_test_cases(tests: Vec<ErrorTestCase>) {
+        run_error_test_cases_with_flags(tests, Default::default());
+    }
+
+    fn run_error_test_cases_with_flags(tests: Vec<ErrorTestCase>, flags: EngineFlags) {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         let ctx = EngineContext::new(&cache).with_reused(&reused_values);
         for ErrorTestCase { init, code, error } in tests {
-            let mut vm = TxScriptEngine::new(ctx, Default::default());
+            let mut vm = TxScriptEngine::new(ctx, flags);
             vm.dstack = init.clone().into();
             assert_eq!(
                 code.execute(&mut vm)
@@ -1789,8 +1823,8 @@ mod test {
             opcodes::OpOutputAuthorizingInput::empty().expect("Should accept empty"),
             opcodes::OpCheckSigFromStack::empty().expect("Should accept empty"),
             opcodes::OpCheckSigFromStackECDSA::empty().expect("Should accept empty"),
-            opcodes::OpUnknown217::empty().expect("Should accept empty"),
-            opcodes::OpUnknown218::empty().expect("Should accept empty"),
+            opcodes::OpBlake3::empty().expect("Should accept empty"),
+            opcodes::OpBlake3WithKey::empty().expect("Should accept empty"),
             opcodes::OpUnknown219::empty().expect("Should accept empty"),
             opcodes::OpUnknown220::empty().expect("Should accept empty"),
             opcodes::OpUnknown221::empty().expect("Should accept empty"),

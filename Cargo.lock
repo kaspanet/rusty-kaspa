@@ -3710,6 +3710,7 @@ dependencies = [
  "ark-serialize",
  "ark-snark",
  "blake2b_simd",
+ "blake3",
  "borsh",
  "bytemuck",
  "cc",
