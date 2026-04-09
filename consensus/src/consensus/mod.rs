@@ -61,7 +61,7 @@ use kaspa_consensus_core::{
         consensus::{ConsensusError, ConsensusResult},
         difficulty::DifficultyError,
         pruning::PruningImportError,
-        tx::TxResult,
+        tx::{TxResult, TxRuleError},
     },
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
@@ -73,7 +73,7 @@ use kaspa_consensus_core::{
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{
         MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
-        TransactionType, UtxoEntry,
+        TransactionType, TxInputMass, UtxoEntry,
     },
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -585,6 +585,36 @@ impl Consensus {
         }
         Ok(pruning_points_to_add)
     }
+
+    fn validate_transaction_for_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<()> {
+        if transaction.is_coinbase() {
+            return Ok(());
+        }
+
+        if transaction.inputs.len() > self.config.params.max_tx_inputs {
+            return Err(TxRuleError::TooManyInputs(transaction.inputs.len(), self.config.params.max_tx_inputs));
+        }
+
+        if transaction.outputs.len() > self.config.params.max_tx_outputs {
+            return Err(TxRuleError::TooManyOutputs(transaction.outputs.len(), self.config.params.max_tx_outputs));
+        }
+
+        if TxInputMass::has_compute_budget_field(transaction.version) {
+            for (i, input) in transaction.inputs.iter().enumerate() {
+                if let Some(sig_op_count) = input.mass.sig_op_count() {
+                    return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
+                }
+            }
+        } else {
+            for (i, input) in transaction.inputs.iter().enumerate() {
+                if let Some(compute_budget) = input.mass.compute_budget() {
+                    return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl ConsensusApi for Consensus {
@@ -629,8 +659,9 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
-    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
-        self.services.mass_calculator.calc_non_contextual_masses(transaction)
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
+        self.validate_transaction_for_non_contextual_masses(transaction)?;
+        Ok(self.services.mass_calculator.calc_non_contextual_masses(transaction))
     }
 
     fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {

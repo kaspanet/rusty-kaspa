@@ -7,6 +7,7 @@ use kaspa_consensus_core::{
     config::Config,
     hashing::tx::hash,
     header::Header,
+    mass::NonContextualMasses,
     tx::{
         MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput,
         TransactionQueryResult, TransactionType, UtxoEntry,
@@ -135,7 +136,11 @@ impl ConsensusConverter {
             let verbose_data = Some(RpcTransactionVerboseData {
                 transaction_id: transaction.id(),
                 hash: hash(transaction),
-                compute_mass: consensus.calculate_transaction_non_contextual_masses(transaction).compute_mass,
+                // We are converting consensus-owned transactions, so mass calculation cannot really fail here.
+                compute_mass: consensus
+                    .calculate_transaction_non_contextual_masses(transaction)
+                    .map(|masses| masses.compute_mass)
+                    .unwrap_or_default(),
                 // TODO: make block_hash an option
                 block_hash: header.map_or_else(RpcHash::default, |x| x.hash),
                 block_time: header.map_or(0, |x| x.timestamp),
@@ -441,13 +446,19 @@ impl ConsensusConverter {
             payload: if verbosity.include_payload.unwrap_or(false) { Some(transaction.payload.clone()) } else { Default::default() },
             mass: if verbosity.include_mass.unwrap_or(false) { Some(transaction.mass()) } else { Default::default() },
             verbose_data: if let Some(verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
-                Some(self.get_transaction_verbose_data_with_verbosity(
-                    transaction,
-                    block_hash.unwrap(),
-                    block_time,
-                    consensus.calculate_transaction_non_contextual_masses(transaction).compute_mass,
-                    verbose_data_verbosity,
-                )?)
+                Some(
+                    self.get_transaction_verbose_data_with_verbosity(
+                        transaction,
+                        block_hash.unwrap(),
+                        block_time,
+                        // We are converting consensus-owned transactions, so mass calculation cannot really fail here.
+                        consensus
+                            .calculate_transaction_non_contextual_masses(transaction)
+                            .map(|masses| masses.compute_mass)
+                            .unwrap_or_default(),
+                        verbose_data_verbosity,
+                    )?,
+                )
             } else {
                 Default::default()
             },
@@ -498,7 +509,12 @@ impl ConsensusConverter {
                         block_time,
                         transaction
                             .calculated_non_contextual_masses
-                            .unwrap_or(consensus.calculate_transaction_non_contextual_masses(transaction.tx.as_ref()))
+                            .unwrap_or_else(|| {
+                                // We are converting consensus-owned transactions, so mass calculation cannot really fail here.
+                                consensus
+                                    .calculate_transaction_non_contextual_masses(transaction.tx.as_ref())
+                                    .unwrap_or(NonContextualMasses::new(0, 0))
+                            })
                             .compute_mass,
                         verbose_data_verbosity,
                     )?,

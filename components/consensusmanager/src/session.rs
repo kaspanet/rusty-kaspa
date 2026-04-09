@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
-    errors::consensus::ConsensusResult,
+    errors::{consensus::ConsensusResult, tx::TxResult},
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
@@ -191,7 +191,7 @@ impl ConsensusSessionOwned {
         self.consensus.validate_and_insert_trusted_block(tb)
     }
 
-    pub fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+    pub fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
         // This method performs pure calculations so no need for an async wrapper
         self.consensus.calculate_transaction_non_contextual_masses(transaction)
     }

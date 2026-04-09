@@ -162,7 +162,7 @@ fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
     if tx.version > 0 {
         for (i, input) in tx.inputs.iter().enumerate() {
             if let Some(sig_op_count) = input.mass.sig_op_count() {
-                return Err(TxRuleError::SigOpCountInV1(i, sig_op_count));
+                return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
             }
         }
     } else {
@@ -342,7 +342,7 @@ mod tests {
         let mut tx = valid_tx.clone();
         tx.version = 1;
         tx.inputs[0].mass = TxInputMass::SigopCount(1.into());
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::SigOpCountInV1(_, _)));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::SigopCountInV1(_, _)));
 
         let mut tx = valid_tx.clone();
         tx.version = 0;

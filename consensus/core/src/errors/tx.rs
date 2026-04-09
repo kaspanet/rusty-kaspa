@@ -105,7 +105,7 @@ pub enum TxRuleError {
     CovenantBindingInV0(usize),
 
     #[error("transaction input #{0} has a sig op count field with value {1} in version 1 transaction")]
-    SigOpCountInV1(usize, u8),
+    SigopCountInV1(usize, u8),
 
     #[error("transaction input #{0} has a compute budget field with value {1} in version 0 transaction")]
     ComputeBudgetInV0(usize, u16),
