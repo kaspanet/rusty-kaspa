@@ -107,8 +107,15 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
         map.insert(schnorr_key.public_key().serialize(), schnorr_key);
     }
-    for i in 0..mutable_tx.tx.inputs.len() {
-        mutable_tx.tx.inputs[i].mass = SigopCount(1).into();
+
+    if mutable_tx.tx.version < 1 {
+        for i in 0..mutable_tx.tx.inputs.len() {
+            mutable_tx.tx.inputs[i].mass = SigopCount(1).into();
+        }
+    } else {
+        for i in 0..mutable_tx.tx.inputs.len() {
+            mutable_tx.tx.inputs[i].mass = ComputeBudget(10).into();
+        }
     }
 
     let reused_values = SigHashReusedValuesUnsync::new();
@@ -262,5 +269,63 @@ mod tests {
         );
 
         assert!(verify(&signed_tx.as_verifiable()).is_ok());
+    }
+
+    #[test]
+    fn test_signers_assign_version_appropriate_input_mass() {
+        let secp = Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+        let script_pub_key = ScriptVec::from_slice(&public_key.serialize());
+        let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
+
+        let build_unsigned_tx = |version| {
+            Transaction::new(
+                version,
+                vec![TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                    signature_script: vec![],
+                    sequence: 0,
+                    mass: SigopCount(0).into(),
+                }],
+                vec![TransactionOutput {
+                    value: 100,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                    covenant: None,
+                }],
+                0,
+                SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                0,
+                vec![],
+            )
+        };
+        let entry = UtxoEntry {
+            amount: 100,
+            script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+            block_daa_score: 0,
+            is_coinbase: false,
+            covenant_id: None,
+        };
+
+        let signed_v0 = sign(
+            SignableTransaction::with_entries(build_unsigned_tx(0), vec![entry.clone()]),
+            secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &secret_key),
+        );
+        assert_eq!(signed_v0.tx.inputs[0].mass, SigopCount(1).into());
+
+        let signed_v1 = sign(
+            SignableTransaction::with_entries(build_unsigned_tx(1), vec![entry.clone()]),
+            secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &secret_key),
+        );
+        assert_eq!(signed_v1.tx.inputs[0].mass, ComputeBudget(10).into());
+
+        let signed_multi_v0 = sign_with_multiple(
+            SignableTransaction::with_entries(build_unsigned_tx(0), vec![entry.clone()]),
+            vec![secret_key.secret_bytes()],
+        );
+        assert_eq!(signed_multi_v0.tx.inputs[0].mass, SigopCount(1).into());
+
+        let signed_multi_v1 =
+            sign_with_multiple(SignableTransaction::with_entries(build_unsigned_tx(1), vec![entry]), vec![secret_key.secret_bytes()]);
+        assert_eq!(signed_multi_v1.tx.inputs[0].mass, ComputeBudget(10).into());
     }
 }
