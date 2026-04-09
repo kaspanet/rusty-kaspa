@@ -1231,6 +1231,83 @@
     "OpBlake2bWithKey output depends on the key"
   ],
   [
+    "0x09 0x746573742064617461 ''",
+    "BLAKE2B_WITH_KEY 0x20 0xeab94977a17791d0c089fe9e393261b3ab667cf0e8456632a842d905c468cf65 EQUAL",
+    "",
+    "OK",
+    "OpBlake2bWithKey with 0-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x01 0x42",
+    "BLAKE2B_WITH_KEY 0x20 0x672d664200ef894a0b4314dfbcabe7d9b7f441b34aca3f1b4302bf25955611ca EQUAL",
+    "",
+    "OK",
+    "OpBlake2bWithKey with 1-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x40 0x42424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242",
+    "BLAKE2B_WITH_KEY 0x20 0xdf5e8d8d2c32add8b90a92ed9cc198dbbec1096da5b2f263f5c7ea315916f055 EQUAL",
+    "",
+    "OK",
+    "OpBlake2bWithKey with max-length 64-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x41 0x4242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242",
+    "BLAKE2B_WITH_KEY",
+    "",
+    "PUSH_SIZE",
+    "OpBlake2bWithKey rejects key longer than 64 bytes"
+  ],
+  [
+    "''",
+    "BLAKE3 0x20 0xaf1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262 EQUAL",
+    "",
+    "OK",
+    "OpBlake3 hashes empty data"
+  ],
+  [
+    "'abc'",
+    "BLAKE3 0x20 0x6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85 EQUAL",
+    "",
+    "OK",
+    "OpBlake3 hashes data"
+  ],
+  [
+    "",
+    "BLAKE3",
+    "",
+    "INVALID_STACK_OPERATION",
+    "OpBlake3 errors on empty stack"
+  ],
+  [
+    "0x09 0x746573742064617461 0x20 0x4242424242424242424242424242424242424242424242424242424242424242",
+    "BLAKE3_WITH_KEY 0x20 0x3f273d8cd6fbf7ccf9989dea311053c49a59914743acb835549ed6106f3c2554 EQUAL",
+    "",
+    "OK",
+    "OpBlake3WithKey with 32-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 ''",
+    "BLAKE3_WITH_KEY",
+    "",
+    "BAD_OPCODE",
+    "OpBlake3WithKey rejects 0-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x01 0x42",
+    "BLAKE3_WITH_KEY",
+    "",
+    "BAD_OPCODE",
+    "OpBlake3WithKey rejects 1-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x21 0x424242424242424242424242424242424242424242424242424242424242424242",
+    "BLAKE3_WITH_KEY",
+    "",
+    "BAD_OPCODE",
+    "OpBlake3WithKey rejects 33-byte key"
+  ],
+  [
     "0",
     "IF 0xb2 ELSE 1 ENDIF",
     "",
@@ -3310,6 +3387,62 @@
     "EQUALVERIFY"
   ],
   [
+    "1",
+    "0x05 0x0000000000 PICK EQUAL",
+    "",
+    "OK",
+    "With covenants enabled, PICK accepts a 5-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x06 0x000000000000 PICK EQUAL",
+    "",
+    "OK",
+    "With covenants enabled, PICK accepts a 6-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x07 0x00000000000000 PICK EQUAL",
+    "",
+    "OK",
+    "With covenants enabled, PICK accepts a 7-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x08 0x0000000000000000 PICK EQUAL",
+    "",
+    "OK",
+    "With covenants enabled, PICK accepts an 8-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x05 0x0000008000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "With covenants enabled, PICK rejects a 5-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
+    "1",
+    "0x06 0x000000800000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "With covenants enabled, PICK rejects a 6-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
+    "1",
+    "0x07 0x00000080000000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "With covenants enabled, PICK rejects a 7-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
+    "1",
+    "0x08 0x0000008000000000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "With covenants enabled, PICK rejects an 8-byte integer encoding whose value exceeds i32::MAX"
+  ],
+  [
     "",
     "0 ROLL",
     "",
@@ -4092,25 +4225,162 @@
     "1",
     "IF 0xd7 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "INVALID_STACK_OPERATION",
+    "OpCheckSigFromStack is enabled under covenant flags"
   ],
   [
     "1",
     "IF 0xd8 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "INVALID_STACK_OPERATION",
+    "OpCheckSigFromStackECDSA is enabled under covenant flags"
+  ],
+  [
+    "",
+    "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK",
+    "",
+    "OK",
+    "OpCheckSigFromStack returns true for a valid schnorr signature over the provided message hash"
+  ],
+  [
+    "",
+    "0 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK NOT",
+    "",
+    "INVALID_SIG",
+    "OpCheckSigFromStack returns INVALID_SIG for an empty signature"
+  ],
+  [
+    "",
+    "0x40 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK NOT",
+    "",
+    "OK",
+    "OpCheckSigFromStack returns false rather than NULLFAIL for a 64-byte zero signature"
+  ],
+  [
+    "",
+    "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x20 0x0303030303030303030303030303030303030303030303030303030303030303 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK NOT",
+    "",
+    "NULLFAIL",
+    "OpCheckSigFromStack enforces NULLFAIL when a non-empty signature verifies to false for the provided message hash"
+  ],
+  [
+    "",
+    "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766 CHECKSIGFROMSTACK NOT",
+    "",
+    "NULLFAIL",
+    "OpCheckSigFromStack enforces NULLFAIL when a non-empty signature verifies to false for the provided public key"
+  ],
+  [
+    "",
+    "0x01 0x00 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK",
+    "",
+    "INVALID_SIG",
+    "OpCheckSigFromStack rejects non-64-byte signatures"
+  ],
+  [
+    "",
+    "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x21 0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK",
+    "",
+    "PUBKEYFORMAT",
+    "OpCheckSigFromStack requires a 32-byte x-only public key"
+  ],
+  [
+    "",
+    "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x1f 0x02020202020202020202020202020202020202020202020202020202020202 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACK",
+    "",
+    "UNKNOWN_ERROR",
+    "OpCheckSigFromStack requires the provided message hash to be exactly 32 bytes"
+  ],
+  [
+    "",
+    "CHECKSIGFROMSTACK",
+    "",
+    "INVALID_STACK_OPERATION",
+    "OpCheckSigFromStack errors on an empty stack"
+  ],
+  [
+    "0x40 0xdd4af7c34cf34dfd646f71ee87042f866f98ef834ab141578ba802c37a041fd5e49f84dce210413714cd9c6dd0d25f072a3cedfa4fb730314ab6cb26b0212310 0x20 0x0202020202020202020202020202020202020202020202020202020202020202",
+    "CHECKSIGFROMSTACK",
+    "",
+    "INVALID_STACK_OPERATION",
+    "OpCheckSigFromStack errors when fewer than three stack items are provided"
+  ],
+  [
+    "",
+    "0x40 0x97ef30233ead25d10f7bb2bf9eaf571a16f2deb33a75f20819284f0cb8ff3cc14870ca05940199c113b4dc77866f001702691cde269f6835581e7aea1ead2660 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x21 0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACKECDSA",
+    "",
+    "OK",
+    "OpCheckSigFromStackECDSA returns true for a valid ECDSA signature over the provided message hash"
+  ],
+  [
+    "",
+    "0x40 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x21 0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACKECDSA NOT",
+    "",
+    "OK",
+    "OpCheckSigFromStackECDSA returns false rather than NULLFAIL for a 64-byte zero signature"
+  ],
+  [
+    "",
+    "0x40 0x97ef30233ead25d10f7bb2bf9eaf571a16f2deb33a75f20819284f0cb8ff3cc14870ca05940199c113b4dc77866f001702691cde269f6835581e7aea1ead2660 0x20 0x0303030303030303030303030303030303030303030303030303030303030303 0x21 0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACKECDSA NOT",
+    "",
+    "NULLFAIL",
+    "OpCheckSigFromStackECDSA enforces NULLFAIL when a non-empty signature verifies to false for the provided message hash"
+  ],
+  [
+    "",
+    "0x40 0x97ef30233ead25d10f7bb2bf9eaf571a16f2deb33a75f20819284f0cb8ff3cc14870ca05940199c113b4dc77866f001702691cde269f6835581e7aea1ead2660 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x21 0x024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766 CHECKSIGFROMSTACKECDSA NOT",
+    "",
+    "NULLFAIL",
+    "OpCheckSigFromStackECDSA enforces NULLFAIL when a non-empty signature verifies to false for the provided public key"
+  ],
+  [
+    "",
+    "0x01 0x00 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x21 0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACKECDSA",
+    "",
+    "INVALID_SIG",
+    "OpCheckSigFromStackECDSA rejects non-64-byte signatures"
+  ],
+  [
+    "",
+    "0x40 0x97ef30233ead25d10f7bb2bf9eaf571a16f2deb33a75f20819284f0cb8ff3cc14870ca05940199c113b4dc77866f001702691cde269f6835581e7aea1ead2660 0x20 0x0202020202020202020202020202020202020202020202020202020202020202 0x20 0x1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACKECDSA",
+    "",
+    "PUBKEYFORMAT",
+    "OpCheckSigFromStackECDSA requires a 33-byte compressed public key"
+  ],
+  [
+    "",
+    "0x40 0x97ef30233ead25d10f7bb2bf9eaf571a16f2deb33a75f20819284f0cb8ff3cc14870ca05940199c113b4dc77866f001702691cde269f6835581e7aea1ead2660 0x1f 0x02020202020202020202020202020202020202020202020202020202020202 0x21 0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f CHECKSIGFROMSTACKECDSA",
+    "",
+    "UNKNOWN_ERROR",
+    "OpCheckSigFromStackECDSA requires the provided message hash to be exactly 32 bytes"
+  ],
+  [
+    "",
+    "CHECKSIGFROMSTACKECDSA",
+    "",
+    "INVALID_STACK_OPERATION",
+    "OpCheckSigFromStackECDSA errors on an empty stack"
+  ],
+  [
+    "0x40 0x97ef30233ead25d10f7bb2bf9eaf571a16f2deb33a75f20819284f0cb8ff3cc14870ca05940199c113b4dc77866f001702691cde269f6835581e7aea1ead2660 0x20 0x0202020202020202020202020202020202020202020202020202020202020202",
+    "CHECKSIGFROMSTACKECDSA",
+    "",
+    "INVALID_STACK_OPERATION",
+    "OpCheckSigFromStackECDSA errors when fewer than three stack items are provided"
   ],
   [
     "1",
     "IF 0xd9 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "INVALID_STACK_OPERATION",
+    "OpBlake3 is enabled under covenant flags"
   ],
   [
     "1",
     "IF 0xda ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "INVALID_STACK_OPERATION",
+    "OpBlake3WithKey is enabled under covenant flags"
   ],
   [
     "1",
@@ -4412,7 +4682,7 @@
     "",
     "OK",
     "10,001-byte scriptPubKey TODO(pre-covpp): add script size check"
-  ],  
+  ],
   [
     "1",
     "VER",
@@ -5765,11 +6035,18 @@
     "BIP66 and NULLFAIL-compliant"
   ],
   [
+    "0x41 0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+    "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
+    "",
+    "OK",
+    "With covenants enabled, CHECKMULTISIG treats a 64-byte zero signature plus sighash byte as a soft failure rather than NULLFAIL"
+  ],
+  [
     "0x09 0x300602010102010101 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
     "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
     "",
-    "NULLFAIL",
-    "BIP66-compliant but not NULLFAIL-compliant 4"
+    "PUBKEYFORMAT",
+    "BIP66-compliant but not PUBKEYFORMAT-compliant 4"
   ],
   [
     "The End"
