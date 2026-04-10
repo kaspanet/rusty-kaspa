@@ -1613,7 +1613,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [data] = vm.dstack.pop_raw()?;
             let hash = blake3::hash(&data);
-            vm.dstack.push(hash.as_bytes().to_vec())
+            vm.dstack.push(hash.as_slice().into())
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
@@ -1626,7 +1626,7 @@ opcode_list! {
                 TxScriptError::MalformedPush(blake3::KEY_LEN, key.len())
             })?;
             let hash = blake3::keyed_hash(key, &data);
-            vm.dstack.push(hash.as_bytes().to_vec())
+            vm.dstack.push(hash.as_slice().into())
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
