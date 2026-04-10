@@ -670,8 +670,14 @@ impl VirtualStateProcessor {
 
     /// Check if `block_hash` is canonical for SMT lookups.
     /// ZERO_HASH is treated as always canonical — it marks IBD-imported entries.
+    ///
+    /// After reachability pruning, blocks that were on the selected chain before
+    /// a reorg may have their reachability data deleted — their SMT lane entries
+    /// remain but they are no longer canonical. `Err(KeyNotFound)` from
+    /// `try_is_chain_ancestor_of` means the block's reachability was pruned,
+    /// so it is definitively outside `future(retention_root)` and non-canonical.
     pub fn is_smt_canonical(&self, block_hash: Hash, selected_parent: Hash) -> bool {
-        block_hash == ZERO_HASH || self.reachability_service.is_chain_ancestor_of(block_hash, selected_parent)
+        block_hash == ZERO_HASH || matches!(self.reachability_service.try_is_chain_ancestor_of(block_hash, selected_parent), Ok(true))
     }
 
     /// Get the parent's lanes_root and active_lanes_count.
