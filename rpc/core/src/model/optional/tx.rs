@@ -530,7 +530,7 @@ impl std::fmt::Debug for RpcOptionalTransaction {
 
 impl Serializer for RpcOptionalTransaction {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?; // TODO(before merge): Check if a version upgrade is needed.
+        store!(u16, &1, writer)?;
         store!(Option<u16>, &self.version, writer)?;
         serialize!(Vec<RpcOptionalTransactionInput>, &self.inputs, writer)?;
         serialize!(Vec<RpcOptionalTransactionOutput>, &self.outputs, writer)?;

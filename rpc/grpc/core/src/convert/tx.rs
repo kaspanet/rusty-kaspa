@@ -152,7 +152,7 @@ from!(item: &kaspa_rpc_core::RpcTransactionVerboseData, protowire::RpcTransactio
     Self {
         transaction_id: item.transaction_id.to_string(),
         hash: item.hash.to_string(),
-        compute_mass: 0,
+        compute_mass: item.compute_mass,
         block_hash: item.block_hash.to_string(),
         block_time: item.block_time,
     }
@@ -368,7 +368,7 @@ try_from!(item: &protowire::RpcTransactionVerboseData, kaspa_rpc_core::RpcTransa
     Self {
         transaction_id: RpcHash::from_str(&item.transaction_id)?,
         hash: RpcHash::from_str(&item.hash)?,
-            compute_mass: item.compute_mass,
+        compute_mass: item.compute_mass,
         block_hash: RpcHash::from_str(&item.block_hash)?,
         block_time: item.block_time,
     }

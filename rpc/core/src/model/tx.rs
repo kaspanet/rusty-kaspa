@@ -396,7 +396,7 @@ impl std::fmt::Debug for RpcTransaction {
 
 impl Serializer for RpcTransaction {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?; // TODO(before merge): Check if a version upgrade is needed here.
+        store!(u16, &1, writer)?;
         store!(u16, &self.version, writer)?;
         serialize!(Vec<RpcTransactionInput>, &self.inputs, writer)?;
         serialize!(Vec<RpcTransactionOutput>, &self.outputs, writer)?;

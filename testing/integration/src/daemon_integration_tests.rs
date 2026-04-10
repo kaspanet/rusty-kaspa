@@ -422,12 +422,13 @@ async fn daemon_utxos_propagation_test() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn daemon_compute_mass_relay_test() {
+async fn daemon_compute_budget_relay_test() {
     let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
-    let override_params_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_mass_relay_test_params.json");
+    let compute_budget_relay_test_params =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
 
     let args = Args {
         testnet: true,
@@ -438,7 +439,7 @@ async fn daemon_compute_mass_relay_test() {
         disable_dns_seeding: true,
         utxoindex: true,
         outbound_target: 0,
-        override_params_file: Some(override_params_path.to_string_lossy().to_string()),
+        override_params_file: Some(compute_budget_relay_test_params.to_string_lossy().to_string()),
         ..Default::default()
     };
     let total_fd_limit = 10;
@@ -650,7 +651,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
-    let override_params_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_mass_relay_test_params.json");
+    let compute_budget_relay_test_params = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
     let args = Args {
         testnet: true,
         testnet_suffix: 12,
@@ -660,7 +661,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
         disable_dns_seeding: true,
         utxoindex: true,
         outbound_target: 0,
-        override_params_file: Some(override_params_path.to_string_lossy().to_string()),
+        override_params_file: Some(compute_budget_relay_test_params.to_string_lossy().to_string()),
         ..Default::default()
     };
 

@@ -87,7 +87,7 @@ message RpcTransactionInput {
   uint64 sequence = 3;
   uint32 sigOpCount = 5;
   RpcTransactionInputVerboseData verboseData = 4;
-  // Replaces sigop count for tx version >= 1. Each budget unit is equal 10 gram mass
+  // Replaces sigop count for tx version >= 1.
   uint32 computeBudget = 6;
 }
 
@@ -1034,7 +1034,7 @@ message RpcOptionalTransactionInput {
   optional uint64 sequence = 4;
   optional uint32 sigOpCount = 5;
   optional RpcOptionalTransactionInputVerboseData verboseData = 6;
-  // Replaces sigop count for tx version >= 1. Each budget unit is equal 10 gram mass
+  // Replaces sigop count for tx version >= 1.
   optional uint32 computeBudget = 7;
 }
 

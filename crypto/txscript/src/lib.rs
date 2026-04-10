@@ -351,7 +351,7 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                             num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
                         }
                     }
-                    _ => {} // If the opcode is not sigop/zk, no need to increase the count
+                    _ => {} // If the opcode is not sigop, no need to increase the count
                 }
             }
             Err(_) => return num_sigs,
