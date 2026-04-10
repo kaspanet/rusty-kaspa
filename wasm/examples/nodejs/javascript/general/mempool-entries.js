@@ -8,7 +8,7 @@ kaspa.initConsolePanicHook();
 
 (async () => {
   const rpc = new RpcClient({
-    url: "wss://devnet2-wrpc.kasia.fyi",
+    url: "127.0.0.1",
     encoding: Encoding.Borsh,
     // resolver: new Resolver(),
     networkId: "mainnet",
