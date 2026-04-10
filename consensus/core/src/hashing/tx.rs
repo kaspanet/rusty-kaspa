@@ -106,7 +106,7 @@ fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, version:
     }
     hasher.update(input.sequence.to_le_bytes());
 
-    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && TxInputMass::has_compute_budget_field(version) {
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && TxInputMass::version_expects_compute_budget_field(version) {
         hasher.write_u16(input.mass.compute_budget().unwrap_or(0));
     }
 }

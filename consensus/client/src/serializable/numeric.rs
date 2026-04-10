@@ -6,6 +6,7 @@
 //! but may be deserialized in other JSON-capable environments that support large integers)
 //!
 
+use super::invalid_input_mass_variant;
 use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
@@ -148,9 +149,15 @@ impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
             previous_outpoint: cctx::TransactionOutpoint { transaction_id: input.transaction_id, index: input.index },
             signature_script: input.signature_script,
             sequence: input.sequence,
-            mass: if cctx::TxInputMass::has_compute_budget_field(value.version) {
+            mass: if cctx::TxInputMass::version_expects_compute_budget_field(value.version) {
+                if input.sig_op_count != 0 {
+                    return Err(invalid_input_mass_variant("sig_op_count", value.version));
+                }
                 cctx::TxInputMass::ComputeBudget(input.compute_budget.into())
             } else {
+                if input.compute_budget != 0 {
+                    return Err(invalid_input_mass_variant("compute_budget", value.version));
+                }
                 cctx::TxInputMass::SigopCount(input.sig_op_count.into())
             },
         })

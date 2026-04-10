@@ -387,7 +387,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: if TxInputMass::has_compute_budget_field(version) {
+                mass: if TxInputMass::version_expects_compute_budget_field(version) {
                     TxInputMass::ComputeBudget(compute_budget.into())
                 } else {
                     TxInputMass::SigopCount(sig_op_count.into())

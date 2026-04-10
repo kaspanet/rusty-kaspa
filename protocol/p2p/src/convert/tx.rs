@@ -152,7 +152,7 @@ impl TryFrom<ProtoInputWithVersion> for TransactionInput {
             previous_outpoint: value.input.previous_outpoint.try_into_ex()?,
             signature_script: value.input.signature_script,
             sequence: value.input.sequence,
-            mass: if TxInputMass::has_compute_budget_field(value.version as u16) {
+            mass: if TxInputMass::version_expects_compute_budget_field(value.version as u16) {
                 ComputeBudget(u16::try_from(value.input.mass)?).into()
             } else {
                 SigopCount(u8::try_from(value.input.mass)?).into()

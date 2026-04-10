@@ -14,14 +14,14 @@ use kaspa_consensus_core::{
     mass::ComputeBudget,
     sign::{sign, sign_with_multiple_v2},
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_hashes::Hash;
 use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope};
-use kaspa_rpc_core::{Notification, RpcTransactionId, api::rpc::RpcApi};
+use kaspa_rpc_core::{Notification, RpcTransaction, RpcTransactionId, api::rpc::RpcApi};
 use kaspa_txscript::{
     opcodes::codes, pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script,
     script_builder::ScriptBuilder,
@@ -642,6 +642,84 @@ async fn daemon_compute_mass_relay_test() {
     rpc_client2.disconnect().await.unwrap();
     kaspad1.shutdown();
     kaspad2.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() {
+    let _guard = crate::integration_test_lock().lock().await;
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    let override_params_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_mass_relay_test_params.json");
+    let args = Args {
+        testnet: true,
+        testnet_suffix: 12,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        disable_upnp: true,
+        disable_dns_seeding: true,
+        utxoindex: true,
+        outbound_target: 0,
+        override_params_file: Some(override_params_path.to_string_lossy().to_string()),
+        ..Default::default()
+    };
+
+    let mut kaspad = Daemon::new_random_with_args(args, 10);
+    let rpc_client = kaspad.start().await;
+
+    let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let miner_address =
+        Address::new(kaspad.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+    let pay_spk = pay_to_address_script(&miner_address);
+    let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
+
+    for _ in 0..4 {
+        let template = rpc_client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client.submit_block(template.block, false).await.unwrap();
+    }
+
+    let utxos = fetch_spendable_utxos(&rpc_client, miner_address.clone(), 0).await;
+    assert!(utxos.len() >= 2, "expected enough spendable UTXOs for malformed transaction tests");
+
+    let build_single_input_tx = |version: u16, selected_utxo: &(TransactionOutpoint, UtxoEntry)| {
+        let fee = required_fee(1, 1);
+        let output_value = selected_utxo.1.amount.checked_sub(fee).expect("expected enough input value for test fee");
+        let mass = ComputeBudget(0).into(); // set correctly by sign below
+        let tx = Transaction::new(
+            version,
+            vec![TransactionInput { previous_outpoint: selected_utxo.0, signature_script: vec![], sequence: 0, mass }],
+            vec![TransactionOutput { value: output_value, script_public_key: pay_spk.clone(), covenant: None }],
+            0,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        );
+        sign(MutableTransaction::with_entries(tx, vec![selected_utxo.1.clone()]), miner_schnorr_key).tx
+    };
+
+    let v1_tx = build_single_input_tx(TX_VERSION_POST_COV_HF, &utxos[0]);
+    let valid_v1_rpc_tx: RpcTransaction = (&v1_tx).into();
+    let mut malformed_v1_rpc_tx = valid_v1_rpc_tx.clone();
+    malformed_v1_rpc_tx.inputs[0].sig_op_count = 1;
+    assert!(
+        rpc_client.submit_transaction(malformed_v1_rpc_tx, false).await.is_err(),
+        "expected v1 transaction with non-zero sig_op_count to be rejected at the daemon boundary"
+    );
+
+    let v0_tx = build_single_input_tx(TX_VERSION, &utxos[1]);
+    let valid_v0_rpc_tx: RpcTransaction = (&v0_tx).into();
+    let mut malformed_v0_rpc_tx: RpcTransaction = valid_v0_rpc_tx.clone();
+    malformed_v0_rpc_tx.inputs[0].compute_budget = 1;
+    assert!(
+        rpc_client.submit_transaction(malformed_v0_rpc_tx, false).await.is_err(),
+        "expected v0 transaction with non-zero compute_budget to be rejected at the daemon boundary"
+    );
+
+    rpc_client.submit_transaction(valid_v1_rpc_tx, false).await.expect("expected the valid v1 transaction to be accepted");
+    rpc_client.submit_transaction(valid_v0_rpc_tx, false).await.expect("expected the valid v0 transaction to be accepted");
+
+    rpc_client.disconnect().await.unwrap();
+    kaspad.shutdown();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

@@ -123,12 +123,12 @@ impl TxInputMass {
         }
     }
 
-    pub fn has_compute_budget_field(version: u16) -> bool {
+    pub fn version_expects_compute_budget_field(version: u16) -> bool {
         version >= 1
     }
 
-    pub fn has_sig_op_count_field(version: u16) -> bool {
-        version == 0
+    pub fn version_expects_sig_op_count_field(version: u16) -> bool {
+        !Self::version_expects_compute_budget_field(version)
     }
 
     pub fn allowed_script_units(self) -> ScriptUnits {
