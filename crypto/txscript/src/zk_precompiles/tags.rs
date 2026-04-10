@@ -1,3 +1,5 @@
+use kaspa_consensus_core::mass::{Gram, ScriptUnits};
+
 use crate::zk_precompiles::error::ZkIntegrityError;
 
 #[derive(Copy, Clone)]
@@ -20,35 +22,41 @@ impl TryFrom<u8> for ZkTag {
 }
 
 impl ZkTag {
-    /// Returns the sigop cost associated with the ZK tag
-    /// Prices are based on benchmarks and estimations of verification complexity
+    /// Returns the cost (in script-units) associated with the ZK tag.
+    /// Prices are based on benchmarks and estimations of verification complexity.
     ///
-    /// Since 1 sigop is priced at 1000 gram, the costs are in 1000 gram units
-    pub fn sigop_cost(&self) -> u16 {
+    /// Values are priced in script units.
+    pub fn cost(&self) -> ScriptUnits {
         match self {
-            ZkTag::Groth16 => 140,
-            ZkTag::R0Succinct => 250,
+            ZkTag::Groth16 => Gram(1000 * 140),
+            ZkTag::R0Succinct => Gram(1000 * 250),
         }
+        .into()
     }
 
-    pub fn max_cost() -> u16 {
-        250 // The highest cost among supported tags
+    pub fn max_cost() -> ScriptUnits {
+        Gram(1000 * 250).into() // The highest cost among supported tags
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use kaspa_consensus_core::{
+        config::params::MAINNET_PARAMS,
+        mass::{SCRIPT_UNITS_PER_GRAM, ScriptUnits},
+    };
+
     use super::ZkTag;
 
-    fn expected_max_cost() -> u16 {
-        let mut max_cost = 0;
+    fn expected_max_cost() -> ScriptUnits {
+        let mut max_cost = ScriptUnits(0);
 
         for tag in [ZkTag::Groth16, ZkTag::R0Succinct] {
             // Intentionally exhaustive match so adding a new enum variant
             // fails to compile until this list is updated.
             let cost = match tag {
-                ZkTag::Groth16 => ZkTag::Groth16.sigop_cost(),
-                ZkTag::R0Succinct => ZkTag::R0Succinct.sigop_cost(),
+                ZkTag::Groth16 => ZkTag::Groth16.cost(),
+                ZkTag::R0Succinct => ZkTag::R0Succinct.cost(),
             };
 
             if cost > max_cost {
@@ -62,5 +70,21 @@ mod tests {
     #[test]
     fn max_cost_matches_hardcoded_value() {
         assert_eq!(ZkTag::max_cost(), expected_max_cost());
+    }
+
+    fn cost_block_capacity(tag: ZkTag) -> u64 {
+        let compute_mass_limit = MAINNET_PARAMS.block_mass_limits.compute;
+        let cost_in_compute_mass = u64::from(tag.cost()) / SCRIPT_UNITS_PER_GRAM;
+        compute_mass_limit / cost_in_compute_mass
+    }
+
+    #[test]
+    fn groth16_cost_block_capacity_matches_hardcoded_value() {
+        assert_eq!(cost_block_capacity(ZkTag::Groth16), 3);
+    }
+
+    #[test]
+    fn r0_succinct_cost_block_capacity_matches_hardcoded_value() {
+        assert_eq!(cost_block_capacity(ZkTag::R0Succinct), 2);
     }
 }

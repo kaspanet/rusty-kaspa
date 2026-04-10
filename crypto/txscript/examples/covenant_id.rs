@@ -33,7 +33,7 @@ fn counter_state_in_spk() -> ScriptBuilderResult<()> {
     // Shared engine state
     let sig_cache = Cache::new(10_000);
     let reused_values = SigHashReusedValuesUnsync::new();
-    let flags = EngineFlags { covenants_enabled: true };
+    let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
 
     // Create the initial UTXO with counter = 0
     let mut state = CovenantState::new(0, &covenant_script);

@@ -10,12 +10,12 @@ pub enum R0Error {
     R0(#[from] VerificationError),
     #[error("Txscript error: {0}")]
     TxScript(#[from] TxScriptError),
-    #[error("Digest parsing error: {0:?}")]
-    Digest(Vec<u8>),
+    #[error("Invalid digest length: {0}")]
+    InvalidDigestLength(usize),
     #[error("Invalid seal length: {0}")]
     InvalidSealLength(usize),
     #[error("Invalid digest list length: {0}")]
-    InvalidDigestLength(usize),
+    InvalidDigestListLength(usize),
     #[error("Invalid merkle index length: {0}")]
     InvalidMerkleIndexLength(usize),
     #[error("Invalid hash function encoding length: {0}")]

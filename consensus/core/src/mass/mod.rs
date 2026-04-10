@@ -1,8 +1,16 @@
+pub mod units;
+
+pub use units::{
+    ComputeBudget, GRAMS_PER_COMPUTE_BUDGET_UNIT, Gram, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits,
+    SigopCount, free_script_units_per_input,
+};
+
 use crate::{
     config::params::Params,
-    constants::{TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
+    constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
+    mass::units::GRAMS_PER_SIGOP_COUNT_UNIT,
     subnets::SUBNETWORK_ID_SIZE,
-    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
+    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction},
 };
 use kaspa_hashes::HASH_SIZE;
 
@@ -14,7 +22,7 @@ pub fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     let mut size: u64 = 0;
     size += 2; // Tx version (u16)
     size += 8; // Number of inputs (u64)
-    let inputs_size: u64 = tx.inputs.iter().map(transaction_input_estimated_serialized_size).sum();
+    let inputs_size: u64 = tx.inputs.iter().map(|input| transaction_input_estimated_serialized_size(input, tx.version)).sum();
     size += inputs_size;
 
     size += 8; // number of outputs (u64)
@@ -31,7 +39,7 @@ pub fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     size
 }
 
-fn transaction_input_estimated_serialized_size(input: &TransactionInput) -> u64 {
+fn transaction_input_estimated_serialized_size(input: &TransactionInput, version: u16) -> u64 {
     let mut size = 0;
     size += outpoint_estimated_serialized_size();
 
@@ -39,6 +47,11 @@ fn transaction_input_estimated_serialized_size(input: &TransactionInput) -> u64 
     size += input.signature_script.len() as u64;
 
     size += 8; // sequence (uint64)
+
+    if version >= 1 {
+        size += 2; // compute_budget (u16)
+    }
+
     size
 }
 
@@ -55,6 +68,12 @@ pub fn transaction_output_estimated_serialized_size(output: &TransactionOutput) 
     size += 2; // output.ScriptPublicKey.Version (u16)
     size += 8; // length of script public key (u64)
     size += output.script_public_key.script().len() as u64;
+
+    if output.covenant.is_some() {
+        size += 2; // authorizing_input (u16)
+        size += HASH_SIZE as u64; // covenant_id
+    }
+
     size
 }
 
@@ -281,20 +300,18 @@ impl Mass {
 pub struct MassCalculator {
     mass_per_tx_byte: u64,
     mass_per_script_pub_key_byte: u64,
-    mass_per_sig_op: u64,
     storage_mass_parameter: u64,
 }
 
 impl MassCalculator {
-    pub fn new(mass_per_tx_byte: u64, mass_per_script_pub_key_byte: u64, mass_per_sig_op: u64, storage_mass_parameter: u64) -> Self {
-        Self { mass_per_tx_byte, mass_per_script_pub_key_byte, mass_per_sig_op, storage_mass_parameter }
+    pub fn new(mass_per_tx_byte: u64, mass_per_script_pub_key_byte: u64, storage_mass_parameter: u64) -> Self {
+        Self { mass_per_tx_byte, mass_per_script_pub_key_byte, storage_mass_parameter }
     }
 
     pub fn new_with_consensus_params(consensus_params: &Params) -> Self {
         Self {
             mass_per_tx_byte: consensus_params.mass_per_tx_byte,
             mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
-            mass_per_sig_op: consensus_params.mass_per_sig_op,
             storage_mass_parameter: consensus_params.storage_mass_parameter,
         }
     }
@@ -316,10 +333,22 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let total_sigops: u64 = tx.inputs.iter().map(|input| decode_sig_op_count(input.sig_op_count, tx.version) as u64).sum();
-        let total_sigops_mass = total_sigops * self.mass_per_sig_op;
+        let script_mass = if TxInputMass::version_expects_compute_budget_field(tx.version) {
+            GRAMS_PER_COMPUTE_BUDGET_UNIT
+                * tx.inputs
+                    .iter()
+                    .map(|input| input.mass.compute_budget().expect("v1 transactions are expected to have compute budget") as u64)
+                    .sum::<u64>()
+        } else {
+            let total_sigops: u64 = tx
+                .inputs
+                .iter()
+                .map(|input| input.mass.sig_op_count().expect("v0 transactions are expected to have sig op count") as u64)
+                .sum();
+            total_sigops * GRAMS_PER_SIGOP_COUNT_UNIT
+        };
 
-        let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass;
+        let compute_mass = compute_mass_for_size + total_script_public_key_mass + script_mass;
         let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
 
         NonContextualMasses::new(compute_mass, transient_mass)
@@ -339,60 +368,6 @@ impl MassCalculator {
             self.storage_mass_parameter,
         )
         .map(ContextualMasses::new)
-    }
-}
-
-/// Decodes a compressed signature operation count.
-///
-/// The encoding scheme:
-/// - Values 0-100: Direct mapping (no compression)
-/// - Values 101-255: Each value represents increments of 10
-///   - Formula: actual_sigops = 100 + (encoded - 100) * 10
-///   - Example: 104 → 140, 164 → 740, 255 → 1650
-///
-/// # Arguments
-/// * `encoded` - The compressed u8 value
-///
-/// # Returns
-/// The actual (decoded) signature operation count as u16
-pub fn decode_sig_op_count(encoded: u8, tx_version: u16) -> u16 {
-    match tx_version {
-        TX_VERSION => encoded as u16,
-        _ => {
-            if encoded <= 100 {
-                encoded as u16
-            } else {
-                100 + ((encoded as u16 - 100) * 10)
-            }
-        }
-    }
-}
-
-/// Encodes a signature operation count into its compressed representation.
-///
-/// The encoding scheme mirrors `decode_sig_op_count`:
-/// - Values 0-100: Direct mapping (no compression)
-/// - Values 101-1650: Rounded up to the nearest 10 and encoded into 101-255
-/// - Values above 1650: Saturate to 255
-///
-/// # Arguments
-/// * `decoded` - The actual (decoded) signature operation count
-///
-/// # Returns
-/// The compressed u8 value
-pub fn encode_sig_op_count(decoded: u16, tx_version: u16) -> u8 {
-    match tx_version {
-        TX_VERSION => decoded.min(u8::MAX as u16) as u8,
-        _ => {
-            if decoded <= 100 {
-                decoded as u8
-            } else {
-                let adjusted = decoded.saturating_sub(100);
-                let buckets = adjusted.div_ceil(10);
-                let encoded = 100u16 + buckets;
-                encoded.min(u8::MAX as u16) as u8
-            }
-        }
     }
 }
 
@@ -561,29 +536,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_sig_op_count_encode_decode() {
-        let other_version = TX_VERSION.saturating_add(1);
-        let cases = [
-            (0u16, 0u8, 0u16),
-            (1u16, 1u8, 1u16),
-            (100u16, 100u8, 100u16),
-            (101u16, 101u8, 110u16),
-            (109u16, 101u8, 110u16),
-            (110u16, 101u8, 110u16),
-            (111u16, 102u8, 120u16),
-            (1650u16, 255u8, 1650u16),
-            (1651u16, 255u8, 1650u16),
-        ];
-
-        for (decoded, expected_encoded, expected_decoded) in cases {
-            let encoded = encode_sig_op_count(decoded, other_version);
-            assert_eq!(encoded, expected_encoded, "encode mismatch for {decoded}");
-            let decoded_roundtrip = decode_sig_op_count(encoded, other_version);
-            assert_eq!(decoded_roundtrip, expected_decoded, "decode mismatch for {decoded}");
-        }
-    }
-
     #[derive(Debug)]
     struct PluralityTestCase {
         /// Test name
@@ -638,7 +590,7 @@ mod tests {
                 }
             }
 
-            let mc = MassCalculator::new(0, 0, 0, self.storage_mass_parameter);
+            let mc = MassCalculator::new(0, 0, self.storage_mass_parameter);
 
             let mass1 = mc.calc_contextual_masses(&tx1.as_verifiable());
             let mass2 = mc.calc_contextual_masses(&tx2.as_verifiable());
@@ -774,26 +726,26 @@ mod tests {
         // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
         //
 
-        let storage_mass = MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 10u64.pow(12)).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0); // Compounds from 3 to 2, with symmetric outputs and no fee, should be zero
 
         // Create asymmetry
         tx.tx.outputs[0].value = 50;
         tx.tx.outputs[1].value = 550;
         let storage_mass_parameter = 10u64.pow(12);
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, storage_mass_parameter / 50 + storage_mass_parameter / 550 - 3 * (storage_mass_parameter / 200));
 
         // Create a tx with more outs than ins
         let base_value = 10_000 * SOMPI_PER_KASPA;
         let mut tx = generate_tx_from_amounts(&[base_value, base_value, base_value * 2], &[base_value; 4]);
         let storage_mass_parameter = STORAGE_MASS_PARAMETER;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 4); // Inputs are above C so they don't contribute negative mass, 4 outputs exactly equal C each charge 1
 
         let mut tx2 = tx.clone();
         tx2.tx.outputs[0].value = 10 * SOMPI_PER_KASPA;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx2.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx2.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 1003);
 
         // Increase values over the lim
@@ -801,7 +753,7 @@ mod tests {
             out.value += 1
         }
         tx.entries[0].as_mut().unwrap().amount += tx.tx.outputs.len() as u64;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Now create 2:2 transaction
@@ -809,19 +761,19 @@ mod tests {
         let mut tx = generate_tx_from_amounts(&[100, 200], &[50, 250]);
         let storage_mass_parameter = 10u64.pow(12);
 
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 9000000000);
 
         // Set outputs to be equal to inputs
         tx.tx.outputs[0].value = 100;
         tx.tx.outputs[1].value = 200;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Remove an output and make sure the other is small enough to make storage mass greater than zero
         tx.tx.outputs.pop();
         tx.tx.outputs[0].value = 50;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 5000000000);
     }
 
@@ -835,7 +787,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: i as u32 },
                     signature_script: vec![],
                     sequence: 0,
-                    sig_op_count: 0,
+                    mass: TxInputMass::SigopCount(0.into()),
                 })
                 .collect(),
             outs.iter()

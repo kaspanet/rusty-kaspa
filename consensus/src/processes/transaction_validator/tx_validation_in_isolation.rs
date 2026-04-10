@@ -159,9 +159,23 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
-    for (i, output) in tx.outputs.iter().enumerate() {
-        if tx.version < 1 && output.covenant.is_some() {
-            return Err(TxRuleError::CovenantBindingInPreCovTxVersion(i));
+    if tx.version > 0 {
+        for (i, input) in tx.inputs.iter().enumerate() {
+            if let Some(sig_op_count) = input.mass.sig_op_count() {
+                return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
+            }
+        }
+    } else {
+        for (i, input) in tx.inputs.iter().enumerate() {
+            if let Some(compute_budget) = input.mass.compute_budget() {
+                return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
+            }
+        }
+
+        for (i, output) in tx.outputs.iter().enumerate() {
+            if output.covenant.is_some() {
+                return Err(TxRuleError::CovenantBindingInV0(i));
+            }
         }
     }
 
@@ -173,7 +187,10 @@ mod tests {
     use kaspa_consensus_core::{
         constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
-        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec},
+        tx::{
+            ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+            scriptvec,
+        },
     };
     use kaspa_core::assert_match;
 
@@ -244,7 +261,7 @@ mod tests {
                     0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                 ],
                 sequence: u64::MAX,
-                sig_op_count: 0,
+                mass: TxInputMass::SigopCount(0.into()),
             }],
             vec![
                 TransactionOutput {
@@ -321,6 +338,16 @@ mod tests {
         let mut tx = valid_tx.clone();
         tx.payload = vec![0];
         assert_match!(tv.validate_tx_in_isolation(&tx), Ok(()));
+
+        let mut tx = valid_tx.clone();
+        tx.version = 1;
+        tx.inputs[0].mass = TxInputMass::SigopCount(1.into());
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::SigopCountInV1(_, _)));
+
+        let mut tx = valid_tx.clone();
+        tx.version = 0;
+        tx.inputs[0].mass = TxInputMass::ComputeBudget(1.into());
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::ComputeBudgetInV0(_, _)));
 
         let mut tx = valid_tx.clone();
         tx.version = TX_VERSION_POST_COV_HF + 1;

@@ -138,7 +138,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                sig_op_count: 4,
+                mass: TxInputMass::SigopCount(4.into()),
             }],
             vec![],
             0,

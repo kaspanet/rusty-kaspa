@@ -160,9 +160,9 @@ impl ConsensusApi for ConsensusMock {
         transactions.iter_mut().map(|x| self.validate_mempool_transaction(x, &Default::default())).collect()
     }
 
-    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
         let mass = if transaction.is_coinbase() { 0 } else { transaction_estimated_serialized_size(transaction) };
-        NonContextualMasses::new(mass, mass)
+        Ok(NonContextualMasses::new(mass, mass))
     }
 
     fn calculate_transaction_contextual_masses(&self, _transaction: &MutableTransaction) -> Option<ContextualMasses> {

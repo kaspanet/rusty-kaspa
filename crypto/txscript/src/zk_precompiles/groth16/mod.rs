@@ -81,14 +81,14 @@ mod tests {
         println!("unprepared key len: {}, proof len: {}", unprepared_compressed_vk.len(), proof.len());
 
         let mut stack = Stack::new(Vec::new(), true);
-        stack.push(input4).unwrap();
-        stack.push(input3).unwrap();
-        stack.push(input2).unwrap();
-        stack.push(input1).unwrap();
-        stack.push(input0).unwrap();
+        stack.push(input4.into()).unwrap();
+        stack.push(input3.into()).unwrap();
+        stack.push(input2.into()).unwrap();
+        stack.push(input1.into()).unwrap();
+        stack.push(input0.into()).unwrap();
         stack.push_item(5i32).unwrap(); // Number of public inputs
-        stack.push(proof).unwrap();
-        stack.push(unprepared_compressed_vk).unwrap();
+        stack.push(proof.into()).unwrap();
+        stack.push(unprepared_compressed_vk.into()).unwrap();
         Groth16Precompile::verify_zk(&mut stack).unwrap();
     }
 }

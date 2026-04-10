@@ -218,6 +218,7 @@ mod mockery {
                 signature_script: Hash::mock().as_bytes().to_vec(),
                 sequence: mock(),
                 sig_op_count: mock(),
+                compute_budget: mock(),
                 verbose_data: mock(),
             }
         }
@@ -230,6 +231,7 @@ mod mockery {
                 signature_script: Some(Hash::mock().as_bytes().to_vec()),
                 sequence: mock(),
                 sig_op_count: mock(),
+                compute_budget: mock(),
                 verbose_data: mock(),
             }
         }
@@ -1583,5 +1585,184 @@ mod mockery {
     #[test]
     fn test_misalignment() {
         test::<Misalign>("Misalign");
+    }
+
+    // TODO: Delete this module once the ecosystem fully adapts to the new computeBudget APIs.
+    mod rpc_transaction_input_compatibility_tests {
+        use super::*;
+
+        struct OldRpcTransactionInput {
+            previous_outpoint: RpcTransactionOutpoint,
+            signature_script: Vec<u8>,
+            sequence: u64,
+            sig_op_count: u8,
+            verbose_data: Option<RpcTransactionInputVerboseData>,
+        }
+
+        impl Deserializer for OldRpcTransactionInput {
+            fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+                let _version = load!(u8, reader)?;
+                let previous_outpoint = deserialize!(RpcTransactionOutpoint, reader)?;
+                let signature_script = load!(Vec<u8>, reader)?;
+                let sequence = load!(u64, reader)?;
+                let sig_op_count = load!(u8, reader)?;
+                let verbose_data = deserialize!(Option<RpcTransactionInputVerboseData>, reader)?;
+                Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data })
+            }
+        }
+
+        struct OldRpcOptionalTransactionInput {
+            previous_outpoint: Option<RpcOptionalTransactionOutpoint>,
+            signature_script: Option<Vec<u8>>,
+            sequence: Option<u64>,
+            sig_op_count: Option<u8>,
+            verbose_data: Option<RpcOptionalTransactionInputVerboseData>,
+        }
+
+        impl Deserializer for OldRpcOptionalTransactionInput {
+            fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+                let _version = load!(u8, reader)?;
+                let previous_outpoint = deserialize!(Option<RpcOptionalTransactionOutpoint>, reader)?;
+                let signature_script = load!(Option<Vec<u8>>, reader)?;
+                let sequence = load!(Option<u64>, reader)?;
+                let sig_op_count = load!(Option<u8>, reader)?;
+                let verbose_data = deserialize!(Option<RpcOptionalTransactionInputVerboseData>, reader)?;
+                Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data })
+            }
+        }
+
+        #[test]
+        fn rpc_transaction_v0_deserializes_prev_payload_and_preserves_sigop_count() {
+            let input = RpcTransactionInput {
+                previous_outpoint: mock(),
+                signature_script: vec![1, 2, 3],
+                sequence: 7,
+                sig_op_count: 9,
+                compute_budget: 1234,
+                verbose_data: Some(RpcTransactionInputVerboseData {}),
+            };
+            let tx = RpcTransaction {
+                version: 0,
+                inputs: vec![input.clone()],
+                outputs: vec![mock()],
+                lock_time: 0,
+                subnetwork_id: mock(),
+                gas: 0,
+                payload: vec![],
+                mass: 0,
+                verbose_data: None,
+            };
+
+            let mut buffer = Vec::new();
+            store!(u16, &1, &mut buffer).unwrap();
+            store!(u16, &tx.version, &mut buffer).unwrap();
+            let mut inputs_payload = Vec::new();
+            store!(u32, &(tx.inputs.len() as u32), &mut inputs_payload).unwrap();
+            for input in &tx.inputs {
+                let mut input_payload = Vec::new();
+                store!(u8, &1, &mut input_payload).unwrap();
+                serialize!(RpcTransactionOutpoint, &input.previous_outpoint, &mut input_payload).unwrap();
+                store!(Vec<u8>, &input.signature_script, &mut input_payload).unwrap();
+                store!(u64, &input.sequence, &mut input_payload).unwrap();
+                store!(u8, &input.sig_op_count, &mut input_payload).unwrap();
+                serialize!(Option<RpcTransactionInputVerboseData>, &input.verbose_data, &mut input_payload).unwrap();
+                store!(Vec<u8>, &input_payload, &mut inputs_payload).unwrap();
+            }
+            store!(Vec<u8>, &inputs_payload, &mut buffer).unwrap();
+            serialize!(Vec<RpcTransactionOutput>, &tx.outputs, &mut buffer).unwrap();
+            store!(u64, &tx.lock_time, &mut buffer).unwrap();
+            store!(RpcSubnetworkId, &tx.subnetwork_id, &mut buffer).unwrap();
+            store!(u64, &tx.gas, &mut buffer).unwrap();
+            store!(Vec<u8>, &tx.payload, &mut buffer).unwrap();
+            store!(u64, &tx.mass, &mut buffer).unwrap();
+            serialize!(Option<RpcTransactionVerboseData>, &tx.verbose_data, &mut buffer).unwrap();
+
+            let decoded = RpcTransaction::deserialize(&mut buffer.as_slice()).unwrap();
+            assert_eq!(decoded.version, 0);
+            assert_eq!(decoded.inputs[0].sig_op_count, 9);
+            assert_eq!(decoded.inputs[0].compute_budget, 0);
+
+            let consensus_tx: kaspa_consensus_core::tx::Transaction = decoded.try_into().unwrap();
+            assert_eq!(consensus_tx.inputs[0].mass.sig_op_count(), Some(9));
+            assert_eq!(consensus_tx.inputs[0].mass.compute_budget(), None);
+        }
+
+        #[test]
+        fn rpc_transaction_input_deserializes_old_payload_without_compute_budget() {
+            let input = RpcTransactionInput {
+                previous_outpoint: mock(),
+                signature_script: vec![1, 2, 3],
+                sequence: 7,
+                sig_op_count: 9,
+                compute_budget: 1234,
+                verbose_data: Some(RpcTransactionInputVerboseData {}),
+            };
+
+            let mut buffer = Vec::new();
+            store!(u8, &1, &mut buffer).unwrap();
+            serialize!(RpcTransactionOutpoint, &input.previous_outpoint, &mut buffer).unwrap();
+            store!(Vec<u8>, &input.signature_script, &mut buffer).unwrap();
+            store!(u64, &input.sequence, &mut buffer).unwrap();
+            store!(u8, &input.sig_op_count, &mut buffer).unwrap();
+            serialize!(Option<RpcTransactionInputVerboseData>, &input.verbose_data, &mut buffer).unwrap();
+
+            let decoded = RpcTransactionInput::deserialize(&mut buffer.as_slice()).unwrap();
+            assert_eq!(decoded.previous_outpoint.transaction_id, input.previous_outpoint.transaction_id);
+            assert_eq!(decoded.previous_outpoint.index, input.previous_outpoint.index);
+            assert_eq!(decoded.signature_script, input.signature_script);
+            assert_eq!(decoded.sequence, input.sequence);
+            assert_eq!(decoded.sig_op_count, input.sig_op_count);
+            assert_eq!(decoded.compute_budget, 0);
+            assert!(decoded.verbose_data.is_some());
+        }
+
+        #[test]
+        fn old_rpc_transaction_input_deserializer_accepts_new_v0_payload() {
+            let input = RpcTransactionInput {
+                previous_outpoint: mock(),
+                signature_script: vec![1, 2, 3],
+                sequence: 7,
+                sig_op_count: 9,
+                compute_budget: 1234,
+                verbose_data: Some(RpcTransactionInputVerboseData {}),
+            };
+
+            let mut buffer = Vec::new();
+            serialize!(RpcTransactionInput, &input, &mut buffer).unwrap();
+
+            let decoded = deserialize!(OldRpcTransactionInput, &mut buffer.as_slice()).unwrap();
+            assert_eq!(decoded.previous_outpoint.transaction_id, input.previous_outpoint.transaction_id);
+            assert_eq!(decoded.previous_outpoint.index, input.previous_outpoint.index);
+            assert_eq!(decoded.signature_script, input.signature_script);
+            assert_eq!(decoded.sequence, input.sequence);
+            assert_eq!(decoded.sig_op_count, input.sig_op_count);
+            assert!(decoded.verbose_data.is_some());
+        }
+
+        #[test]
+        fn old_rpc_optional_transaction_input_deserializer_accepts_new_v0_payload() {
+            let input = RpcOptionalTransactionInput {
+                previous_outpoint: Some(mock()),
+                signature_script: Some(vec![1, 2, 3]),
+                sequence: Some(7),
+                sig_op_count: Some(9),
+                compute_budget: Some(1234),
+                verbose_data: Some(RpcOptionalTransactionInputVerboseData { utxo_entry: None }),
+            };
+
+            let mut buffer = Vec::new();
+            serialize!(RpcOptionalTransactionInput, &input, &mut buffer).unwrap();
+
+            let decoded = deserialize!(OldRpcOptionalTransactionInput, &mut buffer.as_slice()).unwrap();
+            assert_eq!(
+                decoded.previous_outpoint.as_ref().map(|x| x.transaction_id),
+                input.previous_outpoint.as_ref().map(|x| x.transaction_id)
+            );
+            assert_eq!(decoded.previous_outpoint.as_ref().map(|x| x.index), input.previous_outpoint.as_ref().map(|x| x.index));
+            assert_eq!(decoded.signature_script, input.signature_script);
+            assert_eq!(decoded.sequence, input.sequence);
+            assert_eq!(decoded.sig_op_count, input.sig_op_count);
+            assert!(decoded.verbose_data.is_some());
+        }
     }
 }
