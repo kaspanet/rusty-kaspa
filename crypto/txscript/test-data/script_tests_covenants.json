@@ -1231,6 +1231,83 @@
     "OpBlake2bWithKey output depends on the key"
   ],
   [
+    "0x09 0x746573742064617461 ''",
+    "BLAKE2B_WITH_KEY 0x20 0xeab94977a17791d0c089fe9e393261b3ab667cf0e8456632a842d905c468cf65 EQUAL",
+    "",
+    "OK",
+    "OpBlake2bWithKey with 0-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x01 0x42",
+    "BLAKE2B_WITH_KEY 0x20 0x672d664200ef894a0b4314dfbcabe7d9b7f441b34aca3f1b4302bf25955611ca EQUAL",
+    "",
+    "OK",
+    "OpBlake2bWithKey with 1-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x40 0x42424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242",
+    "BLAKE2B_WITH_KEY 0x20 0xdf5e8d8d2c32add8b90a92ed9cc198dbbec1096da5b2f263f5c7ea315916f055 EQUAL",
+    "",
+    "OK",
+    "OpBlake2bWithKey with max-length 64-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x41 0x4242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242",
+    "BLAKE2B_WITH_KEY",
+    "",
+    "PUSH_SIZE",
+    "OpBlake2bWithKey rejects key longer than 64 bytes"
+  ],
+  [
+    "''",
+    "BLAKE3 0x20 0xaf1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262 EQUAL",
+    "",
+    "OK",
+    "OpBlake3 hashes empty data"
+  ],
+  [
+    "'abc'",
+    "BLAKE3 0x20 0x6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85 EQUAL",
+    "",
+    "OK",
+    "OpBlake3 hashes data"
+  ],
+  [
+    "",
+    "BLAKE3",
+    "",
+    "INVALID_STACK_OPERATION",
+    "OpBlake3 errors on empty stack"
+  ],
+  [
+    "0x09 0x746573742064617461 0x20 0x4242424242424242424242424242424242424242424242424242424242424242",
+    "BLAKE3_WITH_KEY 0x20 0x3f273d8cd6fbf7ccf9989dea311053c49a59914743acb835549ed6106f3c2554 EQUAL",
+    "",
+    "OK",
+    "OpBlake3WithKey with 32-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 ''",
+    "BLAKE3_WITH_KEY",
+    "",
+    "BAD_OPCODE",
+    "OpBlake3WithKey rejects 0-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x01 0x42",
+    "BLAKE3_WITH_KEY",
+    "",
+    "BAD_OPCODE",
+    "OpBlake3WithKey rejects 1-byte key"
+  ],
+  [
+    "0x09 0x746573742064617461 0x21 0x424242424242424242424242424242424242424242424242424242424242424242",
+    "BLAKE3_WITH_KEY",
+    "",
+    "BAD_OPCODE",
+    "OpBlake3WithKey rejects 33-byte key"
+  ],
+  [
     "0",
     "IF 0xb2 ELSE 1 ENDIF",
     "",
@@ -4295,13 +4372,15 @@
     "1",
     "IF 0xd9 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "INVALID_STACK_OPERATION",
+    "OpBlake3 is enabled under covenant flags"
   ],
   [
     "1",
     "IF 0xda ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "INVALID_STACK_OPERATION",
+    "OpBlake3WithKey is enabled under covenant flags"
   ],
   [
     "1",
