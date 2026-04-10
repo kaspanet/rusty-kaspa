@@ -646,7 +646,8 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
-    let compute_budget_relay_test_params = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
+    let compute_budget_relay_test_params =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
     let args = Args {
         testnet: true,
         testnet_suffix: 12,
