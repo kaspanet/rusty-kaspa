@@ -376,6 +376,65 @@ mod tests {
             ],
         );
 
+        let native_tx_v1 = Transaction::new(
+            1,
+            vec![
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                    signature_script: vec![],
+                    sequence: 0,
+                    mass: TxInputMass::ComputeBudget(11.into()),
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
+                    signature_script: vec![],
+                    sequence: 1,
+                    mass: TxInputMass::ComputeBudget(22.into()),
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
+                    signature_script: vec![],
+                    sequence: 2,
+                    mass: TxInputMass::ComputeBudget(33.into()),
+                },
+            ],
+            vec![
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()), covenant: None },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()), covenant: None },
+            ],
+            1615462089000,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        );
+
+        let native_populated_tx_v1 = PopulatedTransaction::new(
+            &native_tx_v1,
+            vec![
+                UtxoEntry {
+                    amount: 100,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
+                    block_daa_score: 0,
+                    is_coinbase: false,
+                    covenant_id: None,
+                },
+                UtxoEntry {
+                    amount: 200,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
+                    block_daa_score: 0,
+                    is_coinbase: false,
+                    covenant_id: None,
+                },
+                UtxoEntry {
+                    amount: 300,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
+                    block_daa_score: 0,
+                    is_coinbase: false,
+                    covenant_id: None,
+                },
+            ],
+        );
+
         let mut subnetwork_tx = native_tx.clone();
         subnetwork_tx.subnetwork_id = SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         subnetwork_tx.gas = 250;
@@ -412,6 +471,7 @@ mod tests {
             Output(usize),
             Input(usize),
             ComputeBudget(usize),
+            SigOpCount(usize),
             AmountSpent(usize),
             PrevScriptPublicKey(usize),
             Sequence(usize),
@@ -458,6 +518,38 @@ mod tests {
                 input_index: 0,
                 action: ModifyAction::ComputeBudget(1),
                 expected_hash: "03b7ac6927b2b67100734c3cc313ff8c2e8b3ce3e746d46dd660b706a916b1f5", // shouldn't change the hash
+            },
+            TestVector {
+                name: "native-v1-all-0-modify-sigopcount-0",
+                populated_tx: &native_populated_tx_v1,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::SigOpCount(0),
+                expected_hash: "5b2657524be672e019897646b56da3d192b453d78ae5e6e5c07f029a69f5f075",
+            },
+            TestVector {
+                name: "native-v1-all-0-modify-sigopcount-1",
+                populated_tx: &native_populated_tx_v1,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::SigOpCount(1),
+                expected_hash: "5b2657524be672e019897646b56da3d192b453d78ae5e6e5c07f029a69f5f075",
+            },
+            TestVector {
+                name: "native-v1-all-0-modify-compute-budget-0",
+                populated_tx: &native_populated_tx_v1,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::ComputeBudget(0),
+                expected_hash: "5b2657524be672e019897646b56da3d192b453d78ae5e6e5c07f029a69f5f075",
+            },
+            TestVector {
+                name: "native-v1-all-0-modify-compute-budget-1",
+                populated_tx: &native_populated_tx_v1,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::ComputeBudget(1),
+                expected_hash: "5b2657524be672e019897646b56da3d192b453d78ae5e6e5c07f029a69f5f075",
             },
             TestVector {
                 name: "native-all-0-modify-output-1",
@@ -693,6 +785,9 @@ mod tests {
                 }
                 ModifyAction::ComputeBudget(i) => {
                     tx.inputs[i].mass = TxInputMass::ComputeBudget(1234.into());
+                }
+                ModifyAction::SigOpCount(i) => {
+                    tx.inputs[i].mass = TxInputMass::SigopCount(123.into());
                 }
                 ModifyAction::AmountSpent(i) => {
                     entries[i].amount = 666;
