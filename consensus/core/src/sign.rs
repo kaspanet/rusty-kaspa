@@ -197,6 +197,7 @@ pub fn verify(tx: &impl VerifiableTransaction) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::{
+        config::params::MAINNET_PARAMS,
         mass::{ComputeBudget, GRAMS_PER_COMPUTE_BUDGET_UNIT, SigopCount},
         subnets::SubnetworkId,
         tx::*,
@@ -322,7 +323,10 @@ mod tests {
             SignableTransaction::with_entries(build_unsigned_tx(1), vec![entry.clone()]),
             secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &secret_key),
         );
-        assert_eq!(signed_v1.tx.inputs[0].mass, ComputeBudget(1000u16.div_ceil(GRAMS_PER_COMPUTE_BUDGET_UNIT as u16)).into());
+        assert_eq!(
+            signed_v1.tx.inputs[0].mass,
+            ComputeBudget(MAINNET_PARAMS.mass_per_sig_op.div_ceil(GRAMS_PER_COMPUTE_BUDGET_UNIT) as u16).into()
+        );
 
         let signed_multi_v0 = sign_with_multiple(
             SignableTransaction::with_entries(build_unsigned_tx(0), vec![entry.clone()]),
@@ -332,6 +336,9 @@ mod tests {
 
         let signed_multi_v1 =
             sign_with_multiple(SignableTransaction::with_entries(build_unsigned_tx(1), vec![entry]), vec![secret_key.secret_bytes()]);
-        assert_eq!(signed_multi_v1.tx.inputs[0].mass, ComputeBudget(1000u16.div_ceil(GRAMS_PER_COMPUTE_BUDGET_UNIT as u16)).into());
+        assert_eq!(
+            signed_multi_v1.tx.inputs[0].mass,
+            ComputeBudget(MAINNET_PARAMS.mass_per_sig_op.div_ceil(GRAMS_PER_COMPUTE_BUDGET_UNIT) as u16).into()
+        );
     }
 }
