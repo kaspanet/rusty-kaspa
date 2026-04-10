@@ -129,12 +129,8 @@ impl ConsensusServices {
             params.bps_history(),
         );
 
-        let mass_calculator = MassCalculator::new(
-            params.mass_per_tx_byte,
-            params.mass_per_script_pub_key_byte,
-            params.mass_per_sig_op,
-            params.storage_mass_parameter,
-        );
+        let mass_calculator =
+            MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.storage_mass_parameter);
 
         let transaction_validator = TransactionValidator::new(
             params.max_tx_inputs,
@@ -147,6 +143,7 @@ impl ConsensusServices {
             tx_script_cache_counters,
             mass_calculator.clone(),
             params.covenants_activation,
+            params.mass_per_sig_op,
         );
 
         let pruning_point_manager = PruningPointManager::new(

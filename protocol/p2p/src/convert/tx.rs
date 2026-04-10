@@ -1,10 +1,11 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use kaspa_consensus_core::{
+    mass::{ComputeBudget, SigopCount},
     subnets::SubnetworkId,
     tx::{
         CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
-        UtxoEntry,
+        TxInputMass, UtxoEntry,
     },
 };
 use kaspa_hashes::Hash;
@@ -49,7 +50,10 @@ impl From<&TransactionInput> for protowire::TransactionInput {
             previous_outpoint: Some((&input.previous_outpoint).into()),
             signature_script: input.signature_script.clone(),
             sequence: input.sequence,
-            sig_op_count: input.sig_op_count as u32,
+            mass: match input.mass {
+                TxInputMass::SigopCount(count) => u8::from(count) as u32,
+                TxInputMass::ComputeBudget(budget) => u16::from(budget) as u32,
+            },
         }
     }
 }
@@ -135,11 +139,25 @@ impl TryFrom<protowire::OutpointAndUtxoEntryPair> for (TransactionOutpoint, Utxo
     }
 }
 
-impl TryFrom<protowire::TransactionInput> for TransactionInput {
+struct ProtoInputWithVersion {
+    version: u32,
+    input: protowire::TransactionInput,
+}
+
+impl TryFrom<ProtoInputWithVersion> for TransactionInput {
     type Error = ConversionError;
 
-    fn try_from(value: protowire::TransactionInput) -> Result<Self, Self::Error> {
-        Ok(Self::new(value.previous_outpoint.try_into_ex()?, value.signature_script, value.sequence, value.sig_op_count.try_into()?))
+    fn try_from(value: ProtoInputWithVersion) -> Result<Self, Self::Error> {
+        Ok(Self {
+            previous_outpoint: value.input.previous_outpoint.try_into_ex()?,
+            signature_script: value.input.signature_script,
+            sequence: value.input.sequence,
+            mass: if TxInputMass::version_expects_compute_budget_field(value.version as u16) {
+                ComputeBudget(u16::try_from(value.input.mass)?).into()
+            } else {
+                SigopCount(u8::try_from(value.input.mass)?).into()
+            },
+        })
     }
 }
 
@@ -170,9 +188,13 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
     type Error = ConversionError;
 
     fn try_from(tx: protowire::TransactionMessage) -> Result<Self, Self::Error> {
+        let version = tx.version;
         let transaction = Self::new(
             tx.version.try_into()?,
-            tx.inputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
+            tx.inputs
+                .into_iter()
+                .map(|i| ProtoInputWithVersion { version, input: i }.try_into())
+                .collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
             tx.outputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionOutput>, Self::Error>>()?,
             tx.lock_time,
             tx.subnetwork_id.try_into_ex()?,
@@ -181,5 +203,37 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
         );
         transaction.set_mass(tx.mass);
         Ok(transaction)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transaction_message_compute_budget_roundtrip() {
+        let tx = Transaction::new(
+            1,
+            vec![TransactionInput::new_with_mass(
+                TransactionOutpoint::new(Hash::from_u64_word(1), 0),
+                vec![],
+                0,
+                ComputeBudget(12_345).into(),
+            )],
+            vec![],
+            42,
+            SubnetworkId::from_bytes([3; 20]),
+            7,
+            vec![1, 2, 3],
+        );
+        tx.set_mass(54_321);
+
+        let message: protowire::TransactionMessage = (&tx).into();
+        assert_eq!(message.inputs[0].mass, 12_345);
+
+        let received = Transaction::try_from(message).unwrap();
+        assert_eq!(received.inputs.len(), 1);
+        assert_eq!(received.inputs[0].mass.compute_budget(), Some(12_345));
+        assert_eq!(received.mass(), 54_321);
     }
 }

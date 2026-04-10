@@ -93,7 +93,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
         unimplemented!()
     }
 

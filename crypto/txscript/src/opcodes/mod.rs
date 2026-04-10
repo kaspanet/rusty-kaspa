@@ -4,7 +4,7 @@ use crate::zk_precompiles::{parse_tag, verify_zk};
 use crate::{
     EngineFlags, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED,
     SEQUENCE_LOCK_TIME_MASK, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError,
-    data_stack::{OpcodeData, serialize_i64},
+    data_stack::{OpcodeData, StackEntry, serialize_i64},
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -205,12 +205,30 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
 }
 
 // Helpers for some opcodes with shared data
+// Literal opcode data is already paid for in script size, so it does not consume script units.
+#[inline]
+fn push_literal_data<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    data: Vec<u8>,
+    vm: &mut TxScriptEngine<T, Reused>,
+) -> OpCodeResult {
+    vm.dstack.push_unmetered(data.into())
+}
+
 #[inline]
 fn push_data<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     data: Vec<u8>,
     vm: &mut TxScriptEngine<T, Reused>,
 ) -> OpCodeResult {
-    vm.dstack.push(data)
+    vm.dstack.push(data.into())
+}
+
+// Literal opcode numbers are already paid for in script size, so this push does not consume script units.
+#[inline]
+fn push_literal_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    number: i64,
+    vm: &mut TxScriptEngine<T, Reused>,
+) -> OpCodeResult {
+    vm.dstack.push_item_unmetered(number)
 }
 
 #[inline]
@@ -276,108 +294,108 @@ opcode_list! {
 
     // Data push opcodes.
     opcode |Op0| OpFalse<0x00, 1>(self , vm) {
-        vm.dstack.push(vec![])
+        push_literal_data(vec![], vm)
     }
 
-    opcode OpData1<0x01, 2>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData2<0x02, 3>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData3<0x03, 4>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData4<0x04, 5>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData5<0x05, 6>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData6<0x06, 7>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData7<0x07, 8>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData8<0x08, 9>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData9<0x09, 10>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData10<0x0a, 11>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData11<0x0b, 12>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData12<0x0c, 13>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData13<0x0d, 14>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData14<0x0e, 15>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData15<0x0f, 16>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData16<0x10, 17>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData17<0x11, 18>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData18<0x12, 19>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData19<0x13, 20>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData20<0x14, 21>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData21<0x15, 22>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData22<0x16, 23>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData23<0x17, 24>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData24<0x18, 25>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData25<0x19, 26>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData26<0x1a, 27>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData27<0x1b, 28>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData28<0x1c, 29>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData29<0x1d, 30>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData30<0x1e, 31>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData31<0x1f, 32>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData32<0x20, 33>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData33<0x21, 34>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData34<0x22, 35>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData35<0x23, 36>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData36<0x24, 37>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData37<0x25, 38>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData38<0x26, 39>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData39<0x27, 40>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData40<0x28, 41>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData41<0x29, 42>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData42<0x2a, 43>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData43<0x2b, 44>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData44<0x2c, 45>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData45<0x2d, 46>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData46<0x2e, 47>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData47<0x2f, 48>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData48<0x30, 49>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData49<0x31, 50>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData50<0x32, 51>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData51<0x33, 52>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData52<0x34, 53>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData53<0x35, 54>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData54<0x36, 55>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData55<0x37, 56>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData56<0x38, 57>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData57<0x39, 58>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData58<0x3a, 59>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData59<0x3b, 60>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData60<0x3c, 61>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData61<0x3d, 62>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData62<0x3e, 63>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData63<0x3f, 64>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData64<0x40, 65>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData65<0x41, 66>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData66<0x42, 67>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData67<0x43, 68>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData68<0x44, 69>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData69<0x45, 70>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData70<0x46, 71>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData71<0x47, 72>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData72<0x48, 73>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData73<0x49, 74>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData74<0x4a, 75>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpData75<0x4b, 76>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpPushData1<0x4c, u8>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpPushData2<0x4d, u16>(self, vm) push_data(self.data.clone(), vm)
-    opcode OpPushData4<0x4e, u32>(self, vm) push_data(self.data.clone(), vm)
+    opcode OpData1<0x01, 2>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData2<0x02, 3>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData3<0x03, 4>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData4<0x04, 5>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData5<0x05, 6>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData6<0x06, 7>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData7<0x07, 8>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData8<0x08, 9>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData9<0x09, 10>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData10<0x0a, 11>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData11<0x0b, 12>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData12<0x0c, 13>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData13<0x0d, 14>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData14<0x0e, 15>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData15<0x0f, 16>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData16<0x10, 17>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData17<0x11, 18>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData18<0x12, 19>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData19<0x13, 20>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData20<0x14, 21>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData21<0x15, 22>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData22<0x16, 23>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData23<0x17, 24>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData24<0x18, 25>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData25<0x19, 26>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData26<0x1a, 27>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData27<0x1b, 28>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData28<0x1c, 29>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData29<0x1d, 30>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData30<0x1e, 31>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData31<0x1f, 32>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData32<0x20, 33>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData33<0x21, 34>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData34<0x22, 35>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData35<0x23, 36>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData36<0x24, 37>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData37<0x25, 38>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData38<0x26, 39>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData39<0x27, 40>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData40<0x28, 41>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData41<0x29, 42>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData42<0x2a, 43>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData43<0x2b, 44>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData44<0x2c, 45>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData45<0x2d, 46>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData46<0x2e, 47>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData47<0x2f, 48>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData48<0x30, 49>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData49<0x31, 50>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData50<0x32, 51>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData51<0x33, 52>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData52<0x34, 53>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData53<0x35, 54>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData54<0x36, 55>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData55<0x37, 56>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData56<0x38, 57>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData57<0x39, 58>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData58<0x3a, 59>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData59<0x3b, 60>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData60<0x3c, 61>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData61<0x3d, 62>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData62<0x3e, 63>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData63<0x3f, 64>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData64<0x40, 65>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData65<0x41, 66>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData66<0x42, 67>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData67<0x43, 68>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData68<0x44, 69>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData69<0x45, 70>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData70<0x46, 71>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData71<0x47, 72>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData72<0x48, 73>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData73<0x49, 74>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData74<0x4a, 75>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpData75<0x4b, 76>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpPushData1<0x4c, u8>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpPushData2<0x4d, u16>(self, vm) push_literal_data(self.data.clone(), vm)
+    opcode OpPushData4<0x4e, u32>(self, vm) push_literal_data(self.data.clone(), vm)
 
-    opcode Op1Negate<0x4f, 1>(self, vm) push_number(-1, vm)
+    opcode Op1Negate<0x4f, 1>(self, vm) push_literal_number(-1, vm)
 
     opcode OpReserved<0x50, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
-    opcode |Op1| OpTrue<0x51, 1>(self, vm) push_number(1, vm)
-    opcode Op2<0x52, 1>(self, vm) push_number(2, vm)
-    opcode Op3<0x53, 1>(self, vm) push_number(3, vm)
-    opcode Op4<0x54, 1>(self, vm) push_number(4, vm)
-    opcode Op5<0x55, 1>(self, vm) push_number(5, vm)
-    opcode Op6<0x56, 1>(self, vm) push_number(6, vm)
-    opcode Op7<0x57, 1>(self, vm) push_number(7, vm)
-    opcode Op8<0x58, 1>(self, vm) push_number(8, vm)
-    opcode Op9<0x59, 1>(self, vm) push_number(9, vm)
-    opcode Op10<0x5a, 1>(self, vm) push_number(10, vm)
-    opcode Op11<0x5b, 1>(self, vm) push_number(11, vm)
-    opcode Op12<0x5c, 1>(self, vm) push_number(12, vm)
-    opcode Op13<0x5d, 1>(self, vm) push_number(13, vm)
-    opcode Op14<0x5e, 1>(self, vm) push_number(14, vm)
-    opcode Op15<0x5f, 1>(self, vm) push_number(15, vm)
-    opcode Op16<0x60, 1>(self, vm) push_number(16, vm)
+    opcode |Op1| OpTrue<0x51, 1>(self, vm) push_literal_number(1, vm)
+    opcode Op2<0x52, 1>(self, vm) push_literal_number(2, vm)
+    opcode Op3<0x53, 1>(self, vm) push_literal_number(3, vm)
+    opcode Op4<0x54, 1>(self, vm) push_literal_number(4, vm)
+    opcode Op5<0x55, 1>(self, vm) push_literal_number(5, vm)
+    opcode Op6<0x56, 1>(self, vm) push_literal_number(6, vm)
+    opcode Op7<0x57, 1>(self, vm) push_literal_number(7, vm)
+    opcode Op8<0x58, 1>(self, vm) push_literal_number(8, vm)
+    opcode Op9<0x59, 1>(self, vm) push_literal_number(9, vm)
+    opcode Op10<0x5a, 1>(self, vm) push_literal_number(10, vm)
+    opcode Op11<0x5b, 1>(self, vm) push_literal_number(11, vm)
+    opcode Op12<0x5c, 1>(self, vm) push_literal_number(12, vm)
+    opcode Op13<0x5d, 1>(self, vm) push_literal_number(13, vm)
+    opcode Op14<0x5e, 1>(self, vm) push_literal_number(14, vm)
+    opcode Op15<0x5f, 1>(self, vm) push_literal_number(15, vm)
+    opcode Op16<0x60, 1>(self, vm) push_literal_number(16, vm)
 
     // Control opcodes.
     opcode OpNop<0x61, 1>(self, vm) Ok(())
@@ -453,12 +471,14 @@ opcode_list! {
     // Stack opcodes.
     opcode OpToAltStack<0x6b, 1>(self, vm) {
         let [item] = vm.dstack.pop_raw()?;
-        vm.astack.push(item)
+        // Pure move between stacks, so we don't consume script units.
+        vm.astack.push_unmetered(item)
     }
 
     opcode OpFromAltStack<0x6c, 1>(self, vm) {
         let last = vm.astack.pop()?;
-        vm.dstack.push(last)
+        // Pure move between stacks, so we don't consume script units.
+        vm.dstack.push_unmetered(last)
     }
 
     opcode Op2Drop<0x6d, 1>(self, vm) vm.dstack.drop_items::<2>()
@@ -470,7 +490,7 @@ opcode_list! {
 
     opcode OpIfDup<0x73, 1>(self, vm) {
         let [result] = vm.dstack.peek_raw()?;
-        if <Vec<u8> as OpcodeData<bool>>::deserialize(&result, !vm.flags.covenants_enabled)? {
+        if <StackEntry as OpcodeData<bool>>::deserialize(&result, !vm.flags.covenants_enabled)? {
             vm.dstack.push(result)?;
         }
         Ok(())
@@ -506,8 +526,7 @@ opcode_list! {
         if  loc < 0 || loc as usize >= vm.dstack.len() {
             return Err(TxScriptError::InvalidState("roll at an invalid location".to_string()));
         }
-        let item = vm.dstack.remove(vm.dstack.len()-(loc as usize)-1);
-        vm.dstack.push(item)
+        vm.dstack.roll(loc as usize)
     }
 
     opcode OpRot<0x7b, 1>(self, vm) vm.dstack.rot_items::<1>()
@@ -542,7 +561,7 @@ opcode_list! {
             let data = vm.dstack.pop()?;
             let [start, end] = i32s_to_usizes([start, end])?;
             let substr = substring(&data, start, end)?;
-            vm.dstack.push(substr)
+            vm.dstack.push(substr.into())
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
         }
@@ -565,7 +584,7 @@ opcode_list! {
     opcode OpInvert<0x83, 1>(self, vm){
         if vm.flags.covenants_enabled{
             let data = vm.dstack.pop()?;
-            let r: Vec<u8> = data.into_iter().map(|b| !b).collect();
+            let r: StackEntry = data.into_iter().map(|b| !b).collect();
             vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -579,7 +598,7 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("AND operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
+            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
             vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -593,7 +612,7 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("OR operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
+            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
             vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -607,7 +626,7 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("XOR operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
+            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
             vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -619,8 +638,8 @@ opcode_list! {
             true => {
                 let pair = vm.dstack.split_off(vm.dstack.len() - 2);
                 match pair[0] == pair[1] {
-                    true => vm.dstack.push(vec![1]),
-                    false => vm.dstack.push(vec![]),
+                    true => vm.dstack.push(([1]).as_slice().into()),
+                    false => vm.dstack.push(([]).as_slice().into()),
                 }
             }
             false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len()))
@@ -830,8 +849,8 @@ opcode_list! {
             // Parse the ZK Precompile tag
             let tag = parse_tag(&mut vm.dstack)?;
 
-            // Consume sigop cost
-            vm.runtime_sig_op_counter.consume_sig_ops(tag.sigop_cost())?;
+            // Consume the tag cost
+            vm.consume_script_units(tag.cost())?;
 
             // Verify the ZK proof
             verify_zk(tag, &mut vm.dstack)?;
@@ -852,7 +871,7 @@ opcode_list! {
                 return Err(TxScriptError::ElementTooBig(key.len(), blake2b_simd::KEYBYTES))
             }
             let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
-            vm.dstack.push(hash.as_bytes().to_vec())
+            vm.dstack.push(hash.as_bytes().into())
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
@@ -862,7 +881,7 @@ opcode_list! {
         let [last] = vm.dstack.pop_raw()?;
         let mut hasher = Sha256::new();
         hasher.update(last);
-        vm.dstack.push(hasher.finalize().to_vec())
+        vm.dstack.push(hasher.finalize().as_slice().into())
     }
 
     opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
@@ -873,7 +892,7 @@ opcode_list! {
         let [last] = vm.dstack.pop_raw()?;
         //let hash = blake2b(last.as_slice());
         let hash = Params::new().hash_length(32).to_state().update(&last).finalize();
-        vm.dstack.push(hash.as_bytes().to_vec())
+        vm.dstack.push(hash.as_bytes().into())
     }
 
     opcode OpCheckSigECDSA<0xab, 1>(self, vm) {
@@ -958,7 +977,7 @@ opcode_list! {
                     return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {lock_time_bytes:x?} is longer then 8 bytes")))
                 }
                 lock_time_bytes.resize(8, 0);
-                let stack_lock_time = u64::from_le_bytes(lock_time_bytes.try_into().expect("checked vector size"));
+                let stack_lock_time = u64::from_le_bytes(lock_time_bytes.as_slice().try_into().expect("checked vector size"));
 
                 // The lock time field of a transaction is either a DAA score at
                 // which the transaction is finalized or a timestamp depending on if the
@@ -1012,7 +1031,7 @@ opcode_list! {
                 // Don't use makeScriptNum here, since sequence is not an actual number, minimal encoding rules don't apply to it,
                 // and is more convenient to be represented as an unsigned int.
                 sequence_bytes.resize(8, 0);
-                let stack_sequence = u64::from_le_bytes(sequence_bytes.try_into().expect("ensured size checks"));
+                let stack_sequence = u64::from_le_bytes(sequence_bytes.as_slice().try_into().expect("ensured size checks"));
 
                 // To provide for future soft-fork extensibility, if the
                 // operand has the disabled lock-time flag set,
@@ -1209,7 +1228,7 @@ opcode_list! {
                 let utxo = usize::try_from(idx).ok()
                     .and_then(|idx| tx.utxo(idx))
                     .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
-                vm.dstack.push(utxo.script_public_key.to_bytes())
+                vm.dstack.push(utxo.script_public_key.to_bytes().into())
             },
             _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
         }
@@ -1264,7 +1283,7 @@ opcode_list! {
                 let output = usize::try_from(idx).ok()
                     .and_then(|idx| tx.outputs().get(idx))
                     .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
-                vm.dstack.push(output.script_public_key.to_bytes())
+                vm.dstack.push(output.script_public_key.to_bytes().into())
             },
             _ => Err(TxScriptError::InvalidSource("OpTxOutputSpk only applies to transaction inputs".to_string()))
         }
@@ -1593,7 +1612,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [data] = vm.dstack.pop_raw()?;
             let hash = blake3::hash(&data);
-            vm.dstack.push(hash.as_bytes().to_vec())
+            vm.dstack.push(hash.as_slice().into())
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
@@ -1606,7 +1625,7 @@ opcode_list! {
                 TxScriptError::MalformedPush(blake3::KEY_LEN, key.len())
             })?;
             let hash = blake3::keyed_hash(key, &data);
-            vm.dstack.push(hash.as_bytes().to_vec())
+            vm.dstack.push(hash.as_slice().into())
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
@@ -1667,7 +1686,7 @@ pub fn to_small_int<T: VerifiableTransaction, Reused: SigHashReusedValues>(opcod
 #[cfg(test)]
 mod test {
     use crate::caches::Cache;
-    use crate::data_stack::Stack;
+    use crate::data_stack::{Stack, StackEntry};
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
     use crate::{
         EngineContext, EngineFlags, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script, script_to_str,
@@ -3779,10 +3798,10 @@ mod test {
 
                             // Check the result matches expectations
                             if let Some(ref expected_spk) = expected_result.expected_spk {
-                                assert_eq!(vm.dstack.inner(), vec![expected_spk.clone()]);
+                                assert_eq!(vm.dstack.inner(), vec![StackEntry::from_vec(expected_spk.clone())]);
                             }
                             if let Some(ref expected_amount) = expected_result.expected_amount {
-                                assert_eq!(vm.dstack.inner(), vec![expected_amount.clone()]);
+                                assert_eq!(vm.dstack.inner(), vec![StackEntry::from_vec(expected_amount.clone())]);
                             }
                             vm.dstack.clear();
                         }
@@ -3993,7 +4012,7 @@ mod test {
                 op_input_count.execute(&mut vm).unwrap();
                 assert_eq!(
                     vm.dstack.inner(),
-                    vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
+                    vec![<StackEntry as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
                     "Input count mismatch for {} inputs",
                     input_count
                 );
@@ -4003,7 +4022,7 @@ mod test {
                 op_output_count.execute(&mut vm).unwrap();
                 assert_eq!(
                     vm.dstack.inner(),
-                    vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
+                    vec![<StackEntry as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
                     "Output count mismatch for {} outputs",
                     output_count
                 );
@@ -4520,7 +4539,7 @@ mod test {
                 idx,
                 &populated_tx.entries[idx],
                 ctx,
-                EngineFlags { covenants_enabled: true },
+                EngineFlags { covenants_enabled: true, ..Default::default() },
             );
             vm.execute()
         }
@@ -4946,7 +4965,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, ..Default::default() },
                 );
 
                 vm.execute().unwrap_or_else(|_| panic!("input {} daa score", input_idx));
@@ -4979,7 +4998,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, ..Default::default() },
                 );
 
                 let err = vm.execute().expect_err("should fail with negative index");
@@ -5024,7 +5043,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, ..Default::default() },
                 );
 
                 let err = vm.execute().expect_err("should fail with out of bounds index");
@@ -5076,7 +5095,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, ..Default::default() },
                 );
 
                 vm.execute().expect("compare daa scores");
@@ -5120,7 +5139,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     ctx,
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, ..Default::default() },
                 );
                 assert_eq!(vm.execute(), Ok(()), "Should pass with DAA score 60000 >= 50000");
             }
@@ -5143,7 +5162,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     ctx,
-                    EngineFlags { covenants_enabled: true },
+                    EngineFlags { covenants_enabled: true, ..Default::default() },
                 );
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse), "Should fail with DAA score 40000 < 50000");
             }

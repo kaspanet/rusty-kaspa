@@ -267,7 +267,8 @@ impl MassCalculator {
     }
 
     pub(crate) fn calc_compute_mass_for_client_transaction_input(&self, input: &TransactionInput) -> u64 {
-        input.sig_op_count as u64 * self.mass_per_sig_op + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte
+        input.mass.sig_op_count().unwrap_or(0) as u64 * self.mass_per_sig_op
+            + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte // TODO: Add support for v1 transactions.
     }
 
     pub(crate) fn calc_compute_mass_for_signature(&self, minimum_signatures: u16) -> u64 {

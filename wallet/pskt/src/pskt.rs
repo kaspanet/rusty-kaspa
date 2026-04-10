@@ -20,7 +20,7 @@ use kaspa_consensus_core::mass::{MassCalculator, NonContextualMasses};
 use kaspa_consensus_core::{
     hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput, TxInputMass},
 };
 use kaspa_txscript::{TxScriptEngine, caches::Cache};
 
@@ -144,7 +144,7 @@ impl<R> PSKT<R> {
                     previous_outpoint: *previous_outpoint,
                     signature_script: vec![],
                     sequence: sequence.unwrap_or(u64::MAX),
-                    sig_op_count: sig_op_count.unwrap_or(0),
+                    mass: TxInputMass::SigopCount(sig_op_count.unwrap_or(0).into()), // TODO: Add support for v1 transactions with TxInputMass::ComputeBudget
                 })
                 .collect(),
             self.outputs

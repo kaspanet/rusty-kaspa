@@ -3,7 +3,8 @@ use crate::{
         sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::{SIG_HASH_ALL, SigHashType},
     },
-    tx::{SignableTransaction, VerifiableTransaction},
+    mass::{ComputeBudget, SigopCount},
+    tx::{SignableTransaction, TxInputMass, VerifiableTransaction},
 };
 use itertools::Itertools;
 use std::collections::BTreeMap;
@@ -80,8 +81,14 @@ impl Signed {
 
 /// Sign a transaction using schnorr
 pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::Keypair) -> SignableTransaction {
+    let input_mass = if TxInputMass::version_expects_compute_budget_field(signable_tx.tx.version) {
+        // Assumes grams per sigop = 1000 and 1 compute budget = 100 gram
+        ComputeBudget(10).into()
+    } else {
+        SigopCount(1).into()
+    };
     for i in 0..signable_tx.tx.inputs.len() {
-        signable_tx.tx.inputs[i].sig_op_count = 1;
+        signable_tx.tx.inputs[i].mass = input_mass;
     }
 
     let reused_values = SigHashReusedValuesUnsync::new();
@@ -102,8 +109,15 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
         map.insert(schnorr_key.public_key().serialize(), schnorr_key);
     }
+
+    let input_mass = if TxInputMass::version_expects_compute_budget_field(mutable_tx.tx.version) {
+        // Assumes grams per sigop = 1000 and 1 compute budget = 100 gram
+        ComputeBudget(10).into()
+    } else {
+        SigopCount(1).into()
+    };
     for i in 0..mutable_tx.tx.inputs.len() {
-        mutable_tx.tx.inputs[i].sig_op_count = 1;
+        mutable_tx.tx.inputs[i].mass = input_mass;
     }
 
     let reused_values = SigHashReusedValuesUnsync::new();
@@ -182,7 +196,12 @@ pub fn verify(tx: &impl VerifiableTransaction) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{subnets::SubnetworkId, tx::*};
+    use crate::{
+        config::params::MAINNET_PARAMS,
+        mass::{ComputeBudget, GRAMS_PER_COMPUTE_BUDGET_UNIT, SigopCount},
+        subnets::SubnetworkId,
+        tx::*,
+    };
     use secp256k1::{Secp256k1, rand};
     use std::str::FromStr;
 
@@ -203,19 +222,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    sig_op_count: 0,
+                    mass: SigopCount(0).into(),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    sig_op_count: 0,
+                    mass: SigopCount(0).into(),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    sig_op_count: 0,
+                    mass: SigopCount(0).into(),
                 },
             ],
             vec![
@@ -257,5 +276,69 @@ mod tests {
         );
 
         assert!(verify(&signed_tx.as_verifiable()).is_ok());
+    }
+
+    #[test]
+    fn test_signers_assign_version_appropriate_input_mass() {
+        let secp = Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+        let script_pub_key = ScriptVec::from_slice(&public_key.serialize());
+        let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
+
+        let build_unsigned_tx = |version| {
+            Transaction::new(
+                version,
+                vec![TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                    signature_script: vec![],
+                    sequence: 0,
+                    mass: SigopCount(0).into(),
+                }],
+                vec![TransactionOutput {
+                    value: 100,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                    covenant: None,
+                }],
+                0,
+                SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                0,
+                vec![],
+            )
+        };
+        let entry = UtxoEntry {
+            amount: 100,
+            script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+            block_daa_score: 0,
+            is_coinbase: false,
+            covenant_id: None,
+        };
+
+        let signed_v0 = sign(
+            SignableTransaction::with_entries(build_unsigned_tx(0), vec![entry.clone()]),
+            secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &secret_key),
+        );
+        assert_eq!(signed_v0.tx.inputs[0].mass, SigopCount(1).into());
+
+        let signed_v1 = sign(
+            SignableTransaction::with_entries(build_unsigned_tx(1), vec![entry.clone()]),
+            secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &secret_key),
+        );
+        assert_eq!(
+            signed_v1.tx.inputs[0].mass,
+            ComputeBudget(MAINNET_PARAMS.mass_per_sig_op.div_ceil(GRAMS_PER_COMPUTE_BUDGET_UNIT) as u16).into()
+        );
+
+        let signed_multi_v0 = sign_with_multiple(
+            SignableTransaction::with_entries(build_unsigned_tx(0), vec![entry.clone()]),
+            vec![secret_key.secret_bytes()],
+        );
+        assert_eq!(signed_multi_v0.tx.inputs[0].mass, SigopCount(1).into());
+
+        let signed_multi_v1 =
+            sign_with_multiple(SignableTransaction::with_entries(build_unsigned_tx(1), vec![entry]), vec![secret_key.secret_bytes()]);
+        assert_eq!(
+            signed_multi_v1.tx.inputs[0].mass,
+            ComputeBudget(MAINNET_PARAMS.mass_per_sig_op.div_ceil(GRAMS_PER_COMPUTE_BUDGET_UNIT) as u16).into()
+        );
     }
 }

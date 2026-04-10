@@ -265,13 +265,14 @@ impl ScriptBuilder {
             return Ok(self);
         }
 
-        let bytes: Vec<_> = OpcodeData::<i64>::serialize(&val)?;
+        let bytes: crate::data_stack::StackEntry = OpcodeData::<i64>::serialize(&val)?;
         self.add_data(&bytes)
     }
 
     // This value is outside the range of numbers allowed in the script. Bitcoind tests utilizes this function
     pub(crate) fn add_i64_min(&mut self) -> ScriptBuilderResult<&mut Self> {
-        let bytes: Vec<_> = OpcodeData::serialize(&crate::data_stack::SizedEncodeInt::<9>(i64::MIN)).expect("infallible");
+        let bytes: crate::data_stack::StackEntry =
+            OpcodeData::serialize(&crate::data_stack::SizedEncodeInt::<9>(i64::MIN)).expect("infallible");
         self.add_data(&bytes)
     }
 

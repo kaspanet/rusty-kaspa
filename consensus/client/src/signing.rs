@@ -193,7 +193,7 @@ pub fn calc_schnorr_signature_hash(
     hasher
         .write_u64(utxo.amount)
         .write_u64(input.sequence)
-        .write_u8(input.sig_op_count)
+        .write_u8(input.mass.sig_op_count().unwrap_or(0))
         .update(outputs_hash(&tx, hash_type, &reused_values, input_index))
         .write_u64(tx.lock_time)
         .update(&tx.subnetwork_id)

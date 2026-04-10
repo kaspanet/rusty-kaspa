@@ -40,7 +40,7 @@ pub fn create_transaction_js(
             let UtxoEntryReference { utxo } = &reference;
             total_input_amount += utxo.amount();
             entries.push(reference.clone());
-            TransactionInput::new(utxo.outpoint.clone(), None, sequence as u64, sig_op_count, Some(reference))
+            TransactionInput::new(utxo.outpoint.clone(), None, sequence as u64, sig_op_count, 0, Some(reference))
         })
         .collect::<Vec<TransactionInput>>();
 
