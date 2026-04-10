@@ -63,7 +63,6 @@ async fn is_ancestor_in_selected_parent_chain(client: &GrpcClient, mut descendan
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_sanity_test() {
-    let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
@@ -89,7 +88,6 @@ async fn daemon_sanity_test() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_mining_test() {
-    let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
@@ -170,7 +168,6 @@ async fn daemon_mining_test() {
 /// `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_utxos_propagation_test`
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_utxos_propagation_test() {
-    let _guard = crate::integration_test_lock().lock().await;
     #[cfg(feature = "heap")]
     let _profiler = dhat::Profiler::builder().file_name("kaspa-testing-integration-heap.json").build();
 
@@ -423,7 +420,6 @@ async fn daemon_utxos_propagation_test() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_compute_budget_relay_test() {
-    let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
@@ -647,7 +643,6 @@ async fn daemon_compute_budget_relay_test() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() {
-    let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
@@ -913,7 +908,6 @@ async fn daemon_pruning_seqcommit_sync_test() {
 // The following test runtime parameters are required for a graceful shutdown of the gRPC server
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_cleaning_test() {
-    let _guard = crate::integration_test_lock().lock().await;
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("info,kaspa_grpc_core=trace,kaspa_grpc_server=trace,kaspa_grpc_client=trace,kaspa_core=trace");
     let args = Args { devnet: true, ..Default::default() };
