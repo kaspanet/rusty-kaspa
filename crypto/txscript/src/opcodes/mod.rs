@@ -850,7 +850,6 @@ opcode_list! {
             let tag = parse_tag(&mut vm.dstack)?;
 
             // Consume the tag cost
-            // TODO(before-merge): Change tag.cost() to return ScriptUnits.
             vm.consume_script_units(tag.cost())?;
 
             // Verify the ZK proof

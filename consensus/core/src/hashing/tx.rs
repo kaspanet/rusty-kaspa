@@ -100,7 +100,10 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
 fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, version: u16, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
-        hasher.write_var_bytes(input.signature_script.as_slice()).update([input.mass.sig_op_count().unwrap_or(0)]);
+        hasher.write_var_bytes(input.signature_script.as_slice());
+        if TxInputMass::version_expects_sig_op_count_field(version) {
+            hasher.update([input.mass.sig_op_count().unwrap_or(0)]);
+        }
     } else {
         hasher.write_var_bytes(&[]);
     }
@@ -299,7 +302,7 @@ mod tests {
         tests.push(Test {
             tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
             expected_id: "a08a500b21be3e692c080b14e399fcfa2cfa01b25c08f2f8e7414d1c116e8d18",
-            expected_hash: "35cd215d90bca0781507f183d9ad8f27927c82857cf9fd8f38bf78570ba95f2c",
+            expected_hash: "773f5582d847a1c48947eb4e6e6ac569f90f0f9d979b4c939b72ef008f025e02",
         });
 
         // Version >= 1: tx::id excludes mass commitments while tx::hash commits to both mass and per input compute_budget
@@ -321,14 +324,49 @@ mod tests {
         tests.push(Test {
             tx: tx_v1_a,
             expected_id: "5978e7aa1a9ba8fdf12dae6aa39aa198a91985e91192b291e207d4d6246349e6",
-            expected_hash: "8623bdfc46773b6894cf74018fdd95b7464c1d0e72bc90d798957be0580e0b5d",
+            expected_hash: "c41c18964aab2abe309a79de3dcf0353eee216e29ab83448cbec0c4c5792056c",
         });
 
         // Test #12
         tests.push(Test {
             tx: tx_v1_b,
             expected_id: "5978e7aa1a9ba8fdf12dae6aa39aa198a91985e91192b291e207d4d6246349e6",
-            expected_hash: "44cd46eed352ac60633a55128d075053c2c1c7ecef10d9b6db85cf355e1b8f1d",
+            expected_hash: "415dfbc5b38e5805e20831d43a49bc770f4f591b00964ac922d108f6a224c590",
+        });
+
+        // Two identical transactions with different sigop counts.
+        let tx_v1_c = Transaction::new(
+            1,
+            vec![TransactionInput::new(TransactionOutpoint::default(), vec![], 0, 111)],
+            vec![],
+            0,
+            subnets::SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        );
+
+        let tx_v1_d = Transaction::new(
+            1,
+            vec![TransactionInput::new(TransactionOutpoint::default(), vec![], 0, 222)],
+            vec![],
+            0,
+            subnets::SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        );
+
+        // Test #13
+        tests.push(Test {
+            tx: tx_v1_c,
+            expected_id: "5978e7aa1a9ba8fdf12dae6aa39aa198a91985e91192b291e207d4d6246349e6",
+            expected_hash: "55724643b090b9a1c1b9b93b03ffac9cb1bd913a1cf0605a36509322af825864",
+        });
+
+        // Test #14
+        tests.push(Test {
+            tx: tx_v1_d,
+            expected_id: "5978e7aa1a9ba8fdf12dae6aa39aa198a91985e91192b291e207d4d6246349e6",
+            expected_hash: "55724643b090b9a1c1b9b93b03ffac9cb1bd913a1cf0605a36509322af825864",
         });
 
         for (i, test) in tests.iter().enumerate() {
