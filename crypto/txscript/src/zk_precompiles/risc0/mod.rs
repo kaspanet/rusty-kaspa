@@ -10,6 +10,7 @@ use crate::{
     },
 };
 use kaspa_txscript_errors::TxScriptError;
+use risc0_circuit_recursion::control_id;
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;
 mod error;
@@ -79,16 +80,18 @@ impl ZkPrecompile for R0SuccinctPrecompile {
     /// - hash function id (bytes, u8)
     /// - claim (bytes)
     /// - seal (bytes, u32 le)
+    /// - control id (bytes, digest)
     fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error> {
-        let [seal, claim, hashfn, control_index, control_digests, journal, image_id] = dstack.pop_raw()?;
+        let [control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id] = dstack.pop_raw()?;
 
+        let control_id = parse_digest(control_id)?;
         let seal = parse_seal(seal)?;
         let claim = parse_digest(claim)?;
         let hashfn = parse_hashfn(hashfn)?;
         let control_index = parse_merkle_index(control_index)?;
         let control_digests = parse_digest_list(control_digests)?;
         let control_inclusion_proof = MerkleProof { index: control_index, digests: control_digests };
-        let rcpt = SuccinctReceipt::new(seal, claim, hashfn, control_inclusion_proof);
+        let rcpt = SuccinctReceipt::new(seal, control_id, claim, hashfn, control_inclusion_proof);
 
         // Convert image_id and journal to Digest, i.e. a hash
         let image_id: Digest = parse_digest(image_id)?;
