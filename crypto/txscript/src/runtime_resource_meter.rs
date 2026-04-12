@@ -73,18 +73,18 @@ pub struct RuntimeScriptUnitMeter {
     used_sig_ops: u16,
     accounted_pushed_bytes: u64,
     sigop_script_units: ScriptUnits,
-    allowed_script_units: ScriptUnits,
+    script_units_limit: ScriptUnits,
     remaining_script_units: ScriptUnits,
 }
 
 impl RuntimeScriptUnitMeter {
-    pub fn new(sigop_script_units: ScriptUnits, allowed_script_units: ScriptUnits) -> Self {
+    pub fn new(sigop_script_units: ScriptUnits, script_units_limit: ScriptUnits) -> Self {
         Self {
             used_sig_ops: 0,
             accounted_pushed_bytes: 0,
             sigop_script_units,
-            allowed_script_units,
-            remaining_script_units: allowed_script_units,
+            script_units_limit,
+            remaining_script_units: script_units_limit,
         }
     }
 
@@ -93,7 +93,7 @@ impl RuntimeScriptUnitMeter {
     }
 
     pub fn used_script_units(&self) -> ScriptUnits {
-        self.allowed_script_units - self.remaining_script_units
+        self.script_units_limit - self.remaining_script_units
     }
 
     pub fn consume_script_units(&mut self, units: ScriptUnits) -> Result<(), TxScriptError> {
@@ -104,8 +104,8 @@ impl RuntimeScriptUnitMeter {
             }
             None => {
                 let overflow = units - self.remaining_script_units;
-                let used_units = self.allowed_script_units + overflow;
-                Err(TxScriptError::ExceededScriptUnitsLimit { used_units: used_units.0, allowed_units: self.allowed_script_units.0 })
+                let used_units = self.script_units_limit + overflow;
+                Err(TxScriptError::ExceededScriptUnitsLimit { used_units: used_units.0, allowed_units: self.script_units_limit.0 })
             }
         }
     }
@@ -136,8 +136,8 @@ impl RuntimeResourceMeter {
         Self::Sigops(RuntimeSigOpCounter::new(sig_op_limit))
     }
 
-    pub fn new_script_units(sigop_script_units: ScriptUnits, allowed_script_units: ScriptUnits) -> Self {
-        Self::ScriptUnits(RuntimeScriptUnitMeter::new(sigop_script_units, allowed_script_units))
+    pub fn new_script_units(sigop_script_units: ScriptUnits, script_units_limit: ScriptUnits) -> Self {
+        Self::ScriptUnits(RuntimeScriptUnitMeter::new(sigop_script_units, script_units_limit))
     }
 
     pub fn used_sig_ops(&self) -> u16 {

@@ -195,9 +195,9 @@ pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_
 
 pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxUnsync<'_>, flags: EngineFlags) -> TxResult<()> {
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        let allowed_script_units = input.mass.allowed_script_units();
+        let script_units_limit = input.mass.allowed_script_units();
         let mut vm =
-            TxScriptEngine::from_transaction_input_with_allowed_script_units(tx, input, i, entry, ctx, flags, allowed_script_units);
+            TxScriptEngine::from_transaction_input_with_script_units_limit(tx, input, i, entry, ctx, flags, script_units_limit);
         vm.execute().map_err(|err| map_script_err(err, input))?;
     }
     Ok(())
@@ -206,9 +206,9 @@ pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxU
 pub fn check_scripts_par_iter(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtxSync<'_>, flags: EngineFlags) -> TxResult<()> {
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        let allowed_script_units = input.mass.allowed_script_units();
+        let script_units_limit = input.mass.allowed_script_units();
         let mut vm =
-            TxScriptEngine::from_transaction_input_with_allowed_script_units(tx, input, idx, utxo, ctx, flags, allowed_script_units);
+            TxScriptEngine::from_transaction_input_with_script_units_limit(tx, input, idx, utxo, ctx, flags, script_units_limit);
         vm.execute().map_err(|err| map_script_err(err, input))
     })
 }
