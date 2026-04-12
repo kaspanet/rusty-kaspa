@@ -121,6 +121,7 @@ impl RuntimeScriptUnitMeter {
 
     pub fn charge_newly_pushed_bytes(&mut self, total_pushed_bytes: u64) -> Result<(), TxScriptError> {
         let pushed_bytes_delta = total_pushed_bytes.saturating_sub(self.accounted_pushed_bytes);
+        // Pushed bytes are charged 1:1 as script units.
         self.consume_script_units(pushed_bytes_delta.into())?;
         self.accounted_pushed_bytes = total_pushed_bytes;
         Ok(())
@@ -160,6 +161,20 @@ impl RuntimeResourceMeter {
         match self {
             Self::Sigops(counter) => counter.consume_sig_ops(count),
             Self::ScriptUnits(meter) => meter.consume_sig_op_cost(count),
+        }
+    }
+
+    pub fn consume_script_units(&mut self, units: ScriptUnits) -> Result<(), TxScriptError> {
+        match self {
+            Self::Sigops(_) => Ok(()),
+            Self::ScriptUnits(meter) => meter.consume_script_units(units),
+        }
+    }
+
+    pub fn charge_newly_pushed_bytes(&mut self, total_pushed_bytes: u64) -> Result<(), TxScriptError> {
+        match self {
+            Self::Sigops(_) => Ok(()),
+            Self::ScriptUnits(meter) => meter.charge_newly_pushed_bytes(total_pushed_bytes),
         }
     }
 }

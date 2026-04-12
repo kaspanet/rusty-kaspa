@@ -505,10 +505,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     fn consume_script_units(&mut self, units: ScriptUnits) -> Result<(), TxScriptError> {
-        if let RuntimeResourceMeter::ScriptUnits(meter) = &mut self.runtime_resource_meter {
-            meter.consume_script_units(units)?;
-        }
-        Ok(())
+        self.runtime_resource_meter.consume_script_units(units)
     }
 
     fn consume_sig_op_cost(&mut self, count: u16) -> Result<(), TxScriptError> {
@@ -539,10 +536,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 opcode.check_minimal_data_push()?;
             }
             opcode.execute(self)?;
-            let total_pushed_bytes = self.total_pushed_bytes();
-            if let RuntimeResourceMeter::ScriptUnits(meter) = &mut self.runtime_resource_meter {
-                meter.charge_newly_pushed_bytes(total_pushed_bytes)?;
-            }
+            self.runtime_resource_meter.charge_newly_pushed_bytes(self.total_pushed_bytes())?;
             Ok(())
         } else {
             Ok(())
