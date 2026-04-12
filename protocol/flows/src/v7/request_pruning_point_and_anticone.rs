@@ -4,7 +4,7 @@
 //!
 
 use itertools::Itertools;
-use kaspa_p2p_lib::{
+use keryx_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     convert::header::HeaderFormat,

@@ -1,1 +1,1 @@
-pub mod kaspad;
+pub mod keryxd;

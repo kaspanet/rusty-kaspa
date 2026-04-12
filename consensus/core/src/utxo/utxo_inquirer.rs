@@ -1,4 +1,4 @@
-use kaspa_hashes::Hash;
+use keryx_hashes::Hash;
 use thiserror::Error;
 
 use crate::tx::{TransactionId, TransactionOutpoint};

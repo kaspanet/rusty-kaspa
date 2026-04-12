@@ -12,7 +12,7 @@
 #![allow(non_snake_case)]
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_addresses::Prefix;
+use keryx_addresses::Prefix;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
@@ -41,10 +41,10 @@ pub enum NetworkType {
 impl NetworkType {
     pub fn default_rpc_port(&self) -> u16 {
         match self {
-            NetworkType::Mainnet => 16110,
-            NetworkType::Testnet => 16210,
-            NetworkType::Simnet => 16510,
-            NetworkType::Devnet => 16610,
+            NetworkType::Mainnet => 22110,
+            NetworkType::Testnet => 22210,
+            NetworkType::Simnet => 22510,
+            NetworkType::Devnet => 22610,
         }
     }
 
@@ -241,14 +241,14 @@ impl NetworkId {
         // this reasoning so we keep it on the same port in order to simplify RPC client management (hence [`default_rpc_port`]
         // is defined on the [`NetworkType`] struct
         match self.network_type {
-            NetworkType::Mainnet => 16111,
+            NetworkType::Mainnet => 22111,
             NetworkType::Testnet => match self.suffix {
-                Some(10) => 16211,
-                Some(11) => 16311,
-                None | Some(_) => 16411,
+                Some(10) => 22211,
+                Some(11) => 22311,
+                None | Some(_) => 22411,
             },
-            NetworkType::Simnet => 16511,
-            NetworkType::Devnet => 16611,
+            NetworkType::Simnet => 22511,
+            NetworkType::Devnet => 22611,
         }
     }
 
@@ -262,13 +262,13 @@ impl NetworkId {
         NETWORK_IDS.iter().copied()
     }
 
-    /// Returns a textual description of the network prefixed with `kaspa-`
+    /// Returns a textual description of the network prefixed with `keryx-`
     pub fn to_prefixed(&self) -> String {
-        format!("kaspa-{}", self)
+        format!("keryx-{}", self)
     }
 
     pub fn from_prefixed(prefixed: &str) -> Result<Self, NetworkIdError> {
-        if let Some(stripped) = prefixed.strip_prefix("kaspa-") {
+        if let Some(stripped) = prefixed.strip_prefix("keryx-") {
             Self::from_str(stripped)
         } else {
             Err(NetworkIdError::InvalidPrefix(prefixed.to_string()))

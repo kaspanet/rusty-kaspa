@@ -1,8 +1,8 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_consensus_core::errors::consensus::ConsensusError;
-use kaspa_core::debug;
-use kaspa_hashes::Hash;
-use kaspa_p2p_lib::{
+use keryx_consensus_core::errors::consensus::ConsensusError;
+use keryx_core::debug;
+use keryx_hashes::Hash;
+use keryx_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     convert::header::HeaderFormat,

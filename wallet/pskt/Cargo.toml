@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-wallet-pskt"
-keywords = ["kaspa", "wallet", "pskt", "psbt", "bip-370"]
+name = "keryx-wallet-pskt"
+keywords = ["keryx", "wallet", "pskt", "psbt", "bip-370"]
 description = "Partially Signed Kaspa Transaction"
 categories = ["cryptography::cryptocurrencies"]
 rust-version.workspace = true
@@ -15,17 +15,17 @@ include.workspace = true
 crate-type = ["cdylib", "lib"]
 
 [features]
-wasm32-sdk = ["kaspa-consensus-client/wasm32-sdk"]
-wasm32-types = ["kaspa-consensus-client/wasm32-types"]
+wasm32-sdk = ["keryx-consensus-client/wasm32-sdk"]
+wasm32-types = ["keryx-consensus-client/wasm32-types"]
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-bip32.workspace = true
-kaspa-consensus-client.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+keryx-addresses.workspace = true
+keryx-bip32.workspace = true
+keryx-consensus-client.workspace = true
+keryx-consensus-core.workspace = true
+keryx-txscript-errors.workspace = true
+keryx-txscript.workspace = true
+keryx-utils.workspace = true
 
 bincode.workspace = true
 derive_builder.workspace = true

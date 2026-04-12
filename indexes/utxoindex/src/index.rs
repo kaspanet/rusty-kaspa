@@ -6,22 +6,22 @@ use crate::{
     stores::store_manager::Store,
     update_container::UtxoIndexChanges,
 };
-use kaspa_consensus_core::{BlockHashSet, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
-use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
-use kaspa_core::{info, trace};
-use kaspa_database::prelude::{DB, StoreError, StoreResult};
-use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
-use kaspa_utils::arc::ArcExtensions;
+use keryx_consensus_core::{BlockHashSet, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
+use keryx_consensusmanager::{ConsensusManager, ConsensusResetHandler};
+use keryx_core::{info, trace};
+use keryx_database::prelude::{DB, StoreError, StoreResult};
+use keryx_hashes::Hash;
+use keryx_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use keryx_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
     fmt::Debug,
     sync::{Arc, Weak},
 };
 
-const RESYNC_CHUNK_SIZE: usize = 2048; // Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
+const RESYNC_CHUNK_SIZE: usize = 2048; // Increased from 1k (used in go-keryxd), for quicker resets, while still having a low memory footprint.
 
-/// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](kaspa_consensus_core::tx::ScriptPublicKey),
+/// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](keryx_consensus_core::tx::ScriptPublicKey),
 /// commits them to its owns store, and emits changes.
 /// Note: The UtxoIndex struct by itself is not thread safe, only correct usage of the supplied RwLock via `new` makes it so.
 /// please follow guidelines found in the comments under `utxoindex::core::api::UtxoIndexApi` for proper thread safety.
@@ -191,7 +191,7 @@ impl UtxoIndexApi for UtxoIndex {
     }
 
     // This can have a big memory footprint, so it should be used only for tests.
-    fn get_all_outpoints(&self) -> StoreResult<std::collections::HashSet<kaspa_consensus_core::tx::TransactionOutpoint>> {
+    fn get_all_outpoints(&self) -> StoreResult<std::collections::HashSet<keryx_consensus_core::tx::TransactionOutpoint>> {
         self.store.get_all_outpoints()
     }
 }
@@ -223,7 +223,7 @@ impl ConsensusResetHandler for UtxoIndexConsensusResetHandler {
 #[cfg(test)]
 mod tests {
     use crate::{UtxoIndex, api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator};
-    use kaspa_consensus::{
+    use keryx_consensus::{
         config::Config,
         consensus::test_consensus::TestConsensus,
         model::stores::{
@@ -232,20 +232,20 @@ mod tests {
         },
         params::DEVNET_PARAMS,
     };
-    use kaspa_consensus_core::{
+    use keryx_consensus_core::{
         api::ConsensusApi,
         utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
     };
-    use kaspa_consensusmanager::ConsensusManager;
-    use kaspa_core::info;
-    use kaspa_database::create_temp_db;
-    use kaspa_database::prelude::ConnBuilder;
+    use keryx_consensusmanager::ConsensusManager;
+    use keryx_core::info;
+    use keryx_database::create_temp_db;
+    use keryx_database::prelude::ConnBuilder;
     use std::{collections::HashSet, sync::Arc, time::Instant};
 
     /// TODO: use proper Simnet when implemented.
     #[test]
     fn test_utxoindex() {
-        kaspa_core::log::try_init_logger("INFO");
+        keryx_core::log::try_init_logger("INFO");
 
         let resync_utxo_collection_size = 10_000;
         let update_utxo_collection_size = 1_000;

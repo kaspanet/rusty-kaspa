@@ -8,21 +8,21 @@ use crate::imports::*;
 use crate::tx::PaymentOutput;
 use crate::tx::PaymentOutputs;
 use futures::stream;
-use kaspa_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
-use kaspa_consensus_client::UtxoEntry as ClientUTXO;
-use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
-use kaspa_consensus_core::tx::VerifiableTransaction;
-use kaspa_consensus_core::tx::{TransactionInput, UtxoEntry};
-use kaspa_txscript::extract_script_pub_key_address;
-use kaspa_txscript::opcodes::codes::OpData65;
-use kaspa_txscript::script_builder::ScriptBuilder;
-use kaspa_wallet_core::tx::{Generator, GeneratorSettings, PaymentDestination, PendingTransaction};
-pub use kaspa_wallet_pskt::bundle::Bundle;
-use kaspa_wallet_pskt::bundle::{script_sig_to_address, unlock_utxo_outputs_as_batch_transaction_pskb};
-use kaspa_wallet_pskt::prelude::KeySource;
-use kaspa_wallet_pskt::prelude::lock_script_sig_templating_bytes;
-use kaspa_wallet_pskt::prelude::{Finalizer, Inner, SignInputOk, Signature, Signer};
-pub use kaspa_wallet_pskt::pskt::{Creator, PSKT};
+use keryx_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
+use keryx_consensus_client::UtxoEntry as ClientUTXO;
+use keryx_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
+use keryx_consensus_core::tx::VerifiableTransaction;
+use keryx_consensus_core::tx::{TransactionInput, UtxoEntry};
+use keryx_txscript::extract_script_pub_key_address;
+use keryx_txscript::opcodes::codes::OpData65;
+use keryx_txscript::script_builder::ScriptBuilder;
+use keryx_wallet_core::tx::{Generator, GeneratorSettings, PaymentDestination, PendingTransaction};
+pub use keryx_wallet_pskt::bundle::Bundle;
+use keryx_wallet_pskt::bundle::{script_sig_to_address, unlock_utxo_outputs_as_batch_transaction_pskb};
+use keryx_wallet_pskt::prelude::KeySource;
+use keryx_wallet_pskt::prelude::lock_script_sig_templating_bytes;
+use keryx_wallet_pskt::prelude::{Finalizer, Inner, SignInputOk, Signature, Signer};
+pub use keryx_wallet_pskt::pskt::{Creator, PSKT};
 use secp256k1::schnorr;
 use secp256k1::{Message, PublicKey};
 use std::iter;
@@ -347,7 +347,7 @@ pub fn pskt_to_pending_transaction(
         },
         Err(e) => return Err(Error::PendingTransactionFromPSKTError(e.to_string())),
     };
-    let output: &Vec<kaspa_consensus_core::tx::TransactionOutput> = &signed_tx.outputs;
+    let output: &Vec<keryx_consensus_core::tx::TransactionOutput> = &signed_tx.outputs;
     if output.is_empty() {
         return Err(Error::Custom("0 outputs pskt is not supported".to_string()));
         // todo support 0 outputs
@@ -409,7 +409,7 @@ pub fn pskt_to_pending_transaction(
         1,
         0,
         0,
-        kaspa_wallet_core::tx::DataKind::Final,
+        keryx_wallet_core::tx::DataKind::Final,
     )?;
 
     Ok(pending_tx)

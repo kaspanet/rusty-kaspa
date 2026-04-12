@@ -2,7 +2,7 @@ use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use crate::processes::window::WindowManager;
-use kaspa_consensus_core::header::Header;
+use keryx_consensus_core::header::Header;
 
 impl HeaderProcessor {
     pub(super) fn pre_pow_validation(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {

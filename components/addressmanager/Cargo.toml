@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-addressmanager"
+name = "keryx-addressmanager"
 description = "Kaspa address manager"
 rust-version.workspace = true
 version.workspace = true
@@ -13,10 +13,10 @@ repository.workspace = true
 borsh.workspace = true
 igd-next.workspace = true
 itertools.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-utils.workspace = true
+keryx-consensus-core.workspace = true
+keryx-core.workspace = true
+keryx-database.workspace = true
+keryx-utils.workspace = true
 local-ip-address.workspace = true
 log.workspace = true
 parking_lot.workspace = true

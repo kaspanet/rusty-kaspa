@@ -1,13 +1,13 @@
 use crate::{connection::*, router::*, server::*};
 use async_trait::async_trait;
-use kaspa_core::{
+use keryx_core::{
     info,
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace, warn,
 };
-use kaspa_rpc_core::api::ops::RpcApiOps;
-use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_utils::triggers::SingleTrigger;
+use keryx_rpc_core::api::ops::RpcApiOps;
+use keryx_rpc_service::service::RpcCoreService;
+use keryx_utils::triggers::SingleTrigger;
 use std::sync::Arc;
 use tokio::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use workflow_rpc::server::prelude::*;

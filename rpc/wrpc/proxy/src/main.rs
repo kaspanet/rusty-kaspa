@@ -2,9 +2,9 @@ mod error;
 mod result;
 
 use clap::Parser;
-use kaspa_consensus_core::network::NetworkType;
-use kaspa_rpc_core::api::ops::RpcApiOps;
-use kaspa_wrpc_server::{
+use keryx_consensus_core::network::NetworkType;
+use keryx_rpc_core::api::ops::RpcApiOps;
+use keryx_wrpc_server::{
     connection::Connection,
     router::Router,
     server::Server,
@@ -30,7 +30,7 @@ struct Args {
     #[clap(long)]
     devnet: bool,
 
-    /// proxy:port for gRPC server (grpc://127.0.0.1:16110)
+    /// proxy:port for gRPC server (grpc://127.0.0.1:22110)
     #[clap(name = "grpc")]
     grpc_proxy_address: Option<String>,
 

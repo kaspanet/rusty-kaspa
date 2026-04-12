@@ -1,5 +1,5 @@
 use crate::protowire::{kaspad_request::Payload as RequestPayload, kaspad_response::Payload as ResponsePayload, *};
-use kaspa_rpc_core::RpcError;
+use keryx_rpc_core::RpcError;
 use workflow_core::enums::Describe;
 
 macro_rules! payload_type_enum {

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlockLevel, BlueWorkType, HashMapCustomHasher,
     blockhash::{self, BlockHashExtensions, BlockHashes},
 };
-use kaspa_hashes::Hash;
-use kaspa_utils::refs::Refs;
+use keryx_hashes::Hash;
+use keryx_utils::refs::Refs;
 
 use crate::{
     model::{

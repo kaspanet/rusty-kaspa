@@ -26,7 +26,7 @@ use crate::{
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel,
     blockhash::ORIGIN,
     blockstatus::BlockStatus::StatusHeaderOnly,
@@ -35,12 +35,12 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
 };
-use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, trace, warn};
-use kaspa_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
-use kaspa_hashes::Hash;
-use kaspa_muhash::MuHash;
-use kaspa_utils::iter::IterExtensions;
+use keryx_consensusmanager::SessionLock;
+use keryx_core::{debug, info, trace, warn};
+use keryx_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
+use keryx_hashes::Hash;
+use keryx_muhash::MuHash;
+use keryx_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{

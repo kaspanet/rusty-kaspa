@@ -96,7 +96,7 @@ impl ToTokens for RpcTable {
                                 Box::pin(async move {
                                     let mut response: #kaspad_response_type = match request.payload {
                                         Some(Payload::#request_type(ref request)) => {
-                                            match kaspa_rpc_core::#fallback_request_type::try_from(request) {
+                                            match keryx_rpc_core::#fallback_request_type::try_from(request) {
                                                 Ok(request) => {
                                                     let listener_id = connection.get_or_register_listener_id()?;
                                                     let command = request.command;

@@ -19,7 +19,7 @@
 
 use crate::imports::*;
 
-use kaspa_consensus_core::network::NetworkType;
+use keryx_consensus_core::network::NetworkType;
 use ripemd::{Digest, Ripemd160};
 use sha2::Sha256;
 

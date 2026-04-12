@@ -2,17 +2,17 @@
 mod mockery {
 
     use crate::model::*;
-    use kaspa_addresses::{Prefix, Version};
-    use kaspa_consensus_core::api::BlockCount;
-    use kaspa_consensus_core::network::NetworkType;
-    use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_consensus_core::tx::ScriptPublicKey;
-    use kaspa_hashes::Hash;
-    use kaspa_math::Uint192;
-    use kaspa_notify::subscription::Command;
-    use kaspa_rpc_macros::test_wrpc_serializer as test;
-    use kaspa_txscript::script_class::ScriptClass;
-    use kaspa_utils::networking::{ContextualNetAddress, IpAddress, NetAddress};
+    use keryx_addresses::{Prefix, Version};
+    use keryx_consensus_core::api::BlockCount;
+    use keryx_consensus_core::network::NetworkType;
+    use keryx_consensus_core::subnets::SubnetworkId;
+    use keryx_consensus_core::tx::ScriptPublicKey;
+    use keryx_hashes::Hash;
+    use keryx_math::Uint192;
+    use keryx_notify::subscription::Command;
+    use keryx_rpc_macros::test_wrpc_serializer as test;
+    use keryx_txscript::script_class::ScriptClass;
+    use keryx_utils::networking::{ContextualNetAddress, IpAddress, NetAddress};
     use rand::Rng;
     use std::net::{IpAddr, Ipv4Addr};
     use std::sync::Arc;

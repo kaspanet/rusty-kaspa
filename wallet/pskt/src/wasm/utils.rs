@@ -1,5 +1,5 @@
-use kaspa_consensus_core::constants::*;
-use kaspa_consensus_core::network::NetworkType;
+use keryx_consensus_core::constants::*;
+use keryx_consensus_core::network::NetworkType;
 use separator::{Separatable, separated_float, separated_int, separated_uint_with_output};
 
 #[inline]

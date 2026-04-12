@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-p2p-lib"
+name = "keryx-p2p-lib"
 description = "Kaspa p2p library"
 rust-version.workspace = true
 version.workspace = true
@@ -13,21 +13,21 @@ repository.workspace = true
 path = "./src/lib.rs"
 
 [[bin]]
-name = "kaspa_p2p_client"
+name = "keryx_p2p_client"
 path = "./src/bin/client.rs"
 
 [[bin]]
-name = "kaspa_p2p_server"
+name = "keryx_p2p_server"
 path = "./src/bin/server.rs"
 
 [dependencies]
-kaspa-core.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-mining-errors.workspace = true
-kaspa-hashes.workspace = true
-kaspa-math.workspace = true
-kaspa-utils.workspace = true
-kaspa-utils-tower.workspace = true
+keryx-core.workspace = true
+keryx-consensus-core.workspace = true
+keryx-mining-errors.workspace = true
+keryx-hashes.workspace = true
+keryx-math.workspace = true
+keryx-utils.workspace = true
+keryx-utils-tower.workspace = true
 
 borsh.workspace = true
 ctrlc.workspace = true

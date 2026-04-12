@@ -10,14 +10,14 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-grpc-client.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+keryx-addresses.workspace = true
+keryx-consensus-core.workspace = true
+keryx-core.workspace = true
+keryx-grpc-client.workspace = true
+keryx-notify.workspace = true
+keryx-rpc-core.workspace = true
+keryx-txscript.workspace = true
+keryx-utils.workspace = true
 
 async-channel.workspace = true
 clap.workspace = true

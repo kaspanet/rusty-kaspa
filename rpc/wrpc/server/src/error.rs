@@ -1,5 +1,5 @@
-use kaspa_notify::error::Error as NotifyError;
-use kaspa_rpc_core::RpcError;
+use keryx_notify::error::Error as NotifyError;
+use keryx_rpc_core::RpcError;
 use std::sync::PoisonError;
 use thiserror::Error;
 use workflow_rpc::server::{WebSocketError, error::Error as RpcServerError};

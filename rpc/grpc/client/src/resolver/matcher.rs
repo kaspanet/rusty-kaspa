@@ -1,4 +1,4 @@
-use kaspa_grpc_core::protowire::{KaspadRequest, KaspadResponse, kaspad_request, kaspad_response};
+use keryx_grpc_core::protowire::{KaspadRequest, KaspadResponse, kaspad_request, kaspad_response};
 
 pub(crate) trait Matcher<T> {
     fn is_matching(&self, response: T) -> bool;

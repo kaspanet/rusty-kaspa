@@ -1,5 +1,5 @@
 use crate::BlueWorkType;
-use kaspa_hashes::HasherBase;
+use keryx_hashes::HasherBase;
 
 pub mod header;
 pub mod sighash;
@@ -28,7 +28,7 @@ pub trait HasherExtensions {
     fn write_u64(&mut self, element: u64) -> &mut Self;
 
     /// Writes blue work as big endian bytes w/o the leading zeros
-    /// (emulates bigint.bytes() in the kaspad golang ref)
+    /// (emulates bigint.bytes() in the keryxd golang ref)
     fn write_blue_work(&mut self, work: BlueWorkType) -> &mut Self;
 
     /// Writes the number of bytes followed by the bytes themselves

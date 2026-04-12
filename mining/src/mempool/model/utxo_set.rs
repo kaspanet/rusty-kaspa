@@ -7,7 +7,7 @@ use crate::{
     },
     model::TransactionIdSet,
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     constants::UNACCEPTED_DAA_SCORE,
     tx::{MutableTransaction, TransactionId, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,

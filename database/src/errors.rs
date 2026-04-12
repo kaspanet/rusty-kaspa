@@ -1,5 +1,5 @@
 use crate::prelude::DbKey;
-use kaspa_hashes::Hash;
+use keryx_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

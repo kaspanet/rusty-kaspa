@@ -5,7 +5,7 @@
 use crate::transaction::Transaction;
 use core::iter::once;
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     hashing::{
         sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::SIG_HASH_ALL,

@@ -4,13 +4,13 @@ pub enum Error {
     Other(String),
 
     #[error(transparent)]
-    GrpcApi(#[from] kaspa_rpc_core::error::RpcError),
+    GrpcApi(#[from] keryx_rpc_core::error::RpcError),
 
     #[error(transparent)]
-    GrpcClient(#[from] kaspa_grpc_client::error::Error),
+    GrpcClient(#[from] keryx_grpc_client::error::Error),
 
     #[error(transparent)]
-    Wrpc(#[from] kaspa_wrpc_server::error::Error),
+    Wrpc(#[from] keryx_wrpc_server::error::Error),
 
     #[error(transparent)]
     WebSocket(#[from] workflow_rpc::server::WebSocketError),

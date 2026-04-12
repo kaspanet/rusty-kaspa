@@ -1,4 +1,4 @@
-use kaspa_core::{time::Stopwatch, trace};
+use keryx_core::{time::Stopwatch, trace};
 use rand::Rng;
 use std::collections::HashMap;
 
@@ -8,7 +8,7 @@ use super::{
     model::tx::{CandidateList, SelectableTransaction, SelectableTransactions, TransactionIndex},
     policy::Policy,
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     block::TemplateTransactionSelector,
     subnets::SubnetworkId,
     tx::{Transaction, TransactionId},
@@ -260,13 +260,13 @@ impl TemplateTransactionSelector for RebalancingWeightedTransactionSelector {
 mod tests {
     use super::*;
     use itertools::Itertools;
-    use kaspa_consensus_core::{
+    use keryx_consensus_core::{
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         mass::transaction_estimated_serialized_size,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
-    use kaspa_txscript::{pay_to_script_hash_signature_script, test_helpers::op_true_script};
+    use keryx_txscript::{pay_to_script_hash_signature_script, test_helpers::op_true_script};
     use std::{collections::HashSet, sync::Arc};
 
     use crate::{

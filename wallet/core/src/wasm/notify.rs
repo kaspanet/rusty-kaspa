@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use cfg_if::cfg_if;
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
+use keryx_wallet_macros::declare_typescript_wasm_interface as declare;
 use wasm_bindgen::prelude::*;
 
 cfg_if! {

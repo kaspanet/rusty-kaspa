@@ -4,7 +4,7 @@
 
 use crate::account::Inner;
 use crate::imports::*;
-use kaspa_addresses::Version;
+use keryx_addresses::Version;
 use secp256k1::PublicKey;
 
 pub const KEYPAIR_ACCOUNT_KIND: &str = "kaspa-keypair-standard";

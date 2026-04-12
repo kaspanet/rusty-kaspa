@@ -1,4 +1,4 @@
-use kaspa_consensus_core::BlueWorkType;
+use keryx_consensus_core::BlueWorkType;
 use smallvec::{SmallVec, smallvec};
 use std::str;
 

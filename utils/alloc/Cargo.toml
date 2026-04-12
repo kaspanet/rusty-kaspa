@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-alloc"
+name = "keryx-alloc"
 description = "Kaspa allocator wrapper"
 rust-version.workspace = true
 version.workspace = true

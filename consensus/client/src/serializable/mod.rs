@@ -13,7 +13,7 @@
 //! via JSON in JavaScript environments and later conversion to `bigint` types.
 //!
 //! These data structures can be used for manual transport of transactions using JSON.
-//! For more advanced use cases, please refer to `PSKT` in the [`kaspa_wallet_pskt`](https://docs.rs/kaspa_wallet_pskt)
+//! For more advanced use cases, please refer to `PSKT` in the [`keryx_wallet_pskt`](https://docs.rs/keryx_wallet_pskt)
 //! crate.
 //!
 

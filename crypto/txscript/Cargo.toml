@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-txscript"
+name = "keryx-txscript"
 description = "Kaspa txscript engine library"
 rust-version.workspace = true
 version.workspace = true
@@ -23,12 +23,12 @@ cfg-if.workspace = true
 hexplay.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-utils.workspace = true
-kaspa-wasm-core.workspace = true
+keryx-addresses.workspace = true
+keryx-consensus-core.workspace = true
+keryx-hashes.workspace = true
+keryx-txscript-errors.workspace = true
+keryx-utils.workspace = true
+keryx-wasm-core.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true

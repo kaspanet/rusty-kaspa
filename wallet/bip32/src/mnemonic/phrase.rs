@@ -7,7 +7,7 @@ use super::{
 use crate::Result;
 use crate::{Error, KEY_SIZE};
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_utils::hex::*;
+use keryx_utils::hex::*;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

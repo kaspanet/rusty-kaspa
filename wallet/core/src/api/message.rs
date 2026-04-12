@@ -7,9 +7,9 @@
 
 use crate::imports::*;
 use crate::tx::{Fees, GeneratorSummary, PaymentDestination};
-use kaspa_addresses::Address;
-use kaspa_consensus_client::{TransactionOutpoint, UtxoEntry};
-use kaspa_rpc_core::RpcFeerateBucket;
+use keryx_addresses::Address;
+use keryx_consensus_client::{TransactionOutpoint, UtxoEntry};
+use keryx_rpc_core::RpcFeerateBucket;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]

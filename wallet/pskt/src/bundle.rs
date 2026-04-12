@@ -3,14 +3,14 @@ use crate::prelude::*;
 use crate::pskt::{Inner as PSKTInner, PSKT};
 // use crate::wasm::result;
 
-use kaspa_addresses::{Address, Prefix};
-// use kaspa_bip32::Prefix;
-use kaspa_consensus_core::network::{NetworkId, NetworkType};
-use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+use keryx_addresses::{Address, Prefix};
+// use keryx_bip32::Prefix;
+use keryx_consensus_core::network::{NetworkId, NetworkType};
+use keryx_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 
 use hex;
-use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
-use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script, pay_to_script_hash_script};
+use keryx_consensus_core::constants::UNACCEPTED_DAA_SCORE;
+use keryx_txscript::{extract_script_pub_key_address, pay_to_address_script, pay_to_script_hash_script};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -169,7 +169,7 @@ pub fn lock_script_sig_templating_bytes(payload: Vec<u8>, pubkey_bytes: Option<&
     Ok(payload_bytes)
 }
 
-pub fn script_sig_to_address(script_sig: &[u8], prefix: kaspa_addresses::Prefix) -> Result<Address, Error> {
+pub fn script_sig_to_address(script_sig: &[u8], prefix: keryx_addresses::Prefix) -> Result<Address, Error> {
     extract_script_pub_key_address(&pay_to_script_hash_script(script_sig), prefix).map_err(Error::P2SHExtractError)
 }
 
@@ -276,8 +276,8 @@ mod tests {
     use crate::prelude::*;
     use crate::role::Creator;
     use crate::role::*;
-    use kaspa_consensus_core::tx::{TransactionId, TransactionOutpoint, UtxoEntry};
-    use kaspa_txscript::{multisig_redeem_script, pay_to_script_hash_script};
+    use keryx_consensus_core::tx::{TransactionId, TransactionOutpoint, UtxoEntry};
+    use keryx_txscript::{multisig_redeem_script, pay_to_script_hash_script};
     use secp256k1::Secp256k1;
     use secp256k1::{Keypair, rand::thread_rng};
     use std::str::FromStr;

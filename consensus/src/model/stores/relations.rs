@@ -1,13 +1,13 @@
 use itertools::Itertools;
-use kaspa_consensus_core::BlockHashSet;
-use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, blockhash::BlockHashes};
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DbWriter};
-use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
-use kaspa_database::prelude::{DB, StoreResult};
-use kaspa_database::prelude::{DirectWriter, MemoryWriter};
-use kaspa_database::prelude::{ReadLock, StoreError};
-use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
-use kaspa_hashes::Hash;
+use keryx_consensus_core::BlockHashSet;
+use keryx_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, blockhash::BlockHashes};
+use keryx_database::prelude::{BatchDbWriter, CachePolicy, DbWriter};
+use keryx_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
+use keryx_database::prelude::{DB, StoreResult};
+use keryx_database::prelude::{DirectWriter, MemoryWriter};
+use keryx_database::prelude::{ReadLock, StoreError};
+use keryx_database::registry::{DatabaseStorePrefixes, SEPARATOR};
+use keryx_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::collections::HashSet;
 use std::collections::hash_map::Entry;
@@ -338,7 +338,7 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
             .parents_access
             .iterator()
             .map(|r| r.unwrap().0)
-            .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
+            .map(|k| <[u8; keryx_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
             .map(Hash::from_bytes)
             .chain(self.parents_overrides.keys().copied())
             .collect::<BlockHashSet>()
@@ -440,8 +440,8 @@ impl RelationsStore for MemoryRelationsStore {
 mod tests {
     use super::*;
     use crate::processes::relations::RelationsStoreExtensions;
-    use kaspa_database::create_temp_db;
-    use kaspa_utils::mem_size::MemMode;
+    use keryx_database::create_temp_db;
+    use keryx_utils::mem_size::MemMode;
 
     #[test]
     fn test_memory_relations_store() {
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn test_db_relations_store() {
-        let (lt, db) = create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10));
+        let (lt, db) = create_temp_db!(keryx_database::prelude::ConnBuilder::default().with_files_limit(10));
         test_relations_store(DbRelationsStore::new(
             db,
             0,

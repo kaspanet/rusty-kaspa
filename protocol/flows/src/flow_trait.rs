@@ -1,6 +1,6 @@
-use kaspa_core::warn;
-use kaspa_p2p_lib::{Router, common::ProtocolError};
-use kaspa_utils::any::type_name_short;
+use keryx_core::warn;
+use keryx_p2p_lib::{Router, common::ProtocolError};
+use keryx_utils::any::type_name_short;
 use std::sync::Arc;
 
 #[async_trait::async_trait]

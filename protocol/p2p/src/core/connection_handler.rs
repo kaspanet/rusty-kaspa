@@ -5,9 +5,9 @@ use crate::pb::{
 };
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
-use kaspa_core::{debug, info};
-use kaspa_utils::networking::NetAddress;
-use kaspa_utils_tower::{
+use keryx_core::{debug, info};
+use keryx_utils::networking::NetAddress;
+use keryx_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
@@ -177,7 +177,7 @@ impl ConnectionHandler {
 
     // TODO: revisit the below constants
     fn outgoing_network_channel_size() -> usize {
-        // TODO: this number is taken from go-kaspad and should be re-evaluated
+        // TODO: this number is taken from go-keryxd and should be re-evaluated
         (1 << 17) + 256
     }
 

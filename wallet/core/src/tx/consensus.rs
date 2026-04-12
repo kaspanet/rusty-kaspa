@@ -3,8 +3,8 @@
 //! on the network type or address prefix.
 //!
 
-use kaspa_addresses::{Address, Prefix};
-use kaspa_consensus_core::{
+use keryx_addresses::{Address, Prefix};
+use keryx_consensus_core::{
     config::params::{DEVNET_PARAMS, MAINNET_PARAMS, Params, SIMNET_PARAMS, TESTNET_PARAMS},
     network::NetworkType,
 };

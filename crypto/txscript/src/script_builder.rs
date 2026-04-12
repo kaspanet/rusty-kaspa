@@ -6,7 +6,7 @@ use crate::{
     opcodes::{OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL, OP_SMALL_INT_MIN_VAL, codes::*},
 };
 use hexplay::{HexView, HexViewBuilder};
-use kaspa_txscript_errors::SerializationError;
+use keryx_txscript_errors::SerializationError;
 use thiserror::Error;
 
 /// DEFAULT_SCRIPT_ALLOC is the default size used for the backing array
@@ -50,8 +50,8 @@ pub type ScriptBuilderResult<T> = std::result::Result<T, ScriptBuilderError>;
 /// better choice to generate the script):
 ///
 /// ```
-/// use kaspa_txscript::opcodes::codes::*;
-/// use kaspa_txscript::script_builder::{ScriptBuilderResult, ScriptBuilder};
+/// use keryx_txscript::opcodes::codes::*;
+/// use keryx_txscript::script_builder::{ScriptBuilderResult, ScriptBuilder};
 /// fn build_multisig_script(pub_key1: &[u8], pub_key2: &[u8], pub_key3: &[u8]) -> ScriptBuilderResult<Vec<u8>> {
 ///     Ok(ScriptBuilder::new()
 ///         .add_op(Op2)?

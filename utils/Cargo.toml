@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-utils"
+name = "keryx-utils"
 description = "Kaspa utilities"
 rust-version.workspace = true
 version.workspace = true

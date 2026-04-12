@@ -6,4 +6,4 @@ pub mod pruning_processor;
 pub mod virtual_processor;
 
 /// Re-export from consensus core
-pub use kaspa_consensus_core::api::counters::{ProcessingCounters, ProcessingCountersSnapshot};
+pub use keryx_consensus_core::api::counters::{ProcessingCounters, ProcessingCountersSnapshot};

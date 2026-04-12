@@ -6,14 +6,14 @@
 
 use crate::imports::*;
 use crate::result::Result;
-use kaspa_addresses::*;
-use kaspa_consensus_core::{
+use keryx_addresses::*;
+use keryx_consensus_core::{
     network::{NetworkType, NetworkTypeT},
     tx::ScriptPublicKeyT,
 };
-use kaspa_txscript::{script_class::ScriptClass, standard};
-use kaspa_utils::hex::ToHex;
-use kaspa_wasm_core::types::{BinaryT, HexString};
+use keryx_txscript::{script_class::ScriptClass, standard};
+use keryx_utils::hex::ToHex;
+use keryx_wasm_core::types::{BinaryT, HexString};
 
 /// Creates a new script to pay a transaction output to the specified address.
 /// @category Wallet SDK

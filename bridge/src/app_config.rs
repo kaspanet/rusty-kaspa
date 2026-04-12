@@ -187,7 +187,7 @@ struct BridgeConfigRaw {
 impl Default for GlobalConfig {
     fn default() -> Self {
         Self {
-            kaspad_address: "localhost:16110".to_string(),
+            kaspad_address: "localhost:22110".to_string(),
             block_wait_time: Duration::from_millis(1000),
             print_stats: true,
             log_to_file: true,

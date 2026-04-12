@@ -1,5 +1,5 @@
 use igd_next::{AddPortError, aio::tokio::Tokio};
-use kaspa_core::{
+use keryx_core::{
     debug, error, info,
     task::{
         service::{AsyncService, AsyncServiceFuture},

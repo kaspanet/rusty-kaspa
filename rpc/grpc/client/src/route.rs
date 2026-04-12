@@ -11,7 +11,7 @@ macro_rules! route {
             )]
             fn $fn<'life0, 'life1, 'async_trait>(
                 &'life0 self,
-                _connection : ::core::option::Option<&'life1 Arc<dyn kaspa_rpc_core::api::connection::RpcConnection>>,
+                _connection : ::core::option::Option<&'life1 Arc<dyn keryx_rpc_core::api::connection::RpcConnection>>,
                 request: [<$name Request>],
             ) -> ::core::pin::Pin<Box<dyn ::core::future::Future<Output = RpcResult<[<$name Response>]>> + ::core::marker::Send + 'async_trait>>
             where

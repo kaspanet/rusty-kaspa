@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-grpc-server"
+name = "keryx-grpc-server"
 description = "Kaspa gRPC server"
 rust-version.workspace = true
 version.workspace = true
@@ -10,15 +10,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-grpc-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-rpc-macros.workspace = true
-kaspa-rpc-service.workspace = true
-kaspa-utils-tower.workspace = true
-kaspa-utils.workspace = true
+keryx-consensus-core.workspace = true
+keryx-core.workspace = true
+keryx-grpc-core.workspace = true
+keryx-notify.workspace = true
+keryx-rpc-core.workspace = true
+keryx-rpc-macros.workspace = true
+keryx-rpc-service.workspace = true
+keryx-utils-tower.workspace = true
+keryx-utils.workspace = true
 
 async-channel.workspace = true
 async-stream.workspace = true
@@ -42,7 +42,7 @@ uuid.workspace = true
 rustls.workspace = true
 
 [dev-dependencies]
-kaspa-grpc-client.workspace = true
+keryx-grpc-client.workspace = true
 
 [lints]
 workspace = true

@@ -1,7 +1,7 @@
 // Example of simple client to connect with Kaspa node using wRPC connection and collect some node and network basic data
 
-use kaspa_rpc_core::{GetBlockDagInfoResponse, GetServerInfoResponse, api::rpc::RpcApi};
-use kaspa_wrpc_client::{
+use keryx_rpc_core::{GetBlockDagInfoResponse, GetServerInfoResponse, api::rpc::RpcApi};
+use keryx_wrpc_client::{
     KaspaRpcClient, Resolver, WrpcEncoding,
     client::{ConnectOptions, ConnectStrategy},
     prelude::{NetworkId, NetworkType},

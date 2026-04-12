@@ -4,21 +4,21 @@ use std::{
 };
 
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockLevel, BlueWorkType,
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     errors::pruning::{ProofWeakness, PruningImportError, PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningProofMetadata},
 };
-use kaspa_core::info;
-use kaspa_database::{
+use keryx_core::info;
+use keryx_database::{
     prelude::{CachePolicy, ConnBuilder, StoreResultUnitExt},
     utils::DbLifetime,
 };
-use kaspa_hashes::Hash;
-use kaspa_pow::{calc_block_level, calc_block_level_check_pow};
-use kaspa_utils::vec::VecExtensions;
+use keryx_hashes::Hash;
+use keryx_pow::{calc_block_level, calc_block_level_check_pow};
+use keryx_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
@@ -117,7 +117,7 @@ impl ProofContext {
         // Initialize stores
         //
 
-        let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (db_lifetime, db) = keryx_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_policy = CachePolicy::Count(2 * ppm.pruning_proof_m as usize);
         let headers_store =
             Arc::new(DbHeadersStore::new(db.clone(), CachePolicy::Count(headers_estimate), CachePolicy::Count(headers_estimate)));

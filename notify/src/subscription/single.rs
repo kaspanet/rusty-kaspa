@@ -10,9 +10,9 @@ use crate::{
     },
 };
 use itertools::Itertools;
-use kaspa_addresses::{Address, Prefix};
-use kaspa_consensus_core::tx::ScriptPublicKey;
-use kaspa_core::trace;
+use keryx_addresses::{Address, Prefix};
+use keryx_consensus_core::tx::ScriptPublicKey;
+use keryx_core::trace;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     collections::hash_set,

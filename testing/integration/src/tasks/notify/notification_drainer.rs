@@ -1,8 +1,8 @@
 use crate::tasks::Task;
 use async_trait::async_trait;
-use kaspa_core::warn;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_utils::triggers::SingleTrigger;
+use keryx_core::warn;
+use keryx_grpc_client::GrpcClient;
+use keryx_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::{task::JoinHandle, time::sleep};
 

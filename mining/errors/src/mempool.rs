@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     errors::tx::TxRuleError,
     tx::{TransactionId, TransactionOutpoint},
 };

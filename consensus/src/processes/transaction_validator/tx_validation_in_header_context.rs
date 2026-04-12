@@ -7,7 +7,7 @@ use super::{
     errors::{TxResult, TxRuleError},
 };
 use crate::constants::LOCK_TIME_THRESHOLD;
-use kaspa_consensus_core::tx::Transaction;
+use keryx_consensus_core::tx::Transaction;
 
 pub(crate) enum LockTimeType {
     Finalized,

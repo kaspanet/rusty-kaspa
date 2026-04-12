@@ -3,8 +3,8 @@
 //!
 
 use crate::imports::*;
-use kaspa_bip32::PrivateKey;
-use kaspa_consensus_core::{sign::sign_with_multiple_v2, tx::SignableTransaction};
+use keryx_bip32::PrivateKey;
+use keryx_consensus_core::{sign::sign_with_multiple_v2, tx::SignableTransaction};
 
 pub trait SignerT: Send + Sync + 'static {
     fn try_sign(&self, transaction: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction>;

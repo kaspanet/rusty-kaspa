@@ -1,6 +1,6 @@
 use crate::hasher::KaspaDiff;
-use kaspa_consensus_core::block::Block;
-use kaspa_hashes::Hash;
+use keryx_consensus_core::block::Block;
+use keryx_hashes::Hash;
 use num_bigint::BigUint;
 use num_traits::Zero;
 use parking_lot::Mutex;
@@ -31,7 +31,7 @@ pub struct MiningState {
     connect_time: SystemTime,
     stratum_diff: Arc<Mutex<Option<KaspaDiff>>>,
     max_jobs: u16,
-    last_header: Arc<Mutex<Option<kaspa_consensus_core::header::Header>>>, // Track previous header for change logging
+    last_header: Arc<Mutex<Option<keryx_consensus_core::header::Header>>>, // Track previous header for change logging
 }
 
 impl MiningState {
@@ -152,12 +152,12 @@ impl MiningState {
     }
 
     /// Get last header
-    pub fn get_last_header(&self) -> Option<kaspa_consensus_core::header::Header> {
+    pub fn get_last_header(&self) -> Option<keryx_consensus_core::header::Header> {
         self.last_header.lock().clone()
     }
 
     /// Set last header
-    pub fn set_last_header(&self, header: kaspa_consensus_core::header::Header) {
+    pub fn set_last_header(&self, header: keryx_consensus_core::header::Header) {
         *self.last_header.lock() = Some(header);
     }
 }

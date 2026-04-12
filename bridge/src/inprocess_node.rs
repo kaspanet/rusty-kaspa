@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use kaspa_core::signals::Shutdown;
-use kaspa_utils::fd_budget;
-use kaspad_lib::{args as kaspad_args, daemon as kaspad_daemon};
+use keryx_core::signals::Shutdown;
+use keryx_utils::fd_budget;
+use keryxd_lib::{args as kaspad_args, daemon as kaspad_daemon};
 
 pub(crate) struct InProcessNode {
-    core: Arc<kaspa_core::core::Core>,
+    core: Arc<keryx_core::core::Core>,
     workers: Vec<std::thread::JoinHandle<()>>,
 }
 

@@ -1,9 +1,9 @@
 use crate::result::Result;
-use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
-use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
-use kaspa_consensus_core::tx;
+use keryx_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
+use keryx_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+use keryx_consensus_core::tx;
 
-pub fn script_hashes(mut mutable_tx: tx::SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>> {
+pub fn script_hashes(mut mutable_tx: tx::SignableTransaction) -> Result<Vec<keryx_hashes::Hash>> {
     let mut list = vec![];
     for i in 0..mutable_tx.tx.inputs.len() {
         mutable_tx.tx.inputs[i].sig_op_count = 1;

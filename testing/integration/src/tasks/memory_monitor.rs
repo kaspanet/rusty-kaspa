@@ -1,11 +1,11 @@
 use crate::tasks::Task;
 use async_trait::async_trait;
-use kaspa_core::{
+use keryx_core::{
     info,
     task::tick::{TickReason, TickService},
     warn,
 };
-use kaspa_utils::triggers::SingleTrigger;
+use keryx_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
 use workflow_perf_monitor::mem::{ProcessMemoryInfo, get_process_memory_info};
@@ -28,7 +28,7 @@ impl MemoryMonitorTask {
 
     async fn worker(&self) {
         #[cfg(feature = "heap")]
-        let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
+        let _profiler = dhat::Profiler::builder().file_name("keryxd-heap.json").build();
 
         warn!(
             "Starting Memory monitor {} with fetch interval of {} and maximum memory of {}",
@@ -76,7 +76,7 @@ impl Task for MemoryMonitorTask {
         let max_memory = self.max_memory;
         let task = tokio::spawn(async move {
             #[cfg(feature = "heap")]
-            let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
+            let _profiler = dhat::Profiler::builder().file_name("keryxd-heap.json").build();
 
             warn!(
                 "Starting Memory monitor task {} with fetch interval of {} and maximum memory of {}",

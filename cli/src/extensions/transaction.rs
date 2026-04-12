@@ -1,8 +1,8 @@
 use crate::imports::*;
-use kaspa_consensus_core::tx::{TransactionInput, TransactionOutpoint};
-use kaspa_wallet_core::storage::Binding;
-use kaspa_wallet_core::storage::{TransactionData, TransactionKind, TransactionRecord};
-use kaspa_wallet_core::wallet::WalletGuard;
+use keryx_consensus_core::tx::{TransactionInput, TransactionOutpoint};
+use keryx_wallet_core::storage::Binding;
+use keryx_wallet_core::storage::{TransactionData, TransactionKind, TransactionRecord};
+use keryx_wallet_core::wallet::WalletGuard;
 use workflow_log::style;
 
 pub trait TransactionTypeExtension {

@@ -1,8 +1,8 @@
 use std::{cmp::max, sync::Arc};
 
-use kaspa_consensus_core::api::ConsensusApi;
-use kaspa_hashes::Hash;
-use kaspa_p2p_lib::{
+use keryx_consensus_core::api::ConsensusApi;
+use keryx_hashes::Hash;
+use keryx_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     convert::header::HeaderFormat,
@@ -88,7 +88,7 @@ impl RequestHeadersFlow {
         low: Hash,
         high: Hash,
         max_blocks: usize,
-        header_format: kaspa_p2p_lib::convert::header::HeaderFormat,
+        header_format: keryx_p2p_lib::convert::header::HeaderFormat,
     ) -> Result<(Vec<pb::BlockHeader>, Hash), ProtocolError> {
         let hashes = consensus.get_hashes_between(low, high, max_blocks)?.0;
         let last = *hashes.last().expect("caller ensured that high and low are valid and different");

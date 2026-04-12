@@ -27,9 +27,9 @@ use crate::{
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
-use kaspa_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
+use keryx_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
+use keryx_database::registry::DatabaseStorePrefixes;
+use keryx_hashes::Hash;
 use parking_lot::RwLock;
 use std::{ops::DerefMut, sync::Arc};
 

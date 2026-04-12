@@ -1,10 +1,10 @@
-use kaspa_database::{
+use keryx_database::{
     prelude::DB,
     prelude::{CachePolicy, StoreError, StoreResult},
     prelude::{CachedDbAccess, DirectDbWriter},
     registry::DatabaseStorePrefixes,
 };
-use kaspa_utils::mem_size::MemSizeEstimator;
+use keryx_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::net::Ipv6Addr;
 use std::{error::Error, fmt::Display, sync::Arc};

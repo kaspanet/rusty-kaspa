@@ -8,8 +8,8 @@ use crate::{
     constants::STORAGE_MASS_PARAMETER,
     network::{NetworkId, NetworkType},
 };
-use kaspa_addresses::Prefix;
-use kaspa_math::Uint256;
+use keryx_addresses::Prefix;
+use keryx_math::Uint256;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::min,
@@ -532,13 +532,13 @@ pub const MAINNET_PARAMS: Params = Params {
         // This DNS seeder is run by Denis Mashkevich
         "mainnet-dnsseed-2.kaspanet.org",
         // This DNS seeder is run by Georges Künzli
-        "seeder1.kaspad.net",
+        "seeder1.keryxd.net",
         // This DNS seeder is run by Georges Künzli
-        "seeder2.kaspad.net",
+        "seeder2.keryxd.net",
         // This DNS seeder is run by Georges Künzli
-        "seeder3.kaspad.net",
+        "seeder3.keryxd.net",
         // This DNS seeder is run by Georges Künzli
-        "seeder4.kaspad.net",
+        "seeder4.keryxd.net",
         // This DNS seeder is run by Tim
         "kaspadns.kaspacalc.net",
         // This DNS seeder is run by supertypo
@@ -596,7 +596,7 @@ pub const MAINNET_PARAMS: Params = Params {
 pub const TESTNET_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Tiram
-        "seeder1-testnet.kaspad.net",
+        "seeder1-testnet.keryxd.net",
         // This DNS seeder is run by -gerri-
         "dnsseeder-kaspa-testnet.x-con.at",
         // This DNS seeder is run by supertypo

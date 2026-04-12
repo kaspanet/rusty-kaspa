@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-pow"
+name = "keryx-pow"
 description = "Kaspa proof-of-work"
 rust-version.workspace = true
 version.workspace = true
@@ -14,11 +14,11 @@ wasm32-sdk = []
 
 [dependencies]
 js-sys.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-client.workspace = true
-kaspa-hashes.workspace = true
-kaspa-math.workspace = true
-kaspa-utils.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-client.workspace = true
+keryx-hashes.workspace = true
+keryx-math.workspace = true
+keryx-utils.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 num.workspace = true

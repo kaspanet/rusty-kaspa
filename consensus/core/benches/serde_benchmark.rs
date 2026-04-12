@@ -1,6 +1,6 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use kaspa_consensus_core::subnets::SUBNETWORK_ID_COINBASE;
-use kaspa_consensus_core::tx::{
+use keryx_consensus_core::subnets::SUBNETWORK_ID_COINBASE;
+use keryx_consensus_core::tx::{
     ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
 };
 use smallvec::smallvec;

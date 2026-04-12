@@ -10,9 +10,9 @@ use crate::{
         window::WindowManager,
     },
 };
-use kaspa_consensus_core::block::Block;
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_hashes::Hash;
+use keryx_consensus_core::block::Block;
+use keryx_database::prelude::StoreResultExt;
+use keryx_hashes::Hash;
 use once_cell::unsync::Lazy;
 use std::sync::Arc;
 
@@ -91,15 +91,15 @@ mod tests {
         model::stores::ghostdag::GhostdagStoreReader,
         processes::{transaction_validator::errors::TxRuleError, window::WindowManager},
     };
-    use kaspa_consensus_core::{
+    use keryx_consensus_core::{
         api::ConsensusApi,
         config::params::MAINNET_PARAMS,
         merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
-    use kaspa_core::assert_match;
-    use kaspa_hashes::Hash;
+    use keryx_core::assert_match;
+    use keryx_hashes::Hash;
 
     #[tokio::test]
     async fn validate_body_in_context_test() {

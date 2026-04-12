@@ -5,11 +5,11 @@ use crate::modules::miner::Miner;
 use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
-use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
-use kaspa_wallet_core::account::Account;
-use kaspa_wallet_core::rpc::DynRpcApi;
-use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
-use kaspa_wrpc_client::{KaspaRpcClient, Resolver};
+use keryx_daemon::{DaemonEvent, DaemonKind, Daemons};
+use keryx_wallet_core::account::Account;
+use keryx_wallet_core::rpc::DynRpcApi;
+use keryx_wallet_core::storage::{IdT, PrvKeyDataInfo};
+use keryx_wrpc_client::{KaspaRpcClient, Resolver};
 use workflow_core::channel::*;
 use workflow_core::time::Instant;
 use workflow_log::*;
@@ -93,9 +93,9 @@ impl KaspaCli {
                     std::println!("halt");
                     1
                 });
-                kaspa_core::log::init_logger(None, "info");
+                keryx_core::log::init_logger(None, "info");
             } else {
-                kaspa_core::log::set_log_level(LevelFilter::Info);
+                keryx_core::log::set_log_level(LevelFilter::Info);
             }
         }
 
@@ -105,7 +105,7 @@ impl KaspaCli {
     pub async fn try_new_arc(options: Options) -> Result<Arc<Self>> {
         let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, Some(Resolver::default()), None)?);
 
-        let kaspa_cli = Arc::new(KaspaCli {
+        let keryx_cli = Arc::new(KaspaCli {
             term: Arc::new(Mutex::new(None)),
             wallet,
             notifications_task_ctl: DuplexChannel::oneshot(),
@@ -121,16 +121,16 @@ impl KaspaCli {
             sync_state: Mutex::new(None),
         });
 
-        let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options.terminal)?);
+        let term = Arc::new(Terminal::try_new_with_options(keryx_cli.clone(), options.terminal)?);
         term.init().await?;
 
         cfg_if! {
             if #[cfg(target_arch = "wasm32")] {
-                kaspa_cli.init_panic_hook();
+                keryx_cli.init_panic_hook();
             }
         }
 
-        Ok(kaspa_cli)
+        Ok(keryx_cli)
     }
 
     pub fn term(&self) -> Arc<Terminal> {
@@ -724,24 +724,24 @@ impl KaspaCli {
             tprintln!(self, "{}", style("shutting down...").magenta());
 
             let miner = self.daemons().try_cpu_miner();
-            let kaspad = self.daemons().try_kaspad();
+            let keryxd = self.daemons().try_kaspad();
 
             if let Some(miner) = miner.as_ref() {
                 miner.mute(false).await?;
                 miner.stop().await?;
             }
 
-            if let Some(kaspad) = kaspad.as_ref() {
-                kaspad.mute(false).await?;
-                kaspad.stop().await?;
+            if let Some(keryxd) = keryxd.as_ref() {
+                keryxd.mute(false).await?;
+                keryxd.stop().await?;
             }
 
             if let Some(miner) = miner.as_ref() {
                 miner.join().await?;
             }
 
-            if let Some(kaspad) = kaspad.as_ref() {
-                kaspad.join().await?;
+            if let Some(keryxd) = keryxd.as_ref() {
+                keryxd.join().await?;
             }
 
             self.term().exit().await;
@@ -973,7 +973,7 @@ where
 //     Ok(selection.unwrap())
 // }
 
-pub async fn kaspa_cli(terminal_options: TerminalOptions, banner: Option<String>) -> Result<()> {
+pub async fn keryx_cli(terminal_options: TerminalOptions, banner: Option<String>) -> Result<()> {
     KaspaCli::init();
 
     let options = Options::new(terminal_options, None);

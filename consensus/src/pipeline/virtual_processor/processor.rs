@@ -48,7 +48,7 @@ use crate::{
         window::WindowManager,
     },
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashSet, ChainPath,
     acceptance_data::AcceptanceData,
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -66,26 +66,26 @@ use kaspa_consensus_core::{
         utxo_view::{UtxoView, UtxoViewComposition},
     },
 };
-use kaspa_consensus_notify::{
+use keryx_consensus_notify::{
     notification::{
         NewBlockTemplateNotification, Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification,
         VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
     },
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, time::unix_now, trace, warn};
-use kaspa_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
-use kaspa_hashes::{Hash, ZERO_HASH};
-use kaspa_muhash::MuHash;
-use kaspa_notify::{events::EventType, notifier::Notify};
+use keryx_consensusmanager::SessionLock;
+use keryx_core::{debug, info, time::unix_now, trace, warn};
+use keryx_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
+use keryx_hashes::{Hash, ZERO_HASH};
+use keryx_muhash::MuHash;
+use keryx_notify::{events::EventType, notifier::Notify};
 use once_cell::unsync::Lazy;
 
 use super::errors::{PruningImportError, PruningImportResult};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
-use kaspa_consensus_core::tx::ValidatedTransaction;
-use kaspa_utils::binary_heap::BinaryHeapExtensions;
+use keryx_consensus_core::tx::ValidatedTransaction;
+use keryx_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rand::{Rng, seq::SliceRandom};
 use rayon::{

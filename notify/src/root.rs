@@ -13,7 +13,7 @@ use crate::{
 };
 use async_channel::Sender;
 use async_trait::async_trait;
-use kaspa_core::{debug, trace};
+use keryx_core::{debug, trace};
 use parking_lot::RwLock;
 use std::sync::Arc;
 

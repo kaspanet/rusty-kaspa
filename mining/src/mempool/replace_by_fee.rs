@@ -4,7 +4,7 @@ use crate::mempool::{
     model::tx::{DoubleSpend, MempoolTransaction, TxRemovalReason},
     tx::RbfPolicy,
 };
-use kaspa_consensus_core::tx::{MutableTransaction, Transaction};
+use keryx_consensus_core::tx::{MutableTransaction, Transaction};
 use std::sync::Arc;
 
 impl Mempool {

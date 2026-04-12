@@ -2,13 +2,13 @@ use std::str::FromStr;
 
 use crate::protowire;
 use crate::{from, try_from};
-use kaspa_rpc_core::{RpcError, RpcNodeId, RpcPeerAddress};
+use keryx_rpc_core::{RpcError, RpcNodeId, RpcPeerAddress};
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-from!(item: &kaspa_rpc_core::RpcPeerInfo, protowire::GetConnectedPeerInfoMessage, {
+from!(item: &keryx_rpc_core::RpcPeerInfo, protowire::GetConnectedPeerInfoMessage, {
     Self {
         id: item.id.to_string(),
         address: item.address.to_string(),
@@ -22,14 +22,14 @@ from!(item: &kaspa_rpc_core::RpcPeerInfo, protowire::GetConnectedPeerInfoMessage
     }
 });
 
-from!(item: &kaspa_rpc_core::RpcPeerAddress, protowire::GetPeerAddressesKnownAddressMessage, { Self { addr: item.to_string() } });
-from!(item: &kaspa_rpc_core::RpcIpAddress, protowire::GetPeerAddressesKnownAddressMessage, { Self { addr: item.to_string() } });
+from!(item: &keryx_rpc_core::RpcPeerAddress, protowire::GetPeerAddressesKnownAddressMessage, { Self { addr: item.to_string() } });
+from!(item: &keryx_rpc_core::RpcIpAddress, protowire::GetPeerAddressesKnownAddressMessage, { Self { addr: item.to_string() } });
 
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
-try_from!(item: &protowire::GetConnectedPeerInfoMessage, kaspa_rpc_core::RpcPeerInfo, {
+try_from!(item: &protowire::GetConnectedPeerInfoMessage, keryx_rpc_core::RpcPeerInfo, {
     Self {
         id: RpcNodeId::from_str(&item.id)?,
         address: RpcPeerAddress::from_str(&item.address)?,
@@ -43,5 +43,5 @@ try_from!(item: &protowire::GetConnectedPeerInfoMessage, kaspa_rpc_core::RpcPeer
     }
 });
 
-try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, kaspa_rpc_core::RpcPeerAddress, { Self::from_str(&item.addr)? });
-try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, kaspa_rpc_core::RpcIpAddress, { Self::from_str(&item.addr)? });
+try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, keryx_rpc_core::RpcPeerAddress, { Self::from_str(&item.addr)? });
+try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, keryx_rpc_core::RpcIpAddress, { Self::from_str(&item.addr)? });

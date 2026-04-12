@@ -25,7 +25,7 @@ pub fn decrypt_mnemonic<T: AsRef<[u8]>>(
 mod test {
     use super::*;
     use hex_literal::hex;
-    use kaspa_addresses::Address;
+    use keryx_addresses::Address;
 
     #[test]
     fn decrypt_go_encrypted_mnemonics_test() {
@@ -148,9 +148,9 @@ mod test {
 
         #[derive(Debug, Default, Deserialize)]
         struct EncryptedMnemonicIntermediate {
-            #[serde(with = "kaspa_utils::serde_bytes")]
+            #[serde(with = "keryx_utils::serde_bytes")]
             cipher: Vec<u8>,
-            #[serde(with = "kaspa_utils::serde_bytes")]
+            #[serde(with = "keryx_utils::serde_bytes")]
             salt: Vec<u8>,
         }
         impl From<EncryptedMnemonicIntermediate> for EncryptedMnemonic<Vec<u8>> {

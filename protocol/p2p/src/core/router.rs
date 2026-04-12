@@ -3,8 +3,8 @@ use crate::pb::RejectMessage;
 use crate::pb::{KaspadMessage, kaspad_message::Payload as KaspadMessagePayload};
 use crate::{KaspadMessagePayloadType, common::ProtocolError};
 use crate::{Peer, make_message};
-use kaspa_core::{debug, error, info, trace, warn};
-use kaspa_utils::networking::PeerId;
+use keryx_core::{debug, error, info, trace, warn};
+use keryx_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
 use std::fmt::{Debug, Display};
@@ -365,7 +365,7 @@ impl Router {
     pub fn route_to_flow(&self, msg: KaspadMessage) -> Result<(), ProtocolError> {
         if msg.payload.is_none() {
             debug!("P2P, Route to flow got empty payload, peer: {}", self);
-            return Err(ProtocolError::Other("received kaspad p2p message with empty payload"));
+            return Err(ProtocolError::Other("received keryxd p2p message with empty payload"));
         }
         let msg_type: KaspadMessagePayloadType = msg.payload.as_ref().expect("payload was just verified").into();
         // Handle the special case of a reject message ending the connection

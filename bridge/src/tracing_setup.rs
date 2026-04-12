@@ -6,10 +6,10 @@ use std::sync::Mutex as StdMutex;
 use tracing_subscriber::fmt::format::{FormatEvent, FormatFields, Writer};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt};
 
-use kaspa_stratum_bridge::log_colors::LogColors;
+use keryx_stratum_bridge::log_colors::LogColors;
 
 use crate::app_dirs;
-use kaspa_stratum_bridge::BridgeConfig;
+use keryx_stratum_bridge::BridgeConfig;
 
 // Global registry mapping instance_id strings to instance numbers
 // This persists across async boundaries and thread switches
@@ -83,7 +83,7 @@ where
             return Ok(());
         }
 
-        // Special-case forwarded node logs (from `tracing_log::LogTracer`) to match kaspad style:
+        // Special-case forwarded node logs (from `tracing_log::LogTracer`) to match keryxd style:
         // `[INFO] Accepted ...` (white brackets), and omit the `log:` target prefix.
         if target == "log" && !is_multiline {
             match level {
@@ -375,9 +375,9 @@ pub(crate) fn init_tracing(
     };
 
     // IMPORTANT: Do not initialize LogTracer in in-process mode.
-    // The embedded kaspad runtime initializes the global `log` logger via
-    // `kaspa_core::log::init_logger(...).unwrap()`. If LogTracer grabs the
-    // global logger first, kaspad panics with SetLoggerError.
+    // The embedded keryxd runtime initializes the global `log` logger via
+    // `keryx_core::log::init_logger(...).unwrap()`. If LogTracer grabs the
+    // global logger first, keryxd panics with SetLoggerError.
     if !inprocess_mode && let Err(e) = tracing_log::LogTracer::init() {
         eprintln!("Failed to initialize log tracer: {}", e);
     }

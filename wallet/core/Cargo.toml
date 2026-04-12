@@ -1,7 +1,7 @@
 [package]
-name = "kaspa-wallet-core"
+name = "keryx-wallet-core"
 description = "Kaspa wallet library"
-keywords = ["kaspa", "wallet"]
+keywords = ["keryx", "wallet"]
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -13,14 +13,14 @@ repository.workspace = true
 [features]
 multi-user = []
 wasm32-keygen = [
-    # "kaspa-consensus-wasm/wasm32-types",
+    # "keryx-consensus-wasm/wasm32-types",
 ]
 wasm32-core = [
-    "kaspa-consensus-wasm/wasm32-sdk",
-    "kaspa-consensus-core/wasm32-sdk",
-    "kaspa-wrpc-client/wasm32-sdk",
-    "kaspa-wrpc-wasm/wasm32-sdk",
-    "kaspa-wasm-core/wasm32-sdk",
+    "keryx-consensus-wasm/wasm32-sdk",
+    "keryx-consensus-core/wasm32-sdk",
+    "keryx-wrpc-client/wasm32-sdk",
+    "keryx-wrpc-wasm/wasm32-sdk",
+    "keryx-wasm-core/wasm32-sdk",
 ]
 wasm32-sdk = [
     "wasm32-core"
@@ -56,25 +56,25 @@ heapless.workspace = true
 hmac.workspace = true
 itertools.workspace = true
 js-sys.workspace = true
-kaspa-addresses.workspace = true
-kaspa-bip32.workspace = true
-kaspa-consensus-client.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-wasm.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-metrics-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
-kaspa-wallet-keys.workspace = true
-kaspa-wallet-macros.workspace = true
-kaspa-wallet-pskt.workspace = true
-kaspa-wasm-core.workspace = true
-kaspa-wrpc-client.workspace = true
-kaspa-wrpc-wasm.workspace = true
+keryx-addresses.workspace = true
+keryx-bip32.workspace = true
+keryx-consensus-client.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-wasm.workspace = true
+keryx-core.workspace = true
+keryx-hashes.workspace = true
+keryx-metrics-core.workspace = true
+keryx-notify.workspace = true
+keryx-rpc-core.workspace = true
+keryx-txscript-errors.workspace = true
+keryx-txscript.workspace = true
+keryx-utils.workspace = true
+keryx-wallet-keys.workspace = true
+keryx-wallet-macros.workspace = true
+keryx-wallet-pskt.workspace = true
+keryx-wasm-core.workspace = true
+keryx-wrpc-client.workspace = true
+keryx-wrpc-wasm.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true

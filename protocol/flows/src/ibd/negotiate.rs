@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use super::IbdFlow;
-use kaspa_consensus_core::blockstatus::BlockStatus;
-use kaspa_consensusmanager::ConsensusProxy;
-use kaspa_core::{debug, warn};
-use kaspa_hashes::Hash;
-use kaspa_p2p_lib::{
+use keryx_consensus_core::blockstatus::BlockStatus;
+use keryx_consensusmanager::ConsensusProxy;
+use keryx_core::{debug, warn};
+use keryx_hashes::Hash;
+use keryx_p2p_lib::{
     common::{DEFAULT_TIMEOUT, ProtocolError},
     dequeue_with_timeout, make_message,
     pb::{RequestIbdChainBlockLocatorMessage, kaspad_message::Payload},

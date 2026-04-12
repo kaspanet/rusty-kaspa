@@ -1,15 +1,15 @@
-use kaspa_consensus_core::ChainPath;
-use kaspa_consensus_core::blockstatus::BlockStatus;
-use kaspa_database::registry::DatabaseStorePrefixes;
+use keryx_consensus_core::ChainPath;
+use keryx_consensus_core::blockstatus::BlockStatus;
+use keryx_database::registry::DatabaseStorePrefixes;
 use parking_lot::RwLockWriteGuard;
 use rocksdb::WriteBatch;
 
 use std::sync::Arc;
 
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DbWriter};
-use kaspa_database::prelude::{CachedDbItem, DB};
-use kaspa_database::prelude::{StoreError, StoreResult};
-use kaspa_hashes::Hash;
+use keryx_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DbWriter};
+use keryx_database::prelude::{CachedDbItem, DB};
+use keryx_database::prelude::{StoreError, StoreResult};
+use keryx_hashes::Hash;
 
 use super::U64Key;
 

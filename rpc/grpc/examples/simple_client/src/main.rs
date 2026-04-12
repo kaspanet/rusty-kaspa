@@ -1,9 +1,9 @@
 // Example of simple grpc client to connect with Kaspa node and collect some node and network basic data
 
-use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::RpcResult;
-use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspa_rpc_core::{GetBlockDagInfoResponse, GetServerInfoResponse, api::rpc::RpcApi};
+use keryx_grpc_client::GrpcClient;
+use keryx_rpc_core::RpcResult;
+use keryx_rpc_core::notify::mode::NotificationMode;
+use keryx_rpc_core::{GetBlockDagInfoResponse, GetServerInfoResponse, api::rpc::RpcApi};
 use std::process::ExitCode;
 
 #[tokio::main]
@@ -21,7 +21,7 @@ async fn main() -> ExitCode {
 }
 
 async fn check_node_status() -> RpcResult<()> {
-    let url = "grpc://localhost:16110".to_string();
+    let url = "grpc://localhost:22110".to_string();
 
     let client =
         GrpcClient::connect_with_args(NotificationMode::Direct, url, None, false, None, false, Some(500_000), Default::default())

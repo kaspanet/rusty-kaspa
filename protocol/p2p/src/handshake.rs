@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::pb::{ReadyMessage, VerackMessage, VersionMessage, kaspad_message::Payload};
 use crate::{IncomingRoute, KaspadMessagePayloadType, Router};
 use crate::{common::ProtocolError, dequeue_with_timeout, make_message};
-use kaspa_core::debug;
+use keryx_core::debug;
 
 /// Implements the Kaspa peer-to-peer handshake protocol
 pub struct KaspadHandshake<'a> {

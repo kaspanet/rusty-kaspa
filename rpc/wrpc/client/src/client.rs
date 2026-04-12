@@ -3,16 +3,16 @@
 use crate::imports::*;
 use crate::parse::parse_host;
 use crate::{error::Error, node::NodeDescriptor};
-use kaspa_consensus_core::network::NetworkType;
-use kaspa_notify::{
+use keryx_consensus_core::network::NetworkType;
+use keryx_notify::{
     listener::ListenerLifespan,
     subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
-use kaspa_rpc_core::{
+use keryx_rpc_core::{
     api::ctl::RpcCtl,
     notify::collector::{RpcCoreCollector, RpcCoreConverter},
 };
-pub use kaspa_rpc_macros::build_wrpc_client_interface;
+pub use keryx_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
 use workflow_core::{channel::Multiplexer, runtime as application_runtime};
 use workflow_dom::utils::window;
@@ -82,7 +82,7 @@ impl Inner {
             let notification_sender_ = notification_relay_channel.sender.clone();
             interface.notification(
                 notification_op,
-                workflow_rpc::client::Notification::new(move |notification: Serializable<kaspa_rpc_core::Notification>| {
+                workflow_rpc::client::Notification::new(move |notification: Serializable<keryx_rpc_core::Notification>| {
                     let notification_sender = notification_sender_.clone();
                     Box::pin(async move {
                         // log_info!("notification receivers: {}", notification_sender.receiver_count());

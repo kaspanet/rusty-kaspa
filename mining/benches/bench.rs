@@ -1,11 +1,11 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{Transaction, TransactionInput, TransactionOutpoint},
 };
-use kaspa_hashes::{HasherBase, TransactionID};
-use kaspa_mining::{FeerateTransactionKey, Frontier, Policy, model::topological_index::TopologicalIndex};
+use keryx_hashes::{HasherBase, TransactionID};
+use keryx_mining::{FeerateTransactionKey, Frontier, Policy, model::topological_index::TopologicalIndex};
 use rand::{Rng, thread_rng};
 use std::{
     collections::{HashMap, HashSet, hash_set::Iter},

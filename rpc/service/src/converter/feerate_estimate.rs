@@ -1,5 +1,5 @@
-use kaspa_mining::feerate::{FeeEstimateVerbose, FeerateBucket, FeerateEstimations};
-use kaspa_rpc_core::{
+use keryx_mining::feerate::{FeeEstimateVerbose, FeerateBucket, FeerateEstimations};
+use keryx_rpc_core::{
     RpcFeeEstimate, RpcFeeEstimateVerboseExperimentalData as RpcFeeEstimateVerbose, RpcFeerateBucket,
     message::GetFeeEstimateExperimentalResponse as RpcFeeEstimateVerboseResponse,
 };

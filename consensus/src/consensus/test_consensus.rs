@@ -1,17 +1,17 @@
 use async_channel::Sender;
-use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::mining_rules::MiningRules;
-use kaspa_consensus_core::tx::ScriptPublicKey;
-use kaspa_consensus_core::{
+use keryx_consensus_core::coinbase::MinerData;
+use keryx_consensus_core::mining_rules::MiningRules;
+use keryx_consensus_core::tx::ScriptPublicKey;
+use keryx_consensus_core::{
     api::ConsensusApi, block::MutableBlock, blockstatus::BlockStatus, header::Header, merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE, tx::Transaction,
 };
-use kaspa_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
-use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
-use kaspa_core::{core::Core, service::Service};
-use kaspa_database::utils::DbLifetime;
-use kaspa_hashes::Hash;
-use kaspa_notify::subscription::context::SubscriptionContext;
+use keryx_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
+use keryx_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
+use keryx_core::{core::Core, service::Service};
+use keryx_database::utils::DbLifetime;
+use keryx_hashes::Hash;
+use keryx_notify::subscription::context::SubscriptionContext;
 use parking_lot::RwLock;
 
 use super::Consensus;
@@ -32,8 +32,8 @@ use crate::{
     pipeline::{ProcessingCounters, body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor},
     test_helpers::header_from_precomputed_hash,
 };
-use kaspa_database::create_temp_db;
-use kaspa_database::prelude::ConnBuilder;
+use keryx_database::create_temp_db;
+use keryx_database::prelude::ConnBuilder;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
@@ -145,7 +145,7 @@ impl TestConsensus {
     /// # Panics
     ///
     /// Panics if block builder validation rules are violated.
-    /// See `kaspa_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
+    /// See `keryx_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
     pub fn add_utxo_valid_block_with_parents(
         &self,
         hash: Hash,
@@ -170,7 +170,7 @@ impl TestConsensus {
     /// # Panics
     ///
     /// Panics if block builder validation rules are violated.
-    /// See `kaspa_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
+    /// See `keryx_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
     pub fn build_utxo_valid_block_with_parents(
         &self,
         hash: Hash,

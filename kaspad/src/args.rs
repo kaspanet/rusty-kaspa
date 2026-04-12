@@ -1,23 +1,23 @@
 use clap::{Arg, ArgAction, Command, arg};
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     config::Config,
     network::{NetworkId, NetworkType},
 };
-use kaspa_core::kaspad_env::version;
-use kaspa_notify::address::tracker::Tracker;
-use kaspa_utils::networking::ContextualNetAddress;
-use kaspa_wrpc_server::address::WrpcNetAddress;
+use keryx_core::kaspad_env::version;
+use keryx_notify::address::tracker::Tracker;
+use keryx_utils::networking::ContextualNetAddress;
+use keryx_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, serde_as};
 use std::{ffi::OsString, fs};
 use toml::from_str;
 
 #[cfg(feature = "devnet-prealloc")]
-use kaspa_addresses::Address;
+use keryx_addresses::Address;
 #[cfg(feature = "devnet-prealloc")]
-use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+use keryx_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 #[cfg(feature = "devnet-prealloc")]
-use kaspa_txscript::pay_to_address_script;
+use keryx_txscript::pay_to_address_script;
 #[cfg(feature = "devnet-prealloc")]
 use std::sync::Arc;
 
@@ -180,7 +180,7 @@ impl Args {
     }
 
     #[cfg(feature = "devnet-prealloc")]
-    pub fn generate_prealloc_utxos(&self, num_prealloc_utxos: u64) -> kaspa_consensus_core::utxo::utxo_collection::UtxoCollection {
+    pub fn generate_prealloc_utxos(&self, num_prealloc_utxos: u64) -> keryx_consensus_core::utxo::utxo_collection::UtxoCollection {
         let addr = Address::try_from(&self.prealloc_address.as_ref().unwrap()[..]).unwrap();
         let spk = pay_to_address_script(&addr);
         (1..=num_prealloc_utxos)
@@ -208,8 +208,8 @@ pub fn cli() -> Command {
     let defaults: Args = Default::default();
 
     #[allow(clippy::let_and_return)]
-    let cmd = Command::new("kaspad")
-        .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
+    let cmd = Command::new("keryxd")
+        .about(format!("{} (keryx-labs) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-C --configfile <CONFIG_FILE> "Path of config file.").env("KASPAD_CONFIGFILE"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data.").env("KASPAD_APPDIR"))
@@ -243,7 +243,7 @@ pub fn cli() -> Command {
                 .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
+                .help("Interface:port to listen for gRPC connections (default port: 22110, testnet: 22210)."),
         )
         .arg(
             Arg::new("rpclisten-borsh")
@@ -296,7 +296,7 @@ pub fn cli() -> Command {
                 .value_name("IP[:PORT]")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Add an interface:port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
+                .help("Add an interface:port to listen for connections (default all interfaces port: 22111, testnet: 22211)."),
         )
         .arg(
             Arg::new("outpeers")
@@ -559,7 +559,7 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
 
   -V, --version                             Display version information and exit
   -C, --configfile=                         Path to configuration file (default: /Users/aspect/Library/Application
-                                            Support/Kaspad/kaspad.conf)
+                                            Support/Kaspad/keryxd.conf)
   -b, --appdir=                             Directory to store data (default: /Users/aspect/Library/Application
                                             Support/Kaspad)
       --logdir=                             Directory to log output.
@@ -569,7 +569,7 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
                                             automatically disabled if the --connect or --proxy options are used
                                             without also specifying listen interfaces via --listen
       --listen=                             Add an interface/port to listen for connections (default all interfaces
-                                            port: 16111, testnet: 16211)
+                                            port: 22111, testnet: 22211)
       --outpeers=                           Target number of outbound peers (default: 8)
       --maxinpeers=                         Max number of inbound peers (default: 117)
       --enablebanning                       Enable banning of misbehaving peers
@@ -579,8 +579,8 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
                                             peers. (default: 100)
       --whitelist=                          Add an IP network or IP that will not be banned. (eg. 192.168.1.0/24 or
                                             ::1)
-      --rpclisten=                          Add an interface/port to listen for RPC connections (default port: 16110,
-                                            testnet: 16210)
+      --rpclisten=                          Add an interface/port to listen for RPC connections (default port: 22110,
+                                            testnet: 22210)
       --rpccert=                            File containing the certificate file (default:
                                             /Users/aspect/Library/Application Support/Kaspad/rpc.cert)
       --rpckey=                             File containing the certificate key (default:

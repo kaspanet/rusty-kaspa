@@ -2,13 +2,13 @@ use crate::mempool::{
     Mempool,
     errors::{NonStandardError, NonStandardResult},
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
-use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, mass::NonContextualMasses};
-use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
+use keryx_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, mass::NonContextualMasses};
+use keryx_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
@@ -238,8 +238,8 @@ mod tests {
         MiningCounters,
         mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
     };
-    use kaspa_addresses::{Address, Prefix, Version};
-    use kaspa_consensus_core::{
+    use keryx_addresses::{Address, Prefix, Version};
+    use keryx_consensus_core::{
         config::params::Params,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         mass::NonContextualMasses,
@@ -247,7 +247,7 @@ mod tests {
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
-    use kaspa_txscript::{
+    use keryx_txscript::{
         opcodes::codes::{OpReturn, OpTrue},
         script_builder::ScriptBuilder,
     };
@@ -397,13 +397,13 @@ mod tests {
     #[test]
     fn test_check_transaction_standard_in_isolation() {
         // Create some dummy, but otherwise standard, data for transactions.
-        let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+        let dummy_prev_out = TransactionOutpoint::new(keryx_hashes::Hash::from_u64_word(1), 1);
         let dummy_sig_script = vec![0u8; 65];
         let dummy_tx_input = TransactionInput::new(dummy_prev_out, dummy_sig_script, MAX_TX_IN_SEQUENCE_NUM, 1);
         let addr_hash = vec![1u8; 32];
 
         let addr = Address::new(Prefix::Testnet, Version::PubKey, &addr_hash);
-        let dummy_script_public_key = kaspa_txscript::pay_to_address_script(&addr);
+        let dummy_script_public_key = keryx_txscript::pay_to_address_script(&addr);
         let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, dummy_script_public_key);
 
         struct Test {

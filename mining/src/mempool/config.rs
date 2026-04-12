@@ -1,4 +1,4 @@
-use kaspa_consensus_core::constants::TX_VERSION;
+use keryx_consensus_core::constants::TX_VERSION;
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
 pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 1_000_000_000;
@@ -95,7 +95,7 @@ impl Config {
     }
 
     /// Build a default config.
-    /// The arguments should be obtained from the current consensus [`kaspa_consensus_core::config::params::Params`] instance.
+    /// The arguments should be obtained from the current consensus [`keryx_consensus_core::config::params::Params`] instance.
     pub fn build_default(target_milliseconds_per_block: u64, relay_non_std_transactions: bool, max_block_mass: u64) -> Self {
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,

@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-grpc-simple-client-example"
+name = "keryx-grpc-simple-client-example"
 description = "Kaspa GRPC simple client example"
 publish = false
 rust-version.workspace = true
@@ -12,8 +12,8 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-grpc-client.workspace = true
+keryx-rpc-core.workspace = true
+keryx-grpc-client.workspace = true
 tokio.workspace = true
 
 

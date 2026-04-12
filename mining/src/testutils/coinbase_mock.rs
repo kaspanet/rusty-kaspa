@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     coinbase::{CoinbaseData, CoinbaseTransactionTemplate, MinerData},
     constants::{SOMPI_PER_KASPA, TX_VERSION},
     subnets::SUBNETWORK_ID_COINBASE,

@@ -1,21 +1,21 @@
 use crate::{IDENT, processor::Processor};
-use kaspa_consensus_notify::{
+use keryx_consensus_notify::{
     connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification, notifier::ConsensusNotifier,
 };
-use kaspa_core::{
+use keryx_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace, warn,
 };
-use kaspa_index_core::notifier::IndexNotifier;
-use kaspa_notify::{
+use keryx_index_core::notifier::IndexNotifier;
+use keryx_notify::{
     connection::ChannelType,
     events::{EventSwitches, EventType},
     listener::ListenerLifespan,
     scope::{PruningPointUtxoSetOverrideScope, UtxosChangedScope},
     subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
-use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
-use kaspa_utxoindex::api::UtxoIndexProxy;
+use keryx_utils::{channel::Channel, triggers::SingleTrigger};
+use keryx_utxoindex::api::UtxoIndexProxy;
 use std::sync::Arc;
 
 const INDEX_SERVICE: &str = IDENT;

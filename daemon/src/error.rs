@@ -1,5 +1,5 @@
 // use downcast::DowncastError;
-// use kaspa_wallet_core::error::Error as WalletError;
+// use keryx_wallet_core::error::Error as WalletError;
 use workflow_core::channel::ChannelError;
 // use workflow_terminal::error::Error as TerminalError;
 

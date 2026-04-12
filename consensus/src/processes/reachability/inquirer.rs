@@ -1,8 +1,8 @@
 use super::interval::Interval;
 use super::{tree::*, *};
 use crate::model::stores::reachability::{ReachabilityStore, ReachabilityStoreReader};
-use kaspa_consensus_core::blockhash;
-use kaspa_hashes::Hash;
+use keryx_consensus_core::blockhash;
+use keryx_hashes::Hash;
 
 /// Init the reachability store to match the state required by the algorithmic layer.
 /// The function first checks the store for possibly being initialized already.
@@ -266,9 +266,9 @@ mod tests {
         processes::reachability::{interval::Interval, tests::r#gen::generate_complex_dag},
     };
     use itertools::Itertools;
-    use kaspa_consensus_core::blockhash::ORIGIN;
-    use kaspa_database::prelude::ConnBuilder;
-    use kaspa_database::{create_temp_db, prelude::CachePolicy};
+    use keryx_consensus_core::blockhash::ORIGIN;
+    use keryx_database::prelude::ConnBuilder;
+    use keryx_database::{create_temp_db, prelude::CachePolicy};
     use parking_lot::RwLock;
     use rand::seq::IteratorRandom;
     use rocksdb::WriteBatch;

@@ -4,7 +4,7 @@
 
 use crate::model::message::*;
 use derive_more::Display;
-use kaspa_notify::{
+use keryx_notify::{
     events::EventType,
     notification::{Notification as NotificationTrait, full_featured},
     subscription::{

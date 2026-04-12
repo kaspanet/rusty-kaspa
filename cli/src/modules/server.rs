@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_wrpc_client::parse::parse_host;
+use keryx_wrpc_client::parse::parse_host;
 
 #[derive(Default, Handler)]
 #[help("Set RPC server address")]

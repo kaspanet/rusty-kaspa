@@ -1,7 +1,7 @@
 use super::error::ConversionError;
 use super::header::{HeaderFormat, Versioned};
 use crate::pb as protowire;
-use kaspa_consensus_core::{block::Block, tx::Transaction};
+use keryx_consensus_core::{block::Block, tx::Transaction};
 type BlockBody = Vec<Transaction>;
 // ----------------------------------------------------------------------------
 // consensus_core to protowire

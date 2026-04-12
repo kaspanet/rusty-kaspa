@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wrpc-vcc-v2"
+name = "keryx-wrpc-vcc-v2"
 description = "Kaspa VCCV2 example"
 publish = false
 rust-version.workspace = true
@@ -12,9 +12,9 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-wrpc-client.workspace = true
-kaspa-addresses.workspace = true
+keryx-rpc-core.workspace = true
+keryx-wrpc-client.workspace = true
+keryx-addresses.workspace = true
 tokio.workspace = true
 
 

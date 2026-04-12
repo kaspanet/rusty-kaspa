@@ -1,6 +1,6 @@
 use super::error::Result;
 use core::fmt::Debug;
-use kaspa_grpc_core::{
+use keryx_grpc_core::{
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
 };

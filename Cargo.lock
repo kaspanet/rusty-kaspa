@@ -2316,7 +2316,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-addresses"
+name = "keccak"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
+dependencies = [
+ "cpufeatures",
+]
+
+[[package]]
+name = "keryx-addresses"
 version = "1.1.0"
 dependencies = [
  "borsh",
@@ -2333,16 +2342,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-addressmanager"
+name = "keryx-addressmanager"
 version = "1.1.0"
 dependencies = [
  "borsh",
  "igd-next",
  "itertools 0.13.0",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-database",
- "kaspa-utils",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-database",
+ "keryx-utils",
  "local-ip-address",
  "log",
  "parking_lot",
@@ -2355,14 +2364,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-alloc"
+name = "keryx-alloc"
 version = "1.1.0"
 dependencies = [
  "mimalloc",
 ]
 
 [[package]]
-name = "kaspa-bip32"
+name = "keryx-bip32"
 version = "1.1.0"
 dependencies = [
  "borsh",
@@ -2371,8 +2380,8 @@ dependencies = [
  "getrandom 0.2.15",
  "hmac",
  "js-sys",
- "kaspa-consensus-core",
- "kaspa-utils",
+ "keryx-consensus-core",
+ "keryx-utils",
  "once_cell",
  "pbkdf2",
  "rand 0.8.5",
@@ -2389,7 +2398,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-cli"
+name = "keryx-cli"
 version = "1.1.0"
 dependencies = [
  "async-trait",
@@ -2402,18 +2411,18 @@ dependencies = [
  "futures",
  "hex",
  "js-sys",
- "kaspa-addresses",
- "kaspa-bip32",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-daemon",
- "kaspa-metrics-core",
- "kaspa-rpc-core",
- "kaspa-utils",
- "kaspa-wallet-core",
- "kaspa-wallet-keys",
- "kaspa-wallet-pskt",
- "kaspa-wrpc-client",
+ "keryx-addresses",
+ "keryx-bip32",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-daemon",
+ "keryx-metrics-core",
+ "keryx-rpc-core",
+ "keryx-utils",
+ "keryx-wallet-core",
+ "keryx-wallet-keys",
+ "keryx-wallet-pskt",
+ "keryx-wrpc-client",
  "nw-sys",
  "pad",
  "regex",
@@ -2436,16 +2445,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-connectionmanager"
+name = "keryx-connectionmanager"
 version = "1.1.0"
 dependencies = [
  "duration-string",
  "futures-util",
  "itertools 0.13.0",
- "kaspa-addressmanager",
- "kaspa-core",
- "kaspa-p2p-lib",
- "kaspa-utils",
+ "keryx-addressmanager",
+ "keryx-core",
+ "keryx-p2p-lib",
+ "keryx-utils",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -2453,7 +2462,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-consensus"
+name = "keryx-consensus"
 version = "1.1.0"
 dependencies = [
  "arc-swap",
@@ -2466,21 +2475,21 @@ dependencies = [
  "futures-util",
  "indexmap 2.6.0",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-database",
- "kaspa-hashes",
- "kaspa-math",
- "kaspa-merkle",
- "kaspa-muhash",
- "kaspa-notify",
- "kaspa-pow",
- "kaspa-txscript",
- "kaspa-txscript-errors",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-database",
+ "keryx-hashes",
+ "keryx-math",
+ "keryx-merkle",
+ "keryx-muhash",
+ "keryx-notify",
+ "keryx-pow",
+ "keryx-txscript",
+ "keryx-txscript-errors",
+ "keryx-utils",
  "log",
  "once_cell",
  "parking_lot",
@@ -2497,7 +2506,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-consensus-client"
+name = "keryx-consensus-client"
 version = "1.1.0"
 dependencies = [
  "ahash",
@@ -2506,13 +2515,13 @@ dependencies = [
  "hex",
  "itertools 0.13.0",
  "js-sys",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-hashes",
- "kaspa-math",
- "kaspa-txscript",
- "kaspa-utils",
- "kaspa-wasm-core",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-hashes",
+ "keryx-math",
+ "keryx-txscript",
+ "keryx-utils",
+ "keryx-wasm-core",
  "rand 0.8.5",
  "secp256k1",
  "serde",
@@ -2525,7 +2534,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-consensus-core"
+name = "keryx-consensus-core"
 version = "1.1.0"
 dependencies = [
  "arc-swap",
@@ -2540,14 +2549,14 @@ dependencies = [
  "getrandom 0.2.15",
  "itertools 0.13.0",
  "js-sys",
- "kaspa-addresses",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-math",
- "kaspa-merkle",
- "kaspa-muhash",
- "kaspa-txscript-errors",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-math",
+ "keryx-merkle",
+ "keryx-muhash",
+ "keryx-txscript-errors",
+ "keryx-utils",
  "rand 0.8.5",
  "secp256k1",
  "serde",
@@ -2565,18 +2574,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-consensus-notify"
+name = "keryx-consensus-notify"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
  "cfg-if 1.0.0",
  "derive_more",
  "futures",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-notify",
- "kaspa-utils",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-notify",
+ "keryx-utils",
  "log",
  "paste",
  "thiserror 1.0.64",
@@ -2584,18 +2593,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-consensus-wasm"
+name = "keryx-consensus-wasm"
 version = "1.1.0"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex 0.9.0",
  "js-sys",
- "kaspa-addresses",
- "kaspa-consensus-client",
- "kaspa-consensus-core",
- "kaspa-hashes",
- "kaspa-txscript",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-consensus-client",
+ "keryx-consensus-core",
+ "keryx-hashes",
+ "keryx-txscript",
+ "keryx-utils",
  "rand 0.8.5",
  "secp256k1",
  "serde",
@@ -2608,18 +2617,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-consensusmanager"
+name = "keryx-consensusmanager"
 version = "1.1.0"
 dependencies = [
  "duration-string",
  "futures",
  "futures-util",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-core",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-core",
+ "keryx-utils",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -2627,7 +2636,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-core"
+name = "keryx-core"
 version = "1.1.0"
 dependencies = [
  "anyhow",
@@ -2646,7 +2655,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-daemon"
+name = "keryx-daemon"
 version = "1.1.0"
 dependencies = [
  "async-trait",
@@ -2654,9 +2663,9 @@ dependencies = [
  "cfg-if 1.0.0",
  "downcast-rs",
  "futures",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-wallet-core",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-wallet-core",
  "nw-sys",
  "serde",
  "thiserror 1.0.64",
@@ -2668,7 +2677,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-database"
+name = "keryx-database"
 version = "1.1.0"
 dependencies = [
  "bincode",
@@ -2676,8 +2685,8 @@ dependencies = [
  "faster-hex 0.9.0",
  "indexmap 2.6.0",
  "itertools 0.13.0",
- "kaspa-hashes",
- "kaspa-utils",
+ "keryx-hashes",
+ "keryx-utils",
  "num-traits",
  "num_cpus",
  "parking_lot",
@@ -2690,7 +2699,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-grpc-client"
+name = "keryx-grpc-client"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
@@ -2701,12 +2710,12 @@ dependencies = [
  "futures-util",
  "h2 0.4.6",
  "itertools 0.13.0",
- "kaspa-core",
- "kaspa-grpc-core",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-utils",
- "kaspa-utils-tower",
+ "keryx-core",
+ "keryx-grpc-core",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-utils",
+ "keryx-utils-tower",
  "log",
  "parking_lot",
  "paste",
@@ -2722,7 +2731,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-grpc-core"
+name = "keryx-grpc-core"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
@@ -2732,12 +2741,12 @@ dependencies = [
  "futures",
  "h2 0.4.6",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-utils",
  "log",
  "paste",
  "prost",
@@ -2753,7 +2762,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-grpc-server"
+name = "keryx-grpc-server"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
@@ -2763,16 +2772,16 @@ dependencies = [
  "futures",
  "h2 0.4.6",
  "itertools 0.13.0",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-grpc-client",
- "kaspa-grpc-core",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-rpc-macros",
- "kaspa-rpc-service",
- "kaspa-utils",
- "kaspa-utils-tower",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-grpc-client",
+ "keryx-grpc-core",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-rpc-macros",
+ "keryx-rpc-service",
+ "keryx-utils",
+ "keryx-utils-tower",
  "log",
  "once_cell",
  "parking_lot",
@@ -2789,17 +2798,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-grpc-simple-client-example"
+name = "keryx-grpc-simple-client-example"
 version = "1.1.0"
 dependencies = [
  "futures",
- "kaspa-grpc-client",
- "kaspa-rpc-core",
+ "keryx-grpc-client",
+ "keryx-rpc-core",
  "tokio",
 ]
 
 [[package]]
-name = "kaspa-hashes"
+name = "keryx-hashes"
 version = "1.1.0"
 dependencies = [
  "blake2b_simd",
@@ -2808,8 +2817,8 @@ dependencies = [
  "criterion",
  "faster-hex 0.9.0",
  "js-sys",
- "kaspa-utils",
  "keccak",
+ "keryx-utils",
  "once_cell",
  "rand 0.8.5",
  "serde",
@@ -2820,17 +2829,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-index-core"
+name = "keryx-index-core"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
  "async-trait",
  "derive_more",
  "futures",
- "kaspa-consensus-core",
- "kaspa-hashes",
- "kaspa-notify",
- "kaspa-utils",
+ "keryx-consensus-core",
+ "keryx-hashes",
+ "keryx-notify",
+ "keryx-utils",
  "log",
  "paste",
  "serde",
@@ -2839,24 +2848,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-index-processor"
+name = "keryx-index-processor"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
  "async-trait",
  "derive_more",
  "futures",
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-database",
- "kaspa-hashes",
- "kaspa-index-core",
- "kaspa-notify",
- "kaspa-utils",
- "kaspa-utxoindex",
+ "keryx-consensus",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-database",
+ "keryx-hashes",
+ "keryx-index-core",
+ "keryx-notify",
+ "keryx-utils",
+ "keryx-utxoindex",
  "log",
  "parking_lot",
  "paste",
@@ -2867,14 +2876,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-math"
+name = "keryx-math"
 version = "1.1.0"
 dependencies = [
  "borsh",
  "criterion",
  "faster-hex 0.9.0",
  "js-sys",
- "kaspa-utils",
+ "keryx-utils",
  "malachite-base",
  "malachite-nz",
  "rand_chacha 0.3.1",
@@ -2888,21 +2897,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-merkle"
+name = "keryx-merkle"
 version = "1.1.0"
 dependencies = [
- "kaspa-hashes",
+ "keryx-hashes",
 ]
 
 [[package]]
-name = "kaspa-metrics-core"
+name = "keryx-metrics-core"
 version = "1.1.0"
 dependencies = [
  "async-trait",
  "borsh",
  "futures",
- "kaspa-core",
- "kaspa-rpc-core",
+ "keryx-core",
+ "keryx-rpc-core",
  "separator",
  "serde",
  "thiserror 1.0.64",
@@ -2911,21 +2920,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-mining"
+name = "keryx-mining"
 version = "1.1.0"
 dependencies = [
  "criterion",
  "futures-util",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-mining-errors",
- "kaspa-muhash",
- "kaspa-txscript",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-mining-errors",
+ "keryx-muhash",
+ "keryx-txscript",
+ "keryx-utils",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -2938,20 +2947,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-mining-errors"
+name = "keryx-mining-errors"
 version = "1.1.0"
 dependencies = [
- "kaspa-consensus-core",
+ "keryx-consensus-core",
  "thiserror 1.0.64",
 ]
 
 [[package]]
-name = "kaspa-muhash"
+name = "keryx-muhash"
 version = "1.1.0"
 dependencies = [
  "criterion",
- "kaspa-hashes",
- "kaspa-math",
+ "keryx-hashes",
+ "keryx-math",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rayon",
@@ -2959,7 +2968,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-notify"
+name = "keryx-notify"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
@@ -2971,15 +2980,15 @@ dependencies = [
  "futures-util",
  "indexmap 2.6.0",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-alloc",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-math",
- "kaspa-txscript",
- "kaspa-txscript-errors",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-alloc",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-math",
+ "keryx-txscript",
+ "keryx-txscript-errors",
+ "keryx-utils",
  "log",
  "parking_lot",
  "paste",
@@ -2995,7 +3004,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-p2p-flows"
+name = "keryx-p2p-flows"
 version = "1.1.0"
 dependencies = [
  "async-trait",
@@ -3003,20 +3012,20 @@ dependencies = [
  "futures",
  "indexmap 2.6.0",
  "itertools 0.13.0",
- "kaspa-addressmanager",
- "kaspa-connectionmanager",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-mining",
- "kaspa-muhash",
- "kaspa-notify",
- "kaspa-p2p-lib",
- "kaspa-p2p-mining",
- "kaspa-utils",
- "kaspa-utils-tower",
+ "keryx-addressmanager",
+ "keryx-connectionmanager",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-mining",
+ "keryx-muhash",
+ "keryx-notify",
+ "keryx-p2p-lib",
+ "keryx-p2p-mining",
+ "keryx-utils",
+ "keryx-utils-tower",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -3027,7 +3036,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-p2p-lib"
+name = "keryx-p2p-lib"
 version = "1.1.0"
 dependencies = [
  "borsh",
@@ -3036,13 +3045,13 @@ dependencies = [
  "h2 0.4.6",
  "hex",
  "itertools 0.13.0",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-math",
- "kaspa-mining-errors",
- "kaspa-utils",
- "kaspa-utils-tower",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-math",
+ "keryx-mining-errors",
+ "keryx-utils",
+ "keryx-utils-tower",
  "log",
  "parking_lot",
  "prost",
@@ -3058,27 +3067,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-p2p-mining"
+name = "keryx-p2p-mining"
 version = "1.1.0"
 dependencies = [
- "kaspa-consensus-core",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-math",
- "kaspa-mining-errors",
- "kaspa-p2p-lib",
- "kaspa-utils",
- "kaspa-utils-tower",
+ "keryx-consensus-core",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-math",
+ "keryx-mining-errors",
+ "keryx-p2p-lib",
+ "keryx-utils",
+ "keryx-utils-tower",
  "log",
  "tokio",
 ]
 
 [[package]]
-name = "kaspa-perf-monitor"
+name = "keryx-perf-monitor"
 version = "1.1.0"
 dependencies = [
- "kaspa-core",
+ "keryx-core",
  "log",
  "portable-atomic",
  "thiserror 1.0.64",
@@ -3087,23 +3096,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-pow"
+name = "keryx-pow"
 version = "1.1.0"
 dependencies = [
  "criterion",
  "js-sys",
- "kaspa-consensus-client",
- "kaspa-consensus-core",
- "kaspa-hashes",
- "kaspa-math",
- "kaspa-utils",
+ "keryx-consensus-client",
+ "keryx-consensus-core",
+ "keryx-hashes",
+ "keryx-math",
+ "keryx-utils",
  "num",
  "wasm-bindgen",
  "workflow-wasm",
 ]
 
 [[package]]
-name = "kaspa-rpc-core"
+name = "keryx-rpc-core"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
@@ -3115,20 +3124,20 @@ dependencies = [
  "faster-hex 0.9.0",
  "hex",
  "js-sys",
- "kaspa-addresses",
- "kaspa-consensus-client",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-consensus-wasm",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-index-core",
- "kaspa-math",
- "kaspa-mining-errors",
- "kaspa-notify",
- "kaspa-rpc-macros",
- "kaspa-txscript",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-consensus-client",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-consensus-wasm",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-index-core",
+ "keryx-math",
+ "keryx-mining-errors",
+ "keryx-notify",
+ "keryx-rpc-macros",
+ "keryx-txscript",
+ "keryx-utils",
  "log",
  "paste",
  "rand 0.8.5",
@@ -3146,7 +3155,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-rpc-macros"
+name = "keryx-rpc-macros"
 version = "1.1.0"
 dependencies = [
  "convert_case 0.6.0",
@@ -3158,29 +3167,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-rpc-service"
+name = "keryx-rpc-service"
 version = "1.1.0"
 dependencies = [
  "async-trait",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-index-core",
- "kaspa-math",
- "kaspa-mining",
- "kaspa-notify",
- "kaspa-p2p-flows",
- "kaspa-p2p-lib",
- "kaspa-p2p-mining",
- "kaspa-perf-monitor",
- "kaspa-rpc-core",
- "kaspa-txscript",
- "kaspa-utils",
- "kaspa-utils-tower",
- "kaspa-utxoindex",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-index-core",
+ "keryx-math",
+ "keryx-mining",
+ "keryx-notify",
+ "keryx-p2p-flows",
+ "keryx-p2p-lib",
+ "keryx-p2p-mining",
+ "keryx-perf-monitor",
+ "keryx-rpc-core",
+ "keryx-txscript",
+ "keryx-utils",
+ "keryx-utils-tower",
+ "keryx-utxoindex",
  "log",
  "tokio",
  "triggered",
@@ -3188,7 +3197,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-stratum-bridge"
+name = "keryx-stratum-bridge"
 version = "1.1.0"
 dependencies = [
  "anyhow",
@@ -3201,18 +3210,18 @@ dependencies = [
  "futures-util",
  "hex",
  "include_dir",
- "kaspa-addresses",
- "kaspa-alloc",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-grpc-client",
- "kaspa-hashes",
- "kaspa-notify",
- "kaspa-pow",
- "kaspa-rpc-core",
- "kaspa-rpc-service",
- "kaspa-utils",
- "kaspad",
+ "keryx-addresses",
+ "keryx-alloc",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-grpc-client",
+ "keryx-hashes",
+ "keryx-notify",
+ "keryx-pow",
+ "keryx-rpc-core",
+ "keryx-rpc-service",
+ "keryx-utils",
+ "keryxd",
  "mimalloc",
  "num-bigint",
  "num-traits",
@@ -3235,7 +3244,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-testing-integration"
+name = "keryx-testing-integration"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
@@ -3251,33 +3260,33 @@ dependencies = [
  "futures-util",
  "indexmap 2.6.0",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-alloc",
- "kaspa-bip32",
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-database",
- "kaspa-grpc-client",
- "kaspa-grpc-core",
- "kaspa-grpc-server",
- "kaspa-hashes",
- "kaspa-index-processor",
- "kaspa-math",
- "kaspa-merkle",
- "kaspa-muhash",
- "kaspa-notify",
- "kaspa-pow",
- "kaspa-rpc-core",
- "kaspa-rpc-service",
- "kaspa-txscript",
- "kaspa-txscript-errors",
- "kaspa-utils",
- "kaspa-utxoindex",
- "kaspa-wrpc-server",
- "kaspad",
+ "keryx-addresses",
+ "keryx-alloc",
+ "keryx-bip32",
+ "keryx-consensus",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-database",
+ "keryx-grpc-client",
+ "keryx-grpc-core",
+ "keryx-grpc-server",
+ "keryx-hashes",
+ "keryx-index-processor",
+ "keryx-math",
+ "keryx-merkle",
+ "keryx-muhash",
+ "keryx-notify",
+ "keryx-pow",
+ "keryx-rpc-core",
+ "keryx-rpc-service",
+ "keryx-txscript",
+ "keryx-txscript-errors",
+ "keryx-utils",
+ "keryx-utxoindex",
+ "keryx-wrpc-server",
+ "keryxd",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -3295,7 +3304,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-txscript"
+name = "keryx-txscript"
 version = "1.1.0"
 dependencies = [
  "blake2b_simd",
@@ -3305,12 +3314,12 @@ dependencies = [
  "hexplay",
  "indexmap 2.6.0",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-hashes",
- "kaspa-txscript-errors",
- "kaspa-utils",
- "kaspa-wasm-core",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-hashes",
+ "keryx-txscript-errors",
+ "keryx-utils",
+ "keryx-wasm-core",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -3326,7 +3335,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-txscript-errors"
+name = "keryx-txscript-errors"
 version = "1.1.0"
 dependencies = [
  "secp256k1",
@@ -3334,7 +3343,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-utils"
+name = "keryx-utils"
 version = "1.1.0"
 dependencies = [
  "arc-swap",
@@ -3370,7 +3379,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-utils-tower"
+name = "keryx-utils-tower"
 version = "1.1.0"
 dependencies = [
  "bytes",
@@ -3386,18 +3395,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-utxoindex"
+name = "keryx-utxoindex"
 version = "1.1.0"
 dependencies = [
  "futures",
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-database",
- "kaspa-hashes",
- "kaspa-index-core",
- "kaspa-utils",
+ "keryx-consensus",
+ "keryx-consensus-core",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-database",
+ "keryx-hashes",
+ "keryx-index-core",
+ "keryx-utils",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -3407,24 +3416,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wallet"
+name = "keryx-wallet"
 version = "1.1.0"
 dependencies = [
  "async-std",
  "async-trait",
- "kaspa-cli",
+ "keryx-cli",
  "tokio",
  "workflow-log",
  "workflow-terminal",
 ]
 
 [[package]]
-name = "kaspa-wallet-cli-wasm"
+name = "keryx-wallet-cli-wasm"
 version = "1.1.0"
 dependencies = [
  "async-trait",
  "js-sys",
- "kaspa-cli",
+ "keryx-cli",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "workflow-log",
@@ -3433,7 +3442,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wallet-core"
+name = "keryx-wallet-core"
 version = "1.1.0"
 dependencies = [
  "aes",
@@ -3463,25 +3472,25 @@ dependencies = [
  "indexed_db_futures",
  "itertools 0.13.0",
  "js-sys",
- "kaspa-addresses",
- "kaspa-bip32",
- "kaspa-consensus-client",
- "kaspa-consensus-core",
- "kaspa-consensus-wasm",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-metrics-core",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-txscript",
- "kaspa-txscript-errors",
- "kaspa-utils",
- "kaspa-wallet-keys",
- "kaspa-wallet-macros",
- "kaspa-wallet-pskt",
- "kaspa-wasm-core",
- "kaspa-wrpc-client",
- "kaspa-wrpc-wasm",
+ "keryx-addresses",
+ "keryx-bip32",
+ "keryx-consensus-client",
+ "keryx-consensus-core",
+ "keryx-consensus-wasm",
+ "keryx-core",
+ "keryx-hashes",
+ "keryx-metrics-core",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-txscript",
+ "keryx-txscript-errors",
+ "keryx-utils",
+ "keryx-wallet-keys",
+ "keryx-wallet-macros",
+ "keryx-wallet-pskt",
+ "keryx-wasm-core",
+ "keryx-wrpc-client",
+ "keryx-wrpc-wasm",
  "md-5",
  "pad",
  "pbkdf2",
@@ -3514,7 +3523,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wallet-keys"
+name = "keryx-wallet-keys"
 version = "1.1.0"
 dependencies = [
  "async-trait",
@@ -3523,13 +3532,13 @@ dependencies = [
  "faster-hex 0.9.0",
  "hmac",
  "js-sys",
- "kaspa-addresses",
- "kaspa-bip32",
- "kaspa-consensus-core",
- "kaspa-txscript",
- "kaspa-txscript-errors",
- "kaspa-utils",
- "kaspa-wasm-core",
+ "keryx-addresses",
+ "keryx-bip32",
+ "keryx-consensus-core",
+ "keryx-txscript",
+ "keryx-txscript-errors",
+ "keryx-utils",
+ "keryx-wasm-core",
  "rand 0.8.5",
  "ripemd",
  "secp256k1",
@@ -3547,7 +3556,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wallet-macros"
+name = "keryx-wallet-macros"
 version = "1.1.0"
 dependencies = [
  "convert_case 0.5.0",
@@ -3560,7 +3569,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wallet-pskt"
+name = "keryx-wallet-pskt"
 version = "1.1.0"
 dependencies = [
  "bincode",
@@ -3568,13 +3577,13 @@ dependencies = [
  "futures",
  "hex",
  "js-sys",
- "kaspa-addresses",
- "kaspa-bip32",
- "kaspa-consensus-client",
- "kaspa-consensus-core",
- "kaspa-txscript",
- "kaspa-txscript-errors",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-bip32",
+ "keryx-consensus-client",
+ "keryx-consensus-core",
+ "keryx-txscript",
+ "keryx-txscript-errors",
+ "keryx-utils",
  "secp256k1",
  "separator",
  "serde",
@@ -3590,26 +3599,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wasm"
+name = "keryx-wasm"
 version = "1.1.0"
 dependencies = [
  "cfg-if 1.0.0",
  "js-sys",
- "kaspa-addresses",
- "kaspa-bip32",
- "kaspa-consensus-core",
- "kaspa-consensus-wasm",
- "kaspa-core",
- "kaspa-math",
- "kaspa-pow",
- "kaspa-rpc-core",
- "kaspa-txscript",
- "kaspa-utils",
- "kaspa-wallet-core",
- "kaspa-wallet-keys",
- "kaspa-wasm-core",
- "kaspa-wrpc-client",
- "kaspa-wrpc-wasm",
+ "keryx-addresses",
+ "keryx-bip32",
+ "keryx-consensus-core",
+ "keryx-consensus-wasm",
+ "keryx-core",
+ "keryx-math",
+ "keryx-pow",
+ "keryx-rpc-core",
+ "keryx-txscript",
+ "keryx-utils",
+ "keryx-wallet-core",
+ "keryx-wallet-keys",
+ "keryx-wasm-core",
+ "keryx-wrpc-client",
+ "keryx-wrpc-wasm",
  "num",
  "wasm-bindgen",
  "workflow-core",
@@ -3618,7 +3627,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wasm-core"
+name = "keryx-wasm-core"
 version = "1.1.0"
 dependencies = [
  "faster-hex 0.9.0",
@@ -3629,7 +3638,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wrpc-client"
+name = "keryx-wrpc-client"
 version = "1.1.0"
 dependencies = [
  "async-std",
@@ -3638,12 +3647,12 @@ dependencies = [
  "cfg-if 1.0.0",
  "futures",
  "js-sys",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-consensus-wasm",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-rpc-macros",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-consensus-wasm",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-rpc-macros",
  "paste",
  "rand 0.8.5",
  "regex",
@@ -3665,31 +3674,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wrpc-example-subscriber"
+name = "keryx-wrpc-example-subscriber"
 version = "1.1.0"
 dependencies = [
  "ctrlc",
  "futures",
- "kaspa-consensus-core",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-wrpc-client",
+ "keryx-consensus-core",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-wrpc-client",
  "tokio",
  "workflow-core",
  "workflow-log",
 ]
 
 [[package]]
-name = "kaspa-wrpc-proxy"
+name = "keryx-wrpc-proxy"
 version = "1.1.0"
 dependencies = [
  "async-trait",
  "clap 4.5.51",
- "kaspa-consensus-core",
- "kaspa-grpc-client",
- "kaspa-rpc-core",
- "kaspa-rpc-macros",
- "kaspa-wrpc-server",
+ "keryx-consensus-core",
+ "keryx-grpc-client",
+ "keryx-rpc-core",
+ "keryx-rpc-macros",
+ "keryx-wrpc-server",
  "num_cpus",
  "thiserror 1.0.64",
  "tokio",
@@ -3699,20 +3708,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wrpc-server"
+name = "keryx-wrpc-server"
 version = "1.1.0"
 dependencies = [
  "async-trait",
  "borsh",
  "futures",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-grpc-client",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-rpc-macros",
- "kaspa-rpc-service",
- "kaspa-utils",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-grpc-client",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-rpc-macros",
+ "keryx-rpc-service",
+ "keryx-utils",
  "log",
  "num_cpus",
  "paste",
@@ -3727,28 +3736,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wrpc-simple-client-example"
+name = "keryx-wrpc-simple-client-example"
 version = "1.1.0"
 dependencies = [
  "futures",
- "kaspa-rpc-core",
- "kaspa-wrpc-client",
+ "keryx-rpc-core",
+ "keryx-wrpc-client",
  "tokio",
 ]
 
 [[package]]
-name = "kaspa-wrpc-vcc-v2"
+name = "keryx-wrpc-vcc-v2"
 version = "1.1.0"
 dependencies = [
  "futures",
- "kaspa-addresses",
- "kaspa-rpc-core",
- "kaspa-wrpc-client",
+ "keryx-addresses",
+ "keryx-rpc-core",
+ "keryx-wrpc-client",
  "tokio",
 ]
 
 [[package]]
-name = "kaspa-wrpc-wasm"
+name = "keryx-wrpc-wasm"
 version = "1.1.0"
 dependencies = [
  "ahash",
@@ -3756,15 +3765,15 @@ dependencies = [
  "cfg-if 1.0.0",
  "futures",
  "js-sys",
- "kaspa-addresses",
- "kaspa-consensus-client",
- "kaspa-consensus-core",
- "kaspa-consensus-wasm",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-rpc-macros",
- "kaspa-wasm-core",
- "kaspa-wrpc-client",
+ "keryx-addresses",
+ "keryx-consensus-client",
+ "keryx-consensus-core",
+ "keryx-consensus-wasm",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-rpc-macros",
+ "keryx-wasm-core",
+ "keryx-wrpc-client",
  "ring",
  "serde",
  "serde-wasm-bindgen",
@@ -3778,7 +3787,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspad"
+name = "keryxd"
 version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
@@ -3788,31 +3797,31 @@ dependencies = [
  "dirs",
  "futures-util",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-addressmanager",
- "kaspa-alloc",
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-database",
- "kaspa-grpc-server",
- "kaspa-hashes",
- "kaspa-index-processor",
- "kaspa-mining",
- "kaspa-notify",
- "kaspa-p2p-flows",
- "kaspa-p2p-lib",
- "kaspa-p2p-mining",
- "kaspa-perf-monitor",
- "kaspa-rpc-core",
- "kaspa-rpc-service",
- "kaspa-txscript",
- "kaspa-utils",
- "kaspa-utils-tower",
- "kaspa-utxoindex",
- "kaspa-wrpc-server",
+ "keryx-addresses",
+ "keryx-addressmanager",
+ "keryx-alloc",
+ "keryx-consensus",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-consensusmanager",
+ "keryx-core",
+ "keryx-database",
+ "keryx-grpc-server",
+ "keryx-hashes",
+ "keryx-index-processor",
+ "keryx-mining",
+ "keryx-notify",
+ "keryx-p2p-flows",
+ "keryx-p2p-lib",
+ "keryx-p2p-mining",
+ "keryx-perf-monitor",
+ "keryx-rpc-core",
+ "keryx-rpc-service",
+ "keryx-txscript",
+ "keryx-utils",
+ "keryx-utils-tower",
+ "keryx-utxoindex",
+ "keryx-wrpc-server",
  "log",
  "num_cpus",
  "rand 0.8.5",
@@ -3826,15 +3835,6 @@ dependencies = [
  "tokio",
  "toml",
  "workflow-log",
-]
-
-[[package]]
-name = "keccak"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
-dependencies = [
- "cpufeatures",
 ]
 
 [[package]]
@@ -5226,14 +5226,14 @@ dependencies = [
  "criterion",
  "faster-hex 0.9.0",
  "itertools 0.13.0",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-grpc-client",
- "kaspa-notify",
- "kaspa-rpc-core",
- "kaspa-txscript",
- "kaspa-utils",
+ "keryx-addresses",
+ "keryx-consensus-core",
+ "keryx-core",
+ "keryx-grpc-client",
+ "keryx-notify",
+ "keryx-rpc-core",
+ "keryx-txscript",
+ "keryx-utils",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -5660,16 +5660,16 @@ dependencies = [
  "futures-util",
  "indexmap 2.6.0",
  "itertools 0.13.0",
- "kaspa-alloc",
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-core",
- "kaspa-database",
- "kaspa-hashes",
- "kaspa-perf-monitor",
- "kaspa-testing-integration",
- "kaspa-utils",
+ "keryx-alloc",
+ "keryx-consensus",
+ "keryx-consensus-core",
+ "keryx-consensus-notify",
+ "keryx-core",
+ "keryx-database",
+ "keryx-hashes",
+ "keryx-perf-monitor",
+ "keryx-testing-integration",
+ "keryx-utils",
  "log",
  "num_cpus",
  "rand 0.8.5",

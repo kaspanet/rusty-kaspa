@@ -9,7 +9,7 @@ use crate::{
         topological_index::TopologicalIndex,
     },
 };
-use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
+use keryx_consensus_core::tx::{MutableTransaction, TransactionId};
 use std::collections::{HashMap, HashSet, VecDeque, hash_set::Iter};
 
 pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;

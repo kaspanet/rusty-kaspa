@@ -1,6 +1,6 @@
 use crate::service::WrpcEncoding;
-use kaspa_consensus_core::network::NetworkType;
-use kaspa_utils::networking::ContextualNetAddress;
+use keryx_consensus_core::network::NetworkType;
+use keryx_utils::networking::ContextualNetAddress;
 use serde::Deserialize;
 use std::{net::AddrParseError, str::FromStr};
 
@@ -76,7 +76,7 @@ impl TryFrom<String> for WrpcNetAddress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_utils::networking::IpAddress;
+    use keryx_utils::networking::IpAddress;
 
     #[test]
     fn test_wrpc_net_address_from_str() {

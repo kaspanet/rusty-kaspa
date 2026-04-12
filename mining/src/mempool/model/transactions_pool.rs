@@ -14,11 +14,11 @@ use crate::{
     },
     model::{TransactionIdSet, topological_index::TopologicalIndex},
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     block::TemplateTransactionSelector,
     tx::{MutableTransaction, TransactionId, TransactionOutpoint},
 };
-use kaspa_core::{debug, time::unix_now, trace};
+use keryx_core::{debug, time::unix_now, trace};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
     iter::once,

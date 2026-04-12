@@ -1,3 +1,3 @@
 use crate::notification::Notification;
 
-pub type ConsensusChannelConnection = kaspa_notify::connection::ChannelConnection<Notification>;
+pub type ConsensusChannelConnection = keryx_notify::connection::ChannelConnection<Notification>;

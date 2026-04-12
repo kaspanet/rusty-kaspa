@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-mining-errors"
+name = "keryx-mining-errors"
 description = "Kaspa mining error definitions"
 rust-version.workspace = true
 version.workspace = true
@@ -13,7 +13,7 @@ repository.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-kaspa-consensus-core.workspace = true
+keryx-consensus-core.workspace = true
 
 [lints]
 workspace = true

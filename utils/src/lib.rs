@@ -23,7 +23,7 @@ pub mod as_slice;
 /// ```
 /// #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// struct MyStructVec {
-///     #[serde(with = "kaspa_utils::serde_bytes")]
+///     #[serde(with = "keryx_utils::serde_bytes")]
 ///     v: Vec<u8>,
 /// }
 /// let v = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
@@ -50,7 +50,7 @@ pub mod as_slice;
 /// use smallvec::{smallvec, SmallVec};
 /// #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// struct MyStructSmallVec {  
-///     #[serde(with = "kaspa_utils::serde_bytes")]
+///     #[serde(with = "keryx_utils::serde_bytes")]
 ///     v: SmallVec<[u8; 19]>,
 /// }
 /// let v = smallvec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
@@ -79,7 +79,7 @@ pub mod serde_bytes;
 /// ```
 /// #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// struct MyStructVec {
-///     #[serde(with = "kaspa_utils::serde_bytes_optional")]
+///     #[serde(with = "keryx_utils::serde_bytes_optional")]
 ///     v: Option<Vec<u8>>,
 /// }
 /// let v = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
@@ -108,7 +108,7 @@ pub mod serde_bytes_optional;
 /// ```
 /// #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// struct TestStruct {
-///     #[serde(with = "kaspa_utils::serde_bytes_fixed")]
+///     #[serde(with = "keryx_utils::serde_bytes_fixed")]
 ///     v: [u8; 20],
 /// }
 /// let test_struct = TestStruct { v: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] };
@@ -140,7 +140,7 @@ pub mod serde_bytes_fixed;
 ///         &self.0
 ///     }
 /// }
-/// impl kaspa_utils::hex::FromHex for MyStruct {
+/// impl keryx_utils::hex::FromHex for MyStruct {
 ///     type Error = faster_hex::Error;
 ///     fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
 ///         let mut bytes = [0u8; 20];
@@ -153,8 +153,8 @@ pub mod serde_bytes_fixed;
 ///         MyStruct(value)
 ///     }
 /// }
-/// kaspa_utils::serde_impl_ser_fixed_bytes_ref!(MyStruct, 20);
-/// kaspa_utils::serde_impl_deser_fixed_bytes_ref!(MyStruct, 20);
+/// keryx_utils::serde_impl_ser_fixed_bytes_ref!(MyStruct, 20);
+/// keryx_utils::serde_impl_deser_fixed_bytes_ref!(MyStruct, 20);
 ///
 /// let test_struct = MyStruct([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
 /// let expected_str = r#""000102030405060708090a0b0c0d0e0f10111213""#;
@@ -182,7 +182,7 @@ pub mod serde_bytes_fixed;
 ///         &self.0
 ///     }
 /// }
-/// impl kaspa_utils::hex::FromHex for MyStruct {
+/// impl keryx_utils::hex::FromHex for MyStruct {
 ///     type Error = faster_hex::Error;
 ///     fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
 ///         let mut bytes = [0u8; 20];
@@ -198,7 +198,7 @@ pub mod serde_bytes_fixed;
 ///
 /// #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// struct TestStruct {
-///     #[serde(with = "kaspa_utils::serde_bytes_fixed_ref")]
+///     #[serde(with = "keryx_utils::serde_bytes_fixed_ref")]
 ///     v: MyStruct,
 /// }
 ///

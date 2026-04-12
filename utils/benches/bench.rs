@@ -1,6 +1,6 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use futures_util::future::join_all;
-use kaspa_utils::sync::rwlock::{RfRwLock, RfRwLockOwnedReadGuard, RfRwLockOwnedWriteGuard};
+use keryx_utils::sync::rwlock::{RfRwLock, RfRwLockOwnedReadGuard, RfRwLockOwnedWriteGuard};
 use std::sync::Arc;
 use tokio::sync::{OwnedRwLockWriteGuard as OwnedTokioRwLockWriteGuard, RwLock as TokioRwLock};
 

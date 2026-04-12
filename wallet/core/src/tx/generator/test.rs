@@ -5,11 +5,11 @@ use crate::result::Result;
 use crate::tx::{Fees, MassCalculator, PaymentDestination};
 use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
-use kaspa_addresses::Address;
-use kaspa_consensus_core::config::params::Params;
-use kaspa_consensus_core::mass::UtxoCell;
-use kaspa_consensus_core::network::{NetworkId, NetworkType};
-use kaspa_consensus_core::tx::Transaction;
+use keryx_addresses::Address;
+use keryx_consensus_core::config::params::Params;
+use keryx_consensus_core::mass::UtxoCell;
+use keryx_consensus_core::network::{NetworkId, NetworkType};
+use keryx_consensus_core::tx::Transaction;
 use rand::prelude::*;
 use std::cell::RefCell;
 use std::fmt::Debug;
@@ -786,7 +786,7 @@ fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
 
 #[test]
 fn test_generator_fan_out_1() -> Result<()> {
-    use kaspa_consensus_core::mass::calc_storage_mass;
+    use keryx_consensus_core::mass::calc_storage_mass;
 
     let network_id = test_network_id();
     let consensus_params = Params::from(network_id);

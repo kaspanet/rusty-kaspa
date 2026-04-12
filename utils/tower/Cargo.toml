@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-utils-tower"
+name = "keryx-utils-tower"
 description = "Kaspa utilities and middleware for Tower HTTP"
 rust-version.workspace = true
 version.workspace = true

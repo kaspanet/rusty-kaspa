@@ -4,10 +4,10 @@ use crate::utxo as native;
 use crate::utxo::{UtxoContextBinding, UtxoContextId};
 use crate::wasm::utxo::UtxoProcessor;
 use crate::wasm::{Balance, BalanceStrings};
-use kaspa_addresses::AddressOrStringArrayT;
-use kaspa_consensus_client::UtxoEntryReferenceArrayT;
-use kaspa_hashes::Hash;
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
+use keryx_addresses::AddressOrStringArrayT;
+use keryx_consensus_client::UtxoEntryReferenceArrayT;
+use keryx_hashes::Hash;
+use keryx_wallet_macros::declare_typescript_wasm_interface as declare;
 
 declare! {
     IUtxoContextArgs,

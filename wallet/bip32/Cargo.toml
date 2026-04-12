@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-bip32"
+name = "keryx-bip32"
 description = "BIP32 for Kaspa"
 rust-version.workspace = true
 version.workspace = true
@@ -17,7 +17,7 @@ bs58.workspace = true
 getrandom.workspace = true
 hmac.workspace = true
 js-sys.workspace = true
-kaspa-utils.workspace = true
+keryx-utils.workspace = true
 once_cell.workspace = true
 pbkdf2.workspace = true
 rand_core.workspace = true
@@ -31,7 +31,7 @@ thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 zeroize.workspace = true
-kaspa-consensus-core.workspace = true
+keryx-consensus-core.workspace = true
 
 [dev-dependencies]
 faster-hex.workspace = true

@@ -26,7 +26,7 @@ to the 'snake_case' convention in Rust.
 The APIs are currently separated into the following groups (this will be expanded in the future):
 
 - **Consensus Client API** — Bindings for primitives related to transactions.
-- **RPC API** — [RPC interface bindings](kaspa_wrpc_wasm::client) for the Kaspa node using WebSocket (wRPC) connections.
+- **RPC API** — [RPC interface bindings](keryx_wrpc_wasm::client) for the Kaspa node using WebSocket (wRPC) connections.
 - **Wallet SDK** — API for async core wallet processing tasks.
 - **Wallet API** — A rust implementation of the fully-featured wallet usable in the native Rust, Browser or NodeJs and Bun environments.
 
@@ -91,9 +91,9 @@ globalThis.WebSocket = require('websocket').w3cwebsocket;
 <html>
     <head>
         <script type="module">
-            import * as kaspa_wasm from './kaspa/kaspa-wasm.js';
+            import * as keryx_wasm from './kaspa/kaspa-wasm.js';
             (async () => {
-                const kaspa = await kaspa_wasm.default('./kaspa/kaspa-wasm_bg.wasm');
+                const kaspa = await keryx_wasm.default('./kaspa/kaspa-wasm_bg.wasm');
                 // ...
             })();
         </script>
@@ -157,10 +157,10 @@ cfg_if::cfg_if! {
 
     if #[cfg(feature = "wasm32-sdk")] {
 
-        pub use kaspa_addresses::{Address, Version as AddressVersion};
-        pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-        pub use kaspa_pow::wasm::*;
-        pub use kaspa_txscript::wasm::*;
+        pub use keryx_addresses::{Address, Version as AddressVersion};
+        pub use keryx_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+        pub use keryx_pow::wasm::*;
+        pub use keryx_txscript::wasm::*;
 
         pub mod rpc {
             //! Kaspa RPC interface
@@ -168,27 +168,27 @@ cfg_if::cfg_if! {
 
             pub mod messages {
                 //! Kaspa RPC messages
-                pub use kaspa_rpc_core::model::message::*;
+                pub use keryx_rpc_core::model::message::*;
             }
-            pub use kaspa_rpc_core::api::rpc::RpcApi;
-            pub use kaspa_rpc_core::wasm::message::*;
+            pub use keryx_rpc_core::api::rpc::RpcApi;
+            pub use keryx_rpc_core::wasm::message::*;
 
-            pub use kaspa_wrpc_wasm::client::*;
-            pub use kaspa_wrpc_wasm::resolver::*;
-            pub use kaspa_wrpc_wasm::notify::*;
+            pub use keryx_wrpc_wasm::client::*;
+            pub use keryx_wrpc_wasm::resolver::*;
+            pub use keryx_wrpc_wasm::notify::*;
         }
 
-        pub use kaspa_consensus_wasm::*;
-        pub use kaspa_wallet_core::wasm::*;
-        pub use kaspa_wallet_keys::prelude::*;
-        pub use kaspa_bip32::wasm::*;
+        pub use keryx_consensus_wasm::*;
+        pub use keryx_wallet_core::wasm::*;
+        pub use keryx_wallet_keys::prelude::*;
+        pub use keryx_bip32::wasm::*;
 
     } else if #[cfg(feature = "wasm32-core")] {
 
-        pub use kaspa_addresses::{Address, Version as AddressVersion};
-        pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-        pub use kaspa_pow::wasm::*;
-        pub use kaspa_txscript::wasm::*;
+        pub use keryx_addresses::{Address, Version as AddressVersion};
+        pub use keryx_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+        pub use keryx_pow::wasm::*;
+        pub use keryx_txscript::wasm::*;
 
         pub mod rpc {
             //! Kaspa RPC interface
@@ -196,37 +196,37 @@ cfg_if::cfg_if! {
 
             pub mod messages {
                 //! Kaspa RPC messages
-                pub use kaspa_rpc_core::model::message::*;
+                pub use keryx_rpc_core::model::message::*;
             }
-            pub use kaspa_rpc_core::api::rpc::RpcApi;
-            pub use kaspa_rpc_core::wasm::message::*;
+            pub use keryx_rpc_core::api::rpc::RpcApi;
+            pub use keryx_rpc_core::wasm::message::*;
 
-            pub use kaspa_wrpc_wasm::client::*;
-            pub use kaspa_wrpc_wasm::resolver::*;
-            pub use kaspa_wrpc_wasm::notify::*;
+            pub use keryx_wrpc_wasm::client::*;
+            pub use keryx_wrpc_wasm::resolver::*;
+            pub use keryx_wrpc_wasm::notify::*;
         }
 
-        pub use kaspa_consensus_wasm::*;
-        pub use kaspa_wallet_keys::prelude::*;
-        pub use kaspa_wallet_core::wasm::*;
-        pub use kaspa_bip32::wasm::*;
+        pub use keryx_consensus_wasm::*;
+        pub use keryx_wallet_keys::prelude::*;
+        pub use keryx_wallet_core::wasm::*;
+        pub use keryx_bip32::wasm::*;
 
     } else if #[cfg(feature = "wasm32-rpc")] {
 
-        pub use kaspa_rpc_core::api::rpc::RpcApi;
-        pub use kaspa_rpc_core::wasm::message::*;
-        pub use kaspa_rpc_core::wasm::message::IPingRequest;
-        pub use kaspa_wrpc_wasm::client::*;
-        pub use kaspa_wrpc_wasm::resolver::*;
-        pub use kaspa_wrpc_wasm::notify::*;
-        pub use kaspa_wasm_core::types::*;
+        pub use keryx_rpc_core::api::rpc::RpcApi;
+        pub use keryx_rpc_core::wasm::message::*;
+        pub use keryx_rpc_core::wasm::message::IPingRequest;
+        pub use keryx_wrpc_wasm::client::*;
+        pub use keryx_wrpc_wasm::resolver::*;
+        pub use keryx_wrpc_wasm::notify::*;
+        pub use keryx_wasm_core::types::*;
 
     } else if #[cfg(feature = "wasm32-keygen")] {
 
-        pub use kaspa_addresses::{Address, Version as AddressVersion};
-        pub use kaspa_wallet_keys::prelude::*;
-        pub use kaspa_wasm_core::types::*;
-        pub use kaspa_bip32::wasm::*;
+        pub use keryx_addresses::{Address, Version as AddressVersion};
+        pub use keryx_wallet_keys::prelude::*;
+        pub use keryx_wasm_core::types::*;
+        pub use keryx_bip32::wasm::*;
 
     }
 }

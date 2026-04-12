@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::errors::{consensus::ConsensusError, sync::SyncManagerError};
-use kaspa_p2p_lib::{
+use keryx_consensus_core::errors::{consensus::ConsensusError, sync::SyncManagerError};
+use keryx_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     dequeue_with_request_id, make_response,

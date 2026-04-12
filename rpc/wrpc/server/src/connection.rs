@@ -1,12 +1,12 @@
-use kaspa_grpc_client::{GrpcClient, GrpcClientNotify};
-use kaspa_notify::{
+use keryx_grpc_client::{GrpcClient, GrpcClientNotify};
+use keryx_notify::{
     connection::Connection as ConnectionT,
     error::{Error as NotifyError, Result as NotifyResult},
     listener::ListenerId,
     notification::Notification as NotificationT,
     notifier::Notify,
 };
-use kaspa_rpc_core::{Notification, api::ops::RpcApiOps, notify::mode::NotificationMode};
+use keryx_rpc_core::{Notification, api::ops::RpcApiOps, notify::mode::NotificationMode};
 use std::{
     fmt::{Debug, Display},
     sync::{Arc, Mutex},
@@ -150,7 +150,7 @@ impl ConnectionT for Connection {
     type Notification = Notification;
     type Message = Message;
     type Encoding = NotifyEncoding;
-    type Error = kaspa_notify::error::Error;
+    type Error = keryx_notify::error::Error;
 
     fn encoding(&self) -> Self::Encoding {
         self.messenger().encoding().into()

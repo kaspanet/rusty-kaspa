@@ -4,9 +4,9 @@ use crate::{
     script_class::ScriptClass,
 };
 use blake2b_simd::Params;
-use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptVec};
-use kaspa_txscript_errors::TxScriptError;
+use keryx_addresses::{Address, Prefix, Version};
+use keryx_consensus_core::tx::{ScriptPublicKey, ScriptVec};
+use keryx_txscript_errors::TxScriptError;
 use smallvec::SmallVec;
 use std::iter::once;
 
@@ -86,7 +86,7 @@ pub fn extract_script_pub_key_address(script_public_key: &ScriptPublicKey, prefi
 pub mod test_helpers {
     use super::*;
     use crate::{MAX_TX_IN_SEQUENCE_NUM, opcodes::codes::OpTrue};
-    use kaspa_consensus_core::{
+    use keryx_consensus_core::{
         constants::TX_VERSION,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
@@ -152,7 +152,7 @@ pub mod test_helpers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_utils::hex::FromHex;
+    use keryx_utils::hex::FromHex;
 
     #[test]
     fn test_extract_address_and_encode_script() {

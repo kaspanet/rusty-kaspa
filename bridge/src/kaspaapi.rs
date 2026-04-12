@@ -1,12 +1,12 @@
 use crate::log_colors::LogColors;
 use crate::share_handler::KaspaApiTrait;
 use anyhow::{Context, Result};
-use kaspa_addresses::Address;
-use kaspa_consensus_core::block::Block;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
-use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspa_rpc_core::{
+use keryx_addresses::Address;
+use keryx_consensus_core::block::Block;
+use keryx_grpc_client::GrpcClient;
+use keryx_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
+use keryx_rpc_core::notify::mode::NotificationMode;
+use keryx_rpc_core::{
     GetBlockDagInfoRequest, GetBlockTemplateRequest, GetConnectedPeerInfoRequest, GetCurrentBlockColorRequest, GetInfoRequest,
     GetServerInfoRequest, Notification, RpcHash, RpcRawBlock, SubmitBlockRequest, SubmitBlockResponse, api::rpc::RpcApi,
 };
@@ -285,7 +285,7 @@ impl KaspaApi {
     /// Fetches network stats every 30 seconds and records them in Prometheus
     async fn start_stats_thread(self: Arc<Self>) {
         use crate::prom::record_network_stats;
-        use kaspa_rpc_core::{EstimateNetworkHashesPerSecondRequest, GetBlockDagInfoRequest};
+        use keryx_rpc_core::{EstimateNetworkHashesPerSecondRequest, GetBlockDagInfoRequest};
 
         let mut interval = tokio::time::interval(Duration::from_secs(30));
         loop {
@@ -384,9 +384,9 @@ impl KaspaApi {
 
     /// Submit a block
     pub async fn submit_block(&self, block: Block) -> Result<SubmitBlockResponse> {
-        // Use kaspa_consensus_core::hashing::header::hash() for block hash calculation
+        // Use keryx_consensus_core::hashing::header::hash() for block hash calculation
         // In Kaspa, the block hash is the header hash (transactions are represented by hash_merkle_root in header)
-        use kaspa_consensus_core::hashing::header;
+        use keryx_consensus_core::hashing::header;
         let block_hash = header::hash(&block.header).to_string();
         let blue_score = block.header.blue_score;
         let timestamp = block.header.timestamp;
@@ -600,7 +600,7 @@ impl KaspaApi {
     }
 
     pub async fn wait_for_sync_with_shutdown(&self, mut shutdown_rx: watch::Receiver<bool>) -> Result<()> {
-        debug!("checking kaspad sync state");
+        debug!("checking keryxd sync state");
 
         loop {
             let sync_fut = self.client.get_sync_status();
@@ -614,7 +614,7 @@ impl KaspaApi {
             match sync_res {
                 Ok(is_synced) => {
                     if is_synced {
-                        debug!("kaspad synced, starting server");
+                        debug!("keryxd synced, starting server");
                         break;
                     }
                 }
@@ -743,7 +743,7 @@ impl KaspaApi {
 
         let utxos = self
             .client
-            .get_utxos_by_addresses_call(None, kaspa_rpc_core::GetUtxosByAddressesRequest::new(addresses))
+            .get_utxos_by_addresses_call(None, keryx_rpc_core::GetUtxosByAddressesRequest::new(addresses))
             .await
             .context("Failed to get UTXOs by addresses")?;
 
@@ -790,7 +790,7 @@ impl KaspaApi {
             loop {
                 // Check sync state and reconnect if needed
                 if let Err(e) = api_clone.wait_for_sync().await {
-                    error!("error checking kaspad sync state, attempting reconnect: {}", e);
+                    error!("error checking keryxd sync state, attempting reconnect: {}", e);
                     // Note: gRPC client handles reconnection automatically, but we log it
                     // In Go, reconnect() is called explicitly, but Rust gRPC handles it
                     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -867,7 +867,7 @@ impl KaspaApi {
                 }
 
                 if let Err(e) = api_clone.wait_for_sync().await {
-                    error!("error checking kaspad sync state, attempting reconnect: {}", e);
+                    error!("error checking keryxd sync state, attempting reconnect: {}", e);
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     restart_channel = true;
                 }
@@ -925,7 +925,7 @@ impl KaspaApiTrait for KaspaApi {
     async fn submit_block(
         &self,
         block: Block,
-    ) -> Result<kaspa_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<keryx_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>> {
         KaspaApi::submit_block(self, block)
             .await
             .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)

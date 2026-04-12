@@ -1,8 +1,8 @@
 use clap::Parser;
 use futures_util::future::try_join_all;
-use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_stratum_bridge::log_colors::LogColors;
-use kaspa_stratum_bridge::{KaspaApi, StratumServerBridgeConfig as StratumBridgeConfig, listen_and_serve_with_shutdown, prom};
+use keryx_alloc::init_allocator_with_default_settings;
+use keryx_stratum_bridge::log_colors::LogColors;
+use keryx_stratum_bridge::{KaspaApi, StratumServerBridgeConfig as StratumBridgeConfig, listen_and_serve_with_shutdown, prom};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
@@ -16,7 +16,7 @@ use tracing_subscriber::EnvFilter;
 #[cfg(windows)]
 use windows_sys::Win32::System::Console::{CTRL_C_EVENT, SetConsoleCtrlHandler};
 
-use kaspad_lib::args as kaspad_args;
+use keryxd_lib::args as kaspad_args;
 
 mod app_dirs;
 mod cli;
@@ -29,7 +29,7 @@ mod tests;
 
 use cli::{Cli, NodeMode, apply_cli_overrides};
 use inprocess_node::InProcessNode;
-use kaspa_stratum_bridge::BridgeConfig;
+use keryx_stratum_bridge::BridgeConfig;
 
 static CONFIG_LOADED_FROM: OnceLock<Option<PathBuf>> = OnceLock::new();
 static REQUESTED_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -212,9 +212,9 @@ async fn main() -> Result<(), anyhow::Error> {
         // Default: warn level, but allow info from the bridge. In inprocess mode we also
         // enable info-level logs from the embedded node (which uses the `log` crate).
         if node_mode == NodeMode::Inprocess {
-            EnvFilter::new("warn,kaspa_stratum_bridge=info,kaspa=info,kaspad=info,kaspad_lib=info,log=info")
+            EnvFilter::new("warn,keryx_stratum_bridge=info,kaspa=info,keryxd=info,keryxd_lib=info,log=info")
         } else {
-            EnvFilter::new("warn,kaspa_stratum_bridge=info")
+            EnvFilter::new("warn,keryx_stratum_bridge=info")
         }
     });
 
@@ -229,7 +229,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // Start in-process node after tracing is initialized so bridge logs (including the stats table)
-    // are not filtered out by a tracing subscriber installed by kaspad.
+    // are not filtered out by a tracing subscriber installed by keryxd.
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
         let mut node_args: Vec<String> = cli.kaspad_args;
@@ -249,11 +249,11 @@ async fn main() -> Result<(), anyhow::Error> {
             node_args.push("--appdir".to_string());
             node_args.push(appdir_to_use.to_string_lossy().to_string());
         } else {
-            assert!(cli.appdir.is_none(), "appdir should not be specified both in bridge args and kaspad args");
+            assert!(cli.appdir.is_none(), "appdir should not be specified both in bridge args and keryxd args");
         }
 
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
-        argv.push(OsString::from("kaspad"));
+        argv.push(OsString::from("keryxd"));
         argv.extend(node_args.iter().map(OsString::from));
         let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
         inprocess_node = Some(InProcessNode::start_from_args(args)?);
@@ -315,7 +315,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let throttle = cli.internal_cpu_miner_throttle_ms.map(Duration::from_millis);
             let template_poll_interval = Duration::from_millis(cli.internal_cpu_miner_template_poll_ms.unwrap_or(250));
 
-            let cfg = kaspa_stratum_bridge::InternalCpuMinerConfig {
+            let cfg = keryx_stratum_bridge::InternalCpuMinerConfig {
                 enabled: true,
                 mining_address,
                 threads,
@@ -330,16 +330,16 @@ async fn main() -> Result<(), anyhow::Error> {
                 cfg.template_poll_interval.as_millis()
             );
 
-            kaspa_stratum_bridge::prom::set_internal_cpu_mining_address(cfg.mining_address.clone());
+            keryx_stratum_bridge::prom::set_internal_cpu_mining_address(cfg.mining_address.clone());
 
-            let metrics = kaspa_stratum_bridge::spawn_internal_cpu_miner(Arc::clone(&kaspa_api), cfg, shutdown_rx.clone())?;
-            kaspa_stratum_bridge::set_rkstratum_cpu_miner_metrics(metrics);
+            let metrics = keryx_stratum_bridge::spawn_internal_cpu_miner(Arc::clone(&kaspa_api), cfg, shutdown_rx.clone())?;
+            keryx_stratum_bridge::set_rkstratum_cpu_miner_metrics(metrics);
 
             // Periodically export internal miner stats to Prometheus (if a /metrics server is running).
             // This is best-effort and does not affect mining.
             {
                 let mut prom_shutdown_rx = shutdown_rx.clone();
-                let internal_metrics = kaspa_stratum_bridge::RKSTRATUM_CPU_MINER_METRICS.lock().as_ref().cloned();
+                let internal_metrics = keryx_stratum_bridge::RKSTRATUM_CPU_MINER_METRICS.lock().as_ref().cloned();
 
                 tokio::spawn(async move {
                     let Some(internal_metrics) = internal_metrics else { return };
@@ -371,7 +371,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         // Hashrate as GH/s
                         let hashrate_ghs = (dh as f64 / dt) / 1e9;
 
-                        kaspa_stratum_bridge::prom::record_internal_cpu_miner_snapshot(
+                        keryx_stratum_bridge::prom::record_internal_cpu_miner_snapshot(
                             hashes_tried,
                             blocks_submitted,
                             blocks_accepted,

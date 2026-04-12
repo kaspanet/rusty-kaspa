@@ -1,4 +1,4 @@
-use kaspa_utils::mem_size::MemSizeEstimator;
+use keryx_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]

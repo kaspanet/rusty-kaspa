@@ -3,9 +3,9 @@ use crate::mempool::{
     errors::RuleResult,
     model::{pool::Pool, tx::TxRemovalReason},
 };
-use kaspa_consensus_core::tx::TransactionId;
-use kaspa_core::debug;
-use kaspa_utils::iter::IterExtensions;
+use keryx_consensus_core::tx::TransactionId;
+use keryx_core::debug;
+use keryx_utils::iter::IterExtensions;
 
 impl Mempool {
     pub(crate) fn remove_transaction(

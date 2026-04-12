@@ -7,8 +7,8 @@ use crate::{
     connection_handler::ServerContext,
     error::GrpcServerResult,
 };
-use kaspa_core::debug;
-use kaspa_grpc_core::{
+use keryx_core::debug;
+use keryx_grpc_core::{
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
 };

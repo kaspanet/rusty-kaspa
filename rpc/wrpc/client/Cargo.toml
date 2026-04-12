@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wrpc-client"
+name = "keryx-wrpc-client"
 description = "Kaspa wRPC client"
 rust-version.workspace = true
 version.workspace = true
@@ -17,7 +17,7 @@ include = [
 ]
 
 [features]
-wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-rpc-core/wasm32-sdk","workflow-rpc/wasm32-sdk"]
+wasm32-sdk = ["keryx-consensus-wasm/wasm32-sdk","keryx-rpc-core/wasm32-sdk","workflow-rpc/wasm32-sdk"]
 default = []
 
 [lib]
@@ -30,12 +30,12 @@ borsh.workspace = true
 cfg-if.workspace = true
 futures.workspace = true
 js-sys.workspace = true
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-wasm.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-rpc-macros.workspace = true
+keryx-addresses.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-wasm.workspace = true
+keryx-notify.workspace = true
+keryx-rpc-core.workspace = true
+keryx-rpc-macros.workspace = true
 paste.workspace = true
 rand.workspace = true
 regex.workspace = true

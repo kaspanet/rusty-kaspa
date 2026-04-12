@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use kaspa_database::prelude::CachePolicy;
-use kaspa_database::prelude::DB;
-use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbItem};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
+use keryx_database::prelude::CachePolicy;
+use keryx_database::prelude::DB;
+use keryx_database::prelude::StoreResult;
+use keryx_database::prelude::StoreResultExt;
+use keryx_database::prelude::{BatchDbWriter, CachedDbItem};
+use keryx_database::registry::DatabaseStorePrefixes;
+use keryx_hashes::Hash;
 use rocksdb::WriteBatch;
 
 use super::utxo_set::DbUtxoSetStore;

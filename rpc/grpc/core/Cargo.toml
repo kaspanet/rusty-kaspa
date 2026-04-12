@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-grpc-core"
+name = "keryx-grpc-core"
 description = "Kaspa gRPC core"
 rust-version.workspace = true
 version.workspace = true
@@ -10,12 +10,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-utils.workspace = true
+keryx-addresses.workspace = true
+keryx-consensus-core.workspace = true
+keryx-core.workspace = true
+keryx-notify.workspace = true
+keryx-rpc-core.workspace = true
+keryx-utils.workspace = true
 
 async-channel.workspace = true
 async-stream.workspace = true

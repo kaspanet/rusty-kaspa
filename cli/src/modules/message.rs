@@ -1,7 +1,7 @@
-use kaspa_addresses::Version;
-use kaspa_bip32::secp256k1::XOnlyPublicKey;
-use kaspa_wallet_core::message::SignMessageOptions;
-use kaspa_wallet_core::{
+use keryx_addresses::Version;
+use keryx_bip32::secp256k1::XOnlyPublicKey;
+use keryx_wallet_core::message::SignMessageOptions;
+use keryx_wallet_core::{
     account::{BIP32_ACCOUNT_KIND, KEYPAIR_ACCOUNT_KIND},
     message::{PersonalMessage, sign_message, verify_message},
 };

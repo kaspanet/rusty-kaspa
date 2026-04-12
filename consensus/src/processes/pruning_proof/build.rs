@@ -6,16 +6,16 @@ use std::{
 };
 
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
     blockhash::{BlockHashes, ORIGIN},
     header::Header,
     pruning::PruningPointProof,
 };
-use kaspa_core::{debug, trace};
-use kaspa_database::prelude::*;
-use kaspa_hashes::Hash;
-use kaspa_utils::binary_heap::TopK;
+use keryx_core::{debug, trace};
+use keryx_database::prelude::*;
+use keryx_hashes::Hash;
+use keryx_utils::binary_heap::TopK;
 use parking_lot::RwLock;
 
 use crate::{
@@ -184,7 +184,7 @@ impl PruningProofManager {
         let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(4 * self.pruning_proof_m as usize);
         let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
 
-        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_db_lifetime, temp_db) = keryx_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
 
         (0..=self.max_block_level)
@@ -256,7 +256,7 @@ impl PruningProofManager {
     /// Computes level-proof contexts for all levels, processing levels from high to low to satisfy
     /// MLS inter-level constraints, and aggregates the results into a pruning-proof descriptor.
     fn calc_new_proof(&self, pp: Hash, prev_descriptor: Option<&PruningProofDescriptor>) -> PruningProofDescriptor {
-        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_db_lifetime, temp_db) = keryx_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
 
         let mut level_proof_ctxs: Vec<Option<LevelProofContext>> = vec![None; (self.max_block_level + 1).into()];

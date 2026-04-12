@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 extern crate derive_more;
-use kaspa_core::debug;
+use keryx_core::debug;
 
 use crate::{
     error::Result,

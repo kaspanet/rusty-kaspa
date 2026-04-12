@@ -5,7 +5,7 @@
 use crate::account::{AsLegacyAccount, Inner};
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
-use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
+use keryx_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
 const CACHE_ADDRESS_OFFSET: u32 = 2048;
 

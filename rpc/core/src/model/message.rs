@@ -1,9 +1,9 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_consensus_core::api::stats::BlockCount;
-use kaspa_core::debug;
-use kaspa_notify::subscription::{Command, context::SubscriptionContext, single::UtxosChangedSubscription};
-use kaspa_utils::hex::ToHex;
+use keryx_consensus_core::api::stats::BlockCount;
+use keryx_core::debug;
+use keryx_notify::subscription::{Command, context::SubscriptionContext, single::UtxosChangedSubscription};
+use keryx_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{
@@ -155,9 +155,9 @@ impl Deserializer for GetBlockTemplateRequest {
 pub struct GetBlockTemplateResponse {
     pub block: RpcRawBlock,
 
-    /// Whether kaspad thinks that it's synced.
-    /// Callers are discouraged (but not forbidden) from solving blocks when kaspad is not synced.
-    /// That is because when kaspad isn't in sync with the rest of the network there's a high
+    /// Whether keryxd thinks that it's synced.
+    /// Callers are discouraged (but not forbidden) from solving blocks when keryxd is not synced.
+    /// That is because when keryxd isn't in sync with the rest of the network there's a high
     /// chance the block will never be accepted, thus the solving effort would have been wasted.
     pub is_synced: bool,
 }
@@ -3128,7 +3128,7 @@ impl Deserializer for FinalityConflictResolvedNotification {
 //
 // If `addresses` is empty, the notifications will start or stop for all addresses.
 //
-// This call is only available when this kaspad was started with `--utxoindex`
+// This call is only available when this keryxd was started with `--utxoindex`
 //
 // See: UtxosChangedNotification
 #[derive(Clone, Debug, Serialize, Deserialize)]

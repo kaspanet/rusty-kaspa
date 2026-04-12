@@ -10,18 +10,18 @@ use crate::{
 };
 use async_channel::{Receiver as MpmcReceiver, Sender as MpmcSender, TrySendError as MpmcTrySendError, bounded};
 use itertools::Itertools;
-use kaspa_core::{debug, info, trace, warn};
-use kaspa_grpc_core::{
+use keryx_core::{debug, info, trace, warn};
+use keryx_grpc_core::{
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
 };
-use kaspa_notify::{
+use keryx_notify::{
     connection::Connection as ConnectionT,
     error::Error as NotificationError,
     listener::{ListenerId, ListenerLifespan},
     notifier::Notifier,
 };
-use kaspa_rpc_core::Notification;
+use keryx_rpc_core::Notification;
 use parking_lot::Mutex;
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -409,7 +409,7 @@ impl ConnectionT for Connection {
         GrpcEncoding::ProtowireResponse
     }
 
-    fn into_message(notification: &kaspa_rpc_core::Notification, _: &Self::Encoding) -> Self::Message {
+    fn into_message(notification: &keryx_rpc_core::Notification, _: &Self::Encoding) -> Self::Message {
         Arc::new((notification).into())
     }
 

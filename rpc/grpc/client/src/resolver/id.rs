@@ -2,8 +2,8 @@ use crate::{
     error::{Error, Result},
     resolver::{KaspadResponseReceiver, KaspadResponseSender, Resolver},
 };
-use kaspa_core::trace;
-use kaspa_grpc_core::{
+use keryx_core::trace;
+use keryx_grpc_core::{
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
 };

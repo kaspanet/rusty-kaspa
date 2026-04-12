@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-addresses"
+name = "keryx-addresses"
 description = "Kaspa address"
 categories = ["no-std"]
 rust-version.workspace = true

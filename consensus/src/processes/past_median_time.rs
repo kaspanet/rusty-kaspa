@@ -1,6 +1,6 @@
 use crate::model::stores::{block_window_cache::BlockWindowHeap, headers::HeaderStoreReader};
-use kaspa_consensus_core::errors::block::RuleError;
-use kaspa_hashes::Hash;
+use keryx_consensus_core::errors::block::RuleError;
+use keryx_hashes::Hash;
 use std::sync::Arc;
 
 /// A past median time manager based on sampled block windows, implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md)

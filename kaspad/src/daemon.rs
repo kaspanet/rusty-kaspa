@@ -1,57 +1,57 @@
 use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     config::ConfigBuilder,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     errors::config::{ConfigError, ConfigResult},
     mining_rules::MiningRules,
 };
-use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, debug, info};
-use kaspa_core::{kaspad_env::version, task::tick::TickService};
-use kaspa_database::{
+use keryx_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
+use keryx_core::{core::Core, debug, info};
+use keryx_core::{kaspad_env::version, task::tick::TickService};
+use keryx_database::{
     prelude::{CachePolicy, DbWriter, DirectDbWriter, RocksDbPreset},
     registry::DatabaseStorePrefixes,
 };
-use kaspa_grpc_server::service::GrpcService;
-use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
-use kaspa_p2p_lib::Hub;
-use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
-use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::git;
-use kaspa_utils::networking::ContextualNetAddress;
-use kaspa_utils::sysinfo::SystemInfo;
-use kaspa_utils_tower::counters::TowerConnectionCounters;
+use keryx_grpc_server::service::GrpcService;
+use keryx_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
+use keryx_p2p_lib::Hub;
+use keryx_p2p_mining::rule_engine::MiningRuleEngine;
+use keryx_rpc_service::service::RpcCoreService;
+use keryx_txscript::caches::TxScriptCacheCounters;
+use keryx_utils::git;
+use keryx_utils::networking::ContextualNetAddress;
+use keryx_utils::sysinfo::SystemInfo;
+use keryx_utils_tower::counters::TowerConnectionCounters;
 
-use kaspa_addressmanager::AddressManager;
-use kaspa_consensus::{
+use keryx_addressmanager::AddressManager;
+use keryx_consensus::{
     consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
 };
-use kaspa_consensus::{
+use keryx_consensus::{
     consensus::factory::{Factory as ConsensusFactory, LATEST_DB_VERSION},
     params::{OverrideParams, Params},
     pipeline::ProcessingCounters,
 };
-use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::task::runtime::AsyncRuntime;
-use kaspa_index_processor::service::IndexService;
-use kaspa_mining::{
+use keryx_consensusmanager::ConsensusManager;
+use keryx_core::task::runtime::AsyncRuntime;
+use keryx_index_processor::service::IndexService;
+use keryx_mining::{
     MiningCounters,
     manager::{MiningManager, MiningManagerProxy},
     monitor::MiningMonitor,
 };
-use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
+use keryx_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
-use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
-use kaspa_utxoindex::{UtxoIndex, api::UtxoIndexProxy};
-use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
+use keryx_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
+use keryx_utxoindex::{UtxoIndex, api::UtxoIndexProxy};
+use keryx_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
 /// Desired soft FD limit that needs to be configured
-/// for the kaspad process.
+/// for the keryxd process.
 pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 8 * 1024;
-/// Minimum acceptable soft FD limit for the kaspad
+/// Minimum acceptable soft FD limit for the keryxd
 /// process. (Rusty Kaspa will operate with the minimal
 /// acceptable limit of `4096`, but a setting below
 /// this value may impact the database performance).
@@ -81,9 +81,9 @@ fn get_home_dir() -> PathBuf {
 /// Get the default application directory.
 pub fn get_app_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
-    return get_home_dir().join("rusty-kaspa");
+    return get_home_dir().join("keryx-labs");
     #[cfg(not(target_os = "windows"))]
-    return get_home_dir().join(".rusty-kaspa");
+    return get_home_dir().join(".keryx-labs");
 }
 
 pub fn validate_args(args: &Args) -> ConfigResult<()> {
@@ -154,7 +154,7 @@ pub struct Runtime {
 
 /// Get the application directory from the supplied [`Args`].
 /// This function can be used to identify the location of
-/// the application folder that contains kaspad logs and the database.
+/// the application folder that contains keryxd logs and the database.
 pub fn get_app_dir_from_args(args: &Args) -> PathBuf {
     let app_dir = args
         .appdir
@@ -183,15 +183,15 @@ impl Runtime {
         // Initialize the logger
         cfg_if::cfg_if! {
             if #[cfg(feature = "semaphore-trace")] {
-                kaspa_core::log::init_logger(log_dir.as_deref(), &format!("{},{}=debug", args.log_level, kaspa_utils::sync::semaphore_module_path()));
+                keryx_core::log::init_logger(log_dir.as_deref(), &format!("{},{}=debug", args.log_level, keryx_utils::sync::semaphore_module_path()));
             } else {
-                kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level);
+                keryx_core::log::init_logger(log_dir.as_deref(), &args.log_level);
             }
         };
 
         // Configure the panic behavior
         // As we log the panic, we want to set it up after the logger
-        kaspa_core::panic::configure_panic();
+        keryx_core::panic::configure_panic();
 
         Self { log_dir: log_dir.map(|log_dir| log_dir.to_owned()) }
     }
@@ -386,7 +386,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     }
 
     // DB used for addresses store and for multi-consensus management
-    let mut meta_db = kaspa_database::prelude::ConnBuilder::default()
+    let mut meta_db = keryx_database::prelude::ConnBuilder::default()
         .with_db_path(meta_db_dir.clone())
         .with_files_limit(META_DB_FILE_LIMIT)
         .with_preset(rocksdb_preset)
@@ -404,7 +404,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
         match active_consensus_dir_name {
             Some(dir_name) => {
-                let consensus_db = kaspa_database::prelude::ConnBuilder::default()
+                let consensus_db = keryx_database::prelude::ConnBuilder::default()
                     .with_db_path(consensus_db_dir.clone().join(dir_name))
                     .with_files_limit(1)
                     .with_preset(rocksdb_preset)
@@ -430,7 +430,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         }
     }
 
-    // Reset Condition: Need to reset if we're upgrading from kaspad DB version
+    // Reset Condition: Need to reset if we're upgrading from keryxd DB version
     // TEMP: upgrade from Alpha version or any version before this one
     'db_upgrade: while !is_db_reset_needed
         && (meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some())
@@ -459,7 +459,7 @@ Do you confirm? (y/n)";
                     // Apply soft upgrade logic: delete relation data from higher levels
                     // and then update DB version to 6
 
-                    let consensus_db = kaspa_database::prelude::ConnBuilder::default()
+                    let consensus_db = keryx_database::prelude::ConnBuilder::default()
                         .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
                         .with_files_limit(10)
                         .with_preset(rocksdb_preset)
@@ -523,7 +523,7 @@ Do you confirm? (y/n)";
         }
 
         // Reopen the DB
-        meta_db = kaspa_database::prelude::ConnBuilder::default()
+        meta_db = keryx_database::prelude::ConnBuilder::default()
             .with_db_path(meta_db_dir)
             .with_files_limit(META_DB_FILE_LIMIT)
             .with_preset(rocksdb_preset)
@@ -592,10 +592,10 @@ Do you confirm? (y/n)";
         .with_tick_service(tick_service.clone());
     let perf_monitor = if args.perf_metrics {
         let cb = move |counters: CountersSnapshot| {
-            debug!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_process_metrics_display());
-            debug!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_io_metrics_display());
+            debug!("[{}] {}", keryx_perf_monitor::SERVICE_NAME, counters.to_process_metrics_display());
+            debug!("[{}] {}", keryx_perf_monitor::SERVICE_NAME, counters.to_io_metrics_display());
             #[cfg(feature = "heap")]
-            debug!("[{}] heap stats: {:?}", kaspa_perf_monitor::SERVICE_NAME, dhat::HeapStats::get());
+            debug!("[{}] heap stats: {:?}", keryx_perf_monitor::SERVICE_NAME, dhat::HeapStats::get());
         };
         Arc::new(perf_monitor_builder.with_fetch_cb(cb).build())
     } else {
@@ -607,7 +607,7 @@ Do you confirm? (y/n)";
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
+        let utxoindex_db = keryx_database::prelude::ConnBuilder::default()
             .with_db_path(utxoindex_db_dir)
             .with_files_limit(utxo_files_limit)
             .with_preset(rocksdb_preset)

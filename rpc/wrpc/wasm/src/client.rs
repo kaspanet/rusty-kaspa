@@ -11,19 +11,19 @@ use crate::Resolver;
 use crate::imports::*;
 use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
 use js_sys::{Function, Object};
-use kaspa_addresses::{Address, AddressOrStringArrayT};
-use kaspa_consensus_client::UtxoEntryReference;
-use kaspa_consensus_core::network::{NetworkType, NetworkTypeT};
-use kaspa_notify::connection::ChannelType;
-use kaspa_notify::events::EventType;
-use kaspa_notify::listener;
-use kaspa_notify::notification::Notification as NotificationT;
-use kaspa_rpc_core::api::ctl;
-pub use kaspa_rpc_core::wasm::message::*;
-pub use kaspa_rpc_macros::{
+use keryx_addresses::{Address, AddressOrStringArrayT};
+use keryx_consensus_client::UtxoEntryReference;
+use keryx_consensus_core::network::{NetworkType, NetworkTypeT};
+use keryx_notify::connection::ChannelType;
+use keryx_notify::events::EventType;
+use keryx_notify::listener;
+use keryx_notify::notification::Notification as NotificationT;
+use keryx_rpc_core::api::ctl;
+pub use keryx_rpc_core::wasm::message::*;
+pub use keryx_rpc_macros::{
     build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
 };
-use kaspa_wasm_core::events::{Sink, get_event_targets};
+use keryx_wasm_core::events::{Sink, get_event_targets};
 pub use serde_wasm_bindgen::from_value;
 use workflow_rpc::client::Ctl;
 pub use workflow_rpc::client::IConnectOptions;
@@ -144,7 +144,7 @@ pub(crate) struct Inner {
     notification_ctl: DuplexChannel,
     callbacks: Arc<Mutex<AHashMap<NotificationEvent, Vec<Sink>>>>,
     listener_id: Arc<Mutex<Option<ListenerId>>>,
-    notification_channel: Channel<kaspa_rpc_core::Notification>,
+    notification_channel: Channel<keryx_rpc_core::Notification>,
 }
 
 impl Inner {
@@ -694,7 +694,7 @@ impl RpcClient {
                     msg = notification_receiver.recv().fuse() => {
                         if let Ok(notification) = &msg {
                             match &notification {
-                                kaspa_rpc_core::Notification::UtxosChanged(utxos_changed_notification) => {
+                                keryx_rpc_core::Notification::UtxosChanged(utxos_changed_notification) => {
 
                                     let event_type = EventType::UtxosChanged;
                                     let notification_event = NotificationEvent::Notification(event_type);

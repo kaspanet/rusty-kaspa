@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use itertools::Itertools;
-use kaspa_consensus_core::pruning::PruningPointProof;
-use kaspa_database::prelude::DB;
-use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
-use kaspa_hashes::ZERO_HASH;
+use keryx_consensus_core::pruning::PruningPointProof;
+use keryx_database::prelude::DB;
+use keryx_database::prelude::StoreResult;
+use keryx_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use keryx_database::registry::DatabaseStorePrefixes;
+use keryx_hashes::Hash;
+use keryx_hashes::ZERO_HASH;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 

@@ -12,14 +12,14 @@ use workflow_wasm::prelude::*;
 #[derive(Clone, CastFromJs)]
 #[wasm_bindgen]
 pub struct DerivationPath {
-    inner: kaspa_bip32::DerivationPath,
+    inner: keryx_bip32::DerivationPath,
 }
 
 #[wasm_bindgen]
 impl DerivationPath {
     #[wasm_bindgen(constructor)]
     pub fn new(path: &str) -> Result<DerivationPath> {
-        let inner = kaspa_bip32::DerivationPath::from_str(path)?;
+        let inner = keryx_bip32::DerivationPath::from_str(path)?;
         Ok(Self { inner })
     }
 
@@ -72,7 +72,7 @@ impl TryCastFromJs for DerivationPath {
     }
 }
 
-impl<'a> From<&'a DerivationPath> for &'a kaspa_bip32::DerivationPath {
+impl<'a> From<&'a DerivationPath> for &'a keryx_bip32::DerivationPath {
     fn from(value: &'a DerivationPath) -> Self {
         &value.inner
     }

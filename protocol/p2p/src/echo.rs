@@ -5,7 +5,7 @@ use crate::{
     handshake::KaspadHandshake,
     pb::{self, VersionMessage},
 };
-use kaspa_core::{debug, time::unix_now, trace, warn};
+use keryx_core::{debug, time::unix_now, trace, warn};
 use std::sync::Arc;
 use tonic::async_trait;
 use uuid::Uuid;
@@ -149,12 +149,12 @@ mod tests {
 
     use super::*;
     use crate::{Adaptor, Hub};
-    use kaspa_core::debug;
-    use kaspa_utils::networking::NetAddress;
+    use keryx_core::debug;
+    use keryx_utils::networking::NetAddress;
 
     #[tokio::test]
     async fn test_handshake() {
-        kaspa_core::log::try_init_logger("debug");
+        keryx_core::log::try_init_logger("debug");
 
         let address1 = NetAddress::from_str("[::1]:50053").unwrap();
         let adaptor1 = Adaptor::bidirectional(address1, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default()).unwrap();

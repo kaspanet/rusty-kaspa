@@ -1,5 +1,5 @@
 use crate::{consensus::test_consensus::TestConsensus, model::services::reachability::ReachabilityService};
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashSet,
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
     config::{ConfigBuilder, params::MAINNET_PARAMS},
     tx::{ScriptPublicKey, ScriptVec, Transaction},
 };
-use kaspa_hashes::Hash;
+use keryx_hashes::Hash;
 use std::{collections::VecDeque, thread::JoinHandle};
 
 struct OnetimeTxSelector {
@@ -27,7 +27,7 @@ impl TemplateTransactionSelector for OnetimeTxSelector {
         self.txs.take().unwrap()
     }
 
-    fn reject_selection(&mut self, _tx_id: kaspa_consensus_core::tx::TransactionId) {
+    fn reject_selection(&mut self, _tx_id: keryx_consensus_core::tx::TransactionId) {
         unimplemented!()
     }
 
@@ -198,7 +198,7 @@ async fn antichain_merge_test() {
 
 #[tokio::test]
 async fn basic_utxo_disqualified_test() {
-    kaspa_core::log::try_init_logger("info");
+    keryx_core::log::try_init_logger("info");
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -230,7 +230,7 @@ async fn basic_utxo_disqualified_test() {
 async fn double_search_disqualified_test() {
     // TODO: add non-coinbase transactions and concurrency in order to complicate the test
 
-    kaspa_core::log::try_init_logger("info");
+    keryx_core::log::try_init_logger("info");
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {

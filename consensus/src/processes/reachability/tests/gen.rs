@@ -1,4 +1,4 @@
-use kaspa_utils::sim::{Environment, Process, Resumption, Simulation, Suspension};
+use keryx_utils::sim::{Environment, Process, Resumption, Simulation, Suspension};
 use rand::rngs::ThreadRng;
 use rand_distr::{Distribution, Exp};
 use std::{cell::RefCell, cmp::max, collections::HashSet, iter::once, rc::Rc};

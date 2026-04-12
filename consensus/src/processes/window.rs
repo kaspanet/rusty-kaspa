@@ -7,14 +7,14 @@ use crate::{
     },
     processes::ghostdag::ordering::SortableBlock,
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashSet, BlueWorkType, HashMapCustomHasher,
     blockhash::{BlockHashExtensions, ORIGIN},
     config::genesis::GenesisBlock,
     errors::{block::RuleError, difficulty::DifficultyResult},
 };
-use kaspa_hashes::Hash;
-use kaspa_math::Uint256;
+use keryx_hashes::Hash;
+use keryx_math::Uint256;
 use once_cell::unsync::Lazy;
 use std::{
     cmp::Reverse,

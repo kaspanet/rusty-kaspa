@@ -10,7 +10,7 @@ use crate::api::connection::DynRpcConnection;
 use crate::{RpcResult, model::*, notify::connection::ChannelConnection};
 use async_trait::async_trait;
 use downcast::{AnySync, downcast_sync};
-use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
+use keryx_notify::{listener::ListenerId, scope::Scope, subscription::Command};
 use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
@@ -138,7 +138,7 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetBlockTemplateRequest,
     ) -> RpcResult<GetBlockTemplateResponse>;
 
-    /// Requests the list of known kaspad addresses in the current network (mainnet, testnet, etc.)
+    /// Requests the list of known keryxd addresses in the current network (mainnet, testnet, etc.)
     async fn get_peer_addresses(&self) -> RpcResult<GetPeerAddressesResponse> {
         self.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await
     }

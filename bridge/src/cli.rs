@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use kaspa_stratum_bridge::{BridgeConfig, InstanceConfig, net_utils::normalize_port};
+use keryx_stratum_bridge::{BridgeConfig, InstanceConfig, net_utils::normalize_port};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum NodeMode {
@@ -118,7 +118,7 @@ pub struct Cli {
     #[arg(long)]
     pub appdir: Option<PathBuf>,
 
-    #[arg(last = true, help = "Kaspad arguments (use '--' separator if kaspad args start with hyphens)")]
+    #[arg(last = true, help = "Kaspad arguments (use '--' separator if keryxd args start with hyphens)")]
     pub kaspad_args: Vec<String>,
 
     #[arg(long)]

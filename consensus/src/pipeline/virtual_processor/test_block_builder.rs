@@ -3,11 +3,11 @@ use std::{ops::Deref, sync::Arc};
 use crate::model::stores::{
     pruning::PruningStoreReader, utxo_multisets::UtxoMultisetsStoreReader, virtual_state::VirtualStateStoreReader,
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     block::BlockTemplate, blockhash::ORIGIN, coinbase::MinerData, errors::block::RuleError, tx::Transaction,
     utxo::utxo_view::UtxoViewComposition,
 };
-use kaspa_hashes::Hash;
+use keryx_hashes::Hash;
 
 use super::VirtualStateProcessor;
 

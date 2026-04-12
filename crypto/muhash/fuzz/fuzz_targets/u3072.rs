@@ -1,6 +1,6 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use kaspa_muhash::u3072::{self, U3072};
+use keryx_muhash::u3072::{self, U3072};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{One, Signed};

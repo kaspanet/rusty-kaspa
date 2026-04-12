@@ -1,18 +1,18 @@
-use kaspa_consensus_core::network::NetworkId;
-use kaspa_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
-use kaspa_database::utils::get_kaspa_tempdir;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_grpc_server::service::GrpcService;
-use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_utils::{networking::ContextualNetAddress, triggers::Listener};
-use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
+use keryx_consensus_core::network::NetworkId;
+use keryx_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
+use keryx_database::utils::get_kaspa_tempdir;
+use keryx_grpc_client::GrpcClient;
+use keryx_grpc_server::service::GrpcService;
+use keryx_notify::subscription::context::SubscriptionContext;
+use keryx_rpc_core::notify::mode::NotificationMode;
+use keryx_rpc_service::service::RpcCoreService;
+use keryx_utils::{networking::ContextualNetAddress, triggers::Listener};
+use keryxd_lib::{args::Args, daemon::create_core_with_runtime};
 use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tempfile::TempDir;
 
-use kaspa_grpc_client::ClientPool;
+use keryx_grpc_client::ClientPool;
 
 pub struct ClientManager {
     pub args: RwLock<Args>,

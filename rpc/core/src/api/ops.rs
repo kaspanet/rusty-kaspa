@@ -3,7 +3,7 @@
 //!
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_notify::events::EventType;
+use keryx_notify::events::EventType;
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;
 

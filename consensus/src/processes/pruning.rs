@@ -11,12 +11,12 @@ use crate::model::{
         reachability::ReachabilityStoreReader,
     },
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     blockhash::BlockHashExtensions,
     errors::pruning::{PruningImportError, PruningImportResult},
 };
-use kaspa_database::prelude::StoreResultUnitExt;
-use kaspa_hashes::Hash;
+use keryx_database::prelude::StoreResultUnitExt;
+use keryx_hashes::Hash;
 use parking_lot::RwLock;
 
 pub struct PruningPointReply {
@@ -333,7 +333,7 @@ impl<
 
 #[cfg(test)]
 mod tests {
-    use kaspa_consensus_core::{config::params::Params, network::NetworkType};
+    use keryx_consensus_core::{config::params::Params, network::NetworkType};
 
     #[test]
     fn assert_pruning_depth_consistency() {

@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-index-processor"
+name = "keryx-index-processor"
 description = "Kaspa index processor"
 rust-version.workspace = true
 version.workspace = true
@@ -10,16 +10,16 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes.workspace = true
-kaspa-index-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-utils.workspace = true
-kaspa-utxoindex.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-notify.workspace = true
+keryx-consensusmanager.workspace = true
+keryx-core.workspace = true
+keryx-database.workspace = true
+keryx-hashes.workspace = true
+keryx-index-core.workspace = true
+keryx-notify.workspace = true
+keryx-utils.workspace = true
+keryx-utxoindex.workspace = true
 
 async-channel.workspace = true
 async-trait.workspace = true
@@ -32,7 +32,7 @@ tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ]
 triggered.workspace = true
 
 [dev-dependencies]
-kaspa-consensus.workspace = true
+keryx-consensus.workspace = true
 parking_lot.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 rand = {workspace = true,  features = [ "small_rng" ]}

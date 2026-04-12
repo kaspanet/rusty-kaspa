@@ -1,9 +1,9 @@
 use crate::derivation::traits::*;
 use crate::imports::*;
 use hmac::Mac;
-use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
-use kaspa_bip32::types::{ChainCode, HmacSha512, KEY_SIZE, KeyFingerprint, PublicKeyBytes};
-use kaspa_bip32::{
+use keryx_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
+use keryx_bip32::types::{ChainCode, HmacSha512, KEY_SIZE, KeyFingerprint, PublicKeyBytes};
+use keryx_bip32::{
     AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
     PrivateKey, PublicKey, SecretKey, SecretKeyExt,
 };
@@ -376,12 +376,12 @@ impl WalletDerivationManagerV0 {
         let digest = Ripemd160::digest(Sha256::digest(&public_key.to_bytes()[1..]));
         let fingerprint = digest[..4].try_into().expect("digest truncated");
 
-        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(kaspa_bip32::Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(keryx_bip32::Error::Hmac)?;
         hmac.update(&public_key.to_bytes());
 
         let (key, chain_code) = Self::derive_public_key_child(public_key, child_number, hmac)?;
 
-        let depth = attrs.depth.checked_add(1).ok_or(kaspa_bip32::Error::Depth)?;
+        let depth = attrs.depth.checked_add(1).ok_or(keryx_bip32::Error::Depth)?;
 
         let attrs = ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number, chain_code, depth };
 
@@ -436,7 +436,7 @@ impl WalletDerivationManagerV0 {
 
         let (private_key, chain_code) = Self::derive_key(private_key, child_number, hmac)?;
 
-        let depth = attrs.depth.checked_add(1).ok_or(kaspa_bip32::Error::Depth)?;
+        let depth = attrs.depth.checked_add(1).ok_or(keryx_bip32::Error::Depth)?;
 
         let attrs = ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number, chain_code, depth };
 
@@ -467,7 +467,7 @@ impl WalletDerivationManagerV0 {
     where
         K: PrivateKey<PublicKey = secp256k1::PublicKey>,
     {
-        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(kaspa_bip32::Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(keryx_bip32::Error::Hmac)?;
         if hardened {
             hmac.update(&[0]);
             hmac.update(&private_key.to_bytes());
@@ -652,7 +652,7 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
 mod tests {
     //use super::hd_;
     use super::{PubkeyDerivationManagerV0, WalletDerivationManagerTrait, WalletDerivationManagerV0};
-    use kaspa_addresses::Prefix;
+    use keryx_addresses::Prefix;
 
     fn gen0_receive_addresses() -> Vec<&'static str> {
         vec![
@@ -1024,7 +1024,7 @@ mod tests {
 
         for index in 0..20 {
             let key = hd_wallet.derive_receive_pubkey(index).unwrap();
-            //let address = Address::new(Prefix::Testnet, kaspa_addresses::Version::PubKey, key.to_bytes());
+            //let address = Address::new(Prefix::Testnet, keryx_addresses::Version::PubKey, key.to_bytes());
             let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
             //receive_addresses.push(String::from(address));
             assert_eq!(receive_addresses[index as usize], address.to_string(), "receive address at {index} failed");

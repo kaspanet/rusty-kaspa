@@ -1,6 +1,6 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_core::debug;
-use kaspa_p2p_lib::{
+use keryx_core::debug;
+use keryx_p2p_lib::{
     IncomingRoute, Router, common::ProtocolError, convert::header::HeaderFormat, dequeue_with_request_id, make_response,
     pb::kaspad_message::Payload,
 };

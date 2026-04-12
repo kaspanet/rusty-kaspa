@@ -1,4 +1,4 @@
-use kaspa_consensus_core::trusted::{TrustedGhostdagData, TrustedHeader};
+use keryx_consensus_core::trusted::{TrustedGhostdagData, TrustedHeader};
 
 use crate::convert::header::HeaderFormat;
 use crate::pb as protowire;

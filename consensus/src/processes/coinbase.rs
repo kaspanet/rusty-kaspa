@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlockHashSet,
     coinbase::*,
     config::params::ForkedParam,
@@ -272,7 +272,7 @@ impl CoinbaseManager {
 }
 
 /*
-    This table was pre-calculated by calling `calcDeflationaryPeriodBlockSubsidyFloatCalc` (in kaspad-go) for all months until reaching 0 subsidy.
+    This table was pre-calculated by calling `calcDeflationaryPeriodBlockSubsidyFloatCalc` (in keryxd-go) for all months until reaching 0 subsidy.
     To regenerate this table, run `TestBuildSubsidyTable` in coinbasemanager_test.go (note the `deflationaryPhaseBaseSubsidy` therein).
     These values represent the reward per second for each month (= reward per block for 1 BPS).
 */
@@ -302,7 +302,7 @@ const SUBSIDY_BY_MONTH_TABLE: [u64; 426] = [
 mod tests {
     use super::*;
     use crate::params::MAINNET_PARAMS;
-    use kaspa_consensus_core::{
+    use keryx_consensus_core::{
         config::params::{ForkActivation, Params, SIMNET_PARAMS},
         constants::SOMPI_PER_KASPA,
         network::{NetworkId, NetworkType},

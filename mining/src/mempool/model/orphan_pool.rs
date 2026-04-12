@@ -8,12 +8,12 @@ use crate::mempool::{
     },
     tx::Priority,
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     tx::MutableTransaction,
     tx::{TransactionId, TransactionOutpoint},
 };
-use kaspa_core::{debug, warn};
-use kaspa_utils::iter::IterExtensions;
+use keryx_core::{debug, warn};
+use keryx_utils::iter::IterExtensions;
 use std::sync::Arc;
 
 /// Pool of orphan transactions depending on some missing utxo entries

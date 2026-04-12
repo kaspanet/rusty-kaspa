@@ -1,4 +1,4 @@
-use kaspa_rpc_core::Notification;
-use kaspa_utils::channel::Channel;
+use keryx_rpc_core::Notification;
+use keryx_utils::channel::Channel;
 
 pub type NotificationChannel = Channel<Notification>;

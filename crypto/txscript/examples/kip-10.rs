@@ -1,5 +1,5 @@
-use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus_core::{
+use keryx_addresses::{Address, Prefix, Version};
+use keryx_consensus_core::{
     hashing::{
         sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::SIG_HASH_ALL,
@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
         TransactionOutput, UtxoEntry, VerifiableTransaction,
     },
 };
-use kaspa_txscript::{
+use keryx_txscript::{
     TxScriptEngine,
     caches::Cache,
     opcodes::codes::{
@@ -19,7 +19,7 @@ use kaspa_txscript::{
     pay_to_address_script, pay_to_script_hash_script,
     script_builder::{ScriptBuilder, ScriptBuilderResult},
 };
-use kaspa_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
+use keryx_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
 use rand::thread_rng;
 use secp256k1::Keypair;
 

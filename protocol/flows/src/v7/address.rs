@@ -1,13 +1,13 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 use itertools::Itertools;
-use kaspa_addressmanager::NetAddress;
-use kaspa_p2p_lib::{
+use keryx_addressmanager::NetAddress;
+use keryx_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
     pb::{AddressesMessage, RequestAddressesMessage, kaspad_message::Payload},
 };
-use kaspa_utils::networking::IpAddress;
+use keryx_utils::networking::IpAddress;
 use rand::seq::SliceRandom;
 use std::sync::Arc;
 

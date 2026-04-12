@@ -1,6 +1,6 @@
-use kaspa_wallet_core::account::BIP32_ACCOUNT_KIND;
-use kaspa_wallet_core::account::LEGACY_ACCOUNT_KIND;
-use kaspa_wallet_core::account::MULTISIG_ACCOUNT_KIND;
+use keryx_wallet_core::account::BIP32_ACCOUNT_KIND;
+use keryx_wallet_core::account::LEGACY_ACCOUNT_KIND;
+use keryx_wallet_core::account::MULTISIG_ACCOUNT_KIND;
 
 use crate::imports::*;
 use crate::wizards;

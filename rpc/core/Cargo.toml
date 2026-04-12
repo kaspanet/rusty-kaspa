@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-rpc-core"
+name = "keryx-rpc-core"
 description = "Kaspa RPC core"
 rust-version.workspace = true
 version.workspace = true
@@ -11,25 +11,25 @@ repository.workspace = true
 
 [features]
 wasm32-sdk = [
-    "kaspa-consensus-client/wasm32-sdk",
-    "kaspa-consensus-wasm/wasm32-sdk"
+    "keryx-consensus-client/wasm32-sdk",
+    "keryx-consensus-wasm/wasm32-sdk"
 ]
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-client.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensus-wasm.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-index-core.workspace = true
-kaspa-math.workspace = true
-kaspa-mining-errors.workspace = true
-kaspa-notify.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
-kaspa-rpc-macros.workspace = true
+keryx-addresses.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-client.workspace = true
+keryx-consensus-notify.workspace = true
+keryx-consensus-wasm.workspace = true
+keryx-core.workspace = true
+keryx-hashes.workspace = true
+keryx-index-core.workspace = true
+keryx-math.workspace = true
+keryx-mining-errors.workspace = true
+keryx-notify.workspace = true
+keryx-txscript.workspace = true
+keryx-utils.workspace = true
+keryx-rpc-macros.workspace = true
 
 async-channel.workspace = true
 async-trait.workspace = true

@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-utxoindex"
+name = "keryx-utxoindex"
 description = "Kaspa UTXO index"
 rust-version.workspace = true
 version.workspace = true
@@ -11,13 +11,13 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes.workspace = true
-kaspa-index-core.workspace = true
-kaspa-utils.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensusmanager.workspace = true
+keryx-core.workspace = true
+keryx-database.workspace = true
+keryx-hashes.workspace = true
+keryx-index-core.workspace = true
+keryx-utils.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rocksdb.workspace = true
@@ -25,7 +25,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-kaspa-consensus.workspace = true
+keryx-consensus.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 
 [lints]

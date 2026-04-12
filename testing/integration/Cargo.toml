@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-testing-integration"
+name = "keryx-testing-integration"
 publish = false
 rust-version.workspace = true
 version.workspace = true
@@ -10,33 +10,33 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-alloc.workspace = true            # This changes the global allocator for all of the next dependencies so should be kept first
+keryx-alloc.workspace = true            # This changes the global allocator for all of the next dependencies so should be kept first
 
-kaspa-addresses.workspace = true
-kaspa-bip32.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensus.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-grpc-client.workspace = true
-kaspa-grpc-core.workspace = true
-kaspa-grpc-server.workspace = true
-kaspa-hashes.workspace = true
-kaspa-index-processor.workspace = true
-kaspa-math.workspace = true
-kaspa-merkle.workspace = true
-kaspa-muhash.workspace = true
-kaspa-notify.workspace = true
-kaspa-pow.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-rpc-service.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
-kaspa-utxoindex.workspace = true
-kaspa-wrpc-server.workspace = true
-kaspad.workspace = true
+keryx-addresses.workspace = true
+keryx-bip32.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-notify.workspace = true
+keryx-consensus.workspace = true
+keryx-consensusmanager.workspace = true
+keryx-core.workspace = true
+keryx-database.workspace = true
+keryx-grpc-client.workspace = true
+keryx-grpc-core.workspace = true
+keryx-grpc-server.workspace = true
+keryx-hashes.workspace = true
+keryx-index-processor.workspace = true
+keryx-math.workspace = true
+keryx-merkle.workspace = true
+keryx-muhash.workspace = true
+keryx-notify.workspace = true
+keryx-pow.workspace = true
+keryx-rpc-core.workspace = true
+keryx-rpc-service.workspace = true
+keryx-txscript.workspace = true
+keryx-utils.workspace = true
+keryx-utxoindex.workspace = true
+keryx-wrpc-server.workspace = true
+keryxd.workspace = true
 
 async-channel.workspace = true
 async-trait.workspace = true
@@ -69,12 +69,12 @@ workflow-perf-monitor.workspace = true
 criterion.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true, features = ["rt", "macros", "process"] }
-kaspa-txscript-errors.workspace = true
+keryx-txscript-errors.workspace = true
 
 [features]
 heap = ["dhat"]
 html_reports = []
-devnet-prealloc = ["kaspad/devnet-prealloc"]
+devnet-prealloc = ["keryxd/devnet-prealloc"]
 
 [lints]
 workspace = true

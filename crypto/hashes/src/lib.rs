@@ -2,7 +2,7 @@ mod hashers;
 mod pow_hashers;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_utils::{
+use keryx_utils::{
     hex::{FromHex, ToHex},
     mem_size::MemSizeEstimator,
     serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,

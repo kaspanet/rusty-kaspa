@@ -21,7 +21,7 @@ use crate::{
     },
 };
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     api::{
         ConsensusApi,
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -31,9 +31,9 @@ use kaspa_consensus_core::{
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
-use kaspa_consensusmanager::{ConsensusProxy, spawn_blocking};
-use kaspa_core::{debug, error, info, time::Stopwatch, warn};
-use kaspa_mining_errors::{manager::MiningManagerError, mempool::RuleError};
+use keryx_consensusmanager::{ConsensusProxy, spawn_blocking};
+use keryx_core::{debug, error, info, time::Stopwatch, warn};
+use keryx_mining_errors::{manager::MiningManagerError, mempool::RuleError};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -177,7 +177,7 @@ impl MiningManager {
                             // Original golang comment:
                             // mempool.remove_transactions might return errors in situations that are perfectly fine in this context.
                             // TODO: Once the mempool invariants are clear, this might return an error:
-                            // https://github.com/kaspanet/kaspad/issues/1553
+                            // https://github.com/kaspanet/keryxd/issues/1553
                             // NOTE: unlike golang, here we continue removing also if an error was found
                             error!("Error from mempool.remove_transactions: {:?}", err);
                         }
@@ -213,7 +213,7 @@ impl MiningManager {
     pub(crate) fn get_realtime_feerate_estimations_verbose(
         &self,
         consensus: &dyn ConsensusApi,
-        prefix: kaspa_addresses::Prefix,
+        prefix: keryx_addresses::Prefix,
     ) -> MiningManagerResult<FeeEstimateVerbose> {
         let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
         let network_mass_per_second = args.network_mass_per_second();
@@ -234,14 +234,14 @@ impl MiningManager {
         };
         // calculate next_block_template_feerate_xxx
         {
-            let script_public_key = kaspa_txscript::pay_to_address_script(&kaspa_addresses::Address::new(
+            let script_public_key = keryx_txscript::pay_to_address_script(&keryx_addresses::Address::new(
                 prefix,
-                kaspa_addresses::Version::PubKey,
+                keryx_addresses::Version::PubKey,
                 &[0u8; 32],
             ));
             let miner_data: MinerData = MinerData::new(script_public_key, vec![]);
 
-            let BlockTemplate { block: kaspa_consensus_core::block::MutableBlock { transactions, .. }, calculated_fees, .. } =
+            let BlockTemplate { block: keryx_consensus_core::block::MutableBlock { transactions, .. }, calculated_fees, .. } =
                 self.get_block_template(consensus, &miner_data)?;
 
             let Some(Stats { max, median, min }) = feerate_stats(transactions, calculated_fees) else {
@@ -862,7 +862,7 @@ impl MiningManagerProxy {
     pub async fn get_realtime_feerate_estimations_verbose(
         self,
         consensus: &ConsensusProxy,
-        prefix: kaspa_addresses::Prefix,
+        prefix: keryx_addresses::Prefix,
     ) -> MiningManagerResult<FeeEstimateVerbose> {
         consensus.clone().spawn_blocking(move |c| self.inner.get_realtime_feerate_estimations_verbose(c, prefix)).await
     }
@@ -1073,7 +1073,7 @@ fn feerate_stats(transactions: Vec<Transaction>, calculated_fees: Vec<u64>) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_consensus_core::subnets;
+    use keryx_consensus_core::subnets;
     use std::iter::repeat_n;
 
     fn transactions(length: usize) -> Vec<Transaction> {

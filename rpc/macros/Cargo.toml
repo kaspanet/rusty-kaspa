@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-rpc-macros"
+name = "keryx-rpc-macros"
 rust-version.workspace = true
 authors.workspace = true
 edition.workspace = true

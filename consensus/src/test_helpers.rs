@@ -1,11 +1,11 @@
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     block::Block,
     header::Header,
     subnets::SubnetworkId,
     tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };
-use kaspa_hashes::{HASH_SIZE, Hash};
+use keryx_hashes::{HASH_SIZE, Hash};
 use rand::{Rng, rngs::SmallRng, seq::SliceRandom};
 
 pub fn header_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Header {

@@ -1,8 +1,8 @@
 use super::process_queue::ProcessQueue;
 use itertools::Itertools;
-use kaspa_consensus_core::tx::TransactionId;
-use kaspa_core::debug;
-use kaspa_p2p_lib::{
+use keryx_consensus_core::tx::TransactionId;
+use keryx_core::debug;
+use keryx_p2p_lib::{
     Hub, make_message,
     pb::{InvTransactionsMessage, KaspadMessage, kaspad_message::Payload},
 };

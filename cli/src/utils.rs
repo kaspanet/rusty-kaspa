@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::result::Result;
-use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use keryx_consensus_core::constants::SOMPI_PER_KASPA;
 use std::fmt::Display;
 
 pub fn try_parse_required_nonzero_kaspa_as_sompi_u64<S: ToString + Display>(kaspa_amount: Option<S>) -> Result<u64> {

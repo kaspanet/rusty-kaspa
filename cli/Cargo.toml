@@ -1,7 +1,7 @@
 [package]
-name = "kaspa-cli"
+name = "keryx-cli"
 description = "Kaspa CLI"
-keywords = ["kaspa", "wallet", "cli", "rpc"]
+keywords = ["keryx", "wallet", "cli", "rpc"]
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -20,7 +20,7 @@ include = [
 default = []
 
 [lib]
-name = "kaspa_cli_lib"
+name = "keryx_cli_lib"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
@@ -34,18 +34,18 @@ faster-hex.workspace = true
 futures.workspace = true
 js-sys.workspace = true
 hex.workspace = true
-kaspa-addresses.workspace = true
-kaspa-bip32.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-daemon.workspace = true
-kaspa-metrics-core.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-utils.workspace = true
-kaspa-wallet-core.workspace = true
-kaspa-wallet-keys.workspace = true
-kaspa-wallet-pskt.workspace = true
-kaspa-wrpc-client.workspace = true
+keryx-addresses.workspace = true
+keryx-bip32.workspace = true
+keryx-consensus-core.workspace = true
+keryx-core.workspace = true
+keryx-daemon.workspace = true
+keryx-metrics-core.workspace = true
+keryx-rpc-core.workspace = true
+keryx-utils.workspace = true
+keryx-wallet-core.workspace = true
+keryx-wallet-keys.workspace = true
+keryx-wallet-pskt.workspace = true
+keryx-wrpc-client.workspace = true
 nw-sys.workspace = true
 pad.workspace = true
 regex.workspace = true

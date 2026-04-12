@@ -5,8 +5,8 @@ use crate::{
 };
 
 use feerate_key::FeerateTransactionKey;
-use kaspa_consensus_core::{block::TemplateTransactionSelector, tx::Transaction};
-use kaspa_core::trace;
+use keryx_consensus_core::{block::TemplateTransactionSelector, tx::Transaction};
+use keryx_core::trace;
 use rand::{Rng, distributions::Uniform, prelude::Distribution};
 use search_tree::SearchTree;
 use selectors::{SequenceSelector, SequenceSelectorInput, TakeAllSelector};

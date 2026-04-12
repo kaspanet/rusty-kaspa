@@ -3,7 +3,7 @@ pub mod constants;
 pub mod genesis;
 pub mod params;
 
-use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
+use keryx_utils::networking::{ContextualNetAddress, NetAddress};
 
 #[cfg(feature = "devnet-prealloc")]
 use crate::utxo::utxo_collection::UtxoCollection;

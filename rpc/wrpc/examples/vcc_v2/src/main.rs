@@ -1,8 +1,8 @@
 // Example of VCCv2 endpoint
 
-use kaspa_addresses::Address;
-use kaspa_rpc_core::{RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction, api::rpc::RpcApi};
-use kaspa_wrpc_client::{
+use keryx_addresses::Address;
+use keryx_rpc_core::{RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction, api::rpc::RpcApi};
+use keryx_wrpc_client::{
     KaspaRpcClient, WrpcEncoding,
     client::{ConnectOptions, ConnectStrategy},
     prelude::NetworkId,

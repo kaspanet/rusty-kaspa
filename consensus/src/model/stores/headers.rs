@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{BlockHasher, BlockLevel, header::Header};
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
-use kaspa_database::prelude::{CachePolicy, DB};
-use kaspa_database::prelude::{StoreError, StoreResult};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::MemSizeEstimator;
+use keryx_consensus_core::{BlockHasher, BlockLevel, header::Header};
+use keryx_database::prelude::{BatchDbWriter, CachedDbAccess};
+use keryx_database::prelude::{CachePolicy, DB};
+use keryx_database::prelude::{StoreError, StoreResult};
+use keryx_database::registry::DatabaseStorePrefixes;
+use keryx_hashes::Hash;
+use keryx_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +52,7 @@ struct Header2 {
     pub bits: u32,
     pub nonce: u64,
     pub daa_score: u64,
-    pub blue_work: kaspa_consensus_core::BlueWorkType,
+    pub blue_work: keryx_consensus_core::BlueWorkType,
     pub blue_score: u64,
     pub pruning_point: Hash,
 }

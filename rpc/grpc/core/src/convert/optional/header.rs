@@ -1,9 +1,9 @@
 use crate::protowire;
 use crate::{from, try_from};
-use kaspa_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
+use keryx_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
 use std::{convert::TryFrom, str::FromStr};
 
-fn compressed_parents_to_protowire(parents: &kaspa_rpc_core::RpcCompressedParents) -> Vec<protowire::RpcBlockLevelRun> {
+fn compressed_parents_to_protowire(parents: &keryx_rpc_core::RpcCompressedParents) -> Vec<protowire::RpcBlockLevelRun> {
     parents
         .raw()
         .iter()
@@ -14,7 +14,7 @@ fn compressed_parents_to_protowire(parents: &kaspa_rpc_core::RpcCompressedParent
         .collect()
 }
 
-fn compressed_parents_from_protowire(runs: &[protowire::RpcBlockLevelRun]) -> RpcResult<kaspa_rpc_core::RpcCompressedParents> {
+fn compressed_parents_from_protowire(runs: &[protowire::RpcBlockLevelRun]) -> RpcResult<keryx_rpc_core::RpcCompressedParents> {
     let mut tuples = Vec::with_capacity(runs.len());
     for run in runs.iter() {
         let cumulative_level = u8::try_from(run.cumulative_level)?;
@@ -28,7 +28,7 @@ fn compressed_parents_from_protowire(runs: &[protowire::RpcBlockLevelRun]) -> Rp
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-from!(item: &kaspa_rpc_core::RpcOptionalHeader, protowire::RpcOptionalHeader, {
+from!(item: &keryx_rpc_core::RpcOptionalHeader, protowire::RpcOptionalHeader, {
     Self {
         version: item.version.map(|x| x.into()),
         hash: item.hash.map(|x| x.to_string()),
@@ -50,7 +50,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalHeader, protowire::RpcOptionalHeader, {
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
-try_from!(item: &protowire::RpcOptionalHeader, kaspa_rpc_core::RpcOptionalHeader, {
+try_from!(item: &protowire::RpcOptionalHeader, keryx_rpc_core::RpcOptionalHeader, {
     Self {
         version: item.version.map(|x| x as u16),
         hash: item.hash.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
@@ -62,7 +62,7 @@ try_from!(item: &protowire::RpcOptionalHeader, kaspa_rpc_core::RpcOptionalHeader
         bits: item.bits,
         nonce: item.nonce,
         daa_score: item.daa_score,
-        blue_work: item.blue_work.as_ref().map(|x| kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(x)).transpose()?,
+        blue_work: item.blue_work.as_ref().map(|x| keryx_rpc_core::RpcBlueWorkType::from_rpc_hex(x)).transpose()?,
         blue_score: item.blue_score,
         pruning_point: item.pruning_point.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
     }

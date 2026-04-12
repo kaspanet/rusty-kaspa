@@ -4,8 +4,8 @@
 
 use super::UtxoRecord;
 use crate::imports::*;
-use kaspa_consensus_core::tx::Transaction;
-pub use kaspa_consensus_core::tx::TransactionId;
+use keryx_consensus_core::tx::Transaction;
+pub use keryx_consensus_core::tx::TransactionId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]

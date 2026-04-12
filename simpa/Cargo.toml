@@ -11,15 +11,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-alloc.workspace = true            # This changes the global allocator for all of the next dependencies so should be kept first
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensus.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes.workspace = true
-kaspa-perf-monitor.workspace = true
-kaspa-utils.workspace = true
+keryx-alloc.workspace = true            # This changes the global allocator for all of the next dependencies so should be kept first
+keryx-consensus-core.workspace = true
+keryx-consensus-notify.workspace = true
+keryx-consensus.workspace = true
+keryx-core.workspace = true
+keryx-database.workspace = true
+keryx-hashes.workspace = true
+keryx-perf-monitor.workspace = true
+keryx-utils.workspace = true
 
 async-channel.workspace = true
 cfg-if.workspace = true
@@ -40,12 +40,12 @@ tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 serde_json.workspace = true
 serde.workspace = true
 faster-hex.workspace = true
-kaspa-testing-integration.workspace = true
+keryx-testing-integration.workspace = true
 
 
 [features]
-heap = ["dhat", "kaspa-alloc/heap"]
-semaphore-trace = ["kaspa-utils/semaphore-trace"]
+heap = ["dhat", "keryx-alloc/heap"]
+semaphore-trace = ["keryx-utils/semaphore-trace"]
 
 [lints]
 workspace = true

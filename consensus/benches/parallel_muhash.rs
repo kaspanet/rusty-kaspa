@@ -1,13 +1,13 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     muhash::MuHashExtensions,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{ScriptPublicKey, SignableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
-use kaspa_hashes::TransactionID;
-use kaspa_muhash::MuHash;
-use kaspa_utils::iter::parallelism_in_power_steps;
+use keryx_hashes::TransactionID;
+use keryx_muhash::MuHash;
+use keryx_utils::iter::parallelism_in_power_steps;
 use rayon::prelude::*;
 
 fn generate_transaction(ins: usize, outs: usize, randomness: u64) -> SignableTransaction {

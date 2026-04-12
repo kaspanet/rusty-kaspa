@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::result::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_rpc_core::GetMetricsResponse;
+use keryx_rpc_core::GetMetricsResponse;
 use separator::{Separatable, separated_float, separated_int, separated_uint_with_output};
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;

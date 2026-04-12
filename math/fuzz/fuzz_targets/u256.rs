@@ -2,7 +2,7 @@
 mod utils;
 
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
-use kaspa_math::construct_uint;
+use keryx_math::construct_uint;
 use libfuzzer_sys::fuzz_target;
 use num_bigint::{BigInt, BigUint};
 use num_integer::Integer;

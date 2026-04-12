@@ -1,9 +1,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::{
+use keryx_addresses::Address;
+use keryx_consensus_core::tx::{
     ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
-use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
+use keryx_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
 use serde_nested_with::serde_nested;
 use workflow_serializer::prelude::*;
@@ -172,13 +172,13 @@ impl TryFrom<RpcOptionalTransactionOutpoint> for TransactionOutpoint {
     }
 }
 
-impl From<kaspa_consensus_client::TransactionOutpoint> for RpcOptionalTransactionOutpoint {
-    fn from(outpoint: kaspa_consensus_client::TransactionOutpoint) -> Self {
+impl From<keryx_consensus_client::TransactionOutpoint> for RpcOptionalTransactionOutpoint {
+    fn from(outpoint: keryx_consensus_client::TransactionOutpoint) -> Self {
         TransactionOutpoint::from(outpoint).into()
     }
 }
 
-impl TryFrom<RpcOptionalTransactionOutpoint> for kaspa_consensus_client::TransactionOutpoint {
+impl TryFrom<RpcOptionalTransactionOutpoint> for keryx_consensus_client::TransactionOutpoint {
     type Error = RpcError;
 
     fn try_from(outpoint: RpcOptionalTransactionOutpoint) -> RpcResult<Self> {

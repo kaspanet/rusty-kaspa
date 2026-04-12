@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-rpc-service"
+name = "keryx-rpc-service"
 description = "Kaspa RPC service"
 rust-version.workspace = true
 version.workspace = true
@@ -10,25 +10,25 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-index-core.workspace = true
-kaspa-math.workspace = true
-kaspa-mining.workspace = true
-kaspa-notify.workspace = true
-kaspa-p2p-flows.workspace = true
-kaspa-p2p-lib.workspace = true
-kaspa-p2p-mining.workspace = true
-kaspa-perf-monitor.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
-kaspa-utils-tower.workspace = true
-kaspa-utxoindex.workspace = true
+keryx-addresses.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-notify.workspace = true
+keryx-consensusmanager.workspace = true
+keryx-core.workspace = true
+keryx-hashes.workspace = true
+keryx-index-core.workspace = true
+keryx-math.workspace = true
+keryx-mining.workspace = true
+keryx-notify.workspace = true
+keryx-p2p-flows.workspace = true
+keryx-p2p-lib.workspace = true
+keryx-p2p-mining.workspace = true
+keryx-perf-monitor.workspace = true
+keryx-rpc-core.workspace = true
+keryx-txscript.workspace = true
+keryx-utils.workspace = true
+keryx-utils-tower.workspace = true
+keryx-utxoindex.workspace = true
 
 async-trait.workspace = true
 log.workspace = true

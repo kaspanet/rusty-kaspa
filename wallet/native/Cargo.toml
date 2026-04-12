@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wallet"
+name = "keryx-wallet"
 description = "Kaspa wallet"
 rust-version.workspace = true
 version.workspace = true
@@ -15,7 +15,7 @@ default = []
 [dependencies]
 async-std.workspace = true
 async-trait.workspace = true
-kaspa-cli.workspace = true
+keryx-cli.workspace = true
 tokio.workspace = true
 workflow-log.workspace = true
 workflow-terminal.workspace = true

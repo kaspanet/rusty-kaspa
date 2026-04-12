@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wrpc-server"
+name = "keryx-wrpc-server"
 description = "Kaspa wRPC server"
 rust-version.workspace = true
 version.workspace = true
@@ -16,14 +16,14 @@ crate-type = ["cdylib", "lib"]
 async-trait.workspace = true
 borsh = { workspace = true, features = ["rc"] }
 futures.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-grpc-client.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-rpc-macros.workspace = true
-kaspa-rpc-service.workspace = true
-kaspa-utils.workspace = true
+keryx-consensus-core.workspace = true
+keryx-core.workspace = true
+keryx-grpc-client.workspace = true
+keryx-notify.workspace = true
+keryx-rpc-core.workspace = true
+keryx-rpc-macros.workspace = true
+keryx-rpc-service.workspace = true
+keryx-utils.workspace = true
 log.workspace = true
 num_cpus.workspace = true
 paste.workspace = true

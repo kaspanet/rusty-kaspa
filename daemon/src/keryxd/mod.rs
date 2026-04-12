@@ -69,7 +69,7 @@ impl TryFrom<KaspadConfig> for Vec<String> {
         let mut argv = Vec::new();
 
         if args.path.is_none() {
-            return Err(Error::Custom("no kaspad path is specified".to_string()));
+            return Err(Error::Custom("no keryxd path is specified".to_string()));
         }
 
         if args.network.is_none() {

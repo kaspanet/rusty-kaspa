@@ -5,7 +5,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
     blockhash::{BlockHashes, ORIGIN},
     errors::pruning::{PruningImportError, PruningImportResult},
@@ -13,10 +13,10 @@ use kaspa_consensus_core::{
     pruning::PruningPointProof,
     trusted::TrustedBlock,
 };
-use kaspa_core::{debug, trace};
-use kaspa_hashes::Hash;
-use kaspa_pow::calc_block_level;
-use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
+use keryx_core::{debug, trace};
+use keryx_hashes::Hash;
+use keryx_pow::calc_block_level;
+use keryx_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 use rocksdb::WriteBatch;
 
 use crate::{

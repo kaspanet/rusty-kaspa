@@ -8,7 +8,7 @@
 //! the Kaspa p2p network.
 //!
 //! For key generation and derivation, please see the
-//! [`kaspa_wallet_keys`] crate.
+//! [`keryx_wallet_keys`] crate.
 //!
 //! This crate included are low-level primitives
 //! such as [`UtxoProcessor`](crate::utxo::UtxoProcessor)
@@ -34,7 +34,7 @@
 //! allowed transaction mass.
 //!
 //! Key generation and derivation is available in the
-//! [`kaspa_wallet_keys`] crate.
+//! [`keryx_wallet_keys`] crate.
 //!
 //! The framework can operate
 //! within native Rust applications as well as within NodeJS, Bun
@@ -70,7 +70,7 @@
 //!
 
 extern crate alloc;
-extern crate self as kaspa_wallet_core;
+extern crate self as keryx_wallet_core;
 
 pub mod account;
 pub mod api;
@@ -106,7 +106,7 @@ pub fn version() -> String {
 
 /// Returns the version of the Wallet framework combined with short git hash.
 pub fn version_with_git_hash() -> String {
-    kaspa_utils::git::with_short_hash(env!("CARGO_PKG_VERSION")).to_string()
+    keryx_utils::git::with_short_hash(env!("CARGO_PKG_VERSION")).to_string()
 }
 
 #[cfg(test)]

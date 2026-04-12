@@ -3,18 +3,18 @@ use crate::{
     errors::{IndexError, IndexResult},
 };
 use async_trait::async_trait;
-use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
-use kaspa_core::{debug, trace};
-use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
-use kaspa_notify::{
+use keryx_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
+use keryx_core::{debug, trace};
+use keryx_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
+use keryx_notify::{
     collector::{Collector, CollectorNotificationReceiver},
     error::Result,
     events::EventType,
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_utils::triggers::SingleTrigger;
-use kaspa_utxoindex::api::UtxoIndexProxy;
+use keryx_utils::triggers::SingleTrigger;
+use keryx_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -129,14 +129,14 @@ impl Collector<Notification> for Processor {
 mod tests {
     use super::*;
     use async_channel::{Receiver, Sender, unbounded};
-    use kaspa_consensus::{config::Config, consensus::test_consensus::TestConsensus, params::DEVNET_PARAMS, test_helpers::*};
-    use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
-    use kaspa_consensusmanager::ConsensusManager;
-    use kaspa_database::create_temp_db;
-    use kaspa_database::prelude::ConnBuilder;
-    use kaspa_database::utils::DbLifetime;
-    use kaspa_notify::notifier::test_helpers::NotifyMock;
-    use kaspa_utxoindex::UtxoIndex;
+    use keryx_consensus::{config::Config, consensus::test_consensus::TestConsensus, params::DEVNET_PARAMS, test_helpers::*};
+    use keryx_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
+    use keryx_consensusmanager::ConsensusManager;
+    use keryx_database::create_temp_db;
+    use keryx_database::prelude::ConnBuilder;
+    use keryx_database::utils::DbLifetime;
+    use keryx_notify::notifier::test_helpers::NotifyMock;
+    use keryx_utxoindex::UtxoIndex;
     use rand::{SeedableRng, rngs::SmallRng};
     use std::sync::Arc;
 

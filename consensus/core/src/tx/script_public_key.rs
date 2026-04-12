@@ -2,7 +2,7 @@ use alloc::borrow::Cow;
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::Formatter;
 use js_sys::Object;
-use kaspa_utils::{
+use keryx_utils::{
     hex::{FromHex, ToHex},
     serde_bytes::FromHexVisitor,
 };

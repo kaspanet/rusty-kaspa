@@ -2,8 +2,8 @@ use async_channel::unbounded;
 use clap::Parser;
 use futures::{Future, future::try_join_all};
 use itertools::Itertools;
-use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::{
+use keryx_alloc::init_allocator_with_default_settings;
+use keryx_consensus::{
     config::ConfigBuilder,
     consensus::Consensus,
     constants::perf::PerfParams,
@@ -15,22 +15,22 @@ use kaspa_consensus::{
     },
     params::{DEVNET_PARAMS, ForkActivation, NETWORK_DELAY_BOUND, OverrideParams, Params, SIMNET_PARAMS, TenBps},
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashSet, BlockLevel, HashMapCustomHasher, api::ConsensusApi, block::Block, blockstatus::BlockStatus,
     config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult, mining_rules::MiningRules, tx::TransactionType,
 };
-use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::{
+use keryx_consensus_notify::root::ConsensusNotificationRoot;
+use keryx_core::{
     info,
     task::{service::AsyncService, tick::TickService},
     time::unix_now,
     trace, warn,
 };
-use kaspa_database::prelude::ConnBuilder;
-use kaspa_database::{create_temp_db, load_existing_db};
-use kaspa_hashes::Hash;
-use kaspa_perf_monitor::{builder::Builder, counters::CountersSnapshot};
-use kaspa_utils::fd_budget;
+use keryx_database::prelude::ConnBuilder;
+use keryx_database::{create_temp_db, load_existing_db};
+use keryx_hashes::Hash;
+use keryx_perf_monitor::{builder::Builder, counters::CountersSnapshot};
+use keryx_utils::fd_budget;
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
@@ -151,15 +151,15 @@ fn main() {
     // Initialize the logger
     cfg_if::cfg_if! {
         if #[cfg(feature = "semaphore-trace")] {
-            kaspa_core::log::init_logger(None, &format!("{},{}=debug", args.log_level, kaspa_utils::sync::semaphore_module_path()));
+            keryx_core::log::init_logger(None, &format!("{},{}=debug", args.log_level, keryx_utils::sync::semaphore_module_path()));
         } else {
-            kaspa_core::log::init_logger(None, &args.log_level);
+            keryx_core::log::init_logger(None, &args.log_level);
         }
     };
 
     // Configure the panic behavior
     // As we log the panic, we want to set it up after the logger
-    kaspa_core::panic::configure_panic();
+    keryx_core::panic::configure_panic();
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
@@ -174,8 +174,8 @@ fn main_impl(mut args: Args) {
         let ts = Arc::new(TickService::new());
 
         let cb = move |counters: CountersSnapshot| {
-            trace!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_process_metrics_display());
-            trace!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_io_metrics_display());
+            trace!("[{}] {}", keryx_perf_monitor::SERVICE_NAME, counters.to_process_metrics_display());
+            trace!("[{}] {}", keryx_perf_monitor::SERVICE_NAME, counters.to_io_metrics_display());
             #[cfg(feature = "heap")]
             trace!("heap stats: {:?}", dhat::HeapStats::get());
         };
@@ -524,9 +524,9 @@ mod tests {
         args.tpb = 1;
         args.test_pruning = true;
 
-        kaspa_core::log::try_init_logger(&args.log_level);
+        keryx_core::log::try_init_logger(&args.log_level);
         // As we log the panic, we want to set it up after the logger
-        kaspa_core::panic::configure_panic();
+        keryx_core::panic::configure_panic();
         main_impl(args);
     }
 }

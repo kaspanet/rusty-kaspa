@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wrpc-proxy"
+name = "keryx-wrpc-proxy"
 description = "Kaspa wRPC to gRPC proxy"
 rust-version.workspace = true
 version.workspace = true
@@ -12,11 +12,11 @@ repository.workspace = true
 [dependencies]
 async-trait.workspace = true
 clap.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-grpc-client.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-rpc-macros.workspace = true
-kaspa-wrpc-server.workspace = true
+keryx-consensus-core.workspace = true
+keryx-grpc-client.workspace = true
+keryx-rpc-core.workspace = true
+keryx-rpc-macros.workspace = true
+keryx-wrpc-server.workspace = true
 num_cpus.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

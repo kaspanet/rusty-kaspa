@@ -1,14 +1,14 @@
 use crate::protowire;
 use crate::{from, try_from};
-use kaspa_consensus_core::header::Header;
-use kaspa_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
+use keryx_consensus_core::header::Header;
+use keryx_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
 use std::str::FromStr;
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
+from!(item: &keryx_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
     Self {
         version: item.version.into(),
         parents: item.parents_by_level.iter().map(|x| x.as_slice().into()).collect(),
@@ -26,7 +26,7 @@ from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
     }
 });
 
-from!(item: &kaspa_rpc_core::RpcRawHeader, protowire::RpcBlockHeader, {
+from!(item: &keryx_rpc_core::RpcRawHeader, protowire::RpcBlockHeader, {
     Self {
         hash: Default::default(), // We don't include the hash for the raw header
         version: item.version.into(),
@@ -50,7 +50,7 @@ from!(item: &[RpcHash], protowire::RpcBlockLevelParents, { Self { parent_hashes:
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
-try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
+try_from!(item: &protowire::RpcBlockHeader, keryx_rpc_core::RpcHeader, {
     // We re-hash the block to remain as most trustless as possible
     let header = Header::new_finalized(
         item.version.try_into()?,
@@ -62,7 +62,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
         item.bits,
         item.nonce,
         item.daa_score,
-        kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
+        keryx_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
         item.blue_score,
         RpcHash::from_str(&item.pruning_point)?,
     );
@@ -70,7 +70,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
     header.into()
 });
 
-try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
+try_from!(item: &protowire::RpcBlockHeader, keryx_rpc_core::RpcRawHeader, {
     Self {
         version: item.version.try_into()?,
         parents_by_level: item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
@@ -81,13 +81,13 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
         bits: item.bits,
         nonce: item.nonce,
         daa_score: item.daa_score,
-        blue_work: kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
+        blue_work: keryx_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
         blue_score: item.blue_score,
         pruning_point: RpcHash::from_str(&item.pruning_point)?,
     }
 });
 
-try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcOptionalHeader, {
+try_from!(item: &protowire::RpcBlockHeader, keryx_rpc_core::RpcOptionalHeader, {
     // We re-hash the block to remain as most trustless as possible
     let header = Header::new_finalized(
         item.version.try_into()?,
@@ -99,12 +99,12 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcOptionalHeader, {
         item.bits,
         item.nonce,
         item.daa_score,
-        kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
+        keryx_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
         item.blue_score,
         RpcHash::from_str(&item.pruning_point)?,
     );
 
-    kaspa_rpc_core::RpcOptionalHeader::from(header)
+    keryx_rpc_core::RpcOptionalHeader::from(header)
 });
 
 try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
@@ -115,8 +115,8 @@ try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
 mod tests {
     use crate::protowire;
     use itertools::Itertools;
-    use kaspa_consensus_core::{block::Block, header::Header};
-    use kaspa_rpc_core::{RpcBlock, RpcHash, RpcHeader};
+    use keryx_consensus_core::{block::Block, header::Header};
+    use keryx_rpc_core::{RpcBlock, RpcHash, RpcHeader};
 
     fn new_unique() -> RpcHash {
         use std::sync::atomic::{AtomicU64, Ordering};

@@ -5,7 +5,7 @@ use crate::{
     NotifySinkBlueScoreChangedRequest, NotifyUtxosChangedRequest, NotifyVirtualChainChangedRequest,
     NotifyVirtualDaaScoreChangedRequest,
 };
-use kaspa_notify::scope::*;
+use keryx_notify::scope::*;
 
 macro_rules! into_scope {
     ($variant:tt) => {

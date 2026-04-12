@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::tx::fees::Fees;
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
+use keryx_wallet_macros::declare_typescript_wasm_interface as declare;
 use workflow_wasm::convert::CastFromJs;
 
 ///

@@ -2,13 +2,13 @@
 //! Logical stream abstractions used throughout the IBD negotiation protocols
 //!
 
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     errors::consensus::ConsensusError,
     header::Header,
     tx::{TransactionOutpoint, UtxoEntry},
 };
-use kaspa_core::{debug, info};
-use kaspa_p2p_lib::{
+use keryx_core::{debug, info};
+use keryx_p2p_lib::{
     IncomingRoute, Router,
     common::{DEFAULT_TIMEOUT, ProtocolError},
     convert::{header::HeaderFormat, header::Versioned, model::trusted::TrustedDataEntry},

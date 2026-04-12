@@ -14,7 +14,7 @@ pub enum Error {
     WasmError(#[from] workflow_wasm::error::Error),
 
     #[error(transparent)]
-    ScriptBuilderError(#[from] kaspa_txscript::script_builder::ScriptBuilderError),
+    ScriptBuilderError(#[from] keryx_txscript::script_builder::ScriptBuilderError),
 
     #[error("{0}")]
     ParseIntError(#[from] std::num::ParseIntError),
@@ -29,19 +29,19 @@ pub enum Error {
     Secp256k1(#[from] secp256k1::Error),
 
     #[error(transparent)]
-    Sign(#[from] kaspa_consensus_core::sign::Error),
+    Sign(#[from] keryx_consensus_core::sign::Error),
 
     #[error(transparent)]
     SerdeWasmBindgen(JsErrorData),
 
     #[error(transparent)]
-    AddressError(#[from] kaspa_addresses::AddressError),
+    AddressError(#[from] keryx_addresses::AddressError),
 
     #[error(transparent)]
-    NetworkTypeError(#[from] kaspa_consensus_core::network::NetworkTypeError),
+    NetworkTypeError(#[from] keryx_consensus_core::network::NetworkTypeError),
 
     #[error(transparent)]
-    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+    ConsensusClient(#[from] keryx_consensus_client::error::Error),
 }
 
 // unsafe impl Send for Error {}

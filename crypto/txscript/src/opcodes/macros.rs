@@ -71,7 +71,7 @@ macro_rules! opcode_impl {
                 if self.data.is_empty() {
                     write!(f, "{name}")
                 } else {
-                    write!(f, "{name} 0x{}", kaspa_utils::hex::ToHex::to_hex(&self.data))
+                    write!(f, "{name} 0x{}", keryx_utils::hex::ToHex::to_hex(&self.data))
                 }
             }
         }

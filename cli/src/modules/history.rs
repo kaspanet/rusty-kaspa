@@ -1,7 +1,7 @@
 use crate::imports::*;
-use kaspa_consensus_core::tx::TransactionId;
-use kaspa_wallet_core::error::Error as WalletError;
-use kaspa_wallet_core::storage::Binding;
+use keryx_consensus_core::tx::TransactionId;
+use keryx_wallet_core::error::Error as WalletError;
+use keryx_wallet_core::storage::Binding;
 #[derive(Default, Handler)]
 #[help("Display transaction history")]
 pub struct History;

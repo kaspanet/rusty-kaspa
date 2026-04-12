@@ -3,7 +3,7 @@
 #![allow(non_snake_case)]
 
 use crate::imports::*;
-use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
+use keryx_rpc_macros::declare_typescript_wasm_interface as declare;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_HEADER: &'static str = r#"

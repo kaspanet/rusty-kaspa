@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-muhash"
+name = "keryx-muhash"
 description = "Kaspa Muhash library"
 rust-version.workspace = true
 version.workspace = true
@@ -10,8 +10,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-hashes.workspace = true
-kaspa-math.workspace = true
+keryx-hashes.workspace = true
+keryx-math.workspace = true
 rand_chacha.workspace = true
 serde.workspace = true
 

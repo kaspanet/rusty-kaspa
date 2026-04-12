@@ -15,12 +15,12 @@ use crate::{
     },
 };
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlockHashSet,
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
 };
-use kaspa_database::prelude::{DirectWriter, StoreError};
-use kaspa_hashes::Hash;
+use keryx_database::prelude::{DirectWriter, StoreError};
+use keryx_hashes::Hash;
 use std::collections::{
     VecDeque,
     hash_map::Entry::{Occupied, Vacant},

@@ -8,7 +8,7 @@ use cfb_mode::cipher::AsyncStreamCipher;
 use cfb_mode::cipher::KeyIvInit;
 use evpkdf::evpkdf;
 use faster_hex::{hex_decode, hex_string};
-use kaspa_bip32::{ExtendedPrivateKey, Language, Mnemonic, Prefix, SecretKey};
+use keryx_bip32::{ExtendedPrivateKey, Language, Mnemonic, Prefix, SecretKey};
 use md5::Md5;
 use pbkdf2::{hmac::Hmac, pbkdf2};
 use serde::{Deserialize, Serialize};

@@ -1,7 +1,7 @@
 use crate::{connection::*, server::*};
-use kaspa_notify::scope::Scope;
-use kaspa_rpc_core::{api::ops::RpcApiOps, prelude::*};
-use kaspa_rpc_macros::build_wrpc_server_interface;
+use keryx_notify::scope::Scope;
+use keryx_rpc_core::{api::ops::RpcApiOps, prelude::*};
+use keryx_rpc_macros::build_wrpc_server_interface;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
 use workflow_serializer::prelude::*;

@@ -1,4 +1,4 @@
-use kaspa_notify::{scope::Scope, subscription::Command};
+use keryx_notify::{scope::Scope, subscription::Command};
 
 use crate::protowire::{
     KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage, NotifyFinalityConflictRequestMessage,

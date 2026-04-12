@@ -1,20 +1,20 @@
 use async_channel::unbounded;
-use kaspa_consensus_core::mining_rules::MiningRules;
-use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::time::unix_now;
+use keryx_consensus_core::mining_rules::MiningRules;
+use keryx_consensus_notify::root::ConsensusNotificationRoot;
+use keryx_core::time::unix_now;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use super::miner::Miner;
 
-use kaspa_consensus::config::Config;
-use kaspa_consensus::consensus::Consensus;
-use kaspa_consensus_core::block::Block;
-use kaspa_database::prelude::ConnBuilder;
-use kaspa_database::utils::DbLifetime;
-use kaspa_database::{create_permanent_db, create_temp_db};
-use kaspa_utils::fd_budget;
-use kaspa_utils::sim::Simulation;
+use keryx_consensus::config::Config;
+use keryx_consensus::consensus::Consensus;
+use keryx_consensus_core::block::Block;
+use keryx_database::prelude::ConnBuilder;
+use keryx_database::utils::DbLifetime;
+use keryx_database::{create_permanent_db, create_temp_db};
+use keryx_utils::fd_budget;
+use keryx_utils::sim::Simulation;
 
 type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, DbLifetime);
 

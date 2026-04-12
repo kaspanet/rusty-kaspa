@@ -4,7 +4,7 @@
 
 use crate::imports::*;
 use crate::storage::{AddressBookEntry, PrvKeyData, PrvKeyDataId};
-use kaspa_bip32::Mnemonic;
+use keryx_bip32::Mnemonic;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]

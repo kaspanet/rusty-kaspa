@@ -4,7 +4,7 @@ pub mod block;
 pub mod error;
 pub mod feerate_estimate;
 pub mod header;
-pub mod kaspad;
+pub mod keryxd;
 pub mod mempool;
 pub mod message;
 pub mod metrics;

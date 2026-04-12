@@ -10,7 +10,7 @@ use crate::storage::{Hint, PrvKeyDataInfo, StorageDescriptor, TransactionRecord,
 use crate::utxo::context::UtxoContextId;
 use transaction::TransactionRecordNotification;
 
-/// Sync state of the kaspad node
+/// Sync state of the keryxd node
 #[derive(Clone, Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type", content = "data")]

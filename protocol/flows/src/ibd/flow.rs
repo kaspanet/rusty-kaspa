@@ -5,7 +5,7 @@ use crate::{
 };
 use futures::future::{Either, join_all, select, try_join_all};
 use itertools::Itertools;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashSet,
     api::BlockValidationFuture,
     block::Block,
@@ -14,11 +14,11 @@ use kaspa_consensus_core::{
     trusted::TrustedBlock,
     tx::Transaction,
 };
-use kaspa_consensusmanager::{ConsensusProxy, StagingConsensus, spawn_blocking};
-use kaspa_core::{debug, info, time::unix_now, warn};
-use kaspa_hashes::Hash;
-use kaspa_muhash::MuHash;
-use kaspa_p2p_lib::{
+use keryx_consensusmanager::{ConsensusProxy, StagingConsensus, spawn_blocking};
+use keryx_core::{debug, info, time::unix_now, warn};
+use keryx_hashes::Hash;
+use keryx_muhash::MuHash;
+use keryx_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     convert::{
@@ -32,7 +32,7 @@ use kaspa_p2p_lib::{
         kaspad_message::Payload,
     },
 };
-use kaspa_utils::channel::JobReceiver;
+use keryx_utils::channel::JobReceiver;
 use std::{
     sync::Arc,
     time::{Duration, Instant},

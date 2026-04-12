@@ -4,8 +4,8 @@ use crate::{
     subnets::SUBNETWORK_ID_COINBASE,
     tx::Transaction,
 };
-use kaspa_hashes::{Hash, ZERO_HASH};
-use kaspa_muhash::EMPTY_MUHASH;
+use keryx_hashes::{Hash, ZERO_HASH};
+use keryx_muhash::EMPTY_MUHASH;
 
 /// The constants uniquely representing the genesis block
 #[derive(Clone, Debug)]
@@ -245,7 +245,7 @@ mod tests {
     fn gen_testnet11_genesis() {
         let bps = TenBps::bps();
         let mut genesis = TESTNET_GENESIS;
-        let target = kaspa_math::Uint256::from_compact_target_bits(genesis.bits);
+        let target = keryx_math::Uint256::from_compact_target_bits(genesis.bits);
         let scaled_target = target * bps / 100;
         let scaled_bits = scaled_target.compact_target_bits();
         genesis.bits = scaled_bits;

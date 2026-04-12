@@ -4,8 +4,8 @@
 //!
 
 use crate::imports::*;
-use kaspa_consensus_core::header as native;
-use kaspa_hashes::Hash;
+use keryx_consensus_core::header as native;
+use keryx_hashes::Hash;
 
 /// An efficient cumulative-sum run-length encoding for the parents-by-level vector in the block header.
 /// @category Consensus

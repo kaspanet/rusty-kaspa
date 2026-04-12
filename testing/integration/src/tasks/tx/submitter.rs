@@ -4,11 +4,11 @@ use crate::{
 };
 use async_channel::Sender;
 use async_trait::async_trait;
-use kaspa_consensus_core::tx::Transaction;
-use kaspa_core::{error, warn};
-use kaspa_grpc_client::ClientPool;
-use kaspa_rpc_core::{RpcError, api::rpc::RpcApi};
-use kaspa_utils::triggers::SingleTrigger;
+use keryx_consensus_core::tx::Transaction;
+use keryx_core::{error, warn};
+use keryx_grpc_client::ClientPool;
+use keryx_rpc_core::{RpcError, api::rpc::RpcApi};
+use keryx_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::{task::JoinHandle, time::sleep};
 

@@ -3,5 +3,5 @@ pub fn version() -> &'static str {
 }
 
 pub fn name() -> &'static str {
-    "kaspad"
+    "keryxd"
 }

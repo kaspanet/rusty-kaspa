@@ -1,7 +1,7 @@
 use crate::constants::MAX_SOMPI;
 use crate::subnets::SubnetworkId;
 use crate::tx::TransactionOutpoint;
-use kaspa_txscript_errors::TxScriptError;
+use keryx_txscript_errors::TxScriptError;
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]

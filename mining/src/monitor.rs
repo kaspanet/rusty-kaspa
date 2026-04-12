@@ -1,6 +1,6 @@
 use super::MiningCounters;
 use crate::manager::MiningManagerProxy;
-use kaspa_core::{
+use keryx_core::{
     debug, info,
     task::{
         service::{AsyncService, AsyncServiceFuture},
@@ -8,7 +8,7 @@ use kaspa_core::{
     },
     trace,
 };
-use kaspa_txscript::caches::TxScriptCacheCounters;
+use keryx_txscript::caches::TxScriptCacheCounters;
 use std::{sync::Arc, time::Duration};
 
 const MONITOR: &str = "mempool-monitor";

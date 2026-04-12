@@ -2,8 +2,8 @@ use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
 use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
-use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus_core::{
+use keryx_addresses::{Address, Prefix, Version};
+use keryx_consensus_core::{
     config::params::TESTNET_PARAMS,
     constants::{SOMPI_PER_KASPA, TX_VERSION},
     network::NetworkType,
@@ -11,11 +11,11 @@ use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
-use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
-use kaspa_grpc_client::{ClientPool, GrpcClient};
-use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_rpc_core::{RpcUtxoEntry, api::rpc::RpcApi, notify::mode::NotificationMode};
-use kaspa_txscript::pay_to_address_script;
+use keryx_core::{info, kaspad_env::version, time::unix_now, warn};
+use keryx_grpc_client::{ClientPool, GrpcClient};
+use keryx_notify::subscription::context::SubscriptionContext;
+use keryx_rpc_core::{RpcUtxoEntry, api::rpc::RpcApi, notify::mode::NotificationMode};
+use keryx_txscript::pay_to_address_script;
 use parking_lot::Mutex;
 use rand::RngCore;
 use rayon::prelude::*;
@@ -101,7 +101,7 @@ pub fn cli() -> Command {
                 .long("rpcserver")
                 .short('s')
                 .value_name("rpcserver")
-                .help("RPC server (defaults: testnet=16210, devnet=16610"),
+                .help("RPC server (defaults: testnet=22210, devnet=22610"),
         )
         .arg(
             Arg::new("threads")
@@ -174,7 +174,7 @@ struct TxConfig {
 
 #[tokio::main]
 async fn main() {
-    kaspa_core::log::init_logger(None, "");
+    keryx_core::log::init_logger(None, "");
     let args = Args::parse();
 
     let address_prefix = Prefix::from(args.network);

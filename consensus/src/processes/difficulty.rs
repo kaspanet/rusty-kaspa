@@ -3,14 +3,14 @@ use crate::model::stores::{
     ghostdag::{GhostdagData, GhostdagStoreReader},
     headers::HeaderStoreReader,
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
     config::params::MAX_DIFFICULTY_TARGET_AS_F64,
     errors::difficulty::{DifficultyError, DifficultyResult},
 };
-use kaspa_core::{info, log::CRESCENDO_KEYWORD};
-use kaspa_hashes::Hash;
-use kaspa_math::{Uint256, Uint320};
+use keryx_core::{info, log::CRESCENDO_KEYWORD};
+use keryx_hashes::Hash;
+use keryx_math::{Uint256, Uint320};
 use std::{
     cmp::{Ordering, max},
     ops::Deref,
@@ -308,12 +308,12 @@ impl Ord for DifficultyBlock {
 
 #[cfg(test)]
 mod tests {
-    use kaspa_consensus_core::{BlockLevel, BlueWorkType, MAX_WORK_LEVEL};
-    use kaspa_math::{Uint256, Uint320};
-    use kaspa_pow::calc_level_from_pow;
+    use keryx_consensus_core::{BlockLevel, BlueWorkType, MAX_WORK_LEVEL};
+    use keryx_math::{Uint256, Uint320};
+    use keryx_pow::calc_level_from_pow;
 
     use crate::processes::difficulty::{calc_work, level_work};
-    use kaspa_utils::hex::ToHex;
+    use keryx_utils::hex::ToHex;
 
     #[test]
     fn test_target_levels() {

@@ -1,8 +1,8 @@
 use crate::{BlueWorkType, hashing};
 use borsh::{BorshDeserialize, BorshSerialize};
 use itertools::Itertools;
-use kaspa_hashes::Hash;
-use kaspa_utils::{
+use keryx_hashes::Hash;
+use keryx_utils::{
     iter::{IterExtensions, IterExtensionsRle},
     mem_size::MemSizeEstimator,
 };
@@ -232,7 +232,7 @@ impl MemSizeEstimator for Header {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_math::Uint192;
+    use keryx_math::Uint192;
     use serde_json::Value;
 
     fn hash(val: u8) -> Hash {

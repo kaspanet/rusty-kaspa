@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use kaspa_addressmanager::NetAddress;
-use kaspa_connectionmanager::ConnectionManager;
-use kaspa_core::{
+use keryx_addressmanager::NetAddress;
+use keryx_connectionmanager::ConnectionManager;
+use keryx_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
-use kaspa_p2p_lib::Adaptor;
-use kaspa_utils::triggers::SingleTrigger;
-use kaspa_utils_tower::counters::TowerConnectionCounters;
+use keryx_p2p_lib::Adaptor;
+use keryx_utils::triggers::SingleTrigger;
+use keryx_utils_tower::counters::TowerConnectionCounters;
 
 use crate::flow_context::FlowContext;
 

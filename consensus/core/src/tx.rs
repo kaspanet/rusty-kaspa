@@ -9,9 +9,9 @@
 mod script_public_key;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_utils::hex::ToHex;
-use kaspa_utils::mem_size::MemSizeEstimator;
-use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
+use keryx_utils::hex::ToHex;
+use keryx_utils::mem_size::MemSizeEstimator;
+use keryx_utils::{serde_bytes, serde_bytes_fixed_ref};
 pub use script_public_key::{
     SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
@@ -36,7 +36,7 @@ use crate::{
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
 /// A 32-byte Kaspa transaction identifier.
-pub type TransactionId = kaspa_hashes::Hash;
+pub type TransactionId = keryx_hashes::Hash;
 
 /// Holds details about an individual transaction output in a utxo
 /// set such as whether or not it was contained in a coinbase tx, the daa

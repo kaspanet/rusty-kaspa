@@ -1,4 +1,4 @@
-use kaspa_consensus_core::api::counters::ProcessingCountersSnapshot;
+use keryx_consensus_core::api::counters::ProcessingCountersSnapshot;
 
 use super::ExtraData;
 

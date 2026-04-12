@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
 use itertools::Itertools;
-use kaspa_consensus_core::BlockHashSet;
-use kaspa_consensus_core::BlockHasher;
-use kaspa_database::prelude::CachedDbSetItem;
-use kaspa_database::prelude::DB;
-use kaspa_database::prelude::DbWriter;
-use kaspa_database::prelude::ReadLock;
-use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_database::prelude::{BatchDbWriter, DirectDbWriter};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
+use keryx_consensus_core::BlockHashSet;
+use keryx_consensus_core::BlockHasher;
+use keryx_database::prelude::CachedDbSetItem;
+use keryx_database::prelude::DB;
+use keryx_database::prelude::DbWriter;
+use keryx_database::prelude::ReadLock;
+use keryx_database::prelude::StoreResult;
+use keryx_database::prelude::StoreResultExt;
+use keryx_database::prelude::{BatchDbWriter, DirectDbWriter};
+use keryx_database::registry::DatabaseStorePrefixes;
+use keryx_hashes::Hash;
 use rocksdb::WriteBatch;
 
 /// Reader API for `TipsStore`.
@@ -106,7 +106,7 @@ impl TipsStore for DbTipsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_database::{create_temp_db, prelude::ConnBuilder};
+    use keryx_database::{create_temp_db, prelude::ConnBuilder};
 
     #[test]
     fn test_update_tips() {

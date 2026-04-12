@@ -6,7 +6,7 @@ use crate::bundle::Bundle as Inner;
 use crate::pskt::Inner as PSKTInner;
 use crate::wasm::pskt::*;
 use crate::wasm::utils::sompi_to_kaspa_string_with_suffix;
-use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
+use keryx_consensus_core::network::{NetworkId, NetworkIdT};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::TryCastFromJs;
 
@@ -122,7 +122,7 @@ mod tests {
     use super::*;
     use crate::pskt::Finalizer;
     use crate::pskt::PSKT as Native;
-    use kaspa_consensus_core::tx::ScriptPublicKey;
+    use keryx_consensus_core::tx::ScriptPublicKey;
     use serde_json::json;
     use std::str::FromStr;
     use wasm_bindgen_test::wasm_bindgen_test;

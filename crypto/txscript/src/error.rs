@@ -24,7 +24,7 @@ pub enum Error {
     SerdeWasmBindgen(JsErrorData),
 
     #[error(transparent)]
-    NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
+    NetworkType(#[from] keryx_consensus_core::network::NetworkTypeError),
 
     #[error("Error converting property `{0}`: {1}")]
     Convert(&'static str, String),

@@ -3,7 +3,7 @@
 //!
 
 use crate::model::*;
-use kaspa_consensus_client::*;
+use keryx_consensus_client::*;
 use std::sync::Arc;
 
 impl From<RpcUtxosByAddressesEntry> for UtxoEntry {

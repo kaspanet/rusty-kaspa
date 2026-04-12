@@ -2,7 +2,7 @@
 //! Message signing and verification functions.
 //!
 
-use kaspa_hashes::{Hash, PersonalMessageSigningHash};
+use keryx_hashes::{Hash, PersonalMessageSigningHash};
 use secp256k1::{Error, XOnlyPublicKey};
 
 /// A personal message (text) that can be signed.

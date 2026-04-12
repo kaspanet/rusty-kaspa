@@ -3,7 +3,7 @@
 use crate::pskt::{KeySource, PartialSigs};
 use crate::utils::{Error as CombineMapErr, combine_if_no_conflicts};
 use derive_builder::Builder;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     hashing::sighash_type::{SIG_HASH_ALL, SigHashType},
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
@@ -34,7 +34,7 @@ pub struct Input {
     /// The sighash type to be used for this input. Signatures for this input
     /// must use the sighash type.
     pub sighash_type: SigHashType,
-    #[serde(with = "kaspa_utils::serde_bytes_optional")]
+    #[serde(with = "keryx_utils::serde_bytes_optional")]
     #[builder(setter(strip_option))]
     /// The redeem script for this input.
     pub redeem_script: Option<Vec<u8>>,
@@ -43,7 +43,7 @@ pub struct Input {
     /// A map from public keys needed to sign this input to their corresponding
     /// master key fingerprints and derivation paths.
     pub bip32_derivations: BTreeMap<secp256k1::PublicKey, Option<KeySource>>,
-    #[serde(with = "kaspa_utils::serde_bytes_optional")]
+    #[serde(with = "keryx_utils::serde_bytes_optional")]
     /// The finalized, fully-constructed scriptSig with signatures and any other
     /// scripts necessary for this input to pass validation.
     pub final_script_sig: Option<Vec<u8>>,

@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-consensus"
+name = "keryx-consensus"
 description = "Kaspa consensus library"
 rust-version.workspace = true
 version.workspace = true
@@ -18,21 +18,21 @@ faster-hex.workspace = true
 futures-util.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes.workspace = true
-kaspa-math.workspace = true
-kaspa-merkle.workspace = true
-kaspa-muhash.workspace = true
-kaspa-notify.workspace = true
-kaspa-pow.workspace = true
-kaspa-txscript.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-utils.workspace = true
+keryx-addresses.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-notify.workspace = true
+keryx-consensusmanager.workspace = true
+keryx-core.workspace = true
+keryx-database.workspace = true
+keryx-hashes.workspace = true
+keryx-math.workspace = true
+keryx-merkle.workspace = true
+keryx-muhash.workspace = true
+keryx-notify.workspace = true
+keryx-pow.workspace = true
+keryx-txscript.workspace = true
+keryx-txscript-errors.workspace = true
+keryx-utils.workspace = true
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
@@ -54,8 +54,8 @@ criterion.workspace = true
 serde_json.workspace = true
 flate2.workspace = true
 rand_distr.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-addresses.workspace = true
+keryx-txscript-errors.workspace = true
+keryx-addresses.workspace = true
 
 [[bench]]
 name = "parallel_muhash"
@@ -67,7 +67,7 @@ harness = false
 
 [features]
 html_reports = []
-devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]
+devnet-prealloc = ["keryx-consensus-core/devnet-prealloc"]
 
 [lints]
 workspace = true

@@ -1,11 +1,11 @@
 use crate::tasks::{Stopper, Task, tx::submitter::IndexedTransaction};
 use async_channel::Sender;
 use async_trait::async_trait;
-use kaspa_consensus_core::tx::Transaction;
-use kaspa_core::{info, warn};
-use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::api::rpc::RpcApi;
-use kaspa_utils::triggers::SingleTrigger;
+use keryx_consensus_core::tx::Transaction;
+use keryx_core::{info, warn};
+use keryx_grpc_client::GrpcClient;
+use keryx_rpc_core::api::rpc::RpcApi;
+use keryx_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::{
     task::JoinHandle,
@@ -96,7 +96,7 @@ impl Task for TransactionSenderTask {
                 match sender.send((i, tx)).await {
                     Ok(_) => {}
                     Err(err) => {
-                        kaspa_core::error!("Tx sender channel returned error {err}");
+                        keryx_core::error!("Tx sender channel returned error {err}");
                         break;
                     }
                 }
@@ -105,7 +105,7 @@ impl Task for TransactionSenderTask {
                 }
             }
 
-            kaspa_core::warn!("Tx sender task, waiting for mempool to drain..");
+            keryx_core::warn!("Tx sender task, waiting for mempool to drain..");
             let mut prev_mempool_size = u64::MAX;
             loop {
                 let mempool_size = client.get_info().await.unwrap().mempool_size;

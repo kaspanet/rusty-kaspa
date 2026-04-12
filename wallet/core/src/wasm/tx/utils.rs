@@ -2,10 +2,10 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{IPaymentOutputArray, PaymentOutputs};
 use crate::wasm::tx::generator::*;
-use kaspa_consensus_client::*;
-use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
-use kaspa_wasm_core::types::BinaryT;
+use keryx_consensus_client::*;
+use keryx_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+use keryx_wallet_macros::declare_typescript_wasm_interface as declare;
+use keryx_wasm_core::types::BinaryT;
 use workflow_core::runtime::is_web;
 
 /// Create a basic transaction without any mass limit checks.

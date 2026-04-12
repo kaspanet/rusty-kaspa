@@ -1,13 +1,13 @@
 use crate::core::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey};
 
-use kaspa_consensus_core::tx::{
+use keryx_consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
 };
-use kaspa_core::debug;
-use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DirectDbWriter, StoreResult};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use keryx_core::debug;
+use keryx_database::prelude::{CachePolicy, CachedDbAccess, DB, DirectDbWriter, StoreResult};
+use keryx_database::registry::DatabaseStorePrefixes;
+use keryx_hashes::Hash;
+use keryx_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -55,7 +55,7 @@ impl AsRef<[u8]> for ScriptPublicKeyBucket {
 
 // TransactionOutpoint:
 /// Size of the [TransactionOutpointKey] in bytes.
-pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_of::<TransactionIndexType>();
+pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = keryx_hashes::HASH_SIZE + size_of::<TransactionIndexType>();
 
 /// [TransactionOutpoint] key which references the [CompactUtxoEntry] within a [ScriptPublicKeyBucket]
 /// Consists of 32 bytes of [TransactionId], followed by 4 bytes of little endian [TransactionIndexType]
@@ -64,9 +64,9 @@ struct TransactionOutpointKey([u8; TRANSACTION_OUTPOINT_KEY_SIZE]);
 
 impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
-        let transaction_id = Hash::from_slice(&key.0[..kaspa_hashes::HASH_SIZE]);
+        let transaction_id = Hash::from_slice(&key.0[..keryx_hashes::HASH_SIZE]);
         let index = TransactionIndexType::from_le_bytes(
-            <[u8; size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..]).expect("expected index size"),
+            <[u8; size_of::<TransactionIndexType>()]>::try_from(&key.0[keryx_hashes::HASH_SIZE..]).expect("expected index size"),
         );
         Self::new(transaction_id, index)
     }
@@ -75,8 +75,8 @@ impl From<TransactionOutpointKey> for TransactionOutpoint {
 impl From<&TransactionOutpoint> for TransactionOutpointKey {
     fn from(outpoint: &TransactionOutpoint) -> Self {
         let mut bytes = [0; TRANSACTION_OUTPOINT_KEY_SIZE];
-        bytes[..kaspa_hashes::HASH_SIZE].copy_from_slice(&outpoint.transaction_id.as_bytes());
-        bytes[kaspa_hashes::HASH_SIZE..].copy_from_slice(&outpoint.index.to_le_bytes());
+        bytes[..keryx_hashes::HASH_SIZE].copy_from_slice(&outpoint.transaction_id.as_bytes());
+        bytes[keryx_hashes::HASH_SIZE..].copy_from_slice(&outpoint.index.to_le_bytes());
         Self(bytes)
     }
 }
@@ -153,7 +153,7 @@ impl DbUtxoSetByScriptPublicKeyStore {
 }
 
 impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
-    // compared to go-kaspad this gets transaction outpoints from multiple script public keys at once.
+    // compared to go-keryxd this gets transaction outpoints from multiple script public keys at once.
     // TODO: probably ideal way to retrieve is to return a chained iterator which can be used to chunk results and propagate utxo entries
     // to the rpc via pagination, this would alleviate the memory footprint of script public keys with large amount of utxos.
     fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {

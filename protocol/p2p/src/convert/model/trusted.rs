@@ -3,7 +3,7 @@
 //! a specific syncing protocol and thus do not belong within consensus core.
 //!
 
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
     block::Block,
     blockhash::ORIGIN,

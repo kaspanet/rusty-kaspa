@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wasm"
+name = "keryx-wasm"
 description = "KASPA WASM bindings"
 rust-version.workspace = true
 version.workspace = true
@@ -17,21 +17,21 @@ crate-type = ["cdylib"]
 [dependencies]
 cfg-if.workspace = true
 js-sys.workspace = true
-kaspa-addresses.workspace = true
-kaspa-bip32.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-wasm.workspace = true
-kaspa-core.workspace = true
-kaspa-math.workspace = true
-kaspa-pow.workspace = true
-kaspa-txscript.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-utils.workspace = true
-kaspa-wasm-core.workspace = true
-kaspa-wallet-core.workspace = true
-kaspa-wallet-keys.workspace = true
-kaspa-wrpc-client.workspace = true
-kaspa-wrpc-wasm.workspace = true
+keryx-addresses.workspace = true
+keryx-bip32.workspace = true
+keryx-consensus-core.workspace = true
+keryx-consensus-wasm.workspace = true
+keryx-core.workspace = true
+keryx-math.workspace = true
+keryx-pow.workspace = true
+keryx-txscript.workspace = true
+keryx-rpc-core.workspace = true
+keryx-utils.workspace = true
+keryx-wasm-core.workspace = true
+keryx-wallet-core.workspace = true
+keryx-wallet-keys.workspace = true
+keryx-wrpc-client.workspace = true
+keryx-wrpc-wasm.workspace = true
 num.workspace = true
 wasm-bindgen.workspace = true
 workflow-log.workspace = true
@@ -40,20 +40,20 @@ workflow-wasm.workspace = true
 
 [features]
 wasm32-sdk = [
-    "kaspa-wallet-core/wasm32-sdk",
-    "kaspa-pow/wasm32-sdk",
-    "kaspa-txscript/wasm32-sdk",
+    "keryx-wallet-core/wasm32-sdk",
+    "keryx-pow/wasm32-sdk",
+    "keryx-txscript/wasm32-sdk",
 ]
 wasm32-core = [
-    "kaspa-wallet-core/wasm32-core",
-    "kaspa-pow/wasm32-sdk",
-    "kaspa-txscript/wasm32-sdk",
+    "keryx-wallet-core/wasm32-core",
+    "keryx-pow/wasm32-sdk",
+    "keryx-txscript/wasm32-sdk",
 ]
 wasm32-rpc = [
-    "kaspa-consensus-core/wasm32-sdk",
-    "kaspa-consensus-wasm/wasm32-sdk",
-    "kaspa-wrpc-client/wasm32-sdk",
-    "kaspa-wrpc-wasm/wasm32-sdk",
+    "keryx-consensus-core/wasm32-sdk",
+    "keryx-consensus-wasm/wasm32-sdk",
+    "keryx-wrpc-client/wasm32-sdk",
+    "keryx-wrpc-wasm/wasm32-sdk",
 ]
 wasm32-keygen = []
 default = []

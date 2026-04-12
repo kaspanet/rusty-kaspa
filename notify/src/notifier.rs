@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
 use itertools::Itertools;
-use kaspa_core::{debug, trace};
+use keryx_core::{debug, trace};
 use parking_lot::Mutex;
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -986,21 +986,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_overall() {
-        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        keryx_core::log::try_init_logger("trace,keryx_notify=trace");
         let test = Test::new("BlockAdded broadcast (OverallSubscription type)", 2, overall_test_steps(SUBSCRIPTION_MANAGER_ID));
         test.run().await;
     }
 
     #[tokio::test]
     async fn test_virtual_chain_changed() {
-        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        keryx_core::log::try_init_logger("trace,keryx_notify=trace");
         let test = Test::new("VirtualChainChanged broadcast", 2, virtual_chain_changed_test_steps(SUBSCRIPTION_MANAGER_ID));
         test.run().await;
     }
 
     #[tokio::test]
     async fn test_utxos_changed() {
-        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        keryx_core::log::try_init_logger("trace,keryx_notify=trace");
         let test = Test::new("UtxosChanged broadcast", 3, utxos_changed_test_steps(SUBSCRIPTION_MANAGER_ID));
         test.run().await;
     }

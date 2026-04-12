@@ -3,10 +3,10 @@ use std::io::Write;
 
 use flate2::{Compression, write::GzEncoder};
 
-use kaspa_consensus::params::Params;
-use kaspa_consensus::{consensus::Consensus, params::OverrideParams};
-use kaspa_consensus_core::{api::ConsensusApi, block::Block};
-use kaspa_testing_integration::common::json::JtfBlock;
+use keryx_consensus::params::Params;
+use keryx_consensus::{consensus::Consensus, params::OverrideParams};
+use keryx_consensus_core::{api::ConsensusApi, block::Block};
+use keryx_testing_integration::common::json::JtfBlock;
 
 use crate::topologically_ordered_hashes;
 

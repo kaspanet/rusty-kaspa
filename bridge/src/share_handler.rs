@@ -10,8 +10,8 @@ use crate::{
 
 #[cfg(feature = "rkstratum_cpu_miner")]
 use crate::rkstratum_cpu_miner::InternalMinerMetrics;
-use kaspa_consensus_core::block::Block;
-// kaspa_pow used inline for PoW validation
+use keryx_consensus_core::block::Block;
+// keryx_pow used inline for PoW validation
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, Zero};
 use once_cell::sync::Lazy;
@@ -550,8 +550,8 @@ impl ShareHandler {
                 format!("timestamp={}, nonce=0x{:x}, bits=0x{:08x}", header_clone.timestamp, header_clone.nonce, header_clone.bits)
             );
 
-            // Use kaspa_pow::State for PoW validation against the header's compact bits target.
-            use kaspa_pow::State as PowState;
+            // Use keryx_pow::State for PoW validation against the header's compact bits target.
+            use keryx_pow::State as PowState;
             let pow_state = PowState::new(&header_clone);
             let (check_passed, pow_value_uint256) = pow_state.check_pow(nonce_val);
 
@@ -571,7 +571,7 @@ impl ShareHandler {
 
             // Check if pow_value meets network target (lower hash is better)
             let meets_network_target = pow_value <= network_target;
-            // IMPORTANT: Use kaspa_pow's own compact-target handling as the source of truth.
+            // IMPORTANT: Use keryx_pow's own compact-target handling as the source of truth.
             // This avoids any potential mismatch in our BigUint conversion/comparison path.
             pow_passed = check_passed;
 
@@ -582,7 +582,7 @@ impl ShareHandler {
             debug!("[SUBMIT]   - pow_value: {:x} ({} bytes)", pow_value, pow_value_bytes.len());
             debug!("[SUBMIT]   - network_target: {:x} ({} bytes)", network_target, network_target_bytes.len());
             debug!("[SUBMIT]   - meets_network_target(BigUint): {}", meets_network_target);
-            debug!("[SUBMIT]   - check_passed(kaspa_pow): {}", check_passed);
+            debug!("[SUBMIT]   - check_passed(keryx_pow): {}", check_passed);
 
             debug!(
                 "[SUBMIT] PoW check result: passed={}, pow_value={:x}, network_target={:x}, header.bits={}",
@@ -731,9 +731,9 @@ impl ShareHandler {
                 let blue_score = block.header.blue_score;
 
                 // Calculate block hash immediately after block creation
-                // Use kaspa_consensus_core::hashing::header::hash() for block hash calculation
+                // Use keryx_consensus_core::hashing::header::hash() for block hash calculation
                 // In Kaspa, the block hash is the header hash (transactions are represented by hash_merkle_root in header)
-                use kaspa_consensus_core::hashing::header;
+                use keryx_consensus_core::hashing::header;
                 let block_hash = header::hash(&block.header).to_string();
 
                 // Log prominent "Block Found" message with hash
@@ -1668,7 +1668,7 @@ pub trait KaspaApiTrait: Send + Sync {
     async fn submit_block(
         &self,
         block: Block,
-    ) -> Result<kaspa_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> Result<keryx_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Get balances by addresses (for Prometheus metrics)
     /// Get balances for addresses

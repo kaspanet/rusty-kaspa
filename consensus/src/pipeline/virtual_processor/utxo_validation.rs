@@ -21,7 +21,7 @@ use crate::{
         },
     },
 };
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
     acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
     api::args::TransactionValidationArgs,
@@ -35,17 +35,17 @@ use kaspa_consensus_core::{
         utxo_view::{UtxoView, UtxoViewComposition},
     },
 };
-use kaspa_core::{info, trace};
-use kaspa_hashes::Hash;
-use kaspa_muhash::MuHash;
-use kaspa_utils::refs::Refs;
+use keryx_core::{info, trace};
+use keryx_hashes::Hash;
+use keryx_muhash::MuHash;
+use keryx_utils::refs::Refs;
 
 use rayon::prelude::*;
 use smallvec::{SmallVec, smallvec};
 use std::{iter::once, ops::Deref};
 
 pub(crate) mod crescendo {
-    use kaspa_core::{info, log::CRESCENDO_KEYWORD};
+    use keryx_core::{info, log::CRESCENDO_KEYWORD};
     use std::sync::{
         Arc,
         atomic::{AtomicU8, Ordering},
@@ -403,9 +403,9 @@ impl VirtualStateProcessor {
         accepted_tx_ids: impl ExactSizeIterator<Item = Hash>,
         selected_parent: Hash,
     ) -> Hash {
-        kaspa_merkle::merkle_hash(
+        keryx_merkle::merkle_hash(
             self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
-            kaspa_merkle::calc_merkle_root(accepted_tx_ids),
+            keryx_merkle::calc_merkle_root(accepted_tx_ids),
         )
     }
 }

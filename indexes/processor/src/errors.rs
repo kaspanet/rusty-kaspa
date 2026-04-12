@@ -1,5 +1,5 @@
-use kaspa_notify::events::EventType;
-use kaspa_utxoindex::errors::UtxoIndexError;
+use keryx_notify::events::EventType;
+use keryx_utxoindex::errors::UtxoIndexError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

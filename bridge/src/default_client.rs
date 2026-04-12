@@ -1,6 +1,6 @@
 use crate::jsonrpc_event::{JsonRpcEvent, JsonRpcResponse};
 use crate::stratum_context::StratumContext;
-use kaspa_addresses::Address;
+use keryx_addresses::Address;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;

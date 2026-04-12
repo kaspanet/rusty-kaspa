@@ -5,15 +5,15 @@ use crate::{
     request_handler::{factory::Factory, interface::Interface},
 };
 use futures::{FutureExt, Stream};
-use kaspa_core::{debug, info, warn};
-use kaspa_grpc_core::{
+use keryx_core::{debug, info, warn};
+use keryx_grpc_core::{
     RPC_MAX_MESSAGE_SIZE,
     protowire::{
         KaspadRequest, KaspadResponse,
         rpc_server::{Rpc, RpcServer},
     },
 };
-use kaspa_notify::{
+use keryx_notify::{
     connection::ChannelType,
     events::EVENT_TYPE_ARRAY,
     listener::ListenerLifespan,
@@ -21,13 +21,13 @@ use kaspa_notify::{
     subscriber::Subscriber,
     subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
-use kaspa_rpc_core::{
+use keryx_rpc_core::{
     Notification, RpcResult,
     api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection},
 };
-use kaspa_utils::networking::NetAddress;
-use kaspa_utils_tower::{
+use keryx_utils::networking::NetAddress;
+use keryx_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer},
 };

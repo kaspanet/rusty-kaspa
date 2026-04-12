@@ -3,8 +3,8 @@ use crate::{converter::Converter, notifier::DynNotify};
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
-use kaspa_core::{debug, trace};
-use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
+use keryx_core::{debug, trace};
+use keryx_utils::{channel::Channel, triggers::SingleTrigger};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},

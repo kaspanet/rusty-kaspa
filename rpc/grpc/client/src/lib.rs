@@ -7,14 +7,14 @@ use async_trait::async_trait;
 pub use client_pool::ClientPool;
 use connection_event::ConnectionEvent;
 use futures::{future::FutureExt, pin_mut, select};
-use kaspa_core::{debug, error, trace};
-use kaspa_grpc_core::{
+use keryx_core::{debug, error, trace};
+use keryx_grpc_core::{
     RPC_MAX_MESSAGE_SIZE,
     channel::NotificationChannel,
     ops::KaspadPayloadOps,
     protowire::{GetInfoRequestMessage, KaspadRequest, KaspadResponse, kaspad_request, rpc_client::RpcClient},
 };
-use kaspa_notify::{
+use keryx_notify::{
     collector::{Collector, CollectorFrom},
     error::{Error as NotifyError, Result as NotifyResult},
     events::{EVENT_TYPE_ARRAY, EventArray, EventType},
@@ -27,7 +27,7 @@ use kaspa_notify::{
         context::SubscriptionContext,
     },
 };
-use kaspa_rpc_core::{
+use keryx_rpc_core::{
     Notification,
     api::rpc::RpcApi,
     error::RpcError,
@@ -35,8 +35,8 @@ use kaspa_rpc_core::{
     model::message::*,
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
 };
-use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
-use kaspa_utils_tower::{
+use keryx_utils::{channel::Channel, triggers::DuplexTrigger};
+use keryx_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };

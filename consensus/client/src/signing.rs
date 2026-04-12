@@ -4,18 +4,18 @@
 
 use crate::imports::*;
 use crate::result::Result;
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
-use kaspa_consensus_core::hashing::*;
-use kaspa_consensus_core::hashing::sighash_type::{SigHashType, SIG_HASH_ALL};
-use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_consensus_core::tx::{TransactionOutpoint, TransactionOutput, VerifiableTransaction};
-// use kaspa_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash};
+use keryx_consensus_core::hashing::sighash::SigHashReusedValues;
+use keryx_consensus_core::hashing::*;
+use keryx_consensus_core::hashing::sighash_type::{SigHashType, SIG_HASH_ALL};
+use keryx_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+use keryx_consensus_core::tx::{TransactionOutpoint, TransactionOutput, VerifiableTransaction};
+// use keryx_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash};
 use crate::transaction::{Transaction,ITransaction};
 use crate::input::{ITransactionInput, TransactionInput};
 use crate::utxo::{IUtxoEntry,UtxoEntryReference};
-use kaspa_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
-use kaspa_consensus_core::hashing::HasherExtensions;
-use kaspa_consensus_core::hashing::sighash::*;
+use keryx_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
+use keryx_consensus_core::hashing::HasherExtensions;
+use keryx_consensus_core::hashing::sighash::*;
 
 #[derive(Default)]
 #[wasm_bindgen]

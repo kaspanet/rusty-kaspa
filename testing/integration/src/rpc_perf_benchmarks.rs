@@ -7,13 +7,13 @@ use crate::{
     tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
 };
 use futures_util::future::join_all;
-use kaspa_addresses::Address;
-use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::params::Params;
-use kaspa_consensus_core::network::NetworkType;
-use kaspa_core::info;
-use kaspa_rpc_core::api::rpc::RpcApi;
-use kaspa_txscript::pay_to_address_script;
+use keryx_addresses::Address;
+use keryx_alloc::init_allocator_with_default_settings;
+use keryx_consensus::params::Params;
+use keryx_consensus_core::network::NetworkType;
+use keryx_core::info;
+use keryx_rpc_core::api::rpc::RpcApi;
+use keryx_txscript::pay_to_address_script;
 use rand::Rng;
 use rand::thread_rng;
 use std::{
@@ -40,13 +40,13 @@ async fn bench_rpc_high_load() {
     use tokio::time::sleep;
 
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
-    kaspa_core::panic::configure_panic();
+    keryx_core::log::try_init_logger("info,keryx_core::time=debug,keryx_mining::monitor=debug");
+    keryx_core::panic::configure_panic();
 
     // Setup for pre-allocated UTXOs and transaction generation
     let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let prealloc_address =
-        Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
+        Address::new(NetworkType::Simnet.into(), keryx_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
     let schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
     let spk = pay_to_address_script(&prealloc_address);
 
@@ -119,7 +119,7 @@ async fn bench_rpc_high_load() {
                 let hash = thread_virtual_chain.get(index).unwrap();
 
                 let start = Instant::now();
-                client.get_virtual_chain_from_block_v2(*hash, Some(kaspa_rpc_core::RpcDataVerbosityLevel::High), None).await.unwrap();
+                client.get_virtual_chain_from_block_v2(*hash, Some(keryx_rpc_core::RpcDataVerbosityLevel::High), None).await.unwrap();
 
                 latencies.push(start.elapsed());
             }

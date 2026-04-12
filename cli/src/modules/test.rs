@@ -2,7 +2,7 @@ use crate::imports::*;
 
 use nw_sys::notifications;
 use nw_sys::options::*;
-// use kaspa_cli_lib::daemon::*;
+// use keryx_cli_lib::daemon::*;
 
 #[derive(Default, Handler)]
 #[help("Testing ...")]
@@ -46,7 +46,7 @@ impl Test {
         // tprintln!(ctx, "start path: {}", sp);
         // tprintln!(ctx, "data path: {}", dp);
 
-        // let list = locate_binaries(sp.as_str(), "kaspad").await?;
+        // let list = locate_binaries(sp.as_str(), "keryxd").await?;
         // for item in list {
         //     tprintln!(ctx, "location: {}", item.as_os_str().to_str().unwrap());
         // }

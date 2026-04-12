@@ -3,14 +3,14 @@
 use crate::pskt::{KeySource, Version};
 use crate::utils::combine_if_no_conflicts;
 use derive_builder::Builder;
-use kaspa_consensus_core::tx::TransactionId;
+use keryx_consensus_core::tx::TransactionId;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, btree_map},
     ops::Add,
 };
 
-type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
+type Xpub = keryx_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
 
 #[derive(Debug, Clone, Builder, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,7 +39,7 @@ pub struct Global {
     /// Unknown key-value pairs for this output.
     #[serde(flatten)]
     pub unknowns: BTreeMap<String, serde_value::Value>,
-    #[serde(with = "kaspa_utils::serde_bytes_optional")]
+    #[serde(with = "keryx_utils::serde_bytes_optional")]
     pub payload: Option<Vec<u8>>,
 }
 
@@ -131,7 +131,7 @@ impl Default for Global {
     fn default() -> Self {
         Global {
             version: Version::Zero,
-            tx_version: kaspa_consensus_core::constants::TX_VERSION,
+            tx_version: keryx_consensus_core::constants::TX_VERSION,
             fallback_lock_time: None,
             inputs_modifiable: false,
             outputs_modifiable: false,

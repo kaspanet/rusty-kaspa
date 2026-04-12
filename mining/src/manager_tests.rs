@@ -15,8 +15,8 @@ mod tests {
         testutils::consensus_mock::ConsensusMock,
     };
     use itertools::Itertools;
-    use kaspa_addresses::{Address, Prefix, Version};
-    use kaspa_consensus_core::{
+    use keryx_addresses::{Address, Prefix, Version};
+    use keryx_consensus_core::{
         api::ConsensusApi,
         block::TemplateBuildMode,
         coinbase::MinerData,
@@ -29,13 +29,13 @@ mod tests {
             UtxoEntry, scriptvec,
         },
     };
-    use kaspa_hashes::Hash;
-    use kaspa_mining_errors::mempool::RuleResult;
-    use kaspa_txscript::{
+    use keryx_hashes::Hash;
+    use keryx_mining_errors::mempool::RuleResult;
+    use keryx_txscript::{
         pay_to_address_script, pay_to_script_hash_signature_script,
         test_helpers::{create_transaction, create_transaction_with_change, op_true_script},
     };
-    use kaspa_utils::mem_size::MemSizeEstimator;
+    use keryx_utils::mem_size::MemSizeEstimator;
     use std::{iter::once, sync::Arc};
     use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
 

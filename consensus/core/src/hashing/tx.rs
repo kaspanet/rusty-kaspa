@@ -1,6 +1,6 @@
 use super::HasherExtensions;
 use crate::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput};
-use kaspa_hashes::{Hash, Hasher};
+use keryx_hashes::{Hash, Hasher};
 
 bitflags::bitflags! {
     /// A bitmask defining which transaction fields we want to encode and which to ignore.
@@ -14,14 +14,14 @@ bitflags::bitflags! {
 
 /// Returns the transaction hash. Note that this is different than the transaction ID.
 pub fn hash(tx: &Transaction) -> Hash {
-    let mut hasher = kaspa_hashes::TransactionHash::new();
+    let mut hasher = keryx_hashes::TransactionHash::new();
     write_transaction(&mut hasher, tx, TxEncodingFlags::FULL);
     hasher.finalize()
 }
 
 /// Returns the transaction hash pre-crescendo (which excludes the mass commitment)
 pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
-    let mut hasher = kaspa_hashes::TransactionHash::new();
+    let mut hasher = keryx_hashes::TransactionHash::new();
     write_transaction(&mut hasher, tx, TxEncodingFlags::EXCLUDE_MASS_COMMIT);
     hasher.finalize()
 }
@@ -36,7 +36,7 @@ pub(crate) fn id(tx: &Transaction) -> TransactionId {
     } else {
         TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT
     };
-    let mut hasher = kaspa_hashes::TransactionID::new();
+    let mut hasher = keryx_hashes::TransactionID::new();
     write_transaction(&mut hasher, tx, encoding_flags);
     hasher.finalize()
 }

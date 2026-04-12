@@ -1,6 +1,6 @@
 use crate::mempool::tx::{Priority, RbfPolicy};
-use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint};
-use kaspa_mining_errors::mempool::RuleError;
+use keryx_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint};
+use keryx_mining_errors::mempool::RuleError;
 use std::{
     fmt::{Display, Formatter},
     sync::Arc,

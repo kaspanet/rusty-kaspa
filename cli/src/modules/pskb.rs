@@ -1,10 +1,10 @@
 #![allow(unused_imports)]
 
 use crate::imports::*;
-use kaspa_addresses::Prefix;
-use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
-use kaspa_wallet_core::account::pskb::finalize_pskt_one_or_more_sig_and_redeem_script;
-use kaspa_wallet_pskt::{
+use keryx_addresses::Prefix;
+use keryx_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+use keryx_wallet_core::account::pskb::finalize_pskt_one_or_more_sig_and_redeem_script;
+use keryx_wallet_pskt::{
     prelude::{Bundle, PSKT, Signer, lock_script_sig_templating, script_sig_to_address, unlock_utxos_as_pskb},
     pskt::Inner,
 };
@@ -119,7 +119,7 @@ impl Pskb {
                         }
 
                         // Get locked UTXO set.
-                        let spend_utxos: Vec<kaspa_rpc_core::RpcUtxosByAddressesEntry> =
+                        let spend_utxos: Vec<keryx_rpc_core::RpcUtxosByAddressesEntry> =
                             ctx.wallet().rpc_api().get_utxos_by_addresses(vec![script_p2sh.clone()]).await?;
                         let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.first())?.unwrap_or(0) as u64;
 

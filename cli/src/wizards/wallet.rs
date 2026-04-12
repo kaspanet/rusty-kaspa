@@ -1,9 +1,9 @@
 use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
-use kaspa_bip32::{Language, Mnemonic, WordCount};
-use kaspa_wallet_core::storage::keydata::PrvKeyDataVariantKind;
-use kaspa_wallet_core::{
+use keryx_bip32::{Language, Mnemonic, WordCount};
+use keryx_wallet_core::storage::keydata::PrvKeyDataVariantKind;
+use keryx_wallet_core::{
     storage::{Hint, make_filename},
     wallet::WalletGuard,
 };

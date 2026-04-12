@@ -1,11 +1,11 @@
 use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
-use kaspa_consensus::test_helpers::*;
-use kaspa_consensus_core::{
+use keryx_consensus::test_helpers::*;
+use keryx_consensus_core::{
     BlockHashSet, HashMapCustomHasher,
     tx::ScriptPublicKey,
     utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
 };
-use kaspa_hashes::Hash;
+use keryx_hashes::Hash;
 #[cfg(test)]
 use rand::Rng;
 use rand::{SeedableRng, rngs::SmallRng};

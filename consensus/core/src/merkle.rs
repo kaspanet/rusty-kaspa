@@ -1,6 +1,6 @@
 use crate::{hashing, tx::Transaction};
-use kaspa_hashes::Hash;
-use kaspa_merkle::calc_merkle_root;
+use keryx_hashes::Hash;
+use keryx_merkle::calc_merkle_root;
 
 pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
     calc_merkle_root(txs.map(hashing::tx::hash))
@@ -12,7 +12,7 @@ pub fn calc_hash_merkle_root_pre_crescendo<'a>(txs: impl ExactSizeIterator<Item 
 
 pub fn calc_accepted_id_merkle_root_pre_crescendo(mut accepted_tx_ids: Vec<Hash>) -> Hash {
     accepted_tx_ids.sort();
-    kaspa_merkle::calc_merkle_root(accepted_tx_ids.into_iter())
+    keryx_merkle::calc_merkle_root(accepted_tx_ids.into_iter())
 }
 
 #[cfg(test)]
@@ -22,7 +22,7 @@ mod tests {
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec},
     };
-    use kaspa_hashes::Hash;
+    use keryx_hashes::Hash;
 
     #[test]
     fn merkle_root_test() {

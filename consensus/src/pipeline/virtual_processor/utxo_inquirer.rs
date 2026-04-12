@@ -1,6 +1,6 @@
 use std::{cmp, collections::HashSet, sync::Arc};
 
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     tx::{SignableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, UtxoEntry},
     utxo::{
@@ -8,8 +8,8 @@ use kaspa_consensus_core::{
         utxo_inquirer::{UtxoInquirerError, UtxoInquirerFindTxsFromAcceptanceDataError, UtxoInquirerResult},
     },
 };
-use kaspa_core::trace;
-use kaspa_hashes::Hash;
+use keryx_core::trace;
+use keryx_hashes::Hash;
 
 use crate::model::{
     services::reachability::ReachabilityService,

@@ -2,22 +2,22 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use futures_util::future::try_join_all;
-use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus::params::SIMNET_GENESIS;
-use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
-use kaspa_core::{assert_match, info};
-use kaspa_grpc_core::ops::KaspadPayloadOps;
-use kaspa_hashes::Hash;
-use kaspa_notify::{
+use keryx_addresses::{Address, Prefix, Version};
+use keryx_consensus::params::SIMNET_GENESIS;
+use keryx_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
+use keryx_core::{assert_match, info};
+use keryx_grpc_core::ops::KaspadPayloadOps;
+use keryx_hashes::Hash;
+use keryx_notify::{
     connection::{ChannelConnection, ChannelType},
     scope::{
         BlockAddedScope, FinalityConflictScope, NewBlockTemplateScope, PruningPointUtxoSetOverrideScope, Scope,
         SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
     },
 };
-use kaspa_rpc_core::{Notification, api::rpc::RpcApi, model::*};
-use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
-use kaspad_lib::args::Args;
+use keryx_rpc_core::{Notification, api::rpc::RpcApi, model::*};
+use keryx_utils::{fd_budget, networking::ContextualNetAddress};
+use keryxd_lib::args::Args;
 use tokio::task::JoinHandle;
 
 #[macro_export]
@@ -39,9 +39,9 @@ macro_rules! tst {
 /// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::sanity_test`
 #[tokio::test]
 async fn sanity_test() {
-    kaspa_core::log::try_init_logger("info");
+    keryx_core::log::try_init_logger("info");
     // As we log the panic, we want to set it up after the logger
-    kaspa_core::panic::configure_panic();
+    keryx_core::panic::configure_panic();
 
     let args = Args {
         simnet: true,
@@ -242,7 +242,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response = rpc_client.get_info_call(None, GetInfoRequest {}).await.unwrap();
-                    assert_eq!(response.server_version, kaspa_core::kaspad_env::version().to_string());
+                    assert_eq!(response.server_version, keryx_core::kaspad_env::version().to_string());
                     assert_eq!(response.mempool_size, 0);
                     assert!(response.is_utxo_indexed);
                     assert!(response.has_message_id);
@@ -679,7 +679,7 @@ async fn sanity_test() {
 
                     assert!(results.is_err_and(|err| {
                         match err {
-                            kaspa_rpc_core::RpcError::General(msg) => {
+                            keryx_rpc_core::RpcError::General(msg) => {
                                 info!("Expected error message: {}", msg);
                                 true
                             }

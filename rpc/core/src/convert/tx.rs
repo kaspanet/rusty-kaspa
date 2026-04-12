@@ -4,7 +4,7 @@ use crate::{
     RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionOutput, RpcResult, RpcTransaction,
     RpcTransactionInput, RpcTransactionOutput,
 };
-use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
+use keryx_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -55,12 +55,12 @@ impl TryFrom<RpcTransaction> for Transaction {
             item.version,
             item.inputs
                 .into_iter()
-                .map(kaspa_consensus_core::tx::TransactionInput::try_from)
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
+                .map(keryx_consensus_core::tx::TransactionInput::try_from)
+                .collect::<RpcResult<Vec<keryx_consensus_core::tx::TransactionInput>>>()?,
             item.outputs
                 .into_iter()
-                .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionOutput>>>()?,
+                .map(keryx_consensus_core::tx::TransactionOutput::try_from)
+                .collect::<RpcResult<Vec<keryx_consensus_core::tx::TransactionOutput>>>()?,
             item.lock_time,
             item.subnetwork_id.clone(),
             item.gas,
@@ -134,12 +134,12 @@ impl TryFrom<RpcOptionalTransaction> for Transaction {
             item.version.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "version".to_owned()))?,
             item.inputs
                 .into_iter()
-                .map(kaspa_consensus_core::tx::TransactionInput::try_from)
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
+                .map(keryx_consensus_core::tx::TransactionInput::try_from)
+                .collect::<RpcResult<Vec<keryx_consensus_core::tx::TransactionInput>>>()?,
             item.outputs
                 .into_iter()
-                .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionOutput>>>()?,
+                .map(keryx_consensus_core::tx::TransactionOutput::try_from)
+                .collect::<RpcResult<Vec<keryx_consensus_core::tx::TransactionOutput>>>()?,
             item.lock_time.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "lock_time".to_owned()))?,
             item.subnetwork_id.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "subnetwork_id".to_owned()))?,
             item.gas.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "gas".to_owned()))?,

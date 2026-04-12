@@ -8,7 +8,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{Fees, PaymentDestination};
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoIterator};
-use kaspa_addresses::Address;
+use keryx_addresses::Address;
 use workflow_core::channel::Multiplexer;
 
 pub struct GeneratorSettings {

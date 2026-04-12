@@ -1,11 +1,11 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::convert::header::Versioned;
 use crate::pb as protowire;
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashMap, BlueWorkType, HashMapCustomHasher, KType,
     trusted::{ExternalGhostdagData, TrustedGhostdagData, TrustedHeader},
 };
-use kaspa_hashes::Hash;
+use keryx_hashes::Hash;
 use std::sync::Arc;
 
 // ----------------------------------------------------------------------------

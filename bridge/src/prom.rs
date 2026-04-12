@@ -1514,14 +1514,14 @@ mod tests {
         std::fs::write(
             &config_path,
             r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 8192
 "#,
         )
         .unwrap();
 
-        set_web_status_config("127.0.0.1:16110".to_string(), 2);
+        set_web_status_config("127.0.0.1:22110".to_string(), 2);
 
         let mode = HttpMode::Instance { instance_id: "0".to_string(), web_bind: "127.0.0.1:0".to_string() };
 
@@ -1542,7 +1542,7 @@ min_share_diff: 8192
         unsafe {
             std::env::set_var("RKSTRATUM_ALLOW_CONFIG_WRITE", "1");
         }
-        let json_body = r#"{"kaspad_address":"127.0.0.2:16110","stratum_port":":5556","min_share_diff":4096}"#;
+        let json_body = r#"{"kaspad_address":"127.0.0.2:22110","stratum_port":":5556","min_share_diff":4096}"#;
         let post_req = format!("POST /api/config HTTP/1.1\r\nContent-Length: {}\r\n\r\n{}", json_body.len(), json_body);
         let post_resp = send_request(mode, &post_req).await;
         assert!(post_resp.contains("\"success\": true"));

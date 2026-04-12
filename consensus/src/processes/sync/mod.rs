@@ -1,10 +1,10 @@
 use std::{cmp::min, ops::Deref, sync::Arc};
 
 use itertools::Itertools;
-use kaspa_consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_hashes::Hash;
-use kaspa_math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
+use keryx_consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
+use keryx_database::prelude::StoreResultExt;
+use keryx_hashes::Hash;
+use keryx_math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
 use parking_lot::RwLock;
 
 use crate::model::{

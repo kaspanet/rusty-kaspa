@@ -3,7 +3,7 @@
 use crate::pskt::KeySource;
 use crate::utils::combine_if_no_conflicts;
 use derive_builder::Builder;
-use kaspa_consensus_core::tx::ScriptPublicKey;
+use keryx_consensus_core::tx::ScriptPublicKey;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, ops::Add};
 
@@ -16,7 +16,7 @@ pub struct Output {
     /// The script for this output, also known as the scriptPubKey.
     pub script_public_key: ScriptPublicKey,
     #[builder(setter(strip_option))]
-    #[serde(with = "kaspa_utils::serde_bytes_optional")]
+    #[serde(with = "keryx_utils::serde_bytes_optional")]
     /// The redeem script for this output.
     pub redeem_script: Option<Vec<u8>>,
     /// A map from public keys needed to spend this output to their

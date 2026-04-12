@@ -25,7 +25,7 @@
 #[cfg(test)]
 use crate::cli::{parse_bool, parse_instance_spec};
 #[cfg(test)]
-use kaspa_stratum_bridge::BridgeConfig;
+use keryx_stratum_bridge::BridgeConfig;
 
 #[cfg(test)]
 #[test]
@@ -132,7 +132,7 @@ fn test_config_single_instance_mode() {
     // When no instances array is provided, a single instance is created from top-level fields.
     // This is the simplest configuration mode for single-pool setups.
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 8192
 print_stats: true
@@ -144,7 +144,7 @@ print_stats: true
     assert_eq!(config.instances.len(), 1, "Should create one instance in single-instance mode");
     assert_eq!(config.instances[0].stratum_port, ":5555", "Stratum port should be parsed correctly");
     assert_eq!(config.instances[0].min_share_diff, 8192, "Min share diff should be parsed correctly");
-    assert_eq!(config.global.kaspad_address, "127.0.0.1:16110", "Kaspad address should be stored in global config");
+    assert_eq!(config.global.kaspad_address, "127.0.0.1:22110", "Kaspad address should be stored in global config");
 }
 
 #[cfg(test)]
@@ -153,7 +153,7 @@ fn test_config_single_instance_defaults_when_missing_fields() {
     // Test: Single instance mode uses defaults for missing fields
     // When fields are not specified, sensible defaults are applied (e.g., stratum_port=":5555", min_share_diff=8192).
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 print_stats: true
 "#;
 
@@ -172,7 +172,7 @@ fn test_config_single_instance_log_to_file_uses_global() {
     // Global settings are applied to the single instance when not specified at instance level.
     // The instance-level log_to_file remains None, indicating it uses the global value.
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 8192
 log_to_file: false
@@ -194,7 +194,7 @@ fn test_config_multi_instance_mode() {
     // Each instance can have its own port, difficulty, and other settings.
     // This enables running multiple pools or different configurations simultaneously.
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 instances:
   - stratum_port: ":5555"
     min_share_diff: 8192
@@ -216,7 +216,7 @@ instances:
 #[test]
 fn test_config_port_normalization() {
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: "3030"
 min_share_diff: 8192
 web_dashboard_port: "3031"
@@ -233,7 +233,7 @@ web_dashboard_port: "3031"
 #[test]
 fn test_config_duplicate_ports_error() {
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 instances:
   - stratum_port: ":5555"
     min_share_diff: 8192
@@ -250,7 +250,7 @@ instances:
 #[test]
 fn test_config_coinbase_tag_suffix_empty_string() {
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 8192
 coinbase_tag_suffix: ""
@@ -266,7 +266,7 @@ coinbase_tag_suffix: ""
 #[test]
 fn test_config_coinbase_tag_suffix_with_value() {
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 8192
 coinbase_tag_suffix: "test"
@@ -283,7 +283,7 @@ coinbase_tag_suffix: "test"
 fn test_config_var_diff_parsing() {
     // Test single-instance mode with var_diff
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 8192
 var_diff: true
@@ -301,7 +301,7 @@ shares_per_min: 30
 
     // Test multi-instance mode with var_diff
     let yaml2 = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 var_diff: false
 var_diff_stats: false
 shares_per_min: 20
@@ -329,13 +329,13 @@ instances:
 #[test]
 fn test_config_missing_instance_fields_error() {
     let yaml_missing_port = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 instances:
   - min_share_diff: 8192
 "#;
 
     let yaml_missing_diff = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 instances:
   - stratum_port: ":5555"
 "#;
@@ -348,12 +348,12 @@ instances:
 #[test]
 fn test_config_single_instance_missing_fields_use_defaults() {
     let yaml_single_missing_diff = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 "#;
 
     let yaml_single_missing_port = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 min_share_diff: 1024
 "#;
 
@@ -376,7 +376,7 @@ min_share_diff: 1024
 #[test]
 fn test_config_empty_web_dashboard_port_kept_empty() {
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 8192
 web_dashboard_port: ""
@@ -394,10 +394,10 @@ web_dashboard_port: ""
 fn test_normalize_port_with_colon() {
     // Test: Port normalization preserves ports that already have a colon prefix
     // This ensures that ports like ":3030" remain unchanged during normalization.
-    use kaspa_stratum_bridge::net_utils::normalize_port;
+    use keryx_stratum_bridge::net_utils::normalize_port;
     assert_eq!(normalize_port(":3030"), ":3030", "Port with colon should remain unchanged");
     assert_eq!(normalize_port(":5555"), ":5555", "Port with colon should remain unchanged");
-    assert_eq!(normalize_port(":16110"), ":16110", "Port with colon should remain unchanged");
+    assert_eq!(normalize_port(":22110"), ":22110", "Port with colon should remain unchanged");
 }
 
 #[cfg(test)]
@@ -405,10 +405,10 @@ fn test_normalize_port_with_colon() {
 fn test_normalize_port_without_colon() {
     // Test: Port normalization adds colon prefix to ports without it
     // This allows users to specify ports as either "3030" or ":3030" - both are normalized to ":3030".
-    use kaspa_stratum_bridge::net_utils::normalize_port;
+    use keryx_stratum_bridge::net_utils::normalize_port;
     assert_eq!(normalize_port("3030"), ":3030", "Port without colon should get colon prefix");
     assert_eq!(normalize_port("5555"), ":5555", "Port without colon should get colon prefix");
-    assert_eq!(normalize_port("16110"), ":16110", "Port without colon should get colon prefix");
+    assert_eq!(normalize_port("22110"), ":22110", "Port without colon should get colon prefix");
 }
 
 #[cfg(test)]
@@ -417,7 +417,7 @@ fn test_normalize_port_with_full_address() {
     // Test: Port normalization preserves full IP:port addresses
     // When a full address is provided (IP:port), it remains unchanged.
     // This allows binding to specific interfaces while still normalizing port-only values.
-    use kaspa_stratum_bridge::net_utils::normalize_port;
+    use keryx_stratum_bridge::net_utils::normalize_port;
     assert_eq!(normalize_port("127.0.0.1:3030"), "127.0.0.1:3030", "Full address should remain unchanged");
     assert_eq!(normalize_port("0.0.0.0:3030"), "0.0.0.0:3030", "Full address should remain unchanged");
     assert_eq!(normalize_port("192.168.1.1:5555"), "192.168.1.1:5555", "Full address should remain unchanged");
@@ -429,7 +429,7 @@ fn test_normalize_port_empty() {
     // Test: Port normalization handles empty strings
     // Empty strings and whitespace-only strings are normalized to empty strings.
     // This allows optional port configuration.
-    use kaspa_stratum_bridge::net_utils::normalize_port;
+    use keryx_stratum_bridge::net_utils::normalize_port;
     assert_eq!(normalize_port(""), "", "Empty string should remain empty");
     assert_eq!(normalize_port("   "), "", "Whitespace-only string should become empty");
 }
@@ -439,7 +439,7 @@ fn test_normalize_port_empty() {
 fn test_normalize_port_with_whitespace() {
     // Test: Port normalization trims whitespace from port values
     // Leading and trailing whitespace is removed, making configuration more forgiving.
-    use kaspa_stratum_bridge::net_utils::normalize_port;
+    use keryx_stratum_bridge::net_utils::normalize_port;
     assert_eq!(normalize_port("  :3030  "), ":3030", "Whitespace should be trimmed from port with colon");
     assert_eq!(normalize_port("  3030  "), ":3030", "Whitespace should be trimmed and colon added");
     assert_eq!(normalize_port("  127.0.0.1:3030  "), "127.0.0.1:3030", "Whitespace should be trimmed from full address");
@@ -448,25 +448,25 @@ fn test_normalize_port_with_whitespace() {
 #[cfg(test)]
 #[test]
 fn test_bind_addr_from_port_with_colon() {
-    use kaspa_stratum_bridge::net_utils::bind_addr_from_port;
+    use keryx_stratum_bridge::net_utils::bind_addr_from_port;
     assert_eq!(bind_addr_from_port(":3030"), "0.0.0.0:3030");
     assert_eq!(bind_addr_from_port(":5555"), "0.0.0.0:5555");
-    assert_eq!(bind_addr_from_port(":16110"), "0.0.0.0:16110");
+    assert_eq!(bind_addr_from_port(":22110"), "0.0.0.0:22110");
 }
 
 #[cfg(test)]
 #[test]
 fn test_bind_addr_from_port_without_colon() {
-    use kaspa_stratum_bridge::net_utils::bind_addr_from_port;
+    use keryx_stratum_bridge::net_utils::bind_addr_from_port;
     assert_eq!(bind_addr_from_port("3030"), "0.0.0.0:3030");
     assert_eq!(bind_addr_from_port("5555"), "0.0.0.0:5555");
-    assert_eq!(bind_addr_from_port("16110"), "0.0.0.0:16110");
+    assert_eq!(bind_addr_from_port("22110"), "0.0.0.0:22110");
 }
 
 #[cfg(test)]
 #[test]
 fn test_bind_addr_from_port_with_full_address() {
-    use kaspa_stratum_bridge::net_utils::bind_addr_from_port;
+    use keryx_stratum_bridge::net_utils::bind_addr_from_port;
     assert_eq!(bind_addr_from_port("127.0.0.1:3030"), "127.0.0.1:3030");
     assert_eq!(bind_addr_from_port("0.0.0.0:3030"), "0.0.0.0:3030");
     assert_eq!(bind_addr_from_port("192.168.1.1:5555"), "192.168.1.1:5555");
@@ -475,7 +475,7 @@ fn test_bind_addr_from_port_with_full_address() {
 #[cfg(test)]
 #[test]
 fn test_bind_addr_from_port_empty() {
-    use kaspa_stratum_bridge::net_utils::bind_addr_from_port;
+    use keryx_stratum_bridge::net_utils::bind_addr_from_port;
     assert_eq!(bind_addr_from_port(""), "");
     assert_eq!(bind_addr_from_port("   "), "");
 }
@@ -484,7 +484,7 @@ fn test_bind_addr_from_port_empty() {
 #[cfg(test)]
 #[test]
 fn test_stratum_method_from_str() {
-    use kaspa_stratum_bridge::jsonrpc_event::StratumMethod;
+    use keryx_stratum_bridge::jsonrpc_event::StratumMethod;
     assert_eq!(StratumMethod::from("mining.subscribe"), StratumMethod::Subscribe);
     assert_eq!(StratumMethod::from("mining.authorize"), StratumMethod::Authorize);
     assert_eq!(StratumMethod::from("mining.submit"), StratumMethod::Submit);
@@ -498,7 +498,7 @@ fn test_stratum_method_from_str() {
 #[cfg(test)]
 #[test]
 fn test_stratum_method_to_string() {
-    use kaspa_stratum_bridge::jsonrpc_event::StratumMethod;
+    use keryx_stratum_bridge::jsonrpc_event::StratumMethod;
     assert_eq!(String::from(StratumMethod::Subscribe), "mining.subscribe");
     assert_eq!(String::from(StratumMethod::Authorize), "mining.authorize");
     assert_eq!(String::from(StratumMethod::Submit), "mining.submit");
@@ -512,7 +512,7 @@ fn test_stratum_method_to_string() {
 #[cfg(test)]
 #[test]
 fn test_jsonrpc_event_new() {
-    use kaspa_stratum_bridge::jsonrpc_event::JsonRpcEvent;
+    use keryx_stratum_bridge::jsonrpc_event::JsonRpcEvent;
     use serde_json::json;
     let event = JsonRpcEvent::new(Some("1".to_string()), "mining.subscribe", vec![json!("BzMiner")]);
     assert_eq!(event.method, "mining.subscribe");
@@ -523,7 +523,7 @@ fn test_jsonrpc_event_new() {
 #[cfg(test)]
 #[test]
 fn test_jsonrpc_event_method_enum() {
-    use kaspa_stratum_bridge::jsonrpc_event::{JsonRpcEvent, StratumMethod};
+    use keryx_stratum_bridge::jsonrpc_event::{JsonRpcEvent, StratumMethod};
     let event = JsonRpcEvent::new(None, "mining.subscribe", vec![]);
     assert_eq!(event.method_enum(), StratumMethod::Subscribe);
 
@@ -534,7 +534,7 @@ fn test_jsonrpc_event_method_enum() {
 #[cfg(test)]
 #[test]
 fn test_jsonrpc_response_new() {
-    use kaspa_stratum_bridge::jsonrpc_event::{JsonRpcEvent, JsonRpcResponse};
+    use keryx_stratum_bridge::jsonrpc_event::{JsonRpcEvent, JsonRpcResponse};
     use serde_json::json;
     let event = JsonRpcEvent::new(Some("1".to_string()), "mining.subscribe", vec![]);
     let response = JsonRpcResponse::new(&event, Some(json!(["subscription_id"])), None);
@@ -545,7 +545,7 @@ fn test_jsonrpc_response_new() {
 #[cfg(test)]
 #[test]
 fn test_jsonrpc_response_success() {
-    use kaspa_stratum_bridge::jsonrpc_event::JsonRpcResponse;
+    use keryx_stratum_bridge::jsonrpc_event::JsonRpcResponse;
     use serde_json::{Value, json};
     let response = JsonRpcResponse::success(Some(Value::String("1".to_string())), json!(["subscription_id"]));
     assert!(response.result.is_some());
@@ -555,7 +555,7 @@ fn test_jsonrpc_response_success() {
 #[cfg(test)]
 #[test]
 fn test_jsonrpc_response_error() {
-    use kaspa_stratum_bridge::jsonrpc_event::JsonRpcResponse;
+    use keryx_stratum_bridge::jsonrpc_event::JsonRpcResponse;
     use serde_json::Value;
     let response = JsonRpcResponse::error(Some(Value::String("1".to_string())), -1, "Invalid request", None);
     assert!(response.result.is_none());
@@ -569,7 +569,7 @@ fn test_jsonrpc_response_error() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_basic() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     let json = r#"{"jsonrpc":"2.0","method":"mining.subscribe","params":["BzMiner"],"id":1}"#;
     let event = unmarshal_event(json).unwrap();
     assert_eq!(event.method, "mining.subscribe");
@@ -579,7 +579,7 @@ fn test_unmarshal_event_basic() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_with_null_id() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     let json = r#"{"jsonrpc":"2.0","method":"mining.notify","params":[],"id":null}"#;
     let event = unmarshal_event(json).unwrap();
     assert_eq!(event.method, "mining.notify");
@@ -588,7 +588,7 @@ fn test_unmarshal_event_with_null_id() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_with_string_id() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     use serde_json::Value;
     let json = r#"{"jsonrpc":"2.0","method":"mining.subscribe","params":[],"id":"abc123"}"#;
     let event = unmarshal_event(json).unwrap();
@@ -598,7 +598,7 @@ fn test_unmarshal_event_with_string_id() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_without_id() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     let json = r#"{"jsonrpc":"2.0","method":"mining.notify","params":[]}"#;
     let event = unmarshal_event(json).unwrap();
     assert_eq!(event.method, "mining.notify");
@@ -608,7 +608,7 @@ fn test_unmarshal_event_without_id() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_sanitizes_control_chars() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     // Test with tab character (common in Goldshell ASICs)
     let json_with_tab = "{\"jsonrpc\":\"2.0\",\"method\":\"mining.subscribe\",\"params\":[\"BzMiner\t\"],\"id\":1}";
     let event = unmarshal_event(json_with_tab).unwrap();
@@ -622,7 +622,7 @@ fn test_unmarshal_event_sanitizes_control_chars() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_preserves_newlines() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     // Newlines should be preserved
     let json_with_newline = "{\"jsonrpc\":\"2.0\",\"method\":\"mining.subscribe\",\"params\":[\"line1\\nline2\"],\"id\":1}";
     let event = unmarshal_event(json_with_newline).unwrap();
@@ -632,7 +632,7 @@ fn test_unmarshal_event_preserves_newlines() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_response_success() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_response;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_response;
     let json = r#"{"jsonrpc":"2.0","result":["subscription_id"],"id":1}"#;
     let response = unmarshal_response(json).unwrap();
     assert!(response.result.is_some());
@@ -642,7 +642,7 @@ fn test_unmarshal_response_success() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_response_error() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_response;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_response;
     let json = r#"{"jsonrpc":"2.0","error":[-1,"Invalid request",null],"id":1}"#;
     let response = unmarshal_response(json).unwrap();
     assert!(response.result.is_none());
@@ -652,7 +652,7 @@ fn test_unmarshal_response_error() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_invalid_json() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     let invalid_json = r#"{"jsonrpc":"2.0","method":"mining.subscribe""#;
     assert!(unmarshal_event(invalid_json).is_err());
 }
@@ -660,7 +660,7 @@ fn test_unmarshal_event_invalid_json() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_response_invalid_json() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_response;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_response;
     let invalid_json = r#"{"jsonrpc":"2.0","result":["subscription_id""#;
     assert!(unmarshal_response(invalid_json).is_err());
 }
@@ -668,7 +668,7 @@ fn test_unmarshal_response_invalid_json() {
 #[cfg(test)]
 #[test]
 fn test_jsonrpc_event_serialize() {
-    use kaspa_stratum_bridge::jsonrpc_event::JsonRpcEvent;
+    use keryx_stratum_bridge::jsonrpc_event::JsonRpcEvent;
     use serde_json::json;
     let event = JsonRpcEvent::new(Some("1".to_string()), "mining.subscribe", vec![json!("BzMiner")]);
     let serialized = serde_json::to_string(&event).unwrap();
@@ -679,7 +679,7 @@ fn test_jsonrpc_event_serialize() {
 #[cfg(test)]
 #[test]
 fn test_jsonrpc_response_serialize() {
-    use kaspa_stratum_bridge::jsonrpc_event::JsonRpcResponse;
+    use keryx_stratum_bridge::jsonrpc_event::JsonRpcResponse;
     use serde_json::{Value, json};
     let response = JsonRpcResponse::success(Some(Value::String("1".to_string())), json!(["subscription_id"]));
     let serialized = serde_json::to_string(&response).unwrap();
@@ -690,7 +690,7 @@ fn test_jsonrpc_response_serialize() {
 #[cfg(test)]
 #[test]
 fn test_error_short_code_display() {
-    use kaspa_stratum_bridge::errors::ErrorShortCode;
+    use keryx_stratum_bridge::errors::ErrorShortCode;
     assert_eq!(ErrorShortCode::NoMinerAddress.as_str(), "err_no_miner_address");
     assert_eq!(ErrorShortCode::FailedBlockFetch.as_str(), "err_failed_block_fetch");
     assert_eq!(ErrorShortCode::InvalidAddressFmt.as_str(), "err_malformed_wallet_address");
@@ -704,7 +704,7 @@ fn test_error_short_code_display() {
 #[cfg(test)]
 #[test]
 fn test_error_short_code_to_string() {
-    use kaspa_stratum_bridge::errors::ErrorShortCode;
+    use keryx_stratum_bridge::errors::ErrorShortCode;
     assert_eq!(format!("{}", ErrorShortCode::NoMinerAddress), "err_no_miner_address");
     assert_eq!(format!("{}", ErrorShortCode::Disconnected), "err_worker_disconnected");
 }
@@ -720,7 +720,7 @@ fn test_mining_state_initial_values() {
     // - Max jobs set to 300
     // - Job counter starts at 0
     // - No stored job IDs
-    use kaspa_stratum_bridge::mining_state::MiningState;
+    use keryx_stratum_bridge::mining_state::MiningState;
     let state = MiningState::new();
     assert!(!state.is_initialized(), "State should start uninitialized");
     assert!(!state.use_big_job(), "Big job format should be disabled by default");
@@ -735,9 +735,9 @@ fn test_mining_state_job_management() {
     // Test: Job storage and retrieval in MiningState
     // This verifies that jobs can be added to the mining state and retrieved by their job ID.
     // Jobs are stored in a circular buffer with a maximum of 300 jobs.
-    use kaspa_consensus_core::block::Block;
-    use kaspa_hashes::Hash;
-    use kaspa_stratum_bridge::mining_state::{Job, MiningState};
+    use keryx_consensus_core::block::Block;
+    use keryx_hashes::Hash;
+    use keryx_stratum_bridge::mining_state::{Job, MiningState};
 
     let state = MiningState::new();
 
@@ -771,7 +771,7 @@ fn test_mining_state_difficulty_management() {
     // Test: Difficulty storage and retrieval in MiningState
     // This verifies that the mining state can store and retrieve difficulty values
     // using BigUint for arbitrary precision arithmetic.
-    use kaspa_stratum_bridge::mining_state::MiningState;
+    use keryx_stratum_bridge::mining_state::MiningState;
     use num_bigint::BigUint;
     use num_traits::Zero;
 
@@ -789,7 +789,7 @@ fn test_mining_state_initialization_flag() {
     // Test: Initialization flag toggling in MiningState
     // This verifies that the initialization flag can be set and cleared,
     // which tracks whether a miner has completed the subscribe/authorize flow.
-    use kaspa_stratum_bridge::mining_state::MiningState;
+    use keryx_stratum_bridge::mining_state::MiningState;
     let state = MiningState::new();
     assert!(!state.is_initialized(), "State should start uninitialized");
 
@@ -806,7 +806,7 @@ fn test_mining_state_big_job_flag() {
     // Test: Big job format flag toggling in MiningState
     // This verifies that the big job format flag can be set and cleared.
     // Big job format is used for miners that require extended job data (e.g., some ASICs).
-    use kaspa_stratum_bridge::mining_state::MiningState;
+    use keryx_stratum_bridge::mining_state::MiningState;
     let state = MiningState::new();
     assert!(!state.use_big_job(), "Big job format should be disabled by default");
 
@@ -821,9 +821,9 @@ fn test_mining_state_big_job_flag() {
 #[cfg(test)]
 #[test]
 fn test_config_invalid_yaml() {
-    use kaspa_stratum_bridge::BridgeConfig;
+    use keryx_stratum_bridge::BridgeConfig;
     let invalid_yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: invalid_number
 "#;
@@ -833,9 +833,9 @@ min_share_diff: invalid_number
 #[cfg(test)]
 #[test]
 fn test_config_malformed_yaml() {
-    use kaspa_stratum_bridge::BridgeConfig;
+    use keryx_stratum_bridge::BridgeConfig;
     let malformed_yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 8192
 invalid: [unclosed
@@ -846,9 +846,9 @@ invalid: [unclosed
 #[cfg(test)]
 #[test]
 fn test_config_negative_values() {
-    use kaspa_stratum_bridge::BridgeConfig;
+    use keryx_stratum_bridge::BridgeConfig;
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: -1
 "#;
@@ -862,9 +862,9 @@ min_share_diff: -1
 #[cfg(test)]
 #[test]
 fn test_config_very_large_values() {
-    use kaspa_stratum_bridge::BridgeConfig;
+    use keryx_stratum_bridge::BridgeConfig;
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 stratum_port: ":5555"
 min_share_diff: 999999999
 "#;
@@ -876,9 +876,9 @@ min_share_diff: 999999999
 #[cfg(test)]
 #[test]
 fn test_config_empty_instances_list() {
-    use kaspa_stratum_bridge::BridgeConfig;
+    use keryx_stratum_bridge::BridgeConfig;
     let yaml = r#"
-kaspad_address: "127.0.0.1:16110"
+kaspad_address: "127.0.0.1:22110"
 instances: []
 "#;
     let config = BridgeConfig::from_yaml(yaml);
@@ -889,9 +889,9 @@ instances: []
 #[cfg(test)]
 #[test]
 fn test_config_whitespace_in_values() {
-    use kaspa_stratum_bridge::BridgeConfig;
+    use keryx_stratum_bridge::BridgeConfig;
     let yaml = r#"
-kaspad_address: "  127.0.0.1:16110  "
+kaspad_address: "  127.0.0.1:22110  "
 stratum_port: "  :5555  "
 min_share_diff: 8192
 "#;
@@ -906,7 +906,7 @@ min_share_diff: 8192
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_with_empty_params() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     let json = r#"{"jsonrpc":"2.0","method":"mining.subscribe","params":[],"id":1}"#;
     let event = unmarshal_event(json).unwrap();
     assert_eq!(event.method, "mining.subscribe");
@@ -916,7 +916,7 @@ fn test_unmarshal_event_with_empty_params() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_with_nested_objects() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     let json = r#"{"jsonrpc":"2.0","method":"mining.submit","params":["address","job_id",{"nonce":123}],"id":1}"#;
     let event = unmarshal_event(json).unwrap();
     assert_eq!(event.method, "mining.submit");
@@ -926,7 +926,7 @@ fn test_unmarshal_event_with_nested_objects() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_with_unicode() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     let json = r#"{"jsonrpc":"2.0","method":"mining.subscribe","params":["测试"],"id":1}"#;
     let event = unmarshal_event(json).unwrap();
     assert_eq!(event.method, "mining.subscribe");
@@ -936,7 +936,7 @@ fn test_unmarshal_event_with_unicode() {
 #[cfg(test)]
 #[test]
 fn test_unmarshal_event_with_very_long_string() {
-    use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+    use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
     let long_string = "a".repeat(10000);
     let json = format!(r#"{{"jsonrpc":"2.0","method":"mining.subscribe","params":["{}"],"id":1}}"#, long_string);
     let event = unmarshal_event(&json).unwrap();
@@ -1020,9 +1020,9 @@ fn test_parse_instance_spec_multiple_ports() {
 
 #[cfg(test)]
 mod integration {
-    use kaspa_alloc::init_allocator_with_default_settings;
-    use kaspa_stratum_bridge::{KaspaApi, StratumServerBridgeConfig as StratumBridgeConfig, listen_and_serve_with_shutdown};
-    use kaspad_lib::args as kaspad_args;
+    use keryx_alloc::init_allocator_with_default_settings;
+    use keryx_stratum_bridge::{KaspaApi, StratumServerBridgeConfig as StratumBridgeConfig, listen_and_serve_with_shutdown};
+    use keryxd_lib::args as kaspad_args;
     use std::ffi::OsString;
     use std::time::Duration;
     use tokio::sync::watch;
@@ -1038,10 +1038,10 @@ mod integration {
 
         // Start an in-process node with simnet/testnet settings
         // Use a random port to avoid conflicts
-        let rpc_port = 16110 + (std::process::id() % 1000) as u16;
+        let rpc_port = 22110 + (std::process::id() % 1000) as u16;
         let rpc_address = format!("127.0.0.1:{}", rpc_port);
         let argv: Vec<OsString> = vec![
-            "kaspad".into(),
+            "keryxd".into(),
             "--testnet".into(),
             "--appdir".into(),
             temp_dir.to_string_lossy().to_string().into(),
@@ -1109,10 +1109,10 @@ mod integration {
 
         // Start an in-process node with simnet/testnet settings
         // Use a random port to avoid conflicts
-        let rpc_port = 16110 + (std::process::id() % 1000) as u16;
+        let rpc_port = 22110 + (std::process::id() % 1000) as u16;
         let rpc_address = format!("127.0.0.1:{}", rpc_port);
         let argv: Vec<OsString> = vec![
-            "kaspad".into(),
+            "keryxd".into(),
             "--testnet".into(),
             "--appdir".into(),
             temp_dir.to_string_lossy().to_string().into(),
@@ -1131,7 +1131,7 @@ mod integration {
         let kaspa_api = KaspaApi::new(rpc_address.clone(), None, shutdown_rx.clone()).await.unwrap();
 
         // Test that CPU miner module is available when feature is enabled
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         let miner_config = InternalCpuMinerConfig {
             enabled: false, // Don't actually mine in test
             mining_address: "kaspatest:test".to_string(),
@@ -1199,12 +1199,12 @@ mod integration {
 
 #[cfg(test)]
 mod comprehensive_tests {
-    use kaspa_consensus_core::block::Block;
-    use kaspa_consensus_core::header::Header;
-    use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionOutput};
-    use kaspa_hashes::Hash;
-    use kaspa_stratum_bridge::{
+    use keryx_consensus_core::block::Block;
+    use keryx_consensus_core::header::Header;
+    use keryx_consensus_core::subnets::SubnetworkId;
+    use keryx_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionOutput};
+    use keryx_hashes::Hash;
+    use keryx_stratum_bridge::{
         client_handler::ClientHandler,
         default_client::{handle_authorize, handle_subscribe},
         hasher::KaspaDiff,
@@ -1516,7 +1516,7 @@ mod comprehensive_tests {
         // Test: Difficulty to target conversion
         // This demonstrates how pool difficulty is converted to a target hash
 
-        use kaspa_stratum_bridge::hasher::diff_to_target;
+        use keryx_stratum_bridge::hasher::diff_to_target;
 
         // Test with difficulty = 1.0 (maximum target)
         let target_1 = diff_to_target(1.0);
@@ -1793,7 +1793,7 @@ mod comprehensive_tests {
     #[test]
     fn test_error_short_codes() {
         // Test: Error short codes for tracking
-        use kaspa_stratum_bridge::errors::ErrorShortCode;
+        use keryx_stratum_bridge::errors::ErrorShortCode;
 
         assert_eq!(ErrorShortCode::NoMinerAddress.as_str(), "err_no_miner_address");
         assert_eq!(ErrorShortCode::FailedBlockFetch.as_str(), "err_failed_block_fetch");
@@ -1913,7 +1913,7 @@ mod comprehensive_tests {
         // Test: InternalCpuMinerConfig creation and fields
         // This demonstrates how to configure the internal CPU miner
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         let config = InternalCpuMinerConfig {
@@ -1937,7 +1937,7 @@ mod comprehensive_tests {
         // Test: Config validation - empty address should fail
         // This demonstrates the validation logic
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         let config_empty = InternalCpuMinerConfig {
@@ -1968,7 +1968,7 @@ mod comprehensive_tests {
         // Test: InternalMinerMetrics initialization and default values
         // This demonstrates how metrics are tracked
 
-        use kaspa_stratum_bridge::rkstratum_cpu_miner::InternalMinerMetrics;
+        use keryx_stratum_bridge::rkstratum_cpu_miner::InternalMinerMetrics;
         use std::sync::atomic::Ordering;
 
         let metrics = InternalMinerMetrics::default();
@@ -1994,7 +1994,7 @@ mod comprehensive_tests {
         // Test: Threads are clamped to minimum of 1
         // This demonstrates the thread count validation
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         let config_zero_threads = InternalCpuMinerConfig {
@@ -2017,7 +2017,7 @@ mod comprehensive_tests {
         // Test: When disabled, miner should return default metrics without starting
         // This demonstrates the disabled state handling
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         let config_disabled = InternalCpuMinerConfig {
@@ -2039,7 +2039,7 @@ mod comprehensive_tests {
         // Test: Spawning disabled miner returns default metrics
         // This demonstrates the spawn behavior when disabled
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         // Create a mock KaspaApi (we won't actually use it when disabled)
@@ -2065,7 +2065,7 @@ mod comprehensive_tests {
         // Test: Throttle configuration for CPU miner
         // This demonstrates how to control CPU usage via throttling
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         // Test with throttle enabled
@@ -2098,7 +2098,7 @@ mod comprehensive_tests {
         // Test: Template poll interval configuration
         // This demonstrates how often the miner refreshes block templates
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         // Fast polling (more frequent template updates)
@@ -2173,7 +2173,7 @@ mod comprehensive_tests {
         // This demonstrates how the CPU miner integrates with the bridge
         // Note: Full integration requires a real Kaspa node (tested in integration tests)
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         // Create a valid config
@@ -2202,7 +2202,7 @@ mod comprehensive_tests {
         // Test: Metrics tracking for CPU miner
         // This demonstrates how metrics are updated during mining
 
-        use kaspa_stratum_bridge::rkstratum_cpu_miner::InternalMinerMetrics;
+        use keryx_stratum_bridge::rkstratum_cpu_miner::InternalMinerMetrics;
         use std::sync::atomic::Ordering;
 
         let metrics = Arc::new(InternalMinerMetrics::default());
@@ -2231,9 +2231,9 @@ mod comprehensive_tests {
         // Test: PoW checking concept for CPU miner
         // This demonstrates how the CPU miner validates PoW
 
-        use kaspa_consensus_core::header::Header;
-        use kaspa_hashes::Hash;
-        use kaspa_pow::State as PowState;
+        use keryx_consensus_core::header::Header;
+        use keryx_hashes::Hash;
+        use keryx_pow::State as PowState;
 
         // Create a test block
         let hash = Hash::from_bytes([1; 32]);
@@ -2332,7 +2332,7 @@ mod comprehensive_tests {
         // Test: Various configuration examples
         // This demonstrates different use cases for the CPU miner
 
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         use std::time::Duration;
 
         // Example 1: Single-threaded, throttled (low CPU usage)
@@ -2379,7 +2379,7 @@ mod comprehensive_tests {
         // This test ensures the feature is properly enabled
 
         // Test that InternalCpuMinerConfig is available
-        use kaspa_stratum_bridge::InternalCpuMinerConfig;
+        use keryx_stratum_bridge::InternalCpuMinerConfig;
         let _config = InternalCpuMinerConfig {
             enabled: true,
             mining_address: "kaspatest:test123456789012345678901234567890123456789012345678901234567890".to_string(),
@@ -2389,7 +2389,7 @@ mod comprehensive_tests {
         };
 
         // Test that InternalMinerMetrics is available
-        use kaspa_stratum_bridge::rkstratum_cpu_miner::InternalMinerMetrics;
+        use keryx_stratum_bridge::rkstratum_cpu_miner::InternalMinerMetrics;
         let _metrics = InternalMinerMetrics::default();
 
         // Test that spawn function is available (compile-time check)
@@ -2707,7 +2707,7 @@ mod comprehensive_tests {
     #[test]
     fn test_unmarshal_event_type_mismatches() {
         // Test: Events with wrong parameter types
-        use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+        use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
 
         // Test with method as number instead of string
         let json1 = r#"{"jsonrpc":"2.0","method":123,"params":[],"id":1}"#;
@@ -2731,7 +2731,7 @@ mod comprehensive_tests {
     #[test]
     fn test_unmarshal_event_missing_required_fields() {
         // Test: Events missing jsonrpc/method fields
-        use kaspa_stratum_bridge::jsonrpc_event::unmarshal_event;
+        use keryx_stratum_bridge::jsonrpc_event::unmarshal_event;
 
         // Test missing jsonrpc field
         let json1 = r#"{"method":"mining.subscribe","params":[],"id":1}"#;

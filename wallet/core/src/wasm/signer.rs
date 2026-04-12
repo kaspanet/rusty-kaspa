@@ -1,14 +1,14 @@
 use crate::imports::*;
 use crate::result::Result;
 use js_sys::Array;
-use kaspa_consensus_client::{Transaction, sign_with_multiple_v3};
-use kaspa_consensus_core::hashing::wasm::SighashType;
-use kaspa_consensus_core::sign::sign_input;
-use kaspa_consensus_core::tx::PopulatedTransaction;
-use kaspa_consensus_core::{hashing::sighash_type::SIG_HASH_ALL, sign::verify};
-use kaspa_hashes::Hash;
-use kaspa_wallet_keys::privatekey::PrivateKey;
-use kaspa_wasm_core::types::HexString;
+use keryx_consensus_client::{Transaction, sign_with_multiple_v3};
+use keryx_consensus_core::hashing::wasm::SighashType;
+use keryx_consensus_core::sign::sign_input;
+use keryx_consensus_core::tx::PopulatedTransaction;
+use keryx_consensus_core::{hashing::sighash_type::SIG_HASH_ALL, sign::verify};
+use keryx_hashes::Hash;
+use keryx_wallet_keys::privatekey::PrivateKey;
+use keryx_wasm_core::types::HexString;
 use serde_wasm_bindgen::from_value;
 
 #[wasm_bindgen]

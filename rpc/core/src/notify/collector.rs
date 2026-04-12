@@ -1,5 +1,5 @@
 use crate::Notification;
-use kaspa_notify::{collector::CollectorFrom, converter::ConverterFrom};
+use keryx_notify::{collector::CollectorFrom, converter::ConverterFrom};
 
 pub type RpcCoreConverter = ConverterFrom<Notification, Notification>;
 

@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_wallet_core::account::{Account, BIP32_ACCOUNT_KIND, MULTISIG_ACCOUNT_KIND, multisig::MultiSig};
+use keryx_wallet_core::account::{Account, BIP32_ACCOUNT_KIND, MULTISIG_ACCOUNT_KIND, multisig::MultiSig};
 
 #[derive(Default, Handler)]
 #[help("Export transactions, a wallet or a private key")]
@@ -50,7 +50,7 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 let prv_key_data = prv_key_data_store.load_key_data(&wallet_secret, prv_key_data_id).await?.unwrap();
                 let mnemonic = prv_key_data.as_mnemonic(None).unwrap().unwrap();
 
-                let xpub_key: kaspa_bip32::ExtendedPublicKey<kaspa_bip32::secp256k1::PublicKey> =
+                let xpub_key: keryx_bip32::ExtendedPublicKey<keryx_bip32::secp256k1::PublicKey> =
                     prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
 
                 tprintln!(ctx, "");

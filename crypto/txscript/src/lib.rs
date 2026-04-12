@@ -20,13 +20,13 @@ use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
 use itertools::Itertools;
-use kaspa_consensus_core::hashing::sighash::{
+use keryx_consensus_core::hashing::sighash::{
     SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
 };
-use kaspa_consensus_core::hashing::sighash_type::SigHashType;
-use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
-use kaspa_txscript_errors::TxScriptError;
-use kaspa_utils::hex::ToHex;
+use keryx_consensus_core::hashing::sighash_type::SigHashType;
+use keryx_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
+use keryx_txscript_errors::TxScriptError;
+use keryx_utils::hex::ToHex;
 use log::trace;
 use opcodes::codes::OpReturn;
 use opcodes::{OpCond, codes, to_small_int};
@@ -322,7 +322,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     pub fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
         self.print_opcode_execution(&opcode);
 
-        // Different from kaspad: Illegal and disabled opcode are checked on execute instead
+        // Different from keryxd: Illegal and disabled opcode are checked on execute instead
         // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
             self.num_ops += 1;
@@ -664,12 +664,12 @@ mod tests {
 
     use super::*;
     use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
-    use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
-    use kaspa_consensus_core::tx::{
+    use keryx_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+    use keryx_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+    use keryx_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
-    use kaspa_utils::hex::FromHex;
+    use keryx_utils::hex::FromHex;
     use smallvec::SmallVec;
 
     struct ScriptTestCase {
@@ -1337,9 +1337,9 @@ mod bitcoind_tests {
 
     use super::*;
     use crate::script_builder::ScriptBuilderError;
-    use kaspa_consensus_core::constants::MAX_TX_IN_SEQUENCE_NUM;
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
-    use kaspa_consensus_core::tx::{
+    use keryx_consensus_core::constants::MAX_TX_IN_SEQUENCE_NUM;
+    use keryx_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+    use keryx_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
 

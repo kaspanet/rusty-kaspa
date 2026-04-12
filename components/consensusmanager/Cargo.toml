@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-consensusmanager"
+name = "keryx-consensusmanager"
 description = "Kaspa consensus library"
 rust-version.workspace = true
 version.workspace = true
@@ -14,11 +14,11 @@ duration-string.workspace = true
 futures-util.workspace = true
 futures.workspace = true
 itertools.workspace = true
-kaspa-addresses.workspace=true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-core.workspace = true
-kaspa-utils.workspace = true
+keryx-addresses.workspace=true
+keryx-consensus-core.workspace = true
+keryx-consensus-notify.workspace = true
+keryx-core.workspace = true
+keryx-utils.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true

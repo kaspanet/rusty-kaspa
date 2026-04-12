@@ -14,8 +14,8 @@ use crate::v7::{
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute, convert::header::HeaderFormat};
-use kaspa_utils::channel;
+use keryx_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute, convert::header::HeaderFormat};
+use keryx_utils::channel;
 use std::sync::Arc;
 
 pub(crate) mod address;

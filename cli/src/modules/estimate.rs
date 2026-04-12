@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_wallet_core::tx::PaymentDestination;
+use keryx_wallet_core::tx::PaymentDestination;
 
 #[derive(Default, Handler)]
 #[help("Estimate the fees for a transaction of a given amount")]

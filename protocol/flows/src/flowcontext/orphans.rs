@@ -1,11 +1,11 @@
 use indexmap::{IndexMap, map::Entry::Occupied};
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     api::{BlockValidationFuture, BlockValidationFutures},
     block::Block,
 };
-use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
-use kaspa_core::debug;
-use kaspa_hashes::Hash;
+use keryx_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
+use keryx_core::debug;
+use keryx_hashes::Hash;
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -274,13 +274,13 @@ impl OrphanBlocksPool {
 mod tests {
     use super::*;
     use futures::future::try_join_all;
-    use kaspa_consensus_core::{
+    use keryx_consensus_core::{
         api::{BlockValidationFutures, ConsensusApi},
         blockstatus::BlockStatus,
         errors::block::BlockProcessResult,
     };
-    use kaspa_consensusmanager::{ConsensusInstance, SessionLock};
-    use kaspa_core::assert_match;
+    use keryx_consensusmanager::{ConsensusInstance, SessionLock};
+    use keryx_core::assert_match;
     use parking_lot::RwLock;
     use std::sync::Arc;
 

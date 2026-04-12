@@ -1,5 +1,5 @@
 use crate::{ConnectionInitializer, Peer, Router, common::ProtocolError, pb::KaspadMessage};
-use kaspa_core::{debug, info, warn};
+use keryx_core::{debug, info, warn};
 use parking_lot::RwLock;
 use std::{
     collections::{HashMap, hash_map::Entry::Occupied},

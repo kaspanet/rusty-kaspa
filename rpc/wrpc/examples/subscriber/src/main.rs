@@ -14,9 +14,9 @@ use workflow_core::task::spawn;
 use workflow_log::prelude::*;
 
 // Kaspa RPC primitives
-use kaspa_wrpc_client::prelude::*;
+use keryx_wrpc_client::prelude::*;
 // reuse wRPC Result type for convenience
-use kaspa_wrpc_client::result::Result;
+use keryx_wrpc_client::result::Result;
 
 struct Inner {
     // task control duplex channel - a pair of channels where sender

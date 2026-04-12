@@ -4,7 +4,7 @@ use crate::{
     connection_handler::ServerContext,
     error::{GrpcServerError, GrpcServerResult},
 };
-use kaspa_grpc_core::{
+use keryx_grpc_core::{
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
 };

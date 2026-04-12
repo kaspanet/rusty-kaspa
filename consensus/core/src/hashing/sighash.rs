@@ -1,5 +1,5 @@
 use arc_swap::ArcSwapOption;
-use kaspa_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
+use keryx_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
 use std::cell::Cell;
 use std::sync::Arc;
 
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_signature_hash() {
-        // TODO: Copy all sighash tests from go kaspad.
+        // TODO: Copy all sighash tests from go keryxd.
         let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
         let mut bytes = [0u8; 34];
         faster_hex::hex_decode("208325613d2eeaf7176ac6c670b13c0043156c427438ed72d74b7800862ad884e8ac".as_bytes(), &mut bytes).unwrap();

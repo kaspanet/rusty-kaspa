@@ -1,12 +1,12 @@
 use crate::protowire;
 use crate::{from, try_from};
-use kaspa_rpc_core::RpcError;
+use keryx_rpc_core::RpcError;
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-from!(item: &kaspa_rpc_core::ConnectionsProfileData, protowire::ConnectionsProfileData, {
+from!(item: &keryx_rpc_core::ConnectionsProfileData, protowire::ConnectionsProfileData, {
     Self {
         cpu_usage: item.cpu_usage as f64,
         memory_usage: item.memory_usage,
@@ -14,7 +14,7 @@ from!(item: &kaspa_rpc_core::ConnectionsProfileData, protowire::ConnectionsProfi
     }
 });
 
-from!(item: &kaspa_rpc_core::ProcessMetrics, protowire::ProcessMetrics, {
+from!(item: &keryx_rpc_core::ProcessMetrics, protowire::ProcessMetrics, {
     Self {
         resident_set_size: item.resident_set_size,
         virtual_memory_size: item.virtual_memory_size,
@@ -28,7 +28,7 @@ from!(item: &kaspa_rpc_core::ProcessMetrics, protowire::ProcessMetrics, {
     }
 });
 
-from!(item: &kaspa_rpc_core::ConnectionMetrics, protowire::ConnectionMetrics, {
+from!(item: &keryx_rpc_core::ConnectionMetrics, protowire::ConnectionMetrics, {
     Self {
         borsh_live_connections: item.borsh_live_connections,
         borsh_connection_attempts: item.borsh_connection_attempts,
@@ -40,7 +40,7 @@ from!(item: &kaspa_rpc_core::ConnectionMetrics, protowire::ConnectionMetrics, {
     }
 });
 
-from!(item: &kaspa_rpc_core::BandwidthMetrics, protowire::BandwidthMetrics, {
+from!(item: &keryx_rpc_core::BandwidthMetrics, protowire::BandwidthMetrics, {
     Self {
         borsh_bytes_tx: item.borsh_bytes_tx,
         borsh_bytes_rx: item.borsh_bytes_rx,
@@ -53,7 +53,7 @@ from!(item: &kaspa_rpc_core::BandwidthMetrics, protowire::BandwidthMetrics, {
     }
 });
 
-from!(item: &kaspa_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
+from!(item: &keryx_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
     Self {
         blocks_submitted: item.node_blocks_submitted_count,
         header_counts: item.node_headers_processed_count,
@@ -74,7 +74,7 @@ from!(item: &kaspa_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
     }
 });
 
-from!(item: &kaspa_rpc_core::StorageMetrics, protowire::StorageMetrics, {
+from!(item: &keryx_rpc_core::StorageMetrics, protowire::StorageMetrics, {
     Self {
         storage_size_bytes: item.storage_size_bytes,
     }
@@ -84,11 +84,11 @@ from!(item: &kaspa_rpc_core::StorageMetrics, protowire::StorageMetrics, {
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
-try_from!(item: &protowire::ConnectionsProfileData, kaspa_rpc_core::ConnectionsProfileData, {
+try_from!(item: &protowire::ConnectionsProfileData, keryx_rpc_core::ConnectionsProfileData, {
     Self { cpu_usage : item.cpu_usage as f32, memory_usage : item.memory_usage }
 });
 
-try_from!(item: &protowire::ProcessMetrics, kaspa_rpc_core::ProcessMetrics, {
+try_from!(item: &protowire::ProcessMetrics, keryx_rpc_core::ProcessMetrics, {
     Self {
         resident_set_size: item.resident_set_size,
         virtual_memory_size: item.virtual_memory_size,
@@ -102,7 +102,7 @@ try_from!(item: &protowire::ProcessMetrics, kaspa_rpc_core::ProcessMetrics, {
     }
 });
 
-try_from!(item: &protowire::ConnectionMetrics, kaspa_rpc_core::ConnectionMetrics, {
+try_from!(item: &protowire::ConnectionMetrics, keryx_rpc_core::ConnectionMetrics, {
     Self {
         borsh_live_connections: item.borsh_live_connections,
         borsh_connection_attempts: item.borsh_connection_attempts,
@@ -114,7 +114,7 @@ try_from!(item: &protowire::ConnectionMetrics, kaspa_rpc_core::ConnectionMetrics
     }
 });
 
-try_from!(item: &protowire::BandwidthMetrics, kaspa_rpc_core::BandwidthMetrics, {
+try_from!(item: &protowire::BandwidthMetrics, keryx_rpc_core::BandwidthMetrics, {
     Self {
         borsh_bytes_tx: item.borsh_bytes_tx,
         borsh_bytes_rx: item.borsh_bytes_rx,
@@ -127,7 +127,7 @@ try_from!(item: &protowire::BandwidthMetrics, kaspa_rpc_core::BandwidthMetrics, 
     }
 });
 
-try_from!(item: &protowire::ConsensusMetrics, kaspa_rpc_core::ConsensusMetrics, {
+try_from!(item: &protowire::ConsensusMetrics, keryx_rpc_core::ConsensusMetrics, {
     Self {
         node_blocks_submitted_count: item.blocks_submitted,
         node_headers_processed_count: item.header_counts,
@@ -148,7 +148,7 @@ try_from!(item: &protowire::ConsensusMetrics, kaspa_rpc_core::ConsensusMetrics, 
     }
 });
 
-try_from!(item: &protowire::StorageMetrics, kaspa_rpc_core::StorageMetrics, {
+try_from!(item: &protowire::StorageMetrics, keryx_rpc_core::StorageMetrics, {
     Self {
         storage_size_bytes: item.storage_size_bytes,
     }

@@ -22,5 +22,5 @@ pub(crate) fn get_bridge_logs_dir() -> PathBuf {
 }
 
 pub(crate) fn default_inprocess_kaspad_appdir() -> PathBuf {
-    get_bridge_app_dir().join("kaspad")
+    get_bridge_app_dir().join("keryxd")
 }

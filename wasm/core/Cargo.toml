@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wasm-core"
+name = "keryx-wasm-core"
 description = "Kaspa core WASM32 types"
 version.workspace = true
 edition.workspace = true

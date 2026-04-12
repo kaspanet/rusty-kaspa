@@ -5,8 +5,8 @@
 use crate::derivation::gen1::WalletDerivationManager;
 use crate::derivation::traits::WalletDerivationManagerTrait;
 use crate::imports::*;
-use kaspa_addresses::AddressArrayT;
-use kaspa_consensus_core::network::NetworkType;
+use keryx_addresses::AddressArrayT;
+use keryx_consensus_core::network::NetworkType;
 // use crate::xprv::XPrv;
 
 ///

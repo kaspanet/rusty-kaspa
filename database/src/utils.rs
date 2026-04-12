@@ -43,12 +43,12 @@ impl Drop for DbLifetime {
 
 pub fn get_kaspa_tempdir() -> TempDir {
     let global_tempdir = std::env::temp_dir();
-    let kaspa_tempdir = global_tempdir.join("rusty-kaspa");
+    let kaspa_tempdir = global_tempdir.join("keryx-labs");
     std::fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
     tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap()
 }
 
-/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/rusty-kaspa`
+/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/keryx-labs`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
 #[macro_export]
 macro_rules! create_temp_db {

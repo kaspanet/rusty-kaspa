@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_daemon::KaspadConfig;
+use keryx_daemon::KaspadConfig;
 use workflow_core::task::sleep;
 use workflow_node::process;
 pub use workflow_node::process::Event;
@@ -20,7 +20,7 @@ impl DefaultSettings for KaspadSettings {
         let mut settings = vec![(Self::Mute, to_value(true).unwrap())];
 
         let root = nw_sys::app::folder();
-        if let Ok(binaries) = kaspa_daemon::locate_binaries(&root, "kaspad").await
+        if let Ok(binaries) = keryx_daemon::locate_binaries(&root, "keryxd").await
             && let Some(path) = binaries.first()
         {
             settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
@@ -39,7 +39,7 @@ pub struct Node {
 impl Default for Node {
     fn default() -> Self {
         Node {
-            settings: SettingsStore::try_new("kaspad").expect("Failed to create node settings store"),
+            settings: SettingsStore::try_new("keryxd").expect("Failed to create node settings store"),
             mute: Arc::new(AtomicBool::new(true)),
             is_running: Arc::new(AtomicBool::new(false)),
         }
@@ -49,7 +49,7 @@ impl Default for Node {
 #[async_trait]
 impl Handler for Node {
     fn verb(&self, ctx: &Arc<dyn Context>) -> Option<&'static str> {
-        if let Ok(ctx) = ctx.clone().downcast_arc::<KaspaCli>() { ctx.daemons().clone().kaspad.as_ref().map(|_| "node") } else { None }
+        if let Ok(ctx) = ctx.clone().downcast_arc::<KaspaCli>() { ctx.daemons().clone().keryxd.as_ref().map(|_| "node") } else { None }
     }
 
     fn help(&self, _ctx: &Arc<dyn Context>) -> &'static str {
@@ -92,7 +92,7 @@ impl Node {
         if argv.is_empty() {
             return self.display_help(ctx, argv).await;
         }
-        let kaspad = ctx.daemons().kaspad();
+        let keryxd = ctx.daemons().keryxd();
         match argv.remove(0).as_str() {
             "start" => {
                 let mute = self.mute.load(Ordering::SeqCst);
@@ -104,8 +104,8 @@ impl Node {
 
                 let wrpc_client = ctx.wallet().try_wrpc_client().ok_or(Error::custom("Unable to start node with non-wRPC client"))?;
 
-                kaspad.configure(self.create_config(&ctx).await?).await?;
-                kaspad.start().await?;
+                keryxd.configure(self.create_config(&ctx).await?).await?;
+                keryxd.start().await?;
 
                 // temporary setup for auto-connect
                 let url = ctx.wallet().settings().get(WalletSettings::Server);
@@ -134,14 +134,14 @@ impl Node {
                 }
             }
             "stop" => {
-                kaspad.stop().await?;
+                keryxd.stop().await?;
             }
             "restart" => {
-                kaspad.configure(self.create_config(&ctx).await?).await?;
-                kaspad.restart().await?;
+                keryxd.configure(self.create_config(&ctx).await?).await?;
+                keryxd.restart().await?;
             }
             "kill" => {
-                kaspad.kill().await?;
+                keryxd.kill().await?;
             }
             "mute" | "logs" => {
                 let mute = !self.mute.load(Ordering::SeqCst);
@@ -151,11 +151,11 @@ impl Node {
                 } else {
                     tprintln!(ctx, "{}", style("node is unmuted").dim());
                 }
-                // kaspad.mute(mute).await?;
+                // keryxd.mute(mute).await?;
                 self.settings.set(KaspadSettings::Mute, mute).await?;
             }
             "status" => {
-                let status = kaspad.status().await?;
+                let status = keryxd.status().await?;
                 tprintln!(ctx, "{}", status);
             }
             "select" => {
@@ -164,8 +164,8 @@ impl Node {
                 self.select(ctx, path.is_not_empty().then_some(path)).await?;
             }
             "version" => {
-                kaspad.configure(self.create_config(&ctx).await?).await?;
-                let version = kaspad.version().await?;
+                keryxd.configure(self.create_config(&ctx).await?).await?;
+                let version = keryxd.version().await?;
                 tprintln!(ctx, "{}", version);
             }
             v => {
@@ -201,13 +201,13 @@ impl Node {
 
         match path {
             None => {
-                let binaries = kaspa_daemon::locate_binaries(root.as_str(), "kaspad").await?;
+                let binaries = keryx_daemon::locate_binaries(root.as_str(), "keryxd").await?;
 
                 if binaries.is_empty() {
-                    tprintln!(ctx, "No kaspad binaries found");
+                    tprintln!(ctx, "No keryxd binaries found");
                 } else {
                     let binaries = binaries.iter().map(|p| p.display().to_string()).collect::<Vec<_>>();
-                    if let Some(selection) = ctx.term().select("Please select a kaspad binary", &binaries).await? {
+                    if let Some(selection) = ctx.term().select("Please select a keryxd binary", &binaries).await? {
                         tprintln!(ctx, "selecting: {}", selection);
                         self.settings.set(KaspadSettings::Location, selection.as_str()).await?;
                     } else {
@@ -223,7 +223,7 @@ impl Node {
                     self.settings.set(KaspadSettings::Location, path.as_str()).await?;
                 } else {
                     twarnln!(ctx, "destination binary not found, please specify full path including the binary name");
-                    twarnln!(ctx, "example: 'node select /home/user/testnet/kaspad'");
+                    twarnln!(ctx, "example: 'node select /home/user/testnet/keryxd'");
                     tprintln!(ctx, "no selection is made");
                 }
             }

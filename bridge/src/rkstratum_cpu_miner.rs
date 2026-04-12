@@ -1,6 +1,6 @@
 use crate::kaspaapi::KaspaApi;
 use crate::prom;
-use kaspa_consensus_core::block::Block;
+use keryx_consensus_core::block::Block;
 use parking_lot::{Condvar, Mutex};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -37,7 +37,7 @@ pub struct InternalCpuMinerConfig {
 struct Work {
     id: u64,
     block: Block,
-    pow_state: Arc<kaspa_pow::State>,
+    pow_state: Arc<keryx_pow::State>,
 }
 
 struct WorkSlot {
@@ -118,7 +118,7 @@ pub fn spawn_internal_cpu_miner(
 
             // Capture details for dashboard before moving the block into submit_block.
             let (hash_str, nonce, bluescore) = {
-                use kaspa_consensus_core::hashing::header;
+                use keryx_consensus_core::hashing::header;
                 let hash = header::hash(&block.header).to_string();
                 (hash, block.header.nonce, block.header.blue_score)
             };
@@ -188,7 +188,7 @@ pub fn spawn_internal_cpu_miner(
                 Ok(block) => {
                     let id = next_id_templates.fetch_add(1, Ordering::Relaxed);
                     let header = block.header.clone();
-                    let pow_state = Arc::new(kaspa_pow::State::new(&header));
+                    let pow_state = Arc::new(keryx_pow::State::new(&header));
                     work_publisher.publish(Work { id, block, pow_state });
                 }
                 Err(e) => {

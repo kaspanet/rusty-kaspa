@@ -11,11 +11,11 @@ use crate::{
     connection_handler::ServerContext,
     error::GrpcServerError,
 };
-use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
-use kaspa_grpc_core::{ops::KaspadPayloadOps, protowire::NotifyFinalityConflictResponseMessage};
-use kaspa_notify::{scope::FinalityConflictResolvedScope, subscriber::SubscriptionManager};
-use kaspa_rpc_core::{SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
-use kaspa_rpc_macros::build_grpc_server_interface;
+use keryx_grpc_core::protowire::{kaspad_request::Payload, *};
+use keryx_grpc_core::{ops::KaspadPayloadOps, protowire::NotifyFinalityConflictResponseMessage};
+use keryx_notify::{scope::FinalityConflictResolvedScope, subscriber::SubscriptionManager};
+use keryx_rpc_core::{SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
+use keryx_rpc_macros::build_grpc_server_interface;
 
 pub struct Factory {}
 
@@ -102,7 +102,7 @@ impl Factory {
             Box::pin(async move {
                 let mut response: KaspadResponse = match request.payload {
                     Some(Payload::NotifyFinalityConflictRequest(ref request)) => {
-                        match kaspa_rpc_core::NotifyFinalityConflictRequest::try_from(request) {
+                        match keryx_rpc_core::NotifyFinalityConflictRequest::try_from(request) {
                             Ok(request) => {
                                 let listener_id = connection.get_or_register_listener_id()?;
                                 let command = request.command;

@@ -1,6 +1,6 @@
 use crate::pb as protowire;
-use kaspa_consensus_core::{BlueWorkType, header::Header};
-use kaspa_hashes::Hash;
+use keryx_consensus_core::{BlueWorkType, header::Header};
+use keryx_hashes::Hash;
 
 use super::error::ConversionError;
 use super::option::TryIntoOptionEx;

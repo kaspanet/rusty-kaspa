@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-merkle"
+name = "keryx-merkle"
 description = "Kaspa merkle tree library"
 rust-version.workspace = true
 version.workspace = true
@@ -10,7 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-hashes.workspace = true
+keryx-hashes.workspace = true
 
 [lints]
 workspace = true

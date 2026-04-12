@@ -1,11 +1,11 @@
 use itertools::Itertools;
-use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::trusted::TrustedBlock;
-use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+use keryx_consensus_core::block::Block;
+use keryx_consensus_core::trusted::TrustedBlock;
+use keryx_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 use serde::{Deserialize, Serialize};
 
-pub use kaspa_consensus_core::trusted::ExternalGhostdagData as JtfGhostdagData;
-pub use kaspa_rpc_core::{
+pub use keryx_consensus_core::trusted::ExternalGhostdagData as JtfGhostdagData;
+pub use keryx_rpc_core::{
     RpcBlock as JtfBlock, RpcHeader as JtfHeader, RpcTransactionOutpoint as JtfOutpoint, RpcUtxoEntry as JtfUtxoEntry,
 };
 

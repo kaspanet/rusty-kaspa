@@ -1,5 +1,5 @@
 use crate::pb as protowire;
-use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+use keryx_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire

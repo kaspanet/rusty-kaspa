@@ -13,10 +13,10 @@ use itertools::{
     Either::{Left, Right},
     Itertools,
 };
-use kaspa_consensus_core::config::Config;
-use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
-use kaspa_database::prelude::{CachePolicy, DB, StoreResultExt};
-use kaspa_utils::networking::IpAddress;
+use keryx_consensus_core::config::Config;
+use keryx_core::{debug, info, task::tick::TickService, time::unix_now, warn};
+use keryx_database::prelude::{CachePolicy, DB, StoreResultExt};
+use keryx_utils::networking::IpAddress;
 use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
@@ -31,7 +31,7 @@ const UPNP_DEADLINE_SEC: u64 = 2 * 60;
 const UPNP_EXTEND_PERIOD: u64 = UPNP_DEADLINE_SEC / 2;
 
 /// The name used as description when registering the UPnP service
-pub(crate) const UPNP_REGISTRATION_NAME: &str = "rusty-kaspa";
+pub(crate) const UPNP_REGISTRATION_NAME: &str = "keryx-labs";
 
 struct ExtendHelper {
     gateway: Gateway,
@@ -347,8 +347,8 @@ mod address_store_with_cache {
     };
 
     use itertools::Itertools;
-    use kaspa_database::prelude::{CachePolicy, DB};
-    use kaspa_utils::networking::PrefixBucket;
+    use keryx_database::prelude::{CachePolicy, DB};
+    use keryx_utils::networking::PrefixBucket;
     use rand::{
         distributions::{WeightedError, WeightedIndex},
         prelude::Distribution,
@@ -525,11 +525,11 @@ mod address_store_with_cache {
 
         use super::*;
         use address_manager::AddressManager;
-        use kaspa_consensus_core::config::{Config, params::SIMNET_PARAMS};
-        use kaspa_core::task::tick::TickService;
-        use kaspa_database::create_temp_db;
-        use kaspa_database::prelude::ConnBuilder;
-        use kaspa_utils::networking::IpAddress;
+        use keryx_consensus_core::config::{Config, params::SIMNET_PARAMS};
+        use keryx_core::task::tick::TickService;
+        use keryx_database::create_temp_db;
+        use keryx_database::prelude::ConnBuilder;
+        use keryx_utils::networking::IpAddress;
         use rv::{dist::Uniform, misc::ks_test as one_way_ks_test, traits::Cdf};
         use std::net::{IpAddr, Ipv6Addr};
 
@@ -551,7 +551,7 @@ mod address_store_with_cache {
         #[test]
         #[ignore]
         fn test_network_distribution_weighting() {
-            kaspa_core::log::try_init_logger("info");
+            keryx_core::log::try_init_logger("info");
 
             // Variables to initialize ip generation with.
             let largest_bucket: u16 = 2048;
@@ -581,7 +581,7 @@ mod address_store_with_cache {
                             current_ip_bytes[0], current_ip_bytes[1], current_ip_bytes[2], current_ip_bytes[3]
                         ))
                         .unwrap(),
-                        16111,
+                        22111,
                     ));
                     num_of_addresses += 1;
                 }
@@ -627,7 +627,7 @@ mod address_store_with_cache {
             let significance = 0.10;
 
             // Display and assert the result
-            kaspa_core::info!(
+            keryx_core::info!(
                 "Kolmogorov–Smirnov test result for weighted network distribution uniformity: p = {0:.4} (p < {1})",
                 adjusted_p,
                 significance

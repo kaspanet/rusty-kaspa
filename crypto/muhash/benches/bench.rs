@@ -4,7 +4,7 @@ use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
 };
 
-use kaspa_muhash::MuHash;
+use keryx_muhash::MuHash;
 
 fn bench_muhash(c: &mut Criterion) {
     let mut rng = ChaCha8Rng::from_seed([42u8; 32]);

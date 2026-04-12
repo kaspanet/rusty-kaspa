@@ -9,7 +9,7 @@ use crate::tx::PendingTransactionInner;
 use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
 use workflow_wasm::utils::try_get_js_value_prop;
 
-pub use kaspa_consensus_core::tx::TransactionId;
+pub use keryx_consensus_core::tx::TransactionId;
 use zeroize::Zeroize;
 
 #[wasm_bindgen(typescript_custom_section)]

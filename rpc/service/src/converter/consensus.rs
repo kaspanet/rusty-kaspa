@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use kaspa_addresses::{Address, AddressError};
-use kaspa_consensus_core::{
+use keryx_addresses::{Address, AddressError};
+use keryx_consensus_core::{
     ChainPath,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     block::Block,
@@ -12,13 +12,13 @@ use kaspa_consensus_core::{
         TransactionQueryResult, TransactionType, UtxoEntry,
     },
 };
-use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
-use kaspa_consensusmanager::{ConsensusManager, ConsensusProxy};
-use kaspa_hashes::Hash;
-use kaspa_math::Uint256;
-use kaspa_mining::model::{TransactionIdSet, owner_txs::OwnerTransactions};
-use kaspa_notify::converter::Converter;
-use kaspa_rpc_core::{
+use keryx_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
+use keryx_consensusmanager::{ConsensusManager, ConsensusProxy};
+use keryx_hashes::Hash;
+use keryx_math::Uint256;
+use keryx_mining::model::{TransactionIdSet, owner_txs::OwnerTransactions};
+use keryx_notify::converter::Converter;
+use keryx_rpc_core::{
     BlockAddedNotification, Notification, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData,
     RpcChainBlockAcceptedTransactions, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
     RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction, RpcOptionalTransactionInput,
@@ -29,7 +29,7 @@ use kaspa_rpc_core::{
     RpcTransactionVerboseData, RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity,
     RpcUtxoEntryVerbosity,
 };
-use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
+use keryx_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 /// Conversion of consensus_core to rpc_core structures
 pub struct ConsensusConverter {

@@ -52,7 +52,7 @@ impl PrivateKey {
     /// Returns the [`PrivateKey`] key encoded as a hex string.
     #[wasm_bindgen(js_name = toString)]
     pub fn to_hex(&self) -> String {
-        use kaspa_utils::hex::ToHex;
+        use keryx_utils::hex::ToHex;
         self.secret_bytes().to_vec().to_hex()
     }
 
@@ -68,7 +68,7 @@ impl PrivateKey {
     }
 
     /// Get the [`Address`] of the PublicKey generated from this PrivateKey.
-    /// Receives a [`NetworkType`](kaspa_consensus_core::network::NetworkType)
+    /// Receives a [`NetworkType`](keryx_consensus_core::network::NetworkType)
     /// to determine the prefix of the address.
     /// JavaScript: `let address = privateKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
@@ -81,7 +81,7 @@ impl PrivateKey {
     }
 
     /// Get `ECDSA` [`Address`] of the PublicKey generated from this PrivateKey.
-    /// Receives a [`NetworkType`](kaspa_consensus_core::network::NetworkType)
+    /// Receives a [`NetworkType`](keryx_consensus_core::network::NetworkType)
     /// to determine the prefix of the address.
     /// JavaScript: `let address = privateKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]

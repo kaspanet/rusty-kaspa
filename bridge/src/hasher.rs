@@ -1,4 +1,4 @@
-use kaspa_hashes::{BlockHash, HasherBase};
+use keryx_hashes::{BlockHash, HasherBase};
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, Zero};
 
@@ -186,9 +186,9 @@ pub fn diff_to_hash(diff: f64) -> f64 {
 
 /// Serialize block header for mining
 /// This creates the pre-PoW hash (hash WITHOUT timestamp and nonce)
-/// Uses kaspa_hashes::BlockHash to match the working stratum implementation
+/// Uses keryx_hashes::BlockHash to match the working stratum implementation
 /// Returns the Hash type directly (not bytes) to match working stratum code
-pub fn serialize_block_header(block: &kaspa_consensus_core::block::Block) -> Result<kaspa_hashes::Hash, Box<dyn std::error::Error>> {
+pub fn serialize_block_header(block: &keryx_consensus_core::block::Block) -> Result<keryx_hashes::Hash, Box<dyn std::error::Error>> {
     let header = &block.header;
     let mut hasher = BlockHash::new();
 
@@ -274,7 +274,7 @@ pub fn generate_job_header(header_data: &[u8]) -> Vec<u64> {
 ///
 /// NOTE: Timestamp is in MILLISECONDS (as per Kaspa block header format)
 /// Pool uses: timestampLE.writeBigUInt64LE(timestamp) which writes u64 in LE
-pub fn generate_iceriver_job_params(pre_pow_hash: &kaspa_hashes::Hash, timestamp: u64) -> String {
+pub fn generate_iceriver_job_params(pre_pow_hash: &keryx_hashes::Hash, timestamp: u64) -> String {
     // Use Hash::to_string() to match working stratum code exactly
     // This produces lowercase hex (64 hex characters)
     // Pool uses: proofOfWork.prePoWHash which is a hex string

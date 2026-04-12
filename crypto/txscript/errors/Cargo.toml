@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-txscript-errors"
+name = "keryx-txscript-errors"
 description = "Kaspa txscript errors"
 rust-version.workspace = true
 version.workspace = true

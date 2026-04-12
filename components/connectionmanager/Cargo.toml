@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-connectionmanager"
+name = "keryx-connectionmanager"
 description = "Kaspa connection manager"
 rust-version.workspace = true
 version.workspace = true
@@ -13,10 +13,10 @@ repository.workspace = true
 duration-string.workspace = true
 futures-util.workspace = true
 itertools.workspace = true
-kaspa-addressmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-p2p-lib.workspace = true
-kaspa-utils.workspace = true
+keryx-addressmanager.workspace = true
+keryx-core.workspace = true
+keryx-p2p-lib.workspace = true
+keryx-utils.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true

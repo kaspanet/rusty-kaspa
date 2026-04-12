@@ -11,8 +11,8 @@
 use crate::imports::*;
 use crate::outpoint::{TransactionOutpoint, TransactionOutpointInner};
 use crate::result::Result;
-use kaspa_addresses::Address;
-use kaspa_consensus_core::mass::{UtxoCell, UtxoPlurality};
+use keryx_addresses::Address;
+use keryx_consensus_core::mass::{UtxoCell, UtxoPlurality};
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_UTXO_ENTRY: &'static str = r#"
@@ -462,14 +462,14 @@ impl TryCastFromJs for UtxoEntryReference {
 
 impl UtxoEntryReference {
     pub fn simulated(amount: u64) -> Self {
-        use kaspa_addresses::{Prefix, Version};
+        use keryx_addresses::{Prefix, Version};
         let address = Address::new(Prefix::Testnet, Version::PubKey, &rand::random::<[u8; 32]>());
         Self::simulated_with_address(amount, &address)
     }
 
     pub fn simulated_with_address(amount: u64, address: &Address) -> Self {
         let outpoint = TransactionOutpoint::simulated();
-        let script_public_key = kaspa_txscript::pay_to_address_script(address);
+        let script_public_key = keryx_txscript::pay_to_address_script(address);
         let block_daa_score = 0;
         let is_coinbase = false;
 

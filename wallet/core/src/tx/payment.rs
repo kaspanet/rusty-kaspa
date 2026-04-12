@@ -3,8 +3,8 @@
 //!
 
 use crate::imports::*;
-use kaspa_consensus_client::{TransactionOutput, TransactionOutputInner};
-use kaspa_txscript::pay_to_address_script;
+use keryx_consensus_client::{TransactionOutput, TransactionOutputInner};
+use keryx_txscript::pay_to_address_script;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_PAYMENT_OUTPUTS: &'static str = r#"

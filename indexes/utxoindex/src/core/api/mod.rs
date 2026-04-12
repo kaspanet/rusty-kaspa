@@ -1,12 +1,12 @@
-use kaspa_consensus_core::{
+use keryx_consensus_core::{
     BlockHashSet,
     tx::{ScriptPublicKeys, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
 };
-use kaspa_consensusmanager::spawn_blocking;
-use kaspa_database::prelude::StoreResult;
-use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use keryx_consensusmanager::spawn_blocking;
+use keryx_database::prelude::StoreResult;
+use keryx_hashes::Hash;
+use keryx_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use parking_lot::RwLock;
 use std::{collections::HashSet, fmt::Debug, sync::Arc};
 

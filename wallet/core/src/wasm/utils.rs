@@ -2,7 +2,7 @@ use crate::imports::NetworkParams;
 use crate::result::Result;
 use crate::wasm::api::message::INetworkParams;
 use js_sys::BigInt;
-use kaspa_consensus_core::network::{NetworkIdT, NetworkType, NetworkTypeT};
+use keryx_consensus_core::network::{NetworkIdT, NetworkType, NetworkTypeT};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 

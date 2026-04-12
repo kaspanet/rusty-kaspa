@@ -1,6 +1,6 @@
 use crate::tasks::{DynTask, Task};
 use async_trait::async_trait;
-use kaspa_utils::triggers::SingleTrigger;
+use keryx_utils::triggers::SingleTrigger;
 use std::{
     io::{BufWriter, Write},
     path::PathBuf,
@@ -41,11 +41,11 @@ impl Task for StatRecorderTask {
         let file_name = self.file_name();
         let tick = self.tick;
         let task = tokio::spawn(async move {
-            kaspa_core::warn!("Stat recorder task starting...");
+            keryx_core::warn!("Stat recorder task starting...");
             std::fs::create_dir_all(PathBuf::from(&folder)).unwrap();
             {
                 let file_path = PathBuf::from(&folder).join(file_name).into_os_string();
-                kaspa_core::warn!("Recording memory metrics into file {}", file_path.to_str().unwrap());
+                keryx_core::warn!("Recording memory metrics into file {}", file_path.to_str().unwrap());
                 let f = std::fs::File::create(file_path).unwrap();
                 let mut f = BufWriter::new(f);
                 let start_time = Instant::now();
@@ -54,7 +54,7 @@ impl Task for StatRecorderTask {
                     tokio::select! {
                         biased;
                         _ = stop_signal.listener.clone() => {
-                            kaspa_core::trace!("Leaving stat recorder loop");
+                            keryx_core::trace!("Leaving stat recorder loop");
                             break;
                         }
                         _ = sleep(stopwatch + tick - Instant::now()) => {}
@@ -65,7 +65,7 @@ impl Task for StatRecorderTask {
                     f.flush().unwrap();
                 }
             }
-            kaspa_core::warn!("Stat recorder task exited");
+            keryx_core::warn!("Stat recorder task exited");
         });
         vec![task]
     }

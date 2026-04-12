@@ -1,5 +1,5 @@
 use futures_util::future::BoxFuture;
-use kaspa_muhash::MuHash;
+use keryx_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
         TransactionType, UtxoEntry,
     },
 };
-use kaspa_hashes::Hash;
+use keryx_hashes::Hash;
 
 pub use self::stats::{BlockCount, ConsensusStats};
 

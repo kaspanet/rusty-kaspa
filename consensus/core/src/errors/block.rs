@@ -6,7 +6,7 @@ use crate::{
     tx::{TransactionId, TransactionOutpoint},
 };
 use itertools::Itertools;
-use kaspa_hashes::Hash;
+use keryx_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Clone, Debug)]

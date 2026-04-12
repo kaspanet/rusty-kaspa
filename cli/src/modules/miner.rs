@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_daemon::{CpuMinerConfig, locate_binaries};
+use keryx_daemon::{CpuMinerConfig, locate_binaries};
 pub use workflow_node::process::Event;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -188,7 +188,7 @@ impl Miner {
     async fn select(self: Arc<Self>, ctx: Arc<KaspaCli>) -> Result<()> {
         let root = nw_sys::app::folder();
 
-        let binaries = kaspa_daemon::locate_binaries(root.as_str(), "kaspa-cpu-miner").await?;
+        let binaries = keryx_daemon::locate_binaries(root.as_str(), "kaspa-cpu-miner").await?;
 
         if binaries.is_empty() {
             tprintln!(ctx, "No kaspa-cpu-miner binaries found");
