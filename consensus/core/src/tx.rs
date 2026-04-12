@@ -131,6 +131,7 @@ impl TxInputMass {
         !Self::version_expects_compute_budget_field(version)
     }
 
+    /// Returns the total script units this input mass allows the engine to consume, including a free per-input budget.
     pub fn allowed_script_units(self) -> ScriptUnits {
         let script_units = ScriptUnits::from(self);
         script_units.saturating_add(free_script_units_per_input())
