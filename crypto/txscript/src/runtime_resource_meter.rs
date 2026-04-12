@@ -71,7 +71,6 @@ impl RuntimeSigOpCounter {
 #[derive(Debug, Clone)]
 pub struct RuntimeScriptUnitMeter {
     used_sig_ops: u16,
-    used_script_units: ScriptUnits,
     accounted_pushed_bytes: u64,
     sigop_script_units: ScriptUnits,
     allowed_script_units: ScriptUnits,
@@ -82,7 +81,6 @@ impl RuntimeScriptUnitMeter {
     pub fn new(sigop_script_units: ScriptUnits, allowed_script_units: ScriptUnits) -> Self {
         Self {
             used_sig_ops: 0,
-            used_script_units: ScriptUnits(0),
             accounted_pushed_bytes: 0,
             sigop_script_units,
             allowed_script_units,
@@ -95,13 +93,12 @@ impl RuntimeScriptUnitMeter {
     }
 
     pub fn used_script_units(&self) -> ScriptUnits {
-        self.used_script_units
+        self.allowed_script_units - self.remaining_script_units
     }
 
     pub fn consume_script_units(&mut self, units: ScriptUnits) -> Result<(), TxScriptError> {
         match self.remaining_script_units.checked_sub(units) {
             Some(new_remaining) => {
-                self.used_script_units = self.used_script_units.saturating_add(units);
                 self.remaining_script_units = new_remaining;
                 Ok(())
             }
