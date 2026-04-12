@@ -105,7 +105,7 @@ impl RuntimeScriptUnitMeter {
             None => {
                 let overflow = units - self.remaining_script_units;
                 let used_units = self.script_units_limit + overflow;
-                Err(TxScriptError::ExceededScriptUnitsLimit { used_units: used_units.0, allowed_units: self.script_units_limit.0 })
+                Err(TxScriptError::ExceededScriptUnitsLimit { used: used_units.0, limit: self.script_units_limit.0 })
             }
         }
     }
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(meter.used_sig_ops(), 2);
         assert_eq!(meter.used_script_units(), ScriptUnits(200));
 
-        assert_eq!(meter.consume_sig_op_cost(1), Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 300, allowed_units: 250 }));
+        assert_eq!(meter.consume_sig_op_cost(1), Err(TxScriptError::ExceededScriptUnitsLimit { used: 300, limit: 250 }));
         assert_eq!(meter.used_sig_ops(), 2);
         assert_eq!(meter.used_script_units(), ScriptUnits(200));
     }

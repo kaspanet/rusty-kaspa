@@ -323,8 +323,8 @@ mod tests {
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert_match!(
             result,
-            Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { allowed_units, .. }))
-                if allowed_units == free_script_units_per_input().0
+            Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { limit, .. }))
+                if limit == free_script_units_per_input().0
         );
 
         // (b) A few inputs together are all independently under budget and should pass.

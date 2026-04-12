@@ -1019,7 +1019,7 @@ mod tests {
                 tight_budget,
                 EngineFlags { covenants_enabled: true, ..Default::default() },
             );
-        assert_eq!(vm_tight_budget.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 3, allowed_units: 2 }));
+        assert_eq!(vm_tight_budget.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 3, limit: 2 }));
 
         let mut vm_exact_budget =
             TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_script_units_limit(
@@ -1059,10 +1059,7 @@ mod tests {
                 tight_budget,
                 EngineFlags { covenants_enabled: true, ..Default::default() },
             );
-        assert_eq!(
-            vm_covenants_enabled.execute(),
-            Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 128, allowed_units: 64 })
-        );
+        assert_eq!(vm_covenants_enabled.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 128, limit: 64 }));
     }
 
     #[test]
@@ -1148,8 +1145,8 @@ mod tests {
         assert_eq!(
             underbudget_vm.execute(),
             Err(TxScriptError::ExceededScriptUnitsLimit {
-                used_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
-                allowed_units: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1
+                used: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
+                limit: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1
             })
         );
     }
@@ -1247,10 +1244,7 @@ mod tests {
             too_tight_budget,
         );
 
-        assert_eq!(
-            vm_too_tight.execute(),
-            Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 100_000, allowed_units: too_tight_budget.0 })
-        );
+        assert_eq!(vm_too_tight.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 100_000, limit: too_tight_budget.0 }));
         let exact_budget = flags.sigop_script_units;
         let mut vm_exact = TxScriptEngine::from_transaction_input_with_script_units_limit(
             &populated_tx,
