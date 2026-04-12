@@ -22,6 +22,11 @@ pub mod result;
 mod serializable;
 mod transaction;
 mod utxo;
+
+fn invalid_input_mass_variant(field: &str, version: u16) -> error::Error {
+    error::Error::Custom(format!("TransactionInput.{field} is inconsistent with transaction version {version}"))
+}
+
 pub use covenant::*;
 pub use input::*;
 pub use outpoint::*;
