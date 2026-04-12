@@ -66,7 +66,6 @@ mod fast_zk_tests {
     fn test_groth16_rcpt_to_kaspa_script() {
         let groth_receipt_raw = include_str!("data/zk_builder_tests/groth.rcpt.hex");
         let rcpt: Groth16Receipt<MaybePruned<ReceiptClaim>> = borsh::from_slice(&hex::decode(groth_receipt_raw).unwrap()).unwrap();
-        println!("Groth16 Receipt: {:?}", rcpt.seal);
 
         let mut script_builder = R0ScriptBuilder::from_groth(&rcpt).unwrap();
         let script = script_builder.drain();
