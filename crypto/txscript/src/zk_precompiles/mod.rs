@@ -1,6 +1,6 @@
 mod error;
 mod fields;
-mod zk_to_script;
+mod points;
 mod result;
 pub mod groth16;
 pub mod risc0;

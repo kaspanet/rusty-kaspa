@@ -1,6 +1,9 @@
 use kaspa_txscript_errors::TxScriptError;
 use risc0_zkp::verify::VerificationError;
+use risc0_zkvm::PrunedValueError;
 use thiserror::Error;
+
+use crate::zk_precompiles::fields::error::FieldsError;
 
 #[derive(Debug, Error)]
 pub enum R0Error {
@@ -28,4 +31,23 @@ pub enum R0Error {
     Merkle,
     #[error("Invalid BabyBearElem in seal")]
     SealHasInvalidBabyBearElem,
+    #[error("Script builder error: {0}")]
+    ScriptBuilder(#[from] crate::script_builder::ScriptBuilderError),
+
+    #[error("Fields error: {0}")]
+    Fields(#[from] FieldsError),
+
+    #[error("Seal decoding error: {0}")]
+    SealDecoding(String),
+
+    #[error("Bincode VK serialization failed")]
+    BincodeVkSerialization,
+
+    #[error("Point error: {0}")]
+    Point(#[from] crate::zk_precompiles::points::PointError),
+
+    #[error("Ark serialization error: {0}")]
+    ArkSerialization(#[from] ark_serialize::SerializationError),
+    #[error("Parse bigint error: {0}")]
+    ParseBigInt(#[from] num_bigint::ParseBigIntError),
 }

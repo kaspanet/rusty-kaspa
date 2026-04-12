@@ -14,9 +14,11 @@ use risc0_circuit_recursion::control_id;
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;
 mod error;
+mod result;
 pub mod merkle;
 pub mod rcpt;
 pub mod receipt_claim;
+pub mod zk_to_script;
 
 pub struct R0SuccinctPrecompile;
 pub use error::R0Error;
