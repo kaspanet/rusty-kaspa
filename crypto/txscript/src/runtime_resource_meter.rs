@@ -175,3 +175,77 @@ impl RuntimeResourceMeter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sigops_meter_enforces_sigop_limit() {
+        let mut meter = RuntimeResourceMeter::new_sigops(2);
+
+        assert_eq!(meter.used_sig_ops(), 0);
+        assert_eq!(meter.used_script_units(), ScriptUnits(0));
+
+        assert_eq!(meter.consume_sig_op_cost(1), Ok(()));
+        assert_eq!(meter.used_sig_ops(), 1);
+
+        assert_eq!(meter.consume_sig_op_cost(1), Ok(()));
+        assert_eq!(meter.used_sig_ops(), 2);
+
+        assert_eq!(meter.consume_sig_op_cost(1), Err(TxScriptError::ExceededSigOpLimit(2)));
+    }
+
+    #[test]
+    fn script_units_meter_charges_sigops_in_script_units() {
+        let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(100), ScriptUnits(250));
+
+        assert_eq!(meter.consume_sig_op_cost(2), Ok(()));
+        assert_eq!(meter.used_sig_ops(), 2);
+        assert_eq!(meter.used_script_units(), ScriptUnits(200));
+
+        assert_eq!(meter.consume_sig_op_cost(1), Err(TxScriptError::ExceededScriptUnitsLimit { used_units: 300, allowed_units: 250 }));
+        assert_eq!(meter.used_sig_ops(), 2);
+        assert_eq!(meter.used_script_units(), ScriptUnits(200));
+    }
+
+    #[test]
+    fn script_units_meter_charges_only_newly_pushed_bytes() {
+        let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(20));
+
+        assert_eq!(meter.charge_newly_pushed_bytes(7), Ok(()));
+        assert_eq!(meter.used_script_units(), ScriptUnits(7));
+
+        // Charging the same total again is a no-op because only newly pushed bytes are charged.
+        assert_eq!(meter.charge_newly_pushed_bytes(7), Ok(()));
+        assert_eq!(meter.used_script_units(), ScriptUnits(7));
+
+        assert_eq!(meter.charge_newly_pushed_bytes(9), Ok(()));
+        assert_eq!(meter.used_script_units(), ScriptUnits(9));
+    }
+
+    #[test]
+    fn sigops_meter_ignores_script_unit_charges() {
+        let mut meter = RuntimeResourceMeter::new_sigops(1);
+
+        assert_eq!(meter.consume_script_units(ScriptUnits(50)), Ok(()));
+        assert_eq!(meter.charge_newly_pushed_bytes(50), Ok(()));
+        assert_eq!(meter.used_script_units(), ScriptUnits(0));
+        assert_eq!(meter.used_sig_ops(), 0);
+    }
+
+    #[test]
+    fn meter_bounds_do_not_panic() {
+        let mut max_sigops_meter = RuntimeScriptUnitMeter::new(ScriptUnits(0), ScriptUnits(0));
+        assert_eq!(max_sigops_meter.consume_sig_op_cost(u16::MAX), Ok(()));
+        assert_eq!(max_sigops_meter.used_sig_ops(), u16::MAX);
+        assert_eq!(max_sigops_meter.consume_sig_op_cost(1), Ok(()));
+        assert_eq!(max_sigops_meter.used_sig_ops(), u16::MAX);
+
+        let mut max_units_meter = RuntimeScriptUnitMeter::new(ScriptUnits(0), ScriptUnits(u64::MAX));
+        assert_eq!(max_units_meter.charge_newly_pushed_bytes(u64::MAX), Ok(()));
+        assert_eq!(max_units_meter.used_script_units(), ScriptUnits(u64::MAX));
+        assert_eq!(max_units_meter.charge_newly_pushed_bytes(u64::MAX), Ok(()));
+        assert_eq!(max_units_meter.used_script_units(), ScriptUnits(u64::MAX));
+    }
+}
