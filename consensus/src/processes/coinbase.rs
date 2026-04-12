@@ -1,7 +1,7 @@
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet,
     coinbase::*,
-    config::params::ForkedParam,
+    config::params::{ForkActivation, ForkedParam},
     errors::coinbase::{CoinbaseError, CoinbaseResult},
     subnets,
     tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionOutput},
@@ -32,6 +32,7 @@ pub struct CoinbaseManager {
     deflationary_phase_daa_score: u64,
     pre_deflationary_phase_base_subsidy: u64,
     bps_history: ForkedParam<u64>,
+    covenants_activation: ForkActivation,
 
     /// Precomputed subsidy by month tables (for before and after the Crescendo hardfork)
     subsidy_by_month_table_before: SubsidyByMonthTable,
@@ -68,6 +69,7 @@ impl CoinbaseManager {
         deflationary_phase_daa_score: u64,
         pre_deflationary_phase_base_subsidy: u64,
         bps_history: ForkedParam<u64>,
+        covenants_activation: ForkActivation,
     ) -> Self {
         // Precomputed subsidy by month table for the actual block per second rate
         // Here values are rounded up so that we keep the same number of rewarding months as in the original 1 BPS table.
@@ -82,6 +84,7 @@ impl CoinbaseManager {
             deflationary_phase_daa_score,
             pre_deflationary_phase_base_subsidy,
             bps_history,
+            covenants_activation,
             subsidy_by_month_table_before,
             subsidy_by_month_table_after,
             crescendo_activation_daa_score: bps_history.activation().daa_score(),
@@ -135,8 +138,11 @@ impl CoinbaseManager {
         let subsidy = self.calc_block_subsidy(daa_score);
         let payload = self.serialize_coinbase_payload(&CoinbaseData { blue_score: ghostdag_data.blue_score, subsidy, miner_data })?;
 
+        let tx_version =
+            if self.covenants_activation.is_active(daa_score) { constants::TX_VERSION_POST_COV_HF } else { constants::TX_VERSION };
+
         Ok(CoinbaseTransactionTemplate {
-            tx: Transaction::new(constants::TX_VERSION, vec![], outputs, 0, subnets::SUBNETWORK_ID_COINBASE, 0, payload),
+            tx: Transaction::new(tx_version, vec![], outputs, 0, subnets::SUBNETWORK_ID_COINBASE, 0, payload),
             has_red_reward: red_reward > 0,
         })
     }
@@ -589,6 +595,25 @@ mod tests {
         assert_eq!(data2, deserialized_data);
     }
 
+    #[test]
+    fn expected_coinbase_transaction_selects_version_by_covenants_activation() {
+        let mut params = MAINNET_PARAMS.clone();
+        params.covenants_activation = ForkActivation::new(100);
+        let cbm = create_manager(&params);
+        let miner_data = MinerData::new(ScriptPublicKey::new(0, scriptvec![1, 2, 3]), vec![4, 5, 6]);
+        let ghostdag_data = GhostdagData::default();
+        let mergeset_rewards = Default::default();
+        let mergeset_non_daa = Default::default();
+
+        let pre_activation =
+            cbm.expected_coinbase_transaction(99, miner_data.clone(), &ghostdag_data, &mergeset_rewards, &mergeset_non_daa).unwrap();
+        let post_activation =
+            cbm.expected_coinbase_transaction(100, miner_data, &ghostdag_data, &mergeset_rewards, &mergeset_non_daa).unwrap();
+
+        assert_eq!(pre_activation.tx.version, constants::TX_VERSION);
+        assert_eq!(post_activation.tx.version, constants::TX_VERSION_POST_COV_HF);
+    }
+
     fn create_manager(params: &Params) -> CoinbaseManager {
         CoinbaseManager::new(
             params.coinbase_payload_script_public_key_max_len,
@@ -596,11 +621,12 @@ mod tests {
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
             params.bps_history(),
+            params.covenants_activation,
         )
     }
 
     /// Return a CoinbaseManager with legacy golang 1 BPS properties
     fn create_legacy_manager() -> CoinbaseManager {
-        CoinbaseManager::new(150, 204, 15778800 - 259200, 50000000000, ForkedParam::new_const(1))
+        CoinbaseManager::new(150, 204, 15778800 - 259200, 50000000000, ForkedParam::new_const(1), ForkActivation::never())
     }
 }
