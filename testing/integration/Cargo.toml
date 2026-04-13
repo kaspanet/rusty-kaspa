@@ -23,7 +23,7 @@ kaspa-database.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-grpc-core.workspace = true
 kaspa-grpc-server.workspace = true
-kaspa-hashes.workspace = true
+kaspa-hashes = { workspace = true, default-features = true }
 kaspa-index-processor.workspace = true
 kaspa-math.workspace = true
 kaspa-merkle.workspace = true
