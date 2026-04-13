@@ -113,7 +113,6 @@ impl Miner {
             mass_calculator: MassCalculator::new(
                 params.mass_per_tx_byte,
                 params.mass_per_script_pub_key_byte,
-                params.mass_per_sig_op,
                 params.storage_mass_parameter,
             ),
             long_payload,

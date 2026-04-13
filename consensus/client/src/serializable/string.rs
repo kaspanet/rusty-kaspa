@@ -3,6 +3,8 @@
 //! where all large integer values (`u64`) are serialized to and from JSON as strings.
 //!
 
+use super::invalid_input_mass_variant;
+use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
 use crate::{
@@ -86,6 +88,7 @@ pub struct SerializableTransactionInput {
     pub index: SignedTransactionIndexType,
     pub sequence: String,
     pub sig_op_count: u8,
+    pub compute_budget: u16,
     #[serde(with = "hex::serde")]
     pub signature_script: Vec<u8>,
     pub utxo: SerializableUtxoEntry,
@@ -100,7 +103,8 @@ impl SerializableTransactionInput {
             index: input.previous_outpoint.index,
             signature_script: input.signature_script.clone(),
             sequence: input.sequence.to_string(),
-            sig_op_count: input.sig_op_count,
+            sig_op_count: input.mass.sig_op_count().unwrap_or(0),
+            compute_budget: input.mass.compute_budget().unwrap_or(0),
             utxo: utxo.clone(),
         }
     }
@@ -125,17 +129,31 @@ impl TryFrom<&SerializableTransactionInput> for UtxoEntryReference {
     }
 }
 
-impl TryFrom<SerializableTransactionInput> for cctx::TransactionInput {
+struct SerializableInputWithVersion {
+    version: u16,
+    input: SerializableTransactionInput,
+}
+
+impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
     type Error = Error;
-    fn try_from(signable_input: SerializableTransactionInput) -> Result<Self> {
+
+    fn try_from(value: SerializableInputWithVersion) -> Result<Self> {
+        let input = value.input;
         Ok(Self {
-            previous_outpoint: cctx::TransactionOutpoint {
-                transaction_id: signable_input.transaction_id,
-                index: signable_input.index,
+            previous_outpoint: cctx::TransactionOutpoint { transaction_id: input.transaction_id, index: input.index },
+            signature_script: input.signature_script,
+            sequence: input.sequence.parse()?,
+            mass: if cctx::TxInputMass::version_expects_compute_budget_field(value.version) {
+                if input.sig_op_count != 0 {
+                    return Err(invalid_input_mass_variant("sig_op_count", value.version));
+                }
+                cctx::TxInputMass::ComputeBudget(input.compute_budget.into())
+            } else {
+                if input.compute_budget != 0 {
+                    return Err(invalid_input_mass_variant("compute_budget", value.version));
+                }
+                cctx::TxInputMass::SigopCount(input.sig_op_count.into())
             },
-            signature_script: signable_input.signature_script,
-            sequence: signable_input.sequence.parse()?,
-            sig_op_count: signable_input.sig_op_count,
         })
     }
 }
@@ -152,6 +170,7 @@ impl TryFrom<&SerializableTransactionInput> for TransactionInput {
             signature_script: (!serializable_input.signature_script.is_empty()).then_some(serializable_input.signature_script.clone()),
             sequence: serializable_input.sequence.parse()?,
             sig_op_count: serializable_input.sig_op_count,
+            compute_budget: serializable_input.compute_budget,
             utxo: Some(utxo),
         };
 
@@ -172,6 +191,7 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
             signature_script: inner.signature_script.clone().unwrap_or_default(),
             sequence: inner.sequence.to_string(),
             sig_op_count: inner.sig_op_count,
+            compute_budget: inner.compute_budget,
             utxo,
         })
     }
@@ -364,17 +384,18 @@ impl SerializableTransaction {
 impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
     type Error = Error;
     fn try_from(signable: SerializableTransaction) -> Result<Self> {
+        let version = signable.version;
         let mut entries = vec![];
         let mut inputs = vec![];
         for input in signable.inputs {
             entries.push(input.utxo.as_ref().try_into()?);
-            inputs.push(input.try_into()?);
+            inputs.push(SerializableInputWithVersion { version, input }.try_into()?);
         }
 
         let outputs = signable.outputs.into_iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
 
         let tx = cctx::Transaction::new(
-            signable.version,
+            version,
             inputs,
             outputs,
             signable.lock_time.parse()?,

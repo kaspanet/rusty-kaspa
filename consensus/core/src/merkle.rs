@@ -20,7 +20,10 @@ mod tests {
     use crate::merkle::{calc_hash_merkle_root, calc_hash_merkle_root_pre_crescendo};
     use crate::{
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec},
+        tx::{
+            ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+            scriptvec,
+        },
     };
     use kaspa_hashes::Hash;
 
@@ -59,7 +62,7 @@ mod tests {
                         },
                         signature_script: vec![],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
+                        mass: TxInputMass::SigopCount(0.into()),
                     },
                     TransactionInput {
                         previous_outpoint: TransactionOutpoint {
@@ -71,7 +74,7 @@ mod tests {
                         },
                         signature_script: vec![],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
+                        mass: TxInputMass::SigopCount(0.into()),
                     },
                 ],
                 vec![],
@@ -104,7 +107,7 @@ mod tests {
                         0x16, 0x1b, 0xc6, 0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                     ],
                     sequence: u64::MAX,
-                    sig_op_count: 0,
+                    mass: TxInputMass::SigopCount(0.into()),
                 }],
                 vec![
                     TransactionOutput {
@@ -166,7 +169,7 @@ mod tests {
                         0xe3, 0x95, 0x60, 0x63, 0x9d, 0xb4, 0x62, 0xe9, 0xcb, 0x85, 0x0f, // 65-byte pubkey
                     ],
                     sequence: u64::MAX,
-                    sig_op_count: 0,
+                    mass: TxInputMass::SigopCount(0.into()),
                 }],
                 vec![
                     TransactionOutput {
@@ -229,7 +232,7 @@ mod tests {
                         0x63, 0xce, 0x6a, 0xf4, 0xcf, 0xaa, 0xea, 0x4e, 0xa1, 0x4f, 0xbb, // 65-byte pubkey
                     ],
                     sequence: u64::MAX,
-                    sig_op_count: 0,
+                    mass: TxInputMass::SigopCount(0.into()),
                 }],
                 vec![TransactionOutput {
                     value: 0xf4240,

@@ -8,7 +8,9 @@
 
 mod script_public_key;
 
-use crate::mass::{ContextualMasses, Mass, MassCofactors, NonContextualMasses};
+use crate::mass::{
+    ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
+};
 use crate::{
     errors::tx::PopulateGenesisCovenantsError,
     hashing,
@@ -98,6 +100,65 @@ impl Display for TransactionOutpoint {
     }
 }
 
+/// Encodes the mass commitment for a transaction input.
+/// Version 0 transactions use `SigopCount`, version >= 1 transactions use `ComputeBudget`.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Debug, Copy)]
+pub enum TxInputMass {
+    SigopCount(SigopCount),
+    ComputeBudget(ComputeBudget),
+}
+
+impl TxInputMass {
+    pub fn sig_op_count(self) -> Option<u8> {
+        match self {
+            Self::SigopCount(n) => Some(n.into()),
+            _ => None,
+        }
+    }
+
+    pub fn compute_budget(self) -> Option<u16> {
+        match self {
+            Self::ComputeBudget(n) => Some(n.into()),
+            _ => None,
+        }
+    }
+
+    pub fn version_expects_compute_budget_field(version: u16) -> bool {
+        version >= 1
+    }
+
+    pub fn version_expects_sig_op_count_field(version: u16) -> bool {
+        !Self::version_expects_compute_budget_field(version)
+    }
+
+    /// Returns the total script units this input mass allows the engine to consume, including a free per-input budget.
+    pub fn allowed_script_units(self) -> ScriptUnits {
+        let script_units = ScriptUnits::from(self);
+        script_units.saturating_add(free_script_units_per_input())
+    }
+}
+
+impl From<SigopCount> for TxInputMass {
+    fn from(value: SigopCount) -> Self {
+        Self::SigopCount(value)
+    }
+}
+
+impl From<ComputeBudget> for TxInputMass {
+    fn from(value: ComputeBudget) -> Self {
+        Self::ComputeBudget(value)
+    }
+}
+
+impl From<TxInputMass> for ScriptUnits {
+    fn from(value: TxInputMass) -> Self {
+        match value {
+            TxInputMass::SigopCount(count) => ScriptUnits::from(count),
+            TxInputMass::ComputeBudget(budget) => ScriptUnits::from(budget),
+        }
+    }
+}
+
 /// Represents a Kaspa transaction input
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,12 +167,25 @@ pub struct TransactionInput {
     #[serde(with = "serde_bytes")]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    pub sig_op_count: u8,
+    pub mass: TxInputMass, // TODO(covpp-mainnet): Take care of DB compatibility.
 }
 
 impl TransactionInput {
+    pub fn new_with_mass(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, mass: TxInputMass) -> Self {
+        Self { previous_outpoint, signature_script, sequence, mass }
+    }
+
     pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
-        Self { previous_outpoint, signature_script, sequence, sig_op_count }
+        Self { previous_outpoint, signature_script, sequence, mass: SigopCount(sig_op_count).into() }
+    }
+
+    pub fn new_with_compute_budget(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        compute_budget: u16,
+    ) -> Self {
+        Self { previous_outpoint, signature_script, sequence, mass: ComputeBudget(compute_budget).into() }
     }
 }
 
@@ -121,7 +195,8 @@ impl std::fmt::Debug for TransactionInput {
             .field("previous_outpoint", &self.previous_outpoint)
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
-            .field("sig_op_count", &self.sig_op_count)
+            .field("sig_op_count", &self.mass.sig_op_count().unwrap_or_default())
+            .field("compute_budget", &self.mass.compute_budget().unwrap_or_default())
             .finish()
     }
 }
@@ -729,7 +804,7 @@ mod tests {
                         0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
                     ],
                     sequence: 2,
-                    sig_op_count: 3,
+                    mass: TxInputMass::SigopCount(3.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint {
@@ -744,7 +819,7 @@ mod tests {
                         0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
                     ],
                     sequence: 4,
-                    sig_op_count: 5,
+                    mass: TxInputMass::SigopCount(5.into()),
                 },
             ],
             vec![
@@ -773,20 +848,20 @@ mod tests {
         let expected_bts = vec![
             0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,
             130, 26, 104, 59, 122, 78, 222, 254, 44, 0, 0, 0, 250, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8,
-            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 3, 75,
-            176, 117, 53, 223, 213, 142, 11, 60, 214, 79, 215, 21, 82, 128, 135, 42, 4, 113, 188, 248, 48, 149, 82, 106, 206, 14, 56,
-            198, 0, 0, 0, 251, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-            48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 4, 0, 0, 0, 0, 0, 0, 0, 5, 2, 0, 0, 0, 0, 0, 0, 0, 6, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185,
-            117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185, 117, 220, 118, 217, 0,
-            59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
-            42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
-            72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0, 0, 0,
-            0, 0, 0, 0, 0, 50, 200, 4, 55, 147, 193, 14, 39, 3, 248, 207, 196, 68, 249, 136, 99, 48, 134, 161, 29, 52, 181, 205, 113,
-            128, 141, 219, 202, 72, 208, 223, 66,
+            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 3, 75, 176, 117, 53, 223, 213, 142, 11, 60, 214, 79, 215, 21, 82, 128, 135, 42, 4, 113, 188, 248, 48, 149, 82, 106,
+            206, 14, 56, 198, 0, 0, 0, 251, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
+            44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 2,
+            0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201,
+            209, 89, 67, 126, 132, 185, 117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0,
+            7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132,
+            185, 117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 8, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3,
+            4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+            36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
+            66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
+            96, 97, 98, 99, 0, 0, 0, 0, 0, 0, 0, 0, 50, 200, 4, 55, 147, 193, 14, 39, 3, 248, 207, 196, 68, 249, 136, 99, 48, 134,
+            161, 29, 52, 181, 205, 113, 128, 141, 219, 202, 72, 208, 223, 66,
         ];
         assert_eq!(expected_bts, bts);
         assert_eq!(tx, bincode::deserialize(&bts).unwrap());
@@ -806,7 +881,9 @@ mod tests {
       },
       "signatureScript": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
       "sequence": 2,
-      "sigOpCount": 3
+      "mass": {
+        "SigopCount": 3
+      }
     },
     {
       "previousOutpoint": {
@@ -815,7 +892,9 @@ mod tests {
       },
       "signatureScript": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
       "sequence": 4,
-      "sigOpCount": 5
+      "mass": {
+        "SigopCount": 5
+      }
     }
   ],
   "outputs": [

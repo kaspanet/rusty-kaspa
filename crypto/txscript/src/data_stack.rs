@@ -3,6 +3,7 @@ use core::fmt::Debug;
 use core::iter;
 use kaspa_hashes::Hash;
 use kaspa_txscript_errors::SerializationError;
+use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::num::TryFromIntError;
 use std::ops::{Deref, Index};
@@ -56,13 +57,29 @@ impl<const LEN: usize> From<SizedEncodeInt<LEN>> for i64 {
     }
 }
 
-pub type StackEntry = Vec<u8>;
+#[inline]
+fn total_bytes(items: &[StackEntry]) -> usize {
+    items.iter().map(|item| item.len()).sum()
+}
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+pub type StackEntry = SmallVec<[u8; 8]>;
+
+#[derive(Clone, Debug)]
 pub(crate) struct Stack {
     inner: Vec<StackEntry>,
     covenants_enabled: bool,
+    pushed_bytes: u64,
 }
+
+#[cfg(test)]
+impl PartialEq for Stack {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner && self.covenants_enabled == other.covenants_enabled
+    }
+}
+
+#[cfg(test)]
+impl Eq for Stack {}
 
 impl Deref for Stack {
     type Target = Vec<StackEntry>;
@@ -84,7 +101,14 @@ impl Index<usize> for Stack {
 impl From<Vec<StackEntry>> for Stack {
     fn from(inner: Vec<StackEntry>) -> Self {
         // TODO(covpp-mainnet): should have fork logic
-        Self { inner, covenants_enabled: true }
+        Self { inner, covenants_enabled: true, pushed_bytes: 0 }
+    }
+}
+
+#[cfg(test)]
+impl From<Vec<Vec<u8>>> for Stack {
+    fn from(inner: Vec<Vec<u8>>) -> Self {
+        Self::from(inner.into_iter().map(SmallVec::from_vec).collect::<Vec<_>>())
     }
 }
 
@@ -127,11 +151,11 @@ fn check_minimal_data_encoding(v: &[u8]) -> Result<(), TxScriptError> {
 }
 
 #[inline]
-pub fn serialize_i64(from: i64, size: Option<usize>) -> Result<Vec<u8>, SerializationError> {
+pub fn serialize_i64(from: i64, size: Option<usize>) -> Result<StackEntry, SerializationError> {
     let sign = from.signum();
     let mut positive = from.unsigned_abs();
     let mut last_saturated = false;
-    let mut number_vec: Vec<u8> = Vec::with_capacity(size.unwrap_or(8));
+    let mut number_vec = StackEntry::with_capacity(size.unwrap_or(8));
     number_vec.extend(iter::from_fn(move || {
         if positive == 0 {
             if last_saturated {
@@ -251,9 +275,25 @@ impl OpcodeData<bool> for StackEntry {
     #[inline]
     fn serialize(from: &bool) -> Result<Self, SerializationError> {
         Ok(match from {
-            true => vec![1],
-            false => vec![],
+            true => SmallVec::from_slice(&[1]),
+            false => SmallVec::new(),
         })
+    }
+}
+
+#[cfg(test)]
+impl<T> OpcodeData<T> for Vec<u8>
+where
+    StackEntry: OpcodeData<T>,
+{
+    #[inline]
+    fn deserialize(&self, enforce_minimal: bool) -> Result<T, TxScriptError> {
+        <StackEntry as OpcodeData<T>>::deserialize(&StackEntry::from_slice(self), enforce_minimal)
+    }
+
+    #[inline]
+    fn serialize(from: &T) -> Result<Self, SerializationError> {
+        <StackEntry as OpcodeData<T>>::serialize(from).map(|v| v.into_vec())
     }
 }
 
@@ -265,13 +305,23 @@ impl OpcodeData<Hash> for StackEntry {
 
     #[inline]
     fn serialize(from: &Hash) -> Result<Self, SerializationError> {
-        Ok(from.as_bytes().to_vec())
+        Ok(from.as_bytes().as_slice().into())
     }
 }
 
 impl Stack {
     pub(crate) fn new(inner: Vec<StackEntry>, covenants_enabled: bool) -> Self {
-        Self { inner, covenants_enabled }
+        Self { inner, covenants_enabled, pushed_bytes: 0 }
+    }
+
+    #[inline]
+    fn add_pushed_bytes(&mut self, bytes: usize) {
+        self.pushed_bytes = self.pushed_bytes.checked_add(bytes as u64).expect("stack pushed-bytes accounting should never overflow");
+    }
+
+    #[inline]
+    pub fn pushed_bytes(&self) -> u64 {
+        self.pushed_bytes
     }
 
     fn max_element_size(&self) -> usize {
@@ -283,6 +333,7 @@ impl Stack {
         if element.len() > self.max_element_size() {
             return Err(TxScriptError::ElementTooBig(element.len(), self.max_element_size()));
         }
+        self.add_pushed_bytes(element.len());
         self.inner.insert(index, element);
         Ok(())
     }
@@ -295,7 +346,7 @@ impl Stack {
     #[inline]
     pub fn pop_items<const SIZE: usize, T: Debug>(&mut self) -> Result<[T; SIZE], TxScriptError>
     where
-        Vec<u8>: OpcodeData<T>,
+        StackEntry: OpcodeData<T>,
     {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
@@ -315,7 +366,7 @@ impl Stack {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
-        Ok(<[Vec<u8>; SIZE]>::try_from(self.inner.split_off(self.len() - SIZE)).expect("Already exact item"))
+        Ok(<[StackEntry; SIZE]>::try_from(self.inner.split_off(self.len() - SIZE)).expect("Already exact item"))
     }
 
     #[inline]
@@ -323,15 +374,26 @@ impl Stack {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
-        Ok(<[Vec<u8>; SIZE]>::try_from(self.inner[self.len() - SIZE..].to_vec()).expect("Already exact item"))
+        Ok(<[StackEntry; SIZE]>::try_from(self.inner[self.len() - SIZE..].to_vec()).expect("Already exact item"))
     }
 
     #[inline]
     pub fn push_item<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
     where
-        Vec<u8>: OpcodeData<T>,
+        StackEntry: OpcodeData<T>,
     {
-        let v = OpcodeData::serialize(&item)?;
+        let v: StackEntry = OpcodeData::serialize(&item)?;
+        self.add_pushed_bytes(v.len());
+        Vec::push(&mut self.inner, v);
+        Ok(())
+    }
+
+    #[inline]
+    pub fn push_item_unmetered<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
+    where
+        StackEntry: OpcodeData<T>,
+    {
+        let v: StackEntry = OpcodeData::serialize(&item)?;
         Vec::push(&mut self.inner, v);
         Ok(())
     }
@@ -351,6 +413,8 @@ impl Stack {
     pub fn dup_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= SIZE {
             true => {
+                let added_bytes = total_bytes(&self.inner[self.len() - SIZE..]);
+                self.add_pushed_bytes(added_bytes);
                 self.inner.extend_from_within(self.len() - SIZE..);
                 Ok(())
             }
@@ -362,6 +426,8 @@ impl Stack {
     pub fn over_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 2 * SIZE {
             true => {
+                let added_bytes = total_bytes(&self.inner[self.len() - 2 * SIZE..self.len() - SIZE]);
+                self.add_pushed_bytes(added_bytes);
                 self.inner.extend_from_within(self.len() - 2 * SIZE..self.len() - SIZE);
                 Ok(())
             }
@@ -373,8 +439,21 @@ impl Stack {
     pub fn rot_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 3 * SIZE {
             true => {
-                let drained = self.inner.drain(self.len() - 3 * SIZE..self.len() - 2 * SIZE).collect::<Vec<StackEntry>>();
-                self.inner.extend(drained);
+                // Rotate the trailing `3 * SIZE` frame left by `SIZE`, moving the oldest group to the top.
+                //
+                // SIZE = 1:
+                //   stack: [a, b, c, d, e, f]
+                //                   [d, e, f]
+                //                    << 1
+                //       -> [a, b, c, e, f, d]
+                //
+                // SIZE = 2:
+                //   stack: [a, b, c, d, e, f]
+                //          [a, b, c, d, e, f]
+                //           << 2
+                //       -> [c, d, e, f, a, b]
+                let len = self.len();
+                self.inner[len - 3 * SIZE..].rotate_left(SIZE);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(3 * SIZE, self.len())),
@@ -385,12 +464,38 @@ impl Stack {
     pub fn swap_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 2 * SIZE {
             true => {
-                let drained = self.inner.drain(self.len() - 2 * SIZE..self.len() - SIZE).collect::<Vec<StackEntry>>();
-                self.inner.extend(drained);
+                // Rotate the trailing `2 * SIZE` frame left by `SIZE`, swapping the top two groups.
+                //
+                // SIZE = 1:
+                //   stack: [a, b, c, d]
+                //                [c, d]
+                //                 << 1
+                //       -> [a, b, d, c]
+                //
+                // SIZE = 2:
+                //   stack: [a, b, c, d, e, f]
+                //                [c, d, e, f]
+                //                 << 2
+                //       -> [a, b, e, f, c, d]
+                let len = self.len();
+                self.inner[len - 2 * SIZE..].rotate_left(SIZE);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(2 * SIZE, self.len())),
         }
+    }
+
+    #[inline]
+    pub fn roll(&mut self, loc: usize) -> Result<(), TxScriptError> {
+        if loc >= self.len() {
+            return Err(TxScriptError::InvalidStackOperation(loc, self.len()));
+        }
+        if loc == 0 {
+            return Ok(());
+        }
+        let from = self.len() - loc - 1;
+        self.inner[from..].rotate_left(1);
+        Ok(())
     }
 
     pub fn clear(&mut self) {
@@ -406,6 +511,15 @@ impl Stack {
     }
 
     pub fn push(&mut self, item: StackEntry) -> Result<(), TxScriptError> {
+        if item.len() > self.max_element_size() {
+            return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
+        }
+        self.add_pushed_bytes(item.len());
+        self.inner.push(item);
+        Ok(())
+    }
+
+    pub fn push_unmetered(&mut self, item: StackEntry) -> Result<(), TxScriptError> {
         if item.len() > self.max_element_size() {
             return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
         }
@@ -480,7 +594,7 @@ mod tests {
         for test in tests {
             let serialized: Vec<u8> = OpcodeData::<i64>::serialize(&test.num).unwrap();
             assert_eq!(serialized, test.serialized);
-            assert_eq!(serialize_i64(test.num, Some(test.serialized.len())).unwrap(), test.serialized);
+            assert_eq!(serialize_i64(test.num, Some(test.serialized.len())).unwrap().into_vec(), test.serialized);
             if !test.serialized.is_empty() {
                 serialize_i64(test.num, Some(test.serialized.len() - 1)).unwrap_err();
                 // The default i64 serialization is minimal and cannot be encoded with less bytes.

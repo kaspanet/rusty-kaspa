@@ -4,6 +4,7 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
     header::Header,
+    mass::SigopCount,
     sign::sign,
     subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
     tx::{
@@ -229,7 +230,7 @@ pub fn generate_tx(
     let script_public_key = pay_to_address_script(address);
     let inputs = utxos
         .iter()
-        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
+        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, mass: SigopCount(1).into() })
         .collect_vec();
 
     let outputs = (0..num_outputs)
