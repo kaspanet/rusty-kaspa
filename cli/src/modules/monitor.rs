@@ -100,7 +100,7 @@ impl Monitor {
             tprintln!(ctx, "{}", style("Wallet is not connected to the network").magenta());
             tprintln!(ctx);
         } else if !wallet.is_synced() {
-            tprintln!(ctx, "{}", style("Kaspa node is currently syncing").magenta());
+            tprintln!(ctx, "{}", style("Keryx node is currently syncing").magenta());
             tprintln!(ctx);
         }
 

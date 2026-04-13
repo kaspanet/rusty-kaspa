@@ -50,19 +50,19 @@ impl NetworkType {
 
     pub fn default_borsh_rpc_port(&self) -> u16 {
         match self {
-            NetworkType::Mainnet => 17110,
-            NetworkType::Testnet => 17210,
-            NetworkType::Simnet => 17510,
-            NetworkType::Devnet => 17610,
+            NetworkType::Mainnet => 23110,
+            NetworkType::Testnet => 23210,
+            NetworkType::Simnet => 23510,
+            NetworkType::Devnet => 23610,
         }
     }
 
     pub fn default_json_rpc_port(&self) -> u16 {
         match self {
-            NetworkType::Mainnet => 18110,
-            NetworkType::Testnet => 18210,
-            NetworkType::Simnet => 18510,
-            NetworkType::Devnet => 18610,
+            NetworkType::Mainnet => 24110,
+            NetworkType::Testnet => 24210,
+            NetworkType::Simnet => 24510,
+            NetworkType::Devnet => 24610,
         }
     }
 

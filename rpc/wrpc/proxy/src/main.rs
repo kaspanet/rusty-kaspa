@@ -35,7 +35,7 @@ struct Args {
     grpc_proxy_address: Option<String>,
 
     // /// wRPC port
-    /// interface:port for wRPC server (wrpc://127.0.0.1:17110)
+    /// interface:port for wRPC server (wrpc://127.0.0.1:23110)
     #[clap(long)]
     interface: Option<String>,
     /// Number of notification serializer threads

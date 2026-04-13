@@ -28,8 +28,8 @@ async fn check_node_status() -> Result<()> {
     // Select encoding method to use, depending on node settings
     let encoding = WrpcEncoding::Borsh;
 
-    // If you want to connect to your own node, define your node address and wRPC port using let url = Some("ws://0.0.0.0:17110")
-    // Verify your Kaspa node is runnning with --rpclisten-borsh=0.0.0.0:17110 parameter
+    // If you want to connect to your own node, define your node address and wRPC port using let url = Some("ws://0.0.0.0:23110")
+    // Verify your Keryx node is running with --rpclisten-borsh=0.0.0.0:23110 parameter
     // In this example we don't use a specific node but we connect through the resolver, which use a pool of public nodes
     let url = None;
     let resolver = Some(Resolver::default());

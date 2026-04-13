@@ -38,7 +38,7 @@ fn first_input_sender_address(tx: &RpcOptionalTransaction) -> Option<&Address> {
 async fn get_vcc_v2() -> Result<()> {
     let encoding = WrpcEncoding::Borsh;
 
-    let url = Some("ws://127.0.0.1:17110");
+    let url = Some("ws://127.0.0.1:23110");
     let resolver = None;
 
     let network_type = NetworkType::Mainnet;
