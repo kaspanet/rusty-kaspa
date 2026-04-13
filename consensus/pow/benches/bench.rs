@@ -20,10 +20,10 @@ fn bench_pow(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("HeavyHash", |b| {
+    c.bench_function("KeryxHash", |b| {
         b.iter(|| {
             for (matrix, &hash) in matrices.iter().zip(hashes.iter()) {
-                black_box(matrix.heavy_hash(hash));
+                black_box(matrix.keryx_hash(hash));
             }
         });
     });

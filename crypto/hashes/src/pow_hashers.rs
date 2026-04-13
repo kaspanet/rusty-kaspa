@@ -4,7 +4,7 @@ use crate::Hash;
 pub struct PowHash([u64; 25]);
 
 #[derive(Clone)]
-pub struct KHeavyHash;
+pub struct KeryxHash;
 
 impl PowHash {
     // The initial state of `cSHAKE256("ProofOfWorkHash")`
@@ -36,8 +36,8 @@ impl PowHash {
     }
 }
 
-impl KHeavyHash {
-    // The initial state of `cSHAKE256("HeavyHash")`
+impl KeryxHash {
+    // The initial state of `cSHAKE256("HeavyHash")` — internal Keccak domain (unchanged)
     // [4] -> 16654558671554924254 ^ 0x04(padding byte) = 16654558671554924250
     // [16] -> 9793466274154320918 ^ 0x8000000000000000(final padding) = 570094237299545110
     #[rustfmt::skip]
@@ -78,7 +78,7 @@ mod keccak256 {
 
 #[cfg(test)]
 mod tests {
-    use super::{KHeavyHash, PowHash};
+    use super::{KeryxHash, PowHash};
     use crate::Hash;
     use sha3::digest::{ExtendableOutput, Update, XofReader};
     use sha3::{CShake256, CShake256Core};
@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn test_heavy_hash() {
         let val = Hash([42; 32]);
-        let hash1 = KHeavyHash::hash(val);
+        let hash1 = KeryxHash::hash(val);
 
         let hasher = CShake256::from_core(CShake256Core::new(HEAVY_HASH_DOMAIN)).chain(val.0);
         let mut hash2 = [0u8; 32];

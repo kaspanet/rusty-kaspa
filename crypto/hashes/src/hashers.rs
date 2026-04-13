@@ -18,8 +18,8 @@ pub trait Hasher: HasherBase + Clone + Default {
 
 // Implemented manually in pow_hashers:
 //  struct PowHash => `cSHAKE256("ProofOfWorkHash")
-//  struct KHeavyHash => `cSHAKE256("HeavyHash")
-pub use crate::pow_hashers::{KHeavyHash, PowHash};
+//  struct KeryxHash => `cSHAKE256("HeavyHash")  (internal Keccak domain unchanged)
+pub use crate::pow_hashers::{KeryxHash, PowHash};
 blake2b_hasher! {
     struct TransactionHash => b"TransactionHash",
     struct TransactionID => b"TransactionID",

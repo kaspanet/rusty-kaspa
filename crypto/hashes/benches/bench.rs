@@ -82,18 +82,18 @@ fn bench_pow_hash(c: &mut Criterion) {
     });
 }
 
-fn bench_heavy_hash(c: &mut Criterion) {
+fn bench_keryx_hash(c: &mut Criterion) {
     let mut rng = thread_rng();
     let in_hash = Hash::from_bytes(rng.r#gen());
 
-    c.bench_function("KHeavyHash", |b| {
+    c.bench_function("KeryxHash", |b| {
         b.iter(|| {
-            black_box(KHeavyHash::hash(in_hash));
+            black_box(KeryxHash::hash(in_hash));
         })
     });
 
-    let hasher = CShake256::from_core(CShake256Core::new(b"KHeavyHash"));
-    c.bench_function("generic KHeavyHash without init", |b| {
+    let hasher = CShake256::from_core(CShake256Core::new(b"KeryxHash"));
+    c.bench_function("generic KeryxHash without init", |b| {
         b.iter(|| {
             let hasher = hasher.clone().chain(in_hash.as_bytes());
             let mut hash = [0u8; 32];
@@ -102,9 +102,9 @@ fn bench_heavy_hash(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("generic KHeavyHash with init", |b| {
+    c.bench_function("generic KeryxHash with init", |b| {
         b.iter(|| {
-            let hasher = CShake256::from_core(CShake256Core::new(b"KHeavyHash")).chain(black_box(in_hash.as_bytes()));
+            let hasher = CShake256::from_core(CShake256Core::new(b"KeryxHash")).chain(black_box(in_hash.as_bytes()));
             let mut hash = [0u8; 32];
             hasher.finalize_xof().read(&mut hash);
             black_box(hash);
@@ -112,5 +112,5 @@ fn bench_heavy_hash(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_pow_hash, bench_heavy_hash, bench_hashers);
+criterion_group!(benches, bench_pow_hash, bench_keryx_hash, bench_hashers);
 criterion_main!(benches);
