@@ -322,11 +322,15 @@ message SmtMetadataMessage {
   uint64 activeLanesCount = 2;     // number of active lanes
 }
 
-message SmtLaneEntryMessage {
+message SmtLaneEntry {
   bytes data = 1;         // 64 bytes: lane_key[32] || lane_tip[32]
   uint64 blueScore = 2;
   bytes proof = 3;        // optional: bitmap[32] || terminal_tag[1] || terminal_payload || siblings[N * 32]
 }
 
-message DoneSmtChunksMessage {
+message SmtLaneChunkMessage {
+  repeated SmtLaneEntry entries = 1;   // up to SMT_CHUNK_SIZE lane entries per chunk
+}
+
+message RequestNextPruningPointSmtChunkMessage {
 }

@@ -12,8 +12,9 @@ use kaspa_smt::store::{BTreeSmtStore, LeafUpdate, Node, SortedLeafUpdates};
 use kaspa_smt::tree::{SparseMerkleTree, compute_root_update};
 use rocksdb::WriteBatch;
 
+use kaspa_consensus_core::api::ImportLane;
 use kaspa_smt_store::processor::{SmtProcessor, SmtStores};
-use kaspa_smt_store::streaming_import::{StreamingImportLane, streaming_import};
+use kaspa_smt_store::streaming_import::streaming_import;
 
 /// Build a reference SLO root from leaf updates using the in-memory store.
 fn slo_root(updates: Vec<LeafUpdate>) -> Hash {
@@ -841,7 +842,7 @@ fn streaming_import_matches_export_roundtrip_root() {
     for lid in (1u8..=4).map(|i| [i; 20]) {
         let lk = lane_key(&lid);
         if let Some(v) = stores.get_lane(lk, 0, |_| true) {
-            exported.push(StreamingImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof: None });
+            exported.push(ImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof: None });
         }
     }
     exported.sort_by_key(|lane| lane.lane_key);
@@ -849,7 +850,8 @@ fn streaming_import_matches_export_roundtrip_root() {
     let (_lt2, db2) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let import_stores = make_stores(&db2);
     let result =
-        streaming_import(&db2, &import_stores, 400, ZERO_HASH, exported.len() as u64, ZERO_HASH, exported.into_iter(), 64).unwrap();
+        streaming_import(&db2, &import_stores, 400, ZERO_HASH, exported.len() as u64, ZERO_HASH, std::iter::once(exported), 64)
+            .unwrap();
     assert_eq!(result.root, final_root);
     assert_eq!(result.lanes_imported, 4);
 

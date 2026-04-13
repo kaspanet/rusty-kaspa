@@ -673,26 +673,23 @@ impl IbdFlow {
         let payload_and_ctx_digest = md.payload_and_ctx_digest;
         let expected_count = md.active_lanes_count;
 
-        let (tx, rx) = tokio::sync::mpsc::channel(256);
+        // Small queue of already-chunked batches: one in flight + one being processed
+        // by the importer is enough headroom; each chunk holds up to SMT_CHUNK_SIZE lanes.
+        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<kaspa_consensus_core::api::ImportLane>>(2);
 
         let builder_handle = consensus.clone().spawn_blocking(move |c| {
             c.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, rx)
         });
 
-        let mut lane_count = 0u64;
-        while let Some(lane) = stream.next().await? {
-            tx.send(lane).await.map_err(|_| ProtocolError::Other("streaming SMT builder stopped unexpectedly"))?;
-            lane_count += 1;
-            if lane_count == expected_count {
-                break;
-            }
+        while let Some(chunk) = stream.next_chunk().await? {
+            tx.send(chunk).await.map_err(|_| ProtocolError::Other("streaming SMT builder stopped unexpectedly"))?;
         }
         drop(tx);
 
         builder_handle.await?;
         consensus.async_set_pruning_smt_stable().await;
 
-        info!("SMT state synced: {} lanes", lane_count);
+        info!("SMT state synced: {} lanes", stream.lane_count());
         Ok(())
     }
 

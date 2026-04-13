@@ -141,18 +141,32 @@ impl DbLaneVersionStore {
     }
     /// Iterate all lane_keys, yielding the latest canonical version per lane
     /// with `score >= min_blue_score`. Skips old versions efficiently via seek.
+    ///
+    /// If `from_lane_key` is `Some`, iteration starts strictly **after** the
+    /// given key (lexicographic successor). Combined with `.take(limit)` on
+    /// the returned iterator this yields a cursor-paged read whose underlying
+    /// RocksDB iterator (and implicit snapshot) is dropped as soon as the
+    /// caller finishes consuming it — so the pruning lock is only held for
+    /// bounded work.
     pub fn iter_all_canonical<'a>(
         &'a self,
+        from_lane_key: Option<Hash>,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool + 'a,
     ) -> impl Iterator<Item = StoreResult<(Hash, Verified<LaneTipHash>)>> + 'a {
         let prefix = self.prefix;
         let prefix_bytes = [prefix];
 
-        let mut iter = self.db.raw_iterator();
-        iter.seek(LaneVersionKey::seek_key(prefix, Hash::from_bytes([0; 32]), u64::MAX));
+        let start_seek = match from_lane_key {
+            Some(k) => next_lane_seek_key(prefix, k),
+            None => Some(LaneVersionKey::seek_key(prefix, Hash::from_bytes([0; 32]), u64::MAX)),
+        };
 
-        let mut done = false;
+        let mut iter = self.db.raw_iterator();
+        let mut done = start_seek.is_none();
+        if let Some(seek) = start_seek {
+            iter.seek(seek);
+        }
 
         std::iter::from_fn(move || {
             loop {
@@ -330,7 +344,7 @@ mod tests {
     #[test]
     fn iter_all_canonical_empty_store() {
         let (_lt, store) = make_store();
-        let results: Vec<_> = store.iter_all_canonical(0, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.iter_all_canonical(None, 0, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
         assert!(results.is_empty());
     }
 
@@ -340,7 +354,7 @@ mod tests {
         let lk = hash(0x11);
         store.put(DirectDbWriter::new(&store.db), lk, 100, hash(0x01), &hash(0xAA)).unwrap();
 
-        let results: Vec<_> = store.iter_all_canonical(0, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.iter_all_canonical(None, 0, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, lk);
         assert_eq!(*results[0].1.data(), hash(0xAA));
@@ -355,7 +369,7 @@ mod tests {
             store.put(DirectDbWriter::new(&store.db), hash(id), id as u64 * 100, hash(0x01), &hash(id.wrapping_mul(3))).unwrap();
         }
 
-        let results: Vec<_> = store.iter_all_canonical(0, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.iter_all_canonical(None, 0, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 3);
     }
 
@@ -369,7 +383,7 @@ mod tests {
             store.put(DirectDbWriter::new(&store.db), lk, score, bh, &hash(score as u8)).unwrap();
         }
 
-        let results: Vec<_> = store.iter_all_canonical(0, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.iter_all_canonical(None, 0, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].1.blue_score(), 200, "should pick latest version");
     }
@@ -382,7 +396,7 @@ mod tests {
             store.put(DirectDbWriter::new(&store.db), hash(id), score, hash(0x01), &hash(id)).unwrap();
         }
 
-        let results: Vec<_> = store.iter_all_canonical(100, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.iter_all_canonical(None, 100, |_| true).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 2, "lane at score 50 should be skipped");
     }
 
@@ -399,7 +413,7 @@ mod tests {
         // Canonical version at lower score
         store.put(DirectDbWriter::new(&store.db), lk, 100, canonical_bh, &hash(0xCC)).unwrap();
 
-        let results: Vec<_> = store.iter_all_canonical(0, |bh| bh == canonical_bh).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.iter_all_canonical(None, 0, move |bh| bh == canonical_bh).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].1.blue_score(), 100, "should skip fork and pick canonical");
         assert_eq!(*results[0].1.data(), hash(0xCC));
@@ -410,7 +424,7 @@ mod tests {
         let (_lt, store) = make_store();
         store.put(DirectDbWriter::new(&store.db), hash(0x11), 100, hash(0x01), &hash(0xAA)).unwrap();
 
-        let results: Vec<_> = store.iter_all_canonical(0, |_| false).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.iter_all_canonical(None, 0, |_| false).collect::<Result<Vec<_>, _>>().unwrap();
         assert!(results.is_empty(), "no canonical version means no results");
     }
 
@@ -433,7 +447,7 @@ mod tests {
         // Lane D: at score 300, canonical
         store.put(DirectDbWriter::new(&store.db), hash(0xDD), 300, canonical, &hash(0xDD)).unwrap();
 
-        let results: Vec<_> = store.iter_all_canonical(100, |bh| bh == canonical).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.iter_all_canonical(None, 100, move |bh| bh == canonical).collect::<Result<Vec<_>, _>>().unwrap();
 
         // Lane A: latest canonical at 200 (>= 100) ✓
         // Lane B: only version at 30 (< 100) ✗

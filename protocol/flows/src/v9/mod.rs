@@ -46,7 +46,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::PruningPointUtxoSetChunk,
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
                 KaspadMessagePayloadType::SmtMetadata,
-                KaspadMessagePayloadType::SmtLaneEntry,
+                KaspadMessagePayloadType::SmtLaneChunk,
             ]),
             relay_receiver,
             body_only_ibd_permitted,
@@ -97,7 +97,10 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
         Box::new(RequestPruningPointSmtStateFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointSmtState]),
+            router.subscribe(vec![
+                KaspadMessagePayloadType::RequestPruningPointSmtState,
+                KaspadMessagePayloadType::RequestNextPruningPointSmtChunk,
+            ]),
         )),
         Box::new(HandleIbdBlockRequests::new(
             ctx.clone(),

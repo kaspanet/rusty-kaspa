@@ -10,29 +10,22 @@ use std::time::Instant;
 
 use std::collections::BTreeMap;
 
+use kaspa_consensus_core::api::ImportLane;
 use kaspa_database::prelude::{BatchDbWriter, DB, StoreError};
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
-use kaspa_smt::proof::OwnedSmtProof;
 use kaspa_smt::streaming::{StreamError, StreamingSmtBuilder};
 use log::info;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::prelude::IndexedParallelIterator;
 use rocksdb::WriteBatch;
 
+use crate::BlockHash;
 use crate::keys::ScoreIndexKind;
 use crate::processor::SmtStores;
-use crate::{BlockHash, LaneKey};
 
 use db_sink::DbSink;
-
-pub struct StreamingImportLane {
-    pub lane_key: LaneKey,
-    pub lane_tip: Hash,
-    pub blue_score: u64,
-    pub proof: Option<OwnedSmtProof>,
-}
 
 pub struct StreamingImportResult {
     pub root: Hash,
@@ -66,6 +59,16 @@ impl ImportProgress {
     }
 }
 
+/// Streams pre-chunked lane batches into the tree builder.
+///
+/// `chunks` yields `Vec<ImportLane>` already sized by the upstream
+/// wire-level chunker (see `SMT_CHUNK_SIZE` in `protocol/flows/src/ibd/streams.rs`).
+/// Each incoming Vec is processed as one step — parallel leaf hashing, proof
+/// verification, DB batching, and `builder.feed`. No internal re-batching or
+/// accumulator.
+///
+/// `max_batch_entries` remains the RocksDB `WriteBatch` flush threshold for
+/// lane/score-index writes; it is independent of the incoming chunk size.
 pub fn streaming_import(
     db: &DB,
     stores: &SmtStores,
@@ -73,7 +76,7 @@ pub fn streaming_import(
     block_hash: BlockHash,
     total_count: u64,
     lanes_root: Hash,
-    lanes: impl Iterator<Item = StreamingImportLane>,
+    chunks: impl Iterator<Item = Vec<ImportLane>>,
     max_batch_entries: usize,
 ) -> Result<StreamingImportResult, StreamError<StoreError>> {
     if total_count == 0 {
@@ -88,21 +91,21 @@ pub fn streaming_import(
     let mut score_groups: BTreeMap<u64, Vec<Hash>> = BTreeMap::new();
     let mut lanes_imported = 0u64;
     let mut progress = ImportProgress::new(total_count);
+    let mut leaf_hashes: Vec<(Hash, Hash)> = Vec::new();
 
-    let mut chunk = Vec::with_capacity(max_batch_entries);
-    let mut leaf_hashes = Vec::with_capacity(max_batch_entries);
+    for chunk in chunks {
+        if chunk.is_empty() {
+            continue;
+        }
 
-    let mut step = |chunk: &mut Vec<StreamingImportLane>,
-                    leaf_hashes: &mut Vec<(Hash, Hash)>|
-     -> Result<(), StreamError<StoreError>> {
         chunk
             .par_iter()
-            .map(|lane: &StreamingImportLane| {
+            .map(|lane: &ImportLane| {
                 let leaf_hash =
                     smt_leaf_hash(&SmtLeafInput { lane_key: &lane.lane_key, lane_tip: &lane.lane_tip, blue_score: lane.blue_score });
                 (lane.lane_key, leaf_hash)
             })
-            .collect_into_vec(leaf_hashes);
+            .collect_into_vec(&mut leaf_hashes);
 
         // Verify proofs against the expected lanes_root.
         for (lane, &(lane_key, leaf_hash)) in chunk.iter().zip(leaf_hashes.iter()) {
@@ -112,8 +115,8 @@ pub fn streaming_import(
             };
         }
 
-        write_lane_versions(stores, block_hash, chunk, &mut lane_batch, &mut batch_count)?;
-        write_score_index(stores, blue_score, block_hash, chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;
+        write_lane_versions(stores, block_hash, &chunk, &mut lane_batch, &mut batch_count)?;
+        write_score_index(stores, blue_score, block_hash, &chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;
 
         if batch_count >= max_batch_entries {
             db.write(std::mem::take(&mut lane_batch)).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
@@ -121,22 +124,12 @@ pub fn streaming_import(
         }
         batch_id += 1;
 
-        for (lane_key, leaf_hash) in leaf_hashes {
+        for (lane_key, leaf_hash) in &leaf_hashes {
             builder.feed(*lane_key, *leaf_hash)?;
         }
         lanes_imported += chunk.len() as u64;
         progress.report(chunk.len());
-        chunk.clear();
-        Ok(())
-    };
-    for lane in lanes {
-        chunk.push(lane);
-        if chunk.len() < max_batch_entries {
-            continue;
-        }
-        step(&mut chunk, &mut leaf_hashes)?;
     }
-    step(&mut chunk, &mut leaf_hashes)?;
 
     progress.report_completion();
 
@@ -151,7 +144,7 @@ fn write_score_index(
     stores: &SmtStores,
     pp_blue_score: u64,
     block_hash: BlockHash,
-    chunk: &[StreamingImportLane],
+    chunk: &[ImportLane],
     score_groups: &mut BTreeMap<u64, Vec<Hash>>,
     batch: &mut WriteBatch,
     batch_count: &mut usize,
@@ -184,7 +177,7 @@ fn write_score_index(
 fn write_lane_versions(
     stores: &SmtStores,
     block_hash: BlockHash,
-    chunk: &[StreamingImportLane],
+    chunk: &[ImportLane],
     lane_batch: &mut WriteBatch,
     lane_batch_count: &mut usize,
 ) -> Result<(), StreamError<StoreError>> {
@@ -193,8 +186,11 @@ fn write_lane_versions(
             .lane_version
             .put(BatchDbWriter::new(lane_batch), lane.lane_key, lane.blue_score, block_hash, &lane.lane_tip)
             .map_err(StreamError::Sink)?;
-        *lane_batch_count += 1;
     }
+    // One RocksDB entry per lane — account for them as a single bump so the
+    // flush threshold in `streaming_import` trips after roughly every
+    // `max_batch_entries` lanes regardless of chunk size.
+    *lane_batch_count += chunk.len();
     Ok(())
 }
 

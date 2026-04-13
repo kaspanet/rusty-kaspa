@@ -9,11 +9,12 @@ use std::path::PathBuf;
 use std::time::Instant;
 use std::{fs, iter};
 
+use kaspa_consensus_core::api::ImportLane;
 use kaspa_database::create_temp_db;
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_smt_store::processor::SmtStores;
-use kaspa_smt_store::streaming_import::{StreamingImportLane, streaming_import};
+use kaspa_smt_store::streaming_import::streaming_import;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
@@ -84,7 +85,8 @@ fn generate_lane_data(path: &PathBuf, count: u64) {
     file.sync_all().unwrap();
 }
 
-fn read_lane_data(path: &PathBuf) -> impl Iterator<Item = StreamingImportLane> {
+fn read_lane_data(path: &PathBuf) -> impl Iterator<Item = Vec<ImportLane>> {
+    const CHUNK_SIZE: usize = 4096;
     let file = fs::File::open(path).unwrap();
     let mut reader = BufReader::with_capacity(256 * 1024, file);
     let mut buf8 = [0u8; 8];
@@ -92,22 +94,26 @@ fn read_lane_data(path: &PathBuf) -> impl Iterator<Item = StreamingImportLane> {
     let count = u64::from_le_bytes(buf8) as usize;
     let mut i = 0usize;
     iter::from_fn(move || {
-        if i < count {
+        if i >= count {
+            return None;
+        }
+        let chunk_len = CHUNK_SIZE.min(count - i);
+        let mut chunk = Vec::with_capacity(chunk_len);
+        for _ in 0..chunk_len {
             let mut kbuf = [0u8; 32];
             let mut tbuf = [0u8; 32];
             reader.read_exact(&mut kbuf).unwrap();
             reader.read_exact(&mut tbuf).unwrap();
             reader.read_exact(&mut buf8).unwrap();
-            i += 1;
-            Some(StreamingImportLane {
+            chunk.push(ImportLane {
                 lane_key: Hash::from_bytes(kbuf),
                 lane_tip: Hash::from_bytes(tbuf),
                 blue_score: u64::from_le_bytes(buf8),
                 proof: None,
-            })
-        } else {
-            None
+            });
         }
+        i += chunk_len;
+        Some(chunk)
     })
 }
 

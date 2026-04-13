@@ -288,13 +288,17 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Import SMT lane state at the pruning point. Builds the tree from lane
     /// preimages, verifies root matches `lanes_root`, and flushes to DB.
+    ///
+    /// The receiver yields lane chunks already sized by the wire-level chunker
+    /// — each element is up to `SMT_CHUNK_SIZE` lanes. The importer does not
+    /// re-batch.
     fn import_pruning_point_smt(
         &self,
         _new_pruning_point: Hash,
         _lanes_root: Hash,
         _payload_and_ctx_digest: Hash,
         _expected_lane_count: u64,
-        _rx: tokio::sync::mpsc::Receiver<ImportLane>,
+        _rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
     ) -> PruningImportResult<()> {
         unimplemented!()
     }
@@ -304,9 +308,23 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// Iterate canonical SMT lanes at the pruning point, calling `f` for each.
-    /// Stops early if `f` returns false.
-    fn iter_pruning_point_smt_lanes(&self, _expected_pruning_point: Hash, _f: Box<dyn FnMut(ImportLane) -> bool + Send + 'static>) {
+    /// Fetch up to `limit` canonical SMT lanes at the pruning point, starting
+    /// strictly after `from_lane_key` (or from the beginning if `None`). Each
+    /// call opens and closes a fresh DB iterator so the pruning lock is not
+    /// held across the full IBD stream.
+    ///
+    /// `starting_lane_idx` is the absolute lane index of the first returned
+    /// entry, used to decide which entries need inline SMT proofs
+    /// (every [`SMT_PROOF_INTERVAL`]-th lane starting from index 0).
+    ///
+    /// Returns an empty `Vec` once iteration is exhausted.
+    fn get_pruning_point_smt_lanes_chunk(
+        &self,
+        _expected_pruning_point: Hash,
+        _from_lane_key: Option<Hash>,
+        _limit: usize,
+        _starting_lane_idx: u64,
+    ) -> ConsensusResult<Vec<ImportLane>> {
         unimplemented!()
     }
 

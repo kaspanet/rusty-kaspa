@@ -56,8 +56,8 @@ message KaspadMessage {
     RequestBlockBodiesMessage requestBlockBodies = 58;
     RequestPruningPointSmtStateMessage requestPruningPointSmtState = 59;
     SmtMetadataMessage smtMetadata = 60;
-    SmtLaneEntryMessage smtLaneEntry = 61;
-    DoneSmtChunksMessage doneSmtChunks = 62;
+    SmtLaneChunkMessage smtLaneChunk = 61;
+    RequestNextPruningPointSmtChunkMessage requestNextPruningPointSmtChunk = 63;
   }
 }
 

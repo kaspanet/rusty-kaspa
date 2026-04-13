@@ -517,15 +517,19 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_pruning_point_smt_metadata(expected_pp)).await
     }
 
-    /// Iterate canonical SMT lanes in a blocking context, calling `f` for each.
-    /// Stops if `f` returns false (e.g. channel closed).
-    /// Must be called from a blocking context (e.g. `spawn_blocking`).
-    pub fn blocking_iter_smt_lanes(
+    /// Fetch up to `limit` canonical SMT lanes for the pruning point, starting
+    /// strictly after `from_lane_key`. Each call releases its DB iterator
+    /// before returning — see [`ConsensusApi::get_pruning_point_smt_lanes_chunk`].
+    pub async fn async_get_pruning_point_smt_lanes_chunk(
         &self,
         expected_pp: Hash,
-        f: impl FnMut(kaspa_consensus_core::api::ImportLane) -> bool + Send + 'static,
-    ) {
-        self.consensus.as_ref().iter_pruning_point_smt_lanes(expected_pp, Box::new(f));
+        from_lane_key: Option<Hash>,
+        limit: usize,
+        starting_lane_idx: u64,
+    ) -> ConsensusResult<Vec<kaspa_consensus_core::api::ImportLane>> {
+        self.clone()
+            .spawn_blocking(move |c| c.get_pruning_point_smt_lanes_chunk(expected_pp, from_lane_key, limit, starting_lane_idx))
+            .await
     }
 }
 

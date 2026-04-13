@@ -1135,10 +1135,10 @@ impl ConsensusApi for Consensus {
         lanes_root: Hash,
         payload_and_ctx_digest: Hash,
         expected_lane_count: u64,
-        mut rx: tokio::sync::mpsc::Receiver<kaspa_consensus_core::api::ImportLane>,
+        mut rx: tokio::sync::mpsc::Receiver<Vec<kaspa_consensus_core::api::ImportLane>>,
     ) -> PruningImportResult<()> {
         use kaspa_hashes::ZERO_HASH;
-        use kaspa_smt_store::streaming_import::{StreamingImportLane, streaming_import};
+        use kaspa_smt_store::streaming_import::streaming_import;
 
         let pp_header = self.storage.headers_store.get_header(new_pruning_point).unwrap();
         let result = streaming_import(
@@ -1148,15 +1148,9 @@ impl ConsensusApi for Consensus {
             ZERO_HASH,
             expected_lane_count,
             lanes_root,
-            std::iter::from_fn(|| {
-                let lane = rx.blocking_recv()?;
-                Some(StreamingImportLane {
-                    lane_key: lane.lane_key,
-                    lane_tip: lane.lane_tip,
-                    blue_score: lane.blue_score,
-                    proof: lane.proof,
-                })
-            }),
+            // Chunks arrive pre-sized (up to SMT_CHUNK_SIZE) from the wire-level chunker —
+            // forwarded as-is, no re-batching.
+            std::iter::from_fn(|| rx.blocking_recv()),
             4096,
         )
         .map_err(|e| PruningImportError::SmtStoreError(format!("{e}")))?;
@@ -1191,38 +1185,47 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.get_pruning_point_smt_metadata(expected_pruning_point)
     }
 
-    fn iter_pruning_point_smt_lanes(
+    fn get_pruning_point_smt_lanes_chunk(
         &self,
         expected_pruning_point: Hash,
-        mut f: Box<dyn FnMut(kaspa_consensus_core::api::ImportLane) -> bool + Send + 'static>,
-    ) {
+        from_lane_key: Option<Hash>,
+        limit: usize,
+        starting_lane_idx: u64,
+    ) -> ConsensusResult<Vec<kaspa_consensus_core::api::ImportLane>> {
         use kaspa_consensus_core::api::{ImportLane, SMT_PROOF_INTERVAL};
 
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if pp != expected_pruning_point {
-            return;
+            return Err(ConsensusError::UnexpectedPruningPoint);
         }
         let pp_header = self.storage.headers_store.get_header(pp).unwrap();
         let min_score = pp_header.blue_score.saturating_sub(self.config.params.finality_depth());
 
-        for (lane_idx, result) in self
-            .storage
+        let processor = self.virtual_processor.clone();
+        let is_canonical = move |bh| processor.is_smt_canonical(bh, pp);
+
+        self.storage
             .smt_stores
             .lane_version
-            .iter_all_canonical(min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))
+            .iter_all_canonical(from_lane_key, min_score, is_canonical)
+            .take(limit)
             .enumerate()
-        {
-            let (lk, v) = result.unwrap();
-            let proof = if lane_idx.is_multiple_of(SMT_PROOF_INTERVAL) {
-                Some(self.storage.smt_stores.prove_lane(&lk, min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp)).unwrap())
-            } else {
-                None
-            };
-            let lane = ImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof };
-            if !f(lane) {
-                break;
-            }
-        }
+            .map(|(i, res)| {
+                let (lk, v) = res.unwrap();
+                let absolute_idx = starting_lane_idx + i as u64;
+                let proof = if (absolute_idx as usize).is_multiple_of(SMT_PROOF_INTERVAL) {
+                    Some(
+                        self.storage
+                            .smt_stores
+                            .prove_lane(&lk, min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))
+                            .unwrap(),
+                    )
+                } else {
+                    None
+                };
+                Ok(ImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof })
+            })
+            .collect()
     }
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {

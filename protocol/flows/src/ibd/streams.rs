@@ -15,14 +15,23 @@ use kaspa_p2p_lib::{
     convert::{header::HeaderFormat, header::Versioned, model::trusted::TrustedDataEntry},
     make_message,
     pb::{
-        RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage, RequestNextPruningPointUtxoSetChunkMessage,
-        kaspad_message::Payload,
+        RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage, RequestNextPruningPointSmtChunkMessage,
+        RequestNextPruningPointUtxoSetChunkMessage, kaspad_message::Payload,
     },
 };
 use std::sync::Arc;
 use tokio::time::timeout;
 
 pub const IBD_BATCH_SIZE: usize = 99;
+
+/// Maximum number of SMT lane entries carried by a single `SmtLaneChunkMessage`.
+pub const SMT_CHUNK_SIZE: usize = 4096;
+
+/// After receiving every `SMT_FLOW_CONTROL_WINDOW`-th chunk the receiver asks for
+/// more. Each chunk already batches thousands of lanes, so 10 is plenty of
+/// round-trips while keeping the in-flight message count far below the 256
+/// incoming-route capacity.
+pub const SMT_FLOW_CONTROL_WINDOW: usize = 10;
 
 pub struct TrustedEntryStream<'a, 'b> {
     router: &'a Router,
@@ -199,22 +208,26 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
     }
 }
 
-/// Re-export the proof interval from consensus core for reference.
-/// Proofs are verified on the consensus side during import.
-#[allow(dead_code)]
 const SMT_PROOF_INTERVAL: usize = kaspa_consensus_core::api::SMT_PROOF_INTERVAL;
 
-/// Stream of SMT lane entries. Pure one-way — no flow control.
-/// Enforces that the first and every 16th entry carries proof bytes.
+/// Stream of SMT lane chunks. Flow-controlled: after every [`SMT_FLOW_CONTROL_WINDOW`]
+/// chunks received the stream enqueues a [`RequestNextPruningPointSmtChunkMessage`]
+/// back to the peer. The total number of lanes is conveyed via the metadata header
+/// (`active_lanes_count`), so no explicit `Done` sentinel is required — both sides
+/// terminate naturally once that many lanes have been transferred.
+///
+/// Enforces that the first and every [`SMT_PROOF_INTERVAL`]-th entry carries proof bytes.
 pub struct SmtStream<'a, 'b> {
+    router: &'a Router,
     incoming_route: &'b mut IncomingRoute,
-    _router: &'a Router,
-    lane_count: usize,
+    expected_count: u64,
+    lane_count: u64,
+    chunks_received: usize,
 }
 
 impl<'a, 'b> SmtStream<'a, 'b> {
     pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { _router: router, incoming_route, lane_count: 0 }
+        Self { router, incoming_route, expected_count: 0, lane_count: 0, chunks_received: 0 }
     }
 
     pub async fn recv_metadata(&mut self) -> Result<kaspa_consensus_core::api::SmtExportMetadata, ProtocolError> {
@@ -230,6 +243,7 @@ impl<'a, 'b> SmtStream<'a, 'b> {
                     }
                     let [lanes_root, payload_and_ctx_digest, parent_seq_commit] =
                         [lanes_root, payload_and_ctx_digest, parent_seq_commit].map(Hash::from_bytes);
+                    self.expected_count = payload.active_lanes_count;
                     Ok(kaspa_consensus_core::api::SmtExportMetadata {
                         lanes_root,
                         payload_and_ctx_digest,
@@ -245,43 +259,86 @@ impl<'a, 'b> SmtStream<'a, 'b> {
         }
     }
 
-    pub async fn next(&mut self) -> Result<Option<kaspa_consensus_core::api::ImportLane>, ProtocolError> {
-        match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
-            Ok(Some(msg)) => match msg.payload {
-                Some(Payload::SmtLaneEntry(payload)) => {
-                    let Some((&key_bytes, rem)) = payload.data.split_first_chunk::<32>() else {
-                        return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_key"));
-                    };
-                    let Some(&tip_bytes) = rem.first_chunk::<32>() else {
-                        return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_tip"));
-                    };
-                    if rem.len() != 32 {
-                        return Err(ProtocolError::Other("SmtLaneEntry data must be exactly 64 bytes"));
-                    }
-                    let lane_key = Hash::from_bytes(key_bytes);
-                    let lane_tip = Hash::from_bytes(tip_bytes);
-
-                    let proof = if self.lane_count.is_multiple_of(SMT_PROOF_INTERVAL) {
-                        Some(
-                            kaspa_smt::proof::OwnedSmtProof::from_bytes(&payload.proof)
-                                .map_err(|e| ProtocolError::OtherOwned(format!("invalid SMT proof: {e}")))?,
-                        )
-                    } else {
-                        None
-                    };
-
-                    self.lane_count += 1;
-                    Ok(Some(kaspa_consensus_core::api::ImportLane { lane_key, lane_tip, blue_score: payload.blue_score, proof }))
-                }
-                Some(Payload::UnexpectedPruningPoint(_)) => Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint)),
-                _ => Err(ProtocolError::UnexpectedMessage(stringify!(Payload::SmtLaneEntry), msg.payload.as_ref().map(|v| v.into()))),
-            },
-            Ok(None) => Err(ProtocolError::ConnectionClosed),
-            Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
+    /// Receives the next chunk of lanes from the peer. Returns `Ok(None)` once
+    /// `active_lanes_count` lanes have been consumed.
+    pub async fn next_chunk(&mut self) -> Result<Option<Vec<kaspa_consensus_core::api::ImportLane>>, ProtocolError> {
+        if self.lane_count >= self.expected_count {
+            return Ok(None);
         }
+
+        let payload = match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
+            Ok(Some(msg)) => match msg.payload {
+                Some(Payload::SmtLaneChunk(payload)) => payload,
+                Some(Payload::UnexpectedPruningPoint(_)) => {
+                    return Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint));
+                }
+                _ => {
+                    return Err(ProtocolError::UnexpectedMessage(
+                        stringify!(Payload::SmtLaneChunk),
+                        msg.payload.as_ref().map(|v| v.into()),
+                    ));
+                }
+            },
+            Ok(None) => return Err(ProtocolError::ConnectionClosed),
+            Err(_) => return Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
+        };
+
+        if payload.entries.is_empty() {
+            return Err(ProtocolError::Other("received an empty SmtLaneChunk"));
+        }
+
+        if payload.entries.len() > SMT_CHUNK_SIZE {
+            return Err(ProtocolError::Other("SmtLaneChunk exceeds SMT_CHUNK_SIZE"));
+        }
+
+        let remaining = self.expected_count - self.lane_count;
+        if payload.entries.len() as u64 > remaining {
+            return Err(ProtocolError::Other("received more SMT lane entries than active_lanes_count"));
+        }
+
+        let mut lanes = Vec::with_capacity(payload.entries.len());
+        for entry in payload.entries {
+            let Some((&key_bytes, rem)) = entry.data.split_first_chunk::<32>() else {
+                return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_key"));
+            };
+            let Some(&tip_bytes) = rem.first_chunk::<32>() else {
+                return Err(ProtocolError::Other("SmtLaneEntry data too short for lane_tip"));
+            };
+            if rem.len() != 32 {
+                return Err(ProtocolError::Other("SmtLaneEntry data must be exactly 64 bytes"));
+            }
+            let lane_key = Hash::from_bytes(key_bytes);
+            let lane_tip = Hash::from_bytes(tip_bytes);
+
+            let proof = if (self.lane_count as usize).is_multiple_of(SMT_PROOF_INTERVAL) {
+                Some(
+                    kaspa_smt::proof::OwnedSmtProof::from_bytes(&entry.proof)
+                        .map_err(|e| ProtocolError::OtherOwned(format!("invalid SMT proof: {e}")))?,
+                )
+            } else {
+                None
+            };
+
+            lanes.push(kaspa_consensus_core::api::ImportLane { lane_key, lane_tip, blue_score: entry.blue_score, proof });
+            self.lane_count += 1;
+        }
+
+        self.chunks_received += 1;
+
+        // Enqueue RequestNext for the next window — but only if more lanes remain.
+        // When `lane_count == expected_count` the caller will stop iterating and the
+        // sender's loop has already exhausted its DB iteration, so no further signal
+        // is needed (and would dead-lock the sender past its last chunk).
+        if self.lane_count < self.expected_count && self.chunks_received.is_multiple_of(SMT_FLOW_CONTROL_WINDOW) {
+            self.router
+                .enqueue(make_message!(Payload::RequestNextPruningPointSmtChunk, RequestNextPruningPointSmtChunkMessage {}))
+                .await?;
+        }
+
+        Ok(Some(lanes))
     }
 
-    pub fn lane_count(&self) -> usize {
+    pub fn lane_count(&self) -> u64 {
         self.lane_count
     }
 }
