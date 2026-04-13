@@ -100,7 +100,7 @@ fn build_dummy_version_message() -> VersionMessage {
         user_agent: String::new(),
         disable_relay_tx: false,
         subnetwork_id: None,
-        network: "kaspa-mainnet".to_string(),
+        network: "keryx-mainnet".to_string(),
     }
 }
 
