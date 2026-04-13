@@ -526,26 +526,7 @@ impl From<NetworkId> for Params {
 }
 
 pub const MAINNET_PARAMS: Params = Params {
-    dns_seeders: &[
-        // This DNS seeder is run by Denis Mashkevich
-        "mainnet-dnsseed-1.kaspanet.org",
-        // This DNS seeder is run by Denis Mashkevich
-        "mainnet-dnsseed-2.kaspanet.org",
-        // This DNS seeder is run by Georges Künzli
-        "seeder1.keryxd.net",
-        // This DNS seeder is run by Georges Künzli
-        "seeder2.keryxd.net",
-        // This DNS seeder is run by Georges Künzli
-        "seeder3.keryxd.net",
-        // This DNS seeder is run by Georges Künzli
-        "seeder4.keryxd.net",
-        // This DNS seeder is run by Tim
-        "kaspadns.kaspacalc.net",
-        // This DNS seeder is run by supertypo
-        "n-mainnet.kaspa.ws",
-        // This DNS seeder is run by -gerri-
-        "dnsseeder-kaspa-mainnet.x-con.at",
-    ],
+    dns_seeders: &[],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -590,18 +571,11 @@ pub const MAINNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: 1000,
 
     // Roughly 2025-05-05 1500 UTC
-    crescendo_activation: ForkActivation::new(110_165_000),
+    crescendo_activation: ForkActivation::new(0),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
-    dns_seeders: &[
-        // This DNS seeder is run by Tiram
-        "seeder1-testnet.keryxd.net",
-        // This DNS seeder is run by -gerri-
-        "dnsseeder-kaspa-testnet.x-con.at",
-        // This DNS seeder is run by supertypo
-        "n-testnet-10.kaspa.ws",
-    ],
+    dns_seeders: &[],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,

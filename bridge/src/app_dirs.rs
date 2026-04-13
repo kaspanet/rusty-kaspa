@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-const BRIDGE_APP_FOLDER_NAME: &str = "kaspa-stratum-bridge";
+const BRIDGE_APP_FOLDER_NAME: &str = "keryx-stratum-bridge";
 
 fn get_home_dir() -> PathBuf {
     #[cfg(target_os = "windows")]

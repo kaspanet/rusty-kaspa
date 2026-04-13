@@ -39,7 +39,7 @@ pub fn default_storage_folder() -> &'static str {
     // this function.
     #[allow(static_mut_refs)]
     unsafe {
-        DEFAULT_STORAGE_FOLDER.get_or_insert("~/.kaspa".to_string()).as_str()
+        DEFAULT_STORAGE_FOLDER.get_or_insert("~/.keryx-labs".to_string()).as_str()
     }
 }
 
@@ -49,7 +49,7 @@ pub fn default_wallet_file() -> &'static str {
     // this function.
     #[allow(static_mut_refs)]
     unsafe {
-        DEFAULT_WALLET_FILE.get_or_insert("kaspa".to_string()).as_str()
+        DEFAULT_WALLET_FILE.get_or_insert("keryx".to_string()).as_str()
     }
 }
 
@@ -59,14 +59,14 @@ pub fn default_settings_file() -> &'static str {
     // this function.
     #[allow(static_mut_refs)]
     unsafe {
-        DEFAULT_SETTINGS_FILE.get_or_insert("kaspa".to_string()).as_str()
+        DEFAULT_SETTINGS_FILE.get_or_insert("keryx".to_string()).as_str()
     }
 }
 
 /// Set a custom storage folder for the wallet SDK
 /// subsystem.  Encrypted wallet files and transaction
 /// data will be stored in this folder. If not set
-/// the storage folder will default to `~/.kaspa`
+/// the storage folder will default to `~/.keryx-labs`
 /// (note that the folder is hidden).
 ///
 /// This must be called before using any other wallet
@@ -96,7 +96,7 @@ pub unsafe fn set_default_storage_folder(folder: String) -> Result<()> {
 /// Set a custom storage folder for the wallet SDK
 /// subsystem.  Encrypted wallet files and transaction
 /// data will be stored in this folder. If not set
-/// the storage folder will default to `~/.kaspa`
+/// the storage folder will default to `~/.keryx-labs`
 /// (note that the folder is hidden).
 ///
 /// This must be called before using any other wallet

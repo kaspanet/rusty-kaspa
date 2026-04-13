@@ -156,7 +156,7 @@ impl TryFrom<&NetworkTypeT> for Prefix {
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum NetworkIdError {
-    #[error("Invalid network name prefix: {0}. The expected prefix is 'kaspa'.")]
+    #[error("Invalid network name prefix: {0}. The expected prefix is 'keryx'.")]
     InvalidPrefix(String),
 
     #[error(transparent)]
