@@ -3,7 +3,7 @@ use convert_case::{Case, Casing};
 use keryx_rpc_core::api::ops::RpcApiOps;
 
 #[derive(Default, Handler)]
-#[help("Execute RPC commands against the connected Kaspa node")]
+#[help("Execute RPC commands against the connected Keryx node")]
 pub struct Rpc;
 
 impl Rpc {

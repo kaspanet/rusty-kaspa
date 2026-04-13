@@ -35,8 +35,8 @@ pub fn sompi_to_kaspa_string(sompi: ISompiToKaspa) -> Result<String> {
 
 ///
 /// Format a Sompi amount to a string representation of the amount in Kaspa with a suffix
-/// based on the network type (e.g. `KAS` for mainnet, `TKAS` for testnet,
-/// `SKAS` for simnet, `DKAS` for devnet).
+/// based on the network type (e.g. `KRX` for mainnet, `TKRX` for testnet,
+/// `SKRX` for simnet, `DKRX` for devnet).
 ///
 /// @category Wallet SDK
 ///

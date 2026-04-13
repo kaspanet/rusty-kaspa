@@ -97,9 +97,9 @@ impl Node {
             "start" => {
                 let mute = self.mute.load(Ordering::SeqCst);
                 if mute {
-                    tprintln!(ctx, "starting kaspa node... {}", style("(logs are muted, use 'node mute' to toggle)").dim());
+                    tprintln!(ctx, "starting keryx node... {}", style("(logs are muted, use 'node mute' to toggle)").dim());
                 } else {
-                    tprintln!(ctx, "starting kaspa node... {}", style("(use 'node mute' to mute logging)").dim());
+                    tprintln!(ctx, "starting keryx node... {}", style("(use 'node mute' to mute logging)").dim());
                 }
 
                 let wrpc_client = ctx.wallet().try_wrpc_client().ok_or(Error::custom("Unable to start node with non-wRPC client"))?;

@@ -1,7 +1,7 @@
 use crate::imports::*;
 
 #[derive(Default, Handler)]
-#[help("Disconnect from the kaspa network")]
+#[help("Disconnect from the keryx network")]
 pub struct Disconnect;
 
 impl Disconnect {

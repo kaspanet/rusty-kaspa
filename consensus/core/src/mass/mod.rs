@@ -124,7 +124,7 @@ impl UtxoPlurality for TransactionOutput {
 pub struct UtxoCell {
     /// The plurality (number of "storage units") for this UTXO
     pub plurality: u64,
-    /// The amount of KAS (in sompis) locked in this UTXO
+    /// The amount of KRX (in sompis) locked in this UTXO
     pub amount: u64,
 }
 

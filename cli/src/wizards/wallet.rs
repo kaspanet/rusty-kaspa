@@ -27,7 +27,7 @@ pub(crate) async fn create(
 
     if let Err(err) = wallet.network_id() {
         tprintln!(ctx);
-        tprintln!(ctx, "Before creating a wallet, you need to select a Kaspa network.");
+        tprintln!(ctx, "Before creating a wallet, you need to select a Keryx network.");
         tprintln!(ctx, "Please use 'network <name>' command to select a network.");
         tprintln!(ctx, "Currently available networks are 'mainnet', 'testnet-10' and 'testnet-11'");
         tprintln!(ctx);

@@ -28,10 +28,10 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
     // addresses (open,copy) https://explorer.kaspa.org/addresses/
     let cli_ = cli.clone();
     cli.term().register_link_matcher(
-        &js_sys::RegExp::new(r"(kaspa|kaspatest):\S+", "i"),
+        &js_sys::RegExp::new(r"(keryx|keryxtest):\S+", "i"),
         Arc::new(Box::new(move |modifiers, uri| {
             if modifiers.ctrl || modifiers.meta {
-                if uri.starts_with("kaspatest") {
+                if uri.starts_with("keryxtest") {
                     cli_.term().writeln("testnet addresses can not be currently looked up with the block explorer");
                 } else {
                     let url = format!("https://explorer.kaspa.org/addresses/{uri}");

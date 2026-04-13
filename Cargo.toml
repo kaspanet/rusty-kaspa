@@ -17,7 +17,7 @@ members = [
     "consensus/notify",
     "consensus/pow",
     "consensus/wasm",
-    "kaspad",
+    "keryxd",
     "simpa",
     "wasm",
     "wasm/core",
@@ -137,7 +137,7 @@ keryx-wrpc-proxy = { version = "1.1.0", path = "rpc/wrpc/proxy" }
 keryx-wrpc-server = { version = "1.1.0", path = "rpc/wrpc/server" }
 keryx-wrpc-wasm = { version = "1.1.0", path = "rpc/wrpc/wasm" }
 keryx-wrpc-example-subscriber = { version = "1.1.0", path = "rpc/wrpc/examples/subscriber" }
-keryxd = { version = "1.1.0", path = "kaspad" }
+keryxd = { version = "1.1.0", path = "keryxd" }
 keryx-alloc = { version = "1.1.0", path = "utils/alloc" }
 
 # external

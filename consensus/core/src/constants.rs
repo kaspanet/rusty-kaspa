@@ -9,10 +9,10 @@ pub const LOCK_TIME_THRESHOLD: u64 = 500_000_000_000;
 /// MAX_SCRIPT_PUBLIC_KEY_VERSION is the current latest supported public key script version.
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 
-/// SompiPerKaspa is the number of sompi in one kaspa (1 KAS).
+/// SompiPerKaspa is the number of sompi in one keryx (1 KRX).
 pub const SOMPI_PER_KASPA: u64 = 100_000_000;
 
-/// The parameter for scaling inverse KAS value to mass units (KIP-0009)
+/// The parameter for scaling inverse KRX value to mass units (KIP-0009)
 pub const STORAGE_MASS_PARAMETER: u64 = SOMPI_PER_KASPA * 10_000;
 
 /// The parameter defining how much mass per byte to charge for when calculating

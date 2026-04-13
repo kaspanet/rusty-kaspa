@@ -68,10 +68,10 @@ impl Message {
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
-                ("sign <kaspa_address>", "Sign a message with the private key that matches the given address. Prompts for message."),
+                ("sign <keryx_address>", "Sign a message with the private key that matches the given address. Prompts for message."),
                 (
-                    "verify <kaspa_address> <signature>",
-                    "Verify the signature against the message and kaspa_address. Prompts for message.",
+                    "verify <keryx_address> <signature>",
+                    "Verify the signature against the message and keryx_address. Prompts for message.",
                 ),
             ],
             None,

@@ -118,10 +118,10 @@ pub struct Cli {
     #[arg(long)]
     pub appdir: Option<PathBuf>,
 
-    #[arg(last = true, help = "Kaspad arguments (use '--' separator if keryxd args start with hyphens)")]
+    #[arg(last = true, help = "Keryxd arguments (use '--' separator if keryxd args start with hyphens)")]
     pub kaspad_args: Vec<String>,
 
-    #[arg(long)]
+    #[arg(long = "keryxd-address")]
     pub kaspad_address: Option<String>,
 
     #[arg(long)]

@@ -1,6 +1,6 @@
 [package]
 name = "keryxd"
-description = "Kaspa full node daemon"
+description = "Keryx full node daemon"
 keywords = ["keryx", "blockdag"]
 rust-version.workspace = true
 version.workspace = true

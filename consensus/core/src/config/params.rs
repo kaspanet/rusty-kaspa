@@ -202,7 +202,7 @@ pub struct OverrideParams {
     pub mass_per_sig_op: Option<u64>,
     pub max_block_mass: Option<u64>,
 
-    /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
+    /// The parameter for scaling inverse KRX value to mass units (KIP-0009)
     pub storage_mass_parameter: Option<u64>,
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period
@@ -293,7 +293,7 @@ pub struct Params {
     pub mass_per_sig_op: u64,
     pub max_block_mass: u64,
 
-    /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
+    /// The parameter for scaling inverse KRX value to mass units (KIP-0009)
     pub storage_mass_parameter: u64,
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period

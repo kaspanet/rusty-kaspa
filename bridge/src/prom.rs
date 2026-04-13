@@ -121,7 +121,7 @@ pub fn init_metrics() {
     BLOCK_ACCEPTED_COUNTER.get_or_init(|| {
         register_counter_vec!(
             "ks_blocks_accepted_by_node",
-            "Number of blocks accepted by the connected Kaspa node (may later be red)",
+            "Number of blocks accepted by the connected Keryx node (may later be red)",
             WORKER_LABELS
         )
         .unwrap()
@@ -195,7 +195,7 @@ pub fn init_metrics() {
         INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL.get_or_init(|| {
             register_counter!(
                 "ks_internal_cpu_blocks_accepted_total",
-                "Total blocks accepted by the connected Kaspa node from the internal CPU miner since process start"
+                "Total blocks accepted by the connected Keryx node from the internal CPU miner since process start"
             )
             .unwrap()
         });
@@ -700,7 +700,7 @@ pub fn record_worker_error(instance_id: &str, wallet: &str, error: &str) {
 pub fn record_balances(instance_id: &str, balances: &[(String, u64)]) {
     if let Some(gauge) = BALANCE_GAUGE.get() {
         for (address, balance) in balances {
-            // Convert from sompi to KAS (divide by 100000000)
+            // Convert from sompi to KRX (divide by 100000000)
             let balance_kas = *balance as f64 / 100_000_000.0;
             gauge.with_label_values(&[instance_id, address]).set(balance_kas);
         }
