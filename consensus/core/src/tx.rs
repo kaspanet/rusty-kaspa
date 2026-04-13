@@ -7,6 +7,7 @@
 #![allow(non_snake_case)]
 
 mod script_public_key;
+mod utxo_entry;
 
 use crate::mass::{
     ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
@@ -23,6 +24,7 @@ use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
 pub use script_public_key::{
     SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
+pub use utxo_entry::UtxoEntry;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -33,8 +35,6 @@ use std::{
     ops::Range,
     str::{self},
 };
-use wasm_bindgen::prelude::*;
-
 use crate::hashing::tx::seq_commit_tx_digest;
 use kaspa_hashes::Hash;
 
@@ -42,40 +42,6 @@ use kaspa_hashes::Hash;
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
 /// A 32-byte Kaspa transaction identifier.
 pub type TransactionId = kaspa_hashes::Hash;
-
-/// Holds details about an individual transaction output in a utxo
-/// set such as whether or not it was contained in a coinbase tx, the daa
-/// score of the block that accepts the tx, its public key script, and how
-/// much it pays.
-/// @category Consensus
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable, js_name = TransactionUtxoEntry)]
-pub struct UtxoEntry {
-    pub amount: u64,
-    #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
-    pub script_public_key: ScriptPublicKey,
-    #[wasm_bindgen(js_name = blockDaaScore)]
-    pub block_daa_score: u64,
-    #[wasm_bindgen(js_name = isCoinbase)]
-    pub is_coinbase: bool,
-    #[wasm_bindgen(js_name = covenantId)]
-    pub covenant_id: Option<Hash>,
-}
-
-impl UtxoEntry {
-    pub fn new(
-        amount: u64,
-        script_public_key: ScriptPublicKey,
-        block_daa_score: u64,
-        is_coinbase: bool,
-        covenant_id: Option<Hash>,
-    ) -> Self {
-        Self { amount, script_public_key, block_daa_score, is_coinbase, covenant_id }
-    }
-}
-
-impl MemSizeEstimator for UtxoEntry {}
 
 pub type TransactionIndexType = u32;
 

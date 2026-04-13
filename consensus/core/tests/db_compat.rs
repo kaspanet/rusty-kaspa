@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use kaspa_consensus_core::mass::{ComputeBudget, SigopCount};
 use kaspa_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
 use kaspa_consensus_core::tx::{
-    CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass, UtxoEntry,
+    CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
 };
 use kaspa_hashes::Hash;
 
@@ -39,29 +39,8 @@ fn spk(version: u16, script: &[u8]) -> ScriptPublicKey {
     ScriptPublicKey::new(version, script.iter().copied().collect())
 }
 
-const EXPECTED_UTXO_AMOUNT: u64 = 0x0123_4567_89ab_cdef;
-const EXPECTED_UTXO_DAA_SCORE: u64 = 42;
-const EXPECTED_UTXO_SPK_SCRIPT: &[u8] = &[0x76, 0xa9, 0x14, 0x01, 0x02, 0x03];
 const EXPECTED_COINBASE_PAYLOAD: &[u8] = &[0xc0, 0xff, 0xee];
 const EXPECTED_REGULAR_IN1_SEQ: u64 = 0x00ff_ff00_ff00_ff00;
-
-// -----------------------------------------------------------------------------
-// Decode fixtures produced by the pre-Toccata types.
-// -----------------------------------------------------------------------------
-
-#[test]
-fn decode_pre_toccata_utxo_entry() {
-    let bytes = fixture("utxo_entry_v0");
-
-    let decoded: UtxoEntry = bincode::deserialize(bytes).expect("decode pre-Toccata UtxoEntry");
-
-    assert_eq!(decoded.amount, EXPECTED_UTXO_AMOUNT, "amount");
-    assert_eq!(decoded.block_daa_score, EXPECTED_UTXO_DAA_SCORE, "block_daa_score");
-    assert!(decoded.is_coinbase, "is_coinbase");
-    assert_eq!(decoded.script_public_key.version, 0, "spk version");
-    assert_eq!(decoded.script_public_key.script(), EXPECTED_UTXO_SPK_SCRIPT, "spk script");
-    assert_eq!(decoded.covenant_id, None, "covenant_id");
-}
 
 #[test]
 fn decode_pre_toccata_coinbase_transaction() {
@@ -152,18 +131,6 @@ fn decode_pre_toccata_block_body() {
     assert_eq!(decoded[1].outputs.len(), 2, "second tx outputs");
 }
 
-// -----------------------------------------------------------------------------
-// Round-trip pre-Toccata fixtures through the post-Toccata serializer.
-// -----------------------------------------------------------------------------
-
-#[test]
-fn roundtrip_pre_toccata_utxo_entry() {
-    let decoded: UtxoEntry = bincode::deserialize(fixture("utxo_entry_v0")).expect("decode pre-Toccata UtxoEntry");
-    let re_encoded = bincode::serialize(&decoded).unwrap();
-    let redecoded: UtxoEntry = bincode::deserialize(&re_encoded).expect("re-decode UtxoEntry");
-    assert_eq!(decoded, redecoded);
-}
-
 #[test]
 fn roundtrip_pre_toccata_regular_transaction() {
     let decoded: Transaction = bincode::deserialize(fixture("transaction_v0_regular")).expect("decode pre-Toccata regular Transaction");
@@ -197,19 +164,6 @@ fn roundtrip_pre_toccata_block_body() {
         assert_eq!(a.inputs.len(), b.inputs.len(), "inputs.len");
         assert_eq!(a.outputs, b.outputs, "outputs");
     }
-}
-
-// -----------------------------------------------------------------------------
-// Round-trip values using the post-Toccata covenant / TxInputMass variants.
-// -----------------------------------------------------------------------------
-
-#[test]
-fn roundtrip_post_toccata_utxo_entry_with_covenant_id() {
-    let utxo = UtxoEntry::new(1_000, spk(0, &[0x01, 0x02]), 777, false, Some(Hash::from_bytes([0x5a; 32])));
-    let bytes = bincode::serialize(&utxo).unwrap();
-    let decoded: UtxoEntry = bincode::deserialize(&bytes).unwrap();
-    assert_eq!(utxo, decoded);
-    assert_eq!(decoded.covenant_id, Some(Hash::from_bytes([0x5a; 32])));
 }
 
 #[test]
