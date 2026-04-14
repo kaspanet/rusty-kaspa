@@ -7,6 +7,7 @@
 #![allow(non_snake_case)]
 
 mod script_public_key;
+mod serde_impl;
 mod utxo_entry;
 
 use crate::hashing::tx::seq_commit_tx_digest;
@@ -22,7 +23,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_hashes::Hash;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
-use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
+use kaspa_utils::serde_bytes_fixed_ref;
 pub use script_public_key::{
     SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
@@ -126,11 +127,9 @@ impl From<TxInputMass> for ScriptUnits {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
-    #[serde(with = "serde_bytes")]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
     pub mass: TxInputMass, // TODO(covpp-mainnet): Take care of DB compatibility.
@@ -168,8 +167,7 @@ impl std::fmt::Debug for TransactionInput {
 }
 
 /// Represents a Kaspad transaction output
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct TransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
@@ -249,8 +247,7 @@ impl BorshSerialize for TransactionMass {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, Default, BorshSerialize, BorshDeserialize)]
 pub struct Transaction {
     pub version: u16,
     pub inputs: Vec<TransactionInput>,
@@ -258,17 +255,14 @@ pub struct Transaction {
     pub lock_time: u64,
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
-    #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
 
     /// Holds a commitment to the storage mass (KIP-0009)
     /// TODO: rename field and related methods to storage_mass
-    #[serde(default)]
     mass: TransactionMass,
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
-    #[serde(with = "serde_bytes_fixed_ref")]
     id: TransactionId,
 }
 
@@ -806,28 +800,42 @@ mod tests {
         )
     }
 
+    fn test_transaction_v1() -> Transaction {
+        let mut tx = test_transaction();
+        tx.version = 1;
+        // A valid v1 transaction must carry a ComputeBudget mass on every input;
+        // the serializer panics otherwise (that's its contract with the type system).
+        tx.inputs[0].mass = TxInputMass::ComputeBudget(ComputeBudget(17));
+        tx.inputs[1].mass = TxInputMass::ComputeBudget(ComputeBudget(23));
+        tx.outputs[0].covenant = Some(CovenantBinding::new(1, hashing::tx::payload_digest(&[1, 2, 3])));
+        tx.finalize();
+        tx
+    }
+
     #[test]
     fn test_transaction_bincode() {
         let tx = test_transaction();
         let bts = bincode::serialize(&tx).unwrap();
-        // standard, based on https://github.com/kaspanet/rusty-kaspa/commit/7e947a06d2434daf4bc7064d4cd87dc1984b56fe
+        // Captured from the version-aware custom serializer in `tx::serde_impl`.
+        // v0 inputs carry a flat `sig_op_count: u8` (no `TxInputMass` enum tag)
+        // and v0 outputs have no `covenant` field at all.
         let expected_bts = vec![
             0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,
             130, 26, 104, 59, 122, 78, 222, 254, 44, 0, 0, 0, 250, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8,
-            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 3, 75, 176, 117, 53, 223, 213, 142, 11, 60, 214, 79, 215, 21, 82, 128, 135, 42, 4, 113, 188, 248, 48, 149, 82, 106,
-            206, 14, 56, 198, 0, 0, 0, 251, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-            44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 2,
-            0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201,
-            209, 89, 67, 126, 132, 185, 117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0,
-            7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132,
-            185, 117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 8, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3,
-            4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
-            36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
-            66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
-            96, 97, 98, 99, 0, 0, 0, 0, 0, 0, 0, 0, 50, 200, 4, 55, 147, 193, 14, 39, 3, 248, 207, 196, 68, 249, 136, 99, 48, 134,
-            161, 29, 52, 181, 205, 113, 128, 141, 219, 202, 72, 208, 223, 66,
+            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 3, 75,
+            176, 117, 53, 223, 213, 142, 11, 60, 214, 79, 215, 21, 82, 128, 135, 42, 4, 113, 188, 248, 48, 149, 82, 106, 206, 14, 56,
+            198, 0, 0, 0, 251, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+            48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 4, 0, 0, 0, 0, 0, 0, 0, 5, 2, 0, 0, 0, 0, 0, 0, 0, 6, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185,
+            117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185, 117, 220, 118, 217, 0,
+            59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+            13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+            43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
+            73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0, 0, 0, 0, 0,
+            0, 0, 0, 50, 200, 4, 55, 147, 193, 14, 39, 3, 248, 207, 196, 68, 249, 136, 99, 48, 134, 161, 29, 52, 181, 205, 113, 128,
+            141, 219, 202, 72, 208, 223, 66,
         ];
         assert_eq!(expected_bts, bts);
         assert_eq!(tx, bincode::deserialize(&bts).unwrap());
@@ -847,9 +855,7 @@ mod tests {
       },
       "signatureScript": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
       "sequence": 2,
-      "mass": {
-        "SigopCount": 3
-      }
+      "sigOpCount": 3
     },
     {
       "previousOutpoint": {
@@ -858,21 +864,17 @@ mod tests {
       },
       "signatureScript": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
       "sequence": 4,
-      "mass": {
-        "SigopCount": 5
-      }
+      "sigOpCount": 5
     }
   ],
   "outputs": [
     {
       "value": 6,
-      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e",
-      "covenant": null
+      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e"
     },
     {
       "value": 7,
-      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e",
-      "covenant": null
+      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e"
     }
   ],
   "lockTime": 8,
@@ -884,6 +886,22 @@ mod tests {
 }"#;
         assert_eq!(expected_str, str);
         assert_eq!(tx, serde_json::from_str(&str).unwrap());
+    }
+
+    #[test]
+    fn test_transaction_v1_json() {
+        let tx = test_transaction_v1();
+        let str = serde_json::to_string_pretty(&tx).unwrap();
+        assert!(str.contains("\"computeBudget\": 17"));
+        assert!(str.contains("\"covenant\": {"));
+        assert_eq!(tx, serde_json::from_str(&str).unwrap());
+    }
+
+    #[test]
+    fn test_transaction_v1_bincode() {
+        let tx = test_transaction_v1();
+        let bts = bincode::serialize(&tx).unwrap();
+        assert_eq!(tx, bincode::deserialize(&bts).unwrap());
     }
 
     #[test]
