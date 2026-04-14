@@ -1,3 +1,4 @@
+pub mod pre_toccata;
 pub mod utxo_collection;
 pub mod utxo_diff;
 pub mod utxo_error;

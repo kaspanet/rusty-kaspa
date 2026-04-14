@@ -574,17 +574,25 @@ mod tests {
         drop(utxo_entry2);
     }
 
-    /// Decodes a `UtxoDiff` whose `UtxoEntry` values were bincode-serialized
-    /// by a pre-Toccata node (no trailing `covenant_id` Option tag) and checks
-    /// it comes back as the equivalent post-Toccata `UtxoDiff` with all
-    /// `covenant_id`s defaulting to `None`.
+    /// Decodes pre-Toccata `UtxoDiff` bytes through the [`PreToccataUtxoDiff`]
+    /// shadow type and checks the resulting post-Toccata `UtxoDiff` has every
+    /// entry's `covenant_id == None`.
     ///
-    /// Inside a `HashMap` the post-Toccata `UtxoEntry` decoder cannot rely on
-    /// EOF to detect the missing trailing field — once one entry is decoded
-    /// the bincode reader is sitting on the next entry's bytes, not at EOF.
-    /// Two entries per side exercise the entry-to-entry boundary.
+    /// Direct `bincode::deserialize::<UtxoDiff>(&bytes)` cannot read this
+    /// fixture: inside a `HashMap` the post-Toccata `UtxoEntry` decoder cannot
+    /// rely on EOF to detect the missing trailing `covenant_id` Option tag.
+    /// The fix is at the DB access layer: `CachedDbAccess` dispatches to the
+    /// shadow type for legacy (unversioned) rows. This test exercises the
+    /// shadow decoder + conversion in isolation; the end-to-end DB-layer
+    /// wiring is covered separately in
+    /// `consensus/tests/utxo_diffs_compat.rs`.
+    ///
+    /// Two entries per side exercise the entry-to-entry boundary in the
+    /// `HashMap` deserialization that the EOF trick fails to handle.
     #[test]
     fn decode_pre_toccata_utxo_diff_fixture() {
+        use crate::utxo::pre_toccata::PreToccataUtxoDiff;
+
         // Captured on the `master` worktree from a 2-add / 2-remove `UtxoDiff`
         // built with the pre-Toccata `UtxoEntry` layout.
         const PRE_TOCCATA_HEX: &str = "0200000000000000111111111111111111111111111111111111111111111111111111111111111100000000efcdab89674523010000060000000000000076a9140102032a0000000000000001333333333333333333333333333333333333333333333333333333333333333304000000f40100000000000000000200000000000000aabb640000000000000000020000000000000044444444444444444444444444444444444444444444444444444444444444440b000000090300000000000000000400000000000000deadbeef0c000000000000000122222222222222222222222222222222222222222222222222222222222222220700000080841e0000000000000002000000000000005152630000000000000000";
@@ -592,7 +600,10 @@ mod tests {
         let mut bytes = vec![0u8; PRE_TOCCATA_HEX.len() / 2];
         faster_hex::hex_decode(PRE_TOCCATA_HEX.as_bytes(), &mut bytes).unwrap();
 
-        let decoded: UtxoDiff = bincode::deserialize(&bytes).expect("decode pre-Toccata UtxoDiff");
+        // The shadow type's derived `Deserialize` has no trailing Option to
+        // probe past, so it composes cleanly inside `HashMap`.
+        let shadow: PreToccataUtxoDiff = bincode::deserialize(&bytes).expect("decode pre-Toccata UtxoDiff shadow");
+        let decoded: UtxoDiff = shadow.into();
 
         assert_eq!(decoded.add.len(), 2);
         assert_eq!(decoded.remove.len(), 2);
