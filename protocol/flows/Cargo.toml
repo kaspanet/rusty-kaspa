@@ -40,5 +40,11 @@ tokio-stream = { workspace = true, features = ["net"] }
 uuid = { workspace = true, features = ["v4", "fast-rng"] }
 chrono.workspace = true
 
+[features]
+# Lowers `SMT_CHUNK_SIZE` and `SMT_FLOW_CONTROL_WINDOW` to tiny values so
+# integration tests can exercise the chunked / flow-controlled SMT IBD path
+# without generating tens of thousands of active lanes.
+test-smt-small-chunks = []
+
 [lints]
 workspace = true

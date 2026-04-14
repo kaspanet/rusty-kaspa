@@ -677,8 +677,9 @@ impl IbdFlow {
         // by the importer is enough headroom; each chunk holds up to SMT_CHUNK_SIZE lanes.
         let (tx, rx) = tokio::sync::mpsc::channel::<Vec<kaspa_consensus_core::api::ImportLane>>(2);
 
-        let builder_handle = consensus.clone().spawn_blocking(move |c| {
-            c.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, rx)
+        let consensus_for_import = consensus.clone();
+        let builder_handle = tokio::task::spawn_blocking(move || {
+            consensus_for_import.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, rx)
         });
 
         while let Some(chunk) = stream.next_chunk().await? {
@@ -686,7 +687,7 @@ impl IbdFlow {
         }
         drop(tx);
 
-        builder_handle.await?;
+        builder_handle.await.map_err(|e| ProtocolError::OtherOwned(format!("SMT builder task panicked: {e}")))??;
         consensus.async_set_pruning_smt_stable().await;
 
         info!("SMT state synced: {} lanes", stream.lane_count());

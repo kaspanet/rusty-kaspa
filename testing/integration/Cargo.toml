@@ -70,6 +70,9 @@ criterion.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true, features = ["rt", "macros", "process"] }
 kaspa-txscript-errors.workspace = true
+# Enable the small-chunk feature only in test builds so integration tests can
+# exercise the SMT chunk / flow-control path without requiring thousands of lanes.
+kaspa-p2p-flows = { workspace = true, features = ["test-smt-small-chunks"] }
 
 [features]
 heap = ["dhat"]

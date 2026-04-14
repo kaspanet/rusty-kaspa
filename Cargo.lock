@@ -3734,6 +3734,7 @@ dependencies = [
  "kaspa-merkle",
  "kaspa-muhash",
  "kaspa-notify",
+ "kaspa-p2p-flows",
  "kaspa-pow",
  "kaspa-rpc-core",
  "kaspa-rpc-service",

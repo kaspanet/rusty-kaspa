@@ -25,13 +25,19 @@ use tokio::time::timeout;
 pub const IBD_BATCH_SIZE: usize = 99;
 
 /// Maximum number of SMT lane entries carried by a single `SmtLaneChunkMessage`.
+#[cfg(not(feature = "test-smt-small-chunks"))]
 pub const SMT_CHUNK_SIZE: usize = 4096;
+#[cfg(feature = "test-smt-small-chunks")]
+pub const SMT_CHUNK_SIZE: usize = 4;
 
 /// After receiving every `SMT_FLOW_CONTROL_WINDOW`-th chunk the receiver asks for
 /// more. Each chunk already batches thousands of lanes, so 10 is plenty of
 /// round-trips while keeping the in-flight message count far below the 256
 /// incoming-route capacity.
+#[cfg(not(feature = "test-smt-small-chunks"))]
 pub const SMT_FLOW_CONTROL_WINDOW: usize = 10;
+#[cfg(feature = "test-smt-small-chunks")]
+pub const SMT_FLOW_CONTROL_WINDOW: usize = 2;
 
 pub struct TrustedEntryStream<'a, 'b> {
     router: &'a Router,
