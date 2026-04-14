@@ -257,7 +257,7 @@ impl TryFrom<&TransactionOutput> for SerializableTransactionOutput {
     type Error = Error;
     fn try_from(output: &TransactionOutput) -> Result<Self> {
         let inner = output.inner();
-        let covenant = inner.covenant.map(SerializableCovenantBinding::from);
+        let covenant = inner.covenant.clone().map(SerializableCovenantBinding::from);
         Ok(Self { value: inner.value, script_public_key: inner.script_public_key.clone(), covenant })
     }
 }

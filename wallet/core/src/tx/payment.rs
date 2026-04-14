@@ -68,6 +68,7 @@ pub struct PaymentOutput {
     #[wasm_bindgen(getter_with_clone)]
     pub address: Address,
     pub amount: u64,
+    #[wasm_bindgen(getter_with_clone)]
     pub covenant: Option<ClientCovenantBinding>,
 }
 
