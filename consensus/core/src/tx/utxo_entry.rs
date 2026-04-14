@@ -85,8 +85,7 @@ impl<'de> Deserialize<'de> for UtxoEntry {
 
                 fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<UtxoEntry, A::Error> {
                     let amount: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(0, &self))?;
-                    let script_public_key: ScriptPublicKey =
-                        seq.next_element()?.ok_or_else(|| DeError::invalid_length(1, &self))?;
+                    let script_public_key: ScriptPublicKey = seq.next_element()?.ok_or_else(|| DeError::invalid_length(1, &self))?;
                     let block_daa_score: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(2, &self))?;
                     let is_coinbase: bool = seq.next_element()?.ok_or_else(|| DeError::invalid_length(3, &self))?;
                     // Pre-Toccata entries have no trailing Option tag; the

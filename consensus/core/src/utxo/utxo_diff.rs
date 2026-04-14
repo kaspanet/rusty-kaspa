@@ -573,4 +573,61 @@ mod tests {
         drop(utxo_entry1);
         drop(utxo_entry2);
     }
+
+    /// Decodes a `UtxoDiff` whose `UtxoEntry` values were bincode-serialized
+    /// by a pre-Toccata node (no trailing `covenant_id` Option tag) and checks
+    /// it comes back as the equivalent post-Toccata `UtxoDiff` with all
+    /// `covenant_id`s defaulting to `None`.
+    ///
+    /// Inside a `HashMap` the post-Toccata `UtxoEntry` decoder cannot rely on
+    /// EOF to detect the missing trailing field — once one entry is decoded
+    /// the bincode reader is sitting on the next entry's bytes, not at EOF.
+    /// Two entries per side exercise the entry-to-entry boundary.
+    #[test]
+    fn decode_pre_toccata_utxo_diff_fixture() {
+        // Captured on the `master` worktree from a 2-add / 2-remove `UtxoDiff`
+        // built with the pre-Toccata `UtxoEntry` layout.
+        const PRE_TOCCATA_HEX: &str = "0200000000000000111111111111111111111111111111111111111111111111111111111111111100000000efcdab89674523010000060000000000000076a9140102032a0000000000000001333333333333333333333333333333333333333333333333333333333333333304000000f40100000000000000000200000000000000aabb640000000000000000020000000000000044444444444444444444444444444444444444444444444444444444444444440b000000090300000000000000000400000000000000deadbeef0c000000000000000122222222222222222222222222222222222222222222222222222222222222220700000080841e0000000000000002000000000000005152630000000000000000";
+
+        let mut bytes = vec![0u8; PRE_TOCCATA_HEX.len() / 2];
+        faster_hex::hex_decode(PRE_TOCCATA_HEX.as_bytes(), &mut bytes).unwrap();
+
+        let decoded: UtxoDiff = bincode::deserialize(&bytes).expect("decode pre-Toccata UtxoDiff");
+
+        assert_eq!(decoded.add.len(), 2);
+        assert_eq!(decoded.remove.len(), 2);
+
+        let op_add_a = TransactionOutpoint::new(TransactionId::from_bytes([0x11; 32]), 0);
+        let op_add_b = TransactionOutpoint::new(TransactionId::from_bytes([0x33; 32]), 4);
+        let op_remove_a = TransactionOutpoint::new(TransactionId::from_bytes([0x22; 32]), 7);
+        let op_remove_b = TransactionOutpoint::new(TransactionId::from_bytes([0x44; 32]), 11);
+
+        let add_a = decoded.add.get(&op_add_a).expect("add entry a present");
+        assert_eq!(add_a.amount, 0x0123_4567_89ab_cdef);
+        assert_eq!(add_a.block_daa_score, 42);
+        assert!(add_a.is_coinbase);
+        assert_eq!(add_a.script_public_key.script(), [0x76, 0xa9, 0x14, 0x01, 0x02, 0x03].as_slice());
+        assert_eq!(add_a.covenant_id, None);
+
+        let add_b = decoded.add.get(&op_add_b).expect("add entry b present");
+        assert_eq!(add_b.amount, 500);
+        assert_eq!(add_b.block_daa_score, 100);
+        assert!(!add_b.is_coinbase);
+        assert_eq!(add_b.script_public_key.script(), [0xaa, 0xbb].as_slice());
+        assert_eq!(add_b.covenant_id, None);
+
+        let remove_a = decoded.remove.get(&op_remove_a).expect("remove entry a present");
+        assert_eq!(remove_a.amount, 2_000_000);
+        assert_eq!(remove_a.block_daa_score, 99);
+        assert!(!remove_a.is_coinbase);
+        assert_eq!(remove_a.script_public_key.script(), [0x51, 0x52].as_slice());
+        assert_eq!(remove_a.covenant_id, None);
+
+        let remove_b = decoded.remove.get(&op_remove_b).expect("remove entry b present");
+        assert_eq!(remove_b.amount, 777);
+        assert_eq!(remove_b.block_daa_score, 12);
+        assert!(remove_b.is_coinbase);
+        assert_eq!(remove_b.script_public_key.script(), [0xde, 0xad, 0xbe, 0xef].as_slice());
+        assert_eq!(remove_b.covenant_id, None);
+    }
 }

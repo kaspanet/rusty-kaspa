@@ -9,6 +9,7 @@
 mod script_public_key;
 mod utxo_entry;
 
+use crate::hashing::tx::seq_commit_tx_digest;
 use crate::mass::{
     ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
 };
@@ -18,13 +19,13 @@ use crate::{
     subnets::{self, SubnetworkId},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use kaspa_hashes::Hash;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
 pub use script_public_key::{
     SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
-pub use utxo_entry::UtxoEntry;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -35,8 +36,7 @@ use std::{
     ops::Range,
     str::{self},
 };
-use crate::hashing::tx::seq_commit_tx_digest;
-use kaspa_hashes::Hash;
+pub use utxo_entry::UtxoEntry;
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;

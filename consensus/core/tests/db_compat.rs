@@ -133,7 +133,8 @@ fn decode_pre_toccata_block_body() {
 
 #[test]
 fn roundtrip_pre_toccata_regular_transaction() {
-    let decoded: Transaction = bincode::deserialize(fixture("transaction_v0_regular")).expect("decode pre-Toccata regular Transaction");
+    let decoded: Transaction =
+        bincode::deserialize(fixture("transaction_v0_regular")).expect("decode pre-Toccata regular Transaction");
     let re_encoded = bincode::serialize(&decoded).unwrap();
     let redecoded: Transaction = bincode::deserialize(&re_encoded).expect("re-decode Transaction");
 
