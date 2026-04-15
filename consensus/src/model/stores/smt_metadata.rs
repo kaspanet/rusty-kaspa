@@ -53,4 +53,8 @@ impl DbSmtMetadataStore {
     pub fn delete_all(&self) -> StoreResult<()> {
         self.access.delete_all(DirectDbWriter::new(&self.db))
     }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, block_hash: Hash) -> StoreResult<()> {
+        self.access.delete(BatchDbWriter::new(batch), block_hash)
+    }
 }
