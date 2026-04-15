@@ -55,7 +55,7 @@ pub struct BlockValidationFutures {
 /// only exist so the receiver can abort a misbehaving peer mid-stream before
 /// downloading everything, so a sparse stride is enough — one every ~1M lanes
 /// bounds wasted bandwidth and eliminates per-lane `prove_lane` cost on the
-/// sender (which previously dominated the handler's CPU budget).
+/// sender
 pub const SMT_PROOF_INTERVAL: usize = 1 << 20;
 
 /// A lane to import during IBD SMT sync.
