@@ -25,6 +25,9 @@ thiserror.workspace = true
 triggered.workspace = true
 
 [dev-dependencies]
+bincode.workspace = true
+faster-hex.workspace = true
+serde_json.workspace = true
 # parking_lot.workspace = true
 # tokio = { workspace = true, features = ["rt", "macros"] }
 # rand = {workspace = true,  features = [ "small_rng" ]}

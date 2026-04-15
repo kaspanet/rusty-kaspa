@@ -3230,7 +3230,9 @@ version = "1.1.0"
 dependencies = [
  "async-channel 2.3.1",
  "async-trait",
+ "bincode",
  "derive_more 0.99.18",
+ "faster-hex 0.9.0",
  "futures",
  "kaspa-consensus-core",
  "kaspa-hashes",
@@ -3239,6 +3241,7 @@ dependencies = [
  "log",
  "paste",
  "serde",
+ "serde_json",
  "thiserror 1.0.64",
  "triggered",
 ]
