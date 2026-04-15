@@ -1195,8 +1195,7 @@ impl ConsensusApi for Consensus {
         if pp != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
-        let pp_header = self.storage.headers_store.get_header(pp).unwrap();
-        let max_score = pp_header.blue_score;
+        let max_score = self.storage.headers_store.get_blue_score(pp).unwrap();
         let min_score = max_score.saturating_sub(self.config.params.finality_depth());
 
         let smt_stores = self.storage.smt_stores.clone();
@@ -1211,11 +1210,18 @@ impl ConsensusApi for Consensus {
         // must not be part of the SMT state exported for this pruning point.
         let raw = smt_stores.lane_version.iter_all_canonical_owned(None, min_score, Some(max_score), is_canonical);
 
+        let sl = self.session_lock().clone();
+        let pps = self.pruning_point_store.clone();
         let smt_stores_proof = smt_stores.clone();
         let mut idx: u64 = 0;
         let mapped = raw.map(move |res| -> ConsensusResult<ImportLane> {
             let (lane_key, verified) = res.map_err(|e| ConsensusError::GeneralOwned(format!("SMT lane iter: {e}")))?;
             let proof = if (idx as usize).is_multiple_of(SMT_PROOF_INTERVAL) {
+                let _g = sl.blocking_read();
+                let upp = pps.read().pruning_point().unwrap();
+                if upp != pp {
+                    return Err(ConsensusError::UnexpectedPruningPoint);
+                }
                 let vp_proof = vp.clone();
                 Some(
                     smt_stores_proof
