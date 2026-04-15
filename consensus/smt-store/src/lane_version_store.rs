@@ -60,23 +60,36 @@ impl DbLaneVersionStore {
         writer.delete(key).map_err(StoreError::DbError)
     }
 
-    /// Find the latest canonical version with `score >= min_blue_score`.
+    /// Find the latest canonical version in `[min_blue_score, target_blue_score]`.
     ///
-    /// Iterates from the highest score downward, stopping at `min_blue_score`.
-    /// Returns the first entry where `is_canonical(block_hash)` is true.
-    pub fn get(
+    /// Iterates via `get_at` from `target_blue_score` downward, stopping at
+    /// `min_blue_score`. Returns the first entry where `is_canonical(block_hash)`
+    /// is true.
+    pub fn get_at_canonical(
         &self,
         lane_key: Hash,
+        target_blue_score: u64,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool,
     ) -> StoreResult<Option<Verified<LaneTipHash>>> {
-        for entry in self.get_at(lane_key, u64::MAX, min_blue_score) {
+        for entry in self.get_at(lane_key, target_blue_score, min_blue_score) {
             let entry = entry?;
             if is_canonical(entry.block_hash()) {
                 return Ok(Some(entry.into_verified()));
             }
         }
         Ok(None)
+    }
+
+    /// Test helper: unbounded-target variant of [`Self::get_at_canonical`].
+    #[cfg(test)]
+    pub fn get(
+        &self,
+        lane_key: Hash,
+        min_blue_score: u64,
+        is_canonical: impl FnMut(Hash) -> bool,
+    ) -> StoreResult<Option<Verified<LaneTipHash>>> {
+        self.get_at_canonical(lane_key, u64::MAX, min_blue_score, is_canonical)
     }
 
     /// Iterate versions for `lane_key` from `target_blue_score` downward.

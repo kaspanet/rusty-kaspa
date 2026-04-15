@@ -620,7 +620,7 @@ impl VirtualStateProcessor {
         let data = self.collect_mergeset_seq_data(ctx);
         let lane_updates =
             self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
-        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
+        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent, parent_header.blue_score);
 
         let (commit, _build) = self.build_seq_commit(
             parent_seq_commit,
@@ -658,7 +658,7 @@ impl VirtualStateProcessor {
         let parent_seq_commit = self.headers_store.get_header(pp_header.direct_parents()[0]).unwrap().accepted_id_merkle_root;
 
         let min_score = pp_header.blue_score.saturating_sub(self.finality_depth);
-        let lanes_root = self.smt_stores.get_lanes_root(min_score, |bh| self.is_smt_canonical(bh, pp));
+        let lanes_root = self.smt_stores.get_lanes_root(pp_header.blue_score, min_score, |bh| self.is_smt_canonical(bh, pp));
 
         Ok(SmtExportMetadata {
             lanes_root,
@@ -682,9 +682,9 @@ impl VirtualStateProcessor {
 
     /// Get the parent's lanes_root and active_lanes_count.
     /// lanes_root comes from the branch version store; active_lanes_count from metadata.
-    pub(super) fn get_parent_smt_metadata(&self, selected_parent: Hash) -> (Hash, u64) {
+    pub(super) fn get_parent_smt_metadata(&self, selected_parent: Hash, parent_blue_score: u64) -> (Hash, u64) {
         let active_lanes_count = self.smt_metadata_store.get(selected_parent).map(|meta| meta.active_lanes_count).unwrap_or(0);
-        let lanes_root = self.smt_stores.get_lanes_root(0, |bh| self.is_smt_canonical(bh, selected_parent));
+        let lanes_root = self.smt_stores.get_lanes_root(parent_blue_score, 0, |bh| self.is_smt_canonical(bh, selected_parent));
         (lanes_root, active_lanes_count)
     }
 
@@ -714,7 +714,10 @@ impl VirtualStateProcessor {
             }
             for lk in entry.data().iter() {
                 // Check if this lane has a newer canonical version (within the active window)
-                let has_newer = self.smt_stores.get_lane(*lk, curr_min, |bh| self.is_smt_canonical(bh, selected_parent)).is_some();
+                let has_newer = self
+                    .smt_stores
+                    .get_lane(*lk, current_blue_score, curr_min, |bh| self.is_smt_canonical(bh, selected_parent))
+                    .is_some();
 
                 if !has_newer {
                     proc.expire_lane(*lk);

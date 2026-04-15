@@ -37,6 +37,7 @@ use crate::{BlockHash, LaneKey};
 
 struct VersionedBranchReader<'a, F: Fn(Hash) -> bool> {
     stores: &'a SmtStores,
+    target_blue_score: u64,
     min_blue_score: u64,
     is_canonical: F,
 }
@@ -46,7 +47,10 @@ impl<F: Fn(Hash) -> bool> SmtStore for VersionedBranchReader<'_, F> {
 
     fn get_node(&self, key: &BranchKey) -> Result<Option<Node>, StoreError> {
         let entity = BranchEntity { depth: key.depth, node_key: key.node_key };
-        Ok(self.stores.get_node(entity, self.min_blue_score, |bh| (self.is_canonical)(bh)).and_then(|v| *v.data()))
+        Ok(self
+            .stores
+            .get_node(entity, self.target_blue_score, self.min_blue_score, |bh| (self.is_canonical)(bh))
+            .and_then(|v| *v.data()))
     }
 }
 
@@ -76,37 +80,47 @@ impl SmtStores {
         }
     }
 
-    /// Find the latest canonical node version, checking cache first then DB.
+    /// Find the latest canonical node version in `[min_blue_score, target_blue_score]`,
+    /// checking cache first then DB. `target_blue_score` is the block at which the
+    /// read is happening — it drives `get_at`'s seek so non-canonical future
+    /// versions are skipped in O(log n) rather than scanned linearly.
     pub fn get_node(
         &self,
         entity: BranchEntity,
+        target_blue_score: u64,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool,
     ) -> Option<Verified<Option<Node>>> {
-        if let Some((score, block_hash, value)) = self.branch_cache.lock().get(entity, u64::MAX, min_blue_score, &mut is_canonical) {
+        if let Some((score, block_hash, value)) =
+            self.branch_cache.lock().get(entity, target_blue_score, min_blue_score, &mut is_canonical)
+        {
             return Some(Verified::new(*value, score, block_hash));
         }
-        self.branch_version.get(entity.depth, entity.node_key, min_blue_score, is_canonical).unwrap()
+        self.branch_version.get_at_canonical(entity.depth, entity.node_key, target_blue_score, min_blue_score, is_canonical).unwrap()
     }
 
-    /// Find the latest canonical lane version, checking cache first then DB.
+    /// Find the latest canonical lane version in `[min_blue_score, target_blue_score]`,
+    /// checking cache first then DB.
     pub fn get_lane(
         &self,
         lane_key: LaneKey,
+        target_blue_score: u64,
         min_blue_score: u64,
         mut is_canonical: impl FnMut(Hash) -> bool,
     ) -> Option<Verified<LaneTipHash>> {
-        if let Some((score, block_hash, value)) = self.lane_cache.lock().get(lane_key, u64::MAX, min_blue_score, &mut is_canonical) {
+        if let Some((score, block_hash, value)) =
+            self.lane_cache.lock().get(lane_key, target_blue_score, min_blue_score, &mut is_canonical)
+        {
             return Some(Verified::new(*value, score, block_hash));
         }
-        self.lane_version.get(lane_key, min_blue_score, is_canonical).unwrap()
+        self.lane_version.get_at_canonical(lane_key, target_blue_score, min_blue_score, is_canonical).unwrap()
     }
 
     /// Read the lanes root hash from the branch store at depth=0.
     /// Returns the empty root if no root node exists.
-    pub fn get_lanes_root(&self, min_blue_score: u64, is_canonical: impl FnMut(Hash) -> bool) -> Hash {
+    pub fn get_lanes_root(&self, target_blue_score: u64, min_blue_score: u64, is_canonical: impl FnMut(Hash) -> bool) -> Hash {
         let root_entity = BranchEntity { depth: 0, node_key: Hash::from_bytes([0; 32]) };
-        match self.get_node(root_entity, min_blue_score, is_canonical) {
+        match self.get_node(root_entity, target_blue_score, min_blue_score, is_canonical) {
             Some(v) => match *v.data() {
                 Some(Node::Internal(hash)) => hash,
                 Some(Node::Collapsed(cl)) => {
@@ -118,9 +132,16 @@ impl SmtStores {
         }
     }
 
-    /// Generate an inclusion proof for `lane_key` in the current canonical tree.
-    pub fn prove_lane(&self, lane_key: &Hash, min_blue_score: u64, is_canonical: impl Fn(Hash) -> bool) -> StoreResult<OwnedSmtProof> {
-        let reader = VersionedBranchReader { stores: self, min_blue_score, is_canonical };
+    /// Generate an inclusion proof for `lane_key` in the canonical tree as of
+    /// `target_blue_score`.
+    pub fn prove_lane(
+        &self,
+        lane_key: &Hash,
+        target_blue_score: u64,
+        min_blue_score: u64,
+        is_canonical: impl Fn(Hash) -> bool,
+    ) -> StoreResult<OwnedSmtProof> {
+        let reader = VersionedBranchReader { stores: self, target_blue_score, min_blue_score, is_canonical };
         // Root value is unused by `prove` — it walks the store directly.
         let tree = SparseMerkleTree::<SeqCommitActiveNode, _>::with_store(reader);
         tree.prove(lane_key)
@@ -423,6 +444,7 @@ impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
         let leaf_updates = self.lane_changes.to_leaf_updates();
         let reader = VersionedBranchReader {
             stores: self.stores,
+            target_blue_score: self.blue_score,
             min_blue_score: self.blue_score.saturating_sub(self.inactivity_threshold),
             is_canonical,
         };

@@ -560,9 +560,10 @@ impl VirtualStateProcessor {
 
             // Look up current lane tip.
             // New/reactivated lanes use parent_seq_commit as anchor (KIP-21 §5.1).
-            let existing = self
-                .smt_stores
-                .get_lane(lk, parent_blue_score.saturating_sub(self.finality_depth), |bh| self.is_smt_canonical(bh, selected_parent));
+            let existing =
+                self.smt_stores.get_lane(lk, parent_blue_score, parent_blue_score.saturating_sub(self.finality_depth), |bh| {
+                    self.is_smt_canonical(bh, selected_parent)
+                });
             let is_new = existing.is_none();
             let parent_ref = existing.map(|v| *v.data()).unwrap_or(parent_seq_commit);
 
@@ -648,7 +649,7 @@ impl VirtualStateProcessor {
         let data = self.collect_mergeset_seq_data(ctx);
         let lane_updates =
             self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
-        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent);
+        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent, parent_header.blue_score);
 
         let (hash, build) = self.build_seq_commit(
             parent_seq_commit,

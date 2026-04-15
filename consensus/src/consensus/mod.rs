@@ -1219,7 +1219,7 @@ impl ConsensusApi for Consensus {
                 let vp_proof = vp.clone();
                 Some(
                     smt_stores_proof
-                        .prove_lane(&lane_key, min_score, move |bh| vp_proof.is_smt_canonical(bh, pp))
+                        .prove_lane(&lane_key, max_score, min_score, move |bh| vp_proof.is_smt_canonical(bh, pp))
                         .map_err(|e| ConsensusError::GeneralOwned(format!("prove_lane: {e}")))?,
                 )
             } else {
