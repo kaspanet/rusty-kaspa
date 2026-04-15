@@ -21,6 +21,7 @@ log = { workspace = true, features = ["kv_std"] }
 parking_lot.workspace = true
 rayon.workspace = true
 rocksdb.workspace = true
+self_cell.workspace = true
 zerocopy = { workspace = true }
 
 [dev-dependencies]

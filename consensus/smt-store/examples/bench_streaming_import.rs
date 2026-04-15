@@ -51,6 +51,29 @@ fn main() {
     println!("  Lanes imported: {}", result.lanes_imported);
     println!("  Nodes written: {}", result.nodes_written);
     println!("  RSS: {rss_before} MB -> {rss_after} MB (delta: {} MB)", rss_after.saturating_sub(rss_before));
+
+    // Handler-side read: mirror what `handle_request` does inside its
+    // spawn_blocking task — one owned canonical cursor drives the whole
+    // stream, batched into `chunk_size` groups.
+    let chunk_size: usize = 4096;
+    let t_read = Instant::now();
+    let mut total = 0u64;
+    let mut batches: usize = 0;
+    let mut batch_len: usize = 0;
+    for item in stores.lane_version.iter_all_canonical_owned(None, 0, |_| true) {
+        let _ = item.unwrap();
+        batch_len += 1;
+        total += 1;
+        if batch_len == chunk_size {
+            batches += 1;
+            batch_len = 0;
+        }
+    }
+    if batch_len > 0 {
+        batches += 1;
+    }
+    let read_ms = t_read.elapsed().as_millis();
+    println!("  Owned-cursor read: {read_ms} ms ({total} lanes, {batches} batches of <= {chunk_size})");
 }
 
 fn data_file_path(count: u64) -> PathBuf {

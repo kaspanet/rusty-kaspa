@@ -1185,13 +1185,10 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.get_pruning_point_smt_metadata(expected_pruning_point)
     }
 
-    fn get_pruning_point_smt_lanes_chunk(
+    fn open_pruning_point_smt_lane_stream(
         &self,
         expected_pruning_point: Hash,
-        from_lane_key: Option<Hash>,
-        limit: usize,
-        starting_lane_idx: u64,
-    ) -> ConsensusResult<Vec<kaspa_consensus_core::api::ImportLane>> {
+    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<kaspa_consensus_core::api::ImportLane>> + Send + 'static>> {
         use kaspa_consensus_core::api::{ImportLane, SMT_PROOF_INTERVAL};
 
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
@@ -1201,31 +1198,34 @@ impl ConsensusApi for Consensus {
         let pp_header = self.storage.headers_store.get_header(pp).unwrap();
         let min_score = pp_header.blue_score.saturating_sub(self.config.params.finality_depth());
 
-        let processor = self.virtual_processor.clone();
-        let is_canonical = move |bh| processor.is_smt_canonical(bh, pp);
+        let smt_stores = self.storage.smt_stores.clone();
+        let vp = self.virtual_processor.clone();
 
-        self.storage
-            .smt_stores
-            .lane_version
-            .iter_all_canonical(from_lane_key, min_score, is_canonical)
-            .take(limit)
-            .enumerate()
-            .map(|(i, res)| {
-                let (lk, v) = res.unwrap();
-                let absolute_idx = starting_lane_idx + i as u64;
-                let proof = if (absolute_idx as usize).is_multiple_of(SMT_PROOF_INTERVAL) {
-                    Some(
-                        self.storage
-                            .smt_stores
-                            .prove_lane(&lk, min_score, |bh| self.virtual_processor.is_smt_canonical(bh, pp))
-                            .unwrap(),
-                    )
-                } else {
-                    None
-                };
-                Ok(ImportLane { lane_key: lk, lane_tip: *v.data(), blue_score: v.blue_score(), proof })
-            })
-            .collect()
+        let is_canonical = {
+            let vp = vp.clone();
+            move |bh| vp.is_smt_canonical(bh, pp)
+        };
+        let raw = smt_stores.lane_version.iter_all_canonical_owned(None, min_score, is_canonical);
+
+        let smt_stores_proof = smt_stores.clone();
+        let mut idx: u64 = 0;
+        let mapped = raw.map(move |res| -> ConsensusResult<ImportLane> {
+            let (lane_key, verified) = res.map_err(|e| ConsensusError::GeneralOwned(format!("SMT lane iter: {e}")))?;
+            let proof = if (idx as usize).is_multiple_of(SMT_PROOF_INTERVAL) {
+                let vp_proof = vp.clone();
+                Some(
+                    smt_stores_proof
+                        .prove_lane(&lane_key, min_score, move |bh| vp_proof.is_smt_canonical(bh, pp))
+                        .map_err(|e| ConsensusError::GeneralOwned(format!("prove_lane: {e}")))?,
+                )
+            } else {
+                None
+            };
+            idx += 1;
+            Ok(ImportLane { lane_key, lane_tip: *verified.data(), blue_score: verified.blue_score(), proof })
+        });
+
+        Ok(Box::new(mapped))
     }
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {

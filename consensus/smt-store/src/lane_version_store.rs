@@ -2,11 +2,24 @@ use std::sync::Arc;
 
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_hashes::Hash;
+use rocksdb::{DBRawIteratorWithThreadMode, DBWithThreadMode, MultiThreaded};
+use self_cell::self_cell;
 use zerocopy::{FromBytes, IntoBytes};
 
 use crate::keys::LaneVersionKey;
 use crate::maybe_fork::{MaybeFork, Verified};
 use crate::values::LaneTipHash;
+
+type LaneRawIter<'a> = DBRawIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>;
+
+self_cell!(
+    struct LaneIterCell {
+        owner: Arc<DB>,
+
+        #[covariant]
+        dependent: LaneRawIter,
+    }
+);
 
 /// Lane Versions.
 ///
@@ -152,15 +165,10 @@ impl DbLaneVersionStore {
         &'a self,
         from_lane_key: Option<Hash>,
         min_blue_score: u64,
-        mut is_canonical: impl FnMut(Hash) -> bool + 'a,
+        is_canonical: impl Fn(Hash) -> bool + 'a,
     ) -> impl Iterator<Item = StoreResult<(Hash, Verified<LaneTipHash>)>> + 'a {
         let prefix = self.prefix;
-        let prefix_bytes = [prefix];
-
-        let start_seek = match from_lane_key {
-            Some(k) => next_lane_seek_key(prefix, k),
-            None => Some(LaneVersionKey::seek_key(prefix, Hash::from_bytes([0; 32]), u64::MAX)),
-        };
+        let start_seek = start_seek_key(prefix, from_lane_key);
 
         let mut iter = self.db.raw_iterator();
         let mut done = start_seek.is_none();
@@ -168,66 +176,138 @@ impl DbLaneVersionStore {
             iter.seek(seek);
         }
 
-        std::iter::from_fn(move || {
-            loop {
-                if done {
-                    return None;
-                }
-                if !iter.valid() {
-                    done = true;
-                    return iter.status().err().map(|e| Err(StoreError::DbError(e)));
-                }
+        std::iter::from_fn(move || advance_canonical_lane(&mut iter, prefix, min_blue_score, &is_canonical, &mut done))
+    }
 
-                let Some(key_bytes) = iter.key() else {
-                    done = true;
-                    return None;
-                };
-                if !key_bytes.starts_with(&prefix_bytes) {
-                    done = true;
-                    return None;
-                }
+    /// Owned variant of [`Self::iter_all_canonical`]. The returned iterator
+    /// contains its own `Arc<DB>` + underlying RocksDB iterator bundled via
+    /// `self_cell`, so it can be moved across `spawn_blocking` boundaries
+    /// and driven without holding any borrow on `&self`.
+    ///
+    /// Used by the IBD SMT sender: one live cursor drives the entire stream,
+    /// so the O(non-canonical-entries) skip cost is paid once rather than on
+    /// every `SMT_CHUNK_SIZE` batch.
+    pub fn iter_all_canonical_owned<F>(
+        &self,
+        from_lane_key: Option<Hash>,
+        min_blue_score: u64,
+        is_canonical: F,
+    ) -> impl Iterator<Item = StoreResult<(Hash, Verified<LaneTipHash>)>> + Send + 'static
+    where
+        F: Fn(Hash) -> bool + Send + 'static,
+    {
+        let prefix = self.prefix;
+        let start_seek = start_seek_key(prefix, from_lane_key);
+        let done = start_seek.is_none();
 
-                let Ok(key) = LaneVersionKey::ref_from_bytes(key_bytes) else {
-                    done = true;
-                    return Some(Err(StoreError::DataInconsistency("lane version key".to_string())));
-                };
-
-                let lane_key = key.lane_key;
-                let blue_score = key.rev_blue_score.blue_score();
-                let block_hash = key.block_hash;
-
-                if blue_score < min_blue_score {
-                    let Some(seek) = next_lane_seek_key(prefix, lane_key) else {
-                        done = true;
-                        return None;
-                    };
-                    iter.seek(seek);
-                    continue;
-                }
-
-                if !is_canonical(block_hash) {
-                    iter.next();
-                    continue;
-                }
-
-                let Some(value_bytes) = iter.value() else {
-                    done = true;
-                    return None;
-                };
-                let Ok(tip_hash) = Hash::read_from_bytes(value_bytes) else {
-                    done = true;
-                    return Some(Err(StoreError::DataInconsistency("lane version value".to_string())));
-                };
-
-                let result = Verified::new(tip_hash, blue_score, block_hash);
-                if let Some(seek) = next_lane_seek_key(prefix, lane_key) {
-                    iter.seek(seek);
-                } else {
-                    done = true;
-                }
-                return Some(Ok((lane_key, result)));
+        let cell = LaneIterCell::new(self.db.clone(), |db| {
+            let mut iter = db.raw_iterator();
+            if let Some(seek) = start_seek {
+                iter.seek(seek);
             }
-        })
+            iter
+        });
+
+        OwnedCanonicalLaneIter { cell, prefix, min_blue_score, is_canonical, done }
+    }
+}
+
+struct OwnedCanonicalLaneIter<F: Fn(Hash) -> bool + Send + 'static> {
+    cell: LaneIterCell,
+    prefix: u8,
+    min_blue_score: u64,
+    is_canonical: F,
+    done: bool,
+}
+
+impl<F: Fn(Hash) -> bool + Send + 'static> Iterator for OwnedCanonicalLaneIter<F> {
+    type Item = StoreResult<(Hash, Verified<LaneTipHash>)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let prefix = self.prefix;
+        let min_blue_score = self.min_blue_score;
+        let is_canonical = &self.is_canonical;
+        let done = &mut self.done;
+        self.cell.with_dependent_mut(|_, iter| advance_canonical_lane(iter, prefix, min_blue_score, is_canonical, done))
+    }
+}
+
+fn start_seek_key(prefix: u8, from_lane_key: Option<Hash>) -> Option<LaneVersionKey> {
+    match from_lane_key {
+        Some(k) => next_lane_seek_key(prefix, k),
+        None => Some(LaneVersionKey::seek_key(prefix, Hash::from_bytes([0; 32]), u64::MAX)),
+    }
+}
+
+/// Advance `iter` one yielded canonical lane. Mirrors the state machine
+/// previously inlined into `iter_all_canonical` — extracted so both the
+/// borrowed and owned iterators share one implementation. The caller owns
+/// `done`; this function sets it when the iterator is exhausted.
+fn advance_canonical_lane(
+    iter: &mut LaneRawIter<'_>,
+    prefix: u8,
+    min_blue_score: u64,
+    is_canonical: &impl Fn(Hash) -> bool,
+    done: &mut bool,
+) -> Option<StoreResult<(Hash, Verified<LaneTipHash>)>> {
+    let prefix_bytes = [prefix];
+    loop {
+        if *done {
+            return None;
+        }
+        if !iter.valid() {
+            *done = true;
+            return iter.status().err().map(|e| Err(StoreError::DbError(e)));
+        }
+
+        let Some(key_bytes) = iter.key() else {
+            *done = true;
+            return None;
+        };
+        if !key_bytes.starts_with(&prefix_bytes) {
+            *done = true;
+            return None;
+        }
+
+        let Ok(key) = LaneVersionKey::ref_from_bytes(key_bytes) else {
+            *done = true;
+            return Some(Err(StoreError::DataInconsistency("lane version key".to_string())));
+        };
+
+        let lane_key = key.lane_key;
+        let blue_score = key.rev_blue_score.blue_score();
+        let block_hash = key.block_hash;
+
+        if blue_score < min_blue_score {
+            let Some(seek) = next_lane_seek_key(prefix, lane_key) else {
+                *done = true;
+                return None;
+            };
+            iter.seek(seek);
+            continue;
+        }
+
+        if !is_canonical(block_hash) {
+            iter.next();
+            continue;
+        }
+
+        let Some(value_bytes) = iter.value() else {
+            *done = true;
+            return None;
+        };
+        let Ok(tip_hash) = Hash::read_from_bytes(value_bytes) else {
+            *done = true;
+            return Some(Err(StoreError::DataInconsistency("lane version value".to_string())));
+        };
+
+        let result = Verified::new(tip_hash, blue_score, block_hash);
+        if let Some(seek) = next_lane_seek_key(prefix, lane_key) {
+            iter.seek(seek);
+        } else {
+            *done = true;
+        }
+        return Some(Ok((lane_key, result)));
     }
 }
 
@@ -426,6 +506,45 @@ mod tests {
 
         let results: Vec<_> = store.iter_all_canonical(None, 0, |_| false).collect::<Result<Vec<_>, _>>().unwrap();
         assert!(results.is_empty(), "no canonical version means no results");
+    }
+
+    #[test]
+    fn iter_all_canonical_owned_matches_borrowed() {
+        let (_lt, store) = make_store();
+        let canonical = hash(0x01);
+        let non_canonical = hash(0xFE);
+
+        // Mixed bag: multiple lanes, multiple versions per lane, some non-canonical.
+        for lane in 0x10u8..0x20 {
+            for score in [30u64, 80, 150, 220] {
+                let bh = if (lane + score as u8) & 1 == 0 { canonical } else { non_canonical };
+                store.put(DirectDbWriter::new(&store.db), hash(lane), score, bh, &hash(lane.wrapping_mul(score as u8))).unwrap();
+            }
+        }
+
+        let borrowed: Vec<_> = store.iter_all_canonical(None, 100, move |bh| bh == canonical).collect::<Result<Vec<_>, _>>().unwrap();
+
+        let owned: Vec<_> =
+            store.iter_all_canonical_owned(None, 100, move |bh| bh == canonical).collect::<Result<Vec<_>, _>>().unwrap();
+
+        assert_eq!(borrowed.len(), owned.len());
+        for (b, o) in borrowed.iter().zip(owned.iter()) {
+            assert_eq!(b.0, o.0);
+            assert_eq!(b.1.blue_score(), o.1.blue_score());
+            assert_eq!(b.1.block_hash(), o.1.block_hash());
+            assert_eq!(b.1.data(), o.1.data());
+        }
+    }
+
+    #[test]
+    fn iter_all_canonical_owned_is_send() {
+        fn assert_send<T: Send>(_: &T) {}
+        let (_lt, store) = make_store();
+        store.put(DirectDbWriter::new(&store.db), hash(0x11), 100, hash(0x01), &hash(0xAA)).unwrap();
+        let iter = store.iter_all_canonical_owned(None, 0, |_| true);
+        assert_send(&iter);
+        let results: Vec<_> = iter.collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(results.len(), 1);
     }
 
     #[test]

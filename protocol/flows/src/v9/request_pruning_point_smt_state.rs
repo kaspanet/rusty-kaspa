@@ -3,8 +3,8 @@ use crate::{
     flow_trait::Flow,
     ibd::{SMT_CHUNK_SIZE, SMT_FLOW_CONTROL_WINDOW},
 };
-use kaspa_consensus_core::errors::consensus::ConsensusError;
-use kaspa_core::debug;
+use kaspa_consensus_core::{api::ImportLane, errors::consensus::ConsensusError};
+use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
@@ -52,10 +52,10 @@ impl RequestPruningPointSmtStateFlow {
             Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point().await,
             res => res,
         }?;
+        drop(session);
 
         let expected_count = metadata.active_lanes_count;
 
-        // Send metadata: lanes_root || payload_and_ctx_digest || parent_seq_commit (96 bytes)
         let mut md_bytes = Vec::with_capacity(96);
         md_bytes.extend_from_slice(&metadata.lanes_root.as_bytes());
         md_bytes.extend_from_slice(&metadata.payload_and_ctx_digest.as_bytes());
@@ -64,43 +64,45 @@ impl RequestPruningPointSmtStateFlow {
             .enqueue(make_message!(Payload::SmtMetadata, SmtMetadataMessage { data: md_bytes, active_lanes_count: expected_count }))
             .await?;
 
-        drop(session);
-
         if expected_count == 0 {
             debug!("Finished sending SMT state for pruning point {}: 0 lanes", expected_pp);
             return Ok(());
         }
 
-        // Chunk the DB read with a cursor. Each `async_get_pruning_point_smt_lanes_chunk`
-        // opens and releases its own RocksDB iterator / snapshot, so the pruning lock is
-        // never held across the full IBD stream — only for one bounded chunk at a time.
-        let mut cursor: Option<Hash> = None;
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<ImportLane>>(256);
+
+        let session_for_reader = consensus.unguarded_session();
+        let stream = match session_for_reader.open_pruning_point_smt_lane_stream(expected_pp) {
+            Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point().await,
+            res => res,
+        }?;
+        drop(session_for_reader);
+        let reader_handle = tokio::task::spawn_blocking(move || -> Result<u64, ConsensusError> {
+            let mut count: u64 = 0;
+            let mut batch: Vec<ImportLane> = Vec::with_capacity(SMT_CHUNK_SIZE);
+            for item in stream {
+                batch.push(item?);
+                if batch.len() == SMT_CHUNK_SIZE {
+                    count += batch.len() as u64;
+                    if tx.blocking_send(std::mem::take(&mut batch)).is_err() {
+                        // Receiver went away — let the async side surface the error.
+                        return Ok(count);
+                    }
+                    batch.reserve(SMT_CHUNK_SIZE);
+                }
+            }
+            if !batch.is_empty() {
+                count += batch.len() as u64;
+                let _ = tx.blocking_send(batch);
+            }
+            Ok(count)
+        });
+
         let mut lanes_sent: u64 = 0;
         let mut chunks_sent: usize = 0;
 
-        'outer: while lanes_sent < expected_count {
-            let remaining = (expected_count - lanes_sent) as usize;
-            let limit = remaining.min(SMT_CHUNK_SIZE);
-
-            let lanes = match consensus
-                .session()
-                .await
-                .async_get_pruning_point_smt_lanes_chunk(expected_pp, cursor, limit, lanes_sent)
-                .await
-            {
-                Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point().await,
-                res => res,
-            }?;
-
-            let [.., last] = lanes.as_slice() else {
-                // DB exhausted before reaching expected_count — the peer's view of the
-                // pruning point likely changed. Abort rather than send a truncated stream.
-                return self.send_unexpected_pruning_point().await;
-            };
-            // Advance cursor to the last lane of this chunk before we move `lanes`.
-            cursor = Some(last.lane_key);
-
-            let entries: Vec<SmtLaneEntry> = lanes
+        while let Some(batch) = rx.recv().await {
+            let entries: Vec<SmtLaneEntry> = batch
                 .into_iter()
                 .map(|lane| {
                     let mut data = Vec::with_capacity(64);
@@ -117,29 +119,23 @@ impl RequestPruningPointSmtStateFlow {
             lanes_sent += chunk_len;
             chunks_sent += 1;
 
-            // Final chunk — receiver will not send a trailing RequestNext, so don't wait.
-            if lanes_sent >= expected_count {
-                break 'outer;
-            }
-
-            // Flow-control: after every window, wait for the peer's RequestNext. No
-            // consensus session is held here, so peer latency has no DB impact.
-            if chunks_sent.is_multiple_of(SMT_FLOW_CONTROL_WINDOW) {
+            // Flow-control round-trip. Skip it on the last window so the peer
+            // never has to send a trailing RequestNext just to unblock us.
+            if lanes_sent < expected_count && chunks_sent.is_multiple_of(SMT_FLOW_CONTROL_WINDOW) {
                 dequeue!(self.incoming_route, Payload::RequestNextPruningPointSmtChunk)?;
             }
         }
 
-        // Sanity: confirm the DB has no lanes past `expected_count` — guards against
-        // a silent overcount during iteration.
-        let tail = match consensus.session().await.async_get_pruning_point_smt_lanes_chunk(expected_pp, cursor, 1, lanes_sent).await {
-            Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point().await,
-            res => res,
-        }?;
-        if !tail.is_empty() {
-            return Err(ProtocolError::Other("SMT lane iteration yielded more entries than active_lanes_count"));
-        }
+        let reader_count = match reader_handle.await {
+            Ok(Ok(count)) => count,
+            Ok(Err(ConsensusError::UnexpectedPruningPoint)) => return self.send_unexpected_pruning_point().await,
+            Ok(Err(e)) => return Err(ProtocolError::OtherOwned(format!("SMT lane stream error: {e}"))),
+            Err(e) => return Err(ProtocolError::OtherOwned(format!("SMT lane reader task panicked: {e}"))),
+        };
 
-        debug!("Finished sending SMT state for pruning point {}: {} lanes in {} chunks", expected_pp, lanes_sent, chunks_sent);
+        assert!(lanes_sent == reader_count && lanes_sent == expected_count);
+
+        info!("Finished sending SMT state for pruning point {}: {} lanes in {} chunks", expected_pp, lanes_sent, chunks_sent);
         Ok(())
     }
 

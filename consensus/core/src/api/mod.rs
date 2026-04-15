@@ -49,7 +49,14 @@ pub struct BlockValidationFutures {
 
 /// A proof is attached to the first lane and every `SMT_PROOF_INTERVAL`-th lane
 /// during IBD SMT export. The importer verifies these against `lanes_root`.
-pub const SMT_PROOF_INTERVAL: usize = 1024;
+///
+/// The end-to-end correctness of the import is already guaranteed by the final
+/// `computed_root == lanes_root` check in `streaming_import`. Inline proofs
+/// only exist so the receiver can abort a misbehaving peer mid-stream before
+/// downloading everything, so a sparse stride is enough — one every ~1M lanes
+/// bounds wasted bandwidth and eliminates per-lane `prove_lane` cost on the
+/// sender (which previously dominated the handler's CPU budget).
+pub const SMT_PROOF_INTERVAL: usize = 1 << 20;
 
 /// A lane to import during IBD SMT sync.
 #[derive(Clone, Debug)]
@@ -308,23 +315,19 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// Fetch up to `limit` canonical SMT lanes at the pruning point, starting
-    /// strictly after `from_lane_key` (or from the beginning if `None`). Each
-    /// call opens and closes a fresh DB iterator so the pruning lock is not
-    /// held across the full IBD stream.
+    /// Open a live canonical-lane stream for the pruning point. The returned
+    /// iterator yields every canonical lane once, holds its own owned
+    /// pruning-lock guard internally so data stays pinned for its full
+    /// lifetime, and can be moved across `spawn_blocking` boundaries.
     ///
-    /// `starting_lane_idx` is the absolute lane index of the first returned
-    /// entry, used to decide which entries need inline SMT proofs
-    /// (every [`SMT_PROOF_INTERVAL`]-th lane starting from index 0).
-    ///
-    /// Returns an empty `Vec` once iteration is exhausted.
-    fn get_pruning_point_smt_lanes_chunk(
+    /// Every [`SMT_PROOF_INTERVAL`]-th lane carries an inline SMT proof so the
+    /// receiver can abort a misbehaving peer mid-stream. Correctness is still
+    /// anchored by the final `lanes_root == computed_root` check in the
+    /// importer.
+    fn open_pruning_point_smt_lane_stream(
         &self,
         _expected_pruning_point: Hash,
-        _from_lane_key: Option<Hash>,
-        _limit: usize,
-        _starting_lane_idx: u64,
-    ) -> ConsensusResult<Vec<ImportLane>> {
+    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<ImportLane>> + Send + 'static>> {
         unimplemented!()
     }
 

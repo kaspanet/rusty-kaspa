@@ -917,6 +917,7 @@ async fn daemon_pruning_seqcommit_sync_test() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_ibd_smt_state_sync_test() {
     const SMT_LANE_COUNT: usize = 10;
+    const SMT_ANTICONE_COUNT: usize = 4;
 
     init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO,kaspa_testing_integration=trace,kaspa_rpc_core=debug");
@@ -962,6 +963,21 @@ async fn daemon_ibd_smt_state_sync_test() {
         "syncer did not reach the initial mining target",
     )
     .await;
+
+    let mut anticone_templates = Vec::with_capacity(SMT_ANTICONE_COUNT);
+    for i in 0..SMT_ANTICONE_COUNT {
+        let extra = format!("anticone-{i:02}").into_bytes();
+        anticone_templates.push(rpc_client1.get_block_template(miner_address.clone(), extra).await.unwrap());
+    }
+    for template in anticone_templates {
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+    // Bury the siblings under a few chain blocks so virtual's selected
+    // parent is past them when the lane txs come in.
+    for _ in 0..10 {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
 
     // Phase 2: submit SMT_LANE_COUNT transactions, each on a distinct non-reserved
     // subnetwork_id, so every one populates a fresh lane in the active-lanes SMT.
@@ -1057,10 +1073,7 @@ async fn daemon_ibd_smt_state_sync_test() {
     )
     .await;
 
-    // Phase 5: wait for IBD (including `sync_new_smt_state`) to complete. 60s is
-    // more than enough on a healthy path with only ~10 lanes — a deadlock in
-    // metadata exchange, chunk streaming, or the blocking-importer handshake
-    // trips the panic well before the timeout.
+    // Phase 5: wait for IBD (including `sync_new_smt_state`) to complete
     let sync_check = rpc_client2.clone();
     wait_for(
         100,
