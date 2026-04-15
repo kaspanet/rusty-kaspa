@@ -540,13 +540,13 @@ impl VirtualStateProcessor {
         MergesetSeqData { lane_activities, miner_payload_leaves }
     }
 
-    /// Resolve lane activities into concrete lane updates: look up parent tips
-    /// from DB, compute new tips via `lane_tip_next`.
+    /// Resolve lane activities into concrete lane updates: look up existing tips
+    /// from DB at the current block's POV, compute new tips via `lane_tip_next`.
     pub(super) fn resolve_lane_updates(
         &self,
         data: &MergesetSeqData,
         context_hash: &Hash,
-        parent_blue_score: u64,
+        current_blue_score: u64,
         selected_parent: Hash,
         parent_seq_commit: Hash,
     ) -> Vec<ResolvedLaneUpdate> {
@@ -558,10 +558,12 @@ impl VirtualStateProcessor {
             let lk = lane_key(lane_id);
             let ad = activity_digest_lane(activity_leaves.iter().copied());
 
-            // Look up current lane tip.
-            // New/reactivated lanes use parent_seq_commit as anchor (KIP-21 §5.1).
+            // Look up existing lane tip at the current block's POV: only tips
+            // visible inside [current - F, current] count. Lanes whose last
+            // canonical write is outside that window are treated as new and
+            // anchored on parent_seq_commit (KIP-21 §5.1).
             let existing =
-                self.smt_stores.get_lane(lk, parent_blue_score, parent_blue_score.saturating_sub(self.finality_depth), |bh| {
+                self.smt_stores.get_lane(lk, current_blue_score, current_blue_score.saturating_sub(self.finality_depth), |bh| {
                     self.is_smt_canonical(bh, selected_parent)
                 });
             let is_new = existing.is_none();
@@ -647,8 +649,7 @@ impl VirtualStateProcessor {
 
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let data = self.collect_mergeset_seq_data(ctx);
-        let lane_updates =
-            self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
+        let lane_updates = self.resolve_lane_updates(&data, &context_hash, current_blue_score, selected_parent, parent_seq_commit);
         let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent, parent_header.blue_score);
 
         let (hash, build) = self.build_seq_commit(

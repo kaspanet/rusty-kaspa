@@ -226,6 +226,14 @@ fn processor_flush_writes_correct_data() {
 }
 
 /// Inactivity threshold — lane not touched within threshold -> treated as empty.
+///
+/// Downstream consequence worth naming for future readers: a caller that
+/// resolves lane tips or reads a base root through a wider window than the
+/// `VersionedBranchReader` used by `SmtProcessor::build` will cause the walk
+/// to silently rebuild a tree without the out-of-window lanes. The fix is
+/// always to align the caller on the reader's window (i.e. the current block's
+/// POV `[current - F, current]`), never to widen the reader. See KIP-21 §5:
+/// the active-lanes SMT is defined from the processing block's POV only.
 #[test]
 fn inactivity_threshold_hides_stale_branches() {
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));

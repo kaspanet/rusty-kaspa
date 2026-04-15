@@ -618,8 +618,7 @@ impl VirtualStateProcessor {
 
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let data = self.collect_mergeset_seq_data(ctx);
-        let lane_updates =
-            self.resolve_lane_updates(&data, &context_hash, parent_header.blue_score, selected_parent, parent_seq_commit);
+        let lane_updates = self.resolve_lane_updates(&data, &context_hash, current_blue_score, selected_parent, parent_seq_commit);
         let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent, parent_header.blue_score);
 
         let (commit, _build) = self.build_seq_commit(
