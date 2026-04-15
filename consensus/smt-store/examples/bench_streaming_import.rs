@@ -60,7 +60,7 @@ fn main() {
     let mut total = 0u64;
     let mut batches: usize = 0;
     let mut batch_len: usize = 0;
-    for item in stores.lane_version.iter_all_canonical_owned(None, 0, |_| true) {
+    for item in stores.lane_version.iter_all_canonical_owned(None, 0, None, |_| true) {
         let _ = item.unwrap();
         batch_len += 1;
         total += 1;

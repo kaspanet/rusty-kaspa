@@ -1196,7 +1196,8 @@ impl ConsensusApi for Consensus {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
         let pp_header = self.storage.headers_store.get_header(pp).unwrap();
-        let min_score = pp_header.blue_score.saturating_sub(self.config.params.finality_depth());
+        let max_score = pp_header.blue_score;
+        let min_score = max_score.saturating_sub(self.config.params.finality_depth());
 
         let smt_stores = self.storage.smt_stores.clone();
         let vp = self.virtual_processor.clone();
@@ -1205,7 +1206,10 @@ impl ConsensusApi for Consensus {
             let vp = vp.clone();
             move |bh| vp.is_smt_canonical(bh, pp)
         };
-        let raw = smt_stores.lane_version.iter_all_canonical_owned(None, min_score, is_canonical);
+        // Clip the scan window to `[pp.blue_score - finality, pp.blue_score]`.
+        // Entries above `pp.blue_score` belong to blocks in pp's future and
+        // must not be part of the SMT state exported for this pruning point.
+        let raw = smt_stores.lane_version.iter_all_canonical_owned(None, min_score, Some(max_score), is_canonical);
 
         let smt_stores_proof = smt_stores.clone();
         let mut idx: u64 = 0;
