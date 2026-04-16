@@ -79,6 +79,7 @@ use kaspa_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};
+use kaspa_smt_store::processor::SmtReadBounds;
 use once_cell::unsync::Lazy;
 
 use super::bounds::SeqCommitBounds;
@@ -664,8 +665,9 @@ impl VirtualStateProcessor {
         let pp_header = self.headers_store.get_header(pp).unwrap();
         let parent_seq_commit = self.headers_store.get_header(pp_header.direct_parents()[0]).unwrap().accepted_id_merkle_root;
 
-        let min_score = pp_header.blue_score.saturating_sub(self.finality_depth);
-        let lanes_root = self.smt_stores.get_lanes_root(pp_header.blue_score, min_score, |bh| self.is_smt_canonical(bh, pp));
+        let lanes_root = self
+            .smt_stores
+            .get_lanes_root(SmtReadBounds::for_pov(pp_header.blue_score, self.finality_depth), |bh| self.is_smt_canonical(bh, pp));
 
         Ok(SmtExportMetadata {
             lanes_root,
@@ -691,10 +693,9 @@ impl VirtualStateProcessor {
     /// lanes_root comes from the branch version store; active_lanes_count from metadata.
     pub(super) fn get_parent_smt_metadata(&self, selected_parent: Hash, parent_blue_score: u64) -> (Hash, u64) {
         let active_lanes_count = self.smt_metadata_store.get(selected_parent).map(|meta| meta.active_lanes_count).unwrap_or(0);
-        let lanes_root =
-            self.smt_stores.get_lanes_root(parent_blue_score, parent_blue_score.saturating_sub(self.finality_depth), |bh| {
-                self.is_smt_canonical(bh, selected_parent)
-            });
+        let lanes_root = self.smt_stores.get_lanes_root(SmtReadBounds::for_pov(parent_blue_score, self.finality_depth), |bh| {
+            self.is_smt_canonical(bh, selected_parent)
+        });
         (lanes_root, active_lanes_count)
     }
 
@@ -722,12 +723,7 @@ impl VirtualStateProcessor {
             for lk in entry.data().iter() {
                 // Check if this lane has a newer canonical version within [curr_min, parent].
                 // target=parent filters anticone entries at (parent, current] at the seek level.
-                let has_newer = self
-                    .smt_stores
-                    .get_lane(*lk, read_bounds.target_blue_score, read_bounds.min_blue_score, |bh| {
-                        self.is_smt_canonical(bh, selected_parent)
-                    })
-                    .is_some();
+                let has_newer = self.smt_stores.get_lane(*lk, read_bounds, |bh| self.is_smt_canonical(bh, selected_parent)).is_some();
 
                 if !has_newer {
                     proc.expire_lane(*lk);

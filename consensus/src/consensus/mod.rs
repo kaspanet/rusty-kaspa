@@ -88,6 +88,7 @@ use kaspa_core::info;
 use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_smt_store::processor::SmtReadBounds;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -1225,7 +1226,7 @@ impl ConsensusApi for Consensus {
                 let vp_proof = vp.clone();
                 Some(
                     smt_stores_proof
-                        .prove_lane(&lane_key, max_score, min_score, move |bh| vp_proof.is_smt_canonical(bh, pp))
+                        .prove_lane(&lane_key, SmtReadBounds::new(max_score, min_score), move |bh| vp_proof.is_smt_canonical(bh, pp))
                         .map_err(|e| ConsensusError::GeneralOwned(format!("prove_lane: {e}")))?,
                 )
             } else {

@@ -555,7 +555,7 @@ impl VirtualStateProcessor {
         use kaspa_seq_commit::types::LaneTipInput;
         let mut updates = Vec::with_capacity(data.lane_activities.len());
         let bounds = SeqCommitBounds::new(parent_blue_score, current_blue_score, self.finality_depth);
-        let read_bounds = bounds.selected_parent_read_bounds();
+        let read_bounds = bounds.selected_parent_read_bounds(); // -> [current - F, parent]
 
         for (lane_id, activity_leaves) in &data.lane_activities {
             let lk = lane_key(lane_id);
@@ -564,9 +564,7 @@ impl VirtualStateProcessor {
             // Look up an existing canonical lane tip in [current - F, parent]:
             // the current block supplies the lower cutoff, while target=parent filters
             // anticone entries at (parent, current] at the seek level.
-            let existing = self.smt_stores.get_lane(lk, read_bounds.target_blue_score, read_bounds.min_blue_score, |bh| {
-                self.is_smt_canonical(bh, selected_parent)
-            });
+            let existing = self.smt_stores.get_lane(lk, read_bounds, |bh| self.is_smt_canonical(bh, selected_parent));
             // A lane at the window boundary (bs = current - F - 1) is invisible here
             // even though it was active in the parent's window. This is correct: from
             // the current block's POV the lane expired, so a re-touch is a re-activation

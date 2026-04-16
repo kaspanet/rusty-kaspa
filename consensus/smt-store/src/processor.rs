@@ -9,6 +9,7 @@
 //! branches. `flush()` persists to a `WriteBatch`; the caller commits atomically.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -33,14 +34,15 @@ use crate::{BlockHash, LaneKey};
 
 struct VersionedBranchReader<'a, F: Fn(Hash) -> bool> {
     stores: &'a SmtStores,
-    target_blue_score: u64,
-    min_blue_score: u64,
+    bounds: SmtReadBounds,
     is_canonical: F,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SmtReadBounds {
+    /// Inclusive upper bound blue score to start the scan from (high to low)
     pub target_blue_score: u64,
+    /// Inclusive lower bound blue score below which entries are out of scope/inactive
     pub min_blue_score: u64,
 }
 
@@ -54,15 +56,18 @@ impl SmtReadBounds {
     }
 }
 
+impl From<RangeInclusive<u64>> for SmtReadBounds {
+    fn from(range: RangeInclusive<u64>) -> Self {
+        Self::new(*range.end(), *range.start())
+    }
+}
+
 impl<F: Fn(Hash) -> bool> SmtStore for VersionedBranchReader<'_, F> {
     type Error = StoreError;
 
     fn get_node(&self, key: &BranchKey) -> Result<Option<Node>, StoreError> {
         let entity = BranchEntity { depth: key.depth, node_key: key.node_key };
-        Ok(self
-            .stores
-            .get_node(entity, self.target_blue_score, self.min_blue_score, |bh| (self.is_canonical)(bh))
-            .and_then(|v| *v.data()))
+        Ok(self.stores.get_node(entity, self.bounds, |bh| (self.is_canonical)(bh)).and_then(|v| *v.data()))
     }
 }
 
@@ -99,16 +104,17 @@ impl SmtStores {
     pub fn get_node(
         &self,
         entity: BranchEntity,
-        target_blue_score: u64,
-        min_blue_score: u64,
+        bounds: SmtReadBounds,
         mut is_canonical: impl FnMut(Hash) -> bool,
     ) -> Option<Verified<Option<Node>>> {
         if let Some((score, block_hash, value)) =
-            self.branch_cache.lock().get(entity, target_blue_score, min_blue_score, &mut is_canonical)
+            self.branch_cache.lock().get(entity, bounds.target_blue_score, bounds.min_blue_score, &mut is_canonical)
         {
             return Some(Verified::new(*value, score, block_hash));
         }
-        self.branch_version.get_at_canonical(entity.depth, entity.node_key, target_blue_score, min_blue_score, is_canonical).unwrap()
+        self.branch_version
+            .get_at_canonical(entity.depth, entity.node_key, bounds.target_blue_score, bounds.min_blue_score, is_canonical)
+            .unwrap()
     }
 
     /// Find the latest canonical lane version in `[min_blue_score, target_blue_score]`,
@@ -116,23 +122,22 @@ impl SmtStores {
     pub fn get_lane(
         &self,
         lane_key: LaneKey,
-        target_blue_score: u64,
-        min_blue_score: u64,
+        bounds: SmtReadBounds,
         mut is_canonical: impl FnMut(Hash) -> bool,
     ) -> Option<Verified<LaneTipHash>> {
         if let Some((score, block_hash, value)) =
-            self.lane_cache.lock().get(lane_key, target_blue_score, min_blue_score, &mut is_canonical)
+            self.lane_cache.lock().get(lane_key, bounds.target_blue_score, bounds.min_blue_score, &mut is_canonical)
         {
             return Some(Verified::new(*value, score, block_hash));
         }
-        self.lane_version.get_at_canonical(lane_key, target_blue_score, min_blue_score, is_canonical).unwrap()
+        self.lane_version.get_at_canonical(lane_key, bounds.target_blue_score, bounds.min_blue_score, is_canonical).unwrap()
     }
 
     /// Read the lanes root hash from the branch store at depth=0.
     /// Returns the empty root if no root node exists.
-    pub fn get_lanes_root(&self, target_blue_score: u64, min_blue_score: u64, is_canonical: impl FnMut(Hash) -> bool) -> Hash {
+    pub fn get_lanes_root(&self, bounds: SmtReadBounds, is_canonical: impl FnMut(Hash) -> bool) -> Hash {
         let root_entity = BranchEntity { depth: 0, node_key: Hash::from_bytes([0; 32]) };
-        match self.get_node(root_entity, target_blue_score, min_blue_score, is_canonical) {
+        match self.get_node(root_entity, bounds, is_canonical) {
             Some(v) => match *v.data() {
                 Some(Node::Internal(hash)) => hash,
                 Some(Node::Collapsed(cl)) => {
@@ -149,11 +154,10 @@ impl SmtStores {
     pub fn prove_lane(
         &self,
         lane_key: &Hash,
-        target_blue_score: u64,
-        min_blue_score: u64,
+        bounds: SmtReadBounds,
         is_canonical: impl Fn(Hash) -> bool,
     ) -> StoreResult<OwnedSmtProof> {
-        let reader = VersionedBranchReader { stores: self, target_blue_score, min_blue_score, is_canonical };
+        let reader = VersionedBranchReader { stores: self, bounds, is_canonical };
         // Root value is unused by `prove` — it walks the store directly.
         let tree = SparseMerkleTree::<SeqCommitActiveNode, _>::with_store(reader);
         tree.prove(lane_key)
@@ -337,14 +341,14 @@ impl BlockLaneChanges {
 /// Accumulates SMT lane changes and builds the tree.
 pub struct SmtProcessor<'a> {
     stores: &'a SmtStores,
-    read_bounds: SmtReadBounds,
+    bounds: SmtReadBounds,
     current_lanes_root: Hash,
     lane_changes: BlockLaneChanges,
 }
 
 impl<'a> SmtProcessor<'a> {
-    pub fn new(stores: &'a SmtStores, write_blue_score: u64, read_bounds: SmtReadBounds, current_lanes_root: Hash) -> Self {
-        Self { stores, read_bounds, current_lanes_root, lane_changes: BlockLaneChanges::new(write_blue_score) }
+    pub fn new(stores: &'a SmtStores, write_blue_score: u64, bounds: SmtReadBounds, current_lanes_root: Hash) -> Self {
+        Self { stores, bounds, current_lanes_root, lane_changes: BlockLaneChanges::new(write_blue_score) }
     }
 
     pub fn update_lane(&mut self, lane_key: LaneKey, lane_tip_hash: Hash) {
@@ -367,12 +371,7 @@ impl<'a> SmtProcessor<'a> {
         }
 
         let leaf_updates = self.lane_changes.to_leaf_updates();
-        let reader = VersionedBranchReader {
-            stores: self.stores,
-            target_blue_score: self.read_bounds.target_blue_score,
-            min_blue_score: self.read_bounds.min_blue_score,
-            is_canonical,
-        };
+        let reader = VersionedBranchReader { stores: self.stores, bounds: self.bounds, is_canonical };
         let (root, node_changes) = compute_root_update::<SeqCommitActiveNode, _>(&reader, self.current_lanes_root, leaf_updates)?;
         Ok(SmtBuild { root, node_changes, lane_changes: self.lane_changes, payload_and_ctx_digest: ZERO_HASH, active_lanes_count: 0 })
     }
