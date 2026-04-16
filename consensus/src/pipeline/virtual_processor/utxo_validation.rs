@@ -561,10 +561,9 @@ impl VirtualStateProcessor {
             let lk = lane_key(lane_id);
             let ad = activity_digest_lane(activity_leaves.iter().copied());
 
-            // Look up existing lane tip at the current block's POV: only tips
-            // visible inside [current - F, current] count. Lanes whose last
-            // canonical write is outside that window are treated as new and
-            // anchored on parent_seq_commit (KIP-21 §5.1).
+            // Look up an existing canonical lane tip in [current - F, parent]:
+            // the current block supplies the lower cutoff, while target=parent filters
+            // anticone entries at (parent, current] at the seek level.
             let existing = self.smt_stores.get_lane(lk, read_bounds.target_blue_score, read_bounds.min_blue_score, |bh| {
                 self.is_smt_canonical(bh, selected_parent)
             });
