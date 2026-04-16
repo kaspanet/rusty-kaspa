@@ -566,6 +566,11 @@ impl VirtualStateProcessor {
                 self.smt_stores.get_lane(lk, current_blue_score, current_blue_score.saturating_sub(self.finality_depth), |bh| {
                     self.is_smt_canonical(bh, selected_parent)
                 });
+            // A lane at the window boundary (bs = current - F - 1) is invisible here
+            // even though it was active in the parent's window. This is correct: from
+            // the current block's POV the lane expired, so a re-touch is a re-activation
+            // anchored on parent_seq_commit. The matching expire in `expire_stale_lanes`
+            // and this is_new=true cancel in the active_lanes_count arithmetic.
             let is_new = existing.is_none();
             let parent_ref = existing.map(|v| *v.data()).unwrap_or(parent_seq_commit);
 
@@ -601,10 +606,14 @@ impl VirtualStateProcessor {
         // 1. Create processor starting from the parent's lanes root
         let mut proc = SmtProcessor::new(&self.smt_stores, current_blue_score, self.finality_depth, parent_lanes_root);
 
-        // 2. Expire stale lanes
+        // 2. Expire stale lanes (scans [parent-F, current-F) for lanes with no newer version)
         let expired_count = self.expire_stale_lanes(&mut proc, parent_blue_score, current_blue_score, selected_parent);
 
-        // 3. Apply lane updates
+        // 3. Apply lane updates.
+        // A lane at the boundary (bs = current-F-1) gets both expired (step 2) and re-added
+        // here as is_new=true. This is not wasteful: BlockLaneChanges uses a BTreeMap keyed
+        // by lane_key, so update_lane overwrites the expire_lane entry — the walk sees only
+        // the final leaf. The two count operations cancel: expired+1, new+1 → net zero.
         let new_lane_count = lane_updates.iter().filter(|lu| lu.is_new).count() as u64;
         for lu in lane_updates {
             proc.update_lane(lu.lane_key, lu.new_tip);
