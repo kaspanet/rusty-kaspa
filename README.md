@@ -9,32 +9,192 @@ By combining high-throughput GHOSTDAG architecture with optimistic verifiability
 ---
 
 ## Installation
+  <details>
+  <summary>Building on Linux</summary>
 
-### Precompiled Binaries
+  1. Install general prerequisites
 
-Download the appropriate binary for your system from the repository's **Releases** page.
+      ```bash
+      sudo apt install curl git build-essential libssl-dev pkg-config
+      ```
 
----
+  2. Install Protobuf (required for gRPC)
 
-### Build from Source
+      ```bash
+      sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
+      ```
+  3. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
 
-#### Requirements
+      ```bash
+      sudo apt-get install clang-format clang-tidy \
+      clang-tools clang clangd libc++-dev \
+      libc++1 libc++abi-dev libc++abi1 \
+      libclang-dev libclang1 liblldb-dev \
+      libllvm-ocaml-dev libomp-dev libomp5 \
+      lld lldb llvm-dev llvm-runtime \
+      llvm python3-clang
+      ```
+  4. Install the [rust toolchain](https://rustup.rs/)
 
-- Rust and Cargo: https://rustup.rs/
+     If you already have rust installed, update it by running: `rustup update`
+  5. Install wasm-pack
+      ```bash
+      cargo install wasm-pack
+      ```
+  6. Install wasm32 target
+      ```bash
+      rustup target add wasm32-unknown-unknown
+      ```
+  7. Clone the repo
+      ```bash
+      git clone https://github.com/Keryx-labs/keryx-node
+      cd keryx-node
+      ```
+  </details>
 
-#### Steps
 
-```bash
-git clone https://github.com/Keryx-Labs/keryx-node.git
-cd keryx-node
-cargo build --release
-```
 
-The binary will be available in:
+  <details>
+  <summary>Building on Windows</summary>
 
-```bash
-target/release/
-```
+
+  1. [Install Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
+
+  2. Install [Protocol Buffers](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add the `bin` directory to your `Path`
+
+
+3. Install [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe)
+
+    Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
+
+    set `LIBCLANG_PATH` environment variable to point to the `bin` directory as well
+
+    **IMPORTANT:** Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
+
+  4. Install the [rust toolchain](https://rustup.rs/)
+
+     If you already have rust installed, update it by running: `rustup update`
+  5. Install wasm-pack
+      ```bash
+      cargo install wasm-pack
+      ```
+  6. Install wasm32 target
+      ```bash
+      rustup target add wasm32-unknown-unknown
+      ```
+  7. Clone the repo
+      ```bash
+      git clone https://github.com/Keryx-labs/keryx-node
+      cd keryx-node
+      ```
+ </details>
+
+
+  <details>
+  <summary>Building on Mac OS</summary>
+
+
+  1. Install Protobuf (required for gRPC)
+      ```bash
+      brew install protobuf
+      ```
+  2. Install llvm.
+
+      The default XCode installation of `llvm` does not support WASM build targets.
+To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing, the llvm version for MacOS is 16.0.1).
+      ```bash
+      brew install llvm
+      ```
+
+      **NOTE:** Homebrew can use different keg installation locations depending on your configuration. For example:
+      - `/opt/homebrew/opt/llvm` -> `/opt/homebrew/Cellar/llvm/16.0.1`
+      - `/usr/local/Cellar/llvm/16.0.1`
+
+      To determine the installation location you can use `brew list llvm` command and then modify the paths below accordingly:
+      ```bash
+      % brew list llvm
+      /usr/local/Cellar/llvm/16.0.1/bin/FileCheck
+      /usr/local/Cellar/llvm/16.0.1/bin/UnicodeNameMappingGenerator
+      ...
+      ```
+      If you have `/opt/homebrew/Cellar`, then you should be able to use `/opt/homebrew/opt/llvm`.
+
+      Add the following to your `~/.zshrc` file:
+      ```bash
+      export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+      export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+      export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+      export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
+      ```
+
+      Reload the `~/.zshrc` file
+      ```bash
+      source ~/.zshrc
+      ```
+  3. Install the [rust toolchain](https://rustup.rs/)
+
+     If you already have rust installed, update it by running: `rustup update`
+  4. Install wasm-pack
+      ```bash
+      cargo install wasm-pack
+      ```
+  5. Install wasm32 target
+      ```bash
+      rustup target add wasm32-unknown-unknown
+      ```
+  6. Clone the repo
+      ```bash
+      git clone https://github.com/Keryx-labs/keryx-node
+      cd keryx-node
+      ```
+
+ </details>
+
+ <details>
+ <summary> Building with Docker </summary>
+
+  You can build the project using Docker in two ways: a simple single-architecture build, or a multi-architecture build using the provided script.
+
+  #### 1. Simple Docker Build
+
+  To build for your current architecture (e.g., `linux/amd64`):
+
+  ```sh
+  docker build -f docker/Dockerfile.kaspad -t kaspad:latest .
+  ```
+
+  Replace `Dockerfile.kaspad` with the appropriate Dockerfile for your target (`kaspad`, `kaspa-wallet`, `rothschild`, or `simpa`).
+
+  #### 2. Multi-Architecture Build
+
+  To build images for multiple architectures (e.g., `linux/amd64` and `linux/arm64`) and optionally push them to a registry, use the `build-docker-multi-arch.sh` script:
+
+  ```sh
+  ./build-docker-multi-arch.sh --tag <tag> --artifact <artifact> [--arches "<arches>"] [--push]
+  ```
+
+  - `--tag <tag>`: **(required)** The Docker image tag to use.
+  - `--artifact <artifact>`: The build target/artifact (default: `kaspad`). Must match the Dockerfile name, e.g., `kaspad` for `Dockerfile.kaspad`.
+  - `--arches "<arches>"`: Space-separated list of architectures (default: `"linux/amd64 linux/arm64"`).
+  - `--push`: If specified, the built images will be pushed to your Docker registry.
+
+  **Examples:**
+
+  Build and push a multi-arch image for `kaspad`:
+
+  ```sh
+  ./build-docker-multi-arch.sh --tag myrepo/kaspad:latest --artifact kaspad --push
+  ```
+
+  Build a multi-arch image for `kaspa-wallet` without pushing:
+
+  ```sh
+  ./build-docker-multi-arch.sh --tag kaspa-wallet:test --artifact kaspa-wallet
+  ```
+
+  **Note:**  
+  In order to use `build-docker-multi-arch.sh`, you need Docker with Buildx enabled.
+ </details>
 
 ## Running the Node
 
