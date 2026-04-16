@@ -6,6 +6,16 @@ Keryx is the first **BlockDAG** ecosystem purpose-built for decentralized AI inf
 
 By combining high-throughput GHOSTDAG architecture with optimistic verifiability, we are building a sovereign, censorship-resistant intelligence infrastructure.
 
+## KeryxHash: Unique Proof-of-Work
+
+Keryx utilizes KeryxHash, a specialized PoW algorithm evolved from kHeavyHash, specifically optimized for GPU efficiency and network security:
+
+ASIC Isolation: Implementation of KERYX_MATRIX_SALT, a 32-byte domain-specific salt that isolates the network from existing Kaspa ASICs.
+
+WaveMix Technology: A 4-round ARX (Add-Rotate-Xor) post-processing step designed to increase GPU register pressure, favoring consumer hardware.
+
+Security Mutation: Re-engineered consensus validation layers to ensure unique block signing.
+
 ---
 
 ## Installation
