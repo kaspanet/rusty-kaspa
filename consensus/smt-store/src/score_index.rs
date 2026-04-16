@@ -1,3 +1,4 @@
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind};
@@ -63,15 +64,16 @@ impl DbScoreIndex {
         writer.put(key, value).map_err(StoreError::DbError)
     }
 
-    /// Iterate `LeafUpdate` entries from `target_blue_score` downward.
+    /// Iterate `LeafUpdate` entries across the inclusive score band.
     ///
     /// Skips `Structural` entries. Used by expiration logic to find lanes whose
     /// last active update is falling out of the inactivity window.
     pub fn get_leaf_updates(
         &self,
-        target_blue_score: u64,
-        min_blue_score: u64,
+        blue_score_range: RangeInclusive<u64>,
     ) -> impl Iterator<Item = StoreResult<MaybeFork<Vec<Hash>>>> + '_ {
+        let min_blue_score = *blue_score_range.start();
+        let target_blue_score = *blue_score_range.end();
         let seek_key = ScoreIndexKey::seek_key(self.prefix, target_blue_score);
         let score_prefix = [self.prefix];
         let prefix = self.prefix;
@@ -138,15 +140,13 @@ impl DbScoreIndex {
         })
     }
 
-    /// Iterate **all** entries (both `LeafUpdate` and `Structural`) from `target_blue_score` downward.
+    /// Iterate **all** entries (both `LeafUpdate` and `Structural`) across the inclusive score band.
     ///
     /// Returns `(lane_keys, blue_score, block_hash)` for pruning lane_version and branch_version
     /// stores. The score index itself is pruned separately via [`delete_range`].
-    pub fn get_all(
-        &self,
-        target_blue_score: u64,
-        min_blue_score: u64,
-    ) -> impl Iterator<Item = StoreResult<MaybeFork<Vec<Hash>>>> + '_ {
+    pub fn get_all(&self, blue_score_range: RangeInclusive<u64>) -> impl Iterator<Item = StoreResult<MaybeFork<Vec<Hash>>>> + '_ {
+        let min_blue_score = *blue_score_range.start();
+        let target_blue_score = *blue_score_range.end();
         let seek_key = ScoreIndexKey::seek_key(self.prefix, target_blue_score);
         let score_prefix = [self.prefix];
 
@@ -234,7 +234,7 @@ mod tests {
 
         store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &lanes).unwrap();
 
-        let results: Vec<_> = store.get_leaf_updates(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.get_leaf_updates(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].data().len(), 2);
     }
@@ -247,7 +247,7 @@ mod tests {
         store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)]).unwrap();
         store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &[hash(0x22)]).unwrap();
 
-        let updated: Vec<_> = store.get_leaf_updates(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let updated: Vec<_> = store.get_leaf_updates(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(updated.len(), 1);
         assert_eq!(updated[0].data(), &[hash(0x11)]);
     }
@@ -260,7 +260,7 @@ mod tests {
         store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)]).unwrap();
         store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &[hash(0x22)]).unwrap();
 
-        let all: Vec<_> = store.get_all(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let all: Vec<_> = store.get_all(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].data(), &[hash(0x11)]);
         assert_eq!(all[1].data(), &[hash(0x22)]);
@@ -274,7 +274,7 @@ mod tests {
         store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::Structural, hash(0xA0), &[hash(0x02)]).unwrap();
         store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, hash(0xA1), &[hash(0x03)]).unwrap();
 
-        let updated: Vec<_> = store.get_leaf_updates(200, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let updated: Vec<_> = store.get_leaf_updates(0..=200).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(updated.len(), 2);
         assert_eq!(updated[0].data(), &[hash(0x03)]); // score 100 first (newest)
         assert_eq!(updated[1].data(), &[hash(0x01)]); // score 50 second
@@ -291,10 +291,10 @@ mod tests {
         store.delete_range(DirectDbWriter::new(&store.db), 100).unwrap();
 
         // Score 50 entries (both kinds) should be gone
-        assert!(store.get_all(100, 0).next().is_none());
+        assert!(store.get_all(0..=100).next().is_none());
 
         // Score 200 should remain
-        let results: Vec<_> = store.get_all(200, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.get_all(0..=200).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
     }
 
@@ -307,7 +307,7 @@ mod tests {
         store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)], 0).unwrap();
         store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x22)], 1).unwrap();
 
-        let results: Vec<_> = store.get_leaf_updates(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.get_leaf_updates(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 2);
         // Both entries are present (order depends on batch_id suffix)
         let all_lanes: Vec<_> = results.iter().flat_map(|r| r.data().iter()).copied().collect();
@@ -325,10 +325,10 @@ mod tests {
         // Batched 46-byte key at same score
         store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x22)], 0).unwrap();
 
-        let updated: Vec<_> = store.get_leaf_updates(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let updated: Vec<_> = store.get_leaf_updates(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(updated.len(), 2);
 
-        let all: Vec<_> = store.get_all(100, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let all: Vec<_> = store.get_all(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(all.len(), 2);
     }
 
@@ -343,10 +343,10 @@ mod tests {
         store.delete_range(DirectDbWriter::new(&store.db), 100).unwrap();
 
         // Batched score 50 entries should be gone
-        assert!(store.get_all(100, 0).next().is_none());
+        assert!(store.get_all(0..=100).next().is_none());
 
         // Score 200 should remain
-        let results: Vec<_> = store.get_all(200, 0).collect::<Result<Vec<_>, _>>().unwrap();
+        let results: Vec<_> = store.get_all(0..=200).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
     }
 }
