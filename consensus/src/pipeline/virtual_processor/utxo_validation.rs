@@ -547,6 +547,7 @@ impl VirtualStateProcessor {
         data: &MergesetSeqData,
         context_hash: &Hash,
         current_blue_score: u64,
+        parent_blue_score: u64,
         selected_parent: Hash,
         parent_seq_commit: Hash,
     ) -> Vec<ResolvedLaneUpdate> {
@@ -558,12 +559,10 @@ impl VirtualStateProcessor {
             let lk = lane_key(lane_id);
             let ad = activity_digest_lane(activity_leaves.iter().copied());
 
-            // Look up existing lane tip at the current block's POV: only tips
-            // visible inside [current - F, current] count. Lanes whose last
-            // canonical write is outside that window are treated as new and
-            // anchored on parent_seq_commit (KIP-21 §5.1).
+            // Window [current-F, parent]: target=parent filters anticone entries
+            // at (parent, current] at the seek level instead of relying on is_smt_canonical.
             let existing =
-                self.smt_stores.get_lane(lk, current_blue_score, current_blue_score.saturating_sub(self.finality_depth), |bh| {
+                self.smt_stores.get_lane(lk, parent_blue_score, current_blue_score.saturating_sub(self.finality_depth), |bh| {
                     self.is_smt_canonical(bh, selected_parent)
                 });
             // A lane at the window boundary (bs = current - F - 1) is invisible here
@@ -604,7 +603,8 @@ impl VirtualStateProcessor {
         use kaspa_smt_store::processor::SmtProcessor;
 
         // 1. Create processor starting from the parent's lanes root
-        let mut proc = SmtProcessor::new(&self.smt_stores, current_blue_score, self.finality_depth, parent_lanes_root);
+        let mut proc =
+            SmtProcessor::new(&self.smt_stores, current_blue_score, parent_blue_score, self.finality_depth, parent_lanes_root);
 
         // 2. Expire stale lanes (scans [parent-F, current-F) for lanes with no newer version)
         let expired_count = self.expire_stale_lanes(&mut proc, parent_blue_score, current_blue_score, selected_parent);
@@ -661,7 +661,14 @@ impl VirtualStateProcessor {
 
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let data = self.collect_mergeset_seq_data(ctx);
-        let lane_updates = self.resolve_lane_updates(&data, &context_hash, current_blue_score, selected_parent, parent_seq_commit);
+        let lane_updates = self.resolve_lane_updates(
+            &data,
+            &context_hash,
+            current_blue_score,
+            parent_header.blue_score,
+            selected_parent,
+            parent_seq_commit,
+        );
         let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent, parent_header.blue_score);
 
         let (hash, build) = self.build_seq_commit(

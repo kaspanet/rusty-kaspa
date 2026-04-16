@@ -618,7 +618,14 @@ impl VirtualStateProcessor {
 
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let data = self.collect_mergeset_seq_data(ctx);
-        let lane_updates = self.resolve_lane_updates(&data, &context_hash, current_blue_score, selected_parent, parent_seq_commit);
+        let lane_updates = self.resolve_lane_updates(
+            &data,
+            &context_hash,
+            current_blue_score,
+            parent_header.blue_score,
+            selected_parent,
+            parent_seq_commit,
+        );
         let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent, parent_header.blue_score);
 
         let (commit, _build) = self.build_seq_commit(
@@ -683,7 +690,10 @@ impl VirtualStateProcessor {
     /// lanes_root comes from the branch version store; active_lanes_count from metadata.
     pub(super) fn get_parent_smt_metadata(&self, selected_parent: Hash, parent_blue_score: u64) -> (Hash, u64) {
         let active_lanes_count = self.smt_metadata_store.get(selected_parent).map(|meta| meta.active_lanes_count).unwrap_or(0);
-        let lanes_root = self.smt_stores.get_lanes_root(parent_blue_score, 0, |bh| self.is_smt_canonical(bh, selected_parent));
+        let lanes_root =
+            self.smt_stores.get_lanes_root(parent_blue_score, parent_blue_score.saturating_sub(self.finality_depth), |bh| {
+                self.is_smt_canonical(bh, selected_parent)
+            });
         (lanes_root, active_lanes_count)
     }
 
@@ -712,10 +722,11 @@ impl VirtualStateProcessor {
                 continue;
             }
             for lk in entry.data().iter() {
-                // Check if this lane has a newer canonical version (within the active window)
+                // Check if this lane has a newer canonical version within [curr_min, parent].
+                // target=parent filters anticone entries at (parent, current] at the seek level.
                 let has_newer = self
                     .smt_stores
-                    .get_lane(*lk, current_blue_score, curr_min, |bh| self.is_smt_canonical(bh, selected_parent))
+                    .get_lane(*lk, parent_blue_score, curr_min, |bh| self.is_smt_canonical(bh, selected_parent))
                     .is_some();
 
                 if !has_newer {

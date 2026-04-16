@@ -1,16 +1,12 @@
 //! `SmtProcessor` — two-phase SMT lane processing.
 //!
 //! **Phase 1 — Accumulation** (`update_lane` / `expire_lane`):
-//! Collects lane updates and expirations into a [`LaneChanges`] collection.
+//! Collects lane updates and expirations into [`BlockLaneChanges`].
 //!
 //! **Phase 2 — Build & Persist** (`build` then `flush`):
 //! `build()` derives leaf hashes, calls [`compute_root_update`] against an
 //! immutable DB reader, and returns an [`SmtBuild`] with the root and changed
 //! branches. `flush()` persists to a `WriteBatch`; the caller commits atomically.
-//!
-//! The processor is generic over `C: LaneChanges`:
-//! - [`BlockLaneChanges`] (default) — single-block processing, all lanes share one blue_score.
-//! - [`ImportLaneChanges`] — IBD import, each lane carries its own blue_score.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -258,19 +254,6 @@ impl SmtStores {
 
 /// Abstraction over lane change collections.
 ///
-/// `LaneMeta` is per-lane metadata: `()` for block processing (blue_score
-/// is uniform), `u64` for IBD import (each lane has its own blue_score).
-pub trait LaneChanges {
-    type LaneMeta;
-
-    fn update(&mut self, lane_key: LaneKey, lane_tip_hash: Hash, meta: Self::LaneMeta);
-    fn to_leaf_updates(&self) -> SortedLeafUpdates;
-    fn flush_lanes(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()>;
-    fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()>;
-    fn is_empty(&self) -> bool;
-    fn len(&self) -> usize;
-}
-
 /// Lane changes within a single block. All lanes share the block's blue_score.
 pub struct BlockLaneChanges {
     blue_score: u64,
@@ -285,16 +268,12 @@ impl BlockLaneChanges {
     pub fn expire(&mut self, lane_key: LaneKey) {
         self.changes.insert(lane_key, None);
     }
-}
 
-impl LaneChanges for BlockLaneChanges {
-    type LaneMeta = ();
-
-    fn update(&mut self, lane_key: LaneKey, lane_tip_hash: Hash, _extra: ()) {
+    pub fn update(&mut self, lane_key: LaneKey, lane_tip_hash: Hash) {
         self.changes.insert(lane_key, Some(lane_tip_hash));
     }
 
-    fn to_leaf_updates(&self) -> SortedLeafUpdates {
+    pub fn to_leaf_updates(&self) -> SortedLeafUpdates {
         let bs = self.blue_score;
         SortedLeafUpdates::from_sorted_map(&self.changes, |key, change| match change {
             Some(tip) => smt_leaf_hash(&SmtLeafInput { lane_key: key, lane_tip: tip, blue_score: bs }),
@@ -302,7 +281,7 @@ impl LaneChanges for BlockLaneChanges {
         })
     }
 
-    fn flush_lanes(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
+    pub fn flush_lanes(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
         for (lane_key, tip) in &self.changes {
             if let Some(tip) = tip {
                 stores.lane_version.put(BatchDbWriter::new(batch), *lane_key, self.blue_score, block_hash, tip)?;
@@ -317,7 +296,7 @@ impl LaneChanges for BlockLaneChanges {
         Ok(())
     }
 
-    fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
+    pub fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
         use crate::keys::ScoreIndexKind;
         let updated: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| v.as_ref().map(|_| *k)).collect();
         let expired: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| if v.is_none() { Some(*k) } else { None }).collect();
@@ -330,107 +309,57 @@ impl LaneChanges for BlockLaneChanges {
         Ok(())
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.changes.is_empty()
     }
 
-    fn len(&self) -> usize {
-        self.changes.len()
-    }
-}
-
-/// Lane imports with per-lane blue_score. No expirations.
-#[derive(Default)]
-pub struct ImportLaneChanges {
-    changes: BTreeMap<LaneKey, (LaneTipHash, u64)>,
-}
-
-impl ImportLaneChanges {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl LaneChanges for ImportLaneChanges {
-    type LaneMeta = u64;
-
-    fn update(&mut self, lane_key: LaneKey, lane_tip_hash: Hash, blue_score: u64) {
-        self.changes.insert(lane_key, (lane_tip_hash, blue_score));
-    }
-
-    fn to_leaf_updates(&self) -> SortedLeafUpdates {
-        SortedLeafUpdates::from_sorted_map(&self.changes, |key, (tip, bs)| {
-            smt_leaf_hash(&SmtLeafInput { lane_key: key, lane_tip: tip, blue_score: *bs })
-        })
-    }
-
-    fn flush_lanes(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
-        for (lane_key, (tip, bs)) in &self.changes {
-            stores.lane_version.put(BatchDbWriter::new(batch), *lane_key, *bs, block_hash, tip)?;
-        }
-        let mut lc = stores.lane_cache.lock();
-        for (lane_key, (tip, bs)) in &self.changes {
-            lc.insert(*lane_key, *bs, block_hash, *tip);
-        }
-        Ok(())
-    }
-
-    fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
-        use crate::keys::ScoreIndexKind;
-        let mut groups: BTreeMap<u64, Vec<LaneKey>> = BTreeMap::new();
-        for (lane_key, (_, bs)) in &self.changes {
-            groups.entry(*bs).or_default().push(*lane_key);
-        }
-        for (bs, keys) in &groups {
-            stores.score_index.put(BatchDbWriter::new(batch), *bs, ScoreIndexKind::LeafUpdate, block_hash, keys)?;
-        }
-        Ok(())
-    }
-
-    fn is_empty(&self) -> bool {
-        self.changes.is_empty()
-    }
-
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.changes.len()
     }
 }
 
 /// Accumulates SMT lane changes and builds the tree.
-pub struct SmtProcessor<'a, C: LaneChanges = BlockLaneChanges> {
+///
+/// `blue_score` is the current block's score — used for the left bound (`blue_score − F`)
+/// and for leaf hashing in `BlockLaneChanges`.
+/// `parent_blue_score` is the selected parent's score — used as the reader's right bound
+/// (`target`), filtering anticone entries at `(parent, current]` at the seek level.
+pub struct SmtProcessor<'a> {
     stores: &'a SmtStores,
     blue_score: u64,
+    parent_blue_score: u64,
     inactivity_threshold: u64,
     current_lanes_root: Hash,
-    lane_changes: C,
+    lane_changes: BlockLaneChanges,
 }
 
-impl<'a> SmtProcessor<'a, BlockLaneChanges> {
-    pub fn new(stores: &'a SmtStores, blue_score: u64, inactivity_threshold: u64, current_lanes_root: Hash) -> Self {
-        Self { stores, blue_score, inactivity_threshold, current_lanes_root, lane_changes: BlockLaneChanges::new(blue_score) }
+impl<'a> SmtProcessor<'a> {
+    pub fn new(
+        stores: &'a SmtStores,
+        blue_score: u64,
+        parent_blue_score: u64,
+        inactivity_threshold: u64,
+        current_lanes_root: Hash,
+    ) -> Self {
+        Self {
+            stores,
+            blue_score,
+            parent_blue_score,
+            inactivity_threshold,
+            current_lanes_root,
+            lane_changes: BlockLaneChanges::new(blue_score),
+        }
     }
 
     pub fn update_lane(&mut self, lane_key: LaneKey, lane_tip_hash: Hash) {
-        self.lane_changes.update(lane_key, lane_tip_hash, ());
+        self.lane_changes.update(lane_key, lane_tip_hash);
     }
 
     pub fn expire_lane(&mut self, lane_key: LaneKey) {
         self.lane_changes.expire(lane_key);
     }
-}
 
-impl<'a> SmtProcessor<'a, ImportLaneChanges> {
-    pub fn new_import(stores: &'a SmtStores, blue_score: u64, inactivity_threshold: u64, current_lanes_root: Hash) -> Self {
-        Self { stores, blue_score, inactivity_threshold, current_lanes_root, lane_changes: ImportLaneChanges::new() }
-    }
-
-    pub fn update_lane(&mut self, lane_key: LaneKey, lane_tip_hash: Hash, blue_score: u64) {
-        self.lane_changes.update(lane_key, lane_tip_hash, blue_score);
-    }
-}
-
-impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
-    pub fn build(self, is_canonical: impl Fn(Hash) -> bool) -> StoreResult<SmtBuild<C>> {
+    pub fn build(self, is_canonical: impl Fn(Hash) -> bool) -> StoreResult<SmtBuild> {
         if self.lane_changes.is_empty() {
             return Ok(SmtBuild {
                 root: self.current_lanes_root,
@@ -444,7 +373,7 @@ impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
         let leaf_updates = self.lane_changes.to_leaf_updates();
         let reader = VersionedBranchReader {
             stores: self.stores,
-            target_blue_score: self.blue_score,
+            target_blue_score: self.parent_blue_score,
             min_blue_score: self.blue_score.saturating_sub(self.inactivity_threshold),
             is_canonical,
         };
@@ -454,16 +383,16 @@ impl<'a, C: LaneChanges> SmtProcessor<'a, C> {
 }
 
 /// Result of building an SMT: root hash + changed nodes + lane changes + metadata.
-pub struct SmtBuild<C: LaneChanges = BlockLaneChanges> {
+pub struct SmtBuild {
     pub root: Hash,
     node_changes: SmtNodeChanges,
-    lane_changes: C,
+    lane_changes: BlockLaneChanges,
     /// Set by `build_seq_commit` after computing the seq_commit components.
     pub payload_and_ctx_digest: Hash,
     pub active_lanes_count: u64,
 }
 
-impl<C: LaneChanges> SmtBuild<C> {
+impl SmtBuild {
     pub fn lane_update_count(&self) -> usize {
         self.lane_changes.len()
     }
@@ -474,8 +403,8 @@ impl<C: LaneChanges> SmtBuild<C> {
 
     /// Persist the build's node/lane/score-index diff to a `WriteBatch` and populate caches.
     ///
-    /// `branch_blue_score` versions the nodes. Lane and score_index
-    /// blue_scores are determined by the `LaneChanges` implementation.
+    /// `branch_blue_score` versions the nodes and is the same blue_score used
+    /// for lane/score-index writes inside `BlockLaneChanges`.
     /// Metadata is written separately by the caller via `DbSmtMetadataStore`.
     pub fn flush(
         self,
