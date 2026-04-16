@@ -614,8 +614,11 @@ impl VirtualStateProcessor {
         // here as is_new=true. This is not wasteful: BlockLaneChanges uses a BTreeMap keyed
         // by lane_key, so update_lane overwrites the expire_lane entry — the walk sees only
         // the final leaf. The two count operations cancel: expired+1, new+1 → net zero.
-        let new_lane_count = lane_updates.iter().filter(|lu| lu.is_new).count() as u64;
+        let mut new_lane_count = 0;
         for lu in lane_updates {
+            if lu.is_new {
+                new_lane_count += 1;
+            }
             proc.update_lane(lu.lane_key, lu.new_tip);
         }
 
