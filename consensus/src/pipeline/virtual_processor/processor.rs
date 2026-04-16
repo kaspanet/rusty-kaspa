@@ -81,6 +81,7 @@ use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};
 use once_cell::unsync::Lazy;
 
+use super::bounds::SeqCommitBounds;
 use super::errors::{PruningImportError, PruningImportResult};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
@@ -702,20 +703,17 @@ impl VirtualStateProcessor {
     pub(super) fn expire_stale_lanes(
         &self,
         proc: &mut kaspa_smt_store::processor::SmtProcessor,
-        parent_blue_score: u64,
-        current_blue_score: u64,
+        bounds: SeqCommitBounds,
         selected_parent: Hash,
     ) -> u64 {
-        let prev_min = parent_blue_score.saturating_sub(self.finality_depth);
-        let curr_min = current_blue_score.saturating_sub(self.finality_depth);
-
-        if curr_min <= prev_min {
+        let read_bounds = bounds.selected_parent_read_bounds();
+        let Some((expired_min, expired_max)) = bounds.newly_expired_range() else {
             return 0;
-        }
+        };
 
         let mut expired = 0u64;
-        // Iterate score_index entries in [prev_min, curr_min) to find lanes that might expire
-        for entry in self.smt_stores.score_index.get_leaf_updates(curr_min.saturating_sub(1), prev_min) {
+        // Iterate score_index entries in [expired_min, expired_max] to find lanes that might expire
+        for entry in self.smt_stores.score_index.get_leaf_updates(expired_max, expired_min) {
             let entry = entry.unwrap();
             // Only process canonical entries
             if !self.is_smt_canonical(entry.block_hash(), selected_parent) {
@@ -726,7 +724,9 @@ impl VirtualStateProcessor {
                 // target=parent filters anticone entries at (parent, current] at the seek level.
                 let has_newer = self
                     .smt_stores
-                    .get_lane(*lk, parent_blue_score, curr_min, |bh| self.is_smt_canonical(bh, selected_parent))
+                    .get_lane(*lk, read_bounds.target_blue_score, read_bounds.min_blue_score, |bh| {
+                        self.is_smt_canonical(bh, selected_parent)
+                    })
                     .is_some();
 
                 if !has_newer {

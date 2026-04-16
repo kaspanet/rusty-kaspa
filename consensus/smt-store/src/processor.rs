@@ -38,6 +38,22 @@ struct VersionedBranchReader<'a, F: Fn(Hash) -> bool> {
     is_canonical: F,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SmtReadBounds {
+    pub target_blue_score: u64,
+    pub min_blue_score: u64,
+}
+
+impl SmtReadBounds {
+    pub const fn new(target_blue_score: u64, min_blue_score: u64) -> Self {
+        Self { target_blue_score, min_blue_score }
+    }
+
+    pub const fn for_pov(pov_blue_score: u64, inactivity_threshold: u64) -> Self {
+        Self { target_blue_score: pov_blue_score, min_blue_score: pov_blue_score.saturating_sub(inactivity_threshold) }
+    }
+}
+
 impl<F: Fn(Hash) -> bool> SmtStore for VersionedBranchReader<'_, F> {
     type Error = StoreError;
 
@@ -319,36 +335,16 @@ impl BlockLaneChanges {
 }
 
 /// Accumulates SMT lane changes and builds the tree.
-///
-/// `blue_score` is the current block's score — used for the left bound (`blue_score − F`)
-/// and for leaf hashing in `BlockLaneChanges`.
-/// `parent_blue_score` is the selected parent's score — used as the reader's right bound
-/// (`target`), filtering anticone entries at `(parent, current]` at the seek level.
 pub struct SmtProcessor<'a> {
     stores: &'a SmtStores,
-    blue_score: u64,
-    parent_blue_score: u64,
-    inactivity_threshold: u64,
+    read_bounds: SmtReadBounds,
     current_lanes_root: Hash,
     lane_changes: BlockLaneChanges,
 }
 
 impl<'a> SmtProcessor<'a> {
-    pub fn new(
-        stores: &'a SmtStores,
-        blue_score: u64,
-        parent_blue_score: u64,
-        inactivity_threshold: u64,
-        current_lanes_root: Hash,
-    ) -> Self {
-        Self {
-            stores,
-            blue_score,
-            parent_blue_score,
-            inactivity_threshold,
-            current_lanes_root,
-            lane_changes: BlockLaneChanges::new(blue_score),
-        }
+    pub fn new(stores: &'a SmtStores, write_blue_score: u64, read_bounds: SmtReadBounds, current_lanes_root: Hash) -> Self {
+        Self { stores, read_bounds, current_lanes_root, lane_changes: BlockLaneChanges::new(write_blue_score) }
     }
 
     pub fn update_lane(&mut self, lane_key: LaneKey, lane_tip_hash: Hash) {
@@ -373,8 +369,8 @@ impl<'a> SmtProcessor<'a> {
         let leaf_updates = self.lane_changes.to_leaf_updates();
         let reader = VersionedBranchReader {
             stores: self.stores,
-            target_blue_score: self.parent_blue_score,
-            min_blue_score: self.blue_score.saturating_sub(self.inactivity_threshold),
+            target_blue_score: self.read_bounds.target_blue_score,
+            min_blue_score: self.read_bounds.min_blue_score,
             is_canonical,
         };
         let (root, node_changes) = compute_root_update::<SeqCommitActiveNode, _>(&reader, self.current_lanes_root, leaf_updates)?;
