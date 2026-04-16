@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 use kaspa_smt_store::processor::SmtReadBounds;
 
 /// Score bounds for the selected-parent -> current-block transition.
@@ -22,13 +24,13 @@ impl SeqCommitBounds {
     }
 
     #[cfg(test)]
-    pub(super) const fn parent_active_range(self) -> (u64, u64) {
-        (self.parent_active_min, self.parent_blue_score)
+    pub(super) fn parent_active_range(self) -> RangeInclusive<u64> {
+        self.parent_active_min..=self.parent_blue_score
     }
 
     #[cfg(test)]
-    pub(super) const fn current_active_range(self) -> (u64, u64) {
-        (self.current_active_min, self.current_blue_score)
+    pub(super) fn current_active_range(self) -> RangeInclusive<u64> {
+        self.current_active_min..=self.current_blue_score
     }
 
     pub(super) const fn selected_parent_read_bounds(self) -> SmtReadBounds {
@@ -36,11 +38,11 @@ impl SeqCommitBounds {
     }
 
     /// Score band `[parent_blue_score - F, current_blue_score - F - 1]`.
-    pub(super) const fn newly_expired_range(self) -> Option<(u64, u64)> {
+    pub(super) fn newly_expired_range(self) -> Option<RangeInclusive<u64>> {
         if self.current_active_min <= self.parent_active_min {
             None
         } else {
-            Some((self.parent_active_min, self.current_active_min - 1))
+            Some(self.parent_active_min..=self.current_active_min - 1)
         }
     }
 }
@@ -54,14 +56,14 @@ mod tests {
     fn active_ranges_are_inclusive() {
         let bounds = SeqCommitBounds::new(100, 105, 10);
 
-        assert_eq!(bounds.parent_active_range(), (90, 100));
-        assert_eq!(bounds.current_active_range(), (95, 105));
+        assert_eq!(bounds.parent_active_range(), 90..=100);
+        assert_eq!(bounds.current_active_range(), 95..=105);
     }
 
     #[test]
     fn newly_expired_range_returns_parent_to_current_minus_one() {
         let bounds = SeqCommitBounds::new(100, 105, 10);
-        assert_eq!(bounds.newly_expired_range(), Some((90, 94)));
+        assert_eq!(bounds.newly_expired_range(), Some(90..=94));
     }
 
     #[test]

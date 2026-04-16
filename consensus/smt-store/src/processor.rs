@@ -187,7 +187,7 @@ impl SmtStores {
         let mut chunks_written = 0u64;
 
         // Iterate both LeafUpdate and Structural entries at scores ≤ cutoff
-        for entry in self.score_index.get_all(cutoff_blue_score, 0) {
+        for entry in self.score_index.get_all(0..=cutoff_blue_score) {
             let entry = entry.unwrap();
             let blue_score = entry.blue_score();
             let block_hash = entry.block_hash();

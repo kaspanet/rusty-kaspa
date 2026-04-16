@@ -707,13 +707,13 @@ impl VirtualStateProcessor {
         selected_parent: Hash,
     ) -> u64 {
         let read_bounds = bounds.selected_parent_read_bounds();
-        let Some((expired_min, expired_max)) = bounds.newly_expired_range() else {
+        let Some(expired_range) = bounds.newly_expired_range() else {
             return 0;
         };
 
         let mut expired = 0u64;
         // Iterate score_index entries in [expired_min, expired_max] to find lanes that might expire
-        for entry in self.smt_stores.score_index.get_leaf_updates(expired_max, expired_min) {
+        for entry in self.smt_stores.score_index.get_leaf_updates(expired_range) {
             let entry = entry.unwrap();
             // Only process canonical entries
             if !self.is_smt_canonical(entry.block_hash(), selected_parent) {

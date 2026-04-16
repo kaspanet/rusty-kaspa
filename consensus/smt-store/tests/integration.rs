@@ -220,7 +220,7 @@ fn processor_flush_writes_correct_data() {
     assert_eq!(lane_ver.blue_score(), blue_score);
 
     // Verify score index entry
-    let si_entry = stores.score_index.get_leaf_updates(blue_score, 0).next().unwrap().unwrap();
+    let si_entry = stores.score_index.get_leaf_updates(0..=blue_score).next().unwrap().unwrap();
     assert_eq!(si_entry.block_hash(), block_hash);
     assert_eq!(si_entry.data(), &vec![key]);
 
@@ -871,12 +871,12 @@ fn streaming_import_matches_export_roundtrip_root() {
     let expected_keys: std::collections::HashSet<Hash> = (1u8..=4).map(|i| lane_key(&[i; 20])).collect();
 
     // Verify LeafUpdate entries: every lane appears, grouped by its own blue_score
-    let leaf_updates: Vec<_> = import_stores.score_index.get_leaf_updates(u64::MAX, 0).collect::<Result<Vec<_>, _>>().unwrap();
+    let leaf_updates: Vec<_> = import_stores.score_index.get_leaf_updates(0..=u64::MAX).collect::<Result<Vec<_>, _>>().unwrap();
     let leaf_lane_keys: std::collections::HashSet<Hash> = leaf_updates.iter().flat_map(|e| e.data().iter()).copied().collect();
     assert_eq!(leaf_lane_keys, expected_keys, "LeafUpdate entries must cover all imported lanes");
 
     // Verify Structural entries: every lane appears at pp_blue_score=400
-    let all_entries: Vec<_> = import_stores.score_index.get_all(u64::MAX, 0).collect::<Result<Vec<_>, _>>().unwrap();
+    let all_entries: Vec<_> = import_stores.score_index.get_all(0..=u64::MAX).collect::<Result<Vec<_>, _>>().unwrap();
     let structural_lane_keys: std::collections::HashSet<Hash> = all_entries
         .iter()
         .filter(|e| e.blue_score() == 400) // structural entries are at pp_blue_score
@@ -929,7 +929,7 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
     db.write(batch1).unwrap();
 
     // Block 1 score index: LeafUpdate with [A, B]
-    let entries1: Vec<_> = stores.score_index.get_leaf_updates(bs1, bs1).collect::<Result<Vec<_>, _>>().unwrap();
+    let entries1: Vec<_> = stores.score_index.get_leaf_updates(bs1..=bs1).collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(entries1.len(), 1);
     let keys1: std::collections::HashSet<Hash> = entries1[0].data().iter().copied().collect();
     assert!(keys1.contains(&key_a));
@@ -945,7 +945,7 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
     db.write(batch2).unwrap();
 
     // Block 2 score index: Structural entry with [A] (expiration caused collapse)
-    let all2: Vec<_> = stores.score_index.get_all(bs2, bs2).collect::<Result<Vec<_>, _>>().unwrap();
+    let all2: Vec<_> = stores.score_index.get_all(bs2..=bs2).collect::<Result<Vec<_>, _>>().unwrap();
     let structural_keys2: std::collections::HashSet<Hash> =
         all2.iter().filter(|e| e.blue_score() == bs2).flat_map(|e| e.data().iter()).copied().collect();
     assert!(structural_keys2.contains(&key_a), "Structural entry must record expired lane A (collapse trigger)");
@@ -960,7 +960,7 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
     db.write(batch3).unwrap();
 
     // Block 3 score index: LeafUpdate with [C] (insertion caused split)
-    let entries3: Vec<_> = stores.score_index.get_leaf_updates(bs3, bs3).collect::<Result<Vec<_>, _>>().unwrap();
+    let entries3: Vec<_> = stores.score_index.get_leaf_updates(bs3..=bs3).collect::<Result<Vec<_>, _>>().unwrap();
     let leaf_keys3: std::collections::HashSet<Hash> = entries3.iter().flat_map(|e| e.data().iter()).copied().collect();
     assert!(leaf_keys3.contains(&key_c), "LeafUpdate must record lane C (split trigger)");
 }
@@ -1002,8 +1002,8 @@ fn prune_removes_old_versions_keeps_new() {
     assert!(stores.lane_version.get_at(key_b, bs1, 0).next().is_some(), "B at score 100 should exist");
 
     // Score index: entries at both scores
-    assert!(stores.score_index.get_all(bs1, bs1).next().is_some(), "score index at 100 should exist");
-    assert!(stores.score_index.get_all(bs2, bs2).next().is_some(), "score index at 500 should exist");
+    assert!(stores.score_index.get_all(bs1..=bs1).next().is_some(), "score index at 100 should exist");
+    assert!(stores.score_index.get_all(bs2..=bs2).next().is_some(), "score index at 500 should exist");
 
     // Prune at cutoff=200: should delete score 100 data, keep score 500
     stores.prune(&db, 200);
@@ -1016,8 +1016,8 @@ fn prune_removes_old_versions_keeps_new() {
     assert!(stores.lane_version.get_at(key_b, 200, 0).next().is_none(), "B at score 100 should be pruned");
 
     // Score index at 100 is range-deleted, at 500 remains
-    assert!(stores.score_index.get_all(200, 0).next().is_none(), "score index at 100 should be pruned");
-    assert!(stores.score_index.get_all(bs2, bs2).next().is_some(), "score index at 500 should remain");
+    assert!(stores.score_index.get_all(0..=200).next().is_none(), "score index at 100 should be pruned");
+    assert!(stores.score_index.get_all(bs2..=bs2).next().is_some(), "score index at 500 should remain");
 
     // Branch versions at score 100 are gone, but score 500 remain
     let root_key = Hash::from_bytes([0; 32]);
