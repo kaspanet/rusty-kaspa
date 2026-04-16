@@ -429,9 +429,11 @@ async fn bench_bbt_latency_stark() {
     let prealloc_address =
         extract_script_pub_key_address(&stark_spk, NetworkType::Simnet.into()).expect("stark redeem script address");
 
-    let (seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
+    let (seal, control_id, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
     let stark_signature_prefix = ScriptBuilder::new()
+        .add_data(&control_id)
+        .unwrap()
         .add_data(&seal)
         .unwrap()
         .add_data(&claim)
