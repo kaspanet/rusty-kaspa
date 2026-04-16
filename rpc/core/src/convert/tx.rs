@@ -63,12 +63,12 @@ impl TryFrom<RpcOptionalInputWithVersion> for TransactionInput {
             value.input.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?;
 
         let mass = if TxInputMass::version_expects_compute_budget_field(value.version) {
-            if value.input.sig_op_count.is_some() {
+            if value.input.sig_op_count.is_some_and(|v| v != 0) {
                 return Err(invalid_input_mass_variant("sig_op_count", value.version));
             }
             ComputeBudget(value.input.compute_budget.unwrap_or_default()).into()
         } else {
-            if value.input.compute_budget.is_some() {
+            if value.input.compute_budget.is_some_and(|v| v != 0) {
                 return Err(invalid_input_mass_variant("compute_budget", value.version));
             }
             SigopCount(value.input.sig_op_count.unwrap_or_default()).into()
