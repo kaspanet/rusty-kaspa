@@ -438,3 +438,110 @@ impl SmtBuild {
         Ok(root)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_database::create_temp_db;
+    use kaspa_database::prelude::{ConnBuilder, DirectDbWriter};
+
+    fn hash(v: u8) -> Hash {
+        Hash::from_bytes([v; 32])
+    }
+
+    fn make_stores() -> (kaspa_database::utils::DbLifetime, Arc<DB>, SmtStores) {
+        let (lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let stores = SmtStores::new(db.clone(), 16, 16);
+        (lifetime, db, stores)
+    }
+
+    fn bounds(target: u64, min: u64) -> SmtReadBounds {
+        SmtReadBounds::new(target, min)
+    }
+
+    fn internal(h: Hash) -> Option<Node> {
+        Some(Node::Internal(h))
+    }
+
+    fn entity() -> BranchEntity {
+        BranchEntity { depth: 7, node_key: hash(0xEE) }
+    }
+
+    /// The cache's "for every entity, cached versions are a blue-score-newest
+    /// suffix of that entity's write history" invariant is a *same-session*
+    /// property: it only holds for versions written since the cache was last
+    /// cleared. A process restart clears the cache but leaves the DB intact,
+    /// so post-restart the cache can hold a version at blue_score X while the
+    /// DB retains pre-restart versions at scores higher than X that were
+    /// never reloaded into the cache.
+    ///
+    /// The surviving invariant is weaker: if the cache has entry `(X, Y)` for
+    /// entity E, it has every newer entry for E whose block_hash has Y as a
+    /// chain ancestor — i.e. only along Y's chain. DB-only entries above X on
+    /// an off-chain branch (a pre-restart canonical write on a chain that
+    /// the post-restart cache fill didn't touch) are allowed.
+    ///
+    /// `SmtStores::get_node` must still return the canonical DB entry above
+    /// the cache's oldest version in this scenario. A DB-continuation
+    /// strategy that resumes strictly after the cache's last-visited
+    /// `(score, bh)` silently misses the higher-score DB entry and returns
+    /// `None` — an authoritative-looking stale result.
+    #[test]
+    fn get_node_restart_then_off_chain_cache_misses_db_entry_above() {
+        let (_lt, db, stores) = make_stores();
+        let e = entity();
+        let pre_restart_bh = hash(0xAA);
+        let pre_restart_node = internal(hash(0xCC));
+        let post_restart_bh = hash(0xBB);
+        let post_restart_node = internal(hash(0xDD));
+
+        // Pre-restart DB write at blue_score 200. The restart clears the
+        // in-memory cache, so this version is now DB-only.
+        stores.branch_version.put(DirectDbWriter::new(&db), e.depth, e.node_key, 200, pre_restart_bh, pre_restart_node).unwrap();
+
+        // Post-restart normal flush path: write E at blue_score 100 into
+        // both DB and cache. The cached entry is on an off-chain fork
+        // relative to the query's `is_canonical` predicate below.
+        stores.branch_version.put(DirectDbWriter::new(&db), e.depth, e.node_key, 100, post_restart_bh, post_restart_node).unwrap();
+        stores.branch_cache.lock().insert(e, 100, post_restart_bh, post_restart_node);
+
+        // Query from the POV of a chain whose canonical entry for E is the
+        // pre-restart DB-only version at 200.
+        let got = stores
+            .get_node(e, bounds(300, 0), |bh| bh == pre_restart_bh)
+            .expect("pre-restart canonical DB entry above the cache's oldest must still be returned");
+        assert_eq!(got.blue_score(), 200, "must return the DB entry at blue_score 200 above the cache's (100, post-restart-bh)");
+        assert_eq!(got.block_hash(), pre_restart_bh);
+        assert_eq!(*got.data(), pre_restart_node);
+    }
+
+    /// Lane-cache analogue of
+    /// [`get_node_restart_then_off_chain_cache_misses_db_entry_above`].
+    ///
+    /// The restart+reorg scenario — post-restart cache only holds an
+    /// off-chain version at blue_score 100 while the DB still has a
+    /// pre-restart canonical version at blue_score 200 — applies equally to
+    /// the lane store. `get_lane` must return the DB entry at 200 for an
+    /// `is_canonical` predicate that matches the pre-restart block_hash.
+    #[test]
+    fn get_lane_restart_then_off_chain_cache_misses_db_entry_above() {
+        let (_lt, db, stores) = make_stores();
+        let lane_key = hash(0xEE);
+        let pre_restart_bh = hash(0xAA);
+        let pre_restart_tip = hash(0xCC);
+        let post_restart_bh = hash(0xBB);
+        let post_restart_tip = hash(0xDD);
+
+        stores.lane_version.put(DirectDbWriter::new(&db), lane_key, 200, pre_restart_bh, &pre_restart_tip).unwrap();
+
+        stores.lane_version.put(DirectDbWriter::new(&db), lane_key, 100, post_restart_bh, &post_restart_tip).unwrap();
+        stores.lane_cache.lock().insert(lane_key, 100, post_restart_bh, post_restart_tip);
+
+        let got = stores
+            .get_lane(lane_key, bounds(300, 0), |bh| bh == pre_restart_bh)
+            .expect("pre-restart canonical DB lane entry above the cache's oldest must still be returned");
+        assert_eq!(got.blue_score(), 200);
+        assert_eq!(got.block_hash(), pre_restart_bh);
+        assert_eq!(*got.data(), pre_restart_tip);
+    }
+}
