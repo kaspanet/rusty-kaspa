@@ -243,7 +243,7 @@ pub fn generate_tx(
 }
 
 pub async fn fetch_spendable_utxos(
-    client: &GrpcClient,
+    client: &impl RpcApi,
     address: Address,
     coinbase_maturity: u64,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
