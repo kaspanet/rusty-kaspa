@@ -146,6 +146,23 @@ impl HasherBase for PreimageHasher {
     }
 }
 
+struct PreimageCapacityTracker {
+    cap: usize,
+}
+
+impl PreimageCapacityTracker {
+    fn new() -> Self {
+        Self { cap: 0 }
+    }
+}
+
+impl HasherBase for PreimageCapacityTracker {
+    fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+        self.cap += data.as_ref().len();
+        self
+    }
+}
+
 /// Serializes the transaction for v0 TxID preimage (excluding signature scripts).
 // TODO: Remove this function since the covenant ID scheme makes it redundant.
 pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
@@ -159,7 +176,12 @@ pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
 /// (excluding payload, signature scripts, and mass).
 pub fn transaction_v1_rest_preimage(tx: &Transaction) -> Vec<u8> {
     assert!(tx.version >= 1);
-    let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
+    let cap = {
+        let mut cap_tracker = PreimageCapacityTracker::new();
+        write_rest_preimage(&mut cap_tracker, tx);
+        cap_tracker.cap
+    };
+    let mut hasher = PreimageHasher { buff: Vec::with_capacity(cap) };
     write_rest_preimage(&mut hasher, tx);
     hasher.buff
 }
