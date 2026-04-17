@@ -20,7 +20,7 @@ thiserror.workspace = true
 zerocopy.workspace = true
 
 [build-dependencies]
-blake3.workspace = true
+blake3 = { workspace = true, features = ["pure"] }
 
 [dev-dependencies]
 rand.workspace = true

@@ -146,6 +146,23 @@ impl HasherBase for PreimageHasher {
     }
 }
 
+struct PreimageCapacityTracker {
+    cap: usize,
+}
+
+impl PreimageCapacityTracker {
+    fn new() -> Self {
+        Self { cap: 0 }
+    }
+}
+
+impl HasherBase for PreimageCapacityTracker {
+    fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+        self.cap += data.as_ref().len();
+        self
+    }
+}
+
 /// Serializes the transaction for v0 TxID preimage (excluding signature scripts).
 // TODO: Remove this function since the covenant ID scheme makes it redundant.
 pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
@@ -153,6 +170,31 @@ pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
     let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
     write_transaction_v0_for_transaction_id(&mut hasher, tx);
     hasher.buff
+}
+
+/// Serializes the transaction for V1 rest_digest preimage
+/// (excluding payload, signature scripts, and mass).
+pub fn transaction_v1_rest_preimage(tx: &Transaction) -> Vec<u8> {
+    assert!(tx.version >= 1);
+    let cap = {
+        let mut cap_tracker = PreimageCapacityTracker::new();
+        write_rest_preimage(&mut cap_tracker, tx);
+        cap_tracker.cap
+    };
+    let mut hasher = PreimageHasher { buff: Vec::with_capacity(cap) };
+    write_rest_preimage(&mut hasher, tx);
+    hasher.buff
+}
+
+/// Computes the `rest_digest` component of a V1 transaction ID:
+/// the `TransactionRest` hash over the transaction body with payload,
+/// signature scripts, and mass excluded. Combined with `payload_digest`
+/// to produce the final V1 txid (see [`id_v1`]).
+pub fn v1_rest_digest(tx: &Transaction) -> Hash {
+    assert!(tx.version >= 1);
+    let mut hasher = kaspa_hashes::TransactionRest::new();
+    write_rest_preimage(&mut hasher, tx);
+    hasher.finalize()
 }
 
 /// Precomputed hash digest for an empty payload using `PayloadDigest`.
@@ -166,11 +208,7 @@ pub fn id_v1(tx: &Transaction) -> TransactionId {
     let payload_digest = payload_digest(&tx.payload);
     let rest_digest = {
         let mut hasher = kaspa_hashes::TransactionRest::new();
-        write_transaction(
-            &mut hasher,
-            tx,
-            TxEncodingFlags::EXCLUDE_PAYLOAD | TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT,
-        );
+        write_rest_preimage(&mut hasher, tx);
         hasher.finalize()
     };
 
@@ -188,6 +226,19 @@ pub fn seq_commit_tx_digest(txid: TransactionId, version: u16) -> Hash {
     let mut hasher = SeqCommitTxDigest::new();
     hasher.update(txid).update(version.to_le_bytes());
     hasher.finalize()
+}
+
+/// Writes the canonical V1 `rest_digest` preimage into `hasher`:
+/// the transaction encoded with payload, signature scripts, and the
+/// mass commit field excluded. Shared by [`id_v1`], [`v1_rest_digest`],
+/// and [`transaction_v1_rest_preimage`] to keep the encoding flags in
+/// a single place.
+fn write_rest_preimage<T: HasherBase>(hasher: &mut T, tx: &Transaction) {
+    write_transaction(
+        hasher,
+        tx,
+        TxEncodingFlags::EXCLUDE_PAYLOAD | TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT,
+    );
 }
 
 #[cfg(test)]
