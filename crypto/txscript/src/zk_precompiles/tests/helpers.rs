@@ -72,19 +72,19 @@ pub fn build_stark_script(break_control_id: bool) -> Vec<u8> {
         let mut broken_control_id = control_id.clone();
         broken_control_id[0] ^= 0xFF;
         return build_zk_script(&[
-            broken_control_id,
-            seal,
             claim,
-            hashfn,
             control_index,
             control_digests,
+            seal,
             journal,
             image_id,
+            broken_control_id,
+            hashfn,
             vec![stark_tag],
         ])
         .unwrap();
     }
-    build_zk_script(&[control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id, vec![stark_tag]]).unwrap()
+    build_zk_script(&[claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn, vec![stark_tag]]).unwrap()
 }
 
 pub fn build_groth_script() -> Vec<u8> {

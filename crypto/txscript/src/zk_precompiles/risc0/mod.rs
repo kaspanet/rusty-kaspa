@@ -72,15 +72,16 @@ impl ZkPrecompile for R0SuccinctPrecompile {
     /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(covpp-mainnet)
     ///
     /// Expects the following items on the stack (from top to bottom):
-    /// - image id (bytes)
-    /// - journal (bytes)
-    /// - control inclusion proof digests (bytes)
-    /// - control inclusion proof index (bytes, u32 le)
     /// - hash function id (bytes, u8)
+    /// - control id (bytes, digest length)
+    /// - image id (bytes, digest length)
+    /// - journal (bytes, digest length)
+    /// - seal (bytes, list of u32 le)
+    /// - control inclusion proof digests (bytes)
+    /// - control index (bytes, u32 le)
     /// - claim (bytes)
-    /// - seal (bytes, u32 le)
     fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error> {
-        let [control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id] = dstack.pop_raw()?;
+        let [claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn] = dstack.pop_raw()?;
 
         let control_id = parse_digest(control_id)?;
         let seal = parse_seal(seal)?;
