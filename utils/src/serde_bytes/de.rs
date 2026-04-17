@@ -57,9 +57,8 @@ impl<'de, T: FromHex> serde::de::Visitor<'de> for FromHexVisitor<'de, T> {
         FromHex::from_hex(v).map_err(serde::de::Error::custom)
     }
 
-    #[cfg(feature = "std")]
     #[inline]
-    fn visit_string<E>(self, v: std::string::String) -> Result<Self::Value, E>
+    fn visit_string<E>(self, v: alloc::string::String) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
@@ -84,9 +83,8 @@ impl<'de, T: FromHex> serde::de::Visitor<'de> for FromHexVisitor<'de, T> {
         FromHex::from_hex(str).map_err(serde::de::Error::custom)
     }
 
-    #[cfg(feature = "std")]
     #[inline]
-    fn visit_byte_buf<E>(self, v: std::vec::Vec<u8>) -> Result<Self::Value, E>
+    fn visit_byte_buf<E>(self, v: alloc::vec::Vec<u8>) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {

@@ -23,7 +23,7 @@ use kaspa_utils::{
 };
 use wasm_bindgen::prelude::*;
 
-// export libraries so it's possible to use macroses
+// export libraries so it's possible to use macros
 pub use {blake2b_simd, blake3, sha2, sha2_const_stable};
 
 #[cfg(feature = "workflow")]

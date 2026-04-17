@@ -27,6 +27,15 @@ impl<'a> DbSink<'a> {
     }
 
     pub(crate) fn write_node(&mut self, bk: BranchKey, node: Node) -> StoreResult<()> {
+        // Writes go directly to the DB branch-version store and intentionally
+        // skip the in-memory branch cache. `SmtStores::get_node` treats a
+        // cache hit as authoritative (see the newest-suffix invariant in
+        // `crate::cache`), so bypassing the cache is safe only because IBD
+        // SMT import runs after `SmtStores::clear_all()` has emptied both
+        // the DB stores and the caches. Thus there can be no stale cached
+        // branch versions disagreeing with the imported DB state. After
+        // import the caches remain cold, and reads fall back to DB until
+        // later incremental writes repopulate them.
         self.stores.branch_version.put(
             BatchDbWriter::new(&mut self.batch),
             bk.depth,

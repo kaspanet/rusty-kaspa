@@ -101,6 +101,12 @@ impl SmtStores {
     /// checking cache first then DB. `target_blue_score` is the block at which the
     /// read is happening — it drives `get_at`'s seek so non-canonical future
     /// versions are skipped in O(log n) rather than scanned linearly.
+    ///
+    /// A cache hit is authoritative (no DB fallback) because of the
+    /// newest-suffix invariant: the cache retains, per entity, a
+    /// blue-score-newest suffix of the versions written through the
+    /// incremental `flush` path. See the module doc in [`crate::cache`] for
+    /// the full argument and the interaction with the IBD cache-bypass path.
     pub fn get_node(
         &self,
         entity: BranchEntity,
@@ -119,6 +125,10 @@ impl SmtStores {
 
     /// Find the latest canonical lane version in `[min_blue_score, target_blue_score]`,
     /// checking cache first then DB.
+    ///
+    /// A cache hit is authoritative for the same reason as [`Self::get_node`];
+    /// see that method's doc and [`crate::cache`] for the newest-suffix
+    /// invariant.
     pub fn get_lane(
         &self,
         lane_key: LaneKey,
@@ -262,7 +272,9 @@ impl SmtStores {
         (lane_deletes, branch_deletes)
     }
 
-    /// Clear all versioned SMT stores and caches. Used before IBD SMT sync.
+    /// Clear all versioned SMT stores and caches. Used before IBD SMT sync
+    /// to ensure that the caches are cold and the DB is empty, preserving
+    /// the authoritative-read invariants when incremental processing resumes.
     pub fn clear_all(&self) {
         self.branch_version.delete_all();
         self.lane_version.delete_all();

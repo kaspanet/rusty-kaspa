@@ -90,6 +90,10 @@ pub trait SmtHasher: Hasher {
     /// - `[0]` = `ZERO_HASH` (canonical empty leaf)
     /// - `[i]` = `hash_node(empty[i-1], empty[i-1])`
     /// - `[DEPTH]` = root of a completely empty tree
+    ///
+    /// These are precomputed at build-time (via `build.rs`) to eliminate the
+    /// runtime cost of hashing empty subtrees. This is particularly important
+    /// for ZK guest programs where hashing is expensive and every cycle counts.
     const EMPTY_HASHES: [Hash; DEPTH + 1];
 
     /// Root hash of a completely empty tree — `EMPTY_HASHES[DEPTH]`.

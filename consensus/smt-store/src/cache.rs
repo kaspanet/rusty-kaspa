@@ -2,6 +2,46 @@
 //!
 //! Provides O(log n) entity-ordered iteration (newest-first) and
 //! O(log n) score-based eviction, matching the DB stores' access patterns.
+//!
+//! # Newest-suffix invariant
+//!
+//! The cache is designed so that, for every entity, the set of retained
+//! versions is a **suffix (by blue_score, newest-first) of that entity's
+//! written history**. In other words: if version V for entity E is cached,
+//! then every version V' for E with `V'.score > V.score` that was ever
+//! written through the incremental `flush` path is also in the cache.
+//!
+//! This is the invariant [`SmtStores::get_node`] and [`SmtStores::get_lane`]
+//! rely on to treat a cache hit as authoritative, without falling back to DB.
+//! It rests on the following properties:
+//!
+//! 1. **Write-through on the incremental path.** Every `flush` that writes a
+//!    branch/lane version to DB also inserts the same version into the cache
+//!    (see `SmtBuild::flush` and `BlockLaneChanges::flush_lanes`). No version
+//!    written incrementally is ever "DB-only".
+//! 2. **Score-ordered eviction.** [`insert`](VersionedCache::insert) and
+//!    [`evict_below_score`](VersionedCache::evict_below_score) both remove the
+//!    lowest-`score` entries first (globally, across all entities). So for a
+//!    given entity, the evicted versions are always a prefix of that entity's
+//!    history by score, and what remains is a suffix. This preserves the
+//!    "newest relevant suffix" needed for authoritative cache hits.
+//! 3. **Canonical lookup within a score bucket.** Within a single
+//!    `blue_score` bucket, eviction may drop some same-score siblings and
+//!    keep others. The eviction tie-break reverses `block_hash` (see
+//!    [`ScoreEntityKey`]), so the entry evicted first at a given score is
+//!    the one [`VersionedCache::iter_entity`] would yield *last* —
+//!    preserving the lowest-block_hash entries, exactly the first
+//!    canonical-candidate on a `get` lookup. Correctness doesn't depend on
+//!    this (at most one version at a given blue_score is canonical on any
+//!    given chain, and DB fallback covers the rest) — the tie-break just
+//!    aligns cache retention with the cache's own iteration order for a
+//!    better hit rate.
+//! 4. **IBD bypass + cold start.** The IBD streaming-import path bypasses the
+//!    caches (see `streaming_import` and `db_sink`). This is safe because IBD
+//!    runs after [`SmtStores::clear_all`] has emptied both the DB and the
+//!    caches. There are no stale cached entries to contradict the imported
+//!    state. After IBD, the caches stay cold until incremental writes
+//!    repopulate them.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
@@ -37,11 +77,17 @@ struct EntityVersionKey<E: EntityKey> {
     block_hash: Hash,
 }
 
-/// Key for score-ordered eviction: lowest scores at front.
+/// Key for score-ordered eviction: lowest scores at front. Within a score
+/// bucket, the tie-break reverses `block_hash` — so `pop_first` removes the
+/// *highest* block_hash at the lowest score. That aligns eviction's "tail"
+/// with the entity-scoped iteration tail of [`EntityVersionKey`] (newest
+/// score first, then lowest block_hash first), keeping the lowest-block_hash
+/// entries — exactly the first canonical-candidate on a `get` — cached for
+/// longer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct ScoreEntityKey<E: EntityKey> {
     score: u64,
-    block_hash: Hash,
+    rev_block_hash: std::cmp::Reverse<Hash>,
     entity: E,
 }
 
@@ -81,7 +127,8 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
         self.capacity.saturating_sub(self.by_entity.len())
     }
 
-    /// Insert a single versioned entry. Evicts the lowest-score entry if at capacity.
+    /// Insert a single versioned entry. Evicts the lowest-score entry if at
+    /// capacity (ties broken by highest block_hash — see [`ScoreEntityKey`]).
     pub fn insert(&mut self, entity: E, score: u64, block_hash: Hash, value: V) {
         if self.by_score.len() >= self.capacity
             && let Some(evicted) = self.by_score.pop_first()
@@ -89,11 +136,11 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
             self.by_entity.remove(&EntityVersionKey {
                 entity: evicted.entity,
                 rev_score: std::cmp::Reverse(evicted.score),
-                block_hash: evicted.block_hash,
+                block_hash: evicted.rev_block_hash.0,
             });
         }
         self.by_entity.insert(EntityVersionKey { entity, rev_score: std::cmp::Reverse(score), block_hash }, value);
-        self.by_score.insert(ScoreEntityKey { score, block_hash, entity });
+        self.by_score.insert(ScoreEntityKey { score, rev_block_hash: std::cmp::Reverse(block_hash), entity });
     }
 
     /// Remove all entries with `score < min_score`. Returns the number of evicted entries.
@@ -101,7 +148,13 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
     /// Uses `BTreeSet::split_off` to partition at the boundary in O(log n),
     /// then removes the evicted entries from `by_entity`.
     pub fn evict_below_score(&mut self, min_score: u64) -> usize {
-        let split_key = ScoreEntityKey { score: min_score, block_hash: Hash::from_bytes([0x00; 32]), entity: E::MIN };
+        // Split key is the lowest possible `ScoreEntityKey` at `min_score`: the
+        // `Reverse<Hash>` minimum is the `Reverse` of the *largest* hash
+        // (all 0xFF), and entity's explicit `MIN` matches `EntityKey::MIN`.
+        // All entries at `score >= min_score` compare `>= split_key` and are
+        // retained; everything at `score < min_score` is evicted.
+        let split_key =
+            ScoreEntityKey { score: min_score, rev_block_hash: std::cmp::Reverse(Hash::from_bytes([0xFF; 32])), entity: E::MIN };
         let keep = self.by_score.split_off(&split_key);
         let evicted = std::mem::replace(&mut self.by_score, keep);
         let count = evicted.len();
@@ -109,7 +162,7 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
             self.by_entity.remove(&EntityVersionKey {
                 entity: entry.entity,
                 rev_score: std::cmp::Reverse(entry.score),
-                block_hash: entry.block_hash,
+                block_hash: entry.rev_block_hash.0,
             });
         }
         count
@@ -123,7 +176,7 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
                 self.by_entity.remove(&EntityVersionKey {
                     entity: first.entity,
                     rev_score: std::cmp::Reverse(first.score),
-                    block_hash: first.block_hash,
+                    block_hash: first.rev_block_hash.0,
                 });
                 evicted += 1;
             } else {
@@ -307,5 +360,242 @@ mod tests {
         cache.insert(entity, 100, bh, 42);
         let result = cache.get(entity, u64::MAX, 0, |_| true);
         assert_eq!(result, Some((100, bh, &42)));
+    }
+
+    /// Newest-suffix invariant under cross-entity capacity pressure.
+    ///
+    /// Eviction is score-ordered globally, so when versions from several
+    /// entities compete for a small capacity, some entity's older versions
+    /// are dropped while other entities keep theirs. For each entity, the
+    /// retained cached versions must still form a blue-score-newest suffix
+    /// of that entity's write history — otherwise a cache hit could skip a
+    /// newer canonical version that only lives in the DB, breaking the
+    /// "cache hit is authoritative" guarantee relied on by
+    /// `SmtStores::get_node` / `get_lane`.
+    #[test]
+    fn newest_suffix_invariant_under_cross_entity_pressure() {
+        let capacity = 5;
+        let mut cache = VersionedCache::<Hash, u64>::new(capacity);
+        let entities = [hash(0xA), hash(0xB), hash(0xC)];
+
+        // Per-entity histories of inserted scores (ascending — blocks are
+        // written in blue-score order per entity).
+        let mut histories: std::collections::BTreeMap<Hash, Vec<u64>> = std::collections::BTreeMap::new();
+
+        // Interleaved, score-ascending-per-entity writes. Total writes > capacity
+        // so eviction fires repeatedly with varying lowest-score entity.
+        let writes: &[(usize, u64)] =
+            &[(0, 100), (1, 50), (0, 200), (2, 75), (1, 150), (0, 300), (2, 175), (1, 250), (2, 225), (0, 400), (1, 350)];
+
+        for &(ei, score) in writes {
+            let entity = entities[ei];
+            // block_hash derived from score so cache entries are identifiable.
+            let bh = Hash::from_bytes([score as u8; 32]);
+            cache.insert(entity, score, bh, score);
+            histories.entry(entity).or_default().push(score);
+        }
+
+        assert_eq!(cache.len(), capacity, "cache must be at capacity after > capacity writes");
+
+        // For each entity, the retained scores (newest-first) must equal the
+        // suffix of its write history with the same length. Equivalently: no
+        // "gap" where a lower-score version is cached but a strictly-higher
+        // version for the same entity was written yet evicted.
+        for entity in &entities {
+            let retained_newest_first: Vec<u64> = cache.iter_entity(*entity, u64::MAX, 0).map(|(score, _, _)| score).collect();
+
+            let Some(history) = histories.get(entity) else {
+                continue;
+            };
+            let k = retained_newest_first.len();
+            assert!(k <= history.len());
+
+            // History is ascending; the k-element suffix newest-first is:
+            let expected_suffix_newest_first: Vec<u64> = history.iter().rev().take(k).copied().collect();
+            assert_eq!(
+                retained_newest_first, expected_suffix_newest_first,
+                "entity {entity:?}: cached versions {retained_newest_first:?} are not the newest suffix of history {history:?}",
+            );
+        }
+
+        // Stronger formulation of the same invariant: for every entity, every
+        // written version strictly newer than the oldest cached version for
+        // that entity must itself be cached. (A counterexample would mean a
+        // newer canonical version is missing from the cache while an older
+        // one is retained — exactly the scenario a "cache hit is
+        // authoritative" lookup must never observe.)
+        for entity in &entities {
+            let retained_scores: std::collections::BTreeSet<u64> =
+                cache.iter_entity(*entity, u64::MAX, 0).map(|(s, _, _)| s).collect();
+            let Some(oldest_cached) = retained_scores.iter().next().copied() else {
+                continue;
+            };
+            let history = &histories[entity];
+            for &s in history.iter().filter(|&&s| s >= oldest_cached) {
+                assert!(
+                    retained_scores.contains(&s),
+                    "entity {entity:?}: score {s} in history is newer than cached {oldest_cached} but missing from cache",
+                );
+            }
+        }
+    }
+
+    /// Under a small cache and interleaved multi-entity writes, `get()` under
+    /// a canonicality predicate must never return a stale (older canonical)
+    /// version when a newer canonical version was written — even if that
+    /// newer version is also cached alongside non-canonical siblings at the
+    /// same score. Exercises the fast-path authoritative-read guarantee.
+    #[test]
+    fn fast_path_does_not_return_stale_under_same_score_siblings() {
+        let mut cache = VersionedCache::<Hash, u64>::new(4);
+        let entity = hash(1);
+
+        // Non-canonical and canonical siblings at score 100, plus an older
+        // canonical 80 and a newer non-canonical 120.
+        let non_canon_100 = hash(0xAA);
+        let canon_100 = hash(0xCC);
+        let canon_80 = hash(0xBB);
+        let non_canon_120 = hash(0xDD);
+
+        cache.insert(entity, 80, canon_80, 80);
+        cache.insert(entity, 100, non_canon_100, 100);
+        cache.insert(entity, 100, canon_100, 101);
+        cache.insert(entity, 120, non_canon_120, 120);
+
+        let is_canonical = |bh: Hash| bh == canon_100 || bh == canon_80;
+
+        // Read at target >= 120: first canonical cached hit should be canon_100
+        // (non_canon_120 is filtered, canon_100 is the newest canonical).
+        let hit = cache.get(entity, u64::MAX, 0, is_canonical).unwrap();
+        assert_eq!(hit.1, canon_100);
+        assert_eq!(hit.0, 100);
+        assert_eq!(hit.2, &101);
+
+        // Read at target between 80 and 100: only canon_80 is in range for
+        // the canonicality predicate.
+        let hit = cache.get(entity, 95, 0, is_canonical).unwrap();
+        assert_eq!(hit.1, canon_80);
+        assert_eq!(hit.0, 80);
+    }
+
+    /// When capacity pressure evicts a same-score sibling, the
+    /// lowest-block_hash entry — the one [`VersionedCache::iter_entity`]
+    /// yields first at that score, i.e. the first canonical-candidate on a
+    /// `get` lookup — must survive. This pins down the `Reverse<Hash>`
+    /// tie-break in [`ScoreEntityKey`]: `pop_first` within a score bucket
+    /// removes the *highest* block_hash first, so any lower-hash existing
+    /// entry at the same score is preserved over higher-hash ones.
+    #[test]
+    fn same_score_eviction_retains_lowest_block_hash() {
+        let low_hash = hash(0x11);
+        let mid_hash = hash(0x55);
+        let high_hash = hash(0xFF);
+
+        // Assert across all insertion orderings: after three same-score
+        // inserts at capacity 2, the lowest-hash entry is always retained,
+        // and the highest-hash entry among the *first two* inserts is
+        // evicted (the third insert always survives because eviction runs
+        // before the new insert).
+        let orderings = [
+            [low_hash, mid_hash, high_hash],
+            [low_hash, high_hash, mid_hash],
+            [mid_hash, low_hash, high_hash],
+            [mid_hash, high_hash, low_hash],
+            [high_hash, low_hash, mid_hash],
+            [high_hash, mid_hash, low_hash],
+        ];
+
+        for order in orderings {
+            let mut cache = VersionedCache::<Hash, u64>::new(2);
+            let entity = hash(1);
+            for (i, bh) in order.iter().enumerate() {
+                cache.insert(entity, 100, *bh, i as u64);
+            }
+            assert_eq!(cache.len(), 2);
+
+            let retained: std::collections::BTreeSet<Hash> = cache.iter_entity(entity, u64::MAX, 0).map(|(_, bh, _)| bh).collect();
+
+            assert!(
+                retained.contains(&low_hash),
+                "lowest-block_hash entry must survive same-score eviction (insert order {order:?}, retained {retained:?})",
+            );
+
+            // The third insert is never evicted (capacity check runs before
+            // insertion). Among the first two, the higher-hash entry should
+            // have been evicted.
+            let first_two = [order[0], order[1]];
+            let evicted = if first_two[0] > first_two[1] { first_two[0] } else { first_two[1] };
+            // Exception: if the lowest-hash entry is one of the first two,
+            // it must *not* have been evicted — eviction prefers the
+            // higher-hash among the first two.
+            if evicted != low_hash {
+                assert!(
+                    !retained.contains(&evicted),
+                    "higher-hash same-score entry should have been evicted (insert order {order:?}, retained {retained:?})",
+                );
+            }
+        }
+    }
+
+    /// Cross-entity capacity pressure at the same score: when a newly-inserted
+    /// same-score entry forces eviction, the evicted entry must be the
+    /// highest-block_hash existing entry across all entities at that score,
+    /// not the lowest. This verifies the `Reverse<Hash>` ordering extends
+    /// across entities (the tie-break in [`ScoreEntityKey`] is `rev_block_hash`
+    /// *before* `entity`).
+    #[test]
+    fn same_score_eviction_picks_highest_hash_across_entities() {
+        let mut cache = VersionedCache::<Hash, u64>::new(2);
+        let x = hash(1);
+        let y = hash(2);
+        let low = hash(0x10);
+        let high = hash(0xF0);
+
+        cache.insert(x, 100, low, 10);
+        cache.insert(y, 100, high, 20);
+        // Cache is full; inserting a new same-score entry evicts one existing.
+        // With `Reverse<Hash>` tie-break, the highest-hash existing entry
+        // (y, 0xF0) is evicted regardless of entity, so x's low-hash entry
+        // survives.
+        let z = hash(3);
+        cache.insert(z, 100, hash(0x80), 30);
+
+        let x_entries: Vec<Hash> = cache.iter_entity(x, u64::MAX, 0).map(|(_, bh, _)| bh).collect();
+        let y_entries: Vec<Hash> = cache.iter_entity(y, u64::MAX, 0).map(|(_, bh, _)| bh).collect();
+        let z_entries: Vec<Hash> = cache.iter_entity(z, u64::MAX, 0).map(|(_, bh, _)| bh).collect();
+
+        assert_eq!(x_entries, vec![low], "x's lower-hash entry must be retained");
+        assert!(y_entries.is_empty(), "y's higher-hash entry must be evicted");
+        assert_eq!(z_entries, vec![hash(0x80)], "newly-inserted entry must survive");
+    }
+
+    /// `evict_below_score` must evict *all* entries at scores strictly below
+    /// the cutoff, regardless of block_hash, and must retain every entry at
+    /// `score >= cutoff`
+    #[test]
+    fn evict_below_score_preserves_all_entries_at_cutoff() {
+        let mut cache = VersionedCache::<Hash, u64>::new(100);
+        let entity = hash(1);
+
+        // Populate score 99 (all should be evicted) and score 100 (all
+        // should be retained) with both extremes of the block_hash range.
+        for bh_byte in [0x00u8, 0x7F, 0xFF] {
+            cache.insert(entity, 99, Hash::from_bytes([bh_byte; 32]), bh_byte as u64);
+            cache.insert(entity, 100, Hash::from_bytes([bh_byte; 32]), bh_byte as u64);
+        }
+        assert_eq!(cache.len(), 6);
+
+        let evicted = cache.evict_below_score(100);
+        assert_eq!(evicted, 3, "all three entries at score 99 must be evicted");
+        assert_eq!(cache.len(), 3, "all three entries at score 100 must be retained");
+
+        // Every retained entry should be at exactly score 100, across all
+        // block_hash values (both 0x00 and 0xFF extremes must survive).
+        let mut retained: Vec<(u64, Hash)> = cache.iter_entity(entity, u64::MAX, 0).map(|(s, bh, _)| (s, bh)).collect();
+        retained.sort_unstable_by_key(|&(_, bh)| bh);
+        assert_eq!(
+            retained,
+            vec![(100, Hash::from_bytes([0x00; 32])), (100, Hash::from_bytes([0x7F; 32])), (100, Hash::from_bytes([0xFF; 32])),],
+        );
     }
 }
