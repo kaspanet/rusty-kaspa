@@ -127,20 +127,39 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
         self.capacity.saturating_sub(self.by_entity.len())
     }
 
-    /// Insert a single versioned entry. Evicts the lowest-score entry if at
-    /// capacity (ties broken by highest block_hash — see [`ScoreEntityKey`]).
+    /// Insert a single versioned entry. At capacity, evicts the lowest
+    /// entry — lowest blue_score first, then highest block_hash within a
+    /// score (see [`ScoreEntityKey`]).
+    ///
+    /// When the cache is at capacity, the insert is skipped unless the new
+    /// entry sorts *strictly above* the current minimum — i.e. it would
+    /// only happen via eviction of a strictly lower entry. Admitting a new
+    /// entry that would itself be the next eviction candidate would:
+    /// 1. Be pure churn — the just-inserted entry pops out on the very
+    ///    next eviction, and
+    /// 2. Break the newest-suffix invariant for the inserted entity if any
+    ///    of its higher versions were already evicted: the cache would
+    ///    then hold an entry older than previously-evicted versions of the
+    ///    same entity, so a cache hit could shadow a newer canonical
+    ///    version that only lives in the DB.
     pub fn insert(&mut self, entity: E, score: u64, block_hash: Hash, value: V) {
-        if self.by_score.len() >= self.capacity
-            && let Some(evicted) = self.by_score.pop_first()
-        {
-            self.by_entity.remove(&EntityVersionKey {
-                entity: evicted.entity,
-                rev_score: std::cmp::Reverse(evicted.score),
-                block_hash: evicted.rev_block_hash.0,
-            });
+        let new_key = ScoreEntityKey { score, rev_block_hash: std::cmp::Reverse(block_hash), entity };
+        if self.by_score.len() >= self.capacity {
+            if let Some(current_min) = self.by_score.first()
+                && &new_key <= current_min
+            {
+                return;
+            }
+            if let Some(evicted) = self.by_score.pop_first() {
+                self.by_entity.remove(&EntityVersionKey {
+                    entity: evicted.entity,
+                    rev_score: std::cmp::Reverse(evicted.score),
+                    block_hash: evicted.rev_block_hash.0,
+                });
+            }
         }
         self.by_entity.insert(EntityVersionKey { entity, rev_score: std::cmp::Reverse(score), block_hash }, value);
-        self.by_score.insert(ScoreEntityKey { score, rev_block_hash: std::cmp::Reverse(block_hash), entity });
+        self.by_score.insert(new_key);
     }
 
     /// Remove all entries with `score < min_score`. Returns the number of evicted entries.
@@ -478,24 +497,24 @@ mod tests {
         assert_eq!(hit.0, 80);
     }
 
-    /// When capacity pressure evicts a same-score sibling, the
-    /// lowest-block_hash entry — the one [`VersionedCache::iter_entity`]
-    /// yields first at that score, i.e. the first canonical-candidate on a
-    /// `get` lookup — must survive. This pins down the `Reverse<Hash>`
-    /// tie-break in [`ScoreEntityKey`]: `pop_first` within a score bucket
-    /// removes the *highest* block_hash first, so any lower-hash existing
-    /// entry at the same score is preserved over higher-hash ones.
+    /// After three same-score inserts into a capacity-2 cache, the two
+    /// lowest-block_hash entries always survive — regardless of insertion
+    /// order. The highest-block_hash entry either gets evicted on arrival of
+    /// a lower-hash sibling, or is skipped on insert (because a new entry
+    /// that would itself be the next eviction candidate is not admitted —
+    /// see [`VersionedCache::insert`]).
+    ///
+    /// This pins down both the `Reverse<Hash>` tie-break in
+    /// [`ScoreEntityKey`] and the "only replace lowest with strictly higher"
+    /// rule in `insert`: together they ensure the first canonical-candidate
+    /// position at any score (the lowest block_hash, yielded first by
+    /// `iter_entity`) is preserved over higher-hash siblings.
     #[test]
-    fn same_score_eviction_retains_lowest_block_hash() {
+    fn same_score_eviction_retains_lowest_block_hashes() {
         let low_hash = hash(0x11);
         let mid_hash = hash(0x55);
         let high_hash = hash(0xFF);
 
-        // Assert across all insertion orderings: after three same-score
-        // inserts at capacity 2, the lowest-hash entry is always retained,
-        // and the highest-hash entry among the *first two* inserts is
-        // evicted (the third insert always survives because eviction runs
-        // before the new insert).
         let orderings = [
             [low_hash, mid_hash, high_hash],
             [low_hash, high_hash, mid_hash],
@@ -504,6 +523,8 @@ mod tests {
             [high_hash, low_hash, mid_hash],
             [high_hash, mid_hash, low_hash],
         ];
+
+        let expected: std::collections::BTreeSet<Hash> = [low_hash, mid_hash].into_iter().collect();
 
         for order in orderings {
             let mut cache = VersionedCache::<Hash, u64>::new(2);
@@ -515,25 +536,10 @@ mod tests {
 
             let retained: std::collections::BTreeSet<Hash> = cache.iter_entity(entity, u64::MAX, 0).map(|(_, bh, _)| bh).collect();
 
-            assert!(
-                retained.contains(&low_hash),
-                "lowest-block_hash entry must survive same-score eviction (insert order {order:?}, retained {retained:?})",
+            assert_eq!(
+                retained, expected,
+                "same-score eviction must retain the two lowest block_hashes regardless of insert order (order {order:?}, retained {retained:?})",
             );
-
-            // The third insert is never evicted (capacity check runs before
-            // insertion). Among the first two, the higher-hash entry should
-            // have been evicted.
-            let first_two = [order[0], order[1]];
-            let evicted = if first_two[0] > first_two[1] { first_two[0] } else { first_two[1] };
-            // Exception: if the lowest-hash entry is one of the first two,
-            // it must *not* have been evicted — eviction prefers the
-            // higher-hash among the first two.
-            if evicted != low_hash {
-                assert!(
-                    !retained.contains(&evicted),
-                    "higher-hash same-score entry should have been evicted (insert order {order:?}, retained {retained:?})",
-                );
-            }
         }
     }
 
@@ -597,5 +603,67 @@ mod tests {
             retained,
             vec![(100, Hash::from_bytes([0x00; 32])), (100, Hash::from_bytes([0x7F; 32])), (100, Hash::from_bytes([0xFF; 32])),],
         );
+    }
+
+    /// `insert` at a blue_score strictly below the cache's current minimum
+    /// must not push out a higher-score version when the cache is at
+    /// capacity. If it did, an entity whose newer versions have already been
+    /// evicted would end up with a cached version older than its
+    /// previously-evicted ones — breaking the newest-suffix invariant that
+    /// `get_node` / `get_lane` rely on to treat cache hits as authoritative.
+    ///
+    /// Concrete scenario: a block processed out of blue_score order (e.g. a
+    /// fork block with low blue_score processed after the tip was at high
+    /// blue_score) writes an entity update at a score below every entry
+    /// currently in cache. The newly inserted low-score version would itself
+    /// be the very next eviction candidate, so inserting it is pure loss —
+    /// and evicting a legitimately-cached higher-score entry to make room
+    /// silently corrupts the cache's per-entity suffix for any entity whose
+    /// older versions had already been purged.
+    #[test]
+    fn insert_below_current_min_must_not_violate_newest_suffix() {
+        // Capacity 2 keeps the eviction path easy to trigger deterministically.
+        let mut cache = VersionedCache::<Hash, u64>::new(2);
+        let e_x = hash(1);
+        let e_y = hash(2);
+        let e_z = hash(3);
+
+        // Step 1 — write E_x twice (150, then 170). Cache fills with E_x's
+        // two versions.
+        cache.insert(e_x, 150, hash(0x15), 150);
+        cache.insert(e_x, 170, hash(0x17), 170);
+
+        // Step 2 — capacity pressure from other entities evicts both of
+        // E_x's cached versions in turn. After this, the cache has no E_x
+        // entries, and E_x's write history is {150, 170} (both persisted to
+        // DB via write-through, but no longer in cache).
+        cache.insert(e_y, 200, hash(0x20), 200);
+        cache.insert(e_z, 300, hash(0x30), 300);
+        assert!(cache.iter_entity(e_x, u64::MAX, 0).next().is_none(), "precondition: E_x has been fully evicted from cache");
+
+        // Step 3 — out-of-order post-restart / fork write at blue_score 50
+        // for E_x. Because 50 < every score currently in cache (200, 300),
+        // this entry would itself be the next eviction candidate. Inserting
+        // it evicts a legitimately-cached higher-score entry for some other
+        // entity *and* leaves E_x's cache holding an entry older than its
+        // previously-evicted versions.
+        cache.insert(e_x, 50, hash(0x05), 50);
+
+        // Invariant: for every entity in cache, the retained versions
+        // newest-first must be a prefix of the entity's write history
+        // sorted newest-first. Equivalently: no cached entry for an entity
+        // may be older than an already-written (and possibly-evicted)
+        // version of the same entity.
+        let histories: [(Hash, &[u64]); 3] = [(e_x, &[150, 170, 50]), (e_y, &[200]), (e_z, &[300])];
+        for (entity, history) in histories {
+            let retained: Vec<u64> = cache.iter_entity(entity, u64::MAX, 0).map(|(s, _, _)| s).collect();
+            let mut history_desc: Vec<u64> = history.to_vec();
+            history_desc.sort_unstable_by(|a, b| b.cmp(a));
+            let expected = &history_desc[..retained.len()];
+            assert_eq!(
+                retained, expected,
+                "entity {entity:?}: cached scores {retained:?} are not a newest-first suffix of write history {history:?}",
+            );
+        }
     }
 }
