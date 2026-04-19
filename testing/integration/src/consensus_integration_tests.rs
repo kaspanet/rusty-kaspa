@@ -1992,7 +1992,7 @@ fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle
         .unwrap()
         .add_data(&image_id)
         .unwrap()
-        .add_data(&control_id) // or &broken_control_id, whichever is actually used
+        .add_data(&control_id)
         .unwrap()
         .add_data(&hashfn)
         .unwrap()
