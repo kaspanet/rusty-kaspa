@@ -13,7 +13,6 @@
 //! - Miner payload: one leaf per merged block in mergeset order.
 //! - Active lanes are committed via a 256-bit Sparse Merkle Tree.
 
-use kaspa_consensus_core::hashing::tx::seq_commit_tx_digest;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::Transaction;
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
@@ -99,8 +98,7 @@ fn example_seq_commit_for_block() {
 
     for block in &mergeset {
         for tx in &block.accepted_txs {
-            let digest = seq_commit_tx_digest(tx.id(), tx.version);
-            let leaf = activity_leaf(&digest, merge_idx);
+            let leaf = activity_leaf(&tx.id(), tx.version, merge_idx);
 
             let lid = tx.subnetwork_id.into_bytes();
             if lid == lane_a {

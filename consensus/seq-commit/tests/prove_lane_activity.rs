@@ -54,8 +54,7 @@ fn compute_lane_tip(parent_ref: &Hash, lane_key: &Hash, blocks: &[BlockActivity]
     for block in blocks {
         let mut builder = ActivityDigestBuilder::new();
         for tx in &block.txs {
-            let digest = seq_commit_tx_digest(&tx.tx_id, tx.version);
-            builder.add_leaf(activity_leaf(&digest, tx.merge_idx));
+            builder.add_leaf(activity_leaf(&tx.tx_id, tx.version, tx.merge_idx));
         }
         let ctx_hash = mergeset_context_hash(&MergesetContext {
             timestamp: block.timestamp,
@@ -146,8 +145,7 @@ fn build_chain(n: usize) -> (Hash, Hash, Hash, Vec<BlockActivity>, CommitmentWit
         let mut builder = ActivityDigestBuilder::new();
         for tx in &txs {
             let tx_id = tx.id();
-            let digest = seq_commit_tx_digest(&tx_id, tx.version);
-            builder.add_leaf(activity_leaf(&digest, merge_idx));
+            builder.add_leaf(activity_leaf(&tx_id, tx.version, merge_idx));
             tx_activities.push(TxActivity { tx_id, version: tx.version, merge_idx });
             merge_idx += 1;
         }
@@ -162,8 +160,7 @@ fn build_chain(n: usize) -> (Hash, Hash, Hash, Vec<BlockActivity>, CommitmentWit
 
         if i == 0 {
             let y_tx = Transaction::new(0, vec![], vec![], 0, subnet_y, 0, vec![0xFF]);
-            let y_digest = seq_commit_tx_digest(&y_tx.id(), y_tx.version);
-            let y_leaf = activity_leaf(&y_digest, merge_idx);
+            let y_leaf = activity_leaf(&y_tx.id(), y_tx.version, merge_idx);
             let ad_y = activity_digest_lane(core::iter::once(y_leaf));
             let tip_y = lane_tip_next(&LaneTipInput {
                 parent_ref: &grandparent_commit,

@@ -2,7 +2,7 @@
 
 use kaspa_hashes::{
     Hash, HasherBase, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip, SeqCommitMergesetContext,
-    SeqCommitMerkleBranch, SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf, SeqCommitTxDigest,
+    SeqCommitMerkleBranch, SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf,
 };
 use kaspa_merkle::{StreamingMerkleBuilder, calc_merkle_root_with_hasher};
 
@@ -19,14 +19,6 @@ pub fn seq_commit_timestamp(selected_parent_timestamp: u64) -> u64 {
     selected_parent_timestamp
 }
 
-/// Compute the tx digest for sequencing: `H_tx_digest(tx_id || le_u16(version))`.
-#[inline]
-pub fn seq_commit_tx_digest(tx_id: &Hash, version: u16) -> Hash {
-    let mut hasher = SeqCommitTxDigest::new();
-    hasher.update(tx_id).update(version.to_le_bytes());
-    hasher.finalize()
-}
-
 /// Compute the SMT key for a lane: `H_lane_key(lane_id)`.
 #[inline]
 pub fn lane_key(lane_id: &LaneId) -> Hash {
@@ -35,11 +27,11 @@ pub fn lane_key(lane_id: &LaneId) -> Hash {
     hasher.finalize()
 }
 
-/// Compute an activity leaf: `H_activity_leaf(tx_digest || le_u32(merge_idx))`.
+/// Compute an activity leaf: `H_activity_leaf(tx_id || le_u16(version) || le_u32(merge_idx))`.
 #[inline]
-pub fn activity_leaf(tx_digest: &Hash, merge_idx: u32) -> Hash {
+pub fn activity_leaf(tx_id: &Hash, version: u16, merge_idx: u32) -> Hash {
     let mut hasher = SeqCommitActivityLeaf::new();
-    hasher.update(tx_digest).update(merge_idx.to_le_bytes());
+    hasher.update(tx_id).update(version.to_le_bytes()).update(merge_idx.to_le_bytes());
     hasher.finalize()
 }
 
@@ -164,20 +156,25 @@ mod tests {
     #[test]
     fn test_activity_leaf_golden() {
         let expected = Hash::from_bytes([
-            0x34, 0x76, 0x1d, 0xfa, 0x0a, 0xb5, 0x9c, 0x41, 0x37, 0x22, 0x3a, 0x8c, 0xce, 0xd1, 0x72, 0x61, 0x60, 0x6b, 0x2e, 0xbf,
-            0x98, 0x3c, 0xed, 0x15, 0xb6, 0x8a, 0x57, 0xd7, 0xb6, 0x30, 0xff, 0x94,
+            0x4e, 0xf4, 0x3f, 0x31, 0x6e, 0xcf, 0x61, 0x6c, 0x69, 0x34, 0xb5, 0x66, 0xae, 0x41, 0x05, 0x5e, 0x97, 0x12, 0xf1, 0x08,
+            0x9b, 0x91, 0x4f, 0x33, 0x18, 0x6c, 0xdc, 0x9d, 0x55, 0x19, 0x11, 0x21,
         ]);
-        assert_eq!(activity_leaf(&h(1), 0), expected);
+        assert_eq!(activity_leaf(&h(1), 0, 0), expected);
     }
 
     #[test]
     fn test_activity_leaf_different_indices() {
-        assert_ne!(activity_leaf(&h(1), 0), activity_leaf(&h(1), 1));
+        assert_ne!(activity_leaf(&h(1), 0, 0), activity_leaf(&h(1), 0, 1));
     }
 
     #[test]
-    fn test_activity_leaf_different_digests() {
-        assert_ne!(activity_leaf(&h(1), 0), activity_leaf(&h(2), 0));
+    fn test_activity_leaf_different_tx_ids() {
+        assert_ne!(activity_leaf(&h(1), 0, 0), activity_leaf(&h(2), 0, 0));
+    }
+
+    #[test]
+    fn test_activity_leaf_different_versions() {
+        assert_ne!(activity_leaf(&h(1), 0, 0), activity_leaf(&h(1), 1, 0));
     }
 
     #[test]
@@ -378,10 +375,10 @@ mod tests {
     #[test]
     fn test_end_to_end_commitment() {
         let lane_id: LaneId = [0x01; 20];
-        let tx_digest = h(42);
+        let tx_id = h(42);
         let parent_commit = h(99);
 
-        let al = activity_leaf(&tx_digest, 0);
+        let al = activity_leaf(&tx_id, 0, 0);
         let ad = activity_digest_lane(core::iter::once(al));
         let ctx = mergeset_context_hash(&MergesetContext { timestamp: 1_700_000_000, daa_score: 100_000, blue_score: 50_000 });
 
