@@ -148,7 +148,6 @@ impl SuccinctReceipt {
             .enumerate()
             .filter_map(|(i, word)| (i & 1 == 0).then_some(word))
             .collect::<Vec<_>>()
-            // todo we can remove the conversion, comparison with `ALLOWED_CONTROL_ROOT` implies correct format
             .try_into()
             .map_err(|_| VerificationError::ReceiptFormatError)?;
 
