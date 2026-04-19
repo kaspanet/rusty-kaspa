@@ -34,8 +34,7 @@ pub enum SmtVerifyError {
     ProofError(#[from] kaspa_smt::proof::SmtProofError),
 }
 
-/// Verify that the metadata is consistent with the pruning point header's
-/// `accepted_id_merkle_root` (= seq_commit).
+/// Verify that the metadata is consistent with the header's `accepted_id_merkle_root` (= seq_commit).
 pub fn verify_smt_metadata(
     metadata: &SmtMetadata<'_>,
     expected_seq_commit: Hash,

@@ -3751,6 +3751,7 @@ dependencies = [
  "kaspa-pow",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-seq-commit",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
