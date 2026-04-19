@@ -85,7 +85,13 @@ pub struct SuccinctReceipt {
 }
 
 impl SuccinctReceipt {
-    pub fn new(seal: Vec<BabyBearElem>, control_id: Digest, claim: Digest, hashfn: HashFnId, control_inclusion_proof: MerkleProof) -> Self {
+    pub fn new(
+        seal: Vec<BabyBearElem>,
+        control_id: Digest,
+        claim: Digest,
+        hashfn: HashFnId,
+        control_inclusion_proof: MerkleProof,
+    ) -> Self {
         Self { seal, control_id, claim, hashfn, control_inclusion_proof }
     }
 
