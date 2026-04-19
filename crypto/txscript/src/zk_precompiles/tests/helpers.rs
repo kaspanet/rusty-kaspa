@@ -10,7 +10,7 @@ use crate::{
     zk_precompiles::tags::ZkTag,
 };
 
-pub fn build_zk_script(elements: &[Vec<u8>]) -> ScriptBuilderResult<Vec<u8>> {
+pub fn build_zk_script(elements: &[&[u8]]) -> ScriptBuilderResult<Vec<u8>> {
     let mut builder = ScriptBuilder::new();
     for element in elements {
         builder.add_data(element)?;
@@ -72,19 +72,20 @@ pub fn build_stark_script(break_control_id: bool) -> Vec<u8> {
         let mut broken_control_id = control_id.clone();
         broken_control_id[0] ^= 0xFF;
         return build_zk_script(&[
-            claim,
-            control_index,
-            control_digests,
-            seal,
-            journal,
-            image_id,
-            broken_control_id,
-            hashfn,
-            vec![stark_tag],
+            &claim,
+            &control_index,
+            &control_digests,
+            &seal,
+            &journal,
+            &image_id,
+            &broken_control_id,
+            &hashfn,
+            &[stark_tag],
         ])
         .unwrap();
     }
-    build_zk_script(&[claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn, vec![stark_tag]]).unwrap()
+    build_zk_script(&[&claim, &control_index, &control_digests, &seal, &journal, &image_id, &control_id, &hashfn, &[stark_tag]])
+        .unwrap()
 }
 
 pub fn build_groth_script() -> Vec<u8> {

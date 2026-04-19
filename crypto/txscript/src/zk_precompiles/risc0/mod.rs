@@ -10,6 +10,7 @@ use crate::{
     },
 };
 use kaspa_txscript_errors::TxScriptError;
+use risc0_core::{field::Elem, field::baby_bear::BabyBearElem};
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;
 mod error;
@@ -25,14 +26,20 @@ fn parse_digest(bytes: impl AsRef<[u8]>) -> Result<Digest, R0Error> {
     Digest::try_from(bytes).map_err(|_| R0Error::InvalidDigestLength(bytes.len()))
 }
 
-fn parse_seal(bytes: impl AsRef<[u8]>) -> Result<Vec<u32>, R0Error> {
+fn parse_seal(bytes: impl AsRef<[u8]>) -> Result<Vec<BabyBearElem>, R0Error> {
     let bytes = bytes.as_ref();
     let (chunks, remaining) = bytes.as_chunks::<4>();
     if !remaining.is_empty() {
         // we require no remainder
         Err(R0Error::InvalidSealLength(bytes.len()))
     } else {
-        Ok(chunks.iter().copied().map(u32::from_le_bytes).collect())
+        chunks
+            .iter()
+            .copied()
+            .map(u32::from_le_bytes)
+            .map(BabyBearElem::new_raw)
+            .map(|v| if v.is_reduced() { Ok(v) } else { Err(R0Error::SealHasInvalidBabyBearElem) })
+            .collect()
     }
 }
 
