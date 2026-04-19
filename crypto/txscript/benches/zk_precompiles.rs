@@ -14,7 +14,7 @@ use secp256k1::ecdsa::Signature;
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 
 fn benchmark_zk_precompiles(c: &mut Criterion) {
-    let stark_script = build_stark_script();
+    let stark_script = build_stark_script(false);
     let groth_script = build_groth_script();
 
     let sig_cache = Cache::new(0);
@@ -41,7 +41,7 @@ fn benchmark_r0_batch_parallelism(c: &mut Criterion) {
     use rayon::prelude::*;
 
     const BATCH_SIZE: usize = 50;
-    let stark_script = build_stark_script();
+    let stark_script = build_stark_script(false);
     let proof_batch: Vec<_> = (0..BATCH_SIZE).map(|_| stark_script.clone()).collect();
 
     let mut group = c.benchmark_group("r0_batch_parallelism");

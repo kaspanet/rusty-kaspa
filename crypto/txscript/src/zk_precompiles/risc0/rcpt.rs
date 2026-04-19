@@ -66,6 +66,10 @@ pub struct SuccinctReceipt {
     /// recursion circuit.
     seal: Vec<u32>,
 
+    /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
+    /// join, or resolve).
+    control_id: Digest,
+
     /// Claim containing information about the computation that this receipt proves.
     ///
     /// The standard claim type is [ReceiptClaim][crate::ReceiptClaim], which represents a RISC-V
@@ -80,8 +84,8 @@ pub struct SuccinctReceipt {
 }
 
 impl SuccinctReceipt {
-    pub fn new(seal: Vec<u32>, claim: Digest, hashfn: HashFnId, control_inclusion_proof: MerkleProof) -> Self {
-        Self { seal, claim, hashfn, control_inclusion_proof }
+    pub fn new(seal: Vec<u32>, control_id: Digest, claim: Digest, hashfn: HashFnId, control_inclusion_proof: MerkleProof) -> Self {
+        Self { seal, control_id, claim, hashfn, control_inclusion_proof }
     }
 
     pub fn claim(&self) -> &Digest {
@@ -104,6 +108,11 @@ impl SuccinctReceipt {
         // to be verified with this proof. We verify that the control id of the receipt verifies
         // as a valid merkle proof.
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
+            // Ensure that the control_id decoded from the seal matches the one in the
+            // SuccinctReceipt metadata.
+            if *control_id != self.control_id {
+                return Err(VerificationError::ControlVerificationError { control_id: *control_id });
+            }
             self.control_inclusion_proof
                 .verify(control_id, &ALLOWED_CONTROL_ROOT, suite.hashfn.as_ref())
                 .map_err(|_| VerificationError::ControlVerificationError { control_id: *control_id })

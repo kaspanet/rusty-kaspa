@@ -1977,22 +1977,24 @@ fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle
     let stark_spk = pay_to_script_hash_script(&redeem_script);
     let output_spk = ScriptPublicKey::from_vec(0, vec![OpTrue]);
 
-    let (seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
+    let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
     let stark_signature_prefix = ScriptBuilder::new()
-        .add_data(&seal)
-        .unwrap()
         .add_data(&claim)
-        .unwrap()
-        .add_data(&hashfn)
         .unwrap()
         .add_data(&control_index)
         .unwrap()
         .add_data(&control_digests)
         .unwrap()
+        .add_data(&seal)
+        .unwrap()
         .add_data(&journal)
         .unwrap()
         .add_data(&image_id)
+        .unwrap()
+        .add_data(&control_id)
+        .unwrap()
+        .add_data(&hashfn)
         .unwrap()
         .add_data(&[stark_tag])
         .unwrap()
