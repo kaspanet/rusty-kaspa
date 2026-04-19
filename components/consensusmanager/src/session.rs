@@ -5,7 +5,7 @@
 use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, Hash,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
-    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ImportLane},
+    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ImportLane, ImportLaneBatchIterator},
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
@@ -517,9 +517,16 @@ impl ConsensusSessionOwned {
         lanes_root: Hash,
         payload_and_ctx_digest: Hash,
         expected_lane_count: u64,
-        rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
+        mut rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
     ) -> PruningImportResult<()> {
-        self.consensus.import_pruning_point_smt(new_pruning_point, lanes_root, payload_and_ctx_digest, expected_lane_count, rx)
+        let lane_batches: ImportLaneBatchIterator = Box::new(std::iter::from_fn(move || rx.blocking_recv()));
+        self.consensus.import_pruning_point_smt(
+            new_pruning_point,
+            lanes_root,
+            payload_and_ctx_digest,
+            expected_lane_count,
+            lane_batches,
+        )
     }
     pub async fn async_is_pruning_smt_stable(&self) -> bool {
         self.clone().spawn_blocking(move |c| c.is_pruning_smt_stable()).await

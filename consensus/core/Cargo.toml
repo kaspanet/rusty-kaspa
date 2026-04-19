@@ -41,7 +41,6 @@ serde-wasm-bindgen.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync"] }
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
