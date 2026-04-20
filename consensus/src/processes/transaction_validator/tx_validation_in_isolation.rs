@@ -172,6 +172,7 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
     match tx.subnetwork_id.as_bytes() {
         // Native and coinbase (reserved) subnetwork IDs are always allowed
         [NativeSubnetwork::FIRST_BYTE, rest @ ..] | [CoinbaseSubnetwork::FIRST_BYTE, rest @ ..] if rest == ZEROES_19 => Ok(()),
+        [_x, rest @ ..] if rest == ZEROES_19 => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
         bytes if tx.version >= TX_VERSION_POST_COV_HF && &bytes[SUBNETWORK_NAMESPACE_LEN..] == ZEROES_16 => Ok(()),
         _ => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
     }
@@ -409,12 +410,23 @@ mod tests {
             super::check_transaction_subnetwork(&tx_with(SUBNETWORK_ID_COINBASE, version)).unwrap();
         }
 
-        // User lane [namespace, 0×16] — any first byte, any non-zero namespace.
-        // Also allowed: [x, 0×19] for x ∉ {NATIVE, COINBASE}, which is just a
-        // user lane whose namespace happens to be `[x, 0, 0, 0]`.
-        for namespace in
-            [[0x11, 0x22, 0x33, 0x44], [0x00, 0x00, 0x00, 0x01], [0xde, 0xad, 0xbe, 0xef], [0x07, 0x01, 0, 0], [0x02, 0, 0, 0]]
-        {
+        // [x, 0×19] for any x ∉ {NATIVE, COINBASE} → rejected at every version.
+        // The 19-suffix shape is reserved for system use; only the two system
+        // first bytes are valid. A namespace of `[x, 0, 0, 0]` must NOT sneak
+        // through to the user-lane arm.
+        for byte in [0x02u8, 0x07, 0xff] {
+            let reserved_shape = SubnetworkId::from_byte(byte);
+            for version in [TX_VERSION, TX_VERSION_POST_COV_HF] {
+                assert_match!(
+                    super::check_transaction_subnetwork(&tx_with(reserved_shape, version)),
+                    Err(TxRuleError::SubnetworksDisabled(_))
+                );
+            }
+        }
+
+        // User lane [namespace, 0×16] with a non-zero byte in bytes[1..4]
+        // — any first byte (including native/coinbase) is accepted post-cov-HF.
+        for namespace in [[0x11, 0x22, 0x33, 0x44], [0x00, 0x00, 0x00, 0x01], [0xde, 0xad, 0xbe, 0xef], [0x07, 0x01, 0, 0]] {
             let lane = sid(namespace, [0; SUBNETWORK_ZERO_TAIL_LEN]);
             super::check_transaction_subnetwork(&tx_with(lane, TX_VERSION_POST_COV_HF)).unwrap();
             // Pre-HF: user lanes are forbidden.
