@@ -9,7 +9,7 @@ use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::params::{Params, SIMNET_GENESIS, SIMNET_PARAMS};
 use kaspa_consensus_core::{
     config::params::OverrideParams,
-    constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
+    constants::{TX_VERSION, TX_VERSION_TOCCATA},
     header::Header,
     mass::ComputeBudget,
     sign::{sign, sign_with_multiple_v2},
@@ -340,7 +340,7 @@ async fn daemon_utxos_propagation_test() {
             covenant: None,
         })
         .collect();
-    let unsigned_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+    let unsigned_tx = Transaction::new(TX_VERSION_TOCCATA, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let signed_tx = sign_with_multiple_v2(
         MutableTransaction::with_entries(unsigned_tx, selected_utxos.iter().map(|(_, entry)| entry.clone()).collect()),
         &[miner_sk.secret_bytes()],
@@ -570,7 +570,7 @@ async fn daemon_compute_budget_relay_test() {
     let outputs = (0..NUMBER_OUTPUTS)
         .map(|_| TransactionOutput { value: tx_amount / NUMBER_OUTPUTS, script_public_key: script_public_key.clone(), covenant: None })
         .collect();
-    let unsigned_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+    let unsigned_tx = Transaction::new(TX_VERSION_TOCCATA, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let signed_tx = sign_with_multiple_v2(
         MutableTransaction::with_entries(unsigned_tx, selected_utxos.iter().map(|(_, entry)| entry.clone()).collect()),
         &[miner_sk.secret_bytes()],
@@ -600,7 +600,7 @@ async fn daemon_compute_budget_relay_test() {
     .await;
 
     let node1_entry = rpc_client1.get_mempool_entry(transaction_id, false, false).await.unwrap();
-    assert_eq!(node1_entry.transaction.version, TX_VERSION_POST_COV_HF);
+    assert_eq!(node1_entry.transaction.version, TX_VERSION_TOCCATA);
     let node1_compute_budget = node1_entry.transaction.inputs[0].compute_budget;
     assert!(node1_compute_budget > 0, "expected non-zero compute_budget on node #1 mempool tx");
 
@@ -630,7 +630,7 @@ async fn daemon_compute_budget_relay_test() {
         .find(|tx| tx.verbose_data.as_ref().is_some_and(|vd| vd.transaction_id == transaction_id))
         .expect("node #2 block does not include the submitted transaction");
 
-    assert_eq!(included_tx.version, TX_VERSION_POST_COV_HF);
+    assert_eq!(included_tx.version, TX_VERSION_TOCCATA);
     let included_compute_budget = included_tx.inputs[0].compute_budget;
     assert!(included_compute_budget > 0, "expected non-zero compute_budget on propagated block tx");
     assert_eq!(included_compute_budget, node1_compute_budget);
@@ -694,7 +694,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
         sign(MutableTransaction::with_entries(tx, vec![selected_utxo.1.clone()]), miner_schnorr_key).tx
     };
 
-    let v1_tx = build_single_input_tx(TX_VERSION_POST_COV_HF, &utxos[0]);
+    let v1_tx = build_single_input_tx(TX_VERSION_TOCCATA, &utxos[0]);
     let valid_v1_rpc_tx: RpcTransaction = (&v1_tx).into();
     let mut malformed_v1_rpc_tx = valid_v1_rpc_tx.clone();
     malformed_v1_rpc_tx.inputs[0].sig_op_count = 1;
@@ -999,7 +999,7 @@ async fn daemon_ibd_smt_state_sync_test() {
         assert!(entry.amount > fee, "coinbase utxo is too small to cover a tx fee");
         let out_value = entry.amount - fee;
         let unsigned_tx = Transaction::new(
-            TX_VERSION_POST_COV_HF,
+            TX_VERSION_TOCCATA,
             vec![TransactionInput::new(*outpoint, vec![], 0, 1)],
             vec![TransactionOutput { value: out_value, script_public_key: pay_to_address_script(&miner_address), covenant: None }],
             0,
