@@ -9,6 +9,18 @@ use thiserror::Error;
 /// The size of the array used to store subnetwork IDs.
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
+/// Length of the user-lane namespace prefix. Per KIP-21, a user-lane subnetwork
+/// ID has the shape `[namespace (4 bytes), zero tail (16 bytes)]` with at least
+/// one non-zero byte in the namespace. Reserved IDs (`[x, 0×19]`) are handled
+/// separately and constrained to [`NativeSubnetwork::FIRST_BYTE`] /
+/// [`CoinbaseSubnetwork::FIRST_BYTE`].
+pub const SUBNETWORK_NAMESPACE_LEN: usize = 4;
+
+/// Number of trailing zero bytes required in a user-lane subnetwork ID.
+pub const SUBNETWORK_ZERO_TAIL_LEN: usize = SUBNETWORK_ID_SIZE - SUBNETWORK_NAMESPACE_LEN;
+
+const _: () = assert!(SUBNETWORK_NAMESPACE_LEN + SUBNETWORK_ZERO_TAIL_LEN == SUBNETWORK_ID_SIZE);
+
 /// The domain representation of a Subnetwork ID
 #[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, Copy)]
 #[repr(transparent)]
@@ -51,6 +63,20 @@ impl SubnetworkId {
     pub const fn from_byte(b: u8) -> SubnetworkId {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
         bytes[0] = b;
+        SubnetworkId(bytes)
+    }
+
+    /// Construct a user-lane subnetwork ID with shape `[namespace, 0×16]`.
+    /// The 4-byte namespace must have at least one non-zero byte — an all-zero
+    /// namespace yields the native reserved ID. Validation enforces the shape
+    /// at the consensus layer (see `check_transaction_subnetwork`).
+    pub const fn from_namespace(namespace: [u8; SUBNETWORK_NAMESPACE_LEN]) -> SubnetworkId {
+        let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
+        let mut i = 0;
+        while i < SUBNETWORK_NAMESPACE_LEN {
+            bytes[i] = namespace[i];
+            i += 1;
+        }
         SubnetworkId(bytes)
     }
 
@@ -152,8 +178,10 @@ pub const SUBNETWORK_ID_COINBASE: SubnetworkId = CoinbaseSubnetwork::SUBNETWORK_
 pub const SUBNETWORK_ID_REGISTRY: SubnetworkId = RegistrySubnetwork::SUBNETWORK_ID;
 
 /// Uninhabited marker types for reserved system subnetworks.
-/// Per KIP-21, subnetwork IDs of the form `x || 0x00..0x00` (first byte `x` followed
-/// by 19 zero bytes) are reserved for system usage by consensus.
+/// Per KIP-21, subnetwork IDs with a 19-byte zero suffix (`[x, 0×19]`) are reserved:
+/// only [`NativeSubnetwork::FIRST_BYTE`] and [`CoinbaseSubnetwork::FIRST_BYTE`] are
+/// valid. All other IDs must have the user-lane shape `[namespace (4 bytes), 0×16]`
+/// with a non-zero namespace; any first byte is permitted in that form.
 pub enum NativeSubnetwork {}
 
 pub enum CoinbaseSubnetwork {}
