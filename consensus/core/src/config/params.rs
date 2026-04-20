@@ -536,7 +536,7 @@ pub const MAINNET_PARAMS: Params = Params {
     difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     coinbase_payload_script_public_key_max_len: 150,
-    max_coinbase_payload_len: 204,
+    max_coinbase_payload_len: 2048,
 
     // Limit the cost of calculating compute/transient/storage masses
     max_tx_inputs: 1000,
@@ -585,7 +585,7 @@ pub const TESTNET_PARAMS: Params = Params {
     difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     coinbase_payload_script_public_key_max_len: 150,
-    max_coinbase_payload_len: 204,
+    max_coinbase_payload_len: 2048,
 
     // Limit the cost of calculating compute/transient/storage masses
     max_tx_inputs: 1000,
@@ -636,7 +636,7 @@ pub const SIMNET_PARAMS: Params = Params {
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
     coinbase_payload_script_public_key_max_len: 150,
-    max_coinbase_payload_len: 204,
+    max_coinbase_payload_len: 2048,
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
@@ -673,7 +673,7 @@ pub const DEVNET_PARAMS: Params = Params {
     difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     coinbase_payload_script_public_key_max_len: 150,
-    max_coinbase_payload_len: 204,
+    max_coinbase_payload_len: 2048,
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
