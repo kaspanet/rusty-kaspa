@@ -77,7 +77,7 @@ impl<T: Clone> ExpiringCache<T> {
 #[cfg(test)]
 mod tests {
     use super::ExpiringCache;
-    use std::time::Duration;
+    use std::{println, time::Duration};
     use tokio::join;
 
     #[tokio::test]

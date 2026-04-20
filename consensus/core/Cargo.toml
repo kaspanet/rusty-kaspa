@@ -27,8 +27,9 @@ itertools.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-core.workspace = true
-kaspa-hashes.workspace = true
+kaspa-hashes = { workspace = true, features = ["mem_size"] }
 kaspa-math.workspace = true
+kaspa-smt.workspace = true
 kaspa-merkle.workspace = true
 kaspa-muhash.workspace = true
 kaspa-txscript-errors.workspace = true

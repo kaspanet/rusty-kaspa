@@ -3,15 +3,28 @@
 //!
 //! General purpose utilities and various type extensions used across the Rusty Kaspa codebase.
 //!
+#![no_std]
+
+extern crate alloc;
+extern crate core;
+
+#[cfg(feature = "std")]
+extern crate std;
 
 pub mod any;
 pub mod arc;
 pub mod binary_heap;
 pub mod channel;
+
+#[cfg(feature = "expiring-cache")]
 pub mod expiring_cache;
+
+#[cfg(feature = "hashmap")]
 pub mod hashmap;
 pub mod hex;
 pub mod iter;
+
+#[cfg(feature = "mem_size")]
 pub mod mem_size;
 pub mod networking;
 pub mod refs;
@@ -132,6 +145,7 @@ pub mod serde_bytes_fixed;
 /// # Examples
 /// ## Implement serde::Serialize/serde::Deserialize using declarative macro
 /// ```
+/// use std as alloc;
 /// #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 /// struct MyStruct([u8; 20]);
 ///
@@ -220,14 +234,19 @@ pub mod serde_bytes_fixed;
 /// assert_eq!(test_struct, from_json);
 /// ```
 pub mod serde_bytes_fixed_ref;
+#[cfg(feature = "sim")]
 pub mod sim;
+
+#[cfg(feature = "sync")] // todo can be used in nostd if event-listener version is updated
 pub mod sync;
+
+#[cfg(feature = "triggers")]
 pub mod triggers;
 pub mod vec;
 
 pub mod git;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "fd_budget"))]
 pub mod fd_budget;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sysinfo"))]
 pub mod sysinfo;

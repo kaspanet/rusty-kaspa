@@ -15,10 +15,12 @@ kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-p2p-lib.workspace = true
 kaspa-p2p-mining.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["fd_budget"]}
 kaspa-utils-tower.workspace = true
 kaspa-hashes.workspace = true
 kaspa-muhash.workspace = true
+kaspa-seq-commit.workspace = true
+kaspa-smt.workspace = true
 kaspa-connectionmanager.workspace = true
 kaspa-addressmanager.workspace = true
 kaspa-consensusmanager.workspace = true
@@ -37,6 +39,12 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = { workspace = true, features = ["net"] }
 uuid = { workspace = true, features = ["v4", "fast-rng"] }
 chrono.workspace = true
+
+[features]
+# Lowers `SMT_CHUNK_SIZE` and `SMT_FLOW_CONTROL_WINDOW` to tiny values so
+# integration tests can exercise the chunked / flow-controlled SMT IBD path
+# without generating tens of thousands of active lanes.
+test-smt-small-chunks = []
 
 [lints]
 workspace = true

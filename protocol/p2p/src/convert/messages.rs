@@ -167,6 +167,14 @@ impl TryFrom<protowire::RequestPruningPointUtxoSetMessage> for Hash {
     }
 }
 
+impl TryFrom<protowire::RequestPruningPointSmtStateMessage> for Hash {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestPruningPointSmtStateMessage) -> Result<Self, Self::Error> {
+        msg.pruning_point_hash.try_into_ex()
+    }
+}
+
 impl TryFrom<protowire::InvRelayBlockMessage> for Hash {
     type Error = ConversionError;
 

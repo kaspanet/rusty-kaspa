@@ -4,6 +4,7 @@
 //! Users should define the message type `T` required for the simulation, derive `Process<T>` with
 //! various simulation actor logic and plug the processes into a `Simulation<T>` instance.
 
+use std::boxed::Box;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
 /// Internal structure representing a scheduled simulator event

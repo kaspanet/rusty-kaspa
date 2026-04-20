@@ -1,19 +1,32 @@
+#![no_std]
+
+extern crate alloc;
+extern crate core;
+
+#[cfg(feature = "std")]
+extern crate std;
+
 mod hashers;
 mod pow_hashers;
 
+use alloc::string::String;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_utils::{
-    hex::{FromHex, ToHex},
-    mem_size::MemSizeEstimator,
-    serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
-};
-use std::{
+use core::{
     array::TryFromSliceError,
     fmt::{Debug, Display, Formatter},
-    hash::{Hash as StdHash, Hasher as StdHasher},
+    hash::{Hash as CoreHash, Hasher as CoreHasher},
     str::{self, FromStr},
 };
+use kaspa_utils::{
+    hex::{FromHex, ToHex},
+    serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
+};
 use wasm_bindgen::prelude::*;
+
+// export libraries so it's possible to use macros
+pub use {blake2b_simd, blake3, sha2, sha2_const_stable};
+
+#[cfg(feature = "workflow")]
 use workflow_wasm::prelude::*;
 
 pub const HASH_SIZE: usize = 32;
@@ -22,8 +35,14 @@ pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
 /// @category General
-#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, CastFromJs)]
+#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize)]
+#[cfg_attr(feature = "workflow", derive(CastFromJs))]
+#[cfg_attr(
+    feature = "zerocopy",
+    derive(zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable, zerocopy::KnownLayout, zerocopy::Unaligned)
+)]
 #[wasm_bindgen]
+#[repr(transparent)]
 pub struct Hash([u8; HASH_SIZE]);
 
 serde_impl_ser_fixed_bytes_ref!(Hash, HASH_SIZE);
@@ -58,6 +77,11 @@ impl Hash {
     #[inline(always)]
     pub const fn as_bytes(self) -> [u8; 32] {
         self.0
+    }
+
+    #[inline(always)]
+    pub const fn as_slice(&self) -> &[u8] {
+        &self.0
     }
 
     #[inline(always)]
@@ -99,9 +123,9 @@ impl Hash {
 
 // Override the default Hash implementation, to: A. improve perf a bit (siphash works over u64s), B. allow a hasher to just take the first u64.
 // Don't change this without looking at `consensus/core/src/blockhash/BlockHashMap`.
-impl StdHash for Hash {
+impl CoreHash for Hash {
     #[inline(always)]
-    fn hash<H: StdHasher>(&self, state: &mut H) {
+    fn hash<H: CoreHasher>(&self, state: &mut H) {
         self.iter_le_u64().for_each(|x| x.hash(state));
     }
 }
@@ -117,7 +141,7 @@ impl PartialEq for Hash {
 
 impl Display for Hash {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let mut hex = [0u8; HASH_SIZE * 2];
         faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
         f.write_str(unsafe { str::from_utf8_unchecked(&hex) })
@@ -125,8 +149,8 @@ impl Display for Hash {
 }
 
 impl Debug for Hash {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self, f)
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Display::fmt(&self, f)
     }
 }
 
@@ -164,6 +188,7 @@ impl AsRef<[u8]> for Hash {
 
 impl ToHex for Hash {
     fn to_hex(&self) -> String {
+        use alloc::string::ToString;
         self.to_string()
     }
 }
@@ -175,7 +200,8 @@ impl FromHex for Hash {
     }
 }
 
-impl MemSizeEstimator for Hash {}
+#[cfg(feature = "mem_size")]
+impl kaspa_utils::mem_size::MemSizeEstimator for Hash {}
 
 #[wasm_bindgen]
 impl Hash {
@@ -186,11 +212,15 @@ impl Hash {
 
     #[wasm_bindgen(js_name = toString)]
     pub fn js_to_string(&self) -> String {
+        use alloc::string::ToString;
         self.to_string()
     }
 }
 
+#[cfg(feature = "workflow")]
 type TryFromError = workflow_wasm::error::Error;
+
+#[cfg(feature = "workflow")]
 impl TryCastFromJs for Hash {
     type Error = TryFromError;
     fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
@@ -212,7 +242,7 @@ pub const ZERO_HASH: Hash = Hash([0; HASH_SIZE]);
 #[cfg(test)]
 mod tests {
     use super::Hash;
-    use std::str::FromStr;
+    use std::{dbg, str::FromStr, string::ToString};
 
     #[test]
     fn test_hash_basics() {

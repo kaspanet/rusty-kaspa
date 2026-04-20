@@ -60,7 +60,7 @@ pub enum TxRuleError {
     #[error("transaction output {0} has zero value")]
     TxOutZero(usize),
 
-    #[error("transaction output {0} value is higher than the max allowed of {}", MAX_SOMPI)]
+    #[error("transaction output {0} value is higher than the max allowed of {max_sompi}", max_sompi = MAX_SOMPI)]
     TxOutTooHigh(usize),
 
     #[error("transaction total outputs value overflowed u64")]

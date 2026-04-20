@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
     header::Header,
     mass::ComputeBudget,
     sign::{sign, sign_with_multiple_v2},
-    subnets::SUBNETWORK_ID_NATIVE,
+    subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
 use kaspa_consensusmanager::ConsensusManager;
@@ -897,6 +897,199 @@ async fn daemon_pruning_seqcommit_sync_test() {
             Box::pin(async move { client.get_server_info().await.unwrap().virtual_daa_score >= final_score })
         },
         "syncee did not accept seqcommit block",
+    )
+    .await;
+
+    rpc_client1.disconnect().await.unwrap();
+    rpc_client2.disconnect().await.unwrap();
+    kaspad1.shutdown();
+    kaspad2.shutdown();
+}
+
+// IBD test focused on `sync_new_smt_state` (protocol/flows/src/ibd/flow.rs:635).
+// Produces a non-trivial active-lanes SMT by submitting one transaction per
+// distinct subnetwork_id — each distinct subnetwork_id creates a new lane (see
+// consensus/src/pipeline/virtual_processor/utxo_validation.rs:532). With the
+// `test-smt-small-chunks` feature active the stream uses SMT_CHUNK_SIZE=4 and
+// SMT_FLOW_CONTROL_WINDOW=2, so `SMT_LANE_COUNT = 10` forces 3 chunks and one
+// flow-control round-trip — exercising both chunked streaming and the
+// RequestNextPruningPointSmtChunk handshake end to end.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_ibd_smt_state_sync_test() {
+    const SMT_LANE_COUNT: usize = 10;
+    const SMT_ANTICONE_COUNT: usize = 4;
+
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO,kaspa_testing_integration=trace,kaspa_rpc_core=debug");
+
+    let override_params_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/seqcommit_sync_test_params.json");
+    let params = load_override_params(&override_params_path);
+
+    let args = Args {
+        simnet: true,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        disable_upnp: true,
+        utxoindex: true,
+        override_params_file: Some(override_params_path.to_string_lossy().to_string()),
+        ..Default::default()
+    };
+
+    let total_fd_limit = 10;
+    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let rpc_client1 = kaspad1.start().await;
+
+    let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let miner_address =
+        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+    let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
+
+    // Phase 1: mine enough blocks to mature SMT_LANE_COUNT coinbase outputs.
+    let coinbase_maturity = params.coinbase_maturity();
+    let initial_blocks = (coinbase_maturity as usize) + SMT_LANE_COUNT + 20;
+    for _ in 0..initial_blocks {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+
+    let mined_check = rpc_client1.clone();
+    wait_for(
+        50,
+        60,
+        move || {
+            let client = mined_check.clone();
+            Box::pin(async move { client.get_server_info().await.unwrap().virtual_daa_score >= initial_blocks as u64 })
+        },
+        "syncer did not reach the initial mining target",
+    )
+    .await;
+
+    let mut anticone_templates = Vec::with_capacity(SMT_ANTICONE_COUNT);
+    for i in 0..SMT_ANTICONE_COUNT {
+        let extra = format!("anticone-{i:02}").into_bytes();
+        anticone_templates.push(rpc_client1.get_block_template(miner_address.clone(), extra).await.unwrap());
+    }
+    for template in anticone_templates {
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+    // Bury the siblings under a few chain blocks so virtual's selected
+    // parent is past them when the lane txs come in.
+    for _ in 0..10 {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+
+    // Phase 2: submit SMT_LANE_COUNT transactions, each on a distinct non-reserved
+    // subnetwork_id, so every one populates a fresh lane in the active-lanes SMT.
+    let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), coinbase_maturity).await;
+    assert!(utxos.len() >= SMT_LANE_COUNT, "syncer produced {} spendable utxos, need {}", utxos.len(), SMT_LANE_COUNT);
+
+    let mut submitted_tx_ids: Vec<RpcTransactionId> = Vec::with_capacity(SMT_LANE_COUNT);
+    for (i, (outpoint, entry)) in utxos.iter().take(SMT_LANE_COUNT).enumerate() {
+        // Post-HF user-lane shape is `[namespace (4 bytes), 0×16]` with a
+        // non-zero byte somewhere in bytes[1..4] (see
+        // consensus/src/processes/transaction_validator/tx_validation_in_isolation.rs).
+        // A distinct nonzero byte at position 3 keeps each lane_id unique while
+        // conforming to the shape.
+        let mut subnet_bytes = [0u8; 20];
+        subnet_bytes[3] = (i as u8) + 1;
+        let lane_subnet = SubnetworkId::from_bytes(subnet_bytes);
+
+        let fee = required_fee(1, 1);
+        assert!(entry.amount > fee, "coinbase utxo is too small to cover a tx fee");
+        let out_value = entry.amount - fee;
+        let unsigned_tx = Transaction::new(
+            TX_VERSION_POST_COV_HF,
+            vec![TransactionInput::new(*outpoint, vec![], 0, 1)],
+            vec![TransactionOutput { value: out_value, script_public_key: pay_to_address_script(&miner_address), covenant: None }],
+            0,
+            lane_subnet,
+            0,
+            vec![],
+        );
+        let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, vec![entry.clone()]), miner_schnorr_key);
+        let tx_id = signed_tx.tx.id();
+        rpc_client1.submit_transaction((&signed_tx.tx).into(), false).await.unwrap();
+        submitted_tx_ids.push(tx_id);
+    }
+
+    let mempool_check = rpc_client1.clone();
+    let expected_ids = submitted_tx_ids.clone();
+    wait_for(
+        50,
+        40,
+        move || {
+            let client = mempool_check.clone();
+            let ids = expected_ids.clone();
+            Box::pin(async move {
+                for id in &ids {
+                    if client.get_mempool_entry(*id, false, false).await.is_err() {
+                        return false;
+                    }
+                }
+                true
+            })
+        },
+        "lane transactions did not reach the mempool",
+    )
+    .await;
+
+    // Phase 3: mine enough additional blocks that the lane transactions land on
+    // chain and the pruning point then advances off genesis. `pruning_depth` + a
+    // comfortable margin guarantees the pruning point covers the lane txs.
+    let pruning_depth = params.pruning_depth();
+    let blocks_after_txs = pruning_depth as usize + 60;
+    for _ in 0..blocks_after_txs {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+
+    let mut dag_info = rpc_client1.get_block_dag_info().await.unwrap();
+    let mut extra_blocks = 0usize;
+    while dag_info.pruning_point_hash == SIMNET_GENESIS.hash && extra_blocks < 100 {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+        extra_blocks += 1;
+        dag_info = rpc_client1.get_block_dag_info().await.unwrap();
+    }
+    assert_ne!(dag_info.pruning_point_hash, SIMNET_GENESIS.hash, "syncer pruning point did not advance off genesis");
+
+    let target_daa_score = rpc_client1.get_server_info().await.unwrap().virtual_daa_score;
+    let target_pruning_point = dag_info.pruning_point_hash;
+
+    // Phase 4: bring up the syncee and connect it to the syncer.
+    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client2 = kaspad2.start().await;
+
+    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    let check_client = rpc_client2.clone();
+    wait_for(
+        50,
+        40,
+        move || {
+            let client = check_client.clone();
+            Box::pin(async move { client.get_connected_peer_info().await.unwrap().peer_info.len() == 1 })
+        },
+        "the nodes did not connect to each other",
+    )
+    .await;
+
+    // Phase 5: wait for IBD (including `sync_new_smt_state`) to complete
+    let sync_check = rpc_client2.clone();
+    wait_for(
+        100,
+        600,
+        move || {
+            let client = sync_check.clone();
+            Box::pin(async move {
+                let server_info = client.get_server_info().await.unwrap();
+                if server_info.virtual_daa_score < target_daa_score {
+                    return false;
+                }
+                client.get_block_dag_info().await.unwrap().pruning_point_hash == target_pruning_point
+            })
+        },
+        "syncee did not complete SMT-era IBD within timeout (suspected sync_new_smt_state stall)",
     )
     .await;
 

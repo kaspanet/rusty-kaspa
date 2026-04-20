@@ -13,6 +13,7 @@ pub struct ProcessingCounters {
     pub storage_mass_counts: AtomicU64,
     pub compute_mass_counts: AtomicU64,
     pub transient_mass_counts: AtomicU64,
+    pub lane_update_counts: AtomicU64,
 }
 
 impl ProcessingCounters {
@@ -29,6 +30,7 @@ impl ProcessingCounters {
             storage_mass_counts: self.storage_mass_counts.load(Ordering::Relaxed),
             compute_mass_counts: self.compute_mass_counts.load(Ordering::Relaxed),
             transient_mass_counts: self.transient_mass_counts.load(Ordering::Relaxed),
+            lane_update_counts: self.lane_update_counts.load(Ordering::Relaxed),
         }
     }
 }
@@ -46,6 +48,7 @@ pub struct ProcessingCountersSnapshot {
     pub storage_mass_counts: u64,
     pub compute_mass_counts: u64,
     pub transient_mass_counts: u64,
+    pub lane_update_counts: u64,
 }
 
 impl core::ops::Sub for &ProcessingCountersSnapshot {
@@ -64,6 +67,7 @@ impl core::ops::Sub for &ProcessingCountersSnapshot {
             storage_mass_counts: self.storage_mass_counts.saturating_sub(rhs.storage_mass_counts),
             compute_mass_counts: self.compute_mass_counts.saturating_sub(rhs.compute_mass_counts),
             transient_mass_counts: self.transient_mass_counts.saturating_sub(rhs.transient_mass_counts),
+            lane_update_counts: self.lane_update_counts.saturating_sub(rhs.lane_update_counts),
         }
     }
 }

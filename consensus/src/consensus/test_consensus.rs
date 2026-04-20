@@ -12,6 +12,8 @@ use kaspa_core::{core::Core, service::Service};
 use kaspa_database::utils::DbLifetime;
 use kaspa_hashes::Hash;
 use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_smt::proof::OwnedSmtProof;
+use kaspa_smt_store::processor::SmtReadBounds;
 use parking_lot::RwLock;
 
 use super::Consensus;
@@ -42,6 +44,17 @@ pub struct TestConsensus {
     consensus: Arc<Consensus>,
     block_builder: TestBlockBuilder,
     _db_lifetime: DbLifetime,
+}
+
+pub struct TestSeqCommitLaneProof {
+    pub lanes_root: Hash,
+    pub payload_and_ctx_digest: Hash,
+    pub parent_seq_commit: Hash,
+    pub expected_seq_commit: Hash,
+    pub parent_lane_tip: Option<Hash>,
+    pub current_lane: Option<(Hash, u64)>,
+    pub smt_proof: OwnedSmtProof,
+    pub blue_score: u64,
 }
 
 impl TestConsensus {
@@ -204,6 +217,51 @@ impl TestConsensus {
 
     pub fn build_header_only_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> MutableBlock {
         MutableBlock::from_header(self.build_header_with_parents(hash, parents))
+    }
+
+    pub fn seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> TestSeqCommitLaneProof {
+        let header = self.consensus.headers_store.get_header(block_hash).unwrap();
+        let selected_parent = header.direct_parents()[0];
+        let parent_header = self.consensus.headers_store.get_header(selected_parent).unwrap();
+        let min_blue_score = header.blue_score.saturating_sub(self.params.finality_depth());
+        let parent_bounds = SmtReadBounds::new(parent_header.blue_score, min_blue_score);
+        let current_bounds = SmtReadBounds::for_pov(header.blue_score, self.params.finality_depth());
+
+        let parent_lane_tip = self
+            .consensus
+            .storage
+            .smt_stores
+            .get_lane(lane_key, parent_bounds, |bh| self.consensus.virtual_processor.is_smt_canonical(bh, selected_parent))
+            .map(|verified| *verified.data());
+        let current_lane = self
+            .consensus
+            .storage
+            .smt_stores
+            .get_lane(lane_key, current_bounds, |bh| self.consensus.virtual_processor.is_smt_canonical(bh, block_hash))
+            .map(|verified| (*verified.data(), verified.blue_score()));
+        let lanes_root = self
+            .consensus
+            .storage
+            .smt_stores
+            .get_lanes_root(current_bounds, |bh| self.consensus.virtual_processor.is_smt_canonical(bh, block_hash));
+        let smt_proof = self
+            .consensus
+            .storage
+            .smt_stores
+            .prove_lane(&lane_key, current_bounds, |bh| self.consensus.virtual_processor.is_smt_canonical(bh, block_hash))
+            .unwrap();
+        let metadata = self.consensus.storage.smt_metadata_store.get(block_hash).unwrap();
+
+        TestSeqCommitLaneProof {
+            lanes_root,
+            payload_and_ctx_digest: metadata.payload_and_ctx_digest,
+            parent_seq_commit: parent_header.accepted_id_merkle_root,
+            expected_seq_commit: header.accepted_id_merkle_root,
+            parent_lane_tip,
+            current_lane,
+            smt_proof,
+            blue_score: header.blue_score,
+        }
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {

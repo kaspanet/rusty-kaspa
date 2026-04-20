@@ -28,7 +28,7 @@ kaspa-math.workspace = true
 kaspa-mining-errors.workspace = true
 kaspa-notify.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["peer-id"] }
 kaspa-rpc-macros.workspace = true
 
 async-channel.workspace = true

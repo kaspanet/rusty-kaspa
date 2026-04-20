@@ -47,7 +47,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::{
-        BlockValidationFutures, ConsensusApi, ConsensusStats,
+        BlockValidationFutures, ConsensusApi, ConsensusStats, ImportLaneBatchIterator,
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
     },
@@ -88,6 +88,7 @@ use kaspa_core::info;
 use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_smt_store::processor::SmtReadBounds;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -356,6 +357,9 @@ impl Consensus {
         if pruning_meta_write.pruning_utxoset_stable_flag() {
             pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, true).unwrap();
         }
+        if pruning_meta_write.pruning_smt_stable_flag() {
+            pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, true).unwrap();
+        }
         self.db.write(batch).unwrap();
     }
 
@@ -496,8 +500,11 @@ impl Consensus {
         self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
         // Update selected_chain
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
-        // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
-        self.pruning_meta_stores.write().set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+        // It is important to set these flags to false together with writing the batch, in case the node crashes suddenly before syncing starts
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, false).unwrap();
+        drop(pruning_meta_write);
         // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
         let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
         // Add the pruning point itself which is also missing a body
@@ -1123,6 +1130,117 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
+    fn import_pruning_point_smt(
+        &self,
+        new_pruning_point: Hash,
+        lanes_root: Hash,
+        payload_and_ctx_digest: Hash,
+        expected_lane_count: u64,
+        lane_batches: ImportLaneBatchIterator<'_>,
+    ) -> PruningImportResult<()> {
+        use kaspa_hashes::ZERO_HASH;
+        use kaspa_smt_store::streaming_import::streaming_import;
+
+        let pp_header = self.storage.headers_store.get_header(new_pruning_point).unwrap();
+        let result = self.virtual_processor.install(|| {
+            streaming_import(
+                &self.db,
+                &self.storage.smt_stores,
+                pp_header.blue_score,
+                ZERO_HASH,
+                expected_lane_count,
+                lanes_root,
+                // Chunks arrive pre-sized (up to SMT_CHUNK_SIZE) from the wire-level chunker —
+                // forwarded as-is, no re-batching.
+                lane_batches,
+                4096,
+            )
+            .map_err(|e| PruningImportError::SmtStoreError(format!("{e}")))
+        })?;
+
+        if result.root != lanes_root {
+            return Err(PruningImportError::SmtRootMismatch { expected: lanes_root, computed: result.root });
+        }
+
+        let actual_count = result.lanes_imported;
+        if actual_count != expected_lane_count {
+            return Err(PruningImportError::SmtStoreError(format!(
+                "active lanes count mismatch: expected {expected_lane_count}, got {actual_count}"
+            )));
+        }
+
+        let mut batch = rocksdb::WriteBatch::default();
+        use crate::model::stores::smt_metadata::SmtBlockMetadata;
+        self.storage
+            .smt_metadata_store
+            .insert_batch(&mut batch, new_pruning_point, SmtBlockMetadata::new(payload_and_ctx_digest, actual_count))
+            .unwrap();
+        self.db.write(batch).unwrap();
+
+        info!("Imported SMT state for pruning point {}: {} lanes, root {}", new_pruning_point, actual_count, lanes_root);
+        Ok(())
+    }
+
+    fn get_pruning_point_smt_metadata(
+        &self,
+        expected_pruning_point: Hash,
+    ) -> ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+        self.virtual_processor.get_pruning_point_smt_metadata(expected_pruning_point)
+    }
+
+    fn open_pruning_point_smt_lane_stream(
+        &self,
+        expected_pruning_point: Hash,
+    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<kaspa_consensus_core::api::ImportLane>> + Send + 'static>> {
+        use kaspa_consensus_core::api::{ImportLane, SMT_PROOF_INTERVAL};
+
+        let pp = self.pruning_point_store.read().pruning_point().unwrap();
+        if pp != expected_pruning_point {
+            return Err(ConsensusError::UnexpectedPruningPoint);
+        }
+        let max_score = self.storage.headers_store.get_blue_score(pp).unwrap();
+        let min_score = max_score.saturating_sub(self.config.params.finality_depth());
+
+        let smt_stores = self.storage.smt_stores.clone();
+        let vp = self.virtual_processor.clone();
+
+        let is_canonical = {
+            let vp = vp.clone();
+            move |bh| vp.is_smt_canonical(bh, pp)
+        };
+        // Clip the scan window to `[pp.blue_score - finality, pp.blue_score]`.
+        // Entries above `pp.blue_score` belong to blocks in pp's future and
+        // must not be part of the SMT state exported for this pruning point.
+        let raw = smt_stores.lane_version.iter_all_canonical_owned(None, min_score, Some(max_score), is_canonical);
+
+        let sl = self.session_lock().clone();
+        let pps = self.pruning_point_store.clone();
+        let smt_stores_proof = smt_stores.clone();
+        let mut idx: u64 = 0;
+        let mapped = raw.map(move |res| -> ConsensusResult<ImportLane> {
+            let (lane_key, verified) = res.map_err(|e| ConsensusError::GeneralOwned(format!("SMT lane iter: {e}")))?;
+            let proof = if (idx as usize).is_multiple_of(SMT_PROOF_INTERVAL) {
+                let _g = sl.blocking_read();
+                let upp = pps.read().pruning_point().unwrap();
+                if upp != pp {
+                    return Err(ConsensusError::UnexpectedPruningPoint);
+                }
+                let vp_proof = vp.clone();
+                Some(
+                    smt_stores_proof
+                        .prove_lane(&lane_key, SmtReadBounds::new(max_score, min_score), move |bh| vp_proof.is_smt_canonical(bh, pp))
+                        .map_err(|e| ConsensusError::GeneralOwned(format!("prove_lane: {e}")))?,
+                )
+            } else {
+                None
+            };
+            idx += 1;
+            Ok(ImportLane { lane_key, lane_tip: *verified.data(), blue_score: verified.blue_score(), proof })
+        });
+
+        Ok(Box::new(mapped))
+    }
+
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
         let (synced_pruning_point, synced_pp_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
@@ -1418,6 +1536,26 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
         self.db.write(batch).unwrap();
         pruning_meta_write.utxo_set.clear().unwrap();
+    }
+
+    fn clear_pruning_smt_stores(&self) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, false).unwrap();
+        self.db.write(batch).unwrap();
+        self.storage.smt_stores.clear_all();
+        self.storage.smt_metadata_store.delete_all().unwrap();
+    }
+
+    fn set_pruning_smt_stable_flag(&self, val: bool) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, val).unwrap();
+        self.db.write(batch).unwrap();
+    }
+
+    fn is_pruning_smt_stable(&self) -> bool {
+        self.pruning_meta_stores.read().pruning_smt_stable_flag()
     }
 
     /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default
