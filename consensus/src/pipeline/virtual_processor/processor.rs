@@ -788,7 +788,7 @@ impl VirtualStateProcessor {
                 continue;
             }
             for lk in entry.data().iter().filter(|lk| seen.insert(**lk)) {
-                // Check if this lane hasn't a newer canonical version within [curr_min, parent].
+                // Check if this lane has a newer canonical version within [curr_min, parent].
                 // target=parent filters anticone entries at (parent, current] at the seek level.
                 let is_expired = self.smt_stores.get_lane(*lk, read_bounds, |bh| self.is_smt_canonical(bh, selected_parent)).is_none();
 
