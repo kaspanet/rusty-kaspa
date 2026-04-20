@@ -1,7 +1,17 @@
+#![no_std]
+
+extern crate alloc;
+extern crate core;
+
+pub mod streaming;
+
+use alloc::vec;
 use kaspa_hashes::{Hash, Hasher, MerkleBranchHash, ZERO_HASH};
 
+pub use streaming::StreamingMerkleBuilder;
+
 pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<MerkleBranchHash, false>(hashes)
+    calc_merkle_root_with_hasher::<MerkleBranchHash>(hashes)
 }
 
 pub fn merkle_hash(left: Hash, right: Hash) -> Hash {
@@ -13,12 +23,14 @@ pub fn merkle_hash_with_hasher(left: Hash, right: Hash, mut hasher: impl Hasher)
     hasher.finalize()
 }
 
-pub fn calc_merkle_root_with_hasher<H: Hasher, const USE_BRANCH_HASHER_FOR_SINGLE: bool>(
-    mut hashes: impl ExactSizeIterator<Item = Hash>,
-) -> Hash {
+/// Standard Merkle convention: a tree with one leaf is the leaf itself.
+/// Callers must ensure the set of valid leaf hashes is disjoint from valid
+/// internal-node hashes (typically via per-domain hashers) so the two cases
+/// cannot be confused.
+pub fn calc_merkle_root_with_hasher<H: Hasher>(mut hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     match hashes.len() {
         0 => return cold_path_empty(),
-        1 if USE_BRANCH_HASHER_FOR_SINGLE => return merkle_hash_with_hasher(hashes.next().unwrap(), ZERO_HASH, H::default()),
+        1 => return hashes.next().unwrap(),
         _ => {}
     }
     let next_pot = hashes.len().next_power_of_two();
@@ -49,10 +61,11 @@ fn cold_path_empty() -> Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_hashes::{HasherBase, SeqCommitmentMerkleBranchHash, TransactionHash};
-    use std::iter;
+    use alloc::vec::Vec;
+    use core::iter;
+    use kaspa_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
     fn seq_comm_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
-        calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, true>(hashes)
+        calc_merkle_root_with_hasher::<SeqCommitMerkleBranch>(hashes)
     }
     fn make_hash(data: &[u8]) -> Hash {
         let mut hasher = TransactionHash::new();
@@ -61,10 +74,10 @@ mod tests {
     }
     #[test]
     fn test_empty_returns_zero_hash() {
-        let root = calc_merkle_root(std::iter::empty());
+        let root = calc_merkle_root(core::iter::empty());
         assert_eq!(root, ZERO_HASH, "Empty input should return ZERO_HASH");
 
-        let seq_root = seq_comm_merkle_root(std::iter::empty());
+        let seq_root = seq_comm_merkle_root(core::iter::empty());
         assert_eq!(seq_root, ZERO_HASH, "Empty input should return ZERO_HASH for seq_comm");
     }
 
@@ -72,12 +85,10 @@ mod tests {
     fn test_single_entry_returns_hash() {
         let entry = make_hash(b"single_entry");
         let root = calc_merkle_root(iter::once(entry));
-        let expected = entry;
-        assert_eq!(root, expected);
+        assert_eq!(root, entry);
 
-        let expected = merkle_hash_with_hasher(entry, ZERO_HASH, SeqCommitmentMerkleBranchHash::default());
         let seq_comm_root = seq_comm_merkle_root(iter::once(entry));
-        assert_eq!(seq_comm_root, expected, "Single entry should return merkle hash of entry with ZERO_HASH");
+        assert_eq!(seq_comm_root, entry, "Single entry should return the leaf itself");
     }
 
     #[test]
@@ -90,7 +101,7 @@ mod tests {
         assert_eq!(root, expected, "Two entries should hash directly together");
 
         let seq_root = seq_comm_merkle_root([h1, h2].into_iter());
-        let seq_expected = merkle_hash_with_hasher(h1, h2, SeqCommitmentMerkleBranchHash::default());
+        let seq_expected = merkle_hash_with_hasher(h1, h2, SeqCommitMerkleBranch::default());
         assert_eq!(seq_root, seq_expected, "Two entries should hash directly together for seq_comm");
     }
 

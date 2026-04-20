@@ -68,7 +68,7 @@ kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["hashmap"] }
 kaspa-wallet-keys.workspace = true
 kaspa-wallet-macros.workspace = true
 kaspa-wallet-pskt.workspace = true

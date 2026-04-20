@@ -487,6 +487,7 @@ impl PruningProcessor {
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
+                self.smt_metadata_store.delete_batch(&mut batch, current).unwrap();
 
                 if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
                     if statuses_write.get(current).optional().unwrap().is_some_and(|s| s.is_valid()) {
@@ -575,6 +576,20 @@ impl PruningProcessor {
         if self.config.enable_sanity_checks {
             self.assert_proof_rebuilding(proof, new_pruning_point);
             self.assert_data_rebuilding(data, new_pruning_point);
+        }
+
+        // Prune SMT lane/branch version stores and score index.
+        // The inclusive cutoff is `pp.blue_score − finality_depth − 1`: the
+        // score `pp.blue_score − finality_depth` is still inside the active
+        // window at the pruning point and must be preserved.
+        {
+            let pp_header = self.headers_store.get_header(new_pruning_point).unwrap();
+            let smt_cutoff = crate::pipeline::virtual_processor::bounds::SeqCommitBounds::inclusive_prune_cutoff(
+                pp_header.blue_score,
+                self.config.params.finality_depth(),
+            );
+            info!("SMT pruning: cutoff_blue_score={}", smt_cutoff);
+            self.smt_stores.prune(&self.db, smt_cutoff);
         }
 
         {
