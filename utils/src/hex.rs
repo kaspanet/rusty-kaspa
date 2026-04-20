@@ -1,7 +1,10 @@
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::fmt::Debug;
+use core::str;
+use faster_hex::Error;
 use serde::{Deserialize, Deserializer, Serializer};
 use smallvec::{SmallVec, smallvec};
-use std::fmt::Debug;
-use std::str;
 
 pub trait ToHex {
     fn to_hex(&self) -> String;
@@ -17,7 +20,7 @@ where
 }
 
 pub trait FromHex: Sized {
-    type Error: std::fmt::Display;
+    type Error: core::fmt::Display;
     fn from_hex(hex_str: &str) -> Result<Self, Self::Error>;
 }
 
@@ -37,13 +40,13 @@ impl ToHex for &[u8] {
     fn to_hex(&self) -> String {
         // an empty vector is allowed
         if self.is_empty() {
-            return "".to_string();
+            return String::new();
         }
 
-        let mut hex = vec![0u8; self.len() * 2];
+        let mut hex = alloc::vec![0u8; self.len() * 2];
         faster_hex::hex_encode(self, hex.as_mut_slice()).expect("The output is exactly twice the size of the input");
         let result = unsafe { str::from_utf8_unchecked(&hex) };
-        result.to_string()
+        String::from(result)
     }
 }
 
@@ -62,10 +65,10 @@ impl FromHex for Vec<u8> {
     fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         // an empty string is allowed
         if hex_str.is_empty() {
-            return Ok(vec![]);
+            return Ok(alloc::vec![]);
         }
 
-        let mut bytes = vec![0u8; hex_str.len() / 2];
+        let mut bytes = alloc::vec![0u8; hex_str.len() / 2];
         faster_hex::hex_decode(hex_str.as_bytes(), bytes.as_mut_slice())?;
         Ok(bytes)
     }
@@ -73,10 +76,16 @@ impl FromHex for Vec<u8> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum FixedArrayError<const N: usize> {
-    #[error(transparent)]
-    Deserialize(#[from] faster_hex::Error),
+    #[error("encoding error: {0}")]
+    Deserialize(faster_hex::Error),
     #[error("unexpected length of hex string. actual: {0}")]
     WrongLength(usize),
+}
+
+impl<const N: usize> From<faster_hex::Error> for FixedArrayError<N> {
+    fn from(value: Error) -> Self {
+        Self::Deserialize(value)
+    }
 }
 
 /// Little endian format of full content
@@ -122,10 +131,10 @@ impl<A: smallvec::Array<Item = u8>> FromHex for SmallVec<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use std::string::ToString;
     #[test]
     fn test_vec_hex_convert() {
-        let v: Vec<u8> = vec![0x0, 0xab, 0x55, 0x30, 0x1f, 0x63];
+        let v: Vec<u8> = alloc::vec![0x0, 0xab, 0x55, 0x30, 0x1f, 0x63];
         let k = "00ab55301f63";
         assert_eq!(k.len(), v.len() * 2);
         assert_eq!(k.to_string(), v.to_hex());

@@ -13,30 +13,30 @@ repository.workspace = true
 duct = "0.13.7"
 
 [dependencies]
-arc-swap.workspace = true
+arc-swap = { workspace = true, optional = true }
 async-channel.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true
-event-listener.workspace = true
+event-listener = { workspace = true, optional = true }
 faster-hex.workspace = true
-ipnet.workspace = true
+ipnet = { workspace = true }
 itertools.workspace = true
 log.workspace = true
-num_cpus.workspace = true
+num_cpus = { workspace = true, optional = true }
 once_cell.workspace = true
-parking_lot.workspace = true
+parking_lot = { workspace = true, optional = true }
 serde.workspace = true
 sha2.workspace = true
 smallvec.workspace = true
-sysinfo.workspace = true
+sysinfo = { workspace = true, optional = true }
 thiserror.workspace = true
-triggered.workspace = true
-uuid.workspace = true
+triggered = { workspace = true, optional = true }
+uuid = { workspace = true, features = ["v4", "fast-rng", "serde", "js"], optional = true }
 wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-mac_address.workspace = true
-rlimit.workspace = true
+mac_address = { workspace = true, optional = true }
+rlimit = { workspace = true, optional = true }
 
 [dev-dependencies]
 bincode.workspace = true
@@ -52,7 +52,19 @@ name = "bench"
 harness = false
 
 [features]
+default = ["std", "sync", "sysinfo", "mem_size", "sim", "triggers", "hashmap", "peer-id"]
+std = ["async-channel/std", "borsh/std","faster-hex/std", "ipnet/std", "itertools/use_std", "log/std", "once_cell/std", "serde/std", "sha2/std", "thiserror/std", "uuid/std", "wasm-bindgen/std"]
+
 semaphore-trace = []
+sync = ["std", "dep:event-listener"]
+sysinfo = ["std", "fd_budget", "dep:sysinfo", "dep:num_cpus", "dep:mac_address"]
+mem_size = ["std", "dep:parking_lot"]
+triggers = ["std", "dep:triggered"]
+fd_budget = ["std", "dep:rlimit"]
+sim = ["std"]
+hashmap = ["std"]
+expiring-cache = ["std", "dep:arc-swap"]
+peer-id = ["std", "dep:uuid"]
 
 [lints]
 workspace = true

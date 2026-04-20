@@ -2,9 +2,9 @@
 //! estimate sizes of run-time objects in memory, including deep heap allocations. See
 //! struct-level docs for more details.
 
-use std::{collections::HashSet, sync::Arc};
-
 use parking_lot::RwLock;
+use std::vec::Vec;
+use std::{collections::HashSet, sync::Arc};
 
 /// The memory mode of the tracked object
 #[derive(Debug, Clone, Copy)]

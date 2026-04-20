@@ -316,7 +316,7 @@ impl Stack {
 
     #[inline]
     fn add_pushed_bytes(&mut self, bytes: usize) {
-        self.pushed_bytes = self.pushed_bytes.checked_add(bytes as u64).unwrap();
+        self.pushed_bytes = self.pushed_bytes.checked_add(bytes as u64).expect("stack pushed-bytes accounting should never overflow");
     }
 
     #[inline]

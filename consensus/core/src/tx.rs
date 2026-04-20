@@ -35,7 +35,6 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
-use crate::hashing::tx::seq_commit_tx_digest;
 use kaspa_hashes::Hash;
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
@@ -131,6 +130,7 @@ impl TxInputMass {
         !Self::version_expects_compute_budget_field(version)
     }
 
+    /// Returns the total script units this input mass allows the engine to consume, including a free per-input budget.
     pub fn allowed_script_units(self) -> ScriptUnits {
         let script_units = ScriptUnits::from(self);
         script_units.saturating_add(free_script_units_per_input())
@@ -452,10 +452,6 @@ impl Transaction {
     pub fn payload_digest(&self) -> Hash {
         hashing::tx::payload_digest(&self.payload)
     }
-
-    pub fn seq_commit_digest(&self) -> Hash {
-        seq_commit_tx_digest(self.id(), self.version)
-    }
 }
 
 impl MemSizeEstimator for Transaction {
@@ -510,10 +506,6 @@ pub trait VerifiableTransaction {
 
     fn payload_digest(&self) -> Hash {
         self.tx().payload_digest()
-    }
-
-    fn seq_commit_digest(&self) -> Hash {
-        self.tx().seq_commit_digest()
     }
 
     fn version(&self) -> u16 {

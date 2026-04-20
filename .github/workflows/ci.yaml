@@ -209,8 +209,15 @@ jobs:
       - name: Set up cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Run no_std cargo check for crypto/addresses
-        run: cargo check -p kaspa-addresses --no-default-features --target thumbv7em-none-eabi
+      - name: Run no_std cargo check
+        run: >
+          cargo check --target thumbv7em-none-eabi --no-default-features
+          -p kaspa-addresses
+          -p kaspa-hashes
+          -p kaspa-merkle
+          -p kaspa-smt
+          -p kaspa-seq-commit
+          -p kaspa-utils
 
 
   check-wasm32:

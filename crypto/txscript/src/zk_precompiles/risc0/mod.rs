@@ -11,6 +11,7 @@ use crate::{
 };
 use kaspa_txscript_errors::TxScriptError;
 use risc0_circuit_recursion::control_id;
+use risc0_core::{field::Elem, field::baby_bear::BabyBearElem};
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;
 mod error;
@@ -28,14 +29,20 @@ fn parse_digest(bytes: impl AsRef<[u8]>) -> Result<Digest, R0Error> {
     Digest::try_from(bytes).map_err(|_| R0Error::InvalidDigestLength(bytes.len()))
 }
 
-fn parse_seal(bytes: impl AsRef<[u8]>) -> Result<Vec<u32>, R0Error> {
+fn parse_seal(bytes: impl AsRef<[u8]>) -> Result<Vec<BabyBearElem>, R0Error> {
     let bytes = bytes.as_ref();
     let (chunks, remaining) = bytes.as_chunks::<4>();
     if !remaining.is_empty() {
         // we require no remainder
         Err(R0Error::InvalidSealLength(bytes.len()))
     } else {
-        Ok(chunks.iter().copied().map(u32::from_le_bytes).collect())
+        chunks
+            .iter()
+            .copied()
+            .map(u32::from_le_bytes)
+            .map(BabyBearElem::new_raw)
+            .map(|v| if v.is_reduced() { Ok(v) } else { Err(R0Error::SealHasInvalidBabyBearElem) })
+            .collect()
     }
 }
 
@@ -75,16 +82,16 @@ impl ZkPrecompile for R0SuccinctPrecompile {
     /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(covpp-mainnet)
     ///
     /// Expects the following items on the stack (from top to bottom):
-    /// - image id (bytes)
-    /// - journal (bytes)
-    /// - control inclusion proof digests (bytes)
-    /// - control inclusion proof index (bytes, u32 le)
     /// - hash function id (bytes, u8)
+    /// - control id (bytes, digest length)
+    /// - image id (bytes, digest length)
+    /// - journal (bytes, digest length)
+    /// - seal (bytes, list of u32 le)
+    /// - control inclusion proof digests (bytes)
+    /// - control index (bytes, u32 le)
     /// - claim (bytes)
-    /// - seal (bytes, u32 le)
-    /// - control id (bytes, digest)
     fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error> {
-        let [control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id] = dstack.pop_raw()?;
+        let [claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn] = dstack.pop_raw()?;
 
         let control_id = parse_digest(control_id)?;
         let seal = parse_seal(seal)?;

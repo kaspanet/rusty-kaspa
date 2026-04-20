@@ -127,6 +127,7 @@ impl ConsensusServices {
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
             params.bps_history(),
+            params.covenants_activation,
         );
 
         let mass_calculator =

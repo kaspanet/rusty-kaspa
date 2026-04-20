@@ -16,6 +16,7 @@
 use alloc::{collections::VecDeque, vec::Vec};
 use risc0_binfmt::read_sha_halfs;
 use risc0_circuit_recursion::{CIRCUIT, CircuitImpl, control_id::ALLOWED_CONTROL_ROOT};
+use risc0_core::field::Elem;
 use risc0_core::field::baby_bear::BabyBearElem;
 use risc0_zkp::core::hash::{HashSuite, blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2HashSuite, sha::Sha256HashSuite};
 use risc0_zkp::{adapter::CircuitInfo, core::digest::Digest, verify::VerificationError};
@@ -79,7 +80,11 @@ impl From<HashFnId> for u8 {
 pub struct SuccinctReceipt {
     /// The cryptographic seal of this receipt. This seal is a STARK proving an execution of the
     /// recursion circuit.
-    seal: Vec<u32>,
+    seal: Vec<BabyBearElem>,
+
+    /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
+    /// join, or resolve).
+    control_id: Digest,
 
     /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
     /// join, or resolve).
@@ -99,7 +104,13 @@ pub struct SuccinctReceipt {
 }
 
 impl SuccinctReceipt {
-    pub fn new(seal: Vec<u32>, control_id: Digest, claim: Digest, hashfn: HashFnId, control_inclusion_proof: MerkleProof) -> Self {
+    pub fn new(
+        seal: Vec<BabyBearElem>,
+        control_id: Digest,
+        claim: Digest,
+        hashfn: HashFnId,
+        control_inclusion_proof: MerkleProof,
+    ) -> Self {
         Self { seal, control_id, claim, hashfn, control_inclusion_proof }
     }
 
@@ -126,26 +137,26 @@ impl SuccinctReceipt {
             // Ensure that the control_id decoded from the seal matches the one in the
             // SuccinctReceipt metadata.
             if *control_id != self.control_id {
-                return Err(VerificationError::ControlVerificationError { control_id:*control_id });
+                return Err(VerificationError::ControlVerificationError { control_id: *control_id });
             }
             self.control_inclusion_proof
                 .verify(control_id, &ALLOWED_CONTROL_ROOT, suite.hashfn.as_ref())
                 .map_err(|_| VerificationError::ControlVerificationError { control_id: *control_id })
         };
 
-        let all: &[BabyBearElem] = bytemuck::checked::try_cast_slice(&self.seal).map_err(|_| R0Error::SealHasInvalidBabyBearElem)?;
-        // Extract the globals from the seal
-        let output_elems: &[BabyBearElem] = &all[..CircuitImpl::OUTPUT_SIZE];
+        // **IMPORTANT:*  `BabyBearElem::as_u32_slice` and `BabyBearElem::as_u32` do different conversions:
+        //
+        //      `BabyBearElem::as_u32_slice` casts `BabyBearElem` to its internal value, represented as u32.
+        //
+        //      `BabyBearElem::as_u32` applies to the internal u32 value decoding function
 
         // Verify the receipt itself is correct, and therefore the encoded globals are
         // reliable.
-        risc0_zkp::verify::verify(&CIRCUIT, &suite, &self.seal, check_code)?;
+        risc0_zkp::verify::verify(&CIRCUIT, &suite, BabyBearElem::as_u32_slice(&self.seal), check_code)?;
 
-        let mut seal_claim = VecDeque::new();
-        for elem in output_elems {
-            // add the output field elements from the encoded globals
-            seal_claim.push_back(elem.as_u32())
-        }
+        // Extract the globals from the seal
+        let output_elems: &[BabyBearElem] = &self.seal[..CircuitImpl::OUTPUT_SIZE];
+        let mut seal_claim = VecDeque::from_iter(output_elems.iter().map(BabyBearElem::as_u32));
 
         // Read the Poseidon2 control root digest from the first 16 words of the output.
         // NOTE: Implemented recursion programs have two output slots, each of size 16 elems.

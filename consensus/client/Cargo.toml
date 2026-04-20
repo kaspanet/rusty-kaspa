@@ -15,7 +15,7 @@ wasm32-types = []
 [dependencies]
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-hashes.workspace = true
+kaspa-hashes = { workspace = true, features = ["workflow"] }
 kaspa-math.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
