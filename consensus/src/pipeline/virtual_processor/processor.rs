@@ -679,7 +679,7 @@ impl VirtualStateProcessor {
         // Miner payload root for the single genesis block.
         let mpl = miner_payload_leaf(MinerPayloadLeafInput {
             block_hash: &self.genesis.hash,
-            blue_work_bytes: &BlueWorkType::ZERO,
+            blue_work_be_bytes: &BlueWorkType::ZERO.to_be_bytes(),
             payload: self.genesis.coinbase_payload,
         });
         let payload_root = miner_payload_root(std::iter::once(mpl));

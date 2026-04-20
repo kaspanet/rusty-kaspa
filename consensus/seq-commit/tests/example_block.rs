@@ -146,7 +146,7 @@ fn example_seq_commit_for_block() {
             let bw = BlueWorkType::from_u64(block.blue_work);
             miner_payload_leaf(MinerPayloadLeafInput {
                 block_hash: &block.hash,
-                blue_work_bytes: &bw,
+                blue_work_be_bytes: &bw.to_be_bytes(),
                 payload: &block.coinbase_payload,
             })
         })

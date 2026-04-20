@@ -520,7 +520,7 @@ impl VirtualStateProcessor {
             let coinbase_payload = &block_txs[0].payload;
             let mpl = miner_payload_leaf(MinerPayloadLeafInput {
                 block_hash: &merged_block,
-                blue_work_bytes: &merged_header.blue_work,
+                blue_work_be_bytes: &merged_header.blue_work.to_be_bytes(),
                 payload: coinbase_payload,
             });
             miner_payload_leaves.push(mpl);

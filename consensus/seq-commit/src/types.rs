@@ -1,6 +1,5 @@
 //! Core types for sequencing commitments.
 
-use kaspa_consensus_core::BlueWorkType;
 use kaspa_hashes::Hash;
 
 /// Lane ID — 20-byte subnetwork identifier.
@@ -27,7 +26,7 @@ pub struct LaneTipInput<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct MinerPayloadLeafInput<'a> {
     pub block_hash: &'a Hash,
-    pub blue_work_bytes: &'a BlueWorkType,
+    pub blue_work_be_bytes: &'a [u8],
     pub payload: &'a [u8],
 }
 

@@ -1,6 +1,5 @@
 //! Hash functions for sequencing commitments.
 
-use kaspa_consensus_core::hashing::HasherExtensions;
 use kaspa_hashes::{
     Hash, HasherBase, PayloadDigest, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip,
     SeqCommitMergesetContext, SeqCommitMerkleBranch, SeqCommitMinerPayloadLeaf,
@@ -80,7 +79,10 @@ pub fn miner_payload_hash(payload: &[u8]) -> Hash {
 pub fn miner_payload_leaf(input: MinerPayloadLeafInput<'_>) -> Hash {
     let payload_h = miner_payload_hash(input.payload);
     let mut hasher = SeqCommitMinerPayloadLeaf::new();
-    hasher.update(input.block_hash).write_blue_work(*input.blue_work_bytes).update(payload_h);
+    hasher.update(input.block_hash);
+    let start = input.blue_work_be_bytes.iter().copied().position(|byte| byte != 0).unwrap_or(input.blue_work_be_bytes.len());
+    let blue_work_be_bytes = &input.blue_work_be_bytes[start..];
+    hasher.update((blue_work_be_bytes.len() as u64).to_le_bytes()).update(blue_work_be_bytes).update(payload_h);
     hasher.finalize()
 }
 
@@ -266,7 +268,7 @@ mod tests {
             0x02, 0x3e, 0xad, 0x3b, 0xfe, 0x5e, 0xda, 0xe0, 0xd8, 0x15, 0xd8, 0xba,
         ]);
         let bw = BlueWorkType::from_u64(0x0123);
-        let input = MinerPayloadLeafInput { block_hash: &h(1), blue_work_bytes: &bw, payload: b"coinbase data" };
+        let input = MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw.to_be_bytes(), payload: b"coinbase data" };
         assert_eq!(miner_payload_leaf(input), expected);
     }
 
@@ -274,10 +276,20 @@ mod tests {
     fn test_miner_payload_leaf_includes_all_inputs() {
         let bw1 = BlueWorkType::from_u64(1);
         let bw2 = BlueWorkType::from_u64(2);
-        let base = miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_bytes: &bw1, payload: b"data" });
-        assert_ne!(base, miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(2), blue_work_bytes: &bw1, payload: b"data" }));
-        assert_ne!(base, miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_bytes: &bw2, payload: b"data" }));
-        assert_ne!(base, miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_bytes: &bw1, payload: b"other" }));
+        let base =
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw1.to_be_bytes(), payload: b"data" });
+        assert_ne!(
+            base,
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(2), blue_work_be_bytes: &bw1.to_be_bytes(), payload: b"data" })
+        );
+        assert_ne!(
+            base,
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw2.to_be_bytes(), payload: b"data" })
+        );
+        assert_ne!(
+            base,
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw1.to_be_bytes(), payload: b"other" })
+        );
     }
 
     #[test]
@@ -381,7 +393,8 @@ mod tests {
 
         let h1 = h(1);
         let bw = BlueWorkType::from_u64(0x0100);
-        let mpl = miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h1, blue_work_bytes: &bw, payload: b"coinbase" });
+        let mpl =
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h1, blue_work_be_bytes: &bw.to_be_bytes(), payload: b"coinbase" });
         let mpr = miner_payload_root(core::iter::once(mpl));
 
         let pd = payload_and_context_digest(&ctx, &mpr);
