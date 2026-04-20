@@ -67,7 +67,7 @@ pub struct ImportLane {
     pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
 }
 
-pub type ImportLaneBatchIterator<'a> = &'a mut dyn Iterator<Item = Vec<ImportLane>>;
+pub type ImportLaneBatchIterator<'a> = &'a mut (dyn Iterator<Item = Vec<ImportLane>> + Send);
 
 /// SMT metadata for IBD sync — verified against the pruning point header.
 #[derive(Clone, Debug)]
