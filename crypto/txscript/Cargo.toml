@@ -27,7 +27,6 @@ ark-snark.workspace = true
 blake2b_simd.workspace = true
 blake3.workspace = true
 borsh.workspace = true
-bincode.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 hexplay.workspace = true
@@ -40,7 +39,6 @@ kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core = { workspace = true, optional = true }
 log.workspace = true
-num-bigint.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
 risc0-binfmt.workspace = true
@@ -58,8 +56,7 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
-bytemuck.workspace = true
-once_cell.workspace = true
+
 
 [build-dependencies]
 cc = { workspace = true }
