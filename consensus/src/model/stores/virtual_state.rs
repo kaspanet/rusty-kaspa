@@ -89,9 +89,9 @@ impl VirtualState {
             });
 
             // Miner payload from genesis coinbase
-            let mpl = miner_payload_leaf(&MinerPayloadLeafInput {
+            let mpl = miner_payload_leaf(MinerPayloadLeafInput {
                 block_hash: &genesis.hash,
-                blue_work_bytes: &kaspa_consensus_core::BlueWorkType::ZERO.to_le_bytes(),
+                blue_work_bytes: &kaspa_consensus_core::BlueWorkType::ZERO,
                 payload: genesis.coinbase_payload,
             });
             let payload_root = miner_payload_root(std::iter::once(mpl));

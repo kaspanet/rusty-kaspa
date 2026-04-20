@@ -45,7 +45,6 @@ blake3_hasher! {
     struct SeqCommitLaneTip => b"SeqCommitLaneTip",
     struct SeqCommitActivityLeaf => b"SeqCommitActivityLeaf",
     struct SeqCommitMergesetContext => b"SeqCommitMergesetContext",
-    struct SeqCommitMinerPayload => b"SeqCommitMinerPayload",
     struct SeqCommitMinerPayloadLeaf => b"SeqCommitMinerPayloadLeaf",
 
     struct SeqCommitActiveLeaf => b"SeqCommitActiveLeaf",
@@ -344,13 +343,13 @@ mod tests {
         );
         run_test_vector(
             &input_data,
-            SeqCommitMinerPayload::new,
+            PayloadDigest::new,
             &[
-                "01099597e7a6d74e967ad54e6b64d721ae2a8a9c485794e96882034ec7e5e41d",
-                "d479ea80ac9b84c5eb8408209ed706653e724b944976023e8aee10ac83360447",
-                "593087cefc1b09fdc48620e39a86b347bc276ed86415b5fd4fe49a51004ffb9a",
-                "0a92ac2be6f22125397c285b6f9a7631bce58498021fd1af8fa53f95f3ab86cd",
-                "1d49cca0e56f64fa38daed45d84a84bac319633a20c66896878c166c2c82b20e",
+                "9c0ca2acb45e92ffe6ceb4ae29188b35c82d9676cdd3ce067fd6ccc30a9c4a38",
+                "a69883bfb2bb000249639d8bbf5019fd08ceb7daa7a86f170530522dfedba124",
+                "04d7abe0495ff2c520f93ed31bb37f58a9375abb48d50b163864335af8d834de",
+                "5a4aa21c7235ec3edb7bd198b576f78cca6c5027dd7938ed41e74ae982858021",
+                "d6e0e23e9130b0e44734f3639489e22e7f7d928f474386599db6fca3b02d6295",
             ],
         );
         run_test_vector(

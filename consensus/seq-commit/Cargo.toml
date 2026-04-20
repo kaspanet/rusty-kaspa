@@ -12,9 +12,11 @@ repository.workspace = true
 [features]
 
 [dependencies]
+kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-merkle.workspace = true
 kaspa-smt.workspace = true
+
 thiserror.workspace = true
 
 [dev-dependencies]

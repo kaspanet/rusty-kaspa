@@ -97,8 +97,8 @@ fn build_commitment(
     coinbase: &[u8],
 ) -> (Hash, Hash, Hash) {
     let ctx = mergeset_context_hash(context);
-    let bw = blue_work.to_le_bytes();
-    let pl = miner_payload_leaf(&MinerPayloadLeafInput { block_hash, blue_work_bytes: &bw, payload: coinbase });
+    let bw = kaspa_consensus_core::BlueWorkType::from_u64(blue_work);
+    let pl = miner_payload_leaf(MinerPayloadLeafInput { block_hash, blue_work_bytes: &bw, payload: coinbase });
     let payload_root = miner_payload_root(core::iter::once(pl));
     let lanes_root = smt.root();
     let pd = payload_and_context_digest(&ctx, &payload_root);

@@ -517,11 +517,10 @@ impl VirtualStateProcessor {
             let merged_header = self.headers_store.get_header(merged_block).unwrap();
             let block_txs = self.block_transactions_store.get(merged_block).unwrap();
 
-            let blue_work_bytes = merged_header.blue_work.to_le_bytes();
             let coinbase_payload = &block_txs[0].payload;
-            let mpl = miner_payload_leaf(&MinerPayloadLeafInput {
+            let mpl = miner_payload_leaf(MinerPayloadLeafInput {
                 block_hash: &merged_block,
-                blue_work_bytes: &blue_work_bytes,
+                blue_work_bytes: &merged_header.blue_work,
                 payload: coinbase_payload,
             });
             miner_payload_leaves.push(mpl);

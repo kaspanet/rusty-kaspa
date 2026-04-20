@@ -13,19 +13,13 @@
 //! - Miner payload: one leaf per merged block in mergeset order.
 //! - Active lanes are committed via a 256-bit Sparse Merkle Tree.
 
+use kaspa_consensus_core::BlueWorkType;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::Transaction;
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_seq_commit::hashing::*;
 use kaspa_seq_commit::types::*;
 use kaspa_smt::tree::SparseMerkleTree;
-
-/// Encode blue_work as variable-length big-endian bytes (strip leading zeros).
-fn encode_blue_work(value: u64) -> Vec<u8> {
-    let be = value.to_be_bytes();
-    let start = be.iter().position(|&b| b != 0).unwrap_or(be.len());
-    be[start..].to_vec()
-}
 
 /// A merged block with its metadata and accepted transactions.
 struct MergedBlock {
@@ -150,8 +144,8 @@ fn example_seq_commit_for_block() {
     let payload_leaves: Vec<Hash> = mergeset
         .iter()
         .map(|block| {
-            let bw = encode_blue_work(block.blue_work);
-            miner_payload_leaf(&MinerPayloadLeafInput {
+            let bw = BlueWorkType::from_u64(block.blue_work);
+            miner_payload_leaf(MinerPayloadLeafInput {
                 block_hash: &block.hash,
                 blue_work_bytes: &bw,
                 payload: &block.coinbase_payload,
