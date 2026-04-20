@@ -4,13 +4,15 @@ pub mod helpers;
 mod fast_zk_tests {
     use super::helpers::{build_groth_script, build_stark_script, execute_zk_script};
     use crate::{
-        caches::Cache, get_zk_script_units_upper_bound, hex,
+        caches::Cache,
+        get_zk_script_units_upper_bound, hex,
         zk_precompiles::{risc0::zk_to_script::R0ScriptBuilder, tags::ZkTag},
     };
     use kaspa_consensus_core::{
         hashing::sighash::SigHashReusedValuesUnsync,
         tx::{PopulatedTransaction, ScriptPublicKey},
     };
+    use kaspa_txscript_errors::TxScriptError;
     use risc0_zkvm::{Digest, Groth16Receipt, MaybePruned, ReceiptClaim, SuccinctReceipt};
 
     #[test]
@@ -31,7 +33,7 @@ mod fast_zk_tests {
 
     #[test]
     fn test_r0_succinct_fast() {
-        let script = build_stark_script();
+        let script = build_stark_script(false);
         let cache = Cache::new(0);
         let reused_values = SigHashReusedValuesUnsync::new();
 
@@ -74,6 +76,23 @@ mod fast_zk_tests {
 
         // Verify execution
         execute_zk_script(&script, &cache, &reused_values).unwrap();
-        
+    }
+
+    #[test]
+    fn test_r0_succinct_control_id_binding() {
+        let script = build_stark_script(true);
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        // Verify execution
+        match execute_zk_script(&script, &cache, &reused_values) {
+            Ok(_) => panic!("Expected verification to fail due to broken control_id, but it succeeded"),
+            Err(e) => match e {
+                TxScriptError::ZkIntegrity(e) => {
+                    println!("Received expected ZkIntegrity error: {}", e);
+                }
+                _ => panic!("Expected ZkIntegrity error, got different error: {:?}", e),
+            },
+        }
     }
 }

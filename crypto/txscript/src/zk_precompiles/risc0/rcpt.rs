@@ -85,11 +85,6 @@ pub struct SuccinctReceipt {
     /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
     /// join, or resolve).
     control_id: Digest,
-
-    /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
-    /// join, or resolve).
-    control_id: Digest,
-
     /// Claim containing information about the computation that this receipt proves.
     ///
     /// The standard claim type is [ReceiptClaim][crate::ReceiptClaim], which represents a RISC-V

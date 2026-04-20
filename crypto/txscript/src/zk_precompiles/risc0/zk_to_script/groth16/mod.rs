@@ -37,7 +37,7 @@ impl R0ScriptBuilder {
     /// This script unlocks the UTXO if the verification of the receipt
     /// succeeds.
     pub fn from_groth<Claim: Digestible + Clone>(receipt: &Groth16Receipt<MaybePruned<Claim>>) -> Result<ScriptBuilder> {
-        let mut params = Groth16ReceiptVerifierParameters::default();
+        let params = Groth16ReceiptVerifierParameters::default();
         let seal = &receipt.seal;
         let digested_claim = receipt.claim.digest::<sha::Impl>();
         let (a0, a1) = split_digest_bytes(params.control_root);
