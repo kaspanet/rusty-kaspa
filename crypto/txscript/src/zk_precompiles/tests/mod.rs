@@ -54,7 +54,7 @@ mod fast_zk_tests {
         let journal_raw = include_str!("data/zk_builder_tests/succinct.journal.hex");
         let image_id: Digest = hex::decode(image_id_raw).unwrap().try_into().unwrap();
         let journal: Digest = hex::decode(journal_raw).unwrap().try_into().unwrap();
-        let rcpt: SuccinctReceipt<MaybePruned<ReceiptClaim>> = borsh::from_slice(&hex::decode(succinct_receipt_raw).unwrap()).unwrap();
+        let rcpt: SuccinctReceipt<ReceiptClaim> = borsh::from_slice(&hex::decode(succinct_receipt_raw).unwrap()).unwrap();
         let mut script_builder = R0ScriptBuilder::from_succinct(&rcpt, journal, image_id).unwrap();
         let script = script_builder.drain();
         let cache = Cache::new(0);
@@ -67,7 +67,7 @@ mod fast_zk_tests {
     #[test]
     fn test_groth16_rcpt_to_kaspa_script() {
         let groth_receipt_raw = include_str!("data/zk_builder_tests/groth.rcpt.hex");
-        let rcpt: Groth16Receipt<MaybePruned<ReceiptClaim>> = borsh::from_slice(&hex::decode(groth_receipt_raw).unwrap()).unwrap();
+        let rcpt: Groth16Receipt<ReceiptClaim> = borsh::from_slice(&hex::decode(groth_receipt_raw).unwrap()).unwrap();
 
         let mut script_builder = R0ScriptBuilder::from_groth(&rcpt).unwrap();
         let script = script_builder.drain();

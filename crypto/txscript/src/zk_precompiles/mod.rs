@@ -1,8 +1,8 @@
 mod error;
 mod fields;
+pub mod groth16;
 mod points;
 mod result;
-pub mod groth16;
 pub mod risc0;
 pub mod tags;
 pub mod tests;
@@ -17,7 +17,6 @@ trait ZkPrecompile {
     type Error: Into<ZkIntegrityError> + std::fmt::Display;
     fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error>;
 }
-
 
 pub(crate) fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
     let tag_bytes = dstack.pop()?;

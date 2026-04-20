@@ -3,7 +3,10 @@ use std::str::FromStr;
 use ark_bn254::Bn254;
 use num_bigint::BigInt;
 
-use crate::zk_precompiles::{points::{G1, G2, PointFromBytes}, risc0::{R0Error, zk_to_script::groth16::to_fixed_array}};
+use crate::zk_precompiles::{
+    points::{G1, G2, PointFromBytes},
+    risc0::{R0Error, zk_to_script::groth16::to_fixed_array},
+};
 
 // Constants from: risc0-ethereum/contracts/src/groth16/Groth16Verifier.sol
 // When running a new ceremony, update them by running cargo xtask bootstrap-groth16

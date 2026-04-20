@@ -6,7 +6,10 @@ use crate::{
     zk_precompiles::{
         fields::Fr,
         points::{G1, G2, PointFromBytes},
-        risc0::{R0Error, zk_to_script::{R0ScriptBuilder, groth16::vk::try_verifying_key}},
+        risc0::{
+            R0Error,
+            zk_to_script::{R0ScriptBuilder, groth16::vk::try_verifying_key},
+        },
         tags::ZkTag,
     },
 };
@@ -36,8 +39,8 @@ impl R0ScriptBuilder {
     /// Converts a Groth16Receipt into a Kaspa script.
     /// This script unlocks the UTXO if the verification of the receipt
     /// succeeds.
-    pub fn from_groth<Claim: Digestible + Clone>(receipt: &Groth16Receipt<MaybePruned<Claim>>) -> Result<ScriptBuilder> {
-        let params = Groth16ReceiptVerifierParameters::default();
+    pub fn from_groth<Claim: Digestible + Clone>(receipt: &Groth16Receipt<Claim>) -> Result<ScriptBuilder> {
+        let mut params = Groth16ReceiptVerifierParameters::default();
         let seal = &receipt.seal;
         let digested_claim = receipt.claim.digest::<sha::Impl>();
         let (a0, a1) = split_digest_bytes(params.control_root);
@@ -45,7 +48,7 @@ impl R0ScriptBuilder {
         let id_bn254 = to_fixed_array(params.bn254_control_id.as_bytes());
         let seal = Seal::decode(seal).map_err(|e| R0Error::SealDecoding(e.to_string()))?;
         let verifying_key = try_verifying_key()?;
-        
+
         let g1 = G1::from_bytes(&seal.a)?;
         let g1_c = G1::from_bytes(&seal.c)?;
         let g2 = G2::from_bytes(&seal.b)?;

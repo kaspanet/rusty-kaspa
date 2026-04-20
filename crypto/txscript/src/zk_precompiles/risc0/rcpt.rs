@@ -43,8 +43,6 @@ impl TryFrom<u8> for HashFnId {
             _ => Err(R0Error::InvalidHashFnId(value)),
         }
     }
-
-
 }
 
 impl TryFrom<&String> for HashFnId {

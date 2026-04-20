@@ -15,10 +15,10 @@ use risc0_core::{field::Elem, field::baby_bear::BabyBearElem};
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;
 mod error;
-mod result;
 pub mod merkle;
 pub mod rcpt;
 pub mod receipt_claim;
+mod result;
 pub mod zk_to_script;
 
 pub struct R0SuccinctPrecompile;

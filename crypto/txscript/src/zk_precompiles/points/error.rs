@@ -1,9 +1,7 @@
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PointError {
-
     #[error("Malformed G1 field element")]
     MalformedG1,
     #[error("Malformed G2 field element")]
