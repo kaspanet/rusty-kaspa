@@ -48,6 +48,6 @@ pub enum R0Error {
 
     #[error("Ark serialization error: {0}")]
     ArkSerialization(#[from] ark_serialize::SerializationError),
-    #[error("Parse bigint error: {0}")]
-    ParseBigInt(#[from] num_bigint::ParseBigIntError),
+    //#[error("Parse bigint error: {0}")]
+    //ParseBigInt(#[from] num_bigint::ParseBigIntError),
 }
