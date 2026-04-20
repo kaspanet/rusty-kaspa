@@ -986,12 +986,13 @@ async fn daemon_ibd_smt_state_sync_test() {
 
     let mut submitted_tx_ids: Vec<RpcTransactionId> = Vec::with_capacity(SMT_LANE_COUNT);
     for (i, (outpoint, entry)) in utxos.iter().take(SMT_LANE_COUNT).enumerate() {
-        // `rest != ZEROES` is the post-HF non-reserved subnetwork rule
-        // (consensus/src/processes/transaction_validator/tx_validation_in_isolation.rs:165).
-        // Putting a distinct nonzero byte in position 19 satisfies it while keeping
-        // each lane_id unique.
+        // Post-HF user-lane shape is `[namespace (4 bytes), 0×16]` with a
+        // non-zero byte somewhere in bytes[1..4] (see
+        // consensus/src/processes/transaction_validator/tx_validation_in_isolation.rs).
+        // A distinct nonzero byte at position 3 keeps each lane_id unique while
+        // conforming to the shape.
         let mut subnet_bytes = [0u8; 20];
-        subnet_bytes[19] = (i as u8) + 1;
+        subnet_bytes[3] = (i as u8) + 1;
         let lane_subnet = SubnetworkId::from_bytes(subnet_bytes);
 
         let fee = required_fee(1, 1);
