@@ -1,7 +1,7 @@
 //! Streaming (stack-based) Merkle tree builder — no heap allocation.
 //!
 //! Produces the same root as
-//! [`calc_merkle_root_with_hasher::<H, true>`](super::calc_merkle_root_with_hasher)
+//! [`calc_merkle_root_with_hasher`](super::calc_merkle_root_with_hasher)
 //! but processes leaves one at a time with O(1) amortised work and
 //! O(log N) stack space, all without heap allocation.
 
@@ -71,7 +71,7 @@ impl<H: Hasher> StreamingMerkleBuilder<H> {
         }
 
         if self.leaf_count == 1 {
-            return Self::branch(&self.stack[0].1, &ZERO_HASH);
+            return self.stack[0].1;
         }
 
         // Stack represents a binary decomposition of the leaf count.
@@ -128,7 +128,7 @@ mod tests {
     }
 
     fn seq_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
-        calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(hashes)
+        calc_merkle_root_with_hasher::<SeqCommitMerkleBranch>(hashes)
     }
 
     #[test]

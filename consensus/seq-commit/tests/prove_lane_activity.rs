@@ -70,7 +70,7 @@ fn compute_lane_tip(parent_ref: &Hash, lane_key: &Hash, blocks: &[BlockActivity]
 /// Compute `seq_commit` from a lane tip: `smt_leaf → proof.compute_root
 /// → lanes_root → state_root → seq_commit`.
 fn compute_seq_commit_for_lane(lane_key: &Hash, lane_tip: &Hash, witness: &CommitmentWitness) -> Hash {
-    let leaf = smt_leaf_hash(&SmtLeafInput { lane_key, lane_tip, blue_score: witness.blue_score });
+    let leaf = smt_leaf_hash(&SmtLeafInput { lane_tip, blue_score: witness.blue_score });
     let lanes_root = witness.smt_proof.as_proof().compute_root::<SeqCommitActiveNode>(lane_key, Some(leaf)).unwrap();
     let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &witness.payload_and_ctx_digest });
     seq_commit(&SeqCommitInput { parent_seq_commit: &witness.parent_seq_commit, state_root: &state_root })
@@ -168,10 +168,10 @@ fn build_chain(n: usize) -> (Hash, Hash, Hash, Vec<BlockActivity>, CommitmentWit
                 activity_digest: &ad_y,
                 context_hash: &ctx_hash,
             });
-            smt.insert(key_y, smt_leaf_hash(&SmtLeafInput { lane_key: &key_y, lane_tip: &tip_y, blue_score }));
+            smt.insert(key_y, smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_y, blue_score }));
         }
 
-        smt.insert(key_x, smt_leaf_hash(&SmtLeafInput { lane_key: &key_x, lane_tip: &tip_x, blue_score }));
+        smt.insert(key_x, smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_x, blue_score }));
 
         let block_hash = {
             let mut b = [0u8; 32];

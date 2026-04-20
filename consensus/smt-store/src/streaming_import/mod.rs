@@ -101,8 +101,7 @@ pub fn streaming_import(
         chunk
             .par_iter()
             .map(|lane: &ImportLane| {
-                let leaf_hash =
-                    smt_leaf_hash(&SmtLeafInput { lane_key: &lane.lane_key, lane_tip: &lane.lane_tip, blue_score: lane.blue_score });
+                let leaf_hash = smt_leaf_hash(&SmtLeafInput { lane_tip: &lane.lane_tip, blue_score: lane.blue_score });
                 (lane.lane_key, leaf_hash)
             })
             .collect_into_vec(&mut leaf_hashes);

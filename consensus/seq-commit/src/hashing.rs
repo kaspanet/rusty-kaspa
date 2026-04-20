@@ -39,10 +39,10 @@ pub fn activity_leaf(tx_id: &Hash, version: u16, merge_idx: u32) -> Hash {
 /// Compute the activity digest for a lane's transactions in a mergeset block.
 ///
 /// Merkle root over the activity leaves using `H_seq` (SeqCommitMerkleBranch).
-/// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
+/// Standard convention: a single-leaf tree returns the leaf itself.
 #[inline]
 pub fn activity_digest_lane(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
+    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch>(leaves)
 }
 
 /// Streaming activity digest builder for no-heap environments (ZK guests).
@@ -87,18 +87,18 @@ pub fn miner_payload_leaf(input: MinerPayloadLeafInput<'_>) -> Hash {
 /// Compute the miner payload root from payload leaves.
 ///
 /// Merkle root using `H_seq` (SeqCommitMerkleBranch).
-/// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
+/// Standard convention: a single-leaf tree returns the leaf itself.
 #[inline]
 pub fn miner_payload_root(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
+    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch>(leaves)
 }
 
 /// Compute the SMT leaf hash for an active lane:
-/// `H_active_leaf(lane_key(32) || lane_tip_hash(32) || le_u64(blue_score))`.
+/// `H_active_leaf(lane_tip_hash(32) || le_u64(blue_score))`.
 #[inline]
 pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
     let mut hasher = SeqCommitActiveLeaf::new();
-    hasher.update(input.lane_key).update(input.lane_tip).update(input.blue_score.to_le_bytes());
+    hasher.update(input.lane_tip).update(input.blue_score.to_le_bytes());
     hasher.finalize()
 }
 
@@ -188,12 +188,8 @@ mod tests {
     fn test_activity_digest_lane_single() {
         let leaf = h(1);
         let root = activity_digest_lane(core::iter::once(leaf));
-        let expected = {
-            let mut hasher = SeqCommitMerkleBranch::new();
-            hasher.update(leaf).update(ZERO_HASH);
-            hasher.finalize()
-        };
-        assert_eq!(root, expected);
+        // Standard Merkle convention: a one-leaf tree is the leaf itself.
+        assert_eq!(root, leaf);
     }
 
     #[test]
@@ -293,29 +289,24 @@ mod tests {
     fn test_miner_payload_root_single() {
         let leaf = h(1);
         let root = miner_payload_root(core::iter::once(leaf));
-        let expected = {
-            let mut hasher = SeqCommitMerkleBranch::new();
-            hasher.update(leaf).update(ZERO_HASH);
-            hasher.finalize()
-        };
-        assert_eq!(root, expected);
+        // Standard Merkle convention: a one-leaf tree is the leaf itself.
+        assert_eq!(root, leaf);
     }
 
     #[test]
     fn test_smt_leaf_hash_golden() {
-        let result = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
+        let result = smt_leaf_hash(&SmtLeafInput { lane_tip: &h(2), blue_score: 100 });
         // Verify determinism
-        let result2 = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
+        let result2 = smt_leaf_hash(&SmtLeafInput { lane_tip: &h(2), blue_score: 100 });
         assert_eq!(result, result2);
         assert_ne!(result, ZERO_HASH);
     }
 
     #[test]
     fn test_smt_leaf_hash_different_inputs() {
-        let base = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(10), lane_tip: &h(2), blue_score: 100 }));
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(20), blue_score: 100 }));
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 200 }));
+        let base = smt_leaf_hash(&SmtLeafInput { lane_tip: &h(2), blue_score: 100 });
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_tip: &h(20), blue_score: 100 }));
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_tip: &h(2), blue_score: 200 }));
     }
 
     #[test]
@@ -386,7 +377,7 @@ mod tests {
 
         let lk = lane_key(&lane_id);
         let tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_commit, lane_key: &lk, activity_digest: &ad, context_hash: &ctx });
-        let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip: &tip, blue_score: 50_000 });
+        let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip, blue_score: 50_000 });
 
         let h1 = h(1);
         let bw = BlueWorkType::from_u64(0x0100);
