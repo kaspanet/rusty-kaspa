@@ -644,6 +644,73 @@ impl VirtualStateProcessor {
         commit
     }
 
+    /// Build the `accepted_id_digests` for the genesis block.
+    ///
+    /// Pre-KIP21: Vec of genesis tx ids.
+    /// Post-KIP21: single-element vec with the genesis `seq_commit`.
+    pub(super) fn compute_genesis_accepted_id_digests(&self, ghostdag_data: &GhostdagData) -> Vec<Hash> {
+        let txs = self.genesis.build_genesis_transactions();
+        if !self.covenants_activation.is_active(self.genesis.daa_score) {
+            return txs.iter().map(|tx| tx.id()).collect();
+        }
+
+        use kaspa_consensus_core::BlueWorkType;
+        use kaspa_hashes::SeqCommitActiveNode;
+        use kaspa_seq_commit::hashing::{
+            activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, miner_payload_leaf,
+            miner_payload_root, payload_and_context_digest, seq_commit, seq_commit_timestamp, seq_state_root, smt_leaf_hash,
+        };
+        use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, MinerPayloadLeafInput, SeqCommitInput, SeqState, SmtLeafInput};
+        use kaspa_smt::SmtHasher;
+
+        let blue_score = ghostdag_data.blue_score;
+        let context_hash = mergeset_context_hash(&MergesetContext {
+            timestamp: seq_commit_timestamp(self.genesis.timestamp),
+            daa_score: self.genesis.daa_score,
+            blue_score,
+        });
+
+        // Collect per-lane activity leaves from genesis transactions.
+        let mut lane_activities: std::collections::BTreeMap<[u8; 20], Vec<Hash>> = std::collections::BTreeMap::new();
+        for (idx, tx) in txs.iter().enumerate() {
+            lane_activities.entry(*tx.subnetwork_id.as_bytes()).or_default().push(activity_leaf(&tx.id(), tx.version, idx as u32));
+        }
+
+        // Miner payload root for the single genesis block.
+        let mpl = miner_payload_leaf(MinerPayloadLeafInput {
+            block_hash: &self.genesis.hash,
+            blue_work_bytes: &BlueWorkType::ZERO,
+            payload: self.genesis.coinbase_payload,
+        });
+        let payload_root = miner_payload_root(std::iter::once(mpl));
+
+        // Build SMT over an in-memory store — new lanes anchor at ZERO_HASH.
+        let parent_seq_commit = ZERO_HASH;
+        let leaf_updates = kaspa_smt::store::SortedLeafUpdates::from_unsorted(lane_activities.iter().map(|(lane_id, leaves)| {
+            let lk = lane_key(lane_id);
+            let ad = activity_digest_lane(leaves.iter().copied());
+            let tip = lane_tip_next(&LaneTipInput {
+                parent_ref: &parent_seq_commit,
+                lane_key: &lk,
+                activity_digest: &ad,
+                context_hash: &context_hash,
+            });
+            kaspa_smt::store::LeafUpdate { key: lk, leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_tip: &tip, blue_score }) }
+        }));
+        let empty_store = kaspa_smt::store::BTreeSmtStore::new();
+        let (lanes_root, _) = kaspa_smt::tree::compute_root_update::<SeqCommitActiveNode, _>(
+            &empty_store,
+            SeqCommitActiveNode::empty_root(),
+            leaf_updates,
+        )
+        .unwrap();
+
+        let pd = payload_and_context_digest(&context_hash, &payload_root);
+        let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &pd });
+        let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
+        vec![commit]
+    }
+
     /// Read stored SMT metadata for the pruning point.
     pub fn get_pruning_point_smt_metadata(
         &self,
@@ -1312,14 +1379,13 @@ impl VirtualStateProcessor {
         self.db.write(batch).unwrap();
         drop(selected_chain_write);
 
-        // Init virtual state
+        // Init virtual state — pre-compute accepted_id_digests here so
+        // VirtualState::from_genesis stays a plain data constructor.
+        let ghostdag_data = self.ghostdag_manager.ghostdag(&[self.genesis.hash]);
+        let accepted_id_digests = self.compute_genesis_accepted_id_digests(&ghostdag_data);
         self.commit_virtual_state(
             self.virtual_stores.upgradable_read(),
-            Arc::new(VirtualState::from_genesis(
-                &self.genesis,
-                self.ghostdag_manager.ghostdag(&[self.genesis.hash]),
-                self.covenants_activation,
-            )),
+            Arc::new(VirtualState::from_genesis(&self.genesis, ghostdag_data, accepted_id_digests)),
             &Default::default(),
             &Default::default(),
         );
