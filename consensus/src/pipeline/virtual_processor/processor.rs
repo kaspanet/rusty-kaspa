@@ -712,26 +712,16 @@ impl VirtualStateProcessor {
             return 0;
         };
 
-        let mut expired = 0u64;
-        // Iterate score_index entries in [expired_min, expired_max] to find lanes that might expire
-        for entry in self.smt_stores.score_index.get_leaf_updates(expired_range) {
-            let entry = entry.unwrap();
-            // Only process canonical entries
-            if !self.is_smt_canonical(entry.block_hash(), selected_parent) {
-                continue;
-            }
-            for lk in entry.data().iter() {
-                // Check if this lane has a newer canonical version within [curr_min, parent].
-                // target=parent filters anticone entries at (parent, current] at the seek level.
-                let has_newer = self.smt_stores.get_lane(*lk, read_bounds, |bh| self.is_smt_canonical(bh, selected_parent)).is_some();
-
-                if !has_newer {
-                    proc.expire_lane(*lk);
-                    expired += 1;
-                }
-            }
-        }
-        expired
+        let entries = self.smt_stores.score_index.get_leaf_updates(expired_range).map(|r| {
+            let e = r.unwrap();
+            (e.block_hash(), e.data().clone())
+        });
+        collect_expired_lanes(
+            entries,
+            |bh| self.is_smt_canonical(bh, selected_parent),
+            |lk| self.smt_stores.get_lane(lk, read_bounds, |bh| self.is_smt_canonical(bh, selected_parent)).is_some(),
+            |lk| proc.expire_lane(lk),
+        )
     }
 
     fn commit_virtual_state(
@@ -1456,4 +1446,111 @@ impl VirtualStateProcessor {
 enum MergesetIncreaseResult {
     Accepted { increase_size: u64 },
     Rejected { new_candidate: Hash },
+}
+
+/// Walk canonical leaf-update entries and expire each lane key exactly once.
+///
+/// Dedupes lane keys across entries: if a lane is touched in several canonical
+/// blocks within the expired range, `has_newer` / `on_expire` fire only on the
+/// first occurrence. Without this dedup the caller's expired counter would
+/// double-count lanes re-touched inside the expired window, corrupting
+/// `active_lanes_count` metadata.
+fn collect_expired_lanes<I>(
+    entries: I,
+    is_canonical: impl Fn(Hash) -> bool,
+    mut has_newer: impl FnMut(Hash) -> bool,
+    mut on_expire: impl FnMut(Hash),
+) -> u64
+where
+    I: IntoIterator<Item = (Hash, Vec<Hash>)>,
+{
+    let mut seen: std::collections::BTreeSet<Hash> = std::collections::BTreeSet::new();
+    let mut expired = 0u64;
+    for (block_hash, lanes) in entries {
+        if !is_canonical(block_hash) {
+            continue;
+        }
+        for lk in lanes.into_iter().filter(|lk| seen.insert(*lk)) {
+            if !has_newer(lk) {
+                on_expire(lk);
+                expired += 1;
+            }
+        }
+    }
+    expired
+}
+
+#[cfg(test)]
+mod expire_stale_lanes_tests {
+    use super::collect_expired_lanes;
+    use kaspa_hashes::Hash;
+    use std::cell::RefCell;
+
+    fn h(b: u8) -> Hash {
+        Hash::from_bytes([b; 32])
+    }
+
+    #[test]
+    fn dedupes_lane_touched_in_two_canonical_entries() {
+        // Same lane L appears in two canonical blocks inside the expired range.
+        // Bug-gate: without dedup this would count L twice.
+        let block_a = h(0xA);
+        let block_b = h(0xB);
+        let lane = h(0x11);
+        let entries = vec![(block_a, vec![lane]), (block_b, vec![lane])];
+
+        let expired_calls = RefCell::new(Vec::<Hash>::new());
+        let has_newer_calls = RefCell::new(0u32);
+
+        let expired = collect_expired_lanes(
+            entries,
+            |_bh| true, // all canonical
+            |lk| {
+                *has_newer_calls.borrow_mut() += 1;
+                let _ = lk;
+                false // no newer version -> lane is stale
+            },
+            |lk| expired_calls.borrow_mut().push(lk),
+        );
+
+        assert_eq!(expired, 1);
+        assert_eq!(*expired_calls.borrow(), vec![lane]);
+        assert_eq!(*has_newer_calls.borrow(), 1, "has_newer should be queried once per unique lane");
+    }
+
+    #[test]
+    fn skips_non_canonical_entries() {
+        let canonical_block = h(0xA);
+        let anticone_block = h(0xC);
+        let lane = h(0x22);
+        let entries = vec![(anticone_block, vec![lane]), (canonical_block, vec![lane])];
+
+        let expired = collect_expired_lanes(entries, |bh| bh == canonical_block, |_| false, |_| {});
+        assert_eq!(expired, 1);
+    }
+
+    #[test]
+    fn skips_lanes_with_newer_version() {
+        let block = h(0xA);
+        let stale = h(0x33);
+        let still_fresh = h(0x44);
+        let entries = vec![(block, vec![stale, still_fresh])];
+
+        let expired_calls = RefCell::new(Vec::<Hash>::new());
+        let expired = collect_expired_lanes(
+            entries,
+            |_| true,
+            |lk| lk == still_fresh, // only still_fresh has a newer version
+            |lk| expired_calls.borrow_mut().push(lk),
+        );
+        assert_eq!(expired, 1);
+        assert_eq!(*expired_calls.borrow(), vec![stale]);
+    }
+
+    #[test]
+    fn empty_entries_yield_zero() {
+        let entries: Vec<(Hash, Vec<Hash>)> = vec![];
+        let expired = collect_expired_lanes(entries, |_| true, |_| false, |_| panic!("should not call"));
+        assert_eq!(expired, 0);
+    }
 }
