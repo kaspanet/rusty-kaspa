@@ -13,19 +13,13 @@
 //! - Miner payload: one leaf per merged block in mergeset order.
 //! - Active lanes are committed via a 256-bit Sparse Merkle Tree.
 
+use kaspa_consensus_core::BlueWorkType;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::Transaction;
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_seq_commit::hashing::*;
 use kaspa_seq_commit::types::*;
 use kaspa_smt::tree::SparseMerkleTree;
-
-/// Encode blue_work as variable-length big-endian bytes (strip leading zeros).
-fn encode_blue_work(value: u64) -> Vec<u8> {
-    let be = value.to_be_bytes();
-    let start = be.iter().position(|&b| b != 0).unwrap_or(be.len());
-    be[start..].to_vec()
-}
 
 /// A merged block with its metadata and accepted transactions.
 struct MergedBlock {
@@ -57,8 +51,7 @@ fn example_seq_commit_for_block() {
 
     // --- SMT carries forward from previous state (lane A already present) ---
     let key_a = lane_key(&lane_a);
-    let prev_leaf_a =
-        smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &lane_a_prev_tip, blue_score: lane_a_prev_blue_score });
+    let prev_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &lane_a_prev_tip, blue_score: lane_a_prev_blue_score });
     let mut smt = SparseMerkleTree::<SeqCommitActiveNode>::new();
     smt.insert(key_a, prev_leaf_a);
 
@@ -139,8 +132,8 @@ fn example_seq_commit_for_block() {
     let key_b = lane_key(&lane_b);
     let tip_b =
         lane_tip_next(&LaneTipInput { parent_ref: &parent_seq_commit, lane_key: &key_b, activity_digest: &ad_b, context_hash: &ctx });
-    let new_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &tip_a, blue_score });
-    let new_leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b, blue_score });
+    let new_leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a, blue_score });
+    let new_leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score });
 
     smt.insert(key_a, new_leaf_a); // update existing lane A
     smt.insert(key_b, new_leaf_b); // insert new lane B
@@ -150,10 +143,10 @@ fn example_seq_commit_for_block() {
     let payload_leaves: Vec<Hash> = mergeset
         .iter()
         .map(|block| {
-            let bw = encode_blue_work(block.blue_work);
-            miner_payload_leaf(&MinerPayloadLeafInput {
+            let bw = BlueWorkType::from_u64(block.blue_work);
+            miner_payload_leaf(MinerPayloadLeafInput {
                 block_hash: &block.hash,
-                blue_work_bytes: &bw,
+                blue_work_be_bytes: &bw.to_be_bytes(),
                 payload: &block.coinbase_payload,
             })
         })

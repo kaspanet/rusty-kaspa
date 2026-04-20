@@ -307,8 +307,8 @@ impl BlockLaneChanges {
 
     pub fn to_leaf_updates(&self) -> SortedLeafUpdates {
         let bs = self.blue_score;
-        SortedLeafUpdates::from_sorted_map(&self.changes, |key, change| match change {
-            Some(tip) => smt_leaf_hash(&SmtLeafInput { lane_key: key, lane_tip: tip, blue_score: bs }),
+        SortedLeafUpdates::from_sorted_map(&self.changes, |_key, change| match change {
+            Some(tip) => smt_leaf_hash(&SmtLeafInput { lane_tip: tip, blue_score: bs }),
             None => ZERO_HASH,
         })
     }

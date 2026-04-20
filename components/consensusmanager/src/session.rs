@@ -519,7 +519,7 @@ impl ConsensusSessionOwned {
         expected_lane_count: u64,
         mut rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
     ) -> PruningImportResult<()> {
-        let lane_batches: ImportLaneBatchIterator = Box::new(std::iter::from_fn(move || rx.blocking_recv()));
+        let lane_batches: ImportLaneBatchIterator = &mut std::iter::from_fn(move || rx.blocking_recv());
         self.consensus.import_pruning_point_smt(
             new_pruning_point,
             lanes_root,

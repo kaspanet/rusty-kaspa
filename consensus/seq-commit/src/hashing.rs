@@ -1,8 +1,8 @@
 //! Hash functions for sequencing commitments.
 
 use kaspa_hashes::{
-    Hash, HasherBase, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip, SeqCommitMergesetContext,
-    SeqCommitMerkleBranch, SeqCommitMinerPayload, SeqCommitMinerPayloadLeaf,
+    Hash, HasherBase, PayloadDigest, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip,
+    SeqCommitMergesetContext, SeqCommitMerkleBranch, SeqCommitMinerPayloadLeaf,
 };
 use kaspa_merkle::{StreamingMerkleBuilder, calc_merkle_root_with_hasher};
 
@@ -38,10 +38,10 @@ pub fn activity_leaf(tx_id: &Hash, version: u16, merge_idx: u32) -> Hash {
 /// Compute the activity digest for a lane's transactions in a mergeset block.
 ///
 /// Merkle root over the activity leaves using `H_seq` (SeqCommitMerkleBranch).
-/// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
+/// Standard convention: a single-leaf tree returns the leaf itself.
 #[inline]
 pub fn activity_digest_lane(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
+    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch>(leaves)
 }
 
 /// Streaming activity digest builder for no-heap environments (ZK guests).
@@ -66,38 +66,57 @@ pub fn mergeset_context_hash(ctx: &MergesetContext) -> Hash {
     hasher.finalize()
 }
 
-/// Compute the miner payload hash: `H_miner_payload(payload_bytes)`.
+/// Compute the miner payload hash: `H_payload_digest(payload_bytes)`.
 #[inline]
 pub fn miner_payload_hash(payload: &[u8]) -> Hash {
-    let mut hasher = SeqCommitMinerPayload::new();
+    let mut hasher = PayloadDigest::new();
     hasher.update(payload);
     hasher.finalize()
 }
 
+/// Write blue_work into `hasher` with the same encoding as
+/// `kaspa_consensus_core::hashing::HasherExtensions::write_blue_work`:
+/// strip leading zeros from the big-endian bytes, then write
+/// `le_u64(len) || stripped_bytes`.
+///
+/// Inlined here (rather than reusing the trait method) because
+/// `kaspa-consensus-core` pulls in a std-only dependency tree and
+/// `kaspa-seq-commit` must stay `no_std`-compatible. The
+/// `miner_payload_leaf_matches_consensus_core_write_blue_work` test locks
+/// the two encodings together.
+#[inline]
+fn write_blue_work_be<H: HasherBase>(hasher: &mut H, blue_work_be_bytes: &[u8]) {
+    let start = blue_work_be_bytes.iter().copied().position(|byte| byte != 0).unwrap_or(blue_work_be_bytes.len());
+    let stripped = &blue_work_be_bytes[start..];
+    hasher.update((stripped.len() as u64).to_le_bytes()).update(stripped);
+}
+
 /// Compute a miner payload leaf: `H_miner_payload_leaf(block_hash || blue_work_bytes || H_miner_payload(payload))`.
 #[inline]
-pub fn miner_payload_leaf(input: &MinerPayloadLeafInput<'_>) -> Hash {
+pub fn miner_payload_leaf(input: MinerPayloadLeafInput<'_>) -> Hash {
     let payload_h = miner_payload_hash(input.payload);
     let mut hasher = SeqCommitMinerPayloadLeaf::new();
-    hasher.update(input.block_hash).update(input.blue_work_bytes).update(payload_h);
+    hasher.update(input.block_hash);
+    write_blue_work_be(&mut hasher, input.blue_work_be_bytes);
+    hasher.update(payload_h);
     hasher.finalize()
 }
 
 /// Compute the miner payload root from payload leaves.
 ///
 /// Merkle root using `H_seq` (SeqCommitMerkleBranch).
-/// For a single leaf, hashes `H_seq(leaf || ZERO_HASH)`.
+/// Standard convention: a single-leaf tree returns the leaf itself.
 #[inline]
 pub fn miner_payload_root(leaves: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(leaves)
+    calc_merkle_root_with_hasher::<SeqCommitMerkleBranch>(leaves)
 }
 
 /// Compute the SMT leaf hash for an active lane:
-/// `H_active_leaf(lane_key(32) || lane_tip_hash(32) || le_u64(blue_score))`.
+/// `H_active_leaf(lane_tip_hash(32) || le_u64(blue_score))`.
 #[inline]
 pub fn smt_leaf_hash(input: &SmtLeafInput<'_>) -> Hash {
     let mut hasher = SeqCommitActiveLeaf::new();
-    hasher.update(input.lane_key).update(input.lane_tip).update(input.blue_score.to_le_bytes());
+    hasher.update(input.lane_tip).update(input.blue_score.to_le_bytes());
     hasher.finalize()
 }
 
@@ -131,6 +150,7 @@ pub fn seq_commit(input: &SeqCommitInput<'_>) -> Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_consensus_core::BlueWorkType;
     use kaspa_hashes::ZERO_HASH;
 
     fn h(b: u8) -> Hash {
@@ -186,12 +206,8 @@ mod tests {
     fn test_activity_digest_lane_single() {
         let leaf = h(1);
         let root = activity_digest_lane(core::iter::once(leaf));
-        let expected = {
-            let mut hasher = SeqCommitMerkleBranch::new();
-            hasher.update(leaf).update(ZERO_HASH);
-            hasher.finalize()
-        };
-        assert_eq!(root, expected);
+        // Standard Merkle convention: a one-leaf tree is the leaf itself.
+        assert_eq!(root, leaf);
     }
 
     #[test]
@@ -250,8 +266,8 @@ mod tests {
     #[test]
     fn test_miner_payload_hash_golden() {
         let expected = Hash::from_bytes([
-            0x8e, 0xfa, 0x8d, 0xf0, 0xd5, 0x4d, 0xee, 0xca, 0x36, 0xf5, 0x7b, 0xf9, 0x1a, 0x01, 0x73, 0x1c, 0xc2, 0x05, 0x3f, 0x09,
-            0x61, 0x81, 0xaf, 0x12, 0x64, 0xc4, 0x79, 0x9b, 0x0d, 0x92, 0x88, 0x98,
+            0xc0, 0xf2, 0x0a, 0x17, 0x77, 0xe1, 0x75, 0xc5, 0x0a, 0x6b, 0x97, 0xaf, 0xba, 0xc5, 0x7a, 0xae, 0x05, 0x5e, 0xba, 0xb3,
+            0xdd, 0x77, 0x74, 0xe5, 0x9a, 0xeb, 0x4c, 0x77, 0x6c, 0x2a, 0x7d, 0x3a,
         ]);
         assert_eq!(miner_payload_hash(b"hello miner"), expected);
     }
@@ -264,21 +280,78 @@ mod tests {
     #[test]
     fn test_miner_payload_leaf_golden() {
         let expected = Hash::from_bytes([
-            0xca, 0x36, 0xc3, 0x3d, 0xb7, 0xba, 0xc7, 0x1a, 0x7e, 0x7a, 0x9d, 0x21, 0x0f, 0x5b, 0x6c, 0x2b, 0xdb, 0x01, 0x2c, 0xc9,
-            0xcf, 0xa9, 0x71, 0xfc, 0x7d, 0x96, 0x90, 0x49, 0xe4, 0x75, 0x25, 0x0b,
+            0xec, 0x32, 0x62, 0x9c, 0xbc, 0xf2, 0xf6, 0xcf, 0xee, 0xbc, 0x34, 0xca, 0x13, 0x74, 0xfe, 0x6f, 0x36, 0x57, 0x93, 0xb8,
+            0x02, 0x3e, 0xad, 0x3b, 0xfe, 0x5e, 0xda, 0xe0, 0xd8, 0x15, 0xd8, 0xba,
         ]);
-        let input = MinerPayloadLeafInput { block_hash: &h(1), blue_work_bytes: &[0x01, 0x23], payload: b"coinbase data" };
-        assert_eq!(miner_payload_leaf(&input), expected);
+        let bw = BlueWorkType::from_u64(0x0123);
+        let input = MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw.to_be_bytes(), payload: b"coinbase data" };
+        assert_eq!(miner_payload_leaf(input), expected);
+    }
+
+    /// Preimage parity: captures the raw bytes fed into a hasher by
+    /// `write_blue_work_be` and `HasherExtensions::write_blue_work` and
+    /// compares them directly. If either encoding ever drifts, this test
+    /// breaks before any hash collision could mask the change.
+    #[test]
+    fn write_blue_work_be_preimage_matches_consensus_core() {
+        use alloc::vec::Vec;
+        use kaspa_consensus_core::hashing::HasherExtensions;
+
+        #[derive(Default)]
+        struct ByteBuffer(Vec<u8>);
+
+        impl HasherBase for ByteBuffer {
+            fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+                self.0.extend_from_slice(data.as_ref());
+                self
+            }
+        }
+
+        // Values spanning every width: zero (empty stripped bytes), 1-byte,
+        // 2-byte, 8-byte (u64::MAX), 16-byte (u128::MAX), 17-byte (first bit
+        // past the u128 boundary), and the full 24-byte width.
+        let over_u128: BlueWorkType = {
+            let mut bytes = [0u8; 24];
+            bytes[7] = 0x01; // first byte past the low 16 bytes
+            BlueWorkType::from_be_bytes(bytes)
+        };
+        let all_ones = BlueWorkType::from_be_bytes([0xFF; 24]);
+        for bw in [
+            BlueWorkType::ZERO,
+            BlueWorkType::from_u64(1),
+            BlueWorkType::from_u64(0x0123),
+            BlueWorkType::from_u64(u64::MAX),
+            BlueWorkType::from_u128(u128::MAX),
+            over_u128,
+            all_ones,
+        ] {
+            let mut ours = ByteBuffer::default();
+            write_blue_work_be(&mut ours, &bw.to_be_bytes());
+
+            let mut theirs = ByteBuffer::default();
+            theirs.write_blue_work(bw);
+
+            assert_eq!(ours.0, theirs.0, "preimage diverged for {bw:?}");
+        }
     }
 
     #[test]
     fn test_miner_payload_leaf_includes_all_inputs() {
-        let base = miner_payload_leaf(&MinerPayloadLeafInput { block_hash: &h(1), blue_work_bytes: &[0x01], payload: b"data" });
-        assert_ne!(base, miner_payload_leaf(&MinerPayloadLeafInput { block_hash: &h(2), blue_work_bytes: &[0x01], payload: b"data" }));
-        assert_ne!(base, miner_payload_leaf(&MinerPayloadLeafInput { block_hash: &h(1), blue_work_bytes: &[0x02], payload: b"data" }));
+        let bw1 = BlueWorkType::from_u64(1);
+        let bw2 = BlueWorkType::from_u64(2);
+        let base =
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw1.to_be_bytes(), payload: b"data" });
         assert_ne!(
             base,
-            miner_payload_leaf(&MinerPayloadLeafInput { block_hash: &h(1), blue_work_bytes: &[0x01], payload: b"other" })
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(2), blue_work_be_bytes: &bw1.to_be_bytes(), payload: b"data" })
+        );
+        assert_ne!(
+            base,
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw2.to_be_bytes(), payload: b"data" })
+        );
+        assert_ne!(
+            base,
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw1.to_be_bytes(), payload: b"other" })
         );
     }
 
@@ -291,29 +364,24 @@ mod tests {
     fn test_miner_payload_root_single() {
         let leaf = h(1);
         let root = miner_payload_root(core::iter::once(leaf));
-        let expected = {
-            let mut hasher = SeqCommitMerkleBranch::new();
-            hasher.update(leaf).update(ZERO_HASH);
-            hasher.finalize()
-        };
-        assert_eq!(root, expected);
+        // Standard Merkle convention: a one-leaf tree is the leaf itself.
+        assert_eq!(root, leaf);
     }
 
     #[test]
     fn test_smt_leaf_hash_golden() {
-        let result = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
+        let result = smt_leaf_hash(&SmtLeafInput { lane_tip: &h(2), blue_score: 100 });
         // Verify determinism
-        let result2 = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
+        let result2 = smt_leaf_hash(&SmtLeafInput { lane_tip: &h(2), blue_score: 100 });
         assert_eq!(result, result2);
         assert_ne!(result, ZERO_HASH);
     }
 
     #[test]
     fn test_smt_leaf_hash_different_inputs() {
-        let base = smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 100 });
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(10), lane_tip: &h(2), blue_score: 100 }));
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(20), blue_score: 100 }));
-        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_key: &h(1), lane_tip: &h(2), blue_score: 200 }));
+        let base = smt_leaf_hash(&SmtLeafInput { lane_tip: &h(2), blue_score: 100 });
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_tip: &h(20), blue_score: 100 }));
+        assert_ne!(base, smt_leaf_hash(&SmtLeafInput { lane_tip: &h(2), blue_score: 200 }));
     }
 
     #[test]
@@ -384,10 +452,12 @@ mod tests {
 
         let lk = lane_key(&lane_id);
         let tip = lane_tip_next(&LaneTipInput { parent_ref: &parent_commit, lane_key: &lk, activity_digest: &ad, context_hash: &ctx });
-        let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip: &tip, blue_score: 50_000 });
+        let smt_leaf = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip, blue_score: 50_000 });
 
         let h1 = h(1);
-        let mpl = miner_payload_leaf(&MinerPayloadLeafInput { block_hash: &h1, blue_work_bytes: &[0x01, 0x00], payload: b"coinbase" });
+        let bw = BlueWorkType::from_u64(0x0100);
+        let mpl =
+            miner_payload_leaf(MinerPayloadLeafInput { block_hash: &h1, blue_work_be_bytes: &bw.to_be_bytes(), payload: b"coinbase" });
         let mpr = miner_payload_root(core::iter::once(mpl));
 
         let pd = payload_and_context_digest(&ctx, &mpr);

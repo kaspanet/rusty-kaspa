@@ -11,7 +11,7 @@ use kaspa_hashes::{Hash, Hasher, MerkleBranchHash, ZERO_HASH};
 pub use streaming::StreamingMerkleBuilder;
 
 pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    calc_merkle_root_with_hasher::<MerkleBranchHash, false>(hashes)
+    calc_merkle_root_with_hasher::<MerkleBranchHash>(hashes)
 }
 
 pub fn merkle_hash(left: Hash, right: Hash) -> Hash {
@@ -23,12 +23,14 @@ pub fn merkle_hash_with_hasher(left: Hash, right: Hash, mut hasher: impl Hasher)
     hasher.finalize()
 }
 
-pub fn calc_merkle_root_with_hasher<H: Hasher, const USE_BRANCH_HASHER_FOR_SINGLE: bool>(
-    mut hashes: impl ExactSizeIterator<Item = Hash>,
-) -> Hash {
+/// Standard Merkle convention: a tree with one leaf is the leaf itself.
+/// Callers must ensure the set of valid leaf hashes is disjoint from valid
+/// internal-node hashes (typically via per-domain hashers) so the two cases
+/// cannot be confused.
+pub fn calc_merkle_root_with_hasher<H: Hasher>(mut hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     match hashes.len() {
         0 => return cold_path_empty(),
-        1 if USE_BRANCH_HASHER_FOR_SINGLE => return merkle_hash_with_hasher(hashes.next().unwrap(), ZERO_HASH, H::default()),
+        1 => return hashes.next().unwrap(),
         _ => {}
     }
     let next_pot = hashes.len().next_power_of_two();
@@ -63,7 +65,7 @@ mod tests {
     use core::iter;
     use kaspa_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
     fn seq_comm_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
-        calc_merkle_root_with_hasher::<SeqCommitMerkleBranch, true>(hashes)
+        calc_merkle_root_with_hasher::<SeqCommitMerkleBranch>(hashes)
     }
     fn make_hash(data: &[u8]) -> Hash {
         let mut hasher = TransactionHash::new();
@@ -83,12 +85,10 @@ mod tests {
     fn test_single_entry_returns_hash() {
         let entry = make_hash(b"single_entry");
         let root = calc_merkle_root(iter::once(entry));
-        let expected = entry;
-        assert_eq!(root, expected);
+        assert_eq!(root, entry);
 
-        let expected = merkle_hash_with_hasher(entry, ZERO_HASH, SeqCommitMerkleBranch::default());
         let seq_comm_root = seq_comm_merkle_root(iter::once(entry));
-        assert_eq!(seq_comm_root, expected, "Single entry should return merkle hash of entry with ZERO_HASH");
+        assert_eq!(seq_comm_root, entry, "Single entry should return the leaf itself");
     }
 
     #[test]

@@ -5,7 +5,6 @@ use super::ghostdag::GhostdagData;
 use super::utxo_set::DbUtxoSetStore;
 use arc_swap::ArcSwap;
 use kaspa_consensus_core::api::stats::VirtualStateStats;
-use kaspa_consensus_core::config::params::ForkActivation;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher, block::VirtualStateApproxId, coinbase::BlockRewardData,
     config::genesis::GenesisBlock, utxo::utxo_diff::UtxoDiff,
@@ -63,72 +62,11 @@ impl VirtualState {
         }
     }
 
-    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData, covenants_activation: ForkActivation) -> Self {
-        let accepted_id_digests = if covenants_activation.is_active(genesis.daa_score) {
-            // Post-KIP21: compute the genesis seq_commit by processing genesis
-            // transactions through the full lane pipeline.
-            use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
-            use kaspa_seq_commit::hashing::*;
-            use kaspa_seq_commit::types::*;
-            use kaspa_smt::SmtHasher;
-
-            let txs = genesis.build_genesis_transactions();
-            let blue_score = ghostdag_data.blue_score;
-
-            // Collect per-lane activity from genesis transactions (coinbase)
-            let mut lane_activities: std::collections::BTreeMap<[u8; 20], Vec<Hash>> = std::collections::BTreeMap::new();
-            for (idx, tx) in txs.iter().enumerate() {
-                let lane_id: [u8; 20] = *tx.subnetwork_id.as_bytes();
-                lane_activities.entry(lane_id).or_default().push(activity_leaf(&tx.id(), tx.version, idx as u32));
-            }
-
-            let context_hash = mergeset_context_hash(&MergesetContext {
-                timestamp: seq_commit_timestamp(genesis.timestamp),
-                daa_score: genesis.daa_score,
-                blue_score,
-            });
-
-            // Miner payload from genesis coinbase
-            let mpl = miner_payload_leaf(&MinerPayloadLeafInput {
-                block_hash: &genesis.hash,
-                blue_work_bytes: &kaspa_consensus_core::BlueWorkType::ZERO.to_le_bytes(),
-                payload: genesis.coinbase_payload,
-            });
-            let payload_root = miner_payload_root(std::iter::once(mpl));
-
-            // Build SMT — new lanes anchor at ZERO_HASH (no parent seq_commit)
-            let parent_seq_commit = ZERO_HASH;
-            let leaf_updates = kaspa_smt::store::SortedLeafUpdates::from_unsorted(lane_activities.iter().map(
-                |(lane_id, leaves): (&[u8; 20], &Vec<Hash>)| {
-                    let lk = lane_key(lane_id);
-                    let ad = activity_digest_lane(leaves.iter().copied());
-                    let tip = lane_tip_next(&LaneTipInput {
-                        parent_ref: &parent_seq_commit,
-                        lane_key: &lk,
-                        activity_digest: &ad,
-                        context_hash: &context_hash,
-                    });
-                    kaspa_smt::store::LeafUpdate {
-                        key: lk,
-                        leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_key: &lk, lane_tip: &tip, blue_score }),
-                    }
-                },
-            ));
-
-            let empty_store = kaspa_smt::store::BTreeSmtStore::new();
-            let (lanes_root, _) = kaspa_smt::tree::compute_root_update::<SeqCommitActiveNode, _>(
-                &empty_store,
-                SeqCommitActiveNode::empty_root(),
-                leaf_updates,
-            )
-            .unwrap();
-            let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&context_hash, &payload_root);
-            let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &pd });
-            let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
-            vec![commit]
-        } else {
-            genesis.build_genesis_transactions().iter().map(|tx| tx.id()).collect()
-        };
+    /// Build the initial virtual state for genesis. `accepted_id_digests` must be
+    /// pre-computed by the caller (the virtual processor) — pre-KIP21 it's the vec
+    /// of genesis tx ids; post-KIP21 it's a single-element vec with the genesis
+    /// `seq_commit`.
+    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData, accepted_id_digests: Vec<Hash>) -> Self {
         Self {
             parents: vec![genesis.hash],
             ghostdag_data,

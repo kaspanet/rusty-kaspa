@@ -26,16 +26,18 @@ pub struct LaneTipInput<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct MinerPayloadLeafInput<'a> {
     pub block_hash: &'a Hash,
-    pub blue_work_bytes: &'a [u8],
+    pub blue_work_be_bytes: &'a [u8],
     pub payload: &'a [u8],
 }
 
 /// Input for computing an SMT leaf hash for an active lane.
 ///
-/// `leaf_payload = lane_key(32) || lane_tip_hash(32) || le_u64(blue_score)`.
+/// `leaf_payload = lane_tip_hash(32) || le_u64(blue_score)`.
+/// `lane_tip` already commits to `lane_key` via `H_lane_tip`, and the SMT
+/// key path commits to `lane_key` as well, so including `lane_key` here
+/// would be redundant.
 #[derive(Clone, Copy, Debug)]
 pub struct SmtLeafInput<'a> {
-    pub lane_key: &'a Hash,
     pub lane_tip: &'a Hash,
     pub blue_score: u64,
 }

@@ -3,7 +3,9 @@ use super::{
     errors::{TxResult, TxRuleError},
 };
 use crate::constants::{MAX_SOMPI, TX_VERSION_POST_COV_HF};
-use kaspa_consensus_core::subnets::{CoinbaseSubnetwork, NativeSubnetwork, Subnetwork};
+use kaspa_consensus_core::subnets::{
+    CoinbaseSubnetwork, NativeSubnetwork, SUBNETWORK_NAMESPACE_LEN, SUBNETWORK_ZERO_TAIL_LEN, Subnetwork,
+};
 use kaspa_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
@@ -155,14 +157,23 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
-    const ZEROES: &[u8; 19] = &[0; 19];
+    const ZEROES_19: &[u8; 19] = &[0; 19];
+    const ZEROES_16: &[u8; SUBNETWORK_ZERO_TAIL_LEN] = &[0; SUBNETWORK_ZERO_TAIL_LEN];
 
+    // KIP-21 subnetwork ID shape, checked in priority order:
+    // - `[x, 0×19]` (19-byte zero suffix): reserved system ID. Only NATIVE and
+    //   COINBASE first bytes are valid; every other `x` is reserved for future
+    //   system use and rejected.
+    // - `[namespace (4 bytes), 0×16]`: user lane. Any first byte is allowed.
+    //   Since the 19-suffix case is handled above, at least one of
+    //   `bytes[1..4]` is non-zero, so the namespace is never all-zero here.
+    //   Gated behind the covenants HF.
+    // - Any other shape: rejected.
     match tx.subnetwork_id.as_bytes() {
         // Native and coinbase (reserved) subnetwork IDs are always allowed
-        [NativeSubnetwork::FIRST_BYTE, rest @ ..] | [CoinbaseSubnetwork::FIRST_BYTE, rest @ ..] if rest == ZEROES => Ok(()),
-        // Post-covenants HF (KIP-21): any non-reserved subnetwork ID is allowed as a lane selector.
-        // Reserved IDs (`x || 0x00..0x00`) are excluded - they are for system usage by consensus.
-        [_x, rest @ ..] if tx.version >= TX_VERSION_POST_COV_HF && rest != ZEROES => Ok(()),
+        [NativeSubnetwork::FIRST_BYTE, rest @ ..] | [CoinbaseSubnetwork::FIRST_BYTE, rest @ ..] if rest == ZEROES_19 => Ok(()),
+        [_x, rest @ ..] if rest == ZEROES_19 => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
+        bytes if tx.version >= TX_VERSION_POST_COV_HF && &bytes[SUBNETWORK_NAMESPACE_LEN..] == ZEROES_16 => Ok(()),
         _ => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
     }
 }
@@ -367,5 +378,75 @@ mod tests {
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;
         assert_match!(tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 0), Err(TxRuleError::UnknownTxVersion(_)));
+    }
+
+    #[test]
+    fn check_transaction_subnetwork_shape() {
+        use kaspa_consensus_core::subnets::{SUBNETWORK_ID_SIZE, SUBNETWORK_NAMESPACE_LEN, SUBNETWORK_ZERO_TAIL_LEN, SubnetworkId};
+        use kaspa_consensus_core::tx::TransactionOutpoint;
+
+        fn sid(namespace: [u8; SUBNETWORK_NAMESPACE_LEN], tail: [u8; SUBNETWORK_ZERO_TAIL_LEN]) -> SubnetworkId {
+            let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
+            bytes[..SUBNETWORK_NAMESPACE_LEN].copy_from_slice(&namespace);
+            bytes[SUBNETWORK_NAMESPACE_LEN..].copy_from_slice(&tail);
+            SubnetworkId::from_bytes(bytes)
+        }
+
+        fn tx_with(subnetwork_id: SubnetworkId, version: u16) -> Transaction {
+            // Minimal tx: one input + one output so only the subnetwork check is exercised here.
+            let input = TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_slice(&[0u8; 32]), index: 0 },
+                signature_script: vec![],
+                sequence: 0,
+                mass: TxInputMass::SigopCount(0.into()),
+            };
+            let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, scriptvec!(0u8)), covenant: None };
+            Transaction::new(version, vec![input], vec![output], 0, subnetwork_id, 0, vec![])
+        }
+
+        // Reserved IDs (19-byte zero suffix): native/coinbase only, allowed at any version.
+        for version in [TX_VERSION, TX_VERSION_POST_COV_HF] {
+            super::check_transaction_subnetwork(&tx_with(SUBNETWORK_ID_NATIVE, version)).unwrap();
+            super::check_transaction_subnetwork(&tx_with(SUBNETWORK_ID_COINBASE, version)).unwrap();
+        }
+
+        // [x, 0×19] for any x ∉ {NATIVE, COINBASE} → rejected at every version.
+        // The 19-suffix shape is reserved for system use; only the two system
+        // first bytes are valid. A namespace of `[x, 0, 0, 0]` must NOT sneak
+        // through to the user-lane arm.
+        for byte in [0x02u8, 0x07, 0xff] {
+            let reserved_shape = SubnetworkId::from_byte(byte);
+            for version in [TX_VERSION, TX_VERSION_POST_COV_HF] {
+                assert_match!(
+                    super::check_transaction_subnetwork(&tx_with(reserved_shape, version)),
+                    Err(TxRuleError::SubnetworksDisabled(_))
+                );
+            }
+        }
+
+        // User lane [namespace, 0×16] with a non-zero byte in bytes[1..4]
+        // — any first byte (including native/coinbase) is accepted post-cov-HF.
+        for namespace in [[0x11, 0x22, 0x33, 0x44], [0x00, 0x00, 0x00, 0x01], [0xde, 0xad, 0xbe, 0xef], [0x07, 0x01, 0, 0]] {
+            let lane = sid(namespace, [0; SUBNETWORK_ZERO_TAIL_LEN]);
+            super::check_transaction_subnetwork(&tx_with(lane, TX_VERSION_POST_COV_HF)).unwrap();
+            // Pre-HF: user lanes are forbidden.
+            assert_match!(super::check_transaction_subnetwork(&tx_with(lane, TX_VERSION)), Err(TxRuleError::SubnetworksDisabled(_)));
+        }
+
+        // Non-zero tail → rejected even post-HF.
+        let mut dirty_tail = [0u8; SUBNETWORK_ZERO_TAIL_LEN];
+        dirty_tail[0] = 1;
+        let tail_byte_set = sid([0x11, 0, 0, 0], dirty_tail);
+        assert_match!(
+            super::check_transaction_subnetwork(&tx_with(tail_byte_set, TX_VERSION_POST_COV_HF)),
+            Err(TxRuleError::SubnetworksDisabled(_))
+        );
+        let mut dirty_tail_last = [0u8; SUBNETWORK_ZERO_TAIL_LEN];
+        *dirty_tail_last.last_mut().unwrap() = 0xff;
+        let tail_last_set = sid([0, 0, 0, 1], dirty_tail_last);
+        assert_match!(
+            super::check_transaction_subnetwork(&tx_with(tail_last_set, TX_VERSION_POST_COV_HF)),
+            Err(TxRuleError::SubnetworksDisabled(_))
+        );
     }
 }

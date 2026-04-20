@@ -4,7 +4,7 @@ use kaspa_smt_store::processor::SmtReadBounds;
 
 /// Score bounds for the selected-parent -> current-block transition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct SeqCommitBounds {
+pub(crate) struct SeqCommitBounds {
     parent_blue_score: u64,
     #[cfg(test)]
     current_blue_score: u64,
@@ -45,6 +45,16 @@ impl SeqCommitBounds {
             Some(self.parent_active_min..=self.current_active_min - 1)
         }
     }
+
+    /// Highest blue_score that may be inclusively pruned without invading
+    /// the active window at `blue_score`.
+    ///
+    /// The window covers `[blue_score - F, blue_score]`, so `blue_score - F`
+    /// is still live and must survive pruning — the inclusive cutoff is one
+    /// below it. Saturates at 0 when `blue_score <= inactivity_threshold`.
+    pub(crate) const fn inclusive_prune_cutoff(blue_score: u64, inactivity_threshold: u64) -> u64 {
+        blue_score.saturating_sub(inactivity_threshold).saturating_sub(1)
+    }
 }
 
 #[cfg(test)]
@@ -79,5 +89,21 @@ mod tests {
     fn selected_parent_read_bounds_use_parent_as_upper_and_current_as_lower() {
         let bounds = SeqCommitBounds::new(100, 105, 10);
         assert_eq!(bounds.selected_parent_read_bounds(), SmtReadBounds::new(100, 95));
+    }
+
+    #[test]
+    fn inclusive_prune_cutoff_preserves_active_window_boundary() {
+        // Active window at blue_score=100 with F=10 covers [90, 100] — score 90
+        // is still live, so the inclusive prune cutoff must be 89.
+        // Off-by-one regression: returning 90 would delete the boundary entry.
+        assert_eq!(SeqCommitBounds::inclusive_prune_cutoff(100, 10), 89);
+    }
+
+    #[test]
+    fn inclusive_prune_cutoff_saturates_below_threshold() {
+        assert_eq!(SeqCommitBounds::inclusive_prune_cutoff(5, 10), 0);
+        assert_eq!(SeqCommitBounds::inclusive_prune_cutoff(10, 10), 0);
+        assert_eq!(SeqCommitBounds::inclusive_prune_cutoff(11, 10), 0);
+        assert_eq!(SeqCommitBounds::inclusive_prune_cutoff(12, 10), 1);
     }
 }

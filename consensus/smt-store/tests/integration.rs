@@ -49,9 +49,9 @@ fn walk_up_always_insert_same_root() {
     let k2 = lane_key(&[0x02; 20]);
     let k3 = lane_key(&[0x03; 20]);
 
-    let l1 = smt_leaf_hash(&SmtLeafInput { lane_key: &k1, lane_tip: &hash(0xA1), blue_score: 100 });
-    let l2 = smt_leaf_hash(&SmtLeafInput { lane_key: &k2, lane_tip: &hash(0xA2), blue_score: 100 });
-    let l3 = smt_leaf_hash(&SmtLeafInput { lane_key: &k3, lane_tip: &hash(0xA3), blue_score: 100 });
+    let l1 = smt_leaf_hash(&SmtLeafInput { lane_tip: &hash(0xA1), blue_score: 100 });
+    let l2 = smt_leaf_hash(&SmtLeafInput { lane_tip: &hash(0xA2), blue_score: 100 });
+    let l3 = smt_leaf_hash(&SmtLeafInput { lane_tip: &hash(0xA3), blue_score: 100 });
 
     tree.insert(k1, l1);
     tree.insert(k2, l2);
@@ -59,7 +59,7 @@ fn walk_up_always_insert_same_root() {
     let root_3 = tree.root();
 
     // Update l1 to new value
-    let l1_new = smt_leaf_hash(&SmtLeafInput { lane_key: &k1, lane_tip: &hash(0xB1), blue_score: 200 });
+    let l1_new = smt_leaf_hash(&SmtLeafInput { lane_tip: &hash(0xB1), blue_score: 200 });
     tree.insert(k1, l1_new);
     let root_updated = tree.root();
 
@@ -99,8 +99,8 @@ fn processor_two_lanes_matches_in_memory() {
     let proc_root = build.root;
 
     // Same via SLO reference
-    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &tip_a, blue_score });
-    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b, blue_score });
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a, blue_score });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score });
     let mem_root = slo_root(vec![LeafUpdate { key: key_a, leaf_hash: leaf_a }, LeafUpdate { key: key_b, leaf_hash: leaf_b }]);
 
     assert_eq!(proc_root, mem_root);
@@ -144,8 +144,8 @@ fn processor_second_block_reads_from_db() {
     db.write(batch).unwrap();
 
     // Verify: rebuild from scratch via SLO reference
-    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &key_a, lane_tip: &tip_a1, blue_score: bs1 });
-    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b, blue_score: bs2 });
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a1, blue_score: bs1 });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score: bs2 });
     let expected = slo_root(vec![LeafUpdate { key: key_a, leaf_hash: leaf_a }, LeafUpdate { key: key_b, leaf_hash: leaf_b }]);
 
     assert_eq!(root2, expected);
@@ -187,7 +187,7 @@ fn processor_update_same_lane_across_blocks() {
     db.write(batch).unwrap();
 
     // Verify against SLO reference with only the final state
-    let leaf2 = smt_leaf_hash(&SmtLeafInput { lane_key: &key, lane_tip: &tip2, blue_score: bs2 });
+    let leaf2 = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip2, blue_score: bs2 });
     let expected = slo_root(vec![LeafUpdate { key, leaf_hash: leaf2 }]);
 
     assert_eq!(root2, expected);
@@ -275,7 +275,7 @@ fn from_root_constructor() {
     let mut tree = SparseMerkleTree::<SeqCommitActiveNode>::new();
     let lid = [0x01; 20];
     let key = lane_key(&lid);
-    let leaf = smt_leaf_hash(&SmtLeafInput { lane_key: &key, lane_tip: &hash(0xAA), blue_score: 100 });
+    let leaf = smt_leaf_hash(&SmtLeafInput { lane_tip: &hash(0xAA), blue_score: 100 });
     tree.insert(key, leaf);
     let root = tree.root();
     let store = tree.into_store();
@@ -641,8 +641,8 @@ fn block_lane_changes_uniform_blue_score() {
     let bs_b = 800u64;
 
     // Reference: leaf hashes with per-lane blue_scores
-    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_key: &lk_a, lane_tip: &tip_a, blue_score: bs_a });
-    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_key: &lk_b, lane_tip: &tip_b, blue_score: bs_b });
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a, blue_score: bs_a });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score: bs_b });
     let ref_root = slo_root(vec![LeafUpdate { key: lk_a, leaf_hash: leaf_a }, LeafUpdate { key: lk_b, leaf_hash: leaf_b }]);
 
     // BlockLaneChanges stamps both lanes with bs=1000 → different leaf hashes → different root
@@ -699,21 +699,21 @@ fn deletion_roundtrip_root_vectors() {
     let root3 = build3.root;
 
     let golden_root1 = Hash::from_bytes([
-        207, 64, 111, 19, 9, 137, 165, 4, 26, 110, 108, 54, 234, 65, 77, 124, 48, 129, 47, 118, 143, 150, 56, 54, 168, 7, 100, 70, 83,
-        200, 73, 131,
+        241, 84, 104, 196, 32, 117, 246, 136, 219, 174, 160, 246, 153, 129, 204, 146, 99, 120, 182, 80, 66, 11, 125, 43, 192, 19, 12,
+        215, 161, 255, 231, 147,
     ]);
     let golden_root2 = Hash::from_bytes([
-        215, 146, 115, 227, 191, 235, 131, 187, 204, 237, 140, 72, 193, 179, 183, 159, 36, 161, 249, 251, 74, 151, 48, 217, 165, 103,
-        228, 6, 207, 57, 203, 81,
+        216, 145, 118, 119, 189, 147, 66, 44, 27, 22, 6, 156, 85, 138, 217, 230, 250, 107, 179, 200, 114, 67, 231, 217, 151, 213, 90,
+        210, 162, 12, 243, 94,
     ]);
     let golden_root3 = Hash::from_bytes([
-        193, 185, 171, 95, 112, 136, 5, 91, 188, 177, 41, 40, 153, 220, 38, 225, 208, 91, 88, 54, 143, 80, 129, 67, 139, 150, 133,
-        152, 53, 230, 113, 122,
+        65, 176, 242, 102, 149, 193, 62, 50, 224, 224, 193, 168, 253, 250, 207, 44, 12, 237, 30, 28, 110, 21, 81, 32, 149, 46, 218,
+        184, 226, 87, 231, 68,
     ]);
 
-    let leaf_b1 = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b1, blue_score: bs1 });
-    let leaf_b2 = smt_leaf_hash(&SmtLeafInput { lane_key: &key_b, lane_tip: &tip_b2, blue_score: bs3 });
-    let leaf_c1 = smt_leaf_hash(&SmtLeafInput { lane_key: &key_c, lane_tip: &tip_c1, blue_score: bs3 });
+    let leaf_b1 = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b1, blue_score: bs1 });
+    let leaf_b2 = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b2, blue_score: bs3 });
+    let leaf_c1 = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_c1, blue_score: bs3 });
     let expected_root2 = slo_root(vec![LeafUpdate { key: key_b, leaf_hash: leaf_b1 }]);
     let expected_root3 = slo_root(vec![LeafUpdate { key: key_b, leaf_hash: leaf_b2 }, LeafUpdate { key: key_c, leaf_hash: leaf_c1 }]);
 
@@ -787,21 +787,21 @@ fn empty_subtree_then_resplit_uses_persisted_deletion_marker() {
     let root3 = build3.root;
 
     let golden_root1 = Hash::from_bytes([
-        116, 234, 231, 168, 80, 90, 38, 161, 68, 146, 104, 71, 136, 224, 137, 16, 129, 71, 95, 86, 155, 91, 205, 228, 252, 109, 42,
-        131, 19, 125, 206, 187,
+        229, 149, 89, 162, 70, 90, 159, 204, 248, 4, 105, 86, 67, 222, 88, 193, 160, 239, 74, 30, 55, 28, 14, 39, 20, 144, 201, 52,
+        202, 30, 45, 192,
     ]);
     let golden_root2 = Hash::from_bytes([
-        252, 128, 194, 143, 8, 135, 150, 27, 8, 197, 234, 235, 15, 193, 175, 247, 112, 47, 33, 62, 167, 27, 147, 182, 186, 241, 195,
-        125, 114, 106, 216, 160,
+        164, 156, 11, 111, 44, 161, 225, 186, 125, 32, 134, 248, 217, 167, 39, 197, 89, 16, 228, 34, 27, 204, 187, 87, 184, 92, 244,
+        180, 173, 159, 190, 24,
     ]);
     let golden_root3 = Hash::from_bytes([
-        214, 238, 35, 243, 61, 126, 31, 94, 199, 236, 101, 211, 43, 198, 106, 45, 177, 196, 65, 134, 188, 168, 49, 97, 168, 129, 32,
-        247, 128, 163, 56, 142,
+        9, 210, 177, 42, 232, 152, 208, 231, 27, 192, 118, 180, 87, 163, 42, 12, 144, 224, 183, 147, 143, 29, 57, 180, 172, 219, 119,
+        197, 148, 137, 234, 179,
     ]);
 
-    let leaf_c = smt_leaf_hash(&SmtLeafInput { lane_key: &key_c, lane_tip: &tip_c, blue_score: bs1 });
-    let leaf_d = smt_leaf_hash(&SmtLeafInput { lane_key: &key_d, lane_tip: &tip_d, blue_score: bs1 });
-    let leaf_e = smt_leaf_hash(&SmtLeafInput { lane_key: &key_e, lane_tip: &tip_e, blue_score: bs3 });
+    let leaf_c = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_c, blue_score: bs1 });
+    let leaf_d = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_d, blue_score: bs1 });
+    let leaf_e = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_e, blue_score: bs3 });
     let expected_root2 = slo_root(vec![LeafUpdate { key: key_c, leaf_hash: leaf_c }, LeafUpdate { key: key_d, leaf_hash: leaf_d }]);
     let expected_root3 = slo_root(vec![
         LeafUpdate { key: key_c, leaf_hash: leaf_c },
