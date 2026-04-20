@@ -37,7 +37,6 @@ sha256_hasher! {
 }
 
 blake3_hasher! {
-    struct SeqCommitTxDigest => b"SeqCommitTxDigest",
     struct SeqCommitMerkleBranch => b"SeqCommitmentMerkleBranchHash",
     struct PayloadDigest => b"PayloadDigest",
     struct TransactionRest => b"TransactionRest",

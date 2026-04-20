@@ -67,6 +67,8 @@ pub struct ImportLane {
     pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
 }
 
+pub type ImportLaneBatchIterator = Box<dyn Iterator<Item = Vec<ImportLane>> + Send + 'static>;
+
 /// SMT metadata for IBD sync — verified against the pruning point header.
 #[derive(Clone, Debug)]
 pub struct SmtExportMetadata {
@@ -296,7 +298,7 @@ pub trait ConsensusApi: Send + Sync {
     /// Import SMT lane state at the pruning point. Builds the tree from lane
     /// preimages, verifies root matches `lanes_root`, and flushes to DB.
     ///
-    /// The receiver yields lane chunks already sized by the wire-level chunker
+    /// The iterator yields lane chunks already sized by the wire-level chunker
     /// — each element is up to `SMT_CHUNK_SIZE` lanes. The importer does not
     /// re-batch.
     fn import_pruning_point_smt(
@@ -305,7 +307,7 @@ pub trait ConsensusApi: Send + Sync {
         _lanes_root: Hash,
         _payload_and_ctx_digest: Hash,
         _expected_lane_count: u64,
-        _rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
+        _lane_batches: ImportLaneBatchIterator,
     ) -> PruningImportResult<()> {
         unimplemented!()
     }

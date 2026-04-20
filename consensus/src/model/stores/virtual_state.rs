@@ -79,8 +79,7 @@ impl VirtualState {
             let mut lane_activities: std::collections::BTreeMap<[u8; 20], Vec<Hash>> = std::collections::BTreeMap::new();
             for (idx, tx) in txs.iter().enumerate() {
                 let lane_id: [u8; 20] = *tx.subnetwork_id.as_bytes();
-                let tx_digest = kaspa_consensus_core::hashing::tx::seq_commit_tx_digest(tx.id(), tx.version);
-                lane_activities.entry(lane_id).or_default().push(activity_leaf(&tx_digest, idx as u32));
+                lane_activities.entry(lane_id).or_default().push(activity_leaf(&tx.id(), tx.version, idx as u32));
             }
 
             let context_hash = mergeset_context_hash(&MergesetContext {

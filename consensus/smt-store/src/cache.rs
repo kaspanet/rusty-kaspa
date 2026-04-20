@@ -43,7 +43,7 @@
 //!    state. After IBD, the caches stay cold until incremental writes
 //!    repopulate them.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 
 use kaspa_hashes::Hash;
@@ -96,14 +96,14 @@ struct ScoreEntityKey<E: EntityKey> {
 /// Single-threaded. All mutating operations take `&mut self`.
 pub struct VersionedCache<E: EntityKey, V: Copy> {
     by_entity: BTreeMap<EntityVersionKey<E>, V>,
-    by_score: BTreeSet<ScoreEntityKey<E>>,
+    by_score: BTreeMap<ScoreEntityKey<E>, ()>,
     capacity: usize,
 }
 
 impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0);
-        Self { by_entity: BTreeMap::new(), by_score: BTreeSet::new(), capacity }
+        Self { by_entity: BTreeMap::new(), by_score: BTreeMap::new(), capacity }
     }
 
     pub fn len(&self) -> usize {
@@ -145,26 +145,30 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
     pub fn insert(&mut self, entity: E, score: u64, block_hash: Hash, value: V) {
         let new_key = ScoreEntityKey { score, rev_block_hash: std::cmp::Reverse(block_hash), entity };
         if self.by_score.len() >= self.capacity {
-            if let Some(current_min) = self.by_score.first()
-                && &new_key <= current_min
-            {
+            let Some(entry) = self.by_score.first_entry() else {
+                // Empty-but-at-capacity can only mean capacity 0, which is not currently supported.
+                // If it is ever allowed, the cache should admit nothing.
+                return;
+            };
+            if &new_key <= entry.key() {
+                // Do not admit an entry that would be the next eviction candidate.
                 return;
             }
-            if let Some(evicted) = self.by_score.pop_first() {
-                self.by_entity.remove(&EntityVersionKey {
-                    entity: evicted.entity,
-                    rev_score: std::cmp::Reverse(evicted.score),
-                    block_hash: evicted.rev_block_hash.0,
-                });
-            }
+
+            let (evicted, ()) = entry.remove_entry();
+            self.by_entity.remove(&EntityVersionKey {
+                entity: evicted.entity,
+                rev_score: std::cmp::Reverse(evicted.score),
+                block_hash: evicted.rev_block_hash.0,
+            });
         }
         self.by_entity.insert(EntityVersionKey { entity, rev_score: std::cmp::Reverse(score), block_hash }, value);
-        self.by_score.insert(new_key);
+        self.by_score.insert(new_key, ());
     }
 
     /// Remove all entries with `score < min_score`. Returns the number of evicted entries.
     ///
-    /// Uses `BTreeSet::split_off` to partition at the boundary in O(log n),
+    /// Uses `BTreeMap::split_off` to partition at the boundary in O(log n),
     /// then removes the evicted entries from `by_entity`.
     pub fn evict_below_score(&mut self, min_score: u64) -> usize {
         // Split key is the lowest possible `ScoreEntityKey` at `min_score`: the
@@ -177,7 +181,7 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
         let keep = self.by_score.split_off(&split_key);
         let evicted = std::mem::replace(&mut self.by_score, keep);
         let count = evicted.len();
-        for entry in &evicted {
+        for entry in evicted.keys() {
             self.by_entity.remove(&EntityVersionKey {
                 entity: entry.entity,
                 rev_score: std::cmp::Reverse(entry.score),
@@ -189,20 +193,27 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
 
     /// Evict up to `n` entries with the lowest scores. Returns the number actually evicted.
     pub fn evict_oldest_n(&mut self, n: usize) -> usize {
-        let mut evicted = 0;
-        for _ in 0..n {
-            if let Some(first) = self.by_score.pop_first() {
-                self.by_entity.remove(&EntityVersionKey {
-                    entity: first.entity,
-                    rev_score: std::cmp::Reverse(first.score),
-                    block_hash: first.rev_block_hash.0,
-                });
-                evicted += 1;
-            } else {
-                break;
-            }
+        if n == 0 {
+            return 0;
         }
-        evicted
+
+        let evicted = if n >= self.by_score.len() {
+            std::mem::take(&mut self.by_score)
+        } else {
+            let split_key = *self.by_score.keys().nth(n).expect("n is below len");
+            let keep = self.by_score.split_off(&split_key);
+            std::mem::replace(&mut self.by_score, keep)
+        };
+
+        let count = evicted.len();
+        for entry in evicted.keys() {
+            self.by_entity.remove(&EntityVersionKey {
+                entity: entry.entity,
+                rev_score: std::cmp::Reverse(entry.score),
+                block_hash: entry.rev_block_hash.0,
+            });
+        }
+        count
     }
 
     /// Iterate versions of `entity` from `target_score` downward to `min_score`.
@@ -326,12 +337,24 @@ mod tests {
         cache.insert(entity, 100, hash(0x11), 1);
         cache.insert(entity, 200, hash(0x22), 2);
         cache.insert(entity, 300, hash(0x33), 3);
+        cache.insert(entity, 400, hash(0x44), 4);
 
-        let evicted = cache.evict_oldest_n(2);
-        assert_eq!(evicted, 2);
+        assert_eq!(cache.evict_oldest_n(0), 0);
+        assert_eq!(cache.len(), 4);
+
+        assert_eq!(cache.evict_oldest_n(1), 1);
+        assert_eq!(cache.len(), 3);
+        let results: Vec<_> = cache.iter_entity(entity, u64::MAX, 0).collect();
+        assert_eq!(results.iter().map(|(score, _, _)| *score).collect::<Vec<_>>(), vec![400, 300, 200]);
+
+        assert_eq!(cache.evict_oldest_n(2), 2);
         assert_eq!(cache.len(), 1);
         let results: Vec<_> = cache.iter_entity(entity, u64::MAX, 0).collect();
-        assert_eq!(results[0].0, 300);
+        assert_eq!(results[0].0, 400);
+
+        cache.insert(entity, 500, hash(0x55), 5);
+        assert_eq!(cache.evict_oldest_n(usize::MAX), 2);
+        assert!(cache.is_empty());
     }
 
     #[test]

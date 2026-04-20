@@ -45,8 +45,13 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
-use kaspa_hashes::Hash;
+use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_rpc_core::RpcHeader;
+use kaspa_seq_commit::hashing::{
+    activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, seq_commit_timestamp, smt_leaf_hash,
+};
+use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
+use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
 use kaspa_utils::arc::ArcExtensions;
 
@@ -1380,6 +1385,102 @@ fn selected_chain_store_iterator(consensus: &TestConsensus, pruning_point: Hash)
         .take_while(move |&h| h != pruning_point)
 }
 
+// Minimal KIP-21 proof check for these activation tests: mine the virtual view into
+// a chain block, reconstruct the target lane activity, and verify its SMT proof.
+struct ChainSeqCommitLaneActivity {
+    lane_key: Hash,
+    activity_leaves: Vec<Hash>,
+    contains_tx: bool,
+}
+
+fn chain_seq_commit_lane_activity_for_tx(
+    consensus: &TestConsensus,
+    accepting_block: Hash,
+    tx: &Transaction,
+) -> ChainSeqCommitLaneActivity {
+    let target_id = tx.id();
+    let target_lane = *tx.subnetwork_id.as_bytes();
+    let mut activity_leaves = Vec::new();
+    let mut contains_tx = false;
+    let mut merge_idx = 0u32;
+
+    for block_acceptance in consensus.get_block_acceptance_data(accepting_block).unwrap().iter() {
+        let block_transactions = consensus.get_block_body(block_acceptance.block_hash).unwrap();
+        for accepted in block_acceptance.accepted_transactions.iter() {
+            let accepted_tx = &block_transactions[accepted.index_within_block as usize];
+            assert_eq!(accepted_tx.id(), accepted.transaction_id);
+            let lane_id = *accepted_tx.subnetwork_id.as_bytes();
+            if lane_id == target_lane {
+                activity_leaves.push(activity_leaf(&accepted.transaction_id, accepted_tx.version, merge_idx));
+            }
+            if accepted.transaction_id == target_id {
+                contains_tx = true;
+            }
+            merge_idx += 1;
+        }
+    }
+
+    ChainSeqCommitLaneActivity { lane_key: lane_key(&target_lane), activity_leaves, contains_tx }
+}
+
+fn chain_seq_commit_context_hash(consensus: &TestConsensus, accepting_block: Hash) -> Hash {
+    let header = consensus.get_header(accepting_block).unwrap();
+    let parent_header = consensus.get_header(header.direct_parents()[0]).unwrap();
+    mergeset_context_hash(&MergesetContext {
+        timestamp: seq_commit_timestamp(parent_header.timestamp),
+        daa_score: header.daa_score,
+        blue_score: header.blue_score,
+    })
+}
+
+fn assert_chain_seq_commit_lane(consensus: &TestConsensus, accepting_block: Hash, activity: &ChainSeqCommitLaneActivity) {
+    let proof = consensus.seq_commit_lane_proof(accepting_block, activity.lane_key);
+    verify_smt_metadata(
+        &SmtMetadata {
+            lanes_root: &proof.lanes_root,
+            payload_and_ctx_digest: &proof.payload_and_ctx_digest,
+            parent_seq_commit: &proof.parent_seq_commit,
+        },
+        proof.expected_seq_commit,
+        proof.parent_seq_commit,
+    )
+    .unwrap();
+
+    let leaf = if activity.activity_leaves.is_empty() {
+        proof.current_lane.map(|(lane_tip, blue_score)| {
+            smt_leaf_hash(&SmtLeafInput { lane_key: &activity.lane_key, lane_tip: &lane_tip, blue_score })
+        })
+    } else {
+        let parent_ref = proof.parent_lane_tip.unwrap_or(proof.parent_seq_commit);
+        let activity_digest = activity_digest_lane(activity.activity_leaves.iter().copied());
+        let context_hash = chain_seq_commit_context_hash(consensus, accepting_block);
+        let lane_tip = lane_tip_next(&LaneTipInput {
+            parent_ref: &parent_ref,
+            lane_key: &activity.lane_key,
+            activity_digest: &activity_digest,
+            context_hash: &context_hash,
+        });
+        let (stored_tip, stored_blue_score) = proof.current_lane.expect("accepted lane activity must have a persisted SMT lane");
+        assert_eq!(stored_tip, lane_tip);
+        assert_eq!(stored_blue_score, proof.blue_score);
+        Some(smt_leaf_hash(&SmtLeafInput { lane_key: &activity.lane_key, lane_tip: &lane_tip, blue_score: stored_blue_score }))
+    };
+
+    assert!(proof.smt_proof.verify::<SeqCommitActiveNode>(&activity.lane_key, leaf, proof.lanes_root).unwrap());
+}
+
+fn assert_tx_in_chain_seq_commit(consensus: &TestConsensus, accepting_block: Hash, tx: &Transaction) {
+    let activity = chain_seq_commit_lane_activity_for_tx(consensus, accepting_block, tx);
+    assert!(activity.contains_tx, "tx {} is missing from chain seq-commit activity input", tx.id());
+    assert_chain_seq_commit_lane(consensus, accepting_block, &activity);
+}
+
+fn assert_tx_not_in_chain_seq_commit(consensus: &TestConsensus, accepting_block: Hash, tx: &Transaction) {
+    let activity = chain_seq_commit_lane_activity_for_tx(consensus, accepting_block, tx);
+    assert!(!activity.contains_tx, "tx {} unexpectedly appears in chain seq-commit activity input", tx.id());
+    assert_chain_seq_commit_lane(consensus, accepting_block, &activity);
+}
+
 #[tokio::test]
 async fn staging_consensus_test() {
     init_allocator_with_default_settings();
@@ -1615,12 +1716,19 @@ async fn covenants_activation_test() {
     next_id += 1;
 
     // Post-activation: same transaction should now be accepted
-    let status = consensus.add_utxo_valid_block_with_parents(next_id.into(), vec![tip], vec![tx.clone()]).await;
+    let tx_block_hash = next_id.into();
+    let status = consensus.add_utxo_valid_block_with_parents(tx_block_hash, vec![tip], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {:?}", status);
+    tip = tx_block_hash;
+    next_id += 1;
 
-    // let digest = tx.seq_commit_digest();
-    // assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&digest));
-    // TODO: replace with commiting tx to seq-commit
+    // Mine virtual so seqcommit data is available in the SMT stores.
+    let accepting_block = next_id.into();
+    let status = consensus.add_utxo_valid_block_with_parents(accepting_block, vec![tip], vec![]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {:?}", status);
+    // Use the persisted SMT stores to verify tx inclusion in the seqcommit.
+    assert_tx_in_chain_seq_commit(&consensus, accepting_block, &tx);
+
     // Post-KIP21: accepted_id_digests[0] = seq_commit (not individual tx digests)
     assert_eq!(consensus.lkg_virtual_state.load().accepted_id_digests.len(), 1);
 
@@ -1715,35 +1823,41 @@ async fn push_limit_activation_test() {
             vec![],
         );
         tx.finalize();
-        let seq_commit_digest = tx.seq_commit_digest();
         let mut tx = MutableTransaction::from_tx(tx);
         // This triggers storage mass population
         let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
         let tx = tx.tx.unwrap_or_clone();
 
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        let mut block = consensus.build_utxo_valid_block_with_parents(next_id.into(), vec![tip], miner_data.clone(), vec![]);
+        let tx_block_hash = next_id.into();
+        let mut block = consensus.build_utxo_valid_block_with_parents(tx_block_hash, vec![tip], miner_data.clone(), vec![]);
 
         block.transactions.push(tx.clone());
         block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusUTXOValid)));
-        // Pre-KIP21 activation: digests still contain tx digests
-        let vs = consensus.lkg_virtual_state.load();
+        tip = tx_block_hash;
+        next_id += 1;
 
-        // TODO: replace with commitment check
-        std::hint::black_box(seq_commit_digest);
-        // assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&seq_commit_digest)); // virtual block has daa where digests are not equal to tx_ids
+        // Mine virtual so seqcommit data is available in the SMT stores.
+        let accepting_block = next_id.into();
+        let block_status = consensus.add_utxo_valid_block_with_parents(accepting_block, vec![tip], vec![]).await;
+        assert!(matches!(block_status, Ok(BlockStatus::StatusUTXOValid)));
+        // Use the persisted SMT stores to verify tx inclusion in the seqcommit.
+        assert_tx_in_chain_seq_commit(&consensus, accepting_block, &tx);
+        tip = accepting_block;
+        next_id += 1;
+
+        let vs = consensus.lkg_virtual_state.load();
         assert_eq!(vs.accepted_id_digests.len(), 1);
     }
 
-    next_id += 1;
-
     // Advance to activation
-    consensus.add_utxo_valid_block_with_parents(next_id.into(), vec![tip], vec![]).await.unwrap();
-    tip = next_id.into();
-    next_id += 1;
+    while consensus.get_virtual_daa_score() < ACTIVATION_DAA_SCORE {
+        consensus.add_utxo_valid_block_with_parents(next_id.into(), vec![tip], vec![]).await.unwrap();
+        tip = next_id.into();
+        next_id += 1;
+    }
 
     // Post-activation: a similar transaction should now be rejected
     {
@@ -1758,8 +1872,6 @@ async fn push_limit_activation_test() {
             vec![],
         );
         tx.finalize();
-        let digest = tx.seq_commit_digest();
-        let tx_id = tx.id();
         let mut tx = MutableTransaction::from_tx(tx);
         // This triggers storage mass population
         let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
@@ -1773,8 +1885,14 @@ async fn push_limit_activation_test() {
 
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        assert!(!consensus.lkg_virtual_state.load().accepted_id_digests.contains(&digest));
-        assert!(!consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id));
+        next_id += 1;
+
+        // Mine virtual so seqcommit data is available in the SMT stores.
+        let accepting_block = next_id.into();
+        let block_status = consensus.add_utxo_valid_block_with_parents(accepting_block, vec![tip], vec![]).await;
+        assert!(matches!(block_status, Ok(BlockStatus::StatusUTXOValid)));
+        // Use the persisted SMT stores to verify tx exclusion from the seqcommit.
+        assert_tx_not_in_chain_seq_commit(&consensus, accepting_block, &tx);
     }
 
     consensus.shutdown(wait_handles);
