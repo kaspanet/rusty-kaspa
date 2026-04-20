@@ -74,15 +74,31 @@ pub fn miner_payload_hash(payload: &[u8]) -> Hash {
     hasher.finalize()
 }
 
+/// Write blue_work into `hasher` with the same encoding as
+/// `kaspa_consensus_core::hashing::HasherExtensions::write_blue_work`:
+/// strip leading zeros from the big-endian bytes, then write
+/// `le_u64(len) || stripped_bytes`.
+///
+/// Inlined here (rather than reusing the trait method) because
+/// `kaspa-consensus-core` pulls in a std-only dependency tree and
+/// `kaspa-seq-commit` must stay `no_std`-compatible. The
+/// `miner_payload_leaf_matches_consensus_core_write_blue_work` test locks
+/// the two encodings together.
+#[inline]
+fn write_blue_work_be<H: HasherBase>(hasher: &mut H, blue_work_be_bytes: &[u8]) {
+    let start = blue_work_be_bytes.iter().copied().position(|byte| byte != 0).unwrap_or(blue_work_be_bytes.len());
+    let stripped = &blue_work_be_bytes[start..];
+    hasher.update((stripped.len() as u64).to_le_bytes()).update(stripped);
+}
+
 /// Compute a miner payload leaf: `H_miner_payload_leaf(block_hash || blue_work_bytes || H_miner_payload(payload))`.
 #[inline]
 pub fn miner_payload_leaf(input: MinerPayloadLeafInput<'_>) -> Hash {
     let payload_h = miner_payload_hash(input.payload);
     let mut hasher = SeqCommitMinerPayloadLeaf::new();
     hasher.update(input.block_hash);
-    let start = input.blue_work_be_bytes.iter().copied().position(|byte| byte != 0).unwrap_or(input.blue_work_be_bytes.len());
-    let blue_work_be_bytes = &input.blue_work_be_bytes[start..];
-    hasher.update((blue_work_be_bytes.len() as u64).to_le_bytes()).update(blue_work_be_bytes).update(payload_h);
+    write_blue_work_be(&mut hasher, input.blue_work_be_bytes);
+    hasher.update(payload_h);
     hasher.finalize()
 }
 
@@ -270,6 +286,53 @@ mod tests {
         let bw = BlueWorkType::from_u64(0x0123);
         let input = MinerPayloadLeafInput { block_hash: &h(1), blue_work_be_bytes: &bw.to_be_bytes(), payload: b"coinbase data" };
         assert_eq!(miner_payload_leaf(input), expected);
+    }
+
+    /// Preimage parity: captures the raw bytes fed into a hasher by
+    /// `write_blue_work_be` and `HasherExtensions::write_blue_work` and
+    /// compares them directly. If either encoding ever drifts, this test
+    /// breaks before any hash collision could mask the change.
+    #[test]
+    fn write_blue_work_be_preimage_matches_consensus_core() {
+        use alloc::vec::Vec;
+        use kaspa_consensus_core::hashing::HasherExtensions;
+
+        #[derive(Default)]
+        struct ByteBuffer(Vec<u8>);
+
+        impl HasherBase for ByteBuffer {
+            fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+                self.0.extend_from_slice(data.as_ref());
+                self
+            }
+        }
+
+        // Values spanning every width: zero (empty stripped bytes), 1-byte,
+        // 2-byte, 8-byte (u64::MAX), 16-byte (u128::MAX), 17-byte (first bit
+        // past the u128 boundary), and the full 24-byte width.
+        let over_u128: BlueWorkType = {
+            let mut bytes = [0u8; 24];
+            bytes[7] = 0x01; // first byte past the low 16 bytes
+            BlueWorkType::from_be_bytes(bytes)
+        };
+        let all_ones = BlueWorkType::from_be_bytes([0xFF; 24]);
+        for bw in [
+            BlueWorkType::ZERO,
+            BlueWorkType::from_u64(1),
+            BlueWorkType::from_u64(0x0123),
+            BlueWorkType::from_u64(u64::MAX),
+            BlueWorkType::from_u128(u128::MAX),
+            over_u128,
+            all_ones,
+        ] {
+            let mut ours = ByteBuffer::default();
+            write_blue_work_be(&mut ours, &bw.to_be_bytes());
+
+            let mut theirs = ByteBuffer::default();
+            theirs.write_blue_work(bw);
+
+            assert_eq!(ours.0, theirs.0, "preimage diverged for {bw:?}");
+        }
     }
 
     #[test]
