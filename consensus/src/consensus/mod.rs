@@ -1136,7 +1136,7 @@ impl ConsensusApi for Consensus {
         lanes_root: Hash,
         payload_and_ctx_digest: Hash,
         expected_lane_count: u64,
-        lane_batches: ImportLaneBatchIterator,
+        lane_batches: ImportLaneBatchIterator<'_>,
     ) -> PruningImportResult<()> {
         use kaspa_hashes::ZERO_HASH;
         use kaspa_smt_store::streaming_import::streaming_import;
