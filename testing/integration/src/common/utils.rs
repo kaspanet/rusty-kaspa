@@ -2,11 +2,11 @@ use super::client::ListeningClient;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    constants::TX_VERSION,
+    constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
     header::Header,
     mass::SigopCount,
     sign::sign,
-    subnets::SUBNETWORK_ID_NATIVE,
+    subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
     tx::{
         MutableTransaction, ScriptPublicKey, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
         TransactionOutput, UtxoEntry,
@@ -20,7 +20,8 @@ use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::{BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification, api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rand::{Rng, thread_rng};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use secp256k1::Keypair;
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry::Occupied},
@@ -30,8 +31,8 @@ use std::{
 };
 use tokio::time::timeout;
 
-pub(crate) const EXPAND_FACTOR: u64 = 1;
-pub(crate) const CONTRACT_FACTOR: u64 = 1;
+pub(crate) const EXPAND_FACTOR: u64 = 2;
+pub(crate) const CONTRACT_FACTOR: u64 = 2;
 
 const fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
     200 + 34 * num_outputs + 1000 * (num_inputs as u64)
@@ -102,6 +103,95 @@ pub fn generate_tx_dag(
     txs
 }
 
+fn make_lane_id(level_idx: usize, lane_idx: usize) -> SubnetworkId {
+    // KIP-21 user-lane shape: `[namespace (4 bytes), 0×16]` with a non-zero
+    // namespace. Pack (level, lane) into the namespace: 0xFF marker keeps the
+    // namespace non-zero (incl. for (0, 0)), then a 16-bit level and an 8-bit
+    // lane. 2^16 levels × 2^8 lanes/level covers any test load; the 16-byte
+    // zero tail satisfies the shape rule.
+    assert!(level_idx <= u16::MAX as usize, "level_idx must fit in u16");
+    assert!(lane_idx <= u8::MAX as usize, "lane_idx must fit in u8");
+    let mut bytes = [0u8; 20];
+    bytes[0] = 0xFF;
+    bytes[1..3].copy_from_slice(&(level_idx as u16).to_be_bytes());
+    bytes[3] = lane_idx as u8;
+    SubnetworkId::from_bytes(bytes)
+}
+
+fn generate_level_lane_assignments<R: Rng + ?Sized>(
+    level_idx: usize,
+    target_width: usize,
+    lanes_per_level: usize,
+    rng: &mut R,
+) -> Vec<SubnetworkId> {
+    assert!(lanes_per_level > 0, "lanes_per_level must be positive");
+
+    let lane_ids = (0..lanes_per_level).map(|lane_idx| make_lane_id(level_idx, lane_idx)).collect_vec();
+    (0..target_width).map(|_| lane_ids[rng.gen_range(0..lanes_per_level)]).collect()
+}
+
+/// Like [`generate_tx_dag`] but each level draws tx lanes from a level-local pool
+/// of `lanes_per_level` unique subnetwork IDs.
+///
+/// Uses `TX_VERSION_POST_COV_HF` so non-native subnetworks pass validation.
+pub fn generate_tx_dag_with_lanes(
+    mut utxoset: UtxoCollection,
+    schnorr_key: Keypair,
+    spk: ScriptPublicKey,
+    target_levels: usize,
+    target_width: usize,
+    lanes_per_level: usize,
+) -> Vec<Arc<Transaction>> {
+    let num_inputs = CONTRACT_FACTOR as usize;
+    let num_outputs = EXPAND_FACTOR;
+    let mut rng = thread_rng();
+
+    let mut txs = Vec::with_capacity(target_levels * target_width);
+
+    for i in 0..target_levels {
+        let level_lane_assignments = generate_level_lane_assignments(i, target_width, lanes_per_level, &mut rng);
+        let mut utxo_diff = UtxoDiff::default();
+        utxoset
+            .iter()
+            .take(num_inputs * target_width)
+            .chunks(num_inputs)
+            .into_iter()
+            .map(|c| c.into_iter().map(|(o, e)| (TransactionInput::new(*o, vec![], 0, 1), e.clone())).unzip())
+            .collect::<Vec<(Vec<_>, Vec<_>)>>()
+            .into_par_iter()
+            .enumerate()
+            .map(|(j, (inputs, entries))| {
+                let subnetwork = level_lane_assignments[j];
+                let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
+                let total_out = total_in - required_fee(num_inputs, num_outputs);
+                let outputs = (0..num_outputs)
+                    .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
+                    .collect_vec();
+                let unsigned_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, subnetwork, 0, vec![]);
+                sign(SignableTransaction::with_entries(unsigned_tx, entries), schnorr_key)
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .for_each(|signed_tx| {
+                utxo_diff.add_transaction(&signed_tx.as_verifiable(), 0).unwrap();
+                txs.push(Arc::new(signed_tx.tx));
+            });
+        utxoset.remove_collection(&utxo_diff.remove);
+        utxoset.add_collection(&utxo_diff.add);
+
+        if i % (target_levels / 10).max(1) == 0 {
+            info!(
+                "Generated {} txs ({} lane ids per level, {} unique level lane ids so far)",
+                txs.len(),
+                lanes_per_level,
+                (i + 1) * lanes_per_level
+            );
+        }
+    }
+
+    txs
+}
+
 /// Sanity test verifying that the generated TX DAG is valid, topologically ordered and has no double spends
 pub fn verify_tx_dag(initial_utxoset: &UtxoCollection, txs: &[Arc<Transaction>]) {
     let mut prev_txs: HashMap<TransactionId, Arc<Transaction>> = HashMap::new();
@@ -160,7 +250,7 @@ pub fn generate_tx(
 }
 
 pub async fn fetch_spendable_utxos(
-    client: &GrpcClient,
+    client: &impl RpcApi,
     address: Address,
     coinbase_maturity: u64,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
@@ -211,5 +301,37 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
             }
             _ => panic!("wrong notification type"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{generate_level_lane_assignments, make_lane_id};
+    use rand::{SeedableRng, rngs::SmallRng};
+    use std::collections::HashSet;
+
+    #[test]
+    fn level_lane_assignments_use_level_local_lane_pools() {
+        let mut rng = SmallRng::seed_from_u64(42);
+        let lanes_per_level = 4;
+
+        let level_0_assignments = generate_level_lane_assignments(0, 128, lanes_per_level, &mut rng);
+        let level_1_assignments = generate_level_lane_assignments(1, 128, lanes_per_level, &mut rng);
+
+        let level_0_pool: HashSet<_> = (0..lanes_per_level).map(|lane_idx| make_lane_id(0, lane_idx)).collect();
+        let level_1_pool: HashSet<_> = (0..lanes_per_level).map(|lane_idx| make_lane_id(1, lane_idx)).collect();
+
+        assert_eq!(level_0_pool.len(), lanes_per_level);
+        assert_eq!(level_1_pool.len(), lanes_per_level);
+        assert!(level_0_pool.is_disjoint(&level_1_pool));
+        assert!(level_0_assignments.iter().all(|lane_id| level_0_pool.contains(lane_id)));
+        assert!(level_1_assignments.iter().all(|lane_id| level_1_pool.contains(lane_id)));
+    }
+
+    #[test]
+    #[should_panic(expected = "lanes_per_level must be positive")]
+    fn level_lane_assignments_require_positive_lane_count() {
+        let mut rng = SmallRng::seed_from_u64(7);
+        let _ = generate_level_lane_assignments(0, 1, 0, &mut rng);
     }
 }

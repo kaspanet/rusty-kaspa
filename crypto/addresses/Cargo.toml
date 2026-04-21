@@ -17,14 +17,9 @@ wasm32-sdk = ["std", "dep:js-sys", "dep:wasm-bindgen", "dep:workflow-log", "dep:
 
 [dependencies]
 smallvec.workspace = true
-# these two crates defines same version as workspace, but disable default features (that enable std)
-# long term: disable at workspace level and enable granularily where required
-borsh = { version = "1.5.1", default-features = false, features = ["derive", "rc"] }
-serde = { version = "1.0.190", default-features = false, features = ["alloc", "derive", "rc"] }
-
-# newer version thiserror version (compared to workspace) allows disabling std
-# long term: upgrade thiserror at workspace level
-thiserror = { version = "2.0.18", default-features = false }
+borsh.workspace = true
+serde.workspace = true
+thiserror.workspace = true
 
 # only relvant in wasm32-sdk context
 js-sys = { workspace = true, optional = true }

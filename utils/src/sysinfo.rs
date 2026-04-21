@@ -1,13 +1,15 @@
-use crate::fd_budget;
-use crate::git;
-use crate::hex::ToHex;
+use crate::{fd_budget, git, hex::ToHex};
 use sha2::{Digest, Sha256};
-use std::fs::{File, read_to_string};
-use std::io::Read;
-use std::path::PathBuf;
 // use std::fs::read_to_string;
-use std::sync::OnceLock;
-
+use std::{
+    fs::{File, read_to_string},
+    io::Read,
+    path::PathBuf,
+    string::String,
+    string::ToString,
+    sync::OnceLock,
+    vec::Vec,
+};
 static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
 
 #[derive(Clone)]

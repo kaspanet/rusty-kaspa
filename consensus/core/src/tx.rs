@@ -10,7 +10,6 @@ mod script_public_key;
 mod serde_impl;
 mod utxo_entry;
 
-use crate::hashing::tx::seq_commit_tx_digest;
 use crate::mass::{
     ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
 };
@@ -413,10 +412,6 @@ impl Transaction {
     pub fn payload_digest(&self) -> Hash {
         hashing::tx::payload_digest(&self.payload)
     }
-
-    pub fn seq_commit_digest(&self) -> Hash {
-        seq_commit_tx_digest(self.id(), self.version)
-    }
 }
 
 impl MemSizeEstimator for Transaction {
@@ -471,10 +466,6 @@ pub trait VerifiableTransaction {
 
     fn payload_digest(&self) -> Hash {
         self.tx().payload_digest()
-    }
-
-    fn seq_commit_digest(&self) -> Hash {
-        self.tx().seq_commit_digest()
     }
 
     fn version(&self) -> u16 {

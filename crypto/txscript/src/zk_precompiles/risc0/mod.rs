@@ -10,6 +10,7 @@ use crate::{
     },
 };
 use kaspa_txscript_errors::TxScriptError;
+use risc0_core::{field::Elem, field::baby_bear::BabyBearElem};
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;
 mod error;
@@ -25,14 +26,20 @@ fn parse_digest(bytes: impl AsRef<[u8]>) -> Result<Digest, R0Error> {
     Digest::try_from(bytes).map_err(|_| R0Error::InvalidDigestLength(bytes.len()))
 }
 
-fn parse_seal(bytes: impl AsRef<[u8]>) -> Result<Vec<u32>, R0Error> {
+fn parse_seal(bytes: impl AsRef<[u8]>) -> Result<Vec<BabyBearElem>, R0Error> {
     let bytes = bytes.as_ref();
     let (chunks, remaining) = bytes.as_chunks::<4>();
     if !remaining.is_empty() {
         // we require no remainder
         Err(R0Error::InvalidSealLength(bytes.len()))
     } else {
-        Ok(chunks.iter().copied().map(u32::from_le_bytes).collect())
+        chunks
+            .iter()
+            .copied()
+            .map(u32::from_le_bytes)
+            .map(BabyBearElem::new_raw)
+            .map(|v| if v.is_reduced() { Ok(v) } else { Err(R0Error::SealHasInvalidBabyBearElem) })
+            .collect()
     }
 }
 
@@ -72,23 +79,25 @@ impl ZkPrecompile for R0SuccinctPrecompile {
     /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(covpp-mainnet)
     ///
     /// Expects the following items on the stack (from top to bottom):
-    /// - image id (bytes)
-    /// - journal (bytes)
-    /// - control inclusion proof digests (bytes)
-    /// - control inclusion proof index (bytes, u32 le)
     /// - hash function id (bytes, u8)
+    /// - control id (bytes, digest length)
+    /// - image id (bytes, digest length)
+    /// - journal (bytes, digest length)
+    /// - seal (bytes, list of u32 le)
+    /// - control inclusion proof digests (bytes)
+    /// - control index (bytes, u32 le)
     /// - claim (bytes)
-    /// - seal (bytes, u32 le)
     fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error> {
-        let [seal, claim, hashfn, control_index, control_digests, journal, image_id] = dstack.pop_raw()?;
+        let [claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn] = dstack.pop_raw()?;
 
+        let control_id = parse_digest(control_id)?;
         let seal = parse_seal(seal)?;
         let claim = parse_digest(claim)?;
         let hashfn = parse_hashfn(hashfn)?;
         let control_index = parse_merkle_index(control_index)?;
         let control_digests = parse_digest_list(control_digests)?;
         let control_inclusion_proof = MerkleProof { index: control_index, digests: control_digests };
-        let rcpt = SuccinctReceipt::new(seal, claim, hashfn, control_inclusion_proof);
+        let rcpt = SuccinctReceipt::new(seal, control_id, claim, hashfn, control_inclusion_proof);
 
         // Convert image_id and journal to Digest, i.e. a hash
         let image_id: Digest = parse_digest(image_id)?;

@@ -10,7 +10,7 @@ use crate::{
     zk_precompiles::tags::ZkTag,
 };
 
-pub fn build_zk_script(elements: &[Vec<u8>]) -> ScriptBuilderResult<Vec<u8>> {
+pub fn build_zk_script(elements: &[&[u8]]) -> ScriptBuilderResult<Vec<u8>> {
     let mut builder = ScriptBuilder::new();
     for element in elements {
         builder.add_data(element)?;
@@ -34,8 +34,9 @@ pub fn execute_zk_script(
 }
 
 #[allow(clippy::type_complexity)]
-pub fn load_stark_fields() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+pub fn load_stark_fields() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
     let stark_seal_hex = include_str!("data/succinct.seal.hex");
+    let stark_control_id_hex = include_str!("data/succinct.control_id.hex");
     let stark_claim_hex = include_str!("data/succinct.claim.hex");
     let stark_hashfn_hex = include_str!("data/succinct.hashfn.hex");
     let stark_control_index_hex = include_str!("data/succinct.control_index.hex");
@@ -43,6 +44,7 @@ pub fn load_stark_fields() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<
     let stark_image_id_hex = include_str!("data/succinct.image.hex");
     let stark_journal_hex = include_str!("data/succinct.journal.hex");
 
+    let stark_control_id_bytes = hex::decode(stark_control_id_hex).expect("Failed to decode hex STARK control id");
     let stark_seal_bytes = hex::decode(stark_seal_hex).expect("Failed to decode hex STARK seal");
     let stark_claim_bytes = hex::decode(stark_claim_hex).expect("Failed to decode hex STARK claim");
     let stark_hashfn_bytes = hex::decode(stark_hashfn_hex).expect("Failed to decode hex STARK hashfn");
@@ -52,6 +54,7 @@ pub fn load_stark_fields() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<
     let stark_journal_bytes = hex::decode(stark_journal_hex).expect("Failed to decode hex journal");
 
     (
+        stark_control_id_bytes,
         stark_seal_bytes,
         stark_claim_bytes,
         stark_hashfn_bytes,
@@ -62,10 +65,27 @@ pub fn load_stark_fields() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<
     )
 }
 
-pub fn build_stark_script() -> Vec<u8> {
-    let (seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
+pub fn build_stark_script(break_control_id: bool) -> Vec<u8> {
+    let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
-    build_zk_script(&[seal, claim, hashfn, control_index, control_digests, journal, image_id, vec![stark_tag]]).unwrap()
+    if break_control_id {
+        let mut broken_control_id = control_id.clone();
+        broken_control_id[0] ^= 0xFF;
+        return build_zk_script(&[
+            &claim,
+            &control_index,
+            &control_digests,
+            &seal,
+            &journal,
+            &image_id,
+            &broken_control_id,
+            &hashfn,
+            &[stark_tag],
+        ])
+        .unwrap();
+    }
+    build_zk_script(&[&claim, &control_index, &control_digests, &seal, &journal, &image_id, &control_id, &hashfn, &[stark_tag]])
+        .unwrap()
 }
 
 pub fn build_groth_script() -> Vec<u8> {
