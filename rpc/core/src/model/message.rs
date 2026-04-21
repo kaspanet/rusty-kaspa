@@ -3586,3 +3586,81 @@ impl Deserializer for UnsubscribeResponse {
         Ok(Self {})
     }
 }
+
+/// Request data needed to prove a single KIP-21 lane's state against the
+/// `seq_commit` carried in `block_hash`'s header.
+///
+/// `block_hash` must be a chain (selected-parent-chain) block.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSeqCommitLaneProofRequest {
+    pub block_hash: RpcHash,
+    pub lane_key: RpcHash,
+}
+
+impl GetSeqCommitLaneProofRequest {
+    pub fn new(block_hash: RpcHash, lane_key: RpcHash) -> Self {
+        Self { block_hash, lane_key }
+    }
+}
+
+impl Serializer for GetSeqCommitLaneProofRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.block_hash, writer)?;
+        store!(RpcHash, &self.lane_key, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetSeqCommitLaneProofRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block_hash = load!(RpcHash, reader)?;
+        let lane_key = load!(RpcHash, reader)?;
+        Ok(Self { block_hash, lane_key })
+    }
+}
+
+/// Self-contained witness a client can verify locally against the block header's
+/// `seq_commit` (= `accepted_id_merkle_root`).
+///
+/// `smt_proof` is the `OwnedSmtProof` wire format (`bitmap || terminal || siblings`),
+/// parsed via `kaspa_smt::proof::OwnedSmtProof::from_bytes`.
+///
+/// When the lane has no entry in the active-lanes SMT at this block's POV,
+/// `lane_tip` and `lane_blue_score` are both `None` and `smt_proof` is a
+/// non-inclusion proof.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSeqCommitLaneProofResponse {
+    pub smt_proof: Vec<u8>,
+    pub lane_tip: Option<RpcHash>,
+    pub lane_blue_score: Option<u64>,
+    pub payload_and_ctx_digest: RpcHash,
+    pub parent_seq_commit: RpcHash,
+}
+
+impl Serializer for GetSeqCommitLaneProofResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<u8>, &self.smt_proof, writer)?;
+        store!(Option<RpcHash>, &self.lane_tip, writer)?;
+        store!(Option<u64>, &self.lane_blue_score, writer)?;
+        store!(RpcHash, &self.payload_and_ctx_digest, writer)?;
+        store!(RpcHash, &self.parent_seq_commit, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetSeqCommitLaneProofResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let smt_proof = load!(Vec<u8>, reader)?;
+        let lane_tip = load!(Option<RpcHash>, reader)?;
+        let lane_blue_score = load!(Option<u64>, reader)?;
+        let payload_and_ctx_digest = load!(RpcHash, reader)?;
+        let parent_seq_commit = load!(RpcHash, reader)?;
+        Ok(Self { smt_proof, lane_tip, lane_blue_score, payload_and_ctx_digest, parent_seq_commit })
+    }
+}

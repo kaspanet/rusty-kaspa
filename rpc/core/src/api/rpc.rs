@@ -232,6 +232,19 @@ pub trait RpcApi: Sync + Send + AnySync {
     }
     async fn get_block_call(&self, connection: Option<&DynRpcConnection>, request: GetBlockRequest) -> RpcResult<GetBlockResponse>;
 
+    /// Returns the witness required to prove a KIP-21 lane's state against
+    /// `block_hash`'s header `seq_commit`.
+    ///
+    /// `block_hash` must be a chain (selected-parent-chain) block.
+    async fn get_seq_commit_lane_proof(&self, block_hash: RpcHash, lane_key: RpcHash) -> RpcResult<GetSeqCommitLaneProofResponse> {
+        self.get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest::new(block_hash, lane_key)).await
+    }
+    async fn get_seq_commit_lane_proof_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetSeqCommitLaneProofRequest,
+    ) -> RpcResult<GetSeqCommitLaneProofResponse>;
+
     /// Requests information about a specific subnetwork.
     async fn get_subnetwork(&self, subnetwork_id: RpcSubnetworkId) -> RpcResult<GetSubnetworkResponse> {
         self.get_subnetwork_call(None, GetSubnetworkRequest::new(subnetwork_id)).await

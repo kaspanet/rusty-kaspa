@@ -206,6 +206,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_seq_commit_lane_proof_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSeqCommitLaneProofRequest,
+    ) -> RpcResult<GetSeqCommitLaneProofResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_subnetwork_call(
         &self,
         _connection: Option<&DynRpcConnection>,

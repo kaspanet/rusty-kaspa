@@ -47,7 +47,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::{
-        BlockValidationFutures, ConsensusApi, ConsensusStats, ImportLaneBatchIterator,
+        BlockValidationFutures, ConsensusApi, ConsensusStats, ImportLaneBatchIterator, SeqCommitLaneProof,
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
     },
@@ -1457,6 +1457,77 @@ impl ConsensusApi for Consensus {
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
         self.is_chain_ancestor_of(hash, self.get_sink())
+    }
+
+    fn get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
+        let _guard = self.pruning_lock.blocking_read();
+        self.validate_block_exists(block_hash)?;
+
+        // Canonicality: must be a selected-parent-chain block (ancestor of or equal to sink).
+        let sink = self.get_sink();
+        if !self.services.reachability_service.is_chain_ancestor_of(block_hash, sink) {
+            return Err(ConsensusError::BlockNotInSelectedChain(block_hash));
+        }
+
+        // Depth: block must be at or after the current pruning point. Blocks before
+        // the pruning point may have had their SMT versions pruned.
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
+        if !self.services.reachability_service.is_chain_ancestor_of(pruning_point, block_hash) {
+            return Err(ConsensusError::BlockTooDeep(block_hash));
+        }
+
+        let header = self.headers_store.get_header(block_hash).unwrap();
+        let selected_parent = header.direct_parents()[0];
+        let parent_header = self.headers_store.get_header(selected_parent).unwrap();
+
+        let finality_depth = self.config.params.finality_depth();
+        let current_bounds = SmtReadBounds::for_pov(header.blue_score, finality_depth);
+        let virtual_processor = self.virtual_processor.clone();
+        let is_canonical = |bh| virtual_processor.is_smt_canonical(bh, block_hash);
+
+        let smt_proof = self
+            .storage
+            .smt_stores
+            .prove_lane(&lane_key, current_bounds, is_canonical)
+            .map_err(|e| ConsensusError::GeneralOwned(format!("prove_lane: {e}")))?;
+
+        let lane = self.storage.smt_stores.get_lane(lane_key, current_bounds, is_canonical);
+        let (lane_tip, lane_blue_score) = lane.map(|v| (Some(*v.data()), Some(v.blue_score()))).unwrap_or((None, None));
+
+        let metadata =
+            self.storage.smt_metadata_store.get(block_hash).map_err(|e| ConsensusError::GeneralOwned(format!("smt_metadata: {e}")))?;
+
+        let parent_seq_commit = parent_header.accepted_id_merkle_root;
+
+        // In debug builds, verify the proof is consistent with the stored lanes_root
+        // and that metadata chains to the header's seq_commit.
+        debug_assert!({
+            use kaspa_consensus_core::BlueWorkType;
+            use kaspa_hashes::SeqCommitActiveNode;
+            use kaspa_seq_commit::{
+                hashing::smt_leaf_hash,
+                types::SmtLeafInput,
+                verify::{SmtMetadata, verify_smt_metadata},
+            };
+            let _ = BlueWorkType::default(); // silence unused-import if feature flags disable use
+            let lanes_root = self.storage.smt_stores.get_lanes_root(current_bounds, is_canonical);
+            let leaf = lane_tip.zip(lane_blue_score).map(|(t, bs)| smt_leaf_hash(&SmtLeafInput { lane_tip: &t, blue_score: bs }));
+            let computed_root = smt_proof.as_proof().compute_root::<SeqCommitActiveNode>(&lane_key, leaf).unwrap();
+            let md = SmtMetadata {
+                lanes_root: &lanes_root,
+                payload_and_ctx_digest: &metadata.payload_and_ctx_digest,
+                parent_seq_commit: &parent_seq_commit,
+            };
+            computed_root == lanes_root && verify_smt_metadata(&md, header.accepted_id_merkle_root, parent_seq_commit).is_ok()
+        });
+
+        Ok(SeqCommitLaneProof {
+            smt_proof,
+            lane_tip,
+            lane_blue_score,
+            payload_and_ctx_digest: metadata.payload_and_ctx_digest,
+            parent_seq_commit,
+        })
     }
 
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {

@@ -575,6 +575,21 @@ from!(item: &kaspa_rpc_core::NotifySinkBlueScoreChangedRequest, protowire::Notif
 });
 from!(RpcResult<&kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>, protowire::NotifySinkBlueScoreChangedResponseMessage);
 
+from!(item: &kaspa_rpc_core::GetSeqCommitLaneProofRequest, protowire::GetSeqCommitLaneProofRequestMessage, {
+    Self { block_hash: item.block_hash.to_string(), lane_key: item.lane_key.to_string() }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetSeqCommitLaneProofResponse>, protowire::GetSeqCommitLaneProofResponseMessage, {
+    Self {
+        smt_proof: item.smt_proof.clone(),
+        lane_tip: item.lane_tip.map(|h| h.to_string()).unwrap_or_default(),
+        has_lane_tip: item.lane_tip.is_some(),
+        lane_blue_score: item.lane_blue_score.unwrap_or(0),
+        payload_and_ctx_digest: item.payload_and_ctx_digest.to_string(),
+        parent_seq_commit: item.parent_seq_commit.to_string(),
+        error: None,
+    }
+});
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -1090,6 +1105,19 @@ try_from!(item: &protowire::NotifySinkBlueScoreChangedRequestMessage, kaspa_rpc_
     Self { command: item.command.into() }
 });
 try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>);
+
+try_from!(item: &protowire::GetSeqCommitLaneProofRequestMessage, kaspa_rpc_core::GetSeqCommitLaneProofRequest, {
+    Self { block_hash: RpcHash::from_str(&item.block_hash)?, lane_key: RpcHash::from_str(&item.lane_key)? }
+});
+try_from!(item: &protowire::GetSeqCommitLaneProofResponseMessage, RpcResult<kaspa_rpc_core::GetSeqCommitLaneProofResponse>, {
+    Self {
+        smt_proof: item.smt_proof.clone(),
+        lane_tip: if item.has_lane_tip { Some(RpcHash::from_str(&item.lane_tip)?) } else { None },
+        lane_blue_score: if item.has_lane_tip { Some(item.lane_blue_score) } else { None },
+        payload_and_ctx_digest: RpcHash::from_str(&item.payload_and_ctx_digest)?,
+        parent_seq_commit: RpcHash::from_str(&item.parent_seq_commit)?,
+    }
+});
 
 // ----------------------------------------------------------------------------
 // Unit tests

@@ -33,6 +33,7 @@ kaspa-pow.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
 kaspa-seq-commit.workspace = true
+kaspa-smt.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils = { workspace = true, default-features = true }
 kaspa-utxoindex.workspace = true

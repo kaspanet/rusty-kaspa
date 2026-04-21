@@ -3733,6 +3733,7 @@ dependencies = [
  "kaspa-rpc-core",
  "kaspa-rpc-service",
  "kaspa-seq-commit",
+ "kaspa-smt",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
