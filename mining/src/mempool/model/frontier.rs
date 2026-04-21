@@ -5,12 +5,20 @@ use crate::{
 };
 
 use feerate_key::FeerateTransactionKey;
-use kaspa_consensus_core::{block::TemplateTransactionSelector, tx::Transaction};
+use kaspa_consensus_core::{
+    block::TemplateTransactionSelector,
+    subnets::SubnetworkId,
+    tx::{Transaction, TransactionId},
+};
 use kaspa_core::trace;
 use rand::{Rng, distributions::Uniform, prelude::Distribution};
 use search_tree::SearchTree;
 use selectors::{SequenceSelector, SequenceSelectorInput, TakeAllSelector};
-use std::{collections::HashSet, iter::FusedIterator, sync::Arc};
+use std::{
+    collections::{BTreeSet, BinaryHeap, HashMap, HashSet},
+    iter::FusedIterator,
+    sync::Arc,
+};
 
 pub(crate) mod feerate_key;
 pub(crate) mod search_tree;
@@ -38,6 +46,9 @@ pub struct Frontier {
     /// Frontier transactions sorted by feerate order and searchable for weight sampling
     search_tree: SearchTree,
 
+    /// Frontier transactions additionally grouped by lane for post-LPB capped selection
+    by_lane: HashMap<SubnetworkId, BTreeSet<FeerateTransactionKey>>,
+
     /// Total masses: Σ_{tx in frontier} tx.mass
     total_mass: u64,
 
@@ -47,10 +58,17 @@ pub struct Frontier {
     target_time_per_block_seconds: f64,
 }
 
+#[derive(Default)]
+struct Lanes {
+    occupied: HashSet<SubnetworkId>,
+    frozen: bool,
+}
+
 impl Frontier {
     pub fn new(target_time_per_block_seconds: f64) -> Self {
         Self {
             search_tree: Default::default(),
+            by_lane: Default::default(),
             total_mass: Default::default(),
             average_transaction_mass: INITIAL_AVG_MASS,
             target_time_per_block_seconds,
@@ -77,7 +95,9 @@ impl Frontier {
 
     pub fn insert(&mut self, key: FeerateTransactionKey) -> bool {
         let mass = key.mass;
-        if self.search_tree.insert(key) {
+        let lane = key.lane();
+        if self.search_tree.insert(key.clone()) {
+            self.by_lane.entry(lane).or_default().insert(key);
             self.total_mass += mass;
             // A decaying average formula. Denote ɛ = 1 - AVG_MASS_DECAY_FACTOR. A transaction inserted N slots ago has
             // ɛ * (1 - ɛ)^N weight within the updated average. This gives some weight to the full mempool history while
@@ -93,6 +113,15 @@ impl Frontier {
     pub fn remove(&mut self, key: &FeerateTransactionKey) -> bool {
         let mass = key.mass;
         if self.search_tree.remove(key) {
+            let lane = key.lane();
+            let mut remove_lane = false;
+            if let Some(entries) = self.by_lane.get_mut(&lane) {
+                entries.remove(key);
+                remove_lane = entries.is_empty();
+            }
+            if remove_lane {
+                self.by_lane.remove(&lane);
+            }
             self.total_mass -= mass;
             true
         } else {
@@ -146,6 +175,7 @@ impl Frontier {
         let mut sequence = SequenceSelectorInput::default();
         let mut total_selected_mass: u64 = 0;
         let mut collisions = 0;
+        let mut lanes = Lanes::default();
 
         // The sampling process is converging so the cache will eventually hold all entries, which guarantees loop exit
         'outer: while cache.len() < self.search_tree.len() && total_selected_mass <= desired_mass {
@@ -174,12 +204,76 @@ impl Frontier {
                 }
                 item
             };
+            if lanes.occupied.len() < policy.lanes_per_block_limit {
+                lanes.occupied.insert(item.lane());
+            } else if !lanes.occupied.contains(&item.lane()) {
+                // The weighted sampler wants to spill outside the first LPB discovered lanes.
+                // Freeze L here and complete the remaining selection within those lanes only.
+                lanes.frozen = true;
+                break;
+            }
             sequence.push(item.tx.clone(), item.mass);
             total_selected_mass += item.mass; // Max standard mass + Mempool capacity bound imply this will not overflow
+        }
+
+        if lanes.frozen {
+            self.finish_intra_lane_selection(&mut sequence, &cache, &lanes, desired_mass, &mut total_selected_mass);
         }
         trace!("[mempool frontier sample inplace] collisions: {collisions}, cache: {}", cache.len());
         *_collisions += collisions;
         sequence
+    }
+
+    /// Completes a sample by selecting transactions only from lanes that already occupy LPB slots.
+    ///
+    /// The initial sampling phase remains fully weighted until it first attempts to spill outside
+    /// the first LPB lanes. From that point on, we deterministically fill from the frozen lane set,
+    /// using a heap of per-lane heads so each selected transaction costs `O(log LPB)`.
+    fn finish_intra_lane_selection(
+        &self,
+        sequence: &mut SequenceSelectorInput,
+        cache: &HashSet<TransactionId>,
+        lanes: &Lanes,
+        desired_mass: u64,
+        total_selected_mass: &mut u64,
+    ) {
+        let mut lane_iters = lanes
+            .occupied
+            .iter()
+            .filter_map(|lane| {
+                self.by_lane
+                    .get(lane)
+                    .map(|entries| entries.iter().rev().filter(|item| !cache.contains(&item.tx.id())))
+            })
+            .collect::<Vec<_>>();
+        let mut heads = BinaryHeap::new();
+
+        // Seed the heap with the best uncached transaction from each occupied lane.
+        for (idx, iter) in lane_iters.iter_mut().enumerate() {
+            if let Some(item) = iter.next() {
+                heads.push((item.clone(), idx));
+            }
+        }
+
+        // Standard k-way merge: pop the best lane head, then replenish only that lane.
+        while *total_selected_mass <= desired_mass {
+            let Some((item, best_idx)) = heads.pop() else {
+                break;
+            };
+
+            if *total_selected_mass > desired_mass {
+                break;
+            }
+            
+            sequence.push(item.tx.clone(), item.mass);
+            *total_selected_mass += item.mass;
+
+            // Advance the lane we just consumed. The iterator already skips pre-freeze samples.
+            let iter = &mut lane_iters[best_idx];
+            if let Some(next) = iter.next() {
+                heads.push((next.clone(), best_idx));
+            }
+        }
     }
 
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier.
@@ -282,8 +376,22 @@ mod tests {
     use super::*;
     use feerate_key::tests::build_feerate_key;
     use itertools::Itertools;
-    use rand::thread_rng;
+    use kaspa_consensus_core::{
+        subnets::SubnetworkId,
+        tx::{Transaction, TransactionInput, TransactionOutpoint},
+    };
+    use kaspa_hashes::{HasherBase, TransactionID};
+    use rand::{SeedableRng, rngs::StdRng, thread_rng};
     use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn build_feerate_key_with_lane(fee: u64, mass: u64, id: u64, lane: SubnetworkId) -> FeerateTransactionKey {
+        let mut hasher = TransactionID::new();
+        let prev = hasher.update(id.to_le_bytes()).clone().finalize();
+        let input = TransactionInput::new(TransactionOutpoint::new(prev, 0), vec![], 0, 0);
+        let tx = Arc::new(Transaction::new(0, vec![input], vec![], 0, lane, 0, vec![]));
+        FeerateTransactionKey::new(fee, mass, tx)
+    }
 
     #[test]
     pub fn test_highly_irregular_sampling() {
@@ -385,6 +493,30 @@ mod tests {
             }
         }
         assert_eq!(frontier.total_mass(), frontier.search_tree.ascending_iter().map(|k| k.mass).sum::<u64>());
+    }
+
+    #[test]
+    fn test_sample_inplace_respects_lane_limit_after_freeze() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let lanes = [
+            SubnetworkId::from_namespace([1, 1, 0, 0]),
+            SubnetworkId::from_namespace([2, 1, 0, 0]),
+            SubnetworkId::from_namespace([3, 1, 0, 0]),
+        ];
+
+        let mut frontier = Frontier::new(1.0);
+        for i in 0..90u64 {
+            let lane = lanes[(i as usize) % lanes.len()];
+            let fee = 1_000_000 - i;
+            frontier.insert(build_feerate_key_with_lane(fee, 100, i, lane)).then_some(()).unwrap();
+        }
+
+        let mut policy = Policy::new(1_000);
+        policy.lanes_per_block_limit = 2;
+        let sample = frontier.sample_inplace(&mut rng, &policy, &mut 0);
+        let selected_lanes = sample.iter().map(|tx| tx.tx.subnetwork_id).collect::<HashSet<_>>();
+
+        assert_eq!(selected_lanes.len(), policy.lanes_per_block_limit);
     }
 
     /// Epsilon used for various test comparisons

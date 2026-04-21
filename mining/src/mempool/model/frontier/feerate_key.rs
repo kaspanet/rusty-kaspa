@@ -1,5 +1,6 @@
 use crate::{block_template::selector::ALPHA, mempool::model::tx::MempoolTransaction};
 use kaspa_consensus_core::mass::{ContextualMasses, Mass, MassCofactors};
+use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::Transaction;
 use std::sync::Arc;
 
@@ -33,6 +34,10 @@ impl FeerateTransactionKey {
 
     pub fn weight(&self) -> f64 {
         self.weight
+    }
+
+    pub fn lane(&self) -> SubnetworkId {
+        self.tx.subnetwork_id
     }
 }
 
