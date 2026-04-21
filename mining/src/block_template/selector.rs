@@ -1,6 +1,6 @@
 use kaspa_core::{time::Stopwatch, trace};
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 use crate::model::candidate_tx::CandidateTransaction;
 
@@ -50,6 +50,7 @@ pub struct RebalancingWeightedTransactionSelector {
     total_mass: u64,
     total_fees: u64,
     gas_usage_map: HashMap<SubnetworkId, u64>,
+    occupied_lanes: HashMap<SubnetworkId, usize>,
 }
 
 impl RebalancingWeightedTransactionSelector {
@@ -72,6 +73,7 @@ impl RebalancingWeightedTransactionSelector {
             total_mass: 0,
             total_fees: 0,
             gas_usage_map: Default::default(),
+            occupied_lanes: Default::default(),
         };
 
         // Create the selectable transactions
@@ -142,6 +144,16 @@ impl RebalancingWeightedTransactionSelector {
                 break;
             }
 
+            let num_occupied_lanes = self.occupied_lanes.len();
+            let lane = selected_tx.tx.subnetwork_id;
+            let lane_entry = self.occupied_lanes.entry(lane);
+            if matches!(lane_entry, Entry::Vacant(_)) && num_occupied_lanes >= self.policy.lanes_per_block_limit {
+                selected_candidate.is_marked_for_deletion = true;
+                self.used_count += 1;
+                self.used_p += self.selectable_txs[selected_candidate.index].p;
+                continue;
+            }
+
             // Enforce maximum gas per subnetwork per block.
             // Also check for overflow.
             if !selected_tx.tx.subnetwork_id.is_builtin_or_native() {
@@ -174,6 +186,8 @@ impl RebalancingWeightedTransactionSelector {
                 // Here we know that next_gas_usage is some (since no overflow occurred) so we can safely unwrap.
                 *gas_usage = next_gas_usage.unwrap();
             }
+
+            *lane_entry.or_default() += 1;
 
             // Add the transaction to the result, increment counters, and
             // save the masses, fees, and signature operation counts to the
@@ -242,6 +256,11 @@ impl TemplateTransactionSelector for RebalancingWeightedTransactionSelector {
         if !tx.tx.subnetwork_id.is_builtin_or_native() {
             *self.gas_usage_map.get_mut(&tx.tx.subnetwork_id).expect("previously selected txs have an entry") -= tx.tx.gas;
         }
+        let lane_count = self.occupied_lanes.get_mut(&tx.tx.subnetwork_id).expect("previously selected txs occupy a lane");
+        *lane_count -= 1;
+        if *lane_count == 0 {
+            self.occupied_lanes.remove(&tx.tx.subnetwork_id);
+        }
         self.overall_rejections += 1;
     }
 
@@ -263,7 +282,7 @@ mod tests {
     use kaspa_consensus_core::{
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         mass::transaction_estimated_serialized_size,
-        subnets::SUBNETWORK_ID_NATIVE,
+        subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
         tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use kaspa_txscript::{pay_to_script_hash_signature_script, test_helpers::op_true_script};
@@ -272,7 +291,7 @@ mod tests {
     use crate::{
         mempool::{
             config::DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-            model::frontier::selectors::{SequenceSelector, SequenceSelectorInput, SequenceSelectorTransaction},
+            model::frontier::selectors::{SequenceSelector, SequenceSelectorInput, SequenceSelectorTransaction, TakeAllSelector},
         },
         model::candidate_tx::CandidateTransaction,
     };
@@ -324,16 +343,62 @@ mod tests {
     }
 
     fn create_transaction(value: u64) -> CandidateTransaction {
+        create_transaction_with_lane(value, SUBNETWORK_ID_NATIVE)
+    }
+
+    fn create_transaction_with_lane(value: u64, lane: SubnetworkId) -> CandidateTransaction {
         let previous_outpoint = TransactionOutpoint::new(TransactionId::default(), 0);
         let (script_public_key, redeem_script) = op_true_script();
         let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the redeem script is canonical");
 
         let input = TransactionInput::new(previous_outpoint, signature_script, MAX_TX_IN_SEQUENCE_NUM, 1);
         let output = TransactionOutput::new(value - DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, script_public_key);
-        let tx = Arc::new(Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]));
+        let tx = Arc::new(Transaction::new(TX_VERSION, vec![input], vec![output], 0, lane, 0, vec![]));
         let calculated_mass = transaction_estimated_serialized_size(&tx);
         let calculated_fee = DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE;
 
         CandidateTransaction { tx, calculated_fee, calculated_mass }
+    }
+
+    #[test]
+    fn test_take_all_selector_respects_lane_limit() {
+        let lanes = [
+            SubnetworkId::from_namespace([1, 1, 0, 0]),
+            SubnetworkId::from_namespace([2, 1, 0, 0]),
+            SubnetworkId::from_namespace([3, 1, 0, 0]),
+        ];
+        let txs = lanes
+            .iter()
+            .enumerate()
+            .map(|(i, lane)| create_transaction_with_lane(SOMPI_PER_KASPA * (i + 1) as u64, *lane).tx)
+            .collect();
+
+        let mut policy = Policy::new(100_000);
+        policy.lanes_per_block_limit = 2;
+        let mut selector = TakeAllSelector::new(txs, policy.clone());
+        let selected = selector.select_transactions();
+        let selected_lanes = selected.iter().map(|tx| tx.subnetwork_id).collect::<HashSet<_>>();
+
+        assert_eq!(selected_lanes.len(), policy.lanes_per_block_limit);
+    }
+
+    #[test]
+    fn test_rebalancing_selector_respects_lane_limit() {
+        let lanes = [
+            SubnetworkId::from_namespace([1, 1, 0, 0]),
+            SubnetworkId::from_namespace([2, 1, 0, 0]),
+            SubnetworkId::from_namespace([3, 1, 0, 0]),
+        ];
+        let transactions = (0..90)
+            .map(|i| create_transaction_with_lane(SOMPI_PER_KASPA * (i + 1) as u64, lanes[i as usize % lanes.len()]))
+            .collect_vec();
+
+        let mut policy = Policy::new(100_000_000);
+        policy.lanes_per_block_limit = 2;
+        let mut selector = RebalancingWeightedTransactionSelector::new(policy.clone(), transactions);
+        let selected = selector.select_transactions();
+        let selected_lanes = selected.iter().map(|tx| tx.subnetwork_id).collect::<HashSet<_>>();
+
+        assert!(selected_lanes.len() <= policy.lanes_per_block_limit);
     }
 }

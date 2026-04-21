@@ -11,7 +11,7 @@ pub struct Policy {
 
 impl Policy {
     pub fn new(max_block_mass: u64) -> Self {
-        // TODO (before merge): propagate LPB 
+        // TODO (before merge): propagate LPB
         Self { max_block_mass, lanes_per_block_limit: 50 }
     }
 }

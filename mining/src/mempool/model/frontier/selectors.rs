@@ -1,10 +1,11 @@
 use crate::Policy;
 use kaspa_consensus_core::{
     block::TemplateTransactionSelector,
+    subnets::SubnetworkId,
     tx::{Transaction, TransactionId},
 };
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -55,7 +56,10 @@ struct SequenceSelectorSelection {
 
 /// A selector which selects transactions in the order they are provided. The selector assumes
 /// that the transactions were already selected via weighted sampling and simply tries them one
-/// after the other until the block mass limit is reached.  
+/// after the other until the block mass limit is reached.
+///
+/// The input sequence is expected to already satisfy LPB policy and include transactions from at
+/// most LPB lanes; `SequenceSelector` only enforces mass and rejection/retry behavior.
 pub struct SequenceSelector {
     input_sequence: SequenceSelectorInput,
     selected_vec: Vec<SequenceSelectorSelection>,
@@ -131,23 +135,37 @@ impl TemplateTransactionSelector for SequenceSelector {
     }
 }
 
+fn lane_allowed(occupied: &mut HashSet<SubnetworkId>, policy: &Policy, lane: SubnetworkId) -> bool {
+    if occupied.len() < policy.lanes_per_block_limit {
+        occupied.insert(lane);
+        true
+    } else {
+        occupied.contains(&lane)
+    }
+}
+
 /// A selector that selects all the transactions it holds and is always considered successful.
 /// If all mempool transactions have combined mass which is <= block mass limit, this selector
 /// should be called and provided with all the transactions.
 pub struct TakeAllSelector {
     txs: Vec<Arc<Transaction>>,
+    policy: Policy,
 }
 
 impl TakeAllSelector {
-    pub fn new(txs: Vec<Arc<Transaction>>) -> Self {
-        Self { txs }
+    pub fn new(txs: Vec<Arc<Transaction>>, policy: Policy) -> Self {
+        Self { txs, policy }
     }
 }
 
 impl TemplateTransactionSelector for TakeAllSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
         // Drain on the first call so that subsequent calls return nothing
-        self.txs.drain(..).map(|tx| tx.as_ref().clone()).collect()
+        let mut occupied = HashSet::new();
+        self.txs
+            .drain(..)
+            .filter_map(|tx| lane_allowed(&mut occupied, &self.policy, tx.subnetwork_id).then(|| tx.as_ref().clone()))
+            .collect()
     }
 
     fn reject_selection(&mut self, _tx_id: TransactionId) {

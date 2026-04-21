@@ -229,6 +229,9 @@ impl Frontier {
     /// The initial sampling phase remains fully weighted until it first attempts to spill outside
     /// the first LPB lanes. From that point on, we deterministically fill from the frozen lane set,
     /// using a heap of per-lane heads so each selected transaction costs `O(log LPB)`.
+    ///
+    /// This is a temporary, deliberately simple policy. It is not globally optimal for miner fees,
+    /// but keeps template construction fast while bounding lane fanout.
     fn finish_intra_lane_selection(
         &self,
         sequence: &mut SequenceSelectorInput,
@@ -241,9 +244,7 @@ impl Frontier {
             .occupied
             .iter()
             .filter_map(|lane| {
-                self.by_lane
-                    .get(lane)
-                    .map(|entries| entries.iter().rev().filter(|item| !cache.contains(&item.tx.id())))
+                self.by_lane.get(lane).map(|entries| entries.iter().rev().filter(|item| !cache.contains(&item.tx.id())))
             })
             .collect::<Vec<_>>();
         let mut heads = BinaryHeap::new();
@@ -264,7 +265,7 @@ impl Frontier {
             if *total_selected_mass > desired_mass {
                 break;
             }
-            
+
             sequence.push(item.tx.clone(), item.mass);
             *total_selected_mass += item.mass;
 
@@ -292,7 +293,7 @@ impl Frontier {
     /// for more details.  
     pub fn build_selector(&self, policy: &Policy) -> Box<dyn TemplateTransactionSelector> {
         if self.total_mass <= policy.max_block_mass {
-            Box::new(TakeAllSelector::new(self.search_tree.ascending_iter().map(|k| k.tx.clone()).collect()))
+            Box::new(TakeAllSelector::new(self.search_tree.ascending_iter().map(|k| k.tx.clone()).collect(), policy.clone()))
         } else if self.total_mass > policy.max_block_mass * COLLISION_FACTOR {
             let mut rng = rand::thread_rng();
             Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, policy, &mut 0), policy.clone()))
@@ -313,7 +314,7 @@ impl Frontier {
 
     /// Exposed for benchmarking purposes
     pub fn build_selector_take_all(&self) -> Box<dyn TemplateTransactionSelector> {
-        Box::new(TakeAllSelector::new(self.search_tree.ascending_iter().map(|k| k.tx.clone()).collect()))
+        Box::new(TakeAllSelector::new(self.search_tree.ascending_iter().map(|k| k.tx.clone()).collect(), Policy::new(500_000)))
     }
 
     /// Exposed for benchmarking purposes

@@ -2,7 +2,7 @@
 mod tests {
     use crate::{
         MiningCounters,
-        block_template::builder::BlockTemplateBuilder,
+        block_template::{builder::BlockTemplateBuilder, policy::Policy},
         errors::{MiningManagerError, MiningManagerResult},
         manager::MiningManager,
         mempool::{
@@ -1302,7 +1302,7 @@ mod tests {
         let result = builder.build_block_template(
             consensus,
             &miner_data_2,
-            Box::new(TakeAllSelector::new(transactions)),
+            Box::new(TakeAllSelector::new(transactions, Policy::new(u64::MAX))),
             TemplateBuildMode::Standard,
         );
         assert!(result.is_ok(), "build block template failed for miner data 2");
