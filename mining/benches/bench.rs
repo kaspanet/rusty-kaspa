@@ -212,6 +212,15 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
             })
         });
 
+        group.bench_function(format!("mutating tree selector ({})", len), |b| {
+            b.iter(|| {
+                black_box({
+                    let mut selector = frontier.build_mutating_tree_selector();
+                    selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
+                })
+            })
+        });
+
         let mut collisions = 0;
         let mut n = 0;
 

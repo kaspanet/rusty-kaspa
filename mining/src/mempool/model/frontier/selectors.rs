@@ -1,9 +1,11 @@
+use super::search_tree::SearchTree;
 use crate::Policy;
 use kaspa_consensus_core::{
     block::TemplateTransactionSelector,
     subnets::SubnetworkId,
     tx::{Transaction, TransactionId},
 };
+use rand::Rng;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
@@ -176,5 +178,118 @@ impl TemplateTransactionSelector for TakeAllSelector {
         // Considered successful because we provided all mempool transactions to this
         // selector, so there's no point in retries
         true
+    }
+}
+
+struct TreeSelectorSelection {
+    tx_id: TransactionId,
+    mass: u64,
+    lane: SubnetworkId,
+}
+
+/// A weighted selector over a local mutable search tree.
+///
+/// This is intended as a simpler replacement candidate for the rebalancing selector: instead of
+/// lazily marking sampled candidates and periodically rebuilding the candidate list, it removes
+/// candidates from a local tree as they are selected or permanently skipped.
+pub struct MutatingTreeSelector {
+    tree: SearchTree,
+    selected_vec: Vec<TreeSelectorSelection>,
+    selected_map: Option<HashMap<TransactionId, TreeSelectorSelection>>,
+    total_selected_mass: u64,
+    occupied_lanes: HashMap<SubnetworkId, usize>,
+    overall_candidates: usize,
+    overall_rejections: usize,
+    policy: Policy,
+}
+
+impl MutatingTreeSelector {
+    pub fn new(policy: Policy, tree: SearchTree) -> Self {
+        let overall_candidates = tree.len();
+        Self {
+            tree,
+            selected_vec: Vec::with_capacity(overall_candidates),
+            selected_map: None,
+            total_selected_mass: 0,
+            occupied_lanes: Default::default(),
+            overall_candidates,
+            overall_rejections: 0,
+            policy,
+        }
+    }
+
+    fn reset_selection(&mut self) {
+        self.selected_vec.clear();
+        self.selected_map = None;
+    }
+
+    fn lane_allowed(&self, lane: SubnetworkId) -> bool {
+        self.occupied_lanes.contains_key(&lane) || self.occupied_lanes.len() < self.policy.lanes_per_block_limit
+    }
+
+    fn occupy_lane(&mut self, lane: SubnetworkId) {
+        *self.occupied_lanes.entry(lane).or_default() += 1;
+    }
+
+    fn release_lane(&mut self, lane: SubnetworkId) {
+        let count = self.occupied_lanes.get_mut(&lane).expect("previously selected txs occupy a lane");
+        *count -= 1;
+        if *count == 0 {
+            self.occupied_lanes.remove(&lane);
+        }
+    }
+}
+
+impl TemplateTransactionSelector for MutatingTreeSelector {
+    fn select_transactions(&mut self) -> Vec<Transaction> {
+        self.reset_selection();
+        let mut rng = rand::thread_rng();
+        let mut transactions = Vec::new();
+
+        while !self.tree.is_empty() {
+            let query = rng.r#gen::<f64>() * self.tree.total_weight();
+            let candidate = self.tree.search(query).clone();
+            let tx = candidate.tx.as_ref();
+            let lane = candidate.lane();
+
+            let Some(next_total_mass) =
+                self.total_selected_mass.checked_add(candidate.mass).filter(|&m| m <= self.policy.max_block_mass)
+            else {
+                break;
+            };
+
+            if !self.lane_allowed(lane) {
+                self.tree.remove(&candidate);
+                continue;
+            }
+
+            self.tree.remove(&candidate);
+            self.total_selected_mass = next_total_mass;
+            self.occupy_lane(lane);
+            self.selected_vec.push(TreeSelectorSelection { tx_id: tx.id(), mass: candidate.mass, lane });
+            transactions.push(tx.clone());
+        }
+
+        transactions
+    }
+
+    fn reject_selection(&mut self, tx_id: TransactionId) {
+        let selected_map = self
+            .selected_map
+            .get_or_insert_with(|| self.selected_vec.drain(..).map(|selection| (selection.tx_id, selection)).collect());
+        let selection = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
+
+        self.total_selected_mass -= selection.mass;
+        self.release_lane(selection.lane);
+        self.overall_rejections += 1;
+    }
+
+    fn is_successful(&self) -> bool {
+        const SUFFICIENT_MASS_THRESHOLD: f64 = 0.8;
+        const LOW_REJECTION_FRACTION: f64 = 0.2;
+
+        self.overall_rejections == 0
+            || (self.total_selected_mass as f64) > self.policy.max_block_mass as f64 * SUFFICIENT_MASS_THRESHOLD
+            || (self.overall_rejections as f64) < self.overall_candidates as f64 * LOW_REJECTION_FRACTION
     }
 }

@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
 use kaspa_core::trace;
 use rand::{Rng, distributions::Uniform, prelude::Distribution};
 use search_tree::SearchTree;
-use selectors::{SequenceSelector, SequenceSelectorInput, TakeAllSelector};
+use selectors::{MutatingTreeSelector, SequenceSelector, SequenceSelectorInput, TakeAllSelector};
 use std::{
     collections::{BTreeSet, BinaryHeap, HashMap, HashSet},
     iter::FusedIterator,
@@ -26,7 +26,7 @@ pub(crate) mod selectors;
 
 /// If the frontier contains less than 4x the block mass limit, we consider
 /// inplace sampling to be less efficient (due to collisions) and thus use
-/// the rebalancing selector
+/// the mutating-tree selector
 const COLLISION_FACTOR: u64 = 4;
 
 /// Multiplication factor for in-place sampling. We sample 20% more than the
@@ -285,8 +285,8 @@ impl Frontier {
     ///     2. The frontier has at least ~4x the capacity of a block: expected collision rate is low, perform
     ///        in-place k*log(n) sampling and return a SequenceSelector
     ///     3. The frontier has 1-4x capacity of a block. In this case we expect a high collision rate while
-    ///        the number of overall transactions is still low, so we take all of the transactions and use the
-    ///        rebalancing weighted selector (performing the actual sampling out of the mempool lock)
+    ///        the number of overall transactions is still low, so we clone the weighted tree and remove selected
+    ///        or skipped candidates from the clone (performing the actual sampling out of the mempool lock)
     ///
     /// The above thresholds were selected based on benchmarks. Overall, this dynamic selection provides
     /// full transaction selection in less than 150 µs even if the frontier has 1M entries (!!). See mining/benches
@@ -298,10 +298,7 @@ impl Frontier {
             let mut rng = rand::thread_rng();
             Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, policy, &mut 0), policy.clone()))
         } else {
-            Box::new(RebalancingWeightedTransactionSelector::new(
-                policy.clone(),
-                self.search_tree.ascending_iter().cloned().map(CandidateTransaction::from_key).collect(),
-            ))
+            Box::new(MutatingTreeSelector::new(policy.clone(), self.search_tree.clone()))
         }
     }
 
@@ -323,6 +320,11 @@ impl Frontier {
             Policy::new(500_000),
             self.search_tree.ascending_iter().cloned().map(CandidateTransaction::from_key).collect(),
         ))
+    }
+
+    /// Exposed for benchmarking purposes
+    pub fn build_mutating_tree_selector(&self) -> Box<dyn TemplateTransactionSelector> {
+        Box::new(MutatingTreeSelector::new(Policy::new(500_000), self.search_tree.clone()))
     }
 
     /// Builds a feerate estimator based on internal state of the ready transactions frontier
