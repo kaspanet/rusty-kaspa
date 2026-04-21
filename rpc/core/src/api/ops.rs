@@ -140,6 +140,8 @@ pub enum RpcApiOps {
     GetUtxoReturnAddress = 150,
     /// Get Virtual Chain from Block V2
     GetVirtualChainFromBlockV2 = 151,
+    /// Get Seq-Commit Lane Proof
+    GetSeqCommitLaneProof = 152,
 }
 
 impl RpcApiOps {

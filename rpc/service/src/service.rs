@@ -423,6 +423,29 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    async fn get_seq_commit_lane_proof_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetSeqCommitLaneProofRequest,
+    ) -> RpcResult<GetSeqCommitLaneProofResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+        let proof = session.async_get_seq_commit_lane_proof(request.block_hash, request.lane_key).await.map_err(|e| {
+            use kaspa_consensus_core::errors::consensus::ConsensusError;
+            match e {
+                ConsensusError::BlockNotInSelectedChain(h) => RpcError::BlockNotInSelectedChain(h),
+                ConsensusError::BlockTooDeep(h) => RpcError::BlockTooDeep(h),
+                other => RpcError::from(other),
+            }
+        })?;
+        Ok(GetSeqCommitLaneProofResponse {
+            smt_proof: proof.smt_proof.to_bytes(),
+            lane_tip: proof.lane_tip,
+            lane_blue_score: proof.lane_blue_score,
+            payload_and_ctx_digest: proof.payload_and_ctx_digest,
+            parent_seq_commit: proof.parent_seq_commit,
+        })
+    }
+
     async fn get_blocks_call(
         &self,
         _connection: Option<&DynRpcConnection>,

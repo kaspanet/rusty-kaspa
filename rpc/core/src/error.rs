@@ -149,6 +149,12 @@ pub enum RpcError {
 
     #[error(transparent)]
     CompressedParentsError(#[from] CompressedParentsError),
+
+    #[error("Block {0} is not in the selected parent chain.")]
+    BlockNotInSelectedChain(RpcHash),
+
+    #[error("Block {0} is too deep (before the current pruning point).")]
+    BlockTooDeep(RpcHash),
 }
 
 impl From<String> for RpcError {

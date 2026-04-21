@@ -48,6 +48,12 @@ pub enum ConsensusError {
 
     #[error("{0}")]
     GeneralOwned(String),
+
+    #[error("block {0} is not in the selected parent chain")]
+    BlockNotInSelectedChain(Hash),
+
+    #[error("block {0} is too deep (before the current pruning point)")]
+    BlockTooDeep(Hash),
 }
 
 pub type ConsensusResult<T> = std::result::Result<T, ConsensusError>;

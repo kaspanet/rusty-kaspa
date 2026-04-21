@@ -1110,3 +1110,31 @@ message GetCurrentBlockColorResponseMessage {
 
   RPCError error = 1000;
 }
+
+// GetSeqCommitLaneProofRequestMessage requests the witness needed to prove a
+// single KIP-21 lane against the seq_commit carried in blockHash's header.
+//
+// blockHash must be a chain (selected-parent-chain) block at or after the
+// current pruning point.
+message GetSeqCommitLaneProofRequestMessage {
+  // Block hash whose header carries the seq_commit to verify against.
+  string blockHash = 1;
+  // The 32-byte lane key as hex.
+  string laneKey = 2;
+}
+
+message GetSeqCommitLaneProofResponseMessage {
+  // OwnedSmtProof wire format (bitmap || terminal || siblings).
+  bytes smtProof = 1;
+  // Present iff the lane has an entry in the active-lanes SMT at this POV.
+  // An absent lane returns a non-inclusion proof and empty laneTip/laneBlueScore.
+  string laneTip = 2;
+  bool hasLaneTip = 3;
+  uint64 laneBlueScore = 4;
+  // H_seq(mergeset_context_hash, miner_payload_root) for the block.
+  string payloadAndCtxDigest = 5;
+  // seq_commit of the selected parent (= parent header's accepted_id_merkle_root).
+  string parentSeqCommit = 6;
+
+  RPCError error = 1000;
+}
