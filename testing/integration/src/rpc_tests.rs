@@ -4,7 +4,12 @@ use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
-use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
+use kaspa_consensus_core::{
+    constants::MAX_SOMPI,
+    header::Header,
+    subnets::{SUBNETWORK_ID_COINBASE, SubnetworkId},
+    tx::Transaction,
+};
 use kaspa_core::{assert_match, info};
 use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
@@ -901,6 +906,38 @@ async fn seq_commit_lane_proof_test() {
         ),
         "unexpected error: {err:?}"
     );
+
+    // Mine a second block so the first block's coinbase becomes an accepted
+    // tx at the second block — that populates the coinbase-subnetwork lane.
+    let GetBlockTemplateResponse { block: block2, .. } = grpc
+        .get_block_template_call(
+            None,
+            GetBlockTemplateRequest { pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]), extra_data: Vec::new() },
+        )
+        .await
+        .unwrap();
+    let header2: Header = (&block2.header).try_into().unwrap();
+    let block_hash2 = header2.hash;
+    let submit2 = grpc.submit_block(block2, false).await.unwrap();
+    assert_eq!(submit2.report, kaspa_rpc_core::SubmitBlockReport::Success);
+    for _ in 0..50 {
+        let sink = grpc.get_sink_call(None, GetSinkRequest {}).await.unwrap().sink;
+        if sink == block_hash2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(grpc.get_sink_call(None, GetSinkRequest {}).await.unwrap().sink, block_hash2);
+
+    // Inclusion proof for the coinbase lane at B2.
+    let coinbase_lane_key = kaspa_seq_commit::hashing::lane_key(SUBNETWORK_ID_COINBASE.as_bytes());
+    let coinbase_proof = grpc
+        .get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest { block_hash: block_hash2, lane_key: coinbase_lane_key })
+        .await
+        .unwrap();
+    assert!(coinbase_proof.lane_tip.is_some(), "coinbase lane must be populated at B2");
+    assert!(coinbase_proof.lane_blue_score.is_some());
+    verify_lane_proof_locally(&header2, coinbase_lane_key, &coinbase_proof);
 
     wrpc.disconnect().await.unwrap();
     drop(wrpc);
