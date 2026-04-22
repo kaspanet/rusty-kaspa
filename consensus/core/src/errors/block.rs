@@ -3,6 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use crate::{
     BlueWorkType, constants,
     errors::{coinbase::CoinbaseError, tx::TxRuleError},
+    subnets::SubnetworkId,
     tx::{TransactionId, TransactionOutpoint},
 };
 use itertools::Itertools;
@@ -107,6 +108,12 @@ pub enum RuleError {
 
     #[error("block persistent storage mass {0} exceeds limit of {1}")]
     ExceedsStorageMassLimit(u64, u64),
+
+    #[error("block has {0} lanes, exceeding limit of {1}")]
+    ExceedsLanesPerBlockLimit(usize, usize),
+
+    #[error("block lane {0} gas {1} exceeds limit of {2}")]
+    ExceedsGasPerLaneLimit(SubnetworkId, u64, u64),
 
     #[error("outpoint {0} is spent more than once on the same block")]
     DoubleSpendInSameBlock(TransactionOutpoint),

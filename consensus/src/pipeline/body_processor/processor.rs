@@ -43,6 +43,12 @@ use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{Arc, atomic::Ordering};
 
+#[derive(Copy, Clone)]
+pub(super) struct BlockLaneLimits {
+    pub lanes_per_block: usize,
+    pub gas_per_lane: u64,
+}
+
 pub struct BlockBodyProcessor {
     // Channels
     receiver: Receiver<BlockProcessingMessage>,
@@ -56,6 +62,7 @@ pub struct BlockBodyProcessor {
 
     // Config
     pub(super) block_mass_limits: BlockMassLimits,
+    pub(super) block_lane_limits: BlockLaneLimits,
     pub(super) genesis: GenesisBlock,
     pub(super) _ghostdag_k: KType,
 
@@ -108,6 +115,7 @@ impl BlockBodyProcessor {
             db,
 
             block_mass_limits: params.block_mass_limits,
+            block_lane_limits: BlockLaneLimits { lanes_per_block: 50, gas_per_lane: 500_000 },
             genesis: params.genesis.clone(),
             _ghostdag_k: params.ghostdag_k(),
 

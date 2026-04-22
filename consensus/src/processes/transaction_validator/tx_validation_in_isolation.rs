@@ -116,12 +116,20 @@ fn check_duplicate_transaction_inputs(tx: &Transaction) -> TxResult<()> {
     Ok(())
 }
 
+const ZEROES_19: &[u8; 19] = &[0; 19];
+
 fn check_gas(tx: &Transaction) -> TxResult<()> {
-    // This should be revised if subnetworks are activated (along with other validations that weren't copied from kaspad)
-    if tx.gas > 0 {
-        return Err(TxRuleError::TxHasGas);
+    if tx.gas == 0 {
+        return Ok(());
     }
-    Ok(())
+
+    // Only post-Toccata non-system lanes may carry gas; reserved system lanes
+    // have a 19-byte zero suffix and must remain gas-free.
+    if tx.version >= TX_VERSION_TOCCATA && !matches!(tx.subnetwork_id.as_bytes(), [_x, rest @ ..] if rest == ZEROES_19) {
+        return Ok(());
+    }
+
+    Err(TxRuleError::TxHasGas)
 }
 
 fn check_transaction_version(tx: &Transaction) -> TxResult<()> {
@@ -157,7 +165,6 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
-    const ZEROES_19: &[u8; 19] = &[0; 19];
     const ZEROES_16: &[u8; SUBNETWORK_ZERO_TAIL_LEN] = &[0; SUBNETWORK_ZERO_TAIL_LEN];
 
     // KIP-21 subnetwork ID shape, checked in priority order:
@@ -448,5 +455,19 @@ mod tests {
             super::check_transaction_subnetwork(&tx_with(tail_last_set, TX_VERSION_TOCCATA)),
             Err(TxRuleError::SubnetworksDisabled(_))
         );
+
+        let user_lane = sid([0, 0, 0, 1], [0; SUBNETWORK_ZERO_TAIL_LEN]);
+        let reserved_shape = SubnetworkId::from_byte(2);
+        for (subnetwork_id, version, expected) in [
+            (SUBNETWORK_ID_NATIVE, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
+            (SUBNETWORK_ID_COINBASE, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
+            (reserved_shape, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
+            (user_lane, TX_VERSION, Err(TxRuleError::TxHasGas)),
+            (user_lane, TX_VERSION_TOCCATA, Ok(())),
+        ] {
+            let mut tx = tx_with(subnetwork_id, version);
+            tx.gas = 1;
+            assert_eq!(super::check_gas(&tx), expected);
+        }
     }
 }
