@@ -77,8 +77,11 @@ impl RebalancingWeightedTransactionSelector {
         };
 
         // Create the selectable transactions
-        selector.selectable_txs =
-            selector.transactions.iter().map(|x| SelectableTransaction::new(selector.calc_tx_value(x), 0, ALPHA)).collect();
+        selector.selectable_txs = selector
+            .transactions
+            .iter()
+            .map(|x| SelectableTransaction::new(selector.calc_tx_value(x), selector.policy.gas_per_lane_limit, ALPHA))
+            .collect();
         // Prepare the initial candidate list
         selector.candidate_list = CandidateList::new(&selector.selectable_txs);
 
@@ -280,8 +283,9 @@ mod tests {
     use super::*;
     use itertools::Itertools;
     use kaspa_consensus_core::{
+        config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
-        mass::transaction_estimated_serialized_size,
+        mass::{BlockLaneLimits, transaction_estimated_serialized_size},
         subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
         tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
@@ -296,6 +300,9 @@ mod tests {
         model::candidate_tx::CandidateTransaction,
     };
 
+    const DEFAULT_BLOCK_LANE_LIMITS: BlockLaneLimits =
+        BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };
+
     #[test]
     fn test_reject_transaction() {
         const TX_INITIAL_COUNT: usize = 1_000;
@@ -306,7 +313,7 @@ mod tests {
         let sequence: SequenceSelectorInput =
             transactions.iter().map(|tx| SequenceSelectorTransaction::new(tx.tx.clone(), tx.calculated_mass)).collect();
 
-        let policy = Policy::new(100_000);
+        let policy = Policy::new(100_000, DEFAULT_BLOCK_LANE_LIMITS);
         let selectors: [Box<dyn TemplateTransactionSelector>; 2] = [
             Box::new(RebalancingWeightedTransactionSelector::new(policy.clone(), transactions)),
             Box::new(SequenceSelector::new(sequence, policy.clone())),
@@ -373,7 +380,7 @@ mod tests {
             .map(|(i, lane)| create_transaction_with_lane(SOMPI_PER_KASPA * (i + 1) as u64, *lane).tx)
             .collect();
 
-        let mut policy = Policy::new(100_000);
+        let mut policy = Policy::new(100_000, DEFAULT_BLOCK_LANE_LIMITS);
         policy.lanes_per_block_limit = 2;
         let mut selector = TakeAllSelector::new(txs, policy.clone());
         let selected = selector.select_transactions();
@@ -393,7 +400,7 @@ mod tests {
             .map(|i| create_transaction_with_lane(SOMPI_PER_KASPA * (i + 1) as u64, lanes[i as usize % lanes.len()]))
             .collect_vec();
 
-        let mut policy = Policy::new(100_000_000);
+        let mut policy = Policy::new(100_000_000, DEFAULT_BLOCK_LANE_LIMITS);
         policy.lanes_per_block_limit = 2;
         let mut selector = RebalancingWeightedTransactionSelector::new(policy.clone(), transactions);
         let selected = selector.select_transactions();

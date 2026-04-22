@@ -1,3 +1,5 @@
+use kaspa_consensus_core::mass::BlockLaneLimits;
+
 /// Policy houses the policy (configuration parameters) which is used to control
 /// the generation of block templates. See the documentation for
 /// NewBlockTemplate for more details on how each of these parameters are used.
@@ -12,8 +14,11 @@ pub struct Policy {
 }
 
 impl Policy {
-    pub fn new(max_block_mass: u64) -> Self {
-        // TODO (before merge): propagate LPB and GPL limits
-        Self { max_block_mass, lanes_per_block_limit: 50, gas_per_lane_limit: 500_000 }
+    pub fn new(max_block_mass: u64, block_lane_limits: BlockLaneLimits) -> Self {
+        Self {
+            max_block_mass,
+            lanes_per_block_limit: block_lane_limits.lanes_per_block,
+            gas_per_lane_limit: block_lane_limits.gas_per_lane,
+        }
     }
 }

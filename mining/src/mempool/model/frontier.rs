@@ -7,6 +7,8 @@ use crate::{
 use feerate_key::FeerateTransactionKey;
 use kaspa_consensus_core::{
     block::TemplateTransactionSelector,
+    config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
+    mass::BlockLaneLimits,
     subnets::SubnetworkId,
     tx::{Transaction, TransactionId},
 };
@@ -45,6 +47,9 @@ const INITIAL_AVG_MASS: f64 = 2036.0;
 
 /// Decay factor of average mass weighting.
 const AVG_MASS_DECAY_FACTOR: f64 = 0.99999;
+
+const DEFAULT_BLOCK_LANE_LIMITS: BlockLaneLimits =
+    BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };
 
 /// Management of the transaction pool frontier, that is, the set of transactions in
 /// the transaction pool which have no mempool ancestors and are essentially ready
@@ -359,26 +364,29 @@ impl Frontier {
     /// Exposed for benchmarking purposes
     pub fn build_selector_sample_inplace(&self, _collisions: &mut u64) -> Box<dyn TemplateTransactionSelector> {
         let mut rng = rand::thread_rng();
-        let policy = Policy::new(500_000);
+        let policy = Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS);
         Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, &policy, _collisions), policy))
     }
 
     /// Exposed for benchmarking purposes
     pub fn build_selector_take_all(&self) -> Box<dyn TemplateTransactionSelector> {
-        Box::new(TakeAllSelector::new(self.search_tree.descending_iter().map(|k| k.tx.clone()).collect(), Policy::new(500_000)))
+        Box::new(TakeAllSelector::new(
+            self.search_tree.descending_iter().map(|k| k.tx.clone()).collect(),
+            Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS),
+        ))
     }
 
     /// Exposed for benchmarking purposes
     pub fn build_rebalancing_selector(&self) -> Box<dyn TemplateTransactionSelector> {
         Box::new(RebalancingWeightedTransactionSelector::new(
-            Policy::new(500_000),
+            Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS),
             self.search_tree.ascending_iter().cloned().map(CandidateTransaction::from_key).collect(),
         ))
     }
 
     /// Exposed for benchmarking purposes
     pub fn build_mutating_tree_selector(&self) -> Box<dyn TemplateTransactionSelector> {
-        Box::new(MutatingTreeSelector::new(Policy::new(500_000), self.search_tree.clone()))
+        Box::new(MutatingTreeSelector::new(Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS), self.search_tree.clone()))
     }
 
     /// Builds a feerate estimator based on internal state of the ready transactions frontier
@@ -471,7 +479,7 @@ mod tests {
             frontier.insert(item).then_some(()).unwrap();
         }
 
-        let _sample = frontier.sample_inplace(&mut rng, &Policy::new(500_000), &mut 0);
+        let _sample = frontier.sample_inplace(&mut rng, &Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS), &mut 0);
     }
 
     #[test]
@@ -491,7 +499,7 @@ mod tests {
             frontier.insert(item).then_some(()).unwrap();
         }
 
-        let mut selector = frontier.build_selector(&Policy::new(500_000));
+        let mut selector = frontier.build_selector(&Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS));
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
         let mut selector = frontier.build_rebalancing_selector();
@@ -503,7 +511,7 @@ mod tests {
         let mut selector = frontier.build_selector_take_all();
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
-        let mut selector = frontier.build_selector(&Policy::new(500_000));
+        let mut selector = frontier.build_selector(&Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS));
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
     }
 
@@ -568,7 +576,7 @@ mod tests {
             frontier.insert(build_feerate_key_with_lane(fee, 100, i, lane)).then_some(()).unwrap();
         }
 
-        let mut policy = Policy::new(1_000);
+        let mut policy = Policy::new(1_000, DEFAULT_BLOCK_LANE_LIMITS);
         policy.lanes_per_block_limit = 2;
         let sample = frontier.sample_inplace(&mut rng, &policy, &mut 0);
         let selected_lanes = sample.iter().map(|tx| tx.tx.subnetwork_id).collect::<HashSet<_>>();

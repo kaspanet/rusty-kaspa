@@ -342,8 +342,15 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
 mod tests {
     use super::super::feerate_key::FeerateTransactionKey;
     use super::*;
-    use kaspa_consensus_core::tx::{TransactionInput, TransactionOutpoint};
+    use kaspa_consensus_core::{
+        config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
+        mass::BlockLaneLimits,
+        tx::{TransactionInput, TransactionOutpoint},
+    };
     use kaspa_hashes::{HasherBase, TransactionID};
+
+    const DEFAULT_BLOCK_LANE_LIMITS: BlockLaneLimits =
+        BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };
 
     fn lane(id: u8) -> SubnetworkId {
         SubnetworkId::from_namespace([id, 1, 0, 0])
@@ -357,7 +364,7 @@ mod tests {
     }
 
     fn policy() -> Policy {
-        let mut policy = Policy::new(100_000);
+        let mut policy = Policy::new(100_000, DEFAULT_BLOCK_LANE_LIMITS);
         policy.lanes_per_block_limit = 2;
         policy.gas_per_lane_limit = 10;
         policy

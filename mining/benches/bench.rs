@@ -1,6 +1,8 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
+    mass::BlockLaneLimits,
     subnets::SubnetworkId,
     tx::{Transaction, TransactionInput, TransactionOutpoint},
 };
@@ -13,6 +15,8 @@ use std::{
 };
 
 const DEFAULT_BENCH_ACTIVE_LANES: usize = 1000;
+const BENCH_BLOCK_LANE_LIMITS: BlockLaneLimits =
+    BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };
 
 #[derive(Default)]
 pub struct Dag<T>
@@ -124,7 +128,7 @@ pub fn bench_mempool_sampling(c: &mut Criterion) {
     group.bench_function("mempool one-shot sample", |b| {
         b.iter(|| {
             black_box({
-                let selected = frontier.sample_inplace(&mut rng, &Policy::new(500_000), &mut 0);
+                let selected = frontier.sample_inplace(&mut rng, &Policy::new(500_000, BENCH_BLOCK_LANE_LIMITS), &mut 0);
                 selected.iter().map(|k| k.mass).sum::<u64>()
             })
         })
@@ -252,7 +256,7 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
         group.bench_function(format!("dynamic selector ({})", len), |b| {
             b.iter(|| {
                 black_box({
-                    let mut selector = frontier.build_selector(&Policy::new(500_000));
+                    let mut selector = frontier.build_selector(&Policy::new(500_000, BENCH_BLOCK_LANE_LIMITS));
                     selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
                 })
             })
