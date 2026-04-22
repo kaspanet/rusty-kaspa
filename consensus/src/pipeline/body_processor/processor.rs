@@ -28,7 +28,7 @@ use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     config::{genesis::GenesisBlock, params::Params},
-    mass::{BlockMassLimits, Mass, MassCalculator},
+    mass::{BlockLaneLimits, BlockMassLimits, Mass, MassCalculator},
     tx::Transaction,
 };
 use kaspa_consensus_notify::{
@@ -42,12 +42,6 @@ use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{Arc, atomic::Ordering};
-
-#[derive(Copy, Clone)]
-pub(super) struct BlockLaneLimits {
-    pub lanes_per_block: usize,
-    pub gas_per_lane: u64,
-}
 
 pub struct BlockBodyProcessor {
     // Channels
@@ -115,7 +109,7 @@ impl BlockBodyProcessor {
             db,
 
             block_mass_limits: params.block_mass_limits,
-            block_lane_limits: BlockLaneLimits { lanes_per_block: 50, gas_per_lane: 500_000 },
+            block_lane_limits: params.block_lane_limits,
             genesis: params.genesis.clone(),
             _ghostdag_k: params.ghostdag_k(),
 
