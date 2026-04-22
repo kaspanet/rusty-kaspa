@@ -33,6 +33,13 @@ const COLLISION_FACTOR: u64 = 4;
 /// hard limit in order to allow the SequenceSelector to compensate for consensus rejections.
 const MASS_LIMIT_FACTOR: f64 = 1.2;
 
+/// Extra sampling stops once the greedy pack gap is at most this fraction of the block mass.
+const TARGET_GAP_FACTOR: f64 = 0.05;
+
+/// Bounds extra sampling caused by large transactions which increase sampled mass
+/// but do not help the later greedy SequenceSelector fill the block.
+const MAX_NULL_ATTEMPTS: usize = 8;
+
 /// Initial estimation of the average transaction mass.
 const INITIAL_AVG_MASS: f64 = 2036.0;
 
@@ -62,6 +69,63 @@ pub struct Frontier {
 struct Lanes {
     occupied: HashSet<SubnetworkId>,
     frozen: bool,
+}
+
+struct SampleMassTracker {
+    /// Raw sampled mass. This counts every sampled tx, including txs that the
+    /// downstream SequenceSelector might skip because they do not fit the
+    /// remaining block gap.
+    sampled: u64,
+
+    /// Remaining mass that the downstream SequenceSelector would see after
+    /// greedily accepting sampled txs that fit in their current order.
+    gap: u64,
+
+    /// The normal sampling target, currently 1.2x the block mass limit.
+    desired: u64,
+
+    /// Number of sampled txs that failed to shrink the greedy pack gap.
+    null_attempts: usize,
+
+    /// Acceptable remaining greedy-pack gap after the normal sampling target is reached.
+    target_gap: u64,
+}
+
+impl SampleMassTracker {
+    fn new(policy: &Policy) -> Self {
+        // Sample 20% more than the hard limit in order to allow the SequenceSelector to
+        // compensate for consensus rejections.
+        // Note that this is a soft target: sampling may pass it by one tx, and the
+        // tracker may extend it when a block-sized tx exposes a greedy-pack gap.
+        let desired = (policy.max_block_mass as f64 * MASS_LIMIT_FACTOR) as u64;
+
+        // Target a remaining greedy-pack gap of at most 5% of block mass
+        // (25K mass for the current 500K block mass limit).
+        let target_gap = (policy.max_block_mass as f64 * TARGET_GAP_FACTOR) as u64;
+
+        Self { sampled: 0, gap: policy.max_block_mass, desired, null_attempts: 0, target_gap }
+    }
+
+    /// Returns whether sampling should keep trying to build a useful sequence.
+    fn should_continue(&self) -> bool {
+        // Halt only if both:
+        // 1. raw sampled mass already reached the normal target; and
+        // 2. either the greedy-pack gap is small enough, or too many samples failed to shrink it.
+        self.sampled <= self.desired || (self.null_attempts < MAX_NULL_ATTEMPTS && self.gap > self.target_gap)
+    }
+
+    /// Adds the sampled mass and updates the greedy-pack gap/null-attempt counters.
+    fn record(&mut self, mass: u64) {
+        self.sampled = self.sampled.saturating_add(mass);
+
+        if let Some(gap) = self.gap.checked_sub(mass) {
+            self.gap = gap;
+        } else {
+            // This tx increased raw sampled mass but did not shrink the greedy
+            // pack gap. Bound how many such null attempts can keep sampling alive.
+            self.null_attempts += 1;
+        }
+    }
 }
 
 impl Frontier {
@@ -162,23 +226,17 @@ impl Frontier {
     {
         debug_assert!(!self.search_tree.is_empty(), "expected to be called only if not empty");
 
-        // Sample 20% more than the hard limit in order to allow the SequenceSelector to
-        // compensate for consensus rejections.
-        // Note: this is a soft limit which is why the loop below might pass it if the
-        //       next sampled transaction happens to cross the bound
-        let desired_mass = (policy.max_block_mass as f64 * MASS_LIMIT_FACTOR) as u64;
-
         let mut distr = Uniform::new(0f64, self.total_weight());
         let mut down_iter = self.search_tree.descending_iter();
         let mut top = down_iter.next().unwrap();
         let mut cache = HashSet::new();
         let mut sequence = SequenceSelectorInput::default();
-        let mut total_selected_mass: u64 = 0;
+        let mut mass = SampleMassTracker::new(policy);
         let mut collisions = 0;
         let mut lanes = Lanes::default();
 
         // The sampling process is converging so the cache will eventually hold all entries, which guarantees loop exit
-        'outer: while cache.len() < self.search_tree.len() && total_selected_mass <= desired_mass {
+        'outer: while cache.len() < self.search_tree.len() && mass.should_continue() {
             let query = distr.sample(rng);
             let item = {
                 let mut item = self.search_tree.search(query);
@@ -213,11 +271,11 @@ impl Frontier {
                 break;
             }
             sequence.push(item.tx.clone(), item.mass);
-            total_selected_mass += item.mass; // Max standard mass + Mempool capacity bound imply this will not overflow
+            mass.record(item.mass);
         }
 
         if lanes.frozen {
-            self.finish_intra_lane_selection(&mut sequence, &cache, &lanes, desired_mass, &mut total_selected_mass);
+            self.finish_intra_lane_selection(&mut sequence, &cache, &lanes, &mut mass);
         }
         trace!("[mempool frontier sample inplace] collisions: {collisions}, cache: {}", cache.len());
         *_collisions += collisions;
@@ -237,8 +295,7 @@ impl Frontier {
         sequence: &mut SequenceSelectorInput,
         cache: &HashSet<TransactionId>,
         lanes: &Lanes,
-        desired_mass: u64,
-        total_selected_mass: &mut u64,
+        mass: &mut SampleMassTracker,
     ) {
         let mut lane_iters = lanes
             .occupied
@@ -257,17 +314,13 @@ impl Frontier {
         }
 
         // Standard k-way merge: pop the best lane head, then replenish only that lane.
-        while *total_selected_mass <= desired_mass {
+        while mass.should_continue() {
             let Some((item, best_idx)) = heads.pop() else {
                 break;
             };
 
-            if *total_selected_mass > desired_mass {
-                break;
-            }
-
             sequence.push(item.tx.clone(), item.mass);
-            *total_selected_mass += item.mass;
+            mass.record(item.mass);
 
             // Advance the lane we just consumed. The iterator already skips pre-freeze samples.
             let iter = &mut lane_iters[best_idx];
