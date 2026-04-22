@@ -576,16 +576,15 @@ from!(item: &kaspa_rpc_core::NotifySinkBlueScoreChangedRequest, protowire::Notif
 from!(RpcResult<&kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>, protowire::NotifySinkBlueScoreChangedResponseMessage);
 
 from!(item: &kaspa_rpc_core::GetSeqCommitLaneProofRequest, protowire::GetSeqCommitLaneProofRequestMessage, {
-    Self { block_hash: item.block_hash.to_string(), lane_key: item.lane_key.to_string() }
+    Self { block_hash: item.block_hash.as_bytes().to_vec(), lane_key: item.lane_key.as_bytes().to_vec() }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetSeqCommitLaneProofResponse>, protowire::GetSeqCommitLaneProofResponseMessage, {
     Self {
         smt_proof: item.smt_proof.clone(),
-        lane_tip: item.lane_tip.map(|h| h.to_string()).unwrap_or_default(),
-        has_lane_tip: item.lane_tip.is_some(),
+        lane_tip: item.lane_tip.map(|h| h.as_bytes().to_vec()).unwrap_or_default(),
         lane_blue_score: item.lane_blue_score.unwrap_or(0),
-        payload_and_ctx_digest: item.payload_and_ctx_digest.to_string(),
-        parent_seq_commit: item.parent_seq_commit.to_string(),
+        payload_and_ctx_digest: item.payload_and_ctx_digest.as_bytes().to_vec(),
+        parent_seq_commit: item.parent_seq_commit.as_bytes().to_vec(),
         error: None,
     }
 });
@@ -1107,17 +1106,24 @@ try_from!(item: &protowire::NotifySinkBlueScoreChangedRequestMessage, kaspa_rpc_
 try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>);
 
 try_from!(item: &protowire::GetSeqCommitLaneProofRequestMessage, kaspa_rpc_core::GetSeqCommitLaneProofRequest, {
-    Self { block_hash: RpcHash::from_str(&item.block_hash)?, lane_key: RpcHash::from_str(&item.lane_key)? }
+    Self { block_hash: hash_from_bytes(&item.block_hash)?, lane_key: hash_from_bytes(&item.lane_key)? }
 });
 try_from!(item: &protowire::GetSeqCommitLaneProofResponseMessage, RpcResult<kaspa_rpc_core::GetSeqCommitLaneProofResponse>, {
+    let has_lane_tip = !item.lane_tip.is_empty();
     Self {
         smt_proof: item.smt_proof.clone(),
-        lane_tip: if item.has_lane_tip { Some(RpcHash::from_str(&item.lane_tip)?) } else { None },
-        lane_blue_score: if item.has_lane_tip { Some(item.lane_blue_score) } else { None },
-        payload_and_ctx_digest: RpcHash::from_str(&item.payload_and_ctx_digest)?,
-        parent_seq_commit: RpcHash::from_str(&item.parent_seq_commit)?,
+        lane_tip: if has_lane_tip { Some(hash_from_bytes(&item.lane_tip)?) } else { None },
+        lane_blue_score: if has_lane_tip { Some(item.lane_blue_score) } else { None },
+        payload_and_ctx_digest: hash_from_bytes(&item.payload_and_ctx_digest)?,
+        parent_seq_commit: hash_from_bytes(&item.parent_seq_commit)?,
     }
 });
+
+fn hash_from_bytes(bytes: &[u8]) -> RpcResult<RpcHash> {
+    <[u8; 32]>::try_from(bytes)
+        .map(RpcHash::from_bytes)
+        .map_err(|_| RpcError::General(format!("expected 32-byte hash, got {} bytes", bytes.len())))
+}
 
 // ----------------------------------------------------------------------------
 // Unit tests
