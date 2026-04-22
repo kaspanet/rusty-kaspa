@@ -1117,24 +1117,24 @@ message GetCurrentBlockColorResponseMessage {
 // blockHash must be a chain (selected-parent-chain) block at or after the
 // current pruning point.
 message GetSeqCommitLaneProofRequestMessage {
-  // Block hash whose header carries the seq_commit to verify against.
-  string blockHash = 1;
-  // The 32-byte lane key as hex.
-  string laneKey = 2;
+  // Block hash whose header carries the seq_commit to verify against (32 bytes).
+  bytes blockHash = 1;
+  // The 32-byte lane key.
+  bytes laneKey = 2;
 }
 
 message GetSeqCommitLaneProofResponseMessage {
   // OwnedSmtProof wire format (bitmap || terminal || siblings).
   bytes smtProof = 1;
-  // Present iff the lane has an entry in the active-lanes SMT at this POV.
-  // An absent lane returns a non-inclusion proof and empty laneTip/laneBlueScore.
-  string laneTip = 2;
-  bool hasLaneTip = 3;
-  uint64 laneBlueScore = 4;
-  // H_seq(mergeset_context_hash, miner_payload_root) for the block.
-  string payloadAndCtxDigest = 5;
-  // seq_commit of the selected parent (= parent header's accepted_id_merkle_root).
-  string parentSeqCommit = 6;
+  // 32 bytes iff the lane has an entry in the active-lanes SMT at this POV,
+  // otherwise empty (non-inclusion proof).
+  bytes laneTip = 2;
+  // Only meaningful when laneTip is non-empty; 0 otherwise.
+  uint64 laneBlueScore = 3;
+  // H_seq(mergeset_context_hash, miner_payload_root) for the block (32 bytes).
+  bytes payloadAndCtxDigest = 4;
+  // seq_commit of the selected parent (= parent header's accepted_id_merkle_root, 32 bytes).
+  bytes parentSeqCommit = 5;
 
   RPCError error = 1000;
 }
