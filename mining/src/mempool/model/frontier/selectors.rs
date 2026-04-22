@@ -7,9 +7,55 @@ use kaspa_consensus_core::{
 };
 use rand::Rng;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, hash_map::Entry},
     sync::Arc,
 };
+
+#[derive(Default)]
+struct LaneUsage {
+    tx_count: usize,
+    gas: u64,
+}
+
+#[derive(Default)]
+struct LaneSelectionState {
+    occupied: HashMap<SubnetworkId, LaneUsage>,
+}
+
+impl LaneSelectionState {
+    // LPB and gas are enforced during selection, but gas is intentionally not part of the
+    // global feerate weight since gas capacity is lane-local.
+    fn try_select(&mut self, policy: &Policy, lane: SubnetworkId, gas: u64) -> bool {
+        let occupied_len = self.occupied.len();
+        match self.occupied.entry(lane) {
+            Entry::Occupied(mut entry) => {
+                let usage = entry.get_mut();
+                if usage.gas.saturating_add(gas) > policy.gas_per_lane_limit {
+                    return false;
+                }
+                usage.tx_count += 1;
+                usage.gas += gas;
+                true
+            }
+            Entry::Vacant(entry) => {
+                if occupied_len >= policy.lanes_per_block_limit || gas > policy.gas_per_lane_limit {
+                    return false;
+                }
+                entry.insert(LaneUsage { tx_count: 1, gas });
+                true
+            }
+        }
+    }
+
+    fn reject(&mut self, lane: SubnetworkId, gas: u64) {
+        let usage = self.occupied.get_mut(&lane).expect("previously selected txs occupy a lane");
+        usage.tx_count -= 1;
+        usage.gas -= gas;
+        if usage.tx_count == 0 {
+            self.occupied.remove(&lane);
+        }
+    }
+}
 
 pub struct SequenceSelectorTransaction {
     pub tx: Arc<Transaction>,
@@ -53,6 +99,8 @@ impl SequenceSelectorInput {
 struct SequenceSelectorSelection {
     tx_id: TransactionId,
     mass: u64,
+    lane: SubnetworkId,
+    gas: u64,
     priority_index: SequencePriorityIndex,
 }
 
@@ -60,14 +108,15 @@ struct SequenceSelectorSelection {
 /// that the transactions were already selected via weighted sampling and simply tries them one
 /// after the other until the block mass limit is reached.
 ///
-/// The input sequence is expected to already satisfy LPB policy and include transactions from at
-/// most LPB lanes; `SequenceSelector` only enforces mass and rejection/retry behavior.
+/// The input sequence is expected to already be ordered by the chosen sampling strategy.
+/// `SequenceSelector` then enforces block mass, LPB, gas, and rejection/retry behavior.
 pub struct SequenceSelector {
     input_sequence: SequenceSelectorInput,
     selected_vec: Vec<SequenceSelectorSelection>,
-    /// Maps from selected tx ids to tx mass so that the total used mass can be subtracted on tx reject
-    selected_map: Option<HashMap<TransactionId, u64>>,
+    /// Maps from selected tx ids to resource usage so it can be subtracted on tx reject
+    selected_map: Option<HashMap<TransactionId, (u64, SubnetworkId, u64)>>,
     total_selected_mass: u64,
+    lanes: LaneSelectionState,
     overall_candidates: usize,
     overall_rejections: usize,
     policy: Policy,
@@ -81,6 +130,7 @@ impl SequenceSelector {
             input_sequence,
             selected_map: Default::default(),
             total_selected_mass: Default::default(),
+            lanes: Default::default(),
             overall_rejections: Default::default(),
             policy,
         }
@@ -110,8 +160,17 @@ impl TemplateTransactionSelector for SequenceSelector {
                 // for transactions with lower mass which might fit into the remaining gap
                 continue;
             }
+            if !self.lanes.try_select(&self.policy, tx.tx.subnetwork_id, tx.tx.gas) {
+                continue;
+            }
             self.total_selected_mass += tx.mass;
-            self.selected_vec.push(SequenceSelectorSelection { tx_id: tx.tx.id(), mass: tx.mass, priority_index });
+            self.selected_vec.push(SequenceSelectorSelection {
+                tx_id: tx.tx.id(),
+                mass: tx.mass,
+                lane: tx.tx.subnetwork_id,
+                gas: tx.tx.gas,
+                priority_index,
+            });
             transactions.push(tx.tx.as_ref().clone())
         }
         transactions
@@ -119,10 +178,13 @@ impl TemplateTransactionSelector for SequenceSelector {
 
     fn reject_selection(&mut self, tx_id: TransactionId) {
         // Lazy-create the map only when there are actual rejections
-        let selected_map = self.selected_map.get_or_insert_with(|| self.selected_vec.iter().map(|tx| (tx.tx_id, tx.mass)).collect());
-        let mass = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
+        let selected_map = self
+            .selected_map
+            .get_or_insert_with(|| self.selected_vec.iter().map(|tx| (tx.tx_id, (tx.mass, tx.lane, tx.gas))).collect());
+        let (mass, lane, gas) = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
         // Selections must be counted in total selected mass, so this subtraction cannot underflow
         self.total_selected_mass -= mass;
+        self.lanes.reject(lane, gas);
         self.overall_rejections += 1;
     }
 
@@ -134,15 +196,6 @@ impl TemplateTransactionSelector for SequenceSelector {
         self.overall_rejections == 0
             || (self.total_selected_mass as f64) > self.policy.max_block_mass as f64 * SUFFICIENT_MASS_THRESHOLD
             || (self.overall_rejections as f64) < self.overall_candidates as f64 * LOW_REJECTION_FRACTION
-    }
-}
-
-fn lane_allowed(occupied: &mut HashSet<SubnetworkId>, policy: &Policy, lane: SubnetworkId) -> bool {
-    if occupied.len() < policy.lanes_per_block_limit {
-        occupied.insert(lane);
-        true
-    } else {
-        occupied.contains(&lane)
     }
 }
 
@@ -162,11 +215,14 @@ impl TakeAllSelector {
 
 impl TemplateTransactionSelector for TakeAllSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
-        // Drain on the first call so that subsequent calls return nothing
-        let mut occupied = HashSet::new();
+        // Drain on the first call so that subsequent calls return nothing.
+        // This simple path currently compromises on retry optimality: LPB/gas-skipped
+        // txs are not reconsidered after later rejections (the mempool is less congested
+        // here and tx rejections are expected to be rare).
+        let mut lanes = LaneSelectionState::default();
         self.txs
             .drain(..)
-            .filter_map(|tx| lane_allowed(&mut occupied, &self.policy, tx.subnetwork_id).then(|| tx.as_ref().clone()))
+            .filter_map(|tx| if lanes.try_select(&self.policy, tx.subnetwork_id, tx.gas) { Some(tx.as_ref().clone()) } else { None })
             .collect()
     }
 
@@ -185,19 +241,20 @@ struct TreeSelectorSelection {
     tx_id: TransactionId,
     mass: u64,
     lane: SubnetworkId,
+    gas: u64,
 }
 
 /// A weighted selector over a local mutable search tree.
 ///
 /// This is intended as a simpler replacement candidate for the rebalancing selector: instead of
 /// lazily marking sampled candidates and periodically rebuilding the candidate list, it removes
-/// candidates from a local tree as they are selected or permanently skipped.
+/// candidates from a local tree as they are selected or skipped by LPB/gas limits.
 pub struct MutatingTreeSelector {
     tree: SearchTree,
     selected_vec: Vec<TreeSelectorSelection>,
     selected_map: Option<HashMap<TransactionId, TreeSelectorSelection>>,
     total_selected_mass: u64,
-    occupied_lanes: HashMap<SubnetworkId, usize>,
+    lanes: LaneSelectionState,
     overall_candidates: usize,
     overall_rejections: usize,
     policy: Policy,
@@ -211,7 +268,7 @@ impl MutatingTreeSelector {
             selected_vec: Vec::with_capacity(overall_candidates),
             selected_map: None,
             total_selected_mass: 0,
-            occupied_lanes: Default::default(),
+            lanes: Default::default(),
             overall_candidates,
             overall_rejections: 0,
             policy,
@@ -221,22 +278,6 @@ impl MutatingTreeSelector {
     fn reset_selection(&mut self) {
         self.selected_vec.clear();
         self.selected_map = None;
-    }
-
-    fn lane_allowed(&self, lane: SubnetworkId) -> bool {
-        self.occupied_lanes.contains_key(&lane) || self.occupied_lanes.len() < self.policy.lanes_per_block_limit
-    }
-
-    fn occupy_lane(&mut self, lane: SubnetworkId) {
-        *self.occupied_lanes.entry(lane).or_default() += 1;
-    }
-
-    fn release_lane(&mut self, lane: SubnetworkId) {
-        let count = self.occupied_lanes.get_mut(&lane).expect("previously selected txs occupy a lane");
-        *count -= 1;
-        if *count == 0 {
-            self.occupied_lanes.remove(&lane);
-        }
     }
 }
 
@@ -252,21 +293,22 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
             let tx = candidate.tx.as_ref();
             let lane = candidate.lane();
 
-            let Some(next_total_mass) =
-                self.total_selected_mass.checked_add(candidate.mass).filter(|&m| m <= self.policy.max_block_mass)
-            else {
+            let next_total_mass = self.total_selected_mass.saturating_add(candidate.mass);
+            if next_total_mass > self.policy.max_block_mass {
                 break;
-            };
+            }
 
-            if !self.lane_allowed(lane) {
+            if !self.lanes.try_select(&self.policy, lane, tx.gas) {
+                // For now we compromise on retry optimality in this less-congested path:
+                // LPB/gas-skipped candidates are not reconsidered after later rejections
+                // (tx rejections are expected to be rare here).
                 self.tree.remove(&candidate);
                 continue;
             }
 
             self.tree.remove(&candidate);
             self.total_selected_mass = next_total_mass;
-            self.occupy_lane(lane);
-            self.selected_vec.push(TreeSelectorSelection { tx_id: tx.id(), mass: candidate.mass, lane });
+            self.selected_vec.push(TreeSelectorSelection { tx_id: tx.id(), mass: candidate.mass, lane, gas: tx.gas });
             transactions.push(tx.clone());
         }
 
@@ -280,7 +322,7 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
         let selection = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
 
         self.total_selected_mass -= selection.mass;
-        self.release_lane(selection.lane);
+        self.lanes.reject(selection.lane, selection.gas);
         self.overall_rejections += 1;
     }
 
@@ -291,5 +333,78 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
         self.overall_rejections == 0
             || (self.total_selected_mass as f64) > self.policy.max_block_mass as f64 * SUFFICIENT_MASS_THRESHOLD
             || (self.overall_rejections as f64) < self.overall_candidates as f64 * LOW_REJECTION_FRACTION
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::feerate_key::FeerateTransactionKey;
+    use super::*;
+    use kaspa_consensus_core::tx::{TransactionInput, TransactionOutpoint};
+    use kaspa_hashes::{HasherBase, TransactionID};
+
+    fn lane(id: u8) -> SubnetworkId {
+        SubnetworkId::from_namespace([id, 1, 0, 0])
+    }
+
+    fn tx(id: u64, lane: SubnetworkId, gas: u64) -> Arc<Transaction> {
+        let mut hasher = TransactionID::new();
+        let prev = hasher.update(id.to_le_bytes()).clone().finalize();
+        let input = TransactionInput::new(TransactionOutpoint::new(prev, 0), vec![], 0, 0);
+        Arc::new(Transaction::new(0, vec![input], vec![], 0, lane, gas, vec![]))
+    }
+
+    fn policy() -> Policy {
+        let mut policy = Policy::new(100_000);
+        policy.lanes_per_block_limit = 2;
+        policy.gas_per_lane_limit = 10;
+        policy
+    }
+
+    #[test]
+    fn test_take_all_selector_respects_gas_limit() {
+        let lane = lane(1);
+        let txs = vec![tx(1, lane, 6), tx(2, lane, 6)];
+        let mut selector = TakeAllSelector::new(txs, policy());
+        let selected = selector.select_transactions();
+
+        assert_eq!(selected.len(), 1);
+    }
+
+    #[test]
+    fn test_sequence_selector_respects_gas_limit_and_releases_on_reject() {
+        let lane = lane(1);
+        let input =
+            vec![SequenceSelectorTransaction::new(tx(1, lane, 6), 1000), SequenceSelectorTransaction::new(tx(2, lane, 6), 1000)]
+                .into_iter()
+                .collect();
+        let mut selector = SequenceSelector::new(input, policy());
+
+        let selected = selector.select_transactions();
+        assert_eq!(selected.len(), 1);
+
+        selector.reject_selection(selected[0].id());
+        let selected = selector.select_transactions();
+        assert_eq!(selected.len(), 1);
+    }
+
+    #[test]
+    fn test_mutating_tree_selector_continues_from_remaining_tree_after_reject() {
+        let mut tree = SearchTree::new();
+        tree.insert(FeerateTransactionKey::new(100, 1000, tx(1, lane(1), 0)));
+        tree.insert(FeerateTransactionKey::new(100, 1000, tx(2, lane(1), 0)));
+        tree.insert(FeerateTransactionKey::new(100, 1000, tx(3, lane(1), 0)));
+
+        let mut policy = policy();
+        policy.max_block_mass = 1000;
+        let mut selector = MutatingTreeSelector::new(policy, tree);
+        let selected = selector.select_transactions();
+        assert_eq!(selected.len(), 1);
+        let first_selected_id = selected[0].id();
+
+        selector.reject_selection(first_selected_id);
+        let selected = selector.select_transactions();
+        assert_eq!(selected.len(), 1);
+        assert_ne!(selected[0].id(), first_selected_id);
     }
 }

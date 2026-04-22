@@ -25,6 +25,9 @@ impl FeerateTransactionKey {
         // NOTE: any change to the way this weight is calculated (such as scaling by some factor)
         // requires a reversed update to total_weight in `Frontier::build_feerate_estimator`. This
         // is because the math methods in FeeEstimator assume this specific weight function.
+        //
+        // Gas is intentionally not folded into this global weight: gas capacity is lane-local and
+        // is enforced by selectors during block template construction.
         Self { fee, mass, weight: (fee as f64 / mass as f64).powi(ALPHA), tx }
     }
 
