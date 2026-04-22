@@ -11,6 +11,8 @@ use std::{
     sync::Arc,
 };
 
+type LaneId = SubnetworkId;
+
 #[derive(Default)]
 struct LaneUsage {
     tx_count: usize,
@@ -19,13 +21,13 @@ struct LaneUsage {
 
 #[derive(Default)]
 struct LaneSelectionState {
-    occupied: HashMap<SubnetworkId, LaneUsage>,
+    occupied: HashMap<LaneId, LaneUsage>,
 }
 
 impl LaneSelectionState {
     // LPB and gas are enforced during selection, but gas is intentionally not part of the
     // global feerate weight since gas capacity is lane-local.
-    fn try_select(&mut self, policy: &Policy, lane: SubnetworkId, gas: u64) -> bool {
+    fn try_select(&mut self, policy: &Policy, lane: LaneId, gas: u64) -> bool {
         let occupied_len = self.occupied.len();
         match self.occupied.entry(lane) {
             Entry::Occupied(mut entry) => {
@@ -47,7 +49,7 @@ impl LaneSelectionState {
         }
     }
 
-    fn reject(&mut self, lane: SubnetworkId, gas: u64) {
+    fn reject(&mut self, lane: LaneId, gas: u64) {
         let usage = self.occupied.get_mut(&lane).expect("previously selected txs occupy a lane");
         usage.tx_count -= 1;
         usage.gas -= gas;
@@ -99,7 +101,7 @@ impl SequenceSelectorInput {
 struct SequenceSelectorSelection {
     tx_id: TransactionId,
     mass: u64,
-    lane: SubnetworkId,
+    lane: LaneId,
     gas: u64,
     priority_index: SequencePriorityIndex,
 }
@@ -114,7 +116,7 @@ pub struct SequenceSelector {
     input_sequence: SequenceSelectorInput,
     selected_vec: Vec<SequenceSelectorSelection>,
     /// Maps from selected tx ids to resource usage so it can be subtracted on tx reject
-    selected_map: Option<HashMap<TransactionId, (u64, SubnetworkId, u64)>>,
+    selected_map: Option<HashMap<TransactionId, (u64, LaneId, u64)>>,
     total_selected_mass: u64,
     lanes: LaneSelectionState,
     overall_candidates: usize,
@@ -240,7 +242,7 @@ impl TemplateTransactionSelector for TakeAllSelector {
 struct TreeSelectorSelection {
     tx_id: TransactionId,
     mass: u64,
-    lane: SubnetworkId,
+    lane: LaneId,
     gas: u64,
 }
 
