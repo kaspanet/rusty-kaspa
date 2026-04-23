@@ -896,6 +896,138 @@ mod tests {
     }
 
     #[test]
+    fn test_transaction_yaml_v0() {
+        let tx = test_transaction();
+        let s = serde_yaml::to_string(&tx).unwrap();
+        let expected = r#"inputs:
+- previousOutpoint:
+    transactionId: 165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000
+    index: 4294967290
+  signatureScript: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  sequence: 2
+  sigOpCount: 3
+- previousOutpoint:
+    transactionId: 4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000
+    index: 4294967291
+  signatureScript: 202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f
+  sequence: 4
+  sigOpCount: 5
+outputs:
+- value: 6
+  scriptPublicKey: 000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e
+- value: 7
+  scriptPublicKey: 000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e
+lockTime: 8
+subnetworkId: '0000000000000000000000000000000000000000'
+gas: 9
+payload: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263
+mass: 0
+id: 32c8043793c10e2703f8cfc444f988633086a11d34b5cd71808ddbca48d0df42
+version: 0
+"#;
+        let decoded_actual: Transaction = serde_yaml::from_str(&s).unwrap();
+        let decoded_expected: Transaction = serde_yaml::from_str(expected).unwrap();
+        assert_eq!(tx, decoded_actual);
+        assert_eq!(decoded_expected, decoded_actual);
+    }
+
+    #[test]
+    fn test_transaction_yaml_v1() {
+        let tx = test_transaction_v1();
+        let s = serde_yaml::to_string(&tx).unwrap();
+        let expected = r#"
+inputs:
+- previousOutpoint:
+    transactionId: 165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000
+    index: 4294967290
+  signatureScript: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  sequence: 2
+  computeBudget: 17
+- previousOutpoint:
+    transactionId: 4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000
+    index: 4294967291
+  signatureScript: 202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f
+  sequence: 4
+  computeBudget: 23
+outputs:
+- value: 6
+  scriptPublicKey: 000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e
+  covenant:
+    authorizingInput: 1
+    covenantId: 6d190a52d1ad6f508837acf97d05fa45e579df2c2d9a4a2fe5bc259182b4551b
+- value: 7
+  scriptPublicKey: 000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e
+  covenant: null
+lockTime: 8
+subnetworkId: '0000000000000000000000000000000000000000'
+gas: 9
+payload: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263
+mass: 0
+id: 630ca922552ada815f0da92913c2327190f5c9728a0cae12ce38f9a5dfc19b76
+version: 1
+"#;
+        let decoded_actual: Transaction = serde_yaml::from_str(&s).unwrap();
+        let decoded_expected: Transaction = serde_yaml::from_str(expected).unwrap();
+        assert_eq!(tx, decoded_actual);
+        assert_eq!(decoded_expected, decoded_actual);
+    }
+
+    #[test]
+    fn test_transaction_toml_v0() {
+        let tx = test_transaction();
+        let s = toml::to_string(&tx).unwrap();
+        // Hand-authored fixture with `version` at the end. TOML forbids root scalars
+        // after `[[array-of-tables]]` blocks, so inputs/outputs are written as inline
+        // arrays to keep the `version` key at the root table.
+        let expected = r#"inputs = [
+    { previousOutpoint = { transactionId = "165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000", index = 4294967290 }, signatureScript = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", sequence = 2, sigOpCount = 3 },
+    { previousOutpoint = { transactionId = "4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000", index = 4294967291 }, signatureScript = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f", sequence = 4, sigOpCount = 5 },
+]
+outputs = [
+    { value = 6, scriptPublicKey = "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e" },
+    { value = 7, scriptPublicKey = "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e" },
+]
+lockTime = 8
+subnetworkId = "0000000000000000000000000000000000000000"
+gas = 9
+payload = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263"
+mass = 0
+id = "32c8043793c10e2703f8cfc444f988633086a11d34b5cd71808ddbca48d0df42"
+version = 0
+"#;
+        let decoded_actual: Transaction = toml::from_str(&s).unwrap();
+        let decoded_expected: Transaction = toml::from_str(expected).unwrap();
+        assert_eq!(tx, decoded_actual);
+        assert_eq!(decoded_expected, decoded_actual);
+    }
+
+    #[test]
+    fn test_transaction_toml_v1() {
+        let tx = test_transaction_v1();
+        let s = toml::to_string(&tx).unwrap();
+        let expected = r#"inputs = [
+    { previousOutpoint = { transactionId = "165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000", index = 4294967290 }, signatureScript = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", sequence = 2, computeBudget = 17 },
+    { previousOutpoint = { transactionId = "4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000", index = 4294967291 }, signatureScript = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f", sequence = 4, computeBudget = 23 },
+]
+outputs = [
+    { value = 6, scriptPublicKey = "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e", covenant = { authorizingInput = 1, covenantId = "6d190a52d1ad6f508837acf97d05fa45e579df2c2d9a4a2fe5bc259182b4551b" } },
+    { value = 7, scriptPublicKey = "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e" },
+]
+lockTime = 8
+subnetworkId = "0000000000000000000000000000000000000000"
+gas = 9
+payload = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263"
+mass = 0
+id = "630ca922552ada815f0da92913c2327190f5c9728a0cae12ce38f9a5dfc19b76"
+version = 1
+"#;
+        let decoded_actual: Transaction = toml::from_str(&s).unwrap();
+        let decoded_expected: Transaction = toml::from_str(expected).unwrap();
+        assert_eq!(tx, decoded_actual);
+        assert_eq!(decoded_expected, decoded_actual);
+    }
+
+    #[test]
     fn test_spk_serde_json() {
         let vec = (0..SCRIPT_VECTOR_SIZE as u8).collect::<Vec<_>>();
         let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone());

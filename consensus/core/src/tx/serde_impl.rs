@@ -27,7 +27,7 @@ use serde::{
     de::{self, DeserializeSeed, IntoDeserializer, MapAccess, SeqAccess, Visitor},
     ser::{SerializeSeq, SerializeStruct},
 };
-use serde_json::value::RawValue as BufferedValue;
+use serde_value::Value as BufferedValue;
 
 #[repr(transparent)]
 struct SerdeBytesRef<'a>(&'a [u8]);
