@@ -23,7 +23,7 @@ pub trait UtxoSetStoreReader {
 pub trait UtxoSetStore: UtxoSetStoreReader {
     /// Updates the store according to the UTXO diff -- adding and deleting entries correspondingly.
     /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
-    /// This is because concurrent readers can interfere with cache consistency.  
+    /// This is because concurrent readers can interfere with cache consistency.
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
 }
@@ -129,13 +129,26 @@ impl DbUtxoSetStore {
         self.access.delete_all(DirectDbWriter::new(&self.db))
     }
 
-    /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache
+    /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache.
+    /// Uses a WriteBatch for efficient bulk writes.
     pub fn write_from_iterator_without_cache(
         &mut self,
         utxos: impl IntoIterator<Item = (TransactionOutpoint, Arc<UtxoEntry>)>,
     ) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
         self.access.write_many_without_cache(&mut writer, &mut utxos.into_iter().map(|(o, e)| (o.into(), e)))?;
+        self.db.write(batch)?;
+        Ok(())
+    }
+
+    /// Write many UTXOs without caching, using a WriteBatch for efficient bulk writes.
+    /// Intended for IBD where cache is not needed.
+    pub fn write_many_without_cache(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
+        self.access.write_many_without_cache(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        self.db.write(batch)?;
         Ok(())
     }
 }
@@ -163,15 +176,17 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
 
 impl UtxoSetStore for DbUtxoSetStore {
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db);
-        self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
-        self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        let mut batch = WriteBatch::default();
+        self.write_diff_batch(&mut batch, utxo_diff)?;
+        self.db.write(batch)?;
         Ok(())
     }
 
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
         self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        self.db.write(batch)?;
         Ok(())
     }
 }
