@@ -257,6 +257,13 @@ from!(item: RpcResult<&kaspa_rpc_core::SubmitTransactionReplacementResponse>, pr
     Self { transaction_id: item.transaction_id.to_string(), replaced_transaction: Some((&item.replaced_transaction).into()), error: None }
 });
 
+from!(item: &kaspa_rpc_core::SubmitLocalTransactionRequest, protowire::SubmitLocalTransactionRequestMessage, {
+    Self { transaction: Some((&item.transaction).into()) }
+});
+from!(item: RpcResult<&kaspa_rpc_core::SubmitLocalTransactionResponse>, protowire::SubmitLocalTransactionResponseMessage, {
+    Self { transaction_id: item.transaction_id.to_string(), error: None }
+});
+
 from!(item: &kaspa_rpc_core::GetSubnetworkRequest, protowire::GetSubnetworkRequestMessage, {
     Self { subnetwork_id: item.subnetwork_id.to_string() }
 });
@@ -762,6 +769,19 @@ try_from!(item: &protowire::SubmitTransactionReplacementResponseMessage, RpcResu
             .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitTransactionReplacementRequestMessage".to_string(), "replaced_transaction".to_string()))?
             .try_into()?,
     }
+});
+
+try_from!(item: &protowire::SubmitLocalTransactionRequestMessage, kaspa_rpc_core::SubmitLocalTransactionRequest, {
+    Self {
+        transaction: item
+            .transaction
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitLocalTransactionRequestMessage".to_string(), "transaction".to_string()))?
+            .try_into()?,
+    }
+});
+try_from!(item: &protowire::SubmitLocalTransactionResponseMessage, RpcResult<kaspa_rpc_core::SubmitLocalTransactionResponse>, {
+    Self { transaction_id: RpcHash::from_str(&item.transaction_id)? }
 });
 
 try_from!(item: &protowire::GetSubnetworkRequestMessage, kaspa_rpc_core::GetSubnetworkRequest, {

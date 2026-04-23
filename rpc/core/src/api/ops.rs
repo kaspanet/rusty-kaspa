@@ -140,6 +140,8 @@ pub enum RpcApiOps {
     GetUtxoReturnAddress = 150,
     /// Get Virtual Chain from Block V2
     GetVirtualChainFromBlockV2 = 151,
+    /// Submits a transaction to the local transaction store for prioritized inclusion in block templates without relay fee requirements
+    SubmitLocalTransaction = 152,
 }
 
 impl RpcApiOps {

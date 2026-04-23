@@ -153,7 +153,7 @@ impl Mempool {
 
     fn validate_transaction_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         if !self.config.accept_non_standard {
-            self.check_transaction_standard_in_context(transaction)?;
+            self.check_transaction_standard_in_context(transaction, true)?;
         }
         Ok(())
     }

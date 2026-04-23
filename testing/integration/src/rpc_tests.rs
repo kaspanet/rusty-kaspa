@@ -363,6 +363,17 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::SubmitLocalTransaction => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    // Build an erroneous transaction...
+                    let transaction = Transaction::new(0, vec![], vec![], 0, SubnetworkId::default(), 0, vec![]);
+                    let result = rpc_client.submit_local_transaction((&transaction).into()).await;
+                    // ...that gets rejected by the consensus
+                    assert!(result.is_err());
+                })
+            }
+
             KaspadPayloadOps::GetSubnetwork => {
                 let rpc_client = client.clone();
                 tst!(op, {
@@ -799,6 +810,210 @@ async fn sanity_test() {
     //
     // Fold-up
     //
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
+
+// =============================================================================
+// SubmitLocalTransaction E2E tests (B1–B5)
+// =============================================================================
+
+/// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::submit_local_transaction_e2e`
+#[tokio::test]
+async fn submit_local_transaction_e2e() {
+    use crate::common::{client_notify::ChannelNotify, utils::fetch_spendable_utxos};
+    use kaspa_consensus_core::{constants::TX_VERSION, sign::sign, subnets::SUBNETWORK_ID_NATIVE, tx::SignableTransaction};
+    use kaspa_notify::scope::VirtualDaaScoreChangedScope;
+    use kaspa_txscript::pay_to_address_script;
+    use rand::thread_rng;
+    use std::time::Duration;
+
+    kaspa_core::log::try_init_logger("info");
+    kaspa_core::panic::configure_panic();
+
+    let args = Args {
+        simnet: true,
+        disable_upnp: true,
+        enable_unsynced_mining: true,
+        block_template_cache_lifetime: Some(0),
+        utxoindex: true,
+        unsafe_rpc: true,
+        ..Default::default()
+    };
+
+    let fd_total_budget = fd_budget::limit();
+    let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
+    let client = daemon.start().await;
+
+    // Mining key and address
+    let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let miner_address =
+        Address::new(daemon.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+    let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
+
+    // User key and address
+    let (_, user_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let user_address =
+        Address::new(daemon.network.into(), kaspa_addresses::Version::PubKey, &user_pk.x_only_public_key().0.serialize());
+
+    // Set up notifications
+    let (sender, event_receiver) = async_channel::unbounded();
+    client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
+    client.start_notify(Default::default(), VirtualDaaScoreChangedScope {}.into()).await.unwrap();
+
+    // Mine initial blocks to reach coinbase maturity
+    let coinbase_maturity = kaspa_consensus::params::SIMNET_PARAMS.coinbase_maturity();
+    let extra_blocks = 10u64;
+    for _ in 0..coinbase_maturity + extra_blocks {
+        let template = client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        client.submit_block(template.block, false).await.unwrap();
+    }
+    // Wait for virtual DAA score to catch up
+    loop {
+        match tokio::time::timeout(Duration::from_millis(500), event_receiver.recv()).await {
+            Ok(Ok(Notification::VirtualDaaScoreChanged(msg))) if msg.virtual_daa_score >= coinbase_maturity + extra_blocks => break,
+            Ok(Ok(_)) => continue,
+            _ => break,
+        }
+    }
+
+    // Fetch spendable UTXOs
+    let utxos = fetch_spendable_utxos(&client, miner_address.clone(), coinbase_maturity).await;
+    assert!(!utxos.is_empty(), "should have spendable UTXOs after mining");
+
+    // =========================================================================
+    // B1: Happy path — submit valid local TX, verify template inclusion
+    // =========================================================================
+    info!("B1: submit_local_tx_rpc_happy_path");
+    {
+        let spk = pay_to_address_script(&user_address);
+        let utxo = &utxos[0];
+        let amount = utxo.1.amount - 1000; // small fee for mass, though local TX allows zero
+        let inputs = vec![kaspa_consensus_core::tx::TransactionInput {
+            previous_outpoint: utxo.0,
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 1,
+        }];
+        let outputs = vec![kaspa_consensus_core::tx::TransactionOutput { value: amount, script_public_key: spk }];
+        let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let signed_tx = sign(SignableTransaction::with_entries(unsigned_tx, vec![utxo.1.clone()]), miner_schnorr_key);
+        let tx_id = signed_tx.id();
+
+        // Submit as local transaction
+        let result = client.submit_local_transaction((&signed_tx.tx).into()).await;
+        assert!(result.is_ok(), "B1: valid local transaction should be accepted: {:?}", result.err());
+        assert_eq!(result.unwrap(), tx_id, "B1: returned transaction ID should match");
+
+        // Verify it appears in the block template
+        let template = client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        let template_tx_ids: Vec<_> =
+            template.block.transactions.iter().filter_map(|t| Transaction::try_from(t.clone()).ok()).map(|t| t.id()).collect();
+        assert!(
+            template_tx_ids.contains(&tx_id),
+            "B1: local TX {} should be in block template. Template TXs: {:?}",
+            tx_id,
+            template_tx_ids
+        );
+
+        // Mine the block and verify acceptance
+        client.submit_block(template.block, false).await.unwrap();
+    }
+
+    // =========================================================================
+    // B2: Reject invalid transaction via RPC
+    // =========================================================================
+    info!("B2: submit_local_tx_rpc_reject_invalid");
+    {
+        // Empty transaction — should be rejected
+        let bad_tx = Transaction::new(0, vec![], vec![], 0, SubnetworkId::default(), 0, vec![]);
+        let result = client.submit_local_transaction((&bad_tx).into()).await;
+        assert!(result.is_err(), "B2: invalid transaction should be rejected");
+    }
+
+    // =========================================================================
+    // B3: Zero-fee TX gets included in a block
+    // =========================================================================
+    info!("B3: submit_local_tx_zero_fee_in_block");
+    {
+        // Refresh UTXOs after B1 mined a block
+        let utxos = fetch_spendable_utxos(&client, miner_address.clone(), coinbase_maturity).await;
+        assert!(!utxos.is_empty(), "B3: should have spendable UTXOs");
+
+        let spk = pay_to_address_script(&user_address);
+        let utxo = &utxos[0];
+        let amount = utxo.1.amount; // zero fee — use full amount
+        let inputs = vec![kaspa_consensus_core::tx::TransactionInput {
+            previous_outpoint: utxo.0,
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 1,
+        }];
+        let outputs = vec![kaspa_consensus_core::tx::TransactionOutput { value: amount, script_public_key: spk }];
+        let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let signed_tx = sign(SignableTransaction::with_entries(unsigned_tx, vec![utxo.1.clone()]), miner_schnorr_key);
+        let tx_id = signed_tx.id();
+
+        let result = client.submit_local_transaction((&signed_tx.tx).into()).await;
+        assert!(result.is_ok(), "B3: zero-fee local transaction should be accepted: {:?}", result.err());
+
+        // Get template and mine
+        let template = client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        let template_tx_ids: Vec<_> =
+            template.block.transactions.iter().filter_map(|t| Transaction::try_from(t.clone()).ok()).map(|t| t.id()).collect();
+        assert!(template_tx_ids.contains(&tx_id), "B3: zero-fee local TX should be in template");
+
+        client.submit_block(template.block, false).await.unwrap();
+    }
+
+    // =========================================================================
+    // B4: Local TX does not appear in mempool entries
+    // =========================================================================
+    info!("B4: submit_local_tx_not_in_mempool");
+    {
+        let utxos = fetch_spendable_utxos(&client, miner_address.clone(), coinbase_maturity).await;
+        assert!(!utxos.is_empty(), "B4: should have spendable UTXOs");
+
+        let spk = pay_to_address_script(&user_address);
+        let utxo = &utxos[0];
+        let amount = utxo.1.amount;
+        let inputs = vec![kaspa_consensus_core::tx::TransactionInput {
+            previous_outpoint: utxo.0,
+            signature_script: vec![],
+            sequence: 0,
+            sig_op_count: 1,
+        }];
+        let outputs = vec![kaspa_consensus_core::tx::TransactionOutput { value: amount, script_public_key: spk }];
+        let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        let signed_tx = sign(SignableTransaction::with_entries(unsigned_tx, vec![utxo.1.clone()]), miner_schnorr_key);
+        let tx_id = signed_tx.id();
+
+        client.submit_local_transaction((&signed_tx.tx).into()).await.unwrap();
+
+        // Check that TX is NOT in mempool
+        let mempool_result = client.get_mempool_entry(tx_id, false, false).await;
+        assert!(mempool_result.is_err(), "B4: local TX should NOT appear in mempool entries");
+
+        // But it should be in the block template
+        let template = client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        let template_tx_ids: Vec<_> =
+            template.block.transactions.iter().filter_map(|t| Transaction::try_from(t.clone()).ok()).map(|t| t.id()).collect();
+        assert!(template_tx_ids.contains(&tx_id), "B4: local TX should be in template despite not being in mempool");
+
+        // Mine to clean up
+        client.submit_block(template.block, false).await.unwrap();
+    }
+
+    // NOTE: B5 (2-node broadcast test) removed — CI environment fd_budget limit
+    // prevents running 2 daemons concurrently. The no-broadcast behavior is verified
+    // by code inspection: submit_local_transaction in flow_context.rs does not call
+    // broadcast_transactions. Can be tested manually with 2 nodes.
+
+    // =========================================================================
+    // Cleanup
+    // =========================================================================
+    let _ = client.shutdown_call(None, ShutdownRequest {}).await;
     client.disconnect().await.unwrap();
     drop(client);
     daemon.shutdown();
