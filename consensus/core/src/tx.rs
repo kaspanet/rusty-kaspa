@@ -1001,6 +1001,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn json_transaction_deserialize_accepts_fields_before_version() {
+        let tx = Transaction::new(
+            1,
+            vec![TransactionInput::new_with_compute_budget(
+                TransactionOutpoint::new(Hash::from_bytes([0x11; 32]), 0),
+                vec![0xaa, 0xbb],
+                42,
+                7,
+            )],
+            vec![TransactionOutput::with_covenant(
+                100,
+                ScriptPublicKey::new(0, vec![0x51].into()),
+                Some(CovenantBinding::new(0, Hash::from_bytes([0x22; 32]))),
+            )],
+            123,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![0xcc],
+        );
+        let value = serde_json::to_value(&tx).unwrap();
+        let reordered = serde_json::json!({
+            "inputs": value["inputs"],
+            "outputs": value["outputs"],
+            "version": value["version"],
+            "lockTime": value["lockTime"],
+            "subnetworkId": value["subnetworkId"],
+            "gas": value["gas"],
+            "payload": value["payload"],
+            "mass": value["mass"],
+            "id": value["id"],
+        });
+
+        let decoded: Transaction = serde_json::from_value(reordered).expect("field order must not affect transaction JSON");
+        assert_eq!(decoded, tx);
+    }
+
     // use wasm_bindgen_test::wasm_bindgen_test;
     // #[wasm_bindgen_test]
     // pub fn test_wasm_serde_spk_constructor() {

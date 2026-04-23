@@ -24,9 +24,10 @@ use crate::mass::{ComputeBudget, SigopCount};
 use kaspa_utils::serde_bytes;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
-    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
+    de::{self, DeserializeSeed, IntoDeserializer, MapAccess, SeqAccess, Visitor},
     ser::{SerializeSeq, SerializeStruct},
 };
+use serde_json::value::RawValue as BufferedValue;
 
 #[repr(transparent)]
 struct SerdeBytesRef<'a>(&'a [u8]);
@@ -331,9 +332,22 @@ impl<'de> Visitor<'de> for TransactionVisitor {
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        // `inputs` / `outputs` depend on `version` to pick the right V0/V1 shape, but
+        // human-readable formats do not promise field order. When those fields arrive
+        // before `version`, buffer them as [`BufferedValue`] and decode after the loop
+        // once the version is known.
+        enum LazyInputs {
+            Decoded(Vec<TransactionInput>),
+            Buffered(Box<BufferedValue>),
+        }
+        enum LazyOutputs {
+            Decoded(Vec<TransactionOutput>),
+            Buffered(Box<BufferedValue>),
+        }
+
         let mut version = None;
-        let mut inputs = None;
-        let mut outputs = None;
+        let mut inputs: Option<LazyInputs> = None;
+        let mut outputs: Option<LazyOutputs> = None;
         let mut lock_time = None;
         let mut subnetwork_id = None;
         let mut gas = None;
@@ -353,15 +367,19 @@ impl<'de> Visitor<'de> for TransactionVisitor {
                     if inputs.is_some() {
                         return Err(de::Error::duplicate_field("inputs"));
                     }
-                    let version = version.ok_or_else(|| de::Error::custom("transaction version must precede inputs"))?;
-                    inputs = Some(map.next_value_seed(InputsSeed(version))?);
+                    inputs = Some(match version {
+                        Some(v) => LazyInputs::Decoded(map.next_value_seed(InputsSeed(v))?),
+                        None => LazyInputs::Buffered(map.next_value()?),
+                    });
                 }
                 Field::Outputs => {
                     if outputs.is_some() {
                         return Err(de::Error::duplicate_field("outputs"));
                     }
-                    let version = version.ok_or_else(|| de::Error::custom("transaction version must precede outputs"))?;
-                    outputs = Some(map.next_value_seed(OutputsSeed(version))?);
+                    outputs = Some(match version {
+                        Some(v) => LazyOutputs::Decoded(map.next_value_seed(OutputsSeed(v))?),
+                        None => LazyOutputs::Buffered(map.next_value()?),
+                    });
                 }
                 Field::LockTime => {
                     if lock_time.is_some() {
@@ -403,8 +421,14 @@ impl<'de> Visitor<'de> for TransactionVisitor {
         }
 
         let version = version.ok_or_else(|| de::Error::missing_field("version"))?;
-        let inputs = inputs.ok_or_else(|| de::Error::missing_field("inputs"))?;
-        let outputs = outputs.ok_or_else(|| de::Error::missing_field("outputs"))?;
+        let inputs = match inputs.ok_or_else(|| de::Error::missing_field("inputs"))? {
+            LazyInputs::Decoded(v) => v,
+            LazyInputs::Buffered(buf) => InputsSeed(version).deserialize(buf.into_deserializer()).map_err(de::Error::custom)?,
+        };
+        let outputs = match outputs.ok_or_else(|| de::Error::missing_field("outputs"))? {
+            LazyOutputs::Decoded(v) => v,
+            LazyOutputs::Buffered(buf) => OutputsSeed(version).deserialize(buf.into_deserializer()).map_err(de::Error::custom)?,
+        };
         let lock_time = lock_time.ok_or_else(|| de::Error::missing_field("lockTime"))?;
         let subnetwork_id = subnetwork_id.ok_or_else(|| de::Error::missing_field("subnetworkId"))?;
         let gas = gas.ok_or_else(|| de::Error::missing_field("gas"))?;
