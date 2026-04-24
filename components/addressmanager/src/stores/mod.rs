@@ -32,3 +32,10 @@ impl From<NetAddress> for AddressKey {
         )
     }
 }
+
+impl From<AddressKey> for NetAddress {
+    fn from(value: AddressKey) -> Self {
+        let ip = if let Some(ipv4) = value.0.to_ipv4() { IpAddr::V4(ipv4) } else { IpAddr::V6(value.0) };
+        NetAddress { ip: ip.into(), port: value.1 }
+    }
+}

@@ -1,3 +1,6 @@
+[features]
+test-utils = []
+
 [package]
 name = "kaspa-p2p-lib"
 description = "Kaspa p2p library"
@@ -41,7 +44,7 @@ rand.workspace = true
 seqlock.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = { workspace = true, features = ["net"] }
 tonic = { workspace = true, features = ["tls", "gzip"] }
 uuid.workspace = true
