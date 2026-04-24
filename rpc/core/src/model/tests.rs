@@ -199,6 +199,12 @@ mod mockery {
         }
     }
 
+    impl Mock for RpcOptionalBlock {
+        fn mock() -> Self {
+            RpcOptionalBlock { header: mock(), transactions: mock(), verbose_data: mock() }
+        }
+    }
+
     impl Mock for RpcRawBlock {
         fn mock() -> Self {
             RpcRawBlock { header: mock(), transactions: mock() }
@@ -1294,6 +1300,22 @@ mod mockery {
     }
 
     test!(GetVirtualChainFromBlockV2Response);
+
+    impl Mock for GetBlocksV2Request {
+        fn mock() -> Self {
+            GetBlocksV2Request { low_hash: mock(), include_blocks: mock(), data_verbosity_level: None }
+        }
+    }
+
+    test!(GetBlocksV2Request);
+
+    impl Mock for GetBlocksV2Response {
+        fn mock() -> Self {
+            GetBlocksV2Response { block_hashes: mock(), blocks: mock() }
+        }
+    }
+
+    test!(GetBlocksV2Response);
 
     impl Mock for NotifyBlockAddedRequest {
         fn mock() -> Self {
