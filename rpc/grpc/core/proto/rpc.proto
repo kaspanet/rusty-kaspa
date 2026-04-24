@@ -1093,3 +1093,23 @@ message GetCurrentBlockColorResponseMessage {
 
   RPCError error = 1000;
 }
+
+enum BlockColor {
+  UNKNOWN = 0;
+  BLUE = 1;
+  RED = 2;
+}
+
+message GetBlockRewardInfoRequestMessage {
+  string hash = 1;
+}
+
+message GetBlockRewardInfoResponseMessage {
+  RpcBlockHeader header = 1;
+  BlockColor blockColor = 2;
+  optional uint64 confirmationCount = 3;
+  optional string mergingChainBlockHash = 4;
+  optional uint64 rewardAmount = 5;
+
+  RPCError error = 1000;
+}

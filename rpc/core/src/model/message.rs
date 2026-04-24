@@ -2670,6 +2670,125 @@ impl Deserializer for GetCurrentBlockColorResponse {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "lowercase")]
+#[borsh(use_discriminant = true)]
+#[repr(i32)]
+pub enum RpcBlockColor {
+    Unknown = 0,
+    Blue = 1,
+    Red = 2,
+}
+
+impl From<RpcBlockColor> for i32 {
+    fn from(value: RpcBlockColor) -> Self {
+        value as i32
+    }
+}
+
+impl From<i32> for RpcBlockColor {
+    fn from(value: i32) -> Self {
+        match value {
+            1 => Self::Blue,
+            2 => Self::Red,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl Serializer for RpcBlockColor {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(i32, &i32::from(*self), writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcBlockColor {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let value = load!(i32, reader)?;
+        Ok(RpcBlockColor::from(value))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockRewardInfoRequest {
+    pub hash: RpcHash,
+}
+
+impl GetBlockRewardInfoRequest {
+    pub fn new(hash: RpcHash) -> Self {
+        Self { hash }
+    }
+}
+
+impl Serializer for GetBlockRewardInfoRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.hash, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetBlockRewardInfoRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let hash = load!(RpcHash, reader)?;
+        Ok(Self { hash })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockRewardInfoResponse {
+    pub header: RpcHeader,
+    pub block_color: RpcBlockColor,
+    /// guaranteed to be populated when block color != Unknown
+    pub confirmation_count: Option<u64>,
+    /// guaranteed to be populated when block color != Unknown
+    pub merging_chain_block_hash: Option<RpcHash>,
+    /// guaranteed to be populated when block color == Blue
+    pub reward_amount: Option<u64>,
+}
+
+impl GetBlockRewardInfoResponse {
+    pub fn new(
+        header: RpcHeader,
+        block_color: RpcBlockColor,
+        confirmation_count: Option<u64>,
+        merging_chain_block_hash: Option<RpcHash>,
+        reward_amount: Option<u64>,
+    ) -> Self {
+        Self { header, block_color, confirmation_count, merging_chain_block_hash, reward_amount }
+    }
+}
+
+impl Serializer for GetBlockRewardInfoResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHeader, &self.header, writer)?;
+        store!(RpcBlockColor, &self.block_color, writer)?;
+        store!(Option<u64>, &self.confirmation_count, writer)?;
+        store!(Option<RpcHash>, &self.merging_chain_block_hash, writer)?;
+        store!(Option<u64>, &self.reward_amount, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetBlockRewardInfoResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let header = load!(RpcHeader, reader)?;
+        let block_color = load!(RpcBlockColor, reader)?;
+        let confirmation_count = load!(Option<u64>, reader)?;
+        let merging_chain_block_hash = load!(Option<RpcHash>, reader)?;
+        let reward_amount = load!(Option<u64>, reader)?;
+        Ok(Self { header, block_color, confirmation_count, merging_chain_block_hash, reward_amount })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxoReturnAddressRequest {
