@@ -114,6 +114,7 @@ impl WalletApi for WalletClient {
         FeeRatePollerDisable,
         AccountsCommitReveal,
         AccountsCommitRevealManual,
+        TransactionsExportCsv,
     ]}
 }
 
@@ -200,6 +201,7 @@ impl WalletServer {
         FeeRatePollerDisable,
         AccountsCommitReveal,
         AccountsCommitRevealManual,
+        TransactionsExportCsv,
     ]}
 }
 
