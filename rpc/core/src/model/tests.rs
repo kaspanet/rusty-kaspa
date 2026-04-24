@@ -1319,6 +1319,30 @@ mod mockery {
 
     test!(BlockAddedNotification);
 
+    impl Mock for NotifyBlockHeaderAddedRequest {
+        fn mock() -> Self {
+            NotifyBlockHeaderAddedRequest { command: Command::Start }
+        }
+    }
+
+    test!(NotifyBlockHeaderAddedRequest);
+
+    impl Mock for NotifyBlockHeaderAddedResponse {
+        fn mock() -> Self {
+            NotifyBlockHeaderAddedResponse {}
+        }
+    }
+
+    test!(NotifyBlockHeaderAddedResponse);
+
+    impl Mock for BlockHeaderAddedNotification {
+        fn mock() -> Self {
+            BlockHeaderAddedNotification { header: mock() }
+        }
+    }
+
+    test!(BlockHeaderAddedNotification);
+
     impl Mock for NotifyVirtualChainChangedRequest {
         fn mock() -> Self {
             NotifyVirtualChainChangedRequest { command: Command::Start, include_accepted_transaction_ids: true }

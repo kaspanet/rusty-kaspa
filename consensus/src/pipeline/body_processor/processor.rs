@@ -32,7 +32,7 @@ use kaspa_consensus_core::{
     tx::Transaction,
 };
 use kaspa_consensus_notify::{
-    notification::{BlockAddedNotification, Notification},
+    notification::{BlockAddedNotification, BlockHeaderAddedNotification, Notification},
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::SessionLock;
@@ -208,6 +208,11 @@ impl BlockBodyProcessor {
         // Send a BlockAdded notification
         self.notification_root
             .notify(Notification::BlockAdded(BlockAddedNotification::new(block.to_owned())))
+            .expect("expecting an open unbounded channel");
+
+        // Send a BlockHeaderAdded notification (lightweight, header-only)
+        self.notification_root
+            .notify(Notification::BlockHeaderAdded(BlockHeaderAddedNotification::new(block.header.clone())))
             .expect("expecting an open unbounded channel");
 
         // Report counters

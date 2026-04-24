@@ -1,5 +1,6 @@
 use crate::protowire::{
-    BlockAddedNotificationMessage, KaspadResponse, NewBlockTemplateNotificationMessage, RpcNotifyCommand, kaspad_response::Payload,
+    BlockAddedNotificationMessage, BlockHeaderAddedNotificationMessage, KaspadResponse, NewBlockTemplateNotificationMessage,
+    RpcNotifyCommand, kaspad_response::Payload,
 };
 use crate::protowire::{
     FinalityConflictNotificationMessage, FinalityConflictResolvedNotificationMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
@@ -24,6 +25,7 @@ from!(item: &kaspa_rpc_core::Notification, KaspadResponse, { Self { id: 0, paylo
 from!(item: &kaspa_rpc_core::Notification, Payload, {
     match item {
         Notification::BlockAdded(notification) => Payload::BlockAddedNotification(notification.into()),
+        Notification::BlockHeaderAdded(notification) => Payload::BlockHeaderAddedNotification(notification.into()),
         Notification::NewBlockTemplate(notification) => Payload::NewBlockTemplateNotification(notification.into()),
         Notification::VirtualChainChanged(notification) => Payload::VirtualChainChangedNotification(notification.into()),
         Notification::FinalityConflict(notification) => Payload::FinalityConflictNotification(notification.into()),
@@ -38,6 +40,10 @@ from!(item: &kaspa_rpc_core::Notification, Payload, {
 });
 
 from!(item: &kaspa_rpc_core::BlockAddedNotification, BlockAddedNotificationMessage, { Self { block: Some((&*item.block).into()) } });
+
+from!(item: &kaspa_rpc_core::BlockHeaderAddedNotification, BlockHeaderAddedNotificationMessage, {
+    Self { header: Some((&*item.header).into()) }
+});
 
 from!(&kaspa_rpc_core::NewBlockTemplateNotification, NewBlockTemplateNotificationMessage);
 
@@ -103,6 +109,7 @@ try_from!(item: &KaspadResponse, kaspa_rpc_core::Notification, {
 try_from!(item: &Payload, kaspa_rpc_core::Notification, {
     match item {
         Payload::BlockAddedNotification(notification) => Notification::BlockAdded(notification.try_into()?),
+        Payload::BlockHeaderAddedNotification(notification) => Notification::BlockHeaderAdded(notification.try_into()?),
         Payload::NewBlockTemplateNotification(notification) => Notification::NewBlockTemplate(notification.try_into()?),
         Payload::VirtualChainChangedNotification(notification) => Notification::VirtualChainChanged(notification.try_into()?),
         Payload::FinalityConflictNotification(notification) => Notification::FinalityConflict(notification.try_into()?),
@@ -127,6 +134,17 @@ try_from!(item: &BlockAddedNotificationMessage, kaspa_rpc_core::BlockAddedNotifi
             item.block
                 .as_ref()
                 .ok_or_else(|| RpcError::MissingRpcFieldError("BlockAddedNotificationMessage".to_string(), "block".to_string()))?
+                .try_into()?,
+        ),
+    }
+});
+
+try_from!(item: &BlockHeaderAddedNotificationMessage, kaspa_rpc_core::BlockHeaderAddedNotification, {
+    Self {
+        header: Arc::new(
+            item.header
+                .as_ref()
+                .ok_or_else(|| RpcError::MissingRpcFieldError("BlockHeaderAddedNotificationMessage".to_string(), "header".to_string()))?
                 .try_into()?,
         ),
     }
