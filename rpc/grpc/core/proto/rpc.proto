@@ -187,6 +187,7 @@ message GetBlockTemplateResponseMessage {
 //
 // See: BlockAddedNotificationMessage
 message NotifyBlockAddedRequestMessage {
+  bool includeTransactions = 1;
   RpcNotifyCommand command = 101;
 }
 

@@ -10,7 +10,7 @@ use kaspa_notify::{
     subscription::{
         Subscription,
         context::SubscriptionContext,
-        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        single::{BlockAddedSubscription, OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
 use serde::{Deserialize, Serialize};
@@ -72,6 +72,27 @@ impl NotificationTrait for Notification {
     fn apply_overall_subscription(&self, subscription: &OverallSubscription, _context: &SubscriptionContext) -> Option<Self> {
         match subscription.active() {
             true => Some(self.clone()),
+            false => None,
+        }
+    }
+
+    fn apply_block_added_subscription(&self, subscription: &BlockAddedSubscription, _context: &SubscriptionContext) -> Option<Self> {
+        match subscription.active() {
+            true => {
+                if let Notification::BlockAdded(payload) = self
+                    && !subscription.include_transactions()
+                    && !payload.block.transactions.is_empty()
+                {
+                    return Some(Notification::BlockAdded(BlockAddedNotification {
+                        block: Arc::new(crate::model::block::RpcBlock {
+                            header: payload.block.header.clone(),
+                            transactions: vec![],
+                            verbose_data: payload.block.verbose_data.clone(),
+                        }),
+                    }));
+                }
+                Some(self.clone())
+            }
             false => None,
         }
     }

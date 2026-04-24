@@ -2817,17 +2817,19 @@ impl Deserializer for GetVirtualChainFromBlockV2Response {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyBlockAddedRequest {
+    pub include_transactions: bool,
     pub command: Command,
 }
 impl NotifyBlockAddedRequest {
-    pub fn new(command: Command) -> Self {
-        Self { command }
+    pub fn new(include_transactions: bool, command: Command) -> Self {
+        Self { include_transactions, command }
     }
 }
 
 impl Serializer for NotifyBlockAddedRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
+        store!(bool, &self.include_transactions, writer)?;
         store!(Command, &self.command, writer)?;
         Ok(())
     }
@@ -2835,9 +2837,18 @@ impl Serializer for NotifyBlockAddedRequest {
 
 impl Deserializer for NotifyBlockAddedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
-        let command = load!(Command, reader)?;
-        Ok(Self { command })
+        let version = load!(u16, reader)?;
+        match version {
+            1 => {
+                let command = load!(Command, reader)?;
+                Ok(Self { include_transactions: true, command })
+            }
+            _ => {
+                let include_transactions = load!(bool, reader)?;
+                let command = load!(Command, reader)?;
+                Ok(Self { include_transactions, command })
+            }
+        }
     }
 }
 

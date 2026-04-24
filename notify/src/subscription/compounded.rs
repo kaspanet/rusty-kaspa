@@ -1,7 +1,7 @@
 use crate::{
     address::{error::Result, tracker::Counters},
     events::EventType,
-    scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
+    scope::{BlockAddedScope, Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{Command, Compounded, Mutation, Subscription, context::SubscriptionContext},
 };
 use itertools::Itertools;
@@ -53,6 +53,96 @@ impl Subscription for OverallSubscription {
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
         self.event_type.into()
+    }
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct BlockAddedSubscription {
+    include_transactions: [usize; 2],
+}
+
+impl BlockAddedSubscription {
+    #[inline(always)]
+    fn all(&self) -> usize {
+        self.include_transactions[true as usize]
+    }
+
+    #[inline(always)]
+    fn all_mut(&mut self) -> &mut usize {
+        &mut self.include_transactions[true as usize]
+    }
+
+    #[inline(always)]
+    fn reduced(&self) -> usize {
+        self.include_transactions[false as usize]
+    }
+
+    #[inline(always)]
+    fn reduced_mut(&mut self) -> &mut usize {
+        &mut self.include_transactions[false as usize]
+    }
+}
+
+impl Compounded for BlockAddedSubscription {
+    fn compound(&mut self, mutation: Mutation, _context: &SubscriptionContext) -> Option<Mutation> {
+        assert_eq!(self.event_type(), mutation.event_type());
+        if let Scope::BlockAdded(ref scope) = mutation.scope {
+            let all = scope.include_transactions;
+            match mutation.command {
+                Command::Start => {
+                    if all {
+                        // Add All
+                        *self.all_mut() += 1;
+                        if self.all() == 1 {
+                            return Some(mutation);
+                        }
+                    } else {
+                        // Add Reduced
+                        *self.reduced_mut() += 1;
+                        if self.reduced() == 1 && self.all() == 0 {
+                            return Some(mutation);
+                        }
+                    }
+                }
+                Command::Stop => {
+                    if !all {
+                        // Remove Reduced
+                        assert!(self.reduced() > 0);
+                        *self.reduced_mut() -= 1;
+                        if self.reduced() == 0 && self.all() == 0 {
+                            return Some(mutation);
+                        }
+                    } else {
+                        // Remove All
+                        assert!(self.all() > 0);
+                        *self.all_mut() -= 1;
+                        if self.all() == 0 {
+                            if self.reduced() > 0 {
+                                return Some(Mutation::new(Command::Start, Scope::BlockAdded(BlockAddedScope::new(false))));
+                            } else {
+                                return Some(mutation);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+impl Subscription for BlockAddedSubscription {
+    #[inline(always)]
+    fn event_type(&self) -> EventType {
+        EventType::BlockAdded
+    }
+
+    fn active(&self) -> bool {
+        self.include_transactions.iter().sum::<usize>() > 0
+    }
+
+    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+        Scope::BlockAdded(BlockAddedScope::new(self.all() > 0))
     }
 }
 
@@ -253,7 +343,7 @@ mod tests {
     use super::*;
     use crate::{
         address::{test_helpers::get_3_addresses, tracker::Counter},
-        scope::BlockAddedScope,
+        scope::{BlockAddedScope, NewBlockTemplateScope},
     };
     use std::panic::AssertUnwindSafe;
 
@@ -288,9 +378,9 @@ mod tests {
     #[test]
     #[allow(clippy::redundant_clone)]
     fn test_overall_compounding() {
-        let none = || Box::new(OverallSubscription::new(EventType::BlockAdded));
-        let add = || Mutation::new(Command::Start, Scope::BlockAdded(BlockAddedScope {}));
-        let remove = || Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope {}));
+        let none = || Box::new(OverallSubscription::new(EventType::NewBlockTemplate));
+        let add = || Mutation::new(Command::Start, Scope::NewBlockTemplate(NewBlockTemplateScope {}));
+        let remove = || Mutation::new(Command::Stop, Scope::NewBlockTemplate(NewBlockTemplateScope {}));
         let test = Test {
             name: "OverallSubscription 0 to 2 to 0",
             context: SubscriptionContext::new(),
@@ -308,6 +398,49 @@ mod tests {
         // Removing once more must panic
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove(), &test.context)));
         assert!(result.is_err(), "{}: trying to remove when counter is zero must panic", test.name);
+    }
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_block_added_compounding() {
+        fn m(command: Command, include_transactions: bool) -> Mutation {
+            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope { include_transactions }) }
+        }
+        let none = Box::<BlockAddedSubscription>::default;
+        let add_all = || m(Command::Start, true);
+        let add_reduced = || m(Command::Start, false);
+        let remove_reduced = || m(Command::Stop, false);
+        let remove_all = || m(Command::Stop, true);
+        let test = Test {
+            name: "BlockAdded",
+            context: SubscriptionContext::new(),
+            initial_state: none(),
+            steps: vec![
+                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "add all 2", mutation: add_all(), result: None },
+                Step { name: "remove all 2", mutation: remove_all(), result: None },
+                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
+                Step { name: "add reduced 1", mutation: add_reduced(), result: Some(add_reduced()) },
+                Step { name: "add reduced 2", mutation: add_reduced(), result: None },
+                Step { name: "remove reduced 2", mutation: remove_reduced(), result: None },
+                Step { name: "remove reduced 1", mutation: remove_reduced(), result: Some(remove_reduced()) },
+                // Interleaved all and reduced
+                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "add reduced 1, masked by all", mutation: add_reduced(), result: None },
+                Step { name: "remove all 1, revealing reduced", mutation: remove_all(), result: Some(add_reduced()) },
+                Step { name: "add all 1, masking reduced", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "remove reduced 1, masked by all", mutation: remove_reduced(), result: None },
+                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
+            ],
+            final_state: none(),
+        };
+        let mut state = test.run();
+
+        // Removing once more must panic
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all(), &test.context)));
+        assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_reduced(), &test.context)));
+        assert!(result.is_err(), "{}: trying to remove reduced when counter is zero must panic", test.name);
     }
 
     #[test]
