@@ -19,6 +19,7 @@ use crate::{
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
+            utxo_set::UtxoSetStoreReader,
             virtual_state::VirtualStateStoreReader,
         },
     },

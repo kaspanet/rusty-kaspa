@@ -72,6 +72,19 @@ impl From<DbAddressKey> for AddressKey {
     }
 }
 
+impl TryFrom<&[u8]> for DbAddressKey {
+    type Error = &'static str;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        if slice.len() != ADDRESS_KEY_SIZE {
+            return Err("Invalid slice length for DbAddressKey");
+        }
+        let mut bytes = [0u8; ADDRESS_KEY_SIZE];
+        bytes.copy_from_slice(slice);
+        Ok(Self(bytes))
+    }
+}
+
 #[derive(Clone)]
 pub struct DbAddressesStore {
     db: Arc<DB>,
@@ -85,15 +98,11 @@ impl DbAddressesStore {
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(AddressKey, Entry), Box<dyn Error>>> + '_ {
         self.access.iterator().map(|iter_result| match iter_result {
-            Ok((key_bytes, connection_failed_count)) => match <[u8; ADDRESS_KEY_SIZE]>::try_from(&key_bytes[..]) {
-                Ok(address_key_slice) => {
-                    let addr_key = DbAddressKey(address_key_slice);
-                    let address: AddressKey = addr_key.into();
-                    Ok((address, connection_failed_count))
-                }
-                Err(e) => Err(e.into()),
-            },
-            Err(e) => Err(e),
+            Ok((key, entry)) => {
+                let address: AddressKey = key.into();
+                Ok((address, entry))
+            }
+            Err(e) => Err(e.into()),
         })
     }
 }

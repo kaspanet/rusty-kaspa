@@ -22,6 +22,7 @@ num-traits.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
 rocksdb.workspace = true
+self_cell.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 tempfile.workspace = true
