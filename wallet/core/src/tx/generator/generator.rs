@@ -692,9 +692,9 @@ impl Generator {
         }
     }
 
-    /// Test if the current state has additional UTXOs. Use with caution as this
-    /// function polls the iterator and relocates UTXO into UTXO stash.
-    fn has_utxo_entries(&self, context: &mut Context, stage: &mut Stage) -> bool {
+    /// Pull the next available UTXO, if any, and stash it for the next accumulation attempt.
+    /// Use with caution: this advances one of the underlying UTXO sources and mutates `utxo_stash`.
+    fn stash_next_utxo(&self, context: &mut Context, stage: &mut Stage) -> bool {
         if let Some(utxo_entry_reference) = self.get_utxo_entry(context, stage) {
             context.utxo_stash.push_back(utxo_entry_reference);
             true
@@ -801,7 +801,17 @@ impl Generator {
 
         // calculate storage mass
         let MassDisposition { transaction_mass, storage_mass, transaction_fees, absorb_change_to_fees } =
-            self.calculate_mass(stage, data, final_transaction.value_with_priority_fee)?;
+            match self.calculate_mass(stage, data, final_transaction.value_with_priority_fee) {
+                Ok(mass_disposition) => mass_disposition,
+                Err(err @ Error::StorageMassExceedsMaximumTransactionMass { .. }) => {
+                    // stash one more input and retry finalization on the next loop iteration if there are more candidates
+                    if self.stash_next_utxo(context, stage) {
+                        return Ok(None);
+                    }
+                    return Err(err);
+                }
+                Err(err) => return Err(err),
+            };
 
         let total_stage_value_needed = if self.inner.final_transaction_priority_fee.sender_pays() {
             final_transaction.value_with_priority_fee + stage.aggregate_fees + transaction_fees
@@ -832,7 +842,7 @@ impl Generator {
                 && transaction_mass < TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION
             {
                 // fetch UTXO from the iterator and if exists, make it available on the next iteration via utxo_stash.
-                if self.has_utxo_entries(context, stage) {
+                if self.stash_next_utxo(context, stage) {
                     return Ok(None);
                 }
             }
@@ -868,7 +878,6 @@ impl Generator {
 
                 data.aggregate_mass = calc.combine_mass(compute_mass, storage_mass);
 
-                transaction_fees += change_output_value;
                 data.transaction_fees = transaction_fees;
                 stage.aggregate_fees += transaction_fees;
                 context.aggregate_fees += transaction_fees;
@@ -919,9 +928,13 @@ impl Generator {
                 absorb_change_to_fees = true;
                 self.calc_storage_mass(data, self.inner.final_transaction_outputs_harmonic)
             } else {
-                let output_harmonic_with_change =
-                    calc.calc_storage_mass_output_harmonic_single(change_value) + self.inner.final_transaction_outputs_harmonic;
-                let storage_mass_with_change = self.calc_storage_mass(data, output_harmonic_with_change);
+                let mut outputs_with_change = self.inner.final_transaction_outputs.clone();
+                outputs_with_change.push(TransactionOutput::new(change_value, pay_to_address_script(&self.inner.change_address)));
+                let storage_mass_with_change = self
+                    .inner
+                    .mass_calculator
+                    .calc_storage_mass_for_transaction_parts(&data.utxo_entry_references, &outputs_with_change)
+                    .ok_or(Error::MassCalculationError)?;
 
                 // TODO - review and potentially simplify:
                 // this profiles the storage mass with change and without change
@@ -930,19 +943,19 @@ impl Generator {
                     0
                 } else {
                     let storage_mass_no_change = self.calc_storage_mass(data, self.inner.final_transaction_outputs_harmonic);
-                    if storage_mass_with_change < storage_mass_no_change {
-                        storage_mass_with_change
-                    } else {
-                        let fees_with_change = calc.calc_fee_for_mass(storage_mass_with_change);
-                        let fees_no_change = calc.calc_fee_for_mass(storage_mass_no_change);
-                        let difference = fees_with_change.saturating_sub(fees_no_change);
+                    let fees_with_change = calc.calc_fee_for_mass(storage_mass_with_change);
+                    let fees_no_change = calc.calc_fee_for_mass(storage_mass_no_change);
+                    let difference = fees_with_change.saturating_sub(fees_no_change);
+                    let should_absorb_change = difference > change_value;
+                    let can_keep_change = storage_mass_with_change <= MAXIMUM_STANDARD_TRANSACTION_MASS;
 
-                        if difference > change_value {
-                            absorb_change_to_fees = true;
-                            storage_mass_no_change
-                        } else {
-                            storage_mass_with_change
-                        }
+                    if can_keep_change && !should_absorb_change {
+                        storage_mass_with_change
+                    } else if should_absorb_change {
+                        absorb_change_to_fees = true;
+                        storage_mass_no_change
+                    } else {
+                        storage_mass_with_change
                     }
                 }
             }
@@ -978,7 +991,7 @@ impl Generator {
         if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
             // transaction mass is too high... if we have additional
             // UTXOs, reject and try to accumulate more inputs...
-            if self.has_utxo_entries(context, stage) {
+            if self.stash_next_utxo(context, stage) {
                 Ok(None)
             } else {
                 // otherwise we have insufficient funds
