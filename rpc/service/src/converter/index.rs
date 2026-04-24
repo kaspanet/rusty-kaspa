@@ -21,6 +21,7 @@ impl IndexConverter {
         UtxosChangedNotification {
             added: Arc::new(self.get_utxos_by_addresses_entries(&utxo_changed.added)),
             removed: Arc::new(self.get_utxos_by_addresses_entries(&utxo_changed.removed)),
+            accepting_blue_score_upper_bound: utxo_changed.accepting_blue_score_upper_bound,
         }
     }
 

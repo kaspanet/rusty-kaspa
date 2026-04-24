@@ -147,11 +147,12 @@ pub struct UtxosChangedNotification {
     /// Accumulated UTXO diff between the last virtual state and the current virtual state
     pub accumulated_utxo_diff: Arc<UtxoDiff>,
     pub virtual_parents: Arc<Vec<Hash>>,
+    pub accepting_blue_score_upper_bound: u64,
 }
 
 impl UtxosChangedNotification {
-    pub fn new(accumulated_utxo_diff: Arc<UtxoDiff>, virtual_parents: Arc<Vec<Hash>>) -> Self {
-        Self { accumulated_utxo_diff, virtual_parents }
+    pub fn new(accumulated_utxo_diff: Arc<UtxoDiff>, virtual_parents: Arc<Vec<Hash>>, accepting_blue_score_upper_bound: u64) -> Self {
+        Self { accumulated_utxo_diff, virtual_parents, accepting_blue_score_upper_bound }
     }
 }
 

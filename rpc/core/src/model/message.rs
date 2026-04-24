@@ -3188,6 +3188,7 @@ impl Deserializer for NotifyUtxosChangedResponse {
 pub struct UtxosChangedNotification {
     pub added: Arc<Vec<RpcUtxosByAddressesEntry>>,
     pub removed: Arc<Vec<RpcUtxosByAddressesEntry>>,
+    pub accepting_blue_score_upper_bound: u64,
 }
 
 impl UtxosChangedNotification {
@@ -3205,7 +3206,11 @@ impl UtxosChangedNotification {
                 None
             } else {
                 debug!("CRPC, Creating UtxosChanged notifications with {} added and {} removed utxos", added.len(), removed.len());
-                Some(Self { added: Arc::new(added), removed: Arc::new(removed) })
+                Some(Self {
+                    added: Arc::new(added),
+                    removed: Arc::new(removed),
+                    accepting_blue_score_upper_bound: self.accepting_blue_score_upper_bound,
+                })
             }
         }
     }
@@ -3222,19 +3227,21 @@ impl UtxosChangedNotification {
 
 impl Serializer for UtxosChangedNotification {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         serialize!(Vec<RpcUtxosByAddressesEntry>, &self.added, writer)?;
         serialize!(Vec<RpcUtxosByAddressesEntry>, &self.removed, writer)?;
+        store!(u64, &self.accepting_blue_score_upper_bound, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for UtxosChangedNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let added = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
         let removed = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
-        Ok(Self { added: added.into(), removed: removed.into() })
+        let accepting_blue_score_upper_bound = if version >= 2 { load!(u64, reader)? } else { 0 };
+        Ok(Self { added: added.into(), removed: removed.into(), accepting_blue_score_upper_bound })
     }
 }
 
