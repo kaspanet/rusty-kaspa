@@ -122,6 +122,9 @@ impl HandleRelayInvsFlow {
             }
 
             if self.ctx.is_ibd_running() && !self.ctx.should_mine(&session).await {
+                if let Some(ftr) = self.ctx.clone().fast_trusted_relay() {
+                    ftr.stop_fast_relay().await;
+                }
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
                 debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
@@ -156,8 +159,14 @@ impl HandleRelayInvsFlow {
             }
             // if in a transitional ibd state, do not wait, sync immediately
             if is_ibd_in_transitional_state {
+                if let Some(ftr) = self.ctx.clone().fast_trusted_relay() {
+                    ftr.stop_fast_relay().await;
+                }
                 self.try_trigger_ibd(block)?;
                 continue;
+            }
+            if let Some(ftr) = self.ctx.clone().fast_trusted_relay() {
+                ftr.start_fast_relay().await;
             }
 
             let BlockValidationFutures { block_task, mut virtual_state_task } = session.validate_and_insert_block(block.clone());
@@ -202,6 +211,11 @@ impl HandleRelayInvsFlow {
             // The only mining rule which permanently excludes a block is the merge depth bound
             // (as opposed to "max parents" and "mergeset size limit" rules)
             if broadcast {
+                if let Some(trusted_relay) = self.ctx.clone().fast_trusted_relay() {
+                    // broadcast to the fast trusted relay.
+                    trusted_relay.broadcast_block(inv.hash, Arc::new((&block).into())).await.unwrap();
+                }
+
                 let msgs = ancestor_batch
                     .blocks
                     .iter()

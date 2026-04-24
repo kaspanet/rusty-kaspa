@@ -1,7 +1,11 @@
-use crate::flowcontext::{
-    orphans::{OrphanBlocksPool, OrphanOutput},
-    process_queue::ProcessQueue,
-    transactions::TransactionsSpread,
+use crate::{
+    fast_trusted_relay::flow::HandleFastTrustedRelayFlow,
+    flow_trait::Flow,
+    flowcontext::{
+        orphans::{OrphanBlocksPool, OrphanOutput},
+        process_queue::ProcessQueue,
+        transactions::TransactionsSpread,
+    },
 };
 use crate::{v7, v8};
 use async_trait::async_trait;
@@ -36,6 +40,7 @@ use kaspa_p2p_lib::{
     pb::{InvRelayBlockMessage, kaspad_message::Payload},
 };
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
+use kaspa_trusted_relay::FastTrustedRelay;
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -75,6 +80,8 @@ const REQUEST_SCOPE_WAIT_TIME: Duration = Duration::from_secs(1);
 pub enum BlockLogEvent {
     /// Accepted block via *relay*
     Relay(Hash),
+    /// Accepted block via *trusted relay*
+    TrustedRelay(Hash),
     /// Accepted block via *submit block*
     Submit(Hash),
     /// Orphaned block with x missing roots
@@ -111,11 +118,13 @@ impl BlockEventLogger {
                 struct LogSummary {
                     // Representatives
                     relay_rep: Option<Hash>,
+                    trusted_relay_rep: Option<Hash>,
                     submit_rep: Option<Hash>,
                     orphan_rep: Option<Hash>,
                     unorphan_rep: Option<Hash>,
                     // Counts
                     relay_count: usize,
+                    trusted_relay_count: usize,
                     submit_count: usize,
                     orphan_count: usize,
                     unorphan_count: usize,
@@ -143,6 +152,10 @@ impl BlockEventLogger {
                         self.relay_rep.into()
                     }
 
+                    fn trusted_relay(&self) -> LogHash {
+                        self.trusted_relay_rep.into()
+                    }
+
                     fn submit(&self) -> LogHash {
                         self.submit_rep.into()
                     }
@@ -161,6 +174,10 @@ impl BlockEventLogger {
                         BlockLogEvent::Relay(hash) => {
                             summary.relay_count += 1;
                             summary.relay_rep = Some(hash)
+                        }
+                        BlockLogEvent::TrustedRelay(hash) => {
+                            summary.trusted_relay_count += 1;
+                            summary.trusted_relay_rep = Some(hash)
                         }
                         BlockLogEvent::Submit(hash) => {
                             summary.submit_count += 1;
@@ -188,6 +205,12 @@ impl BlockEventLogger {
                     (n, m) => {
                         info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, summary.submit(), m, n)
                     }
+                }
+
+                match summary.trusted_relay_count {
+                    0 => {}
+                    1 => info!("Accepted block {} via trusted relay", summary.trusted_relay()),
+                    n => info!("Accepted {} blocks ...{} via trusted relay", n, summary.trusted_relay()),
                 }
 
                 match (summary.orphan_count, summary.orphan_roots_count) {
@@ -219,6 +242,7 @@ pub struct FlowContextInner {
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: MiningManagerProxy,
+    fast_trusted_relay: Option<FastTrustedRelay>,
     pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
 
@@ -303,6 +327,7 @@ impl FlowContext {
         address_manager: Arc<Mutex<AddressManager>>,
         config: Arc<Config>,
         mining_manager: MiningManagerProxy,
+        fast_trusted_relay: Option<FastTrustedRelay>,
         tick_service: Arc<TickService>,
         notification_root: Arc<ConsensusNotificationRoot>,
         hub: Hub,
@@ -328,6 +353,7 @@ impl FlowContext {
                 address_manager,
                 connection_manager: Default::default(),
                 mining_manager,
+                fast_trusted_relay,
                 tick_service,
                 notification_root,
                 block_event_logger: Some(BlockEventLogger::new(bps)),
@@ -380,6 +406,27 @@ impl FlowContext {
 
     pub fn mining_manager(&self) -> &MiningManagerProxy {
         &self.mining_manager
+    }
+
+    pub fn fast_trusted_relay(self) -> Option<FastTrustedRelay> {
+        self.fast_trusted_relay.clone()
+    }
+
+    /// Shuts down the fast trusted relay if it exists.
+    /// Should be called during service shutdown to cleanly terminate the relay.
+    pub async fn shutdown_fast_trusted_relay(&self) {
+        if let Some(ftr) = self.fast_trusted_relay.as_ref() {
+            ftr.shutdown().await;
+        }
+    }
+
+    pub async fn try_register_fast_trusted_relay_flow(&self, shutdown_listener: kaspa_utils::triggers::Listener) {
+        if let Some(ftr) = self.clone().fast_trusted_relay() {
+            // Spawn the TCP runtime now that we're in an async context with active Tokio runtime
+            ftr.spawn_tcp_runtime().await;
+            let flow = Box::new(HandleFastTrustedRelayFlow::new(self.clone(), ftr, shutdown_listener));
+            flow.launch();
+        }
     }
 
     pub fn try_set_ibd_running(&self, peer: PeerKey, relay_daa_score: u64) -> Option<IbdRunningGuard> {
@@ -504,6 +551,7 @@ impl FlowContext {
         } else {
             match event {
                 BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
+                BlockLogEvent::TrustedRelay(hash) => info!("Accepted block {} via trusted relay", hash),
                 BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
                 BlockLogEvent::Orphaned(orphan, roots_count) => {
                     info!("Received a block with {} missing ancestors, adding to orphan pool: {}", roots_count, orphan)

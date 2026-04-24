@@ -19,6 +19,11 @@ use kaspa_notify::{address::tracker::Tracker, subscription::context::Subscriptio
 use kaspa_p2p_lib::Hub;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_trusted_relay::{
+    FastTrustedRelay,
+    fast_trusted_relay::DEFAULT_TCP_PORT,
+    params::{FragmentationConfig, TransportParams},
+};
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
@@ -113,6 +118,27 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
         return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
+
+    // Fast Trusted Relay sanity
+    if (!args.trusted_relay_incoming.is_empty() || !args.trusted_relay_outgoing.is_empty()) && args.trusted_relay_secret.is_none() {
+        return Err(ConfigError::TrustedRelayMissingSecret);
+    }
+    if let Some(k) = args.fec_data_blocks
+        && (!(4..=128).contains(&k))
+    {
+        return Err(ConfigError::FecDataBlocksOutOfRange);
+    }
+    if let Some(m) = args.fec_parity_blocks
+        && (!(1..=64).contains(&m))
+    {
+        return Err(ConfigError::FecParityBlocksOutOfRange);
+    }
+    if let Some(payload) = args.udp_payload_size
+        && (!(500..=1472).contains(&payload))
+    {
+        return Err(ConfigError::UdpPayloadSizeOutOfRange);
+    }
+
     Ok(())
 }
 
@@ -211,6 +237,44 @@ impl Runtime {
 pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let rt = Runtime::from_args(&args);
     create_core_with_runtime(&rt, &args, fd_total_budget)
+}
+
+/// Construct an optional FastTrustedRelay instance based on command-line
+/// arguments. Returns `None` if no incoming/outgoing peers were supplied.
+///
+/// This helper normalizes the peer addresses using the supplied
+/// `config` (for default ports) and starts the control runtime before
+/// returning.
+pub fn build_fast_trusted_relay(args: &Args) -> Option<FastTrustedRelay> {
+    if args.trusted_relay_incoming.is_empty() && args.trusted_relay_outgoing.is_empty() {
+        return None;
+    }
+
+    let secret = match &args.trusted_relay_secret {
+        Some(s) => s.clone().into_bytes(),
+        None => return None, // validation ensures this cannot happen
+    };
+
+    // prepare normalized peer lists
+    let incoming: Vec<ContextualNetAddress> =
+        args.trusted_relay_incoming.iter().map(|addr| addr.normalize(DEFAULT_TCP_PORT).into()).collect();
+    let outgoing: Vec<ContextualNetAddress> =
+        args.trusted_relay_outgoing.iter().map(|addr| addr.normalize(DEFAULT_TCP_PORT).into()).collect();
+
+    let k = args.fec_data_blocks.unwrap_or(16);
+    let m = args.fec_parity_blocks.unwrap_or(4);
+    let payload = args.udp_payload_size.unwrap_or(1200);
+    let frag_cfg = FragmentationConfig::new(k, m, payload);
+
+    let transport =
+        TransportParams { num_of_incoming_peers: incoming.len(), num_of_outgoing_peers: outgoing.len(), ..TransportParams::default() };
+
+    // listen address for TCP control service; use port 0 so tests and
+    // multiple nodes can run concurrently without port conflicts.
+    let listen_address = args.externalip.unwrap().normalize(DEFAULT_TCP_PORT).into();
+
+    let relay = FastTrustedRelay::new(transport, frag_cfg, listen_address, secret, incoming, outgoing);
+    Some(relay)
 }
 
 /// Configure RocksDB parameters from CLI arguments.
@@ -644,11 +708,18 @@ Do you confirm? (y/n)";
         hub.clone(),
         mining_rules,
     ));
+
+    // construct fast-trusted-relay if requested by user
+    let fast_trusted_relay = build_fast_trusted_relay(args);
+
+    info!("fast trusted relay: {}", if fast_trusted_relay.is_some() { "enabled" } else { "disabled" });
+
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
         config.clone(),
         mining_manager.clone(),
+        fast_trusted_relay,
         tick_service.clone(),
         notification_root,
         hub.clone(),

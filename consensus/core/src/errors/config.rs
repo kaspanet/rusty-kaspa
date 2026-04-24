@@ -24,6 +24,15 @@ pub enum ConfigError {
     #[cfg(feature = "devnet-prealloc")]
     #[error("--num-prealloc-utxos has to appear with --prealloc-address and vice versa")]
     MissingPreallocNumOrAddress,
+
+    #[error("FEC data blocks (--fec-data-blocks) must be between 4 and 128")]
+    FecDataBlocksOutOfRange,
+    #[error("FEC parity blocks (--fec-parity-blocks) must be between 1 and 64")]
+    FecParityBlocksOutOfRange,
+    #[error("UDP payload size (--udp-payload-size) must be between 500 and 1472")]
+    UdpPayloadSizeOutOfRange,
+    #[error("Trusted relay requires a secret when incoming/outgoing peers are specified")]
+    TrustedRelayMissingSecret,
 }
 
 pub type ConfigResult<T> = std::result::Result<T, ConfigError>;

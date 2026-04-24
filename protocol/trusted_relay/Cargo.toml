@@ -1,0 +1,59 @@
+[package]
+name = "kaspa-trusted-relay"
+description = "Kaspa trusted relay library"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+kaspa-hashes.workspace = true
+kaspa-utils.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-core.workspace = true
+
+bincode.workspace = true
+ringmap.workspace = true
+bitflags.workspace = true
+fixedbitset.workspace = true
+bytes.workspace = true
+hex.workspace = true
+crossbeam-channel.workspace = true
+crossbeam.workspace = true
+getrandom.workspace = true
+hmac.workspace = true
+log.workspace = true
+num_cpus.workspace = true
+parking_lot.workspace = true
+reed-solomon-simd.workspace = true
+rand.workspace = true
+rayon.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+socket2.workspace = true
+tokio = { workspace = true, features = [
+    "net",
+    "sync",
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "io-util",
+    "time",
+] }
+arc-swap = "1.7"
+thiserror.workspace = true
+
+[dev-dependencies]
+blake2b_simd.workspace = true
+blake3 = "1.8.3"
+chacha20poly1305.workspace = true
+criterion = { version = "0.5", features = ["html_reports"] }
+poly1305 = "0.8"
+rand.workspace = true
+
+[[bench]]
+name = "bench"
+harness = false
