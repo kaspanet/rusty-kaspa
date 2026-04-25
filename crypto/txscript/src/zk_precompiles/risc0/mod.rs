@@ -10,7 +10,6 @@ use crate::{
     },
 };
 use kaspa_txscript_errors::TxScriptError;
-use risc0_circuit_recursion::control_id;
 use risc0_core::{field::Elem, field::baby_bear::BabyBearElem};
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;

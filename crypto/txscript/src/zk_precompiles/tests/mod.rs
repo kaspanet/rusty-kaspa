@@ -13,7 +13,7 @@ mod fast_zk_tests {
         tx::{PopulatedTransaction, ScriptPublicKey},
     };
     use kaspa_txscript_errors::TxScriptError;
-    use risc0_zkvm::{Digest, Groth16Receipt, MaybePruned, ReceiptClaim, SuccinctReceipt};
+    use risc0_zkvm::{Digest, Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 
     #[test]
     fn test_groth16_fast() {

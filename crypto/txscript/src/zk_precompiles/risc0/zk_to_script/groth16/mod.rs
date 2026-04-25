@@ -4,22 +4,20 @@ use crate::{
     opcodes::codes::OpZkPrecompile,
     script_builder::ScriptBuilder,
     zk_precompiles::{
-        fields::Fr,
         points::{G1, G2, PointFromBytes},
         risc0::{
             R0Error,
-            zk_to_script::{R0ScriptBuilder, groth16::vk::try_verifying_key},
+            zk_to_script::{R0ScriptBuilder, groth16::vk::R0_SERIALIZED_UNCOMPRESSED_VK},
         },
         tags::ZkTag,
     },
 };
-use ark_bn254::{Bn254, Config};
-use ark_ec::bn::Bn;
-use ark_groth16::{Proof, VerifyingKey};
+use ark_bn254::Bn254;
+use ark_groth16::Proof;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use risc0_binfmt::Digestible;
 use risc0_groth16::Seal;
-use risc0_zkvm::{Digest, Groth16Receipt, Groth16ReceiptVerifierParameters, MaybePruned, SuccinctReceipt, sha};
+use risc0_zkvm::{Digest, Groth16Receipt, Groth16ReceiptVerifierParameters, sha};
 fn split_digest_bytes(d: Digest) -> ([u8; 32], [u8; 32]) {
     let bytes = d.as_bytes();
     let mut lo = [0u8; 32];
@@ -29,29 +27,22 @@ fn split_digest_bytes(d: Digest) -> ([u8; 32], [u8; 32]) {
     (lo, hi)
 }
 
-fn to_fixed_array(input: &[u8]) -> [u8; 32] {
-    let mut fixed_array = [0u8; 32];
-    let start = core::cmp::max(32, input.len()) - core::cmp::min(32, input.len());
-    fixed_array[start..].copy_from_slice(&input[input.len().saturating_sub(32)..]);
-    fixed_array
-}
 impl R0ScriptBuilder {
     /// Converts a Groth16Receipt into a Kaspa script.
     /// This script unlocks the UTXO if the verification of the receipt
     /// succeeds.
     pub fn from_groth<Claim: Digestible + Clone>(receipt: &Groth16Receipt<Claim>) -> Result<ScriptBuilder> {
-        let mut params = Groth16ReceiptVerifierParameters::default();
+        let params = Groth16ReceiptVerifierParameters::default();
         let seal = &receipt.seal;
         let digested_claim = receipt.claim.digest::<sha::Impl>();
         let (a0, a1) = split_digest_bytes(params.control_root);
         let (c0, c1) = split_digest_bytes(digested_claim);
-        let id_bn254 = to_fixed_array(params.bn254_control_id.as_bytes());
+        let id_bn254: [u8; 32] = params.bn254_control_id.into();
         let seal = Seal::decode(seal).map_err(|e| R0Error::SealDecoding(e.to_string()))?;
-        let verifying_key = try_verifying_key()?;
-
-        let g1 = G1::from_bytes(&seal.a)?;
-        let g1_c = G1::from_bytes(&seal.c)?;
-        let g2 = G2::from_bytes(&seal.b)?;
+        let verifying_key = ark_groth16::VerifyingKey::<Bn254>::deserialize_uncompressed(R0_SERIALIZED_UNCOMPRESSED_VK.as_slice())?;
+        let g1 = G1::from_r0_bytes(&seal.a)?;
+        let g1_c = G1::from_r0_bytes(&seal.c)?;
+        let g2 = G2::from_r0_bytes(&seal.b)?;
         let mut encoded_proof = Vec::new();
         let proof: Proof<ark_ec::bn::Bn<ark_bn254::Config>> = Proof::<Bn254> { a: g1.0, b: g2.0, c: g1_c.0 };
         proof.serialize_compressed(&mut encoded_proof)?;

@@ -2,7 +2,6 @@ mod error;
 mod fields;
 pub mod groth16;
 mod points;
-mod result;
 pub mod risc0;
 pub mod tags;
 pub mod tests;

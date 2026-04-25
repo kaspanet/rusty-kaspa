@@ -8,10 +8,7 @@ use crate::{
     },
 };
 use risc0_binfmt::Digestible;
-use risc0_zkvm::{
-    Digest, SuccinctReceipt,
-    sha::{self, rust_crypto::Sha256},
-};
+use risc0_zkvm::{Digest, SuccinctReceipt, sha};
 impl R0ScriptBuilder {
     /// Converts a SuccinctReceipt into a Kaspa script.
     /// This script unlocks the UTXO if the verification of the receipt
@@ -36,7 +33,7 @@ impl R0ScriptBuilder {
         builder.add_data(journal.as_bytes())?;
         builder.add_data(image_id.as_bytes())?;
         builder.add_data(&receipt.control_id.as_bytes().to_vec())?;
-        builder.add_data(&[HashFnId::try_from(&receipt.hashfn)? as u8])?;
+        builder.add_data(&[HashFnId::try_from(receipt.hashfn.as_str())? as u8])?;
         builder.add_data(&[ZkTag::R0Succinct as u8].to_vec())?;
         builder.add_op(OpZkPrecompile)?;
         Ok(builder)

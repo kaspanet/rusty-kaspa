@@ -1,5 +1,4 @@
 use kaspa_txscript_errors::TxScriptError;
-use risc0_zkvm::PrunedValueError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

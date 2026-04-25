@@ -45,11 +45,11 @@ impl TryFrom<u8> for HashFnId {
     }
 }
 
-impl TryFrom<&String> for HashFnId {
+impl TryFrom<&str> for HashFnId {
     type Error = R0Error;
 
-    fn try_from(value: &String) -> Result<Self, Self::Error> {
-        match value.as_str() {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
             "blake2b" => Ok(HashFnId::Blake2b),
             "poseidon2" => Ok(HashFnId::Poseidon2),
             "sha-256" => Ok(HashFnId::Sha256),

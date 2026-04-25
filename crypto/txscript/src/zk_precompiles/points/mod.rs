@@ -4,7 +4,7 @@ use ark_serialize::CanonicalDeserialize;
 
 pub trait PointFromBytes<'input>: Sized {
     type Input: ?Sized;
-    fn from_bytes(bytes: &'input Self::Input) -> Result<Self, PointError>;
+    fn from_r0_bytes(bytes: &'input Self::Input) -> Result<Self, PointError>;
 }
 pub use error::PointError;
 pub struct G1(pub G1Affine);
@@ -13,8 +13,8 @@ pub struct G2(pub G2Affine);
 impl<'input> PointFromBytes<'input> for G1 {
     type Input = Vec<Vec<u8>>;
 
-    /// Deserialize an element over the G1 group from bytes in big-endian format
-    fn from_bytes(bytes: &Self::Input) -> Result<G1, PointError> {
+    /// Deserialize an element over the G1 group from r0 bytes in big-endian format
+    fn from_r0_bytes(bytes: &Self::Input) -> Result<G1, PointError> {
         if bytes.len() != 2 {
             return Err(PointError::MalformedG1);
         }
@@ -27,7 +27,7 @@ impl<'input> PointFromBytes<'input> for G1 {
 impl<'input> PointFromBytes<'input> for G2 {
     type Input = Vec<Vec<Vec<u8>>>;
 
-    fn from_bytes(bytes: &Self::Input) -> Result<G2, PointError> {
+    fn from_r0_bytes(bytes: &Self::Input) -> Result<G2, PointError> {
         if bytes.len() != 2 || bytes[0].len() != 2 || bytes[1].len() != 2 {
             return Err(PointError::MalformedG2);
         }
