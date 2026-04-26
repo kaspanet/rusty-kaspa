@@ -966,6 +966,68 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
     assert!(leaf_keys3.contains(&key_c), "LeafUpdate must record lane C (split trigger)");
 }
 
+/// Golden-vector regression test: pins `streaming_import`'s root output for a
+/// fixed deterministic input. The bs-keying fix in `db_sink.rs` only changes
+/// **which blue_score** is recorded for each persisted branch entry — the
+/// hash output of the SMT root is intentionally unchanged. This test is the
+/// tripwire that catches any future drift in the root computation.
+///
+/// If this assertion ever fails, do not update the golden value without
+/// understanding why the root changed: it is a protocol-affecting break.
+#[test]
+fn streaming_import_root_matches_golden_vector() {
+    use kaspa_hashes::ZERO_HASH;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    // Three lanes with distinct blue_scores; sorted by lane_key.
+    let lid_a = [0x01; 20];
+    let lid_b = [0x02; 20];
+    let lid_c = [0x03; 20];
+    let lk_a = lane_key(&lid_a);
+    let lk_b = lane_key(&lid_b);
+    let lk_c = lane_key(&lid_c);
+
+    let tip_a = hash(0xA1);
+    let tip_b = hash(0xB2);
+    let tip_c = hash(0xC3);
+    let bs_a = 100u64;
+    let bs_b = 200u64;
+    let bs_c = 300u64;
+    let pp_blue_score = 500u64;
+
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a, blue_score: bs_a });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score: bs_b });
+    let leaf_c = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_c, blue_score: bs_c });
+    let slo_reference = slo_root(vec![
+        LeafUpdate { key: lk_a, leaf_hash: leaf_a },
+        LeafUpdate { key: lk_b, leaf_hash: leaf_b },
+        LeafUpdate { key: lk_c, leaf_hash: leaf_c },
+    ]);
+
+    let mut import_lanes = vec![
+        ImportLane { lane_key: lk_a, lane_tip: tip_a, blue_score: bs_a, proof: None },
+        ImportLane { lane_key: lk_b, lane_tip: tip_b, blue_score: bs_b, proof: None },
+        ImportLane { lane_key: lk_c, lane_tip: tip_c, blue_score: bs_c, proof: None },
+    ];
+    import_lanes.sort_by_key(|l| l.lane_key);
+
+    let result =
+        streaming_import(&db, &stores, pp_blue_score, ZERO_HASH, 3, slo_reference, std::iter::once(import_lanes), 64).unwrap();
+
+    // Layer 1: streaming_import must agree with the SLO reference.
+    assert_eq!(result.root, slo_reference, "streaming_import must match SLO reference");
+
+    // Layer 2: golden bytes — pinned tripwire. Any change here means the SMT
+    // root computation has changed, which is a protocol break.
+    let golden = Hash::from_bytes([
+        0xd4, 0xa9, 0xb5, 0x66, 0xae, 0x55, 0x41, 0xcd, 0x9d, 0xbe, 0xb7, 0xf8, 0x5d, 0x12, 0x0c, 0x54, 0x52, 0x06, 0x7d, 0xb2, 0xd5,
+        0x6d, 0x41, 0x9b, 0xf5, 0x0a, 0x21, 0x95, 0x91, 0x24, 0xa9, 0xc5,
+    ]);
+    assert_eq!(result.root, golden, "streaming_import root must match the pinned golden vector");
+}
+
 /// IBD streaming_import must write each branch_version entry at the blue_score
 /// of the lane(s) it covers — not at `pp_blue_score`. Otherwise the imported
 /// nodes overstay their live-equivalent active window, becoming orphans
