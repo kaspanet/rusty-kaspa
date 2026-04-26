@@ -1028,6 +1028,97 @@ fn streaming_import_root_matches_golden_vector() {
     assert_eq!(result.root, golden, "streaming_import root must match the pinned golden vector");
 }
 
+/// `prune_chunk` derives delete keys from score_index entries: for every
+/// `(lane_key, blue_score, block_hash)` triple, it emits BranchKey::new(d,
+/// lane_key) for depths 0..=255, then deletes branch_version at those keys
+/// at the same `(blue_score, block_hash)`.
+///
+/// Correctness invariant after the bs-keying fix: every branch_version Internal
+/// at `(depth=d, node_key=N, bs=B)` is reachable via some lane in the subtree
+/// whose own `bs=B` has a `LeafUpdate` score_index entry. The streaming
+/// builder propagates `max_blue_score` upward via `merge_pair`, so every
+/// Internal's bs equals exactly one descendant leaf's bs, and that leaf's
+/// prefix at depth `d` produces N.
+///
+/// This test exercises that invariant end-to-end: streaming_import multiple
+/// lanes at distinct blue_scores, then prune at a cutoff covering ALL of
+/// them. Every branch_version, lane_version, and score_index entry must be
+/// gone — proving the score_index is consistent with the per-leaf bs-keyed
+/// branch_version writes.
+#[test]
+fn prune_after_streaming_import_removes_all_imported_entries() {
+    use kaspa_hashes::ZERO_HASH;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    // Mix of shared-prefix and divergent lanes so the tree has both Internals
+    // (at max-of-children bs) and Collapsed leaves at distinct bs values.
+    let lanes = vec![
+        ImportLane { lane_key: lane_key(&[0x01; 20]), lane_tip: hash(0xA1), blue_score: 100, proof: None },
+        ImportLane { lane_key: lane_key(&[0x02; 20]), lane_tip: hash(0xA2), blue_score: 200, proof: None },
+        ImportLane { lane_key: lane_key(&[0x03; 20]), lane_tip: hash(0xA3), blue_score: 300, proof: None },
+        ImportLane { lane_key: lane_key(&[0x04; 20]), lane_tip: hash(0xA4), blue_score: 400, proof: None },
+    ];
+    let mut sorted = lanes.clone();
+    sorted.sort_by_key(|l| l.lane_key);
+    let pp = 500u64;
+
+    let slo_reference = slo_root(
+        sorted
+            .iter()
+            .map(|l| LeafUpdate {
+                key: l.lane_key,
+                leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_tip: &l.lane_tip, blue_score: l.blue_score }),
+            })
+            .collect(),
+    );
+
+    let result =
+        streaming_import(&db, &stores, pp, ZERO_HASH, sorted.len() as u64, slo_reference, std::iter::once(sorted.clone()), 64)
+            .unwrap();
+    assert_eq!(result.root, slo_reference);
+
+    // Sanity: imported lanes are present before pruning.
+    for lane in &sorted {
+        assert!(stores.lane_version.get_at(lane.lane_key, u64::MAX, 0).next().is_some());
+    }
+    // Sanity: at least the root branch entry exists.
+    let root_branch_pre =
+        stores.branch_version.get_at(0, Hash::from_bytes([0; 32]), u64::MAX, 0).next().expect("root branch must exist after import");
+    assert!(root_branch_pre.is_ok());
+
+    // Prune at a cutoff that covers every imported entry.
+    // pp_blue_score is the highest score_index entry (Structural), and
+    // every branch_version entry is at bs ≤ max(lane bs) = 400 < pp.
+    stores.prune(&db, pp);
+
+    // After pruning: nothing remains for the imported lanes.
+    for lane in &sorted {
+        assert!(
+            stores.lane_version.get_at(lane.lane_key, u64::MAX, 0).next().is_none(),
+            "lane_version entry for lane_key={:?} must be pruned",
+            lane.lane_key
+        );
+    }
+    assert!(
+        stores.score_index.get_all(0..=pp).next().is_none(),
+        "score_index must be empty after pruning at cutoff covering all entries"
+    );
+
+    // Branch entries for every lane's full prefix must be gone.
+    for lane in &sorted {
+        for depth in 0u8..=255 {
+            let bk = kaspa_smt::store::BranchKey::new(depth, &lane.lane_key);
+            assert!(
+                stores.branch_version.get_at(depth, bk.node_key, u64::MAX, 0).next().is_none(),
+                "branch_version entry must be pruned at depth={depth}, node_key={:?}",
+                bk.node_key
+            );
+        }
+    }
+}
+
 /// IBD streaming_import must write each branch_version entry at the blue_score
 /// of the lane(s) it covers — not at `pp_blue_score`. Otherwise the imported
 /// nodes overstay their live-equivalent active window, becoming orphans
