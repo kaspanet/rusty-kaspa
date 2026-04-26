@@ -3,7 +3,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
-    Hub, make_message,
+    Hub, Router, make_message,
     pb::{InvTransactionsMessage, KaspadMessage, kaspad_message::Payload},
 };
 use std::time::{Duration, Instant};
@@ -94,11 +94,13 @@ impl TransactionsSpread {
     }
 
     async fn broadcast(&self, msg: KaspadMessage, should_throttle: bool) {
+        // Skip peers that have set disable_relay_tx in their version handshake
+        let accepts_relay = |router: &std::sync::Arc<Router>| !router.properties().disable_relay_tx;
         if should_throttle {
             // TODO: Figure out a better number
-            self.hub.broadcast_to_some_peers(msg, 8).await
+            self.hub.broadcast_to_some_peers_filtered(msg, 8, accepts_relay).await
         } else {
-            self.hub.broadcast(msg, None).await
+            self.hub.broadcast_filtered(msg, accepts_relay).await
         }
     }
 }
