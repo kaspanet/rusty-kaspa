@@ -1,4 +1,4 @@
-use super::search_tree::SearchTree;
+use super::{MAX_NULL_ATTEMPTS, feerate_key::FeerateTransactionKey, search_tree::SearchTree};
 use crate::Policy;
 use kaspa_consensus_core::{
     block::TemplateTransactionSelector,
@@ -253,9 +253,12 @@ struct TreeSelectorSelection {
 /// candidates from a local tree as they are selected or skipped by LPB/gas limits.
 pub struct MutatingTreeSelector {
     tree: SearchTree,
+    /// Sampled candidates which did not fit the current mass gap. They stay out of
+    /// the active tree until the next selection round checks the updated gap.
+    mass_deferred: Vec<FeerateTransactionKey>,
     selected_vec: Vec<TreeSelectorSelection>,
     selected_map: Option<HashMap<TransactionId, TreeSelectorSelection>>,
-    total_selected_mass: u64,
+    gap: u64,
     lanes: LaneSelectionState,
     overall_candidates: usize,
     overall_rejections: usize,
@@ -267,9 +270,10 @@ impl MutatingTreeSelector {
         let overall_candidates = tree.len();
         Self {
             tree,
+            mass_deferred: Vec::new(),
             selected_vec: Vec::with_capacity(overall_candidates),
             selected_map: None,
-            total_selected_mass: 0,
+            gap: policy.max_block_mass,
             lanes: Default::default(),
             overall_candidates,
             overall_rejections: 0,
@@ -281,35 +285,53 @@ impl MutatingTreeSelector {
         self.selected_vec.clear();
         self.selected_map = None;
     }
+
+    fn restore_mass_deferred(&mut self) {
+        let gap = self.gap;
+        for candidate in self.mass_deferred.drain(..) {
+            // restore runs at the next selector round, after prior rejections were already
+            // reflected in `gap`. Anything not rejected by now is considered accepted, so
+            // candidates that still do not fit can be dropped.
+            if candidate.mass <= gap {
+                self.tree.insert(candidate);
+            }
+        }
+    }
+
+    fn selected_mass(&self) -> u64 {
+        self.policy.max_block_mass.saturating_sub(self.gap)
+    }
 }
 
 impl TemplateTransactionSelector for MutatingTreeSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
         self.reset_selection();
+        self.restore_mass_deferred();
         let mut rng = rand::thread_rng();
         let mut transactions = Vec::new();
+        let mut mass_null_attempts = 0;
 
-        while !self.tree.is_empty() {
+        while !self.tree.is_empty() && mass_null_attempts < MAX_NULL_ATTEMPTS {
+            // `gen::<f64>()` uses the `Standard` distribution, which samples floats uniformly from [0, 1)
             let query = rng.r#gen::<f64>() * self.tree.total_weight();
-            let candidate = self.tree.search(query).clone();
+            let candidate = self.tree.remove_by_query(query);
             let tx = candidate.tx.as_ref();
             let lane = candidate.lane();
 
-            let next_total_mass = self.total_selected_mass.saturating_add(candidate.mass);
-            if next_total_mass > self.policy.max_block_mass {
-                break;
+            if candidate.mass > self.gap {
+                self.mass_deferred.push(candidate);
+                mass_null_attempts += 1;
+                continue;
             }
 
             if !self.lanes.try_select(&self.policy, lane, tx.gas) {
                 // For now we compromise on retry optimality in this less-congested path:
                 // LPB/gas-skipped candidates are not reconsidered after later rejections
                 // (tx rejections are expected to be rare here).
-                self.tree.remove(&candidate);
                 continue;
             }
 
-            self.tree.remove(&candidate);
-            self.total_selected_mass = next_total_mass;
+            self.gap -= candidate.mass;
             self.selected_vec.push(TreeSelectorSelection { tx_id: tx.id(), mass: candidate.mass, lane, gas: tx.gas });
             transactions.push(tx.clone());
         }
@@ -323,7 +345,8 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
             .get_or_insert_with(|| self.selected_vec.drain(..).map(|selection| (selection.tx_id, selection)).collect());
         let selection = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
 
-        self.total_selected_mass -= selection.mass;
+        // Rejected selections were previously subtracted from the gap, so this cannot exceed the block mass limit.
+        self.gap += selection.mass;
         self.lanes.reject(selection.lane, selection.gas);
         self.overall_rejections += 1;
     }
@@ -333,7 +356,7 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
         const LOW_REJECTION_FRACTION: f64 = 0.2;
 
         self.overall_rejections == 0
-            || (self.total_selected_mass as f64) > self.policy.max_block_mass as f64 * SUFFICIENT_MASS_THRESHOLD
+            || (self.selected_mass() as f64) > self.policy.max_block_mass as f64 * SUFFICIENT_MASS_THRESHOLD
             || (self.overall_rejections as f64) < self.overall_candidates as f64 * LOW_REJECTION_FRACTION
     }
 }
@@ -415,5 +438,104 @@ mod tests {
         let selected = selector.select_transactions();
         assert_eq!(selected.len(), 1);
         assert_ne!(selected[0].id(), first_selected_id);
+    }
+
+    #[test]
+    fn test_mutating_tree_selector_restores_mass_deferred_after_reject() {
+        let lane = lane(1);
+        let deferred_tx = tx(1, lane, 0);
+        let rejected_tx = tx(2, lane, 0);
+        let mut tree = SearchTree::new();
+        tree.insert(FeerateTransactionKey::new(100, 900, deferred_tx.clone()));
+
+        let mut policy = policy();
+        policy.max_block_mass = 1000;
+        let mut selector = MutatingTreeSelector::new(policy, tree);
+
+        selector.gap = 500;
+        let selected = selector.select_transactions();
+        assert!(selected.is_empty());
+        assert!(selector.tree.is_empty());
+        assert_eq!(selector.mass_deferred.len(), 1);
+
+        selector.gap = 500;
+        assert!(selector.lanes.try_select(&selector.policy, lane, 0));
+        selector.selected_vec.push(TreeSelectorSelection { tx_id: rejected_tx.id(), mass: 500, lane, gas: 0 });
+        selector.reject_selection(rejected_tx.id());
+
+        assert_eq!(selector.mass_deferred.len(), 1);
+        assert!(selector.tree.is_empty());
+
+        let selected = selector.select_transactions();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id(), deferred_tx.id());
+        assert!(selector.mass_deferred.is_empty());
+    }
+
+    #[test]
+    fn test_mutating_tree_selector_drops_mass_deferred_that_still_do_not_fit() {
+        let lane = lane(1);
+        let rejected_tx = tx(1, lane, 0);
+        let mut tree = SearchTree::new();
+        tree.insert(FeerateTransactionKey::new(100, 900, tx(2, lane, 0)));
+
+        let mut policy = policy();
+        policy.max_block_mass = 1000;
+        let mut selector = MutatingTreeSelector::new(policy, tree);
+
+        selector.gap = 500;
+        let selected = selector.select_transactions();
+        assert!(selected.is_empty());
+        assert_eq!(selector.mass_deferred.len(), 1);
+
+        selector.gap = 500;
+        assert!(selector.lanes.try_select(&selector.policy, lane, 0));
+        selector.selected_vec.push(TreeSelectorSelection { tx_id: rejected_tx.id(), mass: 300, lane, gas: 0 });
+        selector.reject_selection(rejected_tx.id());
+
+        assert_eq!(selector.gap, 800);
+        assert_eq!(selector.mass_deferred.len(), 1);
+
+        let selected = selector.select_transactions();
+        assert!(selected.is_empty());
+        assert!(selector.mass_deferred.is_empty());
+        assert!(selector.tree.is_empty());
+    }
+
+    #[test]
+    fn test_mutating_tree_selector_selects_small_tx_below_target_gap() {
+        let lane = lane(1);
+        let mut tree = SearchTree::new();
+        let small_tx = tx(1, lane, 0);
+        tree.insert(FeerateTransactionKey::new(100, 1, small_tx.clone()));
+
+        let mut policy = policy();
+        policy.max_block_mass = 1000;
+        let mut selector = MutatingTreeSelector::new(policy, tree);
+        selector.gap = 1;
+
+        let selected = selector.select_transactions();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id(), small_tx.id());
+        assert!(selector.tree.is_empty());
+    }
+
+    #[test]
+    fn test_mutating_tree_selector_stops_after_null_attempts() {
+        let lane = lane(1);
+        let mut tree = SearchTree::new();
+        for i in 0..MAX_NULL_ATTEMPTS + 1 {
+            tree.insert(FeerateTransactionKey::new(100, 2, tx(i as u64, lane, 0)));
+        }
+
+        let mut policy = policy();
+        policy.max_block_mass = 1000;
+        let mut selector = MutatingTreeSelector::new(policy, tree);
+        selector.gap = 1;
+
+        let selected = selector.select_transactions();
+        assert!(selected.is_empty());
+        assert_eq!(selector.mass_deferred.len(), MAX_NULL_ATTEMPTS);
+        assert_eq!(selector.tree.len(), 1);
     }
 }

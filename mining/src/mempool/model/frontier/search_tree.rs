@@ -205,6 +205,11 @@ impl SearchTree {
         self.tree.get_by_argument(query).expect("clamped").0
     }
 
+    /// Remove the key located by a weight point `query ∈ [0, total_weight)` in log(n) time.
+    pub fn remove_by_query(&mut self, query: f64) -> FeerateKey {
+        self.tree.remove_by_argument(query).expect("clamped").0
+    }
+
     /// Access the total weight in O(1) time
     pub fn total_weight(&self) -> f64 {
         self.tree.root_argument().weight()
@@ -339,6 +344,24 @@ mod tests {
             assert_eq!(&expected, item);
             assert!(expected.cmp(item).is_eq()); // Assert Ord equality as well
         }
+    }
+
+    #[test]
+    fn test_remove_by_query_removes_searched_key() {
+        let mut tree = SearchTree::new();
+        let keys = (0..200).map(|i| build_feerate_key(i + 1, 1650, i)).collect_vec();
+
+        for key in keys.iter().cloned() {
+            tree.insert(key);
+        }
+
+        let query = tree.total_weight() / 2.0;
+        let expected = tree.search(query).clone();
+        let removed = tree.remove_by_query(query);
+
+        assert_eq!(removed, expected);
+        assert!(!tree.ascending_iter().any(|candidate| candidate == &removed));
+        assert_eq!(tree.len(), keys.len() - 1);
     }
 
     #[test]
