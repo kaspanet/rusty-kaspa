@@ -203,6 +203,11 @@ impl Frontier {
     /// This sampling algorithm should be used when frontier total mass is high enough compared to
     /// policy mass limit so that the probability of sampling collisions remains low.
     ///
+    /// Sampling follows the usual weighted feerate path until the sampled sequence
+    /// first occupies `policy.lanes_per_block_limit` lanes. From that point on, lane
+    /// selection is frozen and sampling continues only within the already-occupied
+    /// lanes.
+    ///
     /// Convergence analysis:
     ///     1. Based on the above we can safely assume that `k << n`, where `n` is the total number of frontier items
     ///        and `k` is the number of actual samples (since `desired_mass << total_mass` and mass per item is bounded)
