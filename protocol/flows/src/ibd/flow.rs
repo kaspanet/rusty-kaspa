@@ -489,7 +489,13 @@ impl IbdFlow {
         let mut header_only_chain_segment = Vec::new();
         while let Some(entry) = entry_stream.next().await? {
             match entry.block.is_header_only() {
-                true => header_only_chain_segment.push(entry.block.header.clone()),
+                true => {
+                    if header_only_chain_segment.is_empty() {
+                        info!("Finished downloading {} blocks from the pruning point anticone", entries.len() - 1);
+                        info!("Starting to download the pruning point chain segment");
+                    }
+                    header_only_chain_segment.push(entry.block.header.clone())
+                }
                 // We expect all header-only entries to be sent after all non-header-only entries
                 false if header_only_chain_segment.is_empty() => entries.push(entry),
                 false => {
@@ -497,6 +503,14 @@ impl IbdFlow {
                 }
             }
         }
+
+        if header_only_chain_segment.is_empty() {
+            // No chain segment means the anticone was not logged yet.
+            info!("Finished downloading {} blocks from the pruning point anticone", entries.len() - 1);
+        } else {
+            info!("Finished downloading {} headers from the pruning point chain segment", header_only_chain_segment.len());
+        }
+
         // Create a topologically ordered vector of trusted blocks - the pruning point and its anticone,
         // and their daa windows headers
         let mut trusted_set = pkg.build_trusted_subdag(entries)?;

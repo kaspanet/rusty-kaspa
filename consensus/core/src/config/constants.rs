@@ -89,6 +89,13 @@ pub mod consensus {
 
     /// Coinbase maturity in seconds
     pub const COINBASE_MATURITY_SECONDS: u64 = 100;
+
+    //
+    // ~~~~~~~~~~~~~~~~~~~ Toccata lane limits ~~~~~~~~~~~~~~~~~~~
+    //
+
+    pub const DEFAULT_LANES_PER_BLOCK_LIMIT: usize = 50;
+    pub const DEFAULT_GAS_PER_LANE_LIMIT: u64 = 500_000;
 }
 
 pub mod perf {
