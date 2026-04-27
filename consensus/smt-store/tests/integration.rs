@@ -1236,22 +1236,22 @@ fn branch_collapsed_rows_anchored_at_lane_version_anchor() {
         let bk = BranchKey::new(depth, &key_l);
         let rows: Vec<_> = stores.branch_version.get_at(bk.depth, bk.node_key, u64::MAX, 0).collect::<Result<Vec<_>, _>>().unwrap();
         for row in rows {
-            if let Some(Node::Collapsed(cl)) = row.data() {
-                if cl.lane_key == key_l {
-                    assert_eq!(
-                        (row.blue_score(), row.block_hash()),
-                        expected_anchor,
-                        "branch_version Collapsed{{lane=L}} at depth={} has anchor (bs={}, block={}) \
+            if let Some(Node::Collapsed(cl)) = row.data()
+                && cl.lane_key == key_l
+            {
+                assert_eq!(
+                    (row.blue_score(), row.block_hash()),
+                    expected_anchor,
+                    "branch_version Collapsed{{lane=L}} at depth={} has anchor (bs={}, block={}) \
                          but L's lane_version is at (bs={}, block={}). Structural rewrite of L by \
                          a sibling-inserting block must inherit L's existing anchor — otherwise \
                          the two stores prune asynchronously and L becomes an orphan in branch_version.",
-                        depth,
-                        row.blue_score(),
-                        row.block_hash(),
-                        expected_anchor.0,
-                        expected_anchor.1,
-                    );
-                }
+                    depth,
+                    row.blue_score(),
+                    row.block_hash(),
+                    expected_anchor.0,
+                    expected_anchor.1,
+                );
             }
         }
     }
@@ -1402,10 +1402,9 @@ fn no_orphan_collapseds_in_branch_version_after_prune() {
                 .branch_version
                 .get_at_canonical(bk.depth, bk.node_key, bounds.target_blue_score, bounds.min_blue_score, |_| true)
                 .unwrap()
+                && let Some(Node::Collapsed(cl)) = verified.data()
             {
-                if let Some(Node::Collapsed(cl)) = verified.data() {
-                    branch_set.insert(cl.lane_key);
-                }
+                branch_set.insert(cl.lane_key);
             }
         }
     }
