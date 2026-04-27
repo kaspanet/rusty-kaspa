@@ -8,7 +8,7 @@ use super::{
 };
 use crate::constants::LOCK_TIME_THRESHOLD;
 use kaspa_consensus_core::{
-    constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
+    constants::{TX_VERSION, TX_VERSION_TOCCATA},
     tx::Transaction,
 };
 
@@ -94,7 +94,7 @@ impl TransactionValidator {
     // TODO (COVPP): Remove the contextual check and only leave the isolated one after the HF
     fn check_transaction_version(&self, tx: &Transaction, block_daa_score: u64) -> TxResult<()> {
         if self.covenants_activation.is_active(block_daa_score) {
-            if tx.version > TX_VERSION_POST_COV_HF {
+            if tx.version > TX_VERSION_TOCCATA {
                 return Err(TxRuleError::UnknownTxVersion(tx.version));
             }
             return Ok(());

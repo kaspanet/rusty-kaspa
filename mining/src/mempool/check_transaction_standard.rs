@@ -57,6 +57,9 @@ impl Mempool {
                 MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS,
             ));
         }
+        if transaction.tx.gas > self.config.block_lane_limits.gas_per_lane {
+            return Err(NonStandardError::RejectGas(transaction_id, transaction.tx.gas, self.config.block_lane_limits.gas_per_lane));
+        }
 
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             // Each transaction input signature script must not exceed the
@@ -229,6 +232,7 @@ mod tests {
     };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
+        config::constants::consensus::DEFAULT_GAS_PER_LANE_LIMIT,
         config::params::Params,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         mass::NonContextualMasses,
@@ -283,7 +287,8 @@ mod tests {
         for test in tests.iter() {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(params.target_time_per_block(), false, params.block_mass_limits);
+                let mut config =
+                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -368,7 +373,8 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(params.target_time_per_block(), false, params.block_mass_limits);
+                let mut config =
+                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -439,6 +445,22 @@ mod tests {
                     1000,
                 ),
                 is_standard: true, // check_transaction_standard_in_isolation does not check version
+            },
+            Test {
+                name: "Transaction gas exceeds the per-lane limit",
+                mtx: new_mtx(
+                    Transaction::new(
+                        TX_VERSION,
+                        vec![dummy_tx_input.clone()],
+                        vec![dummy_tx_out.clone()],
+                        0,
+                        SUBNETWORK_ID_NATIVE,
+                        DEFAULT_GAS_PER_LANE_LIMIT + 1,
+                        vec![],
+                    ),
+                    1000,
+                ),
+                is_standard: false,
             },
             Test {
                 name: "Transaction size is too large",
@@ -548,7 +570,8 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let config = Config::build_default(params.target_time_per_block(), false, params.block_mass_limits);
+                let config =
+                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
 

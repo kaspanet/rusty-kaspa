@@ -1,5 +1,6 @@
-use crate::{block_template::selector::ALPHA, mempool::model::tx::MempoolTransaction};
+use crate::mempool::model::{frontier::selectors::ALPHA, tx::MempoolTransaction};
 use kaspa_consensus_core::mass::{ContextualMasses, Mass, MassCofactors};
+use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::Transaction;
 use std::sync::Arc;
 
@@ -24,6 +25,9 @@ impl FeerateTransactionKey {
         // NOTE: any change to the way this weight is calculated (such as scaling by some factor)
         // requires a reversed update to total_weight in `Frontier::build_feerate_estimator`. This
         // is because the math methods in FeeEstimator assume this specific weight function.
+        //
+        // Gas is intentionally not folded into this global weight: gas capacity is lane-local and
+        // is enforced by selectors during block template construction.
         Self { fee, mass, weight: (fee as f64 / mass as f64).powi(ALPHA), tx }
     }
 
@@ -33,6 +37,10 @@ impl FeerateTransactionKey {
 
     pub fn weight(&self) -> f64 {
         self.weight
+    }
+
+    pub fn lane(&self) -> SubnetworkId {
+        self.tx.subnetwork_id
     }
 }
 

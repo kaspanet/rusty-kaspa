@@ -1,7 +1,9 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    subnets::SUBNETWORK_ID_NATIVE,
+    config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
+    mass::BlockLaneLimits,
+    subnets::SubnetworkId,
     tx::{Transaction, TransactionInput, TransactionOutpoint},
 };
 use kaspa_hashes::{HasherBase, TransactionID};
@@ -11,6 +13,10 @@ use std::{
     collections::{HashMap, HashSet, hash_set::Iter},
     sync::Arc,
 };
+
+const DEFAULT_BENCH_ACTIVE_LANES: usize = 1000;
+const BENCH_BLOCK_LANE_LIMITS: BlockLaneLimits =
+    BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };
 
 #[derive(Default)]
 pub struct Dag<T>
@@ -78,15 +84,28 @@ pub fn bench_compare_topological_index_fns(c: &mut Criterion) {
     group.finish();
 }
 
-fn generate_unique_tx(i: u64) -> Arc<Transaction> {
+fn generate_unique_tx(i: u64, lane: SubnetworkId) -> Arc<Transaction> {
     let mut hasher = TransactionID::new();
     let prev = hasher.update(i.to_le_bytes()).clone().finalize();
     let input = TransactionInput::new(TransactionOutpoint::new(prev, 0), vec![], 0, 0);
-    Arc::new(Transaction::new(0, vec![input], vec![], 0, SUBNETWORK_ID_NATIVE, 0, vec![]))
+    Arc::new(Transaction::new(0, vec![input], vec![], 0, lane, 0, vec![]))
 }
 
-fn build_feerate_key(fee: u64, mass: u64, id: u64) -> FeerateTransactionKey {
-    FeerateTransactionKey::new(fee, mass, generate_unique_tx(id))
+fn random_bench_lane<R: Rng + ?Sized>(rng: &mut R) -> SubnetworkId {
+    let namespace = (rng.gen_range(0..bench_active_lanes()) as u32 + 1).to_be_bytes();
+    SubnetworkId::from_namespace(namespace)
+}
+
+fn bench_active_lanes() -> usize {
+    std::env::var("BENCH_ACTIVE_LANES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|&value| value > 0)
+        .unwrap_or(DEFAULT_BENCH_ACTIVE_LANES)
+}
+
+fn build_feerate_key<R: Rng + ?Sized>(fee: u64, mass: u64, id: u64, rng: &mut R) -> FeerateTransactionKey {
+    FeerateTransactionKey::new(fee, mass, generate_unique_tx(id, random_bench_lane(rng)))
 }
 
 pub fn bench_mempool_sampling(c: &mut Criterion) {
@@ -97,7 +116,7 @@ pub fn bench_mempool_sampling(c: &mut Criterion) {
     for i in 0..cap as u64 {
         let fee: u64 = if i % (cap as u64 / 100000) == 0 { 1000000 } else { rng.gen_range(1..10000) };
         let mass: u64 = 1650;
-        let key = build_feerate_key(fee, mass, i);
+        let key = build_feerate_key(fee, mass, i, &mut rng);
         map.insert(key.tx.id(), key);
     }
 
@@ -109,7 +128,7 @@ pub fn bench_mempool_sampling(c: &mut Criterion) {
     group.bench_function("mempool one-shot sample", |b| {
         b.iter(|| {
             black_box({
-                let selected = frontier.sample_inplace(&mut rng, &Policy::new(500_000), &mut 0);
+                let selected = frontier.sample_inplace(&mut rng, &Policy::new(500_000, BENCH_BLOCK_LANE_LIMITS), &mut 0);
                 selected.iter().map(|k| k.mass).sum::<u64>()
             })
         })
@@ -178,7 +197,7 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
     for i in 0..cap as u64 {
         let fee: u64 = rng.gen_range(1..1000000);
         let mass: u64 = 1650;
-        let key = build_feerate_key(fee, mass, i);
+        let key = build_feerate_key(fee, mass, i, &mut rng);
         map.insert(key.tx.id(), key);
     }
 
@@ -188,10 +207,10 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
             frontier.insert(item).then_some(()).unwrap();
         }
 
-        group.bench_function(format!("rebalancing selector ({})", len), |b| {
+        group.bench_function(format!("mutating tree selector ({})", len), |b| {
             b.iter(|| {
                 black_box({
-                    let mut selector = frontier.build_rebalancing_selector();
+                    let mut selector = frontier.build_mutating_tree_selector();
                     selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
                 })
             })
@@ -228,7 +247,7 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
         group.bench_function(format!("dynamic selector ({})", len), |b| {
             b.iter(|| {
                 black_box({
-                    let mut selector = frontier.build_selector(&Policy::new(500_000));
+                    let mut selector = frontier.build_selector(&Policy::new(500_000, BENCH_BLOCK_LANE_LIMITS));
                     selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
                 })
             })
@@ -242,13 +261,14 @@ pub fn bench_inplace_sampling_worst_case(c: &mut Criterion) {
     let mut group = c.benchmark_group("mempool inplace sampling");
     let max_fee = u64::MAX;
     let fee_steps = (0..10).map(|i| max_fee / 100u64.pow(i)).collect_vec();
+    let mut rng = thread_rng();
     for subgroup_size in [300, 200, 100, 80, 50, 30] {
         let cap = 1_000_000;
         let mut map = HashMap::with_capacity(cap);
         for i in 0..cap as u64 {
             let fee: u64 = if i < 300 { fee_steps[i as usize / subgroup_size] } else { 1 };
             let mass: u64 = 1650;
-            let key = build_feerate_key(fee, mass, i);
+            let key = build_feerate_key(fee, mass, i, &mut rng);
             map.insert(key.tx.id(), key);
         }
 

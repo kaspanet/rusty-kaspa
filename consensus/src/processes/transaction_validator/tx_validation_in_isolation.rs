@@ -2,7 +2,7 @@ use super::{
     TransactionValidator,
     errors::{TxResult, TxRuleError},
 };
-use crate::constants::{MAX_SOMPI, TX_VERSION_POST_COV_HF};
+use crate::constants::{MAX_SOMPI, TX_VERSION_TOCCATA};
 use kaspa_consensus_core::subnets::{
     CoinbaseSubnetwork, NativeSubnetwork, SUBNETWORK_NAMESPACE_LEN, SUBNETWORK_ZERO_TAIL_LEN, Subnetwork,
 };
@@ -116,16 +116,24 @@ fn check_duplicate_transaction_inputs(tx: &Transaction) -> TxResult<()> {
     Ok(())
 }
 
+const ZEROES_19: &[u8; 19] = &[0; 19];
+
 fn check_gas(tx: &Transaction) -> TxResult<()> {
-    // This should be revised if subnetworks are activated (along with other validations that weren't copied from kaspad)
-    if tx.gas > 0 {
-        return Err(TxRuleError::TxHasGas);
+    if tx.gas == 0 {
+        return Ok(());
     }
-    Ok(())
+
+    // Only post-Toccata non-system lanes may carry gas; reserved system lanes
+    // have a 19-byte zero suffix and must remain gas-free.
+    if tx.version >= TX_VERSION_TOCCATA && !matches!(tx.subnetwork_id.as_bytes(), [_x, rest @ ..] if rest == ZEROES_19) {
+        return Ok(());
+    }
+
+    Err(TxRuleError::TxHasGas)
 }
 
 fn check_transaction_version(tx: &Transaction) -> TxResult<()> {
-    if tx.version > TX_VERSION_POST_COV_HF {
+    if tx.version > TX_VERSION_TOCCATA {
         return Err(TxRuleError::UnknownTxVersion(tx.version));
     }
     Ok(())
@@ -157,7 +165,6 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
-    const ZEROES_19: &[u8; 19] = &[0; 19];
     const ZEROES_16: &[u8; SUBNETWORK_ZERO_TAIL_LEN] = &[0; SUBNETWORK_ZERO_TAIL_LEN];
 
     // KIP-21 subnetwork ID shape, checked in priority order:
@@ -173,7 +180,7 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
         // Native and coinbase (reserved) subnetwork IDs are always allowed
         [NativeSubnetwork::FIRST_BYTE, rest @ ..] | [CoinbaseSubnetwork::FIRST_BYTE, rest @ ..] if rest == ZEROES_19 => Ok(()),
         [_x, rest @ ..] if rest == ZEROES_19 => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
-        bytes if tx.version >= TX_VERSION_POST_COV_HF && &bytes[SUBNETWORK_NAMESPACE_LEN..] == ZEROES_16 => Ok(()),
+        bytes if tx.version >= TX_VERSION_TOCCATA && &bytes[SUBNETWORK_NAMESPACE_LEN..] == ZEROES_16 => Ok(()),
         _ => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
     }
 }
@@ -205,7 +212,7 @@ fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
 #[cfg(test)]
 mod tests {
     use kaspa_consensus_core::{
-        constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
+        constants::{TX_VERSION, TX_VERSION_TOCCATA},
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
         tx::{
             ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
@@ -370,7 +377,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::ComputeBudgetInV0(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.version = TX_VERSION_POST_COV_HF + 1;
+        tx.version = TX_VERSION_TOCCATA + 1;
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_)));
 
         // Test prev version upper bound in header context
@@ -405,7 +412,7 @@ mod tests {
         }
 
         // Reserved IDs (19-byte zero suffix): native/coinbase only, allowed at any version.
-        for version in [TX_VERSION, TX_VERSION_POST_COV_HF] {
+        for version in [TX_VERSION, TX_VERSION_TOCCATA] {
             super::check_transaction_subnetwork(&tx_with(SUBNETWORK_ID_NATIVE, version)).unwrap();
             super::check_transaction_subnetwork(&tx_with(SUBNETWORK_ID_COINBASE, version)).unwrap();
         }
@@ -416,7 +423,7 @@ mod tests {
         // through to the user-lane arm.
         for byte in [0x02u8, 0x07, 0xff] {
             let reserved_shape = SubnetworkId::from_byte(byte);
-            for version in [TX_VERSION, TX_VERSION_POST_COV_HF] {
+            for version in [TX_VERSION, TX_VERSION_TOCCATA] {
                 assert_match!(
                     super::check_transaction_subnetwork(&tx_with(reserved_shape, version)),
                     Err(TxRuleError::SubnetworksDisabled(_))
@@ -428,7 +435,7 @@ mod tests {
         // — any first byte (including native/coinbase) is accepted post-cov-HF.
         for namespace in [[0x11, 0x22, 0x33, 0x44], [0x00, 0x00, 0x00, 0x01], [0xde, 0xad, 0xbe, 0xef], [0x07, 0x01, 0, 0]] {
             let lane = sid(namespace, [0; SUBNETWORK_ZERO_TAIL_LEN]);
-            super::check_transaction_subnetwork(&tx_with(lane, TX_VERSION_POST_COV_HF)).unwrap();
+            super::check_transaction_subnetwork(&tx_with(lane, TX_VERSION_TOCCATA)).unwrap();
             // Pre-HF: user lanes are forbidden.
             assert_match!(super::check_transaction_subnetwork(&tx_with(lane, TX_VERSION)), Err(TxRuleError::SubnetworksDisabled(_)));
         }
@@ -438,15 +445,29 @@ mod tests {
         dirty_tail[0] = 1;
         let tail_byte_set = sid([0x11, 0, 0, 0], dirty_tail);
         assert_match!(
-            super::check_transaction_subnetwork(&tx_with(tail_byte_set, TX_VERSION_POST_COV_HF)),
+            super::check_transaction_subnetwork(&tx_with(tail_byte_set, TX_VERSION_TOCCATA)),
             Err(TxRuleError::SubnetworksDisabled(_))
         );
         let mut dirty_tail_last = [0u8; SUBNETWORK_ZERO_TAIL_LEN];
         *dirty_tail_last.last_mut().unwrap() = 0xff;
         let tail_last_set = sid([0, 0, 0, 1], dirty_tail_last);
         assert_match!(
-            super::check_transaction_subnetwork(&tx_with(tail_last_set, TX_VERSION_POST_COV_HF)),
+            super::check_transaction_subnetwork(&tx_with(tail_last_set, TX_VERSION_TOCCATA)),
             Err(TxRuleError::SubnetworksDisabled(_))
         );
+
+        let user_lane = sid([0, 0, 0, 1], [0; SUBNETWORK_ZERO_TAIL_LEN]);
+        let reserved_shape = SubnetworkId::from_byte(2);
+        for (subnetwork_id, version, expected) in [
+            (SUBNETWORK_ID_NATIVE, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
+            (SUBNETWORK_ID_COINBASE, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
+            (reserved_shape, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
+            (user_lane, TX_VERSION, Err(TxRuleError::TxHasGas)),
+            (user_lane, TX_VERSION_TOCCATA, Ok(())),
+        ] {
+            let mut tx = tx_with(subnetwork_id, version);
+            tx.gas = 1;
+            assert_eq!(super::check_gas(&tx), expected);
+        }
     }
 }

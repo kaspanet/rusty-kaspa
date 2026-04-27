@@ -2,7 +2,7 @@
 mod tests {
     use crate::{
         MiningCounters,
-        block_template::builder::BlockTemplateBuilder,
+        block_template::{builder::BlockTemplateBuilder, policy::Policy},
         errors::{MiningManagerError, MiningManagerResult},
         manager::MiningManager,
         mempool::{
@@ -20,9 +20,10 @@ mod tests {
         api::ConsensusApi,
         block::TemplateBuildMode,
         coinbase::MinerData,
+        config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::tx::TxRuleError,
-        mass::{BlockMassLimits, NonContextualMasses, transaction_estimated_serialized_size},
+        mass::{BlockLaneLimits, BlockMassLimits, NonContextualMasses, transaction_estimated_serialized_size},
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{
             MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
@@ -41,6 +42,19 @@ mod tests {
 
     const TARGET_TIME_PER_BLOCK: u64 = 1_000;
     const MAX_BLOCK_MASS: u64 = 500_000;
+    const BLOCK_LANE_LIMITS: BlockLaneLimits =
+        BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };
+
+    fn default_mining_manager() -> MiningManager {
+        MiningManager::new(
+            TARGET_TIME_PER_BLOCK,
+            false,
+            BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS),
+            BLOCK_LANE_LIMITS,
+            None,
+            Arc::new(MiningCounters::default()),
+        )
+    }
 
     // test_validate_and_insert_transaction verifies that valid transactions were successfully inserted into the mempool.
     #[test]
@@ -49,9 +63,7 @@ mod tests {
 
         for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
             let consensus = Arc::new(ConsensusMock::new());
-            let counters = Arc::new(MiningCounters::default());
-            let mining_manager =
-                MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+            let mining_manager = default_mining_manager();
             let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
             for transaction in transactions_to_insert.iter() {
                 let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
@@ -159,9 +171,7 @@ mod tests {
     fn test_simulated_error_in_consensus() {
         for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
             let consensus = Arc::new(ConsensusMock::new());
-            let counters = Arc::new(MiningCounters::default());
-            let mining_manager =
-                MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+            let mining_manager = default_mining_manager();
 
             // Build an invalid transaction with some gas and inform the consensus mock about the result it should return
             // when the mempool will submit this transaction for validation.
@@ -201,9 +211,7 @@ mod tests {
     fn test_insert_double_transactions_to_mempool() {
         for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
             let consensus = Arc::new(ConsensusMock::new());
-            let counters = Arc::new(MiningCounters::default());
-            let mining_manager =
-                MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+            let mining_manager = default_mining_manager();
 
             let transaction = create_transaction_with_utxo_entry(0, 0);
 
@@ -259,9 +267,7 @@ mod tests {
     fn test_double_spend_in_mempool() {
         for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
             let consensus = Arc::new(ConsensusMock::new());
-            let counters = Arc::new(MiningCounters::default());
-            let mining_manager =
-                MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+            let mining_manager = default_mining_manager();
 
             let transaction = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
             assert!(
@@ -360,14 +366,7 @@ mod tests {
         impl Test {
             fn run_rbf(&self, rbf_policy: RbfPolicy, expected: bool) {
                 let consensus = Arc::new(ConsensusMock::new());
-                let counters = Arc::new(MiningCounters::default());
-                let mining_manager = MiningManager::new(
-                    TARGET_TIME_PER_BLOCK,
-                    false,
-                    BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS),
-                    None,
-                    counters,
-                );
+                let mining_manager = default_mining_manager();
                 let funding_transactions = create_and_add_funding_transactions(&consensus, 10);
 
                 // RPC submit the initial transactions
@@ -569,9 +568,7 @@ mod tests {
     #[test]
     fn test_handle_new_block_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager =
-            MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+        let mining_manager = default_mining_manager();
 
         const TX_COUNT: u32 = 10;
         let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
@@ -631,9 +628,7 @@ mod tests {
     /// will be removed from the mempool.
     fn test_double_spend_with_block() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager =
-            MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+        let mining_manager = default_mining_manager();
 
         let transaction_in_the_mempool = create_transaction_with_utxo_entry(0, 0);
         let result = mining_manager.validate_and_insert_transaction(
@@ -664,9 +659,7 @@ mod tests {
     #[test]
     fn test_orphan_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager =
-            MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+        let mining_manager = default_mining_manager();
 
         // Before each parent transaction we add a transaction that funds it and insert the funding transaction in the consensus.
         const TX_PAIRS_COUNT: usize = 5;
@@ -934,7 +927,8 @@ mod tests {
         ];
 
         let consensus = Arc::new(ConsensusMock::new());
-        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS));
+        let mut config =
+            Config::build_default(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), BLOCK_LANE_LIMITS);
         // Limit the orphan pool to 2 transactions
         config.maximum_orphan_transaction_count = 2;
         let counters = Arc::new(MiningCounters::default());
@@ -1033,9 +1027,7 @@ mod tests {
     #[test]
     fn test_revalidate_high_priority_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager =
-            MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+        let mining_manager = default_mining_manager();
 
         // Create two valid transactions that double-spend each other (child_tx_1, child_tx_2)
         let (parent_tx, child_tx_1) = create_parent_and_children_transactions(&consensus, vec![3000 * SOMPI_PER_KASPA]);
@@ -1103,9 +1095,7 @@ mod tests {
     #[test]
     fn test_modify_block_template() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager =
-            MiningManager::new(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), None, counters);
+        let mining_manager = default_mining_manager();
 
         // Before each parent transaction we add a transaction that funds it and insert the funding transaction in the consensus.
         const TX_PAIRS_COUNT: usize = 12;
@@ -1164,7 +1154,8 @@ mod tests {
 
         let consensus = Arc::new(ConsensusMock::new());
         let counters = Arc::new(MiningCounters::default());
-        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS));
+        let mut config =
+            Config::build_default(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), BLOCK_LANE_LIMITS);
         let tx_size = txs[0].mempool_estimated_bytes();
         let size_limit = TX_COUNT * tx_size;
         config.mempool_size_limit = size_limit;
@@ -1302,7 +1293,7 @@ mod tests {
         let result = builder.build_block_template(
             consensus,
             &miner_data_2,
-            Box::new(TakeAllSelector::new(transactions)),
+            Box::new(TakeAllSelector::new(transactions, Policy::new(u64::MAX, BLOCK_LANE_LIMITS))),
             TemplateBuildMode::Standard,
         );
         assert!(result.is_ok(), "build block template failed for miner data 2");

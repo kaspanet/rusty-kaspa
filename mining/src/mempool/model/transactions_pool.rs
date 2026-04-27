@@ -206,7 +206,7 @@ impl TransactionsPool {
 
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
-        self.ready_transactions.build_selector(&Policy::new(self.config.block_mass_cofactors.reference))
+        self.ready_transactions.build_selector(&Policy::new(self.config.block_mass_cofactors.reference, self.config.block_lane_limits))
     }
 
     /// Builds a feerate estimator based on internal state of the ready transactions frontier

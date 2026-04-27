@@ -4,7 +4,14 @@ pub const BLOCK_VERSION: u16 = 1;
 /// TX_VERSION is the current latest supported transaction version.
 pub const TX_VERSION: u16 = 0;
 
-pub const TX_VERSION_POST_COV_HF: u16 = 1;
+/// The transaction version activated by the Toccata hardfork.
+///
+/// Main changes enabled relative to [`TX_VERSION`] (0):
+/// - output covenant bindings,
+/// - input compute-budget mass,
+/// - non-native/non-coinbase subnetworks (user lanes),
+/// - gas commitments.
+pub const TX_VERSION_TOCCATA: u16 = 1;
 
 pub const LOCK_TIME_THRESHOLD: u64 = 500_000_000_000;
 

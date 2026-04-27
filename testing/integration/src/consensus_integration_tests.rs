@@ -63,7 +63,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_consensus_core::{
-    constants::TX_VERSION_POST_COV_HF,
+    constants::TX_VERSION_TOCCATA,
     hashing::sighash::SigHashReusedValuesUnsync,
     mass::ComputeBudget,
     tx::{PopulatedTransaction, TransactionId},
@@ -2134,7 +2134,7 @@ fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle
             0,
             0,
         );
-        let tx = Transaction::new(TX_VERSION_POST_COV_HF, vec![input.clone()], vec![], 0, Default::default(), 0, vec![]);
+        let tx = Transaction::new(TX_VERSION_TOCCATA, vec![input.clone()], vec![], 0, Default::default(), 0, vec![]);
         let utxo_entry = UtxoEntry::new(10 * SOMPI_PER_KASPA, stark_spk.clone(), 0, false, None);
         let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
         let sig_cache = Cache::new(10_000);
@@ -2191,7 +2191,7 @@ fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle
         .iter()
         .map(|(outpoint, utxo)| {
             let tx = Transaction::new(
-                TX_VERSION_POST_COV_HF,
+                TX_VERSION_TOCCATA,
                 vec![TransactionInput::new_with_compute_budget(*outpoint, stark_signature_script.clone(), 0, compute_budget.into())],
                 vec![TransactionOutput::new(utxo.amount, output_spk.clone())],
                 0,

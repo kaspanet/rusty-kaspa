@@ -1,4 +1,4 @@
-use kaspa_consensus_core::mass::{BlockMassLimits, MassCofactors};
+use kaspa_consensus_core::mass::{BlockLaneLimits, BlockMassLimits, MassCofactors};
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
 pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 1_000_000_000;
@@ -35,6 +35,7 @@ pub struct Config {
     pub maximum_orphan_transaction_count: u64,
     pub accept_non_standard: bool,
     pub block_mass_cofactors: MassCofactors,
+    pub block_lane_limits: BlockLaneLimits,
     pub minimum_relay_transaction_fee: u64,
     pub network_blocks_per_second: u64,
 }
@@ -57,6 +58,7 @@ impl Config {
         maximum_orphan_transaction_count: u64,
         accept_non_standard: bool,
         block_mass_cofactors: MassCofactors,
+        block_lane_limits: BlockLaneLimits,
         minimum_relay_transaction_fee: u64,
         network_blocks_per_second: u64,
     ) -> Self {
@@ -76,6 +78,7 @@ impl Config {
             maximum_orphan_transaction_count,
             accept_non_standard,
             block_mass_cofactors,
+            block_lane_limits,
             minimum_relay_transaction_fee,
             network_blocks_per_second,
         }
@@ -87,6 +90,7 @@ impl Config {
         target_milliseconds_per_block: u64,
         relay_non_std_transactions: bool,
         block_mass_limits: BlockMassLimits,
+        block_lane_limits: BlockLaneLimits,
     ) -> Self {
         let block_mass_cofactors = block_mass_limits.cofactors();
         Self {
@@ -108,6 +112,7 @@ impl Config {
             maximum_orphan_transaction_count: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT,
             accept_non_standard: relay_non_std_transactions,
             block_mass_cofactors,
+            block_lane_limits,
             minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
             network_blocks_per_second: 1000 / target_milliseconds_per_block,
         }
