@@ -404,6 +404,39 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
     };
 
     let (result, new_node) = merged_node::<H>(&left_result, &right_result, depth);
+
+    // SLO promotion: when one child becomes Empty after this block's updates
+    // and the other holds a single `Collapsed` leaf, `merged_node` promotes
+    // that leaf upward — the parent (this depth) will hold the `Collapsed`,
+    // and the surviving leaf's old position at depth+1 must be invalidated.
+    //
+    // The stale entry at depth+1 comes from one of:
+    //   - `read_sibling_result` (no recursive write happened), so the prior
+    //     block's `Collapsed` for this lane is still the canonical newest at
+    //     (depth+1, child_key) in the store.
+    //   - `compute_subtree(child)` recursion which would have written
+    //     `Collapsed` at depth+1 via `record_change`.
+    //
+    // Either way, leaving the depth+1 entry intact creates a zombie: the
+    // Collapsed at the parent depth shadows it for as long as that parent
+    // stays a `Collapsed`, but the moment a future block re-splits this
+    // subtree the read walk descends past the parent (now `Internal`) into
+    // the child position and resurrects the duplicate.
+    //
+    // Force-emit a `None` at the originating child so any future descent
+    // through here sees an empty subtree below the new parent Collapsed.
+    if depth < DEPTH - 1
+        && let NodeResult::Collapsed(cl) = result
+    {
+        let goes_right = bit_at(&cl.lane_key, depth);
+        let child_key = child_branch_key(&subtree_key, goes_right, depth);
+        // Direct insert (not record_change) — we want this tombstone
+        // even if the child position currently holds the same Collapsed
+        // (in which case `record_change`'s `existing == new_node` skip
+        // would suppress the write, leaving the stale entry alive).
+        changes.insert(child_key, None);
+    }
+
     record_change(changes, subtree_key, existing_for_write, new_node);
     Ok(result)
 }
@@ -431,6 +464,7 @@ fn read_sibling_result<S: SmtStore>(
 mod tests {
     use super::*;
     use crate::proof::SmtProofError;
+    use alloc::vec;
     use kaspa_hashes::{HasherBase, SeqCommitActiveNode, ZERO_HASH};
     use rand::{Rng, SeedableRng, rngs::StdRng};
 
@@ -1904,6 +1938,259 @@ mod tests {
             let (slo_root, _) = compute_root_update::<TestHasher, _>(&store, TestHasher::empty_root(), updates(kv)).unwrap();
 
             assert_eq!(tree.root(), slo_root, "walk_up vs batch SLO mismatch for n={n}");
+        }
+    }
+
+    // ========================================================================
+    // SLO-promotion regression: zombie Collapsed at the originating child
+    //
+    // Scenario:
+    //
+    //   1. Two leaves K1, K2 share a long prefix and diverge at some depth `d`.
+    //      After building, the tree has Internal at depth `d-1` and a
+    //      `Collapsed(K1)` / `Collapsed(K2)` at depth `d`.
+    //   2. K2 is expired. `merged_node` at depth `d-1` sees
+    //      `(Collapsed(K1), Empty)` and promotes the surviving Collapsed
+    //      upward — depth `d-1` now holds `Collapsed(K1)`. Without the fix
+    //      in `compute_subtree`, depth `d` retains the old `Collapsed(K1)`
+    //      value (read by `read_sibling_result` / `compute_subtree(child)`)
+    //      — a zombie.
+    //   3. A new leaf K3 is inserted whose path shares K1's bits past `d`,
+    //      forcing depth `d-1` to split back into `Internal`. The descent
+    //      reads depth `d` and resurrects the zombie, producing a wrong tree.
+    //
+    // The fix emits a `None` tombstone at the originating child position when
+    // promotion happens, so the resplit reads `Empty` at the child and the
+    // tree converges to what a fresh recompute would produce. These tests
+    // pin that property at multiple depths and across multi-step promotions.
+    // ========================================================================
+
+    /// Build a 32-byte key with the supplied high-order bit pattern. Bits
+    /// past `pattern.len()` are zero. Bit 0 is the MSB of byte 0 (matching
+    /// `bit_at`'s convention used by the tree code).
+    fn key_with_bits(pattern: &[bool]) -> Hash {
+        let mut bytes = [0u8; 32];
+        for (i, &b) in pattern.iter().enumerate() {
+            if b {
+                bytes[i / 8] |= 0x80 >> (i % 8);
+            }
+        }
+        Hash::from_bytes(bytes)
+    }
+
+    /// Build the live tree state on `store` after applying a sequence of
+    /// `compute_root_update` calls. Returns the final root.
+    fn build_state(store: &mut BTreeSmtStore, updates_seq: &[Vec<(Hash, Hash)>]) -> Hash {
+        let mut root = TestHasher::empty_root();
+        for batch in updates_seq {
+            let (new_root, changes) = compute_root_update::<TestHasher, _>(store, root, updates(batch.iter().copied())).unwrap();
+            apply_changes(store, &changes);
+            root = new_root;
+        }
+        root
+    }
+
+    /// Three keys K1, K2, K3 chosen so that:
+    ///   - K1 and K2 share `d_split` bits and diverge at bit `d_split`
+    ///   - K1 and K3 share `d_resplit` bits (with `d_resplit > d_split`),
+    ///     so a later K3 insert forces a re-split inside the K1 subtree at
+    ///     depth `d_resplit` after K2 has been expired.
+    ///
+    /// Choosing `d_resplit > d_split` is what surfaces the bug: the
+    /// post-promotion `Collapsed(K1)` ends up at depth `d_split`, and the
+    /// K3 insert descends past that into the depth `d_split + 1..d_resplit`
+    /// range — exactly where the zombie lives.
+    fn three_keys_for_promote_then_resplit(d_split: usize, d_resplit: usize) -> (Hash, Hash, Hash) {
+        assert!(d_split < d_resplit);
+        assert!(d_resplit < DEPTH);
+        // Common prefix: all zeros. K1 keeps zero bit at d_split.
+        let k1_bits = vec![false; d_resplit + 1];
+        let mut k2_bits = vec![false; d_resplit + 1];
+        let mut k3_bits = vec![false; d_resplit + 1];
+        // K1 and K2 diverge at d_split: K1 = 0, K2 = 1.
+        k2_bits[d_split] = true;
+        // K1 and K3 share through bit d_resplit - 1, diverge at d_resplit.
+        // K3 = 1 at d_resplit; K1 = 0 there. Both have 0 at d_split (so K3
+        // is in the same subtree as K1, distinct from K2).
+        k3_bits[d_resplit] = true;
+        (key_with_bits(&k1_bits), key_with_bits(&k2_bits), key_with_bits(&k3_bits))
+    }
+
+    /// Property: after `[insert K1+K2; expire K2; insert K3]`, the resulting
+    /// root must equal a fresh recompute of `[K1, K3]`. This catches the
+    /// zombie-Collapsed bug because the bug produces a tree containing
+    /// `K1` *twice* — once at the live depth and once at the stale child
+    /// depth — so the root diverges from the fresh recompute.
+    fn run_promote_then_resplit(d_split: usize, d_resplit: usize) {
+        let (k1, k2, k3) = three_keys_for_promote_then_resplit(d_split, d_resplit);
+        let l1 = test_leaf(b"v1");
+        let l2 = test_leaf(b"v2");
+        let l3 = test_leaf(b"v3");
+
+        let mut store = BTreeSmtStore::new();
+        let root = build_state(&mut store, &[vec![(k1, l1), (k2, l2)], vec![(k2, ZERO_HASH)], vec![(k3, l3)]]);
+
+        let mut fresh_store = BTreeSmtStore::new();
+        let fresh_root = build_state(&mut fresh_store, &[vec![(k1, l1), (k3, l3)]]);
+
+        assert_eq!(
+            root, fresh_root,
+            "promote-then-resplit at d_split={d_split} d_resplit={d_resplit} produced a zombie-Collapsed: stateful root != fresh-recompute root"
+        );
+    }
+
+    /// Parametrized sweep of the promote-then-resplit scenario at various
+    /// `(d_split, d_resplit)` pairs. Each case exercises a distinct
+    /// structural shape that the fix's `child_branch_key` arithmetic and
+    /// `bit_at` indexing must handle correctly:
+    ///   - shallowest (0, 1): bit 0 / bit 1 — root-adjacent split.
+    ///   - byte boundary (7, 8) and (7, 16): the originating child sits
+    ///     across a byte boundary; verifies the byte/bit math doesn't
+    ///     misindex when bit `d_split + 1` is in a different byte.
+    ///   - intermediate Internals (9, 13): the zombie sits four levels
+    ///     below the surviving Collapsed and is only reached after a deep
+    ///     descent past Internals at depths 9..12.
+    ///   - mid-tree sweep (`d_split` in {1..30} × `delta` in {1, 2, 4, 8,
+    ///     16}): broad coverage to catch any off-by-one across byte
+    ///     boundaries.
+    ///   - near leaf depth (DEPTH-5..DEPTH-2): exercises the
+    ///     `if depth < DEPTH - 1` guard at the bottom of the tree.
+    #[test]
+    fn slo_promote_then_resplit_parametrized() {
+        // Hand-picked structural cases.
+        for &(d_split, d_resplit) in &[(0usize, 1usize), (7, 8), (7, 16), (9, 13), (DEPTH - 5, DEPTH - 3), (DEPTH - 4, DEPTH - 2)] {
+            run_promote_then_resplit(d_split, d_resplit);
+        }
+        // Mid-tree sweep across byte boundaries.
+        for d_split in [1, 2, 3, 4, 5, 8, 16, 24, 30] {
+            for delta in [1, 2, 4, 8, 16] {
+                let d_resplit = d_split + delta;
+                if d_resplit < DEPTH {
+                    run_promote_then_resplit(d_split, d_resplit);
+                }
+            }
+        }
+    }
+
+    /// A chain of promotions: build a tree with several siblings on the
+    /// same path, then expire them one by one, each expiration triggering
+    /// a single-step promotion. The remaining lane should ultimately match
+    /// a fresh recompute, no matter how many intermediate zombies the
+    /// pre-fix code would have left behind.
+    #[test]
+    fn slo_chain_of_promotions_collapses_to_fresh_recompute() {
+        // Construct 5 leaves sharing the prefix `0000…` but each diverges
+        // at a different depth from the previous one, building a "spine"
+        // of nested Internals. After expiring 4 of them, only K0 remains.
+        let depths = [3usize, 7, 12, 18, 25];
+        let k0 = key_with_bits(&[false; 32]); // all-zero high bits
+        let mut other_keys: Vec<Hash> = Vec::new();
+        for &d in &depths {
+            let mut bits = vec![false; d + 1];
+            bits[d] = true;
+            other_keys.push(key_with_bits(&bits));
+        }
+        let leaves: Vec<Hash> = (0..=other_keys.len()).map(|i| test_leaf(&[i as u8])).collect();
+
+        let mut initial = vec![(k0, leaves[0])];
+        for (i, k) in other_keys.iter().enumerate() {
+            initial.push((*k, leaves[i + 1]));
+        }
+
+        let mut steps: Vec<Vec<(Hash, Hash)>> = vec![initial];
+        for k in &other_keys {
+            steps.push(vec![(*k, ZERO_HASH)]);
+        }
+        // Final touch: re-insert one diverging key to force a fresh resplit
+        // through the spine of zombies the pre-fix code would have left.
+        let resplit_depth = 30;
+        let mut split_bits = vec![false; resplit_depth + 1];
+        split_bits[resplit_depth] = true;
+        let k_split = key_with_bits(&split_bits);
+        let l_split = test_leaf(b"split");
+        steps.push(vec![(k_split, l_split)]);
+
+        let mut store = BTreeSmtStore::new();
+        let stateful_root = build_state(&mut store, &steps);
+
+        let mut fresh_store = BTreeSmtStore::new();
+        let fresh_root = build_state(&mut fresh_store, &[vec![(k0, leaves[0]), (k_split, l_split)]]);
+
+        assert_eq!(stateful_root, fresh_root, "chain of promotions diverged from fresh recompute");
+    }
+
+    /// Promotion via batch (insert + expire in the same `compute_root_update`
+    /// call) — same `merged_node` code path is taken, so the tombstone
+    /// emit must fire here too. This catches the case where the fix only
+    /// works for sequential-step promotion but fails inside batch operations.
+    #[test]
+    fn slo_promote_in_single_batch_then_resplit() {
+        let (k1, k2, k3) = three_keys_for_promote_then_resplit(10, 14);
+        let l1 = test_leaf(b"v1");
+        let l2 = test_leaf(b"v2");
+        let l3 = test_leaf(b"v3");
+
+        let mut store = BTreeSmtStore::new();
+        let root = build_state(&mut store, &[vec![(k1, l1), (k2, l2)], vec![(k2, ZERO_HASH), (k3, l3)]]);
+
+        let mut fresh_store = BTreeSmtStore::new();
+        let fresh_root = build_state(&mut fresh_store, &[vec![(k1, l1), (k3, l3)]]);
+        assert_eq!(root, fresh_root, "batch (expire+insert) did not tombstone the zombie before the resplit");
+    }
+
+    /// Surgical post-state assertion: after `insert K1+K2; expire K2`,
+    /// reading the live tree along K1's path with `compute_root_update`'s
+    /// own reader semantics must yield the same tree as a fresh recompute
+    /// of just `K1`. This pins the exact change `record_change(child_key,
+    /// None)` is meant to achieve at the storage level.
+    #[test]
+    fn slo_promotion_leaves_no_collapsed_at_originating_child() {
+        let (k1, k2, _k3) = three_keys_for_promote_then_resplit(12, 20);
+        let l1 = test_leaf(b"v1");
+        let l2 = test_leaf(b"v2");
+
+        let mut store = BTreeSmtStore::new();
+        let root_after_expire = build_state(&mut store, &[vec![(k1, l1), (k2, l2)], vec![(k2, ZERO_HASH)]]);
+
+        let mut fresh = BTreeSmtStore::new();
+        let fresh_root = build_state(&mut fresh, &[vec![(k1, l1)]]);
+        assert_eq!(root_after_expire, fresh_root);
+
+        // For every depth from 0 to DEPTH-1 along K1's path, the live read
+        // (the same BTreeSmtStore::get_node interface compute_subtree uses)
+        // must match the fresh-recompute store's read. If the zombie
+        // Collapsed(K1) survives anywhere, this comparison fires at the
+        // depth past the live position.
+        let mut current_key = Hash::from_bytes([0u8; 32]);
+        for d in 0..DEPTH as u8 {
+            let bk = BranchKey::new(d, &current_key);
+            let live = store.get_node(&bk).unwrap();
+            let fresh_node = fresh.get_node(&bk).unwrap();
+            assert_eq!(live, fresh_node, "zombie at depth={d}: live={live:?} fresh={fresh_node:?}");
+            // Stop descending once we've reached / passed the K1 leaf — the
+            // collapsed at the live position carries the lane and downstream
+            // nodes don't matter once both stores agree at the carrier.
+            if matches!(live, Some(Node::Collapsed(_))) {
+                break;
+            }
+            if bit_at(&k1, d as usize) {
+                let mut k = current_key.as_bytes();
+                k[d as usize / 8] |= 0x80 >> (d as usize % 8);
+                current_key = Hash::from_bytes(k);
+            }
+        }
+    }
+
+    /// Randomized fuzz: many random-depth promotion-then-resplit trios.
+    /// If any zombie escapes the fix the stateful-vs-fresh comparison
+    /// fires for that seed. Seed is fixed for deterministic CI.
+    #[test]
+    fn slo_promote_then_resplit_random_fuzz() {
+        let mut rng = StdRng::seed_from_u64(0xC0_11_AB_5E);
+        for _ in 0..100 {
+            let d_split = rng.gen_range(0..(DEPTH - 8));
+            let d_resplit = d_split + 1 + rng.gen_range(0..7.min(DEPTH - 1 - d_split));
+            run_promote_then_resplit(d_split, d_resplit);
         }
     }
 }

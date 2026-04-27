@@ -19,6 +19,7 @@ kaspa-core.workspace = true
 kaspa-database.workspace = true
 kaspa-hashes.workspace = true
 kaspa-perf-monitor.workspace = true
+kaspa-smt-store.workspace = true
 kaspa-utils.workspace = true
 
 async-channel.workspace = true
