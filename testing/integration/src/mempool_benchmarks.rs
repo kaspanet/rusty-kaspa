@@ -13,7 +13,7 @@ use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::{
-    constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
+    constants::{SOMPI_PER_KASPA, TX_VERSION_TOCCATA},
     hashing::sighash::SigHashReusedValuesUnsync,
     mass::{ComputeBudget, MassCalculator, ScriptUnits, transaction_estimated_serialized_size},
     network::NetworkType,
@@ -656,7 +656,7 @@ fn generate_stark_tx_dag(
                     })
                     .collect::<Vec<_>>();
                 let provisional_tx =
-                    Transaction::new(TX_VERSION_POST_COV_HF, inputs, provisional_outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+                    Transaction::new(TX_VERSION_TOCCATA, inputs, provisional_outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
                 let provisional_tx_non_contextual_masses = mass_calculator.calc_non_contextual_masses(&provisional_tx);
                 let provisional_tx_mass_normalized = provisional_tx_non_contextual_masses.normalized_max(&mass_cofactors);
                 if !logged_first_provisional_tx {
@@ -681,7 +681,7 @@ fn generate_stark_tx_dag(
                         covenant: None,
                     })
                     .collect::<Vec<_>>();
-                let tx = Transaction::new(TX_VERSION_POST_COV_HF, provisional_tx.inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+                let tx = Transaction::new(TX_VERSION_TOCCATA, provisional_tx.inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
                 let mtx = MutableTransaction::with_entries(tx, entries);
                 utxo_diff.add_transaction(&mtx.as_verifiable(), 0).unwrap();
                 txs.push(Arc::new(mtx.tx));

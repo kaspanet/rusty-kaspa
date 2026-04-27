@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet, hash_map::Entry},
+    sync::Arc,
+};
 
 use super::BlockBodyProcessor;
 use crate::errors::{BlockProcessResult, RuleError};
@@ -6,6 +9,7 @@ use kaspa_consensus_core::{
     block::Block,
     mass::{ContextualMasses, Mass, NonContextualMasses},
     merkle::calc_hash_merkle_root,
+    subnets::SubnetworkId,
     tx::TransactionOutpoint,
 };
 
@@ -64,6 +68,7 @@ impl BlockBodyProcessor {
         let mut total_compute_mass: u64 = 0;
         let mut total_transient_mass: u64 = 0;
         let mut total_storage_mass: u64 = 0;
+        let mut lanes = HashMap::<SubnetworkId, u64>::new();
         for tx in block.transactions.iter() {
             // Calculate the non-contextual masses
             let NonContextualMasses { compute_mass, transient_mass } = self.mass_calculator.calc_non_contextual_masses(tx);
@@ -87,6 +92,31 @@ impl BlockBodyProcessor {
             }
             if total_storage_mass > self.block_mass_limits.storage {
                 return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, self.block_mass_limits.storage));
+            }
+
+            // Pre-Toccata valid blocks contain only native non-coinbase txs with zero gas,
+            // so applying these lane/gas limits unconditionally is harmless before activation.
+            if !tx.is_coinbase() {
+                let occupied_lanes = lanes.len();
+                let gas = match lanes.entry(tx.subnetwork_id) {
+                    Entry::Occupied(mut entry) => {
+                        let gas = entry.get_mut();
+                        *gas = gas.saturating_add(tx.gas);
+                        *gas
+                    }
+                    Entry::Vacant(entry) => {
+                        if occupied_lanes >= self.block_lane_limits.lanes_per_block {
+                            return Err(RuleError::ExceedsLanesPerBlockLimit(
+                                occupied_lanes + 1,
+                                self.block_lane_limits.lanes_per_block,
+                            ));
+                        }
+                        *entry.insert(tx.gas)
+                    }
+                };
+                if gas > self.block_lane_limits.gas_per_lane {
+                    return Err(RuleError::ExceedsGasPerLaneLimit(tx.subnetwork_id, gas, self.block_lane_limits.gas_per_lane));
+                }
             }
         }
         Ok(Mass::new(NonContextualMasses::new(total_compute_mass, total_transient_mass), ContextualMasses::new(total_storage_mass)))
@@ -141,9 +171,10 @@ mod tests {
     use kaspa_consensus_core::{
         api::{BlockValidationFutures, ConsensusApi},
         block::MutableBlock,
+        constants::TX_VERSION_TOCCATA,
         header::Header,
         merkle::calc_hash_merkle_root,
-        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
+        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
         tx::{
             ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
             scriptvec,
@@ -151,6 +182,21 @@ mod tests {
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
+
+    fn lane(index: u8) -> SubnetworkId {
+        SubnetworkId::from_namespace([0, 0, 0, index])
+    }
+
+    fn toccata_lane_tx(index: u8, lane: SubnetworkId, gas: u64) -> Transaction {
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_slice(&[index; 32]), index: 0 },
+            signature_script: vec![],
+            sequence: u64::MAX,
+            mass: TxInputMass::ComputeBudget(0.into()),
+        };
+        let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, scriptvec!(0u8)), covenant: None };
+        Transaction::new(TX_VERSION_TOCCATA, vec![input], vec![output], 0, lane, gas, vec![])
+    }
 
     #[test]
     fn validate_body_in_isolation_test() {
@@ -428,6 +474,25 @@ mod tests {
         txs[1].inputs[1].mass = TxInputMass::SigopCount(255.into());
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsComputeMassLimit(_, _)));
+
+        let mut block = example_block.clone();
+        block.transactions =
+            vec![block.transactions[0].clone(), toccata_lane_tx(1, lane(1), body_processor.block_lane_limits.gas_per_lane + 1)];
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
+        assert_match!(
+            body_processor.validate_body_in_isolation(&block.to_immutable()),
+            Err(RuleError::ExceedsGasPerLaneLimit(_, _, _))
+        );
+
+        let mut block = example_block.clone();
+        block.transactions = std::iter::once(block.transactions[0].clone())
+            .chain((1..=body_processor.block_lane_limits.lanes_per_block as u8 + 1).map(|i| toccata_lane_tx(i, lane(i), 0)))
+            .collect();
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
+        assert_match!(
+            body_processor.validate_body_in_isolation(&block.to_immutable()),
+            Err(RuleError::ExceedsLanesPerBlockLimit(_, _))
+        );
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;
