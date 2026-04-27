@@ -207,15 +207,6 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
             frontier.insert(item).then_some(()).unwrap();
         }
 
-        group.bench_function(format!("rebalancing selector ({})", len), |b| {
-            b.iter(|| {
-                black_box({
-                    let mut selector = frontier.build_rebalancing_selector();
-                    selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
-                })
-            })
-        });
-
         group.bench_function(format!("mutating tree selector ({})", len), |b| {
             b.iter(|| {
                 black_box({

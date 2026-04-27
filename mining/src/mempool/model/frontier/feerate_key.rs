@@ -1,4 +1,4 @@
-use crate::{block_template::selector::ALPHA, mempool::model::tx::MempoolTransaction};
+use crate::mempool::model::{frontier::selectors::ALPHA, tx::MempoolTransaction};
 use kaspa_consensus_core::mass::{ContextualMasses, Mass, MassCofactors};
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::Transaction;

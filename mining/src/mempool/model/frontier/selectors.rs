@@ -11,6 +11,12 @@ use std::{
     sync::Arc,
 };
 
+/// ALPHA is a coefficient that defines how uniform the distribution of
+/// candidate transactions should be. A smaller alpha makes the distribution
+/// more uniform. ALPHA is used when determining a candidate transaction's
+/// weighted feerate.
+pub(crate) const ALPHA: i32 = 3;
+
 type LaneId = SubnetworkId;
 
 #[derive(Default)]

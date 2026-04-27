@@ -1,7 +1,6 @@
 use crate::{
-    Policy, RebalancingWeightedTransactionSelector,
+    Policy,
     feerate::{FeerateEstimator, FeerateEstimatorArgs},
-    model::candidate_tx::CandidateTransaction,
 };
 
 use feerate_key::FeerateTransactionKey;
@@ -382,14 +381,6 @@ impl Frontier {
     }
 
     /// Exposed for benchmarking purposes
-    pub fn build_rebalancing_selector(&self) -> Box<dyn TemplateTransactionSelector> {
-        Box::new(RebalancingWeightedTransactionSelector::new(
-            Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS),
-            self.search_tree.ascending_iter().cloned().map(CandidateTransaction::from_key).collect(),
-        ))
-    }
-
-    /// Exposed for benchmarking purposes
     pub fn build_mutating_tree_selector(&self) -> Box<dyn TemplateTransactionSelector> {
         Box::new(MutatingTreeSelector::new(Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS), self.search_tree.clone()))
     }
@@ -505,9 +496,6 @@ mod tests {
         }
 
         let mut selector = frontier.build_selector(&Policy::new(500_000, DEFAULT_BLOCK_LANE_LIMITS));
-        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
-
-        let mut selector = frontier.build_rebalancing_selector();
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
         let mut selector = frontier.build_selector_sample_inplace(&mut 0);
