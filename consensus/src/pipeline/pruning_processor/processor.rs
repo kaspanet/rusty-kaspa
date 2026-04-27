@@ -38,7 +38,7 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
-use kaspa_hashes::Hash;
+use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
@@ -590,6 +590,9 @@ impl PruningProcessor {
             );
             info!("SMT pruning: cutoff_blue_score={}", smt_cutoff);
             self.smt_stores.prune(&self.db, smt_cutoff);
+            if self.config.enable_sanity_checks {
+                self.assert_smt_rebuilding(new_pruning_point, pp_header.blue_score);
+            }
         }
 
         {
@@ -710,5 +713,25 @@ impl PruningProcessor {
             built_data.header_only_chain_segment.iter().copied().collect::<BlockHashSet>()
         );
         info!("Trusted data was rebuilt successfully following pruning");
+    }
+
+    /// Check if `block_hash` is canonical for SMT lookups at `selected_parent`.
+    /// ZERO_HASH is always canonical because it marks IBD-imported entries.
+    fn is_smt_canonical(&self, block_hash: Hash, selected_parent: Hash) -> bool {
+        block_hash == ZERO_HASH || matches!(self.reachability_service.try_is_chain_ancestor_of(block_hash, selected_parent), Ok(true))
+    }
+
+    fn assert_smt_rebuilding(&self, new_pruning_point: Hash, pruning_point_blue_score: u64) {
+        info!("Rebuilding pruning point SMT root after pruning data (sanity test)");
+        let bounds = kaspa_smt_store::processor::SmtReadBounds::for_pov(pruning_point_blue_score, self.config.params.finality_depth());
+        let expected_root = self.smt_stores.get_lanes_root(bounds, |bh| self.is_smt_canonical(bh, new_pruning_point));
+        let expected_count = self.smt_metadata_store.get(new_pruning_point).unwrap().active_lanes_count;
+        let (root, count) = self
+            .smt_stores
+            .recompute_lanes_root_from_leaf_stream(bounds, expected_count, |bh| self.is_smt_canonical(bh, new_pruning_point))
+            .unwrap();
+        assert_eq!(count, expected_count, "SMT pruning sanity: active lane count mismatch");
+        assert_eq!(root, expected_root, "SMT pruning sanity: lanes root mismatch after pruning");
+        info!("SMT root was rebuilt successfully following pruning");
     }
 }
