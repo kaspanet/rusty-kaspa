@@ -28,7 +28,7 @@ use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     config::{genesis::GenesisBlock, params::Params},
-    mass::{BlockMassLimits, Mass, MassCalculator},
+    mass::{BlockLaneLimits, BlockMassLimits, Mass, MassCalculator},
     tx::Transaction,
 };
 use kaspa_consensus_notify::{
@@ -56,6 +56,7 @@ pub struct BlockBodyProcessor {
 
     // Config
     pub(super) block_mass_limits: BlockMassLimits,
+    pub(super) block_lane_limits: BlockLaneLimits,
     pub(super) genesis: GenesisBlock,
     pub(super) _ghostdag_k: KType,
 
@@ -108,6 +109,7 @@ impl BlockBodyProcessor {
             db,
 
             block_mass_limits: params.block_mass_limits,
+            block_lane_limits: params.block_lane_limits,
             genesis: params.genesis.clone(),
             _ghostdag_k: params.ghostdag_k(),
 

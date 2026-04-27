@@ -112,6 +112,9 @@ pub enum NonStandardError {
     #[error("transaction storage mass of {1} is larger than max allowed size of {2}")]
     RejectStorageMass(TransactionId, u64, u64),
 
+    #[error("transaction gas of {1} is larger than max allowed per-lane gas of {2}")]
+    RejectGas(TransactionId, u64, u64),
+
     #[error("transaction input #{1}: signature script size of {2} bytes is larger than the maximum allowed size of {3} bytes")]
     RejectSignatureScriptSize(TransactionId, usize, u64, u64),
 
@@ -141,6 +144,7 @@ impl NonStandardError {
             NonStandardError::RejectComputeMass(id, _, _) => id,
             NonStandardError::RejectTransientMass(id, _, _) => id,
             NonStandardError::RejectStorageMass(id, _, _) => id,
+            NonStandardError::RejectGas(id, _, _) => id,
             NonStandardError::RejectSignatureScriptSize(id, _, _, _) => id,
             NonStandardError::RejectScriptPublicKeyVersion(id, _) => id,
             NonStandardError::RejectOutputScriptClass(id, _) => id,

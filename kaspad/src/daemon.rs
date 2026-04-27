@@ -629,6 +629,7 @@ Do you confirm? (y/n)";
         config.target_time_per_block(),
         false,
         config.block_mass_limits,
+        config.block_lane_limits,
         config.ram_scale,
         config.block_template_cache_lifetime,
         mining_counters.clone(),
