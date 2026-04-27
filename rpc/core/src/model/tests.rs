@@ -572,6 +572,12 @@ mod mockery {
         }
     }
 
+    impl Mock for RpcUtxoReferenceEntry {
+        fn mock() -> Self {
+            RpcUtxoReferenceEntry { outpoint: mock(), utxo_entry: mock() }
+        }
+    }
+
     impl Mock for ProcessMetrics {
         fn mock() -> Self {
             ProcessMetrics {
@@ -1071,6 +1077,22 @@ mod mockery {
     }
 
     test!(GetUtxosByAddressesResponse);
+
+    impl Mock for GetUtxosByCovenantIdRequest {
+        fn mock() -> Self {
+            GetUtxosByCovenantIdRequest { covenant_id: mock(), script_public_key: mock() }
+        }
+    }
+
+    test!(GetUtxosByCovenantIdRequest);
+
+    impl Mock for GetUtxosByCovenantIdResponse {
+        fn mock() -> Self {
+            GetUtxosByCovenantIdResponse { entries: mock() }
+        }
+    }
+
+    test!(GetUtxosByCovenantIdResponse);
 
     impl Mock for BanRequest {
         fn mock() -> Self {

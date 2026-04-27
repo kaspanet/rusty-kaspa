@@ -68,6 +68,7 @@ impl Router {
                 GetSyncStatus,
                 GetSystemInfo,
                 GetUtxosByAddresses,
+                GetUtxosByCovenantId,
                 GetVirtualChainFromBlock,
                 GetVirtualChainFromBlockV2,
                 ResolveFinalityConflict,

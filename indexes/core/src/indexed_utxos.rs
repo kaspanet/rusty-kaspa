@@ -14,6 +14,13 @@ pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollecti
 /// A map of balance by script public key
 pub type BalanceByScriptPublicKey = HashMap<ScriptPublicKey, u64>;
 
+// TODO(izio): not convinced by the name
+#[derive(Clone, Debug)]
+pub struct UtxoReferenceEntry {
+    pub outpoint: TransactionOutpoint,
+    pub utxo_entry: UtxoEntry,
+}
+
 // Note: memory optimization compared to go-lang kaspad:
 // Unlike `consensus_core::tx::UtxoEntry` the utxoindex utilizes a compacted utxo form, where `script_public_key` field is removed.
 // This utxo structure can be utilized in the utxoindex, since utxos are implicitly key'd via its script public key (and outpoint) at all times.

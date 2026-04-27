@@ -69,6 +69,7 @@ pub enum KaspadPayloadOps {
     ResolveFinalityConflict,
     GetHeaders,
     GetUtxosByAddresses,
+    GetUtxosByCovenantId,
     GetBalanceByAddress,
     GetBalancesByAddresses,
     GetSinkBlueScore,

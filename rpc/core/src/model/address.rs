@@ -32,6 +32,31 @@ impl Deserializer for RpcUtxosByAddressesEntry {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+// TODO(izio): not convinced by the name
+pub struct RpcUtxoReferenceEntry {
+    pub outpoint: RpcTransactionOutpoint,
+    pub utxo_entry: RpcUtxoEntry,
+}
+
+impl Serializer for RpcUtxoReferenceEntry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?; // version
+        serialize!(RpcTransactionOutpoint, &self.outpoint, writer)?;
+        serialize!(RpcUtxoEntry, &self.utxo_entry, writer)
+    }
+}
+
+impl Deserializer for RpcUtxoReferenceEntry {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u8 = load!(u8, reader)?;
+        let outpoint = deserialize!(RpcTransactionOutpoint, reader)?;
+        let utxo_entry = deserialize!(RpcUtxoEntry, reader)?;
+        Ok(Self { outpoint, utxo_entry })
+    }
+}
+
 /// Represents a balance of an address returned by the `GetBalancesByAddresses` RPC.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -1508,6 +1508,70 @@ impl Deserializer for GetUtxosByAddressesResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GetUtxosByCovenantIdRequest {
+    pub covenant_id: RpcHash,
+    // @TODO(izio): maybe use address instead of spk
+    pub script_public_key: Option<RpcScriptPublicKey>,
+}
+
+impl GetUtxosByCovenantIdRequest {
+    pub fn new(covenant_id: RpcHash, script_public_key: Option<RpcScriptPublicKey>) -> Self {
+        Self { covenant_id, script_public_key }
+    }
+}
+
+impl Serializer for GetUtxosByCovenantIdRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.covenant_id, writer)?;
+        store!(Option<RpcScriptPublicKey>, &self.script_public_key, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByCovenantIdRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let covenant_id = load!(RpcHash, reader)?;
+        let script_public_key = load!(Option<RpcScriptPublicKey>, reader)?;
+
+        Ok(Self { covenant_id, script_public_key })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByCovenantIdResponse {
+    pub entries: Vec<RpcUtxoReferenceEntry>,
+}
+
+impl GetUtxosByCovenantIdResponse {
+    pub fn new(entries: Vec<RpcUtxoReferenceEntry>) -> Self {
+        Self { entries }
+    }
+}
+
+impl Serializer for GetUtxosByCovenantIdResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcUtxoReferenceEntry>, &self.entries, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByCovenantIdResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcUtxoReferenceEntry>, reader)?;
+
+        Ok(Self { entries })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BanRequest {
     pub ip: RpcIpAddress,
 }

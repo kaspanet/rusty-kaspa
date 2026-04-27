@@ -1037,6 +1037,10 @@ build_wrpc_wasm_bindgen_interface!(
         /// specific addresses.
         /// Returned information: List of UTXOs.
         GetUtxosByAddresses,
+        /// Retrieves unspent transaction outputs (UTXOs) associated with
+        /// a specific covenant id and optional script public key.
+        /// Returned information: List of UTXOs.
+        GetUtxosByCovenantId,
         /// Retrieves the virtual chain corresponding to a specified block hash.
         /// Returned information: Virtual chain information.
         GetVirtualChainFromBlock,

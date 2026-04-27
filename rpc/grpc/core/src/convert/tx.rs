@@ -199,6 +199,13 @@ from!(item: &kaspa_rpc_core::RpcUtxosByAddressesEntry, protowire::RpcUtxosByAddr
     }
 });
 
+from!(item: &kaspa_rpc_core::RpcUtxoReferenceEntry, protowire::RpcUtxoReferenceEntry, {
+    Self {
+        outpoint: Some((&item.outpoint).into()),
+        utxo_entry: Some((&item.utxo_entry).into()),
+    }
+});
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -446,6 +453,21 @@ try_from!(item: &protowire::RpcUtxosByAddressesEntry, kaspa_rpc_core::RpcUtxosBy
             .utxo_entry
             .as_ref()
             .ok_or_else(|| RpcError::MissingRpcFieldError("UtxosByAddressesEntry".to_string(), "utxo_entry".to_string()))?
+            .try_into()?,
+    }
+});
+
+try_from!(item: &protowire::RpcUtxoReferenceEntry, kaspa_rpc_core::RpcUtxoReferenceEntry, {
+    Self {
+        outpoint: item
+            .outpoint
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("UtxoReferenceEntry".to_string(), "outpoint".to_string()))?
+            .try_into()?,
+        utxo_entry: item
+            .utxo_entry
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("UtxoReferenceEntry".to_string(), "utxo_entry".to_string()))?
             .try_into()?,
     }
 });

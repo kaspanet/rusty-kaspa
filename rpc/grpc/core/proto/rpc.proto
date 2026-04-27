@@ -542,6 +542,11 @@ message RpcUtxosByAddressesEntry {
   RpcUtxoEntry utxoEntry = 3;
 }
 
+message RpcUtxoReferenceEntry {
+  RpcOutpoint outpoint = 1;
+  RpcUtxoEntry utxoEntry = 2;
+}
+
 // StopNotifyingUtxosChangedRequestMessage unregisters this connection for utxoChanged notifications
 // for the given addresses.
 //
@@ -568,6 +573,21 @@ message GetUtxosByAddressesRequestMessage {
 
 message GetUtxosByAddressesResponseMessage {
   repeated RpcUtxosByAddressesEntry entries = 1;
+
+  RPCError error = 1000;
+}
+
+// GetUtxosByCovenantIdRequestMessage requests all current UTXOs for the given covenant id,
+// optionally filtered by a script public key.
+//
+// This call is only available when this kaspad was started with `--utxoindex`
+message GetUtxosByCovenantIdRequestMessage {
+  string covenantId = 1;
+  optional RpcScriptPublicKey scriptPublicKey = 2;
+}
+
+message GetUtxosByCovenantIdResponseMessage {
+  repeated RpcUtxoReferenceEntry entries = 1;
 
   RPCError error = 1000;
 }

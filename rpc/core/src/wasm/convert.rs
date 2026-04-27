@@ -26,6 +26,27 @@ impl From<&RpcUtxosByAddressesEntry> for UtxoEntryReference {
     }
 }
 
+impl From<RpcUtxoReferenceEntry> for UtxoEntry {
+    fn from(entry: RpcUtxoReferenceEntry) -> UtxoEntry {
+        let RpcUtxoReferenceEntry { outpoint, utxo_entry } = entry;
+        let RpcUtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, covenant_id } = utxo_entry;
+        UtxoEntry { address: None, outpoint: outpoint.into(), amount, script_public_key, block_daa_score, is_coinbase, covenant_id }
+    }
+}
+
+// @TODO(izio): name RpcUtxoReferenceEntry conflicts with UtxoEntryReference while not representing the same data
+impl From<RpcUtxoReferenceEntry> for UtxoEntryReference {
+    fn from(entry: RpcUtxoReferenceEntry) -> Self {
+        Self { utxo: Arc::new(entry.into()) }
+    }
+}
+
+impl From<&RpcUtxoReferenceEntry> for UtxoEntryReference {
+    fn from(entry: &RpcUtxoReferenceEntry) -> Self {
+        Self { utxo: Arc::new(entry.clone().into()) }
+    }
+}
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
 

@@ -6,12 +6,16 @@ use crate::{
     stores::store_manager::Store,
     update_container::UtxoIndexChanges,
 };
-use kaspa_consensus_core::{BlockHashSet, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
+use kaspa_consensus_core::{
+    BlockHashSet,
+    tx::{ScriptPublicKey, ScriptPublicKeys},
+    utxo::utxo_diff::UtxoDiff,
+};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{DB, StoreError, StoreResult};
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, UtxoReferenceEntry};
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
@@ -61,7 +65,18 @@ impl UtxoIndexApi for UtxoIndex {
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         trace!("[{0}] retrieving utxos from {1} script public keys", IDENT, script_public_keys.len());
 
-        self.store.get_utxos_by_script_public_key(script_public_keys)
+        self.store.get_utxos_by_script_public_keys(script_public_keys)
+    }
+
+    /// Retrieve utxos by covenant id and optional spk from secondary utxoindex
+    fn get_utxos_by_covenant_id(
+        &self,
+        covenant_id: Hash,
+        script_public_key: Option<ScriptPublicKey>,
+    ) -> StoreResult<Vec<UtxoReferenceEntry>> {
+        trace!("[{0}] retrieving utxos for covenant id {1} and spk {2:?}", IDENT, covenant_id, script_public_key.as_ref());
+
+        self.store.get_utxos_by_covenant_id(covenant_id, script_public_key)
     }
 
     /// Retrieve utxos by script public keys from the utxoindex db.

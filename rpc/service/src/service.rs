@@ -34,7 +34,9 @@ use kaspa_core::{
 };
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use kaspa_index_core::{
-    connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
+    connection::IndexChannelConnection,
+    indexed_utxos::{UtxoReferenceEntry, UtxoSetByScriptPublicKey},
+    notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
 use kaspa_mining::feerate::FeeEstimateVerbose;
@@ -264,6 +266,14 @@ impl RpcCoreService {
             .get_utxos_by_script_public_keys(addresses.map(pay_to_address_script).collect())
             .await
             .unwrap_or_default()
+    }
+
+    async fn query_utxos_by_covenant_id(
+        &self,
+        covenant_id: RpcHash,
+        script_public_key: Option<RpcScriptPublicKey>,
+    ) -> Vec<UtxoReferenceEntry> {
+        self.utxoindex.clone().unwrap().get_utxos_by_covenant_id(covenant_id, script_public_key).await.unwrap_or_default()
     }
 
     async fn get_balance_by_script_public_key<'a>(&self, addresses: impl Iterator<Item = &'a RpcAddress>) -> BalanceByScriptPublicKey {
@@ -706,6 +716,25 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         //       (the current impl does not retain an entry order matching the request addresses order)
         let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
+    }
+
+    async fn get_utxos_by_covenant_id_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxosByCovenantIdRequest,
+    ) -> RpcResult<GetUtxosByCovenantIdResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let entries = self.query_utxos_by_covenant_id(request.covenant_id, request.script_public_key).await;
+        Ok(GetUtxosByCovenantIdResponse::new(self.index_converter.get_utxo_reference_entries(&entries)))
     }
 
     async fn get_balance_by_address_call(

@@ -1,9 +1,8 @@
 //! Conversion functions for UTXO related types.
 
-use crate::RpcUtxoEntry;
-use crate::RpcUtxosByAddressesEntry;
+use crate::{RpcUtxoEntry, RpcUtxoReferenceEntry, RpcUtxosByAddressesEntry};
 use kaspa_addresses::Prefix;
-use kaspa_index_core::indexed_utxos::UtxoSetByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{UtxoReferenceEntry, UtxoSetByScriptPublicKey};
 use kaspa_txscript::extract_script_pub_key_address;
 
 // ----------------------------------------------------------------------------
@@ -30,4 +29,10 @@ pub fn utxo_set_into_rpc(item: &UtxoSetByScriptPublicKey, prefix: Option<Prefix>
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>()
+}
+
+pub fn utxo_references_into_rpc(item: &[UtxoReferenceEntry]) -> Vec<RpcUtxoReferenceEntry> {
+    item.iter()
+        .map(|entry| RpcUtxoReferenceEntry { outpoint: entry.outpoint.into(), utxo_entry: entry.utxo_entry.clone().into() })
+        .collect()
 }

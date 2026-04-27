@@ -1247,6 +1247,47 @@ try_from! ( args: GetUtxosByAddressesResponse, IGetUtxosByAddressesResponse, {
 // ---
 
 declare! {
+    IGetUtxosByCovenantIdRequest,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetUtxosByCovenantIdRequest {
+        covenantId: HexString;
+        scriptPublicKey?: IScriptPublicKey;
+    }
+    "#,
+}
+
+try_from! ( args: IGetUtxosByCovenantIdRequest, GetUtxosByCovenantIdRequest, {
+    let js_value = JsValue::from(args);
+    Ok(from_value::<GetUtxosByCovenantIdRequest>(js_value)?)
+});
+
+declare! {
+    IGetUtxosByCovenantIdResponse,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetUtxosByCovenantIdResponse {
+        entries: UtxoEntryReference[];
+    }
+    "#,
+}
+
+try_from! ( args: GetUtxosByCovenantIdResponse, IGetUtxosByCovenantIdResponse, {
+    let GetUtxosByCovenantIdResponse { entries } = args;
+    let entries = entries.into_iter().map(UtxoEntryReference::from).collect::<Vec<UtxoEntryReference>>();
+    let entries = js_sys::Array::from_iter(entries.into_iter().map(JsValue::from));
+    let response = IGetUtxosByCovenantIdResponse::default();
+    response.set("entries", entries.as_ref())?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
     IGetVirtualChainFromBlockRequest,
     r#"
     /**
