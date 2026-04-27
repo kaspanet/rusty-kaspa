@@ -15,33 +15,27 @@
 //!   `iter_all_canonical_owned` (as IBD streaming-import does) reproduces the
 //!   live root.
 //!
-//! - **I2 — branch_version anchor co-versioning.**
-//!   For every `branch_version` row whose payload is `Collapsed{L, ..}`, the
-//!   row's `(blue_score, block_hash)` must equal the `(blue_score, block_hash)`
-//!   of the `lane_version` row for L that defined that leaf. A `Collapsed`
-//!   referencing L is an addressing fact about L; it must live and die with
-//!   L's lane_version row. Internal payloads carry the current block's anchor
-//!   (the block whose recursion produced them).
+//!   `branch_version` is therefore a **cache** of the tree implied by the
+//!   leaf set, not a co-equal store. Each `branch_version` write is a valid
+//!   cache fact at the writing block's POV — including the `Collapsed{L,..}`
+//!   rows produced by `expand_singleton` when a sibling insertion structurally
+//!   pushes L to a deeper position. Those rows do not need to share L's
+//!   `lane_version` anchor; while L is in the leaf set, both views agree.
 //!
-//! - **I3 — score_index discovery completeness.**
-//!   `prune` derives branch_version delete keys solely from score_index
-//!   entries (`processor.rs:259-263`). Therefore: for every branch_version
-//!   row written at `(bs_b, block_b)` whose payload is `Collapsed{L, ..}`,
-//!   `score_index` must have an entry at `(bs_b, block_b)` listing L. Under
-//!   I2 this is automatic — the original lane-update entry already lists L
-//!   at L's anchor, and `Collapsed{L,..}` rows live at that anchor.
-//!
-//! - **I4 — pruning bijection.**
-//!   For any cutoff Y, the surviving `lane_version` rows and the surviving
-//!   `branch_version` `Collapsed{L,..}` rows refer to the same set of lanes.
-//!   No orphans (Collapsed without a lane row), no missing leaves (lane row
-//!   without Collapseds). A theorem under I1+I2+I3, but pinned directly here
-//!   because it's the invariant a node operator can verify with a DB scan.
+//! - **I4 — prune-time eviction completeness.**
+//!   After every `prune(Y)`, for any lane L with no canonical `lane_version`
+//!   row at any `bs > Y`, `branch_version` contains no `Collapsed{lane=L,..}`
+//!   row at any anchor. The desync that produces orphaned-leaf reads happens
+//!   precisely when a leaf is removed from the source-of-truth (lane_version)
+//!   while a cache row referencing it survives the prune. Eviction must be
+//!   payload-aware: `prune_chunk` cannot rely on exact-key deletes derived
+//!   from a single score_index anchor, because cache writes for L can be
+//!   anchored at any block that structurally rewrote it.
 //!
 //! - **I5 — read soundness.**
 //!   At any read bounds, `stores.get_lanes_root(...)` equals
-//!   `compute_root_update(empty, canonical_lane_set)`. Pinned by
-//!   `live_lanes_root_equals_leaf_set_root_after_structural_rewrite_and_prune`.
+//!   `compute_root_update(empty, canonical_lane_set)`. Follows from I1 + I4.
+//!   Pinned by `live_lanes_root_equals_leaf_set_root_after_structural_rewrite_and_prune`.
 
 use std::sync::Arc;
 
@@ -1100,11 +1094,12 @@ fn prune_removes_old_versions_keeps_new() {
 /// the leaf-set view from the iter walk hashes only `{M}`. Production symptom
 /// on michael's syncer: `cdc9c8c919…` vs `50d3a3cc…`.
 ///
-/// **It fails on current code** and will start passing once the structural
-/// rewrite preserves I2 — the new `Collapsed{L}` row at depth=2 must inherit
-/// L's existing `(bs, block)` anchor instead of stamping the writing block's.
-/// Per I1, fixing this by writing a fresh `lane_version` row for L is **not**
-/// permitted; the source-of-truth contract on `lane_version` must hold.
+/// **It fails on current code** and will start passing once `prune_chunk`
+/// performs payload-aware eviction (I4): when L's lane_version row is being
+/// deleted, every `Collapsed{lane=L,..}` row in branch_version must be
+/// evicted regardless of which block's anchor it was written under. Per I1,
+/// the live write path (including `expand_singleton`'s structural rewrite)
+/// stays unchanged — the desync is a cache-eviction bug, not a write bug.
 #[test]
 fn live_lanes_root_equals_leaf_set_root_after_structural_rewrite_and_prune() {
     use kaspa_database::create_temp_db;
@@ -1177,182 +1172,25 @@ fn live_lanes_root_equals_leaf_set_root_after_structural_rewrite_and_prune() {
     );
 }
 
-/// I2 — branch_version `Collapsed{L,..}` rows must be co-versioned with L's
-/// `lane_version` row.
+/// I4 — prune-time eviction completeness: after pruning, the set of lanes
+/// referenced by canonical-in-window Collapsed entries in branch_version
+/// equals the canonical lane set returned by `iter_all_canonical_owned`. No
+/// orphans, no missing leaves.
+///
+/// Structural complement to the I5 root-equality test: roots check the sum of
+/// leaf hashes, this test checks set membership. They can fail independently
+/// (a hypothetical pair of orphans whose hashes cancel would pass I5 but fail
+/// here).
 ///
 /// Mechanism pinned: when X2 inserts M (sibling of L), `expand_singleton`
-/// (`crypto/smt/src/tree.rs:323`) reintroduces L into the recursion and a new
-/// `Collapsed{L,..}` row is written at a deeper depth. Currently that row
-/// inherits X2's `(bs, block)` anchor — breaking co-versioning with L's
-/// lane_version row (which still sits at X1's anchor). On unfixed code the
-/// depth=2 structural-rewrite row is at `(bs=15, block=X2)` while L's
-/// lane_version is at `(bs=10, block=X1)` → assertion fails.
-///
-/// The existing root-equality test only catches the *consequence* (post-prune
-/// orphan changes the root). This test catches the *cause* — directly, before
-/// any pruning is involved.
-#[test]
-fn branch_collapsed_rows_anchored_at_lane_version_anchor() {
-    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-    let stores = make_stores(&db);
-    let empty_root = SeqCommitActiveNode::empty_root();
-
-    // L = all-zeros, M differs at bit 1 → LCA at depth=1, deep collapseds at depth=2.
-    let key_l = Hash::from_bytes([0x00; 32]);
-    let mut key_m_bytes = [0x00; 32];
-    key_m_bytes[0] = 0x40;
-    let key_m = Hash::from_bytes(key_m_bytes);
-
-    let bs1 = 10u64;
-    let block1 = hash(0xB1);
-    let mut p1 = SmtProcessor::new(&stores, bs1, same_pov_bounds(bs1), empty_root);
-    p1.update_lane(key_l, hash(0xA1));
-    let b1 = p1.build(|_| true).unwrap();
-    let r1 = b1.root;
-    let mut batch = WriteBatch::default();
-    b1.flush(&stores, &mut batch, bs1, block1).unwrap();
-    db.write(batch).unwrap();
-
-    let bs2 = 15u64;
-    let block2 = hash(0xB2);
-    let mut p2 = SmtProcessor::new(&stores, bs2, same_pov_bounds(bs2), r1);
-    p2.update_lane(key_m, hash(0xA2));
-    let b2 = p2.build(|_| true).unwrap();
-    let mut batch = WriteBatch::default();
-    b2.flush(&stores, &mut batch, bs2, block2).unwrap();
-    db.write(batch).unwrap();
-
-    // Authoritative anchor for L: lane_version's only canonical row.
-    let lv_l = stores
-        .lane_version
-        .get_at_canonical(key_l, u64::MAX, 0, |_| true)
-        .unwrap()
-        .expect("lane_version must have a canonical row for L");
-    let expected_anchor = (lv_l.blue_score(), lv_l.block_hash());
-    assert_eq!(expected_anchor, (bs1, block1));
-
-    // Sweep every depth on L's path. Every Collapsed{lane=L,..} row must share L's anchor.
-    for depth in 0..=255u8 {
-        let bk = BranchKey::new(depth, &key_l);
-        let rows: Vec<_> = stores.branch_version.get_at(bk.depth, bk.node_key, u64::MAX, 0).collect::<Result<Vec<_>, _>>().unwrap();
-        for row in rows {
-            if let Some(Node::Collapsed(cl)) = row.data()
-                && cl.lane_key == key_l
-            {
-                assert_eq!(
-                    (row.blue_score(), row.block_hash()),
-                    expected_anchor,
-                    "branch_version Collapsed{{lane=L}} at depth={} has anchor (bs={}, block={}) \
-                         but L's lane_version is at (bs={}, block={}). Structural rewrite of L by \
-                         a sibling-inserting block must inherit L's existing anchor — otherwise \
-                         the two stores prune asynchronously and L becomes an orphan in branch_version.",
-                    depth,
-                    row.blue_score(),
-                    row.block_hash(),
-                    expected_anchor.0,
-                    expected_anchor.1,
-                );
-            }
-        }
-    }
-}
-
-/// I3 — score_index discovery completeness: every `Collapsed{L,..}`
-/// branch_version row at `(bs, block)` must be reachable through a
-/// score_index entry at the same `(bs, block)` listing L.
-///
-/// Pruning derives branch_version delete keys solely from score_index entries
-/// (`processor.rs:259-263`). Any branch row whose `(bs, block, lane_key)`
-/// triple is not represented in score_index is permanently orphaned at prune
-/// time — even if a future cutoff covers the row's bs.
-///
-/// The hole this test pins: when X2 structurally rewrites L's Collapsed, a
-/// new branch row appears at `(bs=15, block=X2)` carrying lane=L, but X2's
-/// score_index entry only lists `[M]`. Prune at cutoff ≥ 15 will derive
-/// delete keys from M's path only; the rewritten Collapsed{L} survives forever.
-#[test]
-fn score_index_lists_lane_for_every_branch_collapsed_anchor() {
-    use std::collections::{HashMap, HashSet};
-
-    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-    let stores = make_stores(&db);
-    let empty_root = SeqCommitActiveNode::empty_root();
-
-    let key_l = Hash::from_bytes([0x00; 32]);
-    let mut key_m_bytes = [0x00; 32];
-    key_m_bytes[0] = 0x40;
-    let key_m = Hash::from_bytes(key_m_bytes);
-
-    let bs1 = 10u64;
-    let block1 = hash(0xB1);
-    let mut p1 = SmtProcessor::new(&stores, bs1, same_pov_bounds(bs1), empty_root);
-    p1.update_lane(key_l, hash(0xA1));
-    let b1 = p1.build(|_| true).unwrap();
-    let r1 = b1.root;
-    let mut batch = WriteBatch::default();
-    b1.flush(&stores, &mut batch, bs1, block1).unwrap();
-    db.write(batch).unwrap();
-
-    let bs2 = 15u64;
-    let block2 = hash(0xB2);
-    let mut p2 = SmtProcessor::new(&stores, bs2, same_pov_bounds(bs2), r1);
-    p2.update_lane(key_m, hash(0xA2));
-    let b2 = p2.build(|_| true).unwrap();
-    let mut batch = WriteBatch::default();
-    b2.flush(&stores, &mut batch, bs2, block2).unwrap();
-    db.write(batch).unwrap();
-
-    // (a) For every (bs, block) anchor at which a Collapsed lives in branch_version,
-    //     collect the set of lane_keys carried in those Collapsed payloads.
-    let mut branch_collapsed_at_anchor: HashMap<(u64, Hash), HashSet<Hash>> = HashMap::new();
-    for sweep_lane in [key_l, key_m] {
-        for depth in 0..=255u8 {
-            let bk = BranchKey::new(depth, &sweep_lane);
-            let rows: Vec<_> =
-                stores.branch_version.get_at(bk.depth, bk.node_key, u64::MAX, 0).collect::<Result<Vec<_>, _>>().unwrap();
-            for row in rows {
-                if let Some(Node::Collapsed(cl)) = row.data() {
-                    branch_collapsed_at_anchor.entry((row.blue_score(), row.block_hash())).or_default().insert(cl.lane_key);
-                }
-            }
-        }
-    }
-
-    // (b) For every score_index anchor, collect the lane_keys it lists.
-    let si_entries: Vec<_> = stores.score_index.get_all(0..=u64::MAX).collect::<Result<Vec<_>, _>>().unwrap();
-    let mut si_lanes_at_anchor: HashMap<(u64, Hash), HashSet<Hash>> = HashMap::new();
-    for entry in &si_entries {
-        si_lanes_at_anchor.entry((entry.blue_score(), entry.block_hash())).or_default().extend(entry.data().iter().copied());
-    }
-
-    // Coverage: for every Collapsed{lane=L} row at anchor A, score_index at A must list L.
-    for ((bs, blk), branch_lanes) in &branch_collapsed_at_anchor {
-        let si_lanes = si_lanes_at_anchor.get(&(*bs, *blk)).cloned().unwrap_or_default();
-        for lk in branch_lanes {
-            assert!(
-                si_lanes.contains(lk),
-                "branch_version has Collapsed{{lane={lk}}} at anchor (bs={bs}, block={blk}) \
-                 but score_index entries at that same anchor list only {si_lanes:?}. \
-                 The lane is undiscoverable at prune time → permanent orphan. Either move \
-                 the Collapsed write to L's existing anchor (I2 fix) or extend score_index \
-                 to record structurally-rewritten lanes at the writing block's anchor."
-            );
-        }
-    }
-}
-
-/// I4 — post-prune bijection: the set of lanes referenced by canonical-in-window
-/// Collapsed entries in branch_version equals the canonical lane set returned by
-/// `iter_all_canonical_owned`. No orphans, no missing leaves.
-///
-/// This is a *structural* complement to the existing root-equality test:
-/// roots check the sum of leaf hashes; this test checks set membership. They
-/// can fail independently — e.g. a hypothetical pair of orphans whose hashes
-/// happen to cancel would pass the root test but fail this one.
-///
-/// Without the I2 fix, after pruning at cutoff=10 the depth=2 Collapsed{L} row
-/// (anchored at bs=15) survives, while L's lane_version row (anchored at bs=10)
-/// is gone. branch_set = {L, M}, lane_set = {M} → assertion fails.
+/// (`crypto/smt/src/tree.rs:323`) writes a new `Collapsed{L,..}` row at
+/// depth=2 anchored at `(bs=15, block=X2)`. That write is itself fine — it's
+/// a valid cache fact at X2's POV. The bug appears at prune(cutoff=10), where
+/// `prune_chunk` derives delete keys from L's score_index entry at `(10, X1)`
+/// only — the depth=2 row at `(15, X2)` is at a different anchor and survives
+/// the exact-key delete. branch_set = {L, M}, lane_set = {M} → assertion fails.
+/// The fix lives in `prune_chunk`: payload-aware eviction of every
+/// `Collapsed{lane=L,..}` row when L's lane_version row is being pruned.
 #[test]
 fn no_orphan_collapseds_in_branch_version_after_prune() {
     use std::collections::HashSet;
