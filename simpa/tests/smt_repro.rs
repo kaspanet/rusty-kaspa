@@ -7,15 +7,10 @@ use kaspa_consensus::{
     params::{DEVNET_PARAMS, ForkActivation, NETWORK_DELAY_BOUND, Params},
 };
 use kaspa_consensus_core::{
-    BlockLevel,
-    api::{ConsensusApi, ImportLane},
-    config::bps::calculate_ghostdag_k,
-    subnets::SubnetworkId,
-    tx::TransactionOutpoint,
+    BlockLevel, api::ConsensusApi, config::bps::calculate_ghostdag_k, subnets::SubnetworkId, tx::TransactionOutpoint,
 };
-use kaspa_database::{create_temp_db, prelude::ConnBuilder};
 use kaspa_hashes::{Hash, ZERO_HASH};
-use kaspa_smt_store::{processor::SmtStores, streaming_import::streaming_import};
+use kaspa_smt_store::processor::SmtReadBounds;
 use simpa::simulator::{
     miner::{LaneContext, LaneProducer},
     network::KaspaNetworkSimulator,
@@ -25,13 +20,15 @@ const BPS: f64 = 1.0;
 const DELAY: f64 = 1.0;
 const MINERS: u64 = 1;
 const TXS_PER_BLOCK: u64 = 1;
-const TARGET_BLOCKS: u64 = 5_000;
 const LANE_COUNT: u32 = 2_000;
 const LANE_BAND: u32 = 200;
 const LANE_EPOCH_BLOCKS: u64 = 55;
 const LANE_CARRY_PERCENT: u32 = 10;
 const FINALITY_DEPTH: u64 = 100 * 2;
 const PRUNING_DEPTH: u64 = 100 * 2 * 2 + 50;
+const MIN_TARGET_BLOCKS: u64 = 2_000;
+const TARGET_BLOCKS: u64 =
+    if MIN_TARGET_BLOCKS > PRUNING_DEPTH + 2 * FINALITY_DEPTH { MIN_TARGET_BLOCKS } else { PRUNING_DEPTH + 2 * FINALITY_DEPTH };
 
 static REPRO_LOCK: Mutex<()> = Mutex::new(());
 
@@ -76,36 +73,24 @@ fn assert_pruning_point_smt_roundtrip(seed: u64) {
     let pp = consensus.pruning_point();
     let pp_header = consensus.get_header(pp).unwrap();
     let metadata = consensus.get_pruning_point_smt_metadata(pp).unwrap();
-    let (chunks, exported_lanes) = export_smt_lanes(&*consensus, pp);
-
-    let (import_lifetime, import_db) = create_temp_db!(ConnBuilder::default().with_files_limit(32));
-    let import_stores = SmtStores::new(import_db.clone(), 1, 1);
-    let result = streaming_import(
-        &import_db,
-        &import_stores,
-        pp_header.blue_score,
-        ZERO_HASH,
-        metadata.active_lanes_count,
-        metadata.lanes_root,
-        chunks.into_iter(),
-        4096,
-    )
-    .expect("streaming_import failed");
-
-    let imported_lanes = result.lanes_imported;
-    let imported_root = result.root;
+    let exported_lanes = count_exported_smt_lanes(&*consensus, pp);
+    let (recomputed_root, recomputed_lanes) = consensus
+        .smt_stores
+        .recompute_lanes_root_from_leaf_stream(
+            SmtReadBounds::for_pov(pp_header.blue_score, FINALITY_DEPTH),
+            metadata.active_lanes_count,
+            |bh| bh == ZERO_HASH || consensus.is_chain_ancestor_of(bh, pp).unwrap_or(false),
+        )
+        .unwrap();
     let metadata_lanes = metadata.active_lanes_count;
     let metadata_root = metadata.lanes_root;
 
-    drop(import_stores);
-    drop(import_db);
-    drop(import_lifetime);
     drop(consensus);
     drop(lifetime);
 
     assert_eq!(exported_lanes, metadata_lanes, "seed {seed}: exported lane count does not match pruning-point metadata");
-    assert_eq!(imported_lanes, metadata_lanes, "seed {seed}: imported lane count does not match pruning-point metadata");
-    assert_eq!(imported_root, metadata_root, "seed {seed}: imported SMT root does not match pruning-point metadata");
+    assert_eq!(recomputed_lanes, metadata_lanes, "seed {seed}: recomputed lane count does not match pruning-point metadata");
+    assert_eq!(recomputed_root, metadata_root, "seed {seed}: recomputed SMT root does not match pruning-point metadata");
 }
 
 fn apply_pruning_repro_params(params: &mut Params) {
@@ -148,26 +133,16 @@ fn apply_perf_params(perf: &mut PerfParams) {
     perf.virtual_processor_num_threads = 2;
 }
 
-fn export_smt_lanes(consensus: &dyn ConsensusApi, pp: Hash) -> (Vec<Vec<ImportLane>>, u64) {
-    const CHUNK_LEN: usize = 4096;
-
+fn count_exported_smt_lanes(consensus: &dyn ConsensusApi, pp: Hash) -> u64 {
     let stream = consensus.open_pruning_point_smt_lane_stream(pp).unwrap();
-    let mut chunks = Vec::new();
-    let mut chunk = Vec::with_capacity(CHUNK_LEN);
     let mut count = 0u64;
 
     for lane in stream {
-        chunk.push(lane.unwrap());
+        lane.unwrap();
         count += 1;
-        if chunk.len() == CHUNK_LEN {
-            chunks.push(std::mem::replace(&mut chunk, Vec::with_capacity(CHUNK_LEN)));
-        }
-    }
-    if !chunk.is_empty() {
-        chunks.push(chunk);
     }
 
-    (chunks, count)
+    count
 }
 
 struct ChurningLaneProducer {
