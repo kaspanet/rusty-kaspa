@@ -19,6 +19,16 @@ impl Fr {
     }
 }
 
+impl TryInto<Vec<u8>> for Fr {
+    type Error = FieldsError;
+
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        let mut bytes = Vec::new();
+        self.0.serialize_uncompressed(&mut bytes).map_err(|e| FieldsError::ArkSerialization(e))?;
+        Ok(bytes)
+    }
+}
+
 impl TryFrom<&[u8]> for Fr {
     type Error = FieldsError;
 

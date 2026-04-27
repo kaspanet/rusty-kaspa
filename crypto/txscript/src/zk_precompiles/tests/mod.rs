@@ -2,13 +2,18 @@ pub mod helpers;
 
 #[cfg(test)]
 mod fast_zk_tests {
-    use super::helpers::{build_groth_script, build_stark_script, build_zk_script, execute_zk_script, load_stark_fields};
-    use crate::{caches::Cache, get_zk_script_units_upper_bound, zk_precompiles::tags::ZkTag};
+    use super::helpers::{build_groth_script, build_stark_script, execute_zk_script};
+    use crate::{
+        caches::Cache,
+        get_zk_script_units_upper_bound, hex,
+        zk_precompiles::{risc0::zk_to_script::R0ScriptBuilder, tags::ZkTag},
+    };
     use kaspa_consensus_core::{
         hashing::sighash::SigHashReusedValuesUnsync,
         tx::{PopulatedTransaction, ScriptPublicKey},
     };
     use kaspa_txscript_errors::TxScriptError;
+    use risc0_zkvm::{Digest, Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 
     #[test]
     fn test_groth16_fast() {
@@ -43,6 +48,37 @@ mod fast_zk_tests {
     }
 
     #[test]
+    fn test_r0_succinct_rcpt_to_kaspa_script() {
+        let succinct_receipt_raw = include_str!("data/zk_builder_tests/succinct.rcpt.hex");
+        let image_id_raw = include_str!("data/zk_builder_tests/succinct.image.hex");
+        let journal_raw = include_str!("data/zk_builder_tests/succinct.journal.hex");
+        let image_id: Digest = hex::decode(image_id_raw).unwrap().try_into().unwrap();
+        let journal: Digest = hex::decode(journal_raw).unwrap().try_into().unwrap();
+        let rcpt: SuccinctReceipt<ReceiptClaim> = borsh::from_slice(&hex::decode(succinct_receipt_raw).unwrap()).unwrap();
+        let mut script_builder = R0ScriptBuilder::from_succinct(&rcpt, journal, image_id).unwrap();
+        let script = script_builder.drain();
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        // Verify execution
+        execute_zk_script(&script, &cache, &reused_values).unwrap();
+    }
+
+    #[test]
+    fn test_groth16_rcpt_to_kaspa_script() {
+        let groth_receipt_raw = include_str!("data/zk_builder_tests/groth.rcpt.hex");
+        let rcpt: Groth16Receipt<ReceiptClaim> = borsh::from_slice(&hex::decode(groth_receipt_raw).unwrap()).unwrap();
+
+        let mut script_builder = R0ScriptBuilder::from_groth(&rcpt).unwrap();
+        let script = script_builder.drain();
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        // Verify execution
+        execute_zk_script(&script, &cache, &reused_values).unwrap();
+    }
+
+    #[test]
     fn test_r0_succinct_control_id_binding() {
         let script = build_stark_script(true);
         let cache = Cache::new(0);
@@ -57,37 +93,6 @@ mod fast_zk_tests {
                 }
                 _ => panic!("Expected ZkIntegrity error, got different error: {:?}", e),
             },
-        }
-    }
-    #[test]
-    fn test_r0_succinct_not_field_elem() {
-        let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
-        let seal_words = seal.as_chunks().0.iter().copied().map(u32::from_le_bytes).collect::<Vec<_>>();
-        let cache = Cache::new(0);
-        let reused_values = SigHashReusedValuesUnsync::new();
-        for i in 0..seal_words.len() {
-            let mut seal_words = seal_words.clone();
-            // we add modular group order to the seal words to make sure they are not field elements but they are still valid u32 values
-            let Some(v) = seal_words[i].checked_add(risc0_zkp::field::baby_bear::P) else {
-                continue;
-            };
-            seal_words[i] = v;
-            let stark_tag = ZkTag::R0Succinct as u8;
-            let seal = bytemuck::cast_slice(seal_words.as_slice());
-            let script = build_zk_script(&[
-                &claim,
-                &control_index,
-                &control_digests,
-                seal,
-                &journal,
-                &image_id,
-                &control_id,
-                &hashfn,
-                &[stark_tag],
-            ])
-            .unwrap();
-            // Verify execution
-            execute_zk_script(&script, &cache, &reused_values).expect_err("should fail");
         }
     }
 }

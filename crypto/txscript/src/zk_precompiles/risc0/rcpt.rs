@@ -45,6 +45,19 @@ impl TryFrom<u8> for HashFnId {
     }
 }
 
+impl TryFrom<&str> for HashFnId {
+    type Error = R0Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "blake2b" => Ok(HashFnId::Blake2b),
+            "poseidon2" => Ok(HashFnId::Poseidon2),
+            "sha-256" => Ok(HashFnId::Sha256),
+            _ => Err(R0Error::InvalidHashFnId(value.as_bytes().get(0).copied().unwrap_or(255))),
+        }
+    }
+}
+
 impl From<HashFnId> for u8 {
     fn from(value: HashFnId) -> Self {
         value as u8
@@ -70,7 +83,6 @@ pub struct SuccinctReceipt {
     /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
     /// join, or resolve).
     control_id: Digest,
-
     /// Claim containing information about the computation that this receipt proves.
     ///
     /// The standard claim type is [ReceiptClaim][crate::ReceiptClaim], which represents a RISC-V

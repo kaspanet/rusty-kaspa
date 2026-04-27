@@ -75,7 +75,7 @@ license = "ISC"
 repository = "https://github.com/kaspanet/rusty-kaspa"
 edition = "2024"
 include = [
-    "src/**/*.rs",
+    "src/*risc0-zkvm.workspace*/*.rs",
     "src/**/*.s",
     "src/**/*.r",
     "proto/**/*.proto",
@@ -227,6 +227,7 @@ md-5 = "0.10.6"
 num = "0.4.1"
 num_cpus = "1.16.0"
 num-traits = "0.2.17"
+num-bigint = "0.4.6"
 once_cell = { version = "1.18.0", default-features = false }
 pad = "0.1.6"
 parking_lot = "0.12.1"
@@ -246,6 +247,7 @@ risc0-circuit-keccak =  { version="4.0.3", default-features=false }
 risc0-zkp = "3.0.3"
 risc0-core = "3.0.0"
 risc0-binfmt = "3.0.3"
+risc0-zkvm = "3.0.3"
 ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"
 rocksdb = "0.24.0"
