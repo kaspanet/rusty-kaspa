@@ -6398,6 +6398,7 @@ dependencies = [
  "kaspa-database",
  "kaspa-hashes",
  "kaspa-perf-monitor",
+ "kaspa-smt-store",
  "kaspa-testing-integration",
  "kaspa-utils",
  "log",
