@@ -1032,3 +1032,104 @@ fn prune_removes_old_versions_keeps_new() {
     let build3 = proc3.build(|_| true).unwrap();
     assert_ne!(build3.root, root2, "updating A should change the root");
 }
+
+/// **Invariant**: the live tree's lanes_root MUST equal the root derived
+/// from re-hashing the canonical lane set (the leaves visible via
+/// `iter_all_canonical_owned`). `branch_version` is just a cache of the
+/// internal-node hashes — its root must agree with whatever a fresh
+/// `compute_root_update` over the canonical leaves produces.
+///
+/// **Setup that breaks the invariant on unfixed code**:
+///   - Block X1 (bs=10) inserts L  → `Collapsed{L}` at depth=0
+///   - Block X2 (bs=15) inserts M (a sibling of L sharing bit 0). This
+///     structurally pushes L to depth=2: `compute_root_update` emits a
+///     fresh `Collapsed{L}` at `(d=2, K_L_at_2, 15, X2)`. **Crucially
+///     `flush_lanes` does *not* write a `lane_version` row for L** — L
+///     was not in `proc.changes` for X2, only M was.
+///   - `prune(cutoff=10)` deletes `lane_version(L, 10, X1)` and
+///     `branch_version(d, K_L_at_d, 10, X1)` for every depth. The
+///     structural `Collapsed{L}` at `(d=2, K, 15, X2)` is keyed at a
+///     different `(bs, block_hash)` and survives the prune.
+///
+/// At pp's POV after prune, `lane_version` has no canonical row for L,
+/// but `branch_version` still descends through L's path and yields
+/// `Collapsed{L}` at d=2. The live `get_lanes_root` therefore hashes a
+/// 2-leaf tree `{L, M}`; the leaf-set view from iter walk hashes only
+/// `{M}`. The roots differ — exactly the production symptom on michael's
+/// syncer (cdc9c8c919… vs 50d3a3cc…).
+///
+/// This test asserts the invariant directly. **It fails on the current
+/// code** and will start passing once the orphan-rewrite write path is
+/// fixed (refresh `lane_version` on structural rewrites, suppress orphan
+/// reads in `get_node`, or eliminate orphans some other way).
+#[test]
+fn live_lanes_root_equals_leaf_set_root_after_structural_rewrite_and_prune() {
+    use kaspa_database::create_temp_db;
+    use kaspa_database::prelude::ConnBuilder;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+    let empty_root = SeqCommitActiveNode::empty_root();
+
+    // L = all-zeros, M differs at bit 1. They share bit 0 (both 0),
+    // diverge at bit 1 → LCA at depth 1, each leaf at d=2 after M is
+    // inserted. The smallest tree where a sibling insert *moves* an
+    // existing leaf to a different depth.
+    let key_l = Hash::from_bytes([0x00; 32]);
+    let mut key_m_bytes = [0x00; 32];
+    key_m_bytes[0] = 0x40; // bit 1 set
+    let key_m = Hash::from_bytes(key_m_bytes);
+    let tip_l = hash(0xA1);
+    let tip_m = hash(0xA2);
+
+    // Block X1 (bs=10): insert L
+    let mut p1 = SmtProcessor::new(&stores, 10, same_pov_bounds(10), empty_root);
+    p1.update_lane(key_l, tip_l);
+    let b1 = p1.build(|_| true).unwrap();
+    let r1 = b1.root;
+    let mut batch = WriteBatch::default();
+    b1.flush(&stores, &mut batch, 10, hash(0xB1)).unwrap();
+    db.write(batch).unwrap();
+
+    // Block X2 (bs=15): insert M (sibling of L) — triggers structural
+    // rewrite of L's Collapsed at d=2.
+    let mut p2 = SmtProcessor::new(&stores, 15, same_pov_bounds(15), r1);
+    p2.update_lane(key_m, tip_m);
+    let b2 = p2.build(|_| true).unwrap();
+    let mut batch = WriteBatch::default();
+    b2.flush(&stores, &mut batch, 15, hash(0xB2)).unwrap();
+    db.write(batch).unwrap();
+
+    // Prune L's original lane_version row at cutoff=10.
+    stores.prune(&db, 10);
+
+    // Read the canonical leaf set (the IBD-export view).
+    let pp_bs = 20u64;
+    let bounds = same_pov_bounds(pp_bs);
+    let leaves: Vec<LeafUpdate> = stores
+        .lane_version
+        .iter_all_canonical_owned(None, bounds.min_blue_score, Some(bounds.target_blue_score), |_| true)
+        .map(|res| {
+            let (lane_key, verified) = res.unwrap();
+            LeafUpdate {
+                key: lane_key,
+                leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_tip: verified.data(), blue_score: verified.blue_score() }),
+            }
+        })
+        .collect();
+
+    // Compute the leaf-set root: pure function of the canonical leaves.
+    let sorted = SortedLeafUpdates::from_unsorted(leaves);
+    let (leaf_set_root, _) = compute_root_update::<SeqCommitActiveNode, _>(&BTreeSmtStore::new(), empty_root, sorted).unwrap();
+
+    // Compute the live root via the branch_version cache.
+    let live_root = stores.get_lanes_root(bounds, |_| true);
+
+    // Invariant: branch_version is a cache of the leaf set's tree → roots agree.
+    assert_eq!(
+        live_root, leaf_set_root,
+        "live tree's get_lanes_root must equal the root derived from the canonical lane set \
+         (iter_all_canonical_owned). A mismatch means branch_version contains a leaf the \
+         lane_version does not — an orphan Collapsed left behind by a structural rewrite."
+    );
+}
