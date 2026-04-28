@@ -75,33 +75,32 @@ impl From<UtxoEntryHumanReadable> for UtxoEntry {
 
 impl<'de> Deserialize<'de> for UtxoEntry {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct UtxoEntryVisitor;
+
+        impl<'de> Visitor<'de> for UtxoEntryVisitor {
+            type Value = UtxoEntry;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("struct UtxoEntry")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<UtxoEntry, A::Error> {
+                let amount: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(0, &self))?;
+                let script_public_key: ScriptPublicKey = seq.next_element()?.ok_or_else(|| DeError::invalid_length(1, &self))?;
+                let block_daa_score: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(2, &self))?;
+                let is_coinbase: bool = seq.next_element()?.ok_or_else(|| DeError::invalid_length(3, &self))?;
+                // Pre-Toccata entries have no trailing Option tag; the
+                // bincode reader hits EOF here and we treat that as None.
+                let covenant_id: Option<Hash> = match seq.next_element::<Option<Hash>>() {
+                    Ok(Some(value)) => value,
+                    Ok(None) | Err(_) => None,
+                };
+                Ok(UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, covenant_id })
+            }
+        }
         if deserializer.is_human_readable() {
             UtxoEntryHumanReadable::deserialize(deserializer).map(Into::into)
         } else {
-            struct UtxoEntryVisitor;
-
-            impl<'de> Visitor<'de> for UtxoEntryVisitor {
-                type Value = UtxoEntry;
-
-                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    f.write_str("struct UtxoEntry")
-                }
-
-                fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<UtxoEntry, A::Error> {
-                    let amount: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(0, &self))?;
-                    let script_public_key: ScriptPublicKey = seq.next_element()?.ok_or_else(|| DeError::invalid_length(1, &self))?;
-                    let block_daa_score: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(2, &self))?;
-                    let is_coinbase: bool = seq.next_element()?.ok_or_else(|| DeError::invalid_length(3, &self))?;
-                    // Pre-Toccata entries have no trailing Option tag; the
-                    // bincode reader hits EOF here and we treat that as None.
-                    let covenant_id: Option<Hash> = match seq.next_element::<Option<Hash>>() {
-                        Ok(Some(value)) => value,
-                        Ok(None) | Err(_) => None,
-                    };
-                    Ok(UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, covenant_id })
-                }
-            }
-
             const FIELDS: &[&str] = &["amount", "scriptPublicKey", "blockDaaScore", "isCoinbase", "covenantId"];
             deserializer.deserialize_struct("UtxoEntry", FIELDS, UtxoEntryVisitor)
         }
@@ -125,7 +124,7 @@ mod tests {
                                          5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
     const SHARED_AMOUNT: u64 = 0x0123_4567_89ab_cdef;
     const SHARED_DAA_SCORE: u64 = 42;
-    const SHARED_SPK_SCRIPT: &[u8] = &[0x76, 0xa9, 0x14, 0x01, 0x02, 0x03];
+    const SHARED_SPK: &[u8] = &[0x76, 0xa9, 0x14, 0x01, 0x02, 0x03];
 
     fn bytes_from_hex(hex: &str) -> Vec<u8> {
         let mut bytes = vec![0u8; hex.len() / 2];
@@ -142,7 +141,7 @@ mod tests {
     }
 
     fn shared_expected(covenant_id: Option<Hash>) -> UtxoEntry {
-        UtxoEntry::new(SHARED_AMOUNT, spk(0, SHARED_SPK_SCRIPT), SHARED_DAA_SCORE, true, covenant_id)
+        UtxoEntry::new(SHARED_AMOUNT, spk(0, SHARED_SPK), SHARED_DAA_SCORE, true, covenant_id)
     }
 
     #[test]
@@ -163,7 +162,7 @@ mod tests {
         let decoded: PreToccataUtxoEntry = bincode::deserialize(&bytes).unwrap();
         let expected = PreToccataUtxoEntry {
             amount: SHARED_AMOUNT,
-            script_public_key: spk(0, SHARED_SPK_SCRIPT),
+            script_public_key: spk(0, SHARED_SPK),
             block_daa_score: SHARED_DAA_SCORE,
             is_coinbase: true,
         };

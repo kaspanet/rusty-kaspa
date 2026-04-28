@@ -30,8 +30,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::Deserialize;
-#[cfg(test)]
-use serde::Serialize;
 
 use crate::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 use crate::utxo::utxo_diff::UtxoDiff;
@@ -41,7 +39,7 @@ use crate::utxo::utxo_diff::UtxoDiff;
 /// `Deserialize` consumes exactly the pre-Toccata byte sequence and
 /// composes inside container types such as `HashMap`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(Serialize))]
+#[cfg_attr(test, derive(serde::Serialize))]
 pub struct PreToccataUtxoEntry {
     pub amount: u64,
     pub script_public_key: ScriptPublicKey,
@@ -52,7 +50,7 @@ pub struct PreToccataUtxoEntry {
 /// Pre-Toccata layout of [`UtxoDiff`]. Structurally identical to the live
 /// type except every nested entry is a [`PreToccataUtxoEntry`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(Serialize))]
+#[cfg_attr(test, derive(serde::Serialize))]
 pub struct PreToccataUtxoDiff {
     pub add: HashMap<TransactionOutpoint, PreToccataUtxoEntry>,
     pub remove: HashMap<TransactionOutpoint, PreToccataUtxoEntry>,
