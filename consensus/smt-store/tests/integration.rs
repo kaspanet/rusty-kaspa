@@ -525,9 +525,7 @@ fn export_import_roundtrip() {
         .collect();
     import_lanes.sort_by_key(|l| l.lane_key);
     let lane_count = import_lanes.len() as u64;
-    let result =
-        streaming_import(&db2, &import_stores, pp_blue_score, ZERO_HASH, lane_count, final_root, std::iter::once(import_lanes), 64)
-            .unwrap();
+    let result = streaming_import(&db2, &import_stores, ZERO_HASH, lane_count, final_root, std::iter::once(import_lanes), 64).unwrap();
     assert_eq!(result.root, final_root, "import must reproduce the same root");
 
     // Verify lanes are readable with correct blue_scores
@@ -863,8 +861,7 @@ fn streaming_import_matches_export_roundtrip_root() {
     let (_lt2, db2) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let import_stores = make_stores(&db2);
     let result =
-        streaming_import(&db2, &import_stores, 400, ZERO_HASH, exported.len() as u64, ZERO_HASH, std::iter::once(exported), 64)
-            .unwrap();
+        streaming_import(&db2, &import_stores, ZERO_HASH, exported.len() as u64, ZERO_HASH, std::iter::once(exported), 64).unwrap();
     assert_eq!(result.root, final_root);
     assert_eq!(result.lanes_imported, 4);
 
@@ -875,16 +872,6 @@ fn streaming_import_matches_export_roundtrip_root() {
     let leaf_updates: Vec<_> = import_stores.score_index.get_leaf_updates(0..=u64::MAX).collect::<Result<Vec<_>, _>>().unwrap();
     let leaf_lane_keys: std::collections::HashSet<Hash> = leaf_updates.iter().flat_map(|e| e.data().iter()).copied().collect();
     assert_eq!(leaf_lane_keys, expected_keys, "LeafUpdate entries must cover all imported lanes");
-
-    // Verify Structural entries: every lane appears at pp_blue_score=400
-    let all_entries: Vec<_> = import_stores.score_index.get_all(0..=u64::MAX).collect::<Result<Vec<_>, _>>().unwrap();
-    let structural_lane_keys: std::collections::HashSet<Hash> = all_entries
-        .iter()
-        .filter(|e| e.blue_score() == 400) // structural entries are at pp_blue_score
-        .flat_map(|e| e.data().iter())
-        .copied()
-        .collect();
-    assert_eq!(structural_lane_keys, expected_keys, "Structural entries must cover all imported lanes at pp_blue_score");
 }
 
 /// Verify score index tracks structural changes through collapsed node split and merge.
@@ -964,6 +951,385 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
     let entries3: Vec<_> = stores.score_index.get_leaf_updates(bs3..=bs3).collect::<Result<Vec<_>, _>>().unwrap();
     let leaf_keys3: std::collections::HashSet<Hash> = entries3.iter().flat_map(|e| e.data().iter()).copied().collect();
     assert!(leaf_keys3.contains(&key_c), "LeafUpdate must record lane C (split trigger)");
+}
+
+/// Golden-vector regression test: pins `streaming_import`'s root output for a
+/// fixed deterministic input. The bs-keying fix in `db_sink.rs` only changes
+/// **which blue_score** is recorded for each persisted branch entry — the
+/// hash output of the SMT root is intentionally unchanged. This test is the
+/// tripwire that catches any future drift in the root computation.
+///
+/// If this assertion ever fails, do not update the golden value without
+/// understanding why the root changed: it is a protocol-affecting break.
+#[test]
+fn streaming_import_root_matches_golden_vector() {
+    use kaspa_hashes::ZERO_HASH;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    // Three lanes with distinct blue_scores; sorted by lane_key.
+    let lid_a = [0x01; 20];
+    let lid_b = [0x02; 20];
+    let lid_c = [0x03; 20];
+    let lk_a = lane_key(&lid_a);
+    let lk_b = lane_key(&lid_b);
+    let lk_c = lane_key(&lid_c);
+
+    let tip_a = hash(0xA1);
+    let tip_b = hash(0xB2);
+    let tip_c = hash(0xC3);
+    let bs_a = 100u64;
+    let bs_b = 200u64;
+    let bs_c = 300u64;
+
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a, blue_score: bs_a });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score: bs_b });
+    let leaf_c = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_c, blue_score: bs_c });
+    let slo_reference = slo_root(vec![
+        LeafUpdate { key: lk_a, leaf_hash: leaf_a },
+        LeafUpdate { key: lk_b, leaf_hash: leaf_b },
+        LeafUpdate { key: lk_c, leaf_hash: leaf_c },
+    ]);
+
+    let mut import_lanes = vec![
+        ImportLane { lane_key: lk_a, lane_tip: tip_a, blue_score: bs_a, proof: None },
+        ImportLane { lane_key: lk_b, lane_tip: tip_b, blue_score: bs_b, proof: None },
+        ImportLane { lane_key: lk_c, lane_tip: tip_c, blue_score: bs_c, proof: None },
+    ];
+    import_lanes.sort_by_key(|l| l.lane_key);
+
+    let result = streaming_import(&db, &stores, ZERO_HASH, 3, slo_reference, std::iter::once(import_lanes), 64).unwrap();
+
+    // Layer 1: streaming_import must agree with the SLO reference.
+    assert_eq!(result.root, slo_reference, "streaming_import must match SLO reference");
+
+    // Layer 2: golden bytes — pinned tripwire. Any change here means the SMT
+    // root computation has changed, which is a protocol break.
+    let golden = Hash::from_bytes([
+        0xd4, 0xa9, 0xb5, 0x66, 0xae, 0x55, 0x41, 0xcd, 0x9d, 0xbe, 0xb7, 0xf8, 0x5d, 0x12, 0x0c, 0x54, 0x52, 0x06, 0x7d, 0xb2, 0xd5,
+        0x6d, 0x41, 0x9b, 0xf5, 0x0a, 0x21, 0x95, 0x91, 0x24, 0xa9, 0xc5,
+    ]);
+    assert_eq!(result.root, golden, "streaming_import root must match the pinned golden vector");
+}
+
+/// `prune_chunk` derives delete keys from score_index entries: for every
+/// `(lane_key, blue_score, block_hash)` triple, it emits BranchKey::new(d,
+/// lane_key) for depths 0..=255, then deletes branch_version at those keys
+/// at the same `(blue_score, block_hash)`.
+///
+/// Correctness invariant after the bs-keying fix: every branch_version Internal
+/// at `(depth=d, node_key=N, bs=B)` is reachable via some lane in the subtree
+/// whose own `bs=B` has a `LeafUpdate` score_index entry. The streaming
+/// builder propagates `max_blue_score` upward via `merge_pair`, so every
+/// Internal's bs equals exactly one descendant leaf's bs, and that leaf's
+/// prefix at depth `d` produces N.
+///
+/// This test exercises that invariant end-to-end: streaming_import multiple
+/// lanes at distinct blue_scores, then prune at a cutoff covering ALL of
+/// them. Every branch_version, lane_version, and score_index entry must be
+/// gone — proving the score_index is consistent with the per-leaf bs-keyed
+/// branch_version writes.
+#[test]
+fn prune_after_streaming_import_removes_all_imported_entries() {
+    use kaspa_hashes::ZERO_HASH;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    // Mix of shared-prefix and divergent lanes so the tree has both Internals
+    // (at max-of-children bs) and Collapsed leaves at distinct bs values.
+    let lanes = vec![
+        ImportLane { lane_key: lane_key(&[0x01; 20]), lane_tip: hash(0xA1), blue_score: 100, proof: None },
+        ImportLane { lane_key: lane_key(&[0x02; 20]), lane_tip: hash(0xA2), blue_score: 200, proof: None },
+        ImportLane { lane_key: lane_key(&[0x03; 20]), lane_tip: hash(0xA3), blue_score: 300, proof: None },
+        ImportLane { lane_key: lane_key(&[0x04; 20]), lane_tip: hash(0xA4), blue_score: 400, proof: None },
+    ];
+    let mut sorted = lanes.clone();
+    sorted.sort_by_key(|l| l.lane_key);
+    let pp = 500u64;
+
+    let slo_reference = slo_root(
+        sorted
+            .iter()
+            .map(|l| LeafUpdate {
+                key: l.lane_key,
+                leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_tip: &l.lane_tip, blue_score: l.blue_score }),
+            })
+            .collect(),
+    );
+
+    let result =
+        streaming_import(&db, &stores, ZERO_HASH, sorted.len() as u64, slo_reference, std::iter::once(sorted.clone()), 64).unwrap();
+    assert_eq!(result.root, slo_reference);
+
+    // Sanity: imported lanes are present before pruning.
+    for lane in &sorted {
+        assert!(stores.lane_version.get_at(lane.lane_key, u64::MAX, 0).next().is_some());
+    }
+    // Sanity: at least the root branch entry exists.
+    let root_branch_pre =
+        stores.branch_version.get_at(0, Hash::from_bytes([0; 32]), u64::MAX, 0).next().expect("root branch must exist after import");
+    assert!(root_branch_pre.is_ok());
+
+    // Prune at a cutoff that covers every imported entry.
+    // pp_blue_score is the highest score_index entry (Structural), and
+    // every branch_version entry is at bs ≤ max(lane bs) = 400 < pp.
+    stores.prune(&db, pp);
+
+    // After pruning: nothing remains for the imported lanes.
+    for lane in &sorted {
+        assert!(
+            stores.lane_version.get_at(lane.lane_key, u64::MAX, 0).next().is_none(),
+            "lane_version entry for lane_key={:?} must be pruned",
+            lane.lane_key
+        );
+    }
+    assert!(
+        stores.score_index.get_all(0..=pp).next().is_none(),
+        "score_index must be empty after pruning at cutoff covering all entries"
+    );
+
+    // Branch entries for every lane's full prefix must be gone.
+    for lane in &sorted {
+        for depth in 0u8..=255 {
+            let bk = kaspa_smt::store::BranchKey::new(depth, &lane.lane_key);
+            assert!(
+                stores.branch_version.get_at(depth, bk.node_key, u64::MAX, 0).next().is_none(),
+                "branch_version entry must be pruned at depth={depth}, node_key={:?}",
+                bk.node_key
+            );
+        }
+    }
+}
+
+/// IBD streaming_import must write each branch_version entry at the blue_score
+/// of the lane(s) it covers — not at `pp_blue_score`. Otherwise the imported
+/// nodes overstay their live-equivalent active window, becoming orphans
+/// after later chain processing collapses the live tree at higher depths.
+///
+/// Construction: two lanes that diverge at the very root (bit 0). The streaming
+/// builder writes exactly three branch entries: depth-1 collapsed for each
+/// lane, depth-0 root internal. Each entry's blue_score must equal the max
+/// blue_score of the leaves underneath it.
+///
+/// Without the fix, all three entries are written at `pp_blue_score`. T1
+/// catches the regression by querying the underlying branch_version store
+/// directly and asserting per-entry blue_scores.
+#[test]
+fn ibd_branch_entries_keyed_by_per_leaf_blue_score() {
+    use kaspa_hashes::ZERO_HASH;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    // K1 is all zeros; K2 has bit 0 = 1 (and otherwise zero). They diverge at
+    // the root, so the streaming builder writes:
+    //   (depth=0, ZERO_HASH)        → Internal,   bs = max(K1.bs, K2.bs) = 8
+    //   (depth=1, ZERO_HASH)        → Collapsed(K1, ...), bs = K1.bs = 3
+    //   (depth=1, [0x80, 0x00, ..]) → Collapsed(K2, ...), bs = K2.bs = 8
+    let k1 = Hash::from_bytes([0x00; 32]);
+    let mut k2_bytes = [0x00; 32];
+    k2_bytes[0] = 0x80;
+    let k2 = Hash::from_bytes(k2_bytes);
+
+    let tip_a = hash(0xA1);
+    let tip_b = hash(0xB2);
+    let bs_a = 3u64;
+    let bs_b = 8u64;
+    let pp_blue_score = 10u64;
+
+    let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a, blue_score: bs_a });
+    let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score: bs_b });
+    let expected_root = slo_root(vec![LeafUpdate { key: k1, leaf_hash: leaf_a }, LeafUpdate { key: k2, leaf_hash: leaf_b }]);
+
+    let mut import_lanes = vec![
+        ImportLane { lane_key: k1, lane_tip: tip_a, blue_score: bs_a, proof: None },
+        ImportLane { lane_key: k2, lane_tip: tip_b, blue_score: bs_b, proof: None },
+    ];
+    import_lanes.sort_by_key(|l| l.lane_key);
+
+    let result = streaming_import(&db, &stores, ZERO_HASH, 2, expected_root, std::iter::once(import_lanes), 64).unwrap();
+    assert_eq!(result.root, expected_root, "import must reproduce the SLO root");
+
+    // Helper: collect all (blue_score, block_hash) pairs at a given (depth, node_key).
+    let entries = |depth: u8, node_key: Hash| -> Vec<(u64, Hash)> {
+        stores
+            .branch_version
+            .get_at(depth, node_key, u64::MAX, 0)
+            .map(|r| {
+                let f = r.unwrap();
+                (f.blue_score(), f.block_hash())
+            })
+            .collect()
+    };
+
+    // (depth=0, ZERO_HASH) — root Internal. Max of leaves underneath = bs_b.
+    let root_entries = entries(0, ZERO_HASH);
+    assert_eq!(root_entries.len(), 1, "exactly one root entry expected, got {root_entries:?}");
+    assert_eq!(
+        root_entries[0],
+        (bs_b, ZERO_HASH),
+        "root branch must be at bs=max(leaves)={bs_b}, not at pp_blue_score={pp_blue_score}"
+    );
+
+    // (depth=1, ZERO_HASH) — K1's subtree (K1 bit 0 = 0).
+    let k1_entries = entries(1, Hash::from_bytes([0x00; 32]));
+    assert_eq!(k1_entries.len(), 1, "exactly one K1 collapsed entry expected, got {k1_entries:?}");
+    assert_eq!(k1_entries[0], (bs_a, ZERO_HASH), "K1 collapsed must be at lane bs={bs_a}, not at pp_blue_score={pp_blue_score}");
+
+    // (depth=1, 0x80..) — K2's subtree (K2 bit 0 = 1).
+    let mut k2_branchkey_bytes = [0x00; 32];
+    k2_branchkey_bytes[0] = 0x80;
+    let k2_entries = entries(1, Hash::from_bytes(k2_branchkey_bytes));
+    assert_eq!(k2_entries.len(), 1, "exactly one K2 collapsed entry expected, got {k2_entries:?}");
+    assert_eq!(k2_entries[0], (bs_b, ZERO_HASH), "K2 collapsed must be at lane bs={bs_b}, not at pp_blue_score={pp_blue_score}");
+
+    // Sanity: no branch entry covering the imported lanes is at pp_blue_score.
+    for (depth, node_key) in
+        [(0u8, Hash::from_bytes([0x00; 32])), (1, Hash::from_bytes([0x00; 32])), (1, Hash::from_bytes(k2_branchkey_bytes))]
+    {
+        for (bs, _bh) in entries(depth, node_key) {
+            assert_ne!(bs, pp_blue_score, "branch entry at depth={depth} key={node_key:?} unexpectedly written at pp_blue_score");
+        }
+    }
+}
+
+/// Live-vs-IBD root divergence: an IBD-imported tree must produce the same
+/// SMT root as a fully-live tree under subsequent chain processing.
+///
+/// The bug: `streaming_import` writes branch entries at `pp_blue_score`, so
+/// IBD-imported entries linger inside the active read window
+/// `[N - F, N]` for far longer than the live equivalent. After a chain block
+/// updates one lane, a stale IBD entry for an *unrelated* lane on a different
+/// subtree path remains "newest in window" and gets read by a subsequent
+/// block that descends through that subtree. Live path correctly forgets the
+/// out-of-window lane; IBD path incorrectly resurrects it. The roots diverge.
+///
+/// Test setup uses a tight inactivity threshold (5) to make the divergence
+/// manifest within a few blocks, instead of the default 432_000 which would
+/// require absurd block counts.
+#[test]
+fn ibd_vs_live_root_after_chain_processing() {
+    use kaspa_hashes::ZERO_HASH;
+
+    const TIGHT_THRESHOLD: u64 = 5;
+    let tight_pov_bounds = |bs: u64| SmtReadBounds::for_pov(bs, TIGHT_THRESHOLD);
+
+    // K1 = all zeros, K2 = bit 0 set (diverges from K1 at root), K3 = ?
+    // For the bug to expose: at bs=14, the live path must "forget" K2 (bs=8
+    // out of [9,14] window) while IBD-imported bs=10 entry for K2 stays in
+    // window. K3 inserted at bs=14 must descend through K2's stale subtree.
+    let k1 = Hash::from_bytes([0x00; 32]);
+    let mut k2_bytes = [0x00; 32];
+    k2_bytes[0] = 0xC0;
+    let k2 = Hash::from_bytes(k2_bytes);
+    let mut k3_bytes = [0x00; 32];
+    k3_bytes[0] = 0x80;
+    let k3 = Hash::from_bytes(k3_bytes);
+
+    let tip_a = hash(0xA1);
+    let tip_b = hash(0xB2);
+    let tip_a_new = hash(0xAA);
+    let tip_c = hash(0xC3);
+
+    let bs_a = 3u64;
+    let bs_b = 8u64;
+    let bs_update = 12u64;
+    let bs_insert = 14u64;
+
+    let block_h_a = hash(0x10); // live-only: insert K1 at bs=3
+    let block_h_b = hash(0x20); // live-only: insert K2 at bs=8
+    let block_h_update = hash(0x30); // shared: update K1 at bs=12
+    let _block_h_insert = hash(0x40); // shared: insert K3 at bs=14 (final block — no flush, only build)
+
+    // ----- Live reference path (fresh DB, no IBD) -----
+    let live_root = {
+        let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let stores = make_stores(&db);
+        let empty_root = SeqCommitActiveNode::empty_root();
+
+        // bs=3 — insert K1
+        let mut p1 = SmtProcessor::new(&stores, bs_a, tight_pov_bounds(bs_a), empty_root);
+        p1.update_lane(k1, tip_a);
+        let b1 = p1.build(|_| true).unwrap();
+        let r1 = b1.root;
+        let mut batch = WriteBatch::default();
+        b1.flush(&stores, &mut batch, bs_a, block_h_a).unwrap();
+        db.write(batch).unwrap();
+
+        // bs=8 — insert K2
+        let mut p2 = SmtProcessor::new(&stores, bs_b, tight_pov_bounds(bs_b), r1);
+        p2.update_lane(k2, tip_b);
+        let b2 = p2.build(|bh| bh == block_h_a).unwrap();
+        let r2 = b2.root;
+        let mut batch = WriteBatch::default();
+        b2.flush(&stores, &mut batch, bs_b, block_h_b).unwrap();
+        db.write(batch).unwrap();
+
+        // bs=12 — update K1
+        let mut p3 = SmtProcessor::new(&stores, bs_update, tight_pov_bounds(bs_update), r2);
+        p3.update_lane(k1, tip_a_new);
+        let b3 = p3.build(|bh| bh == block_h_a || bh == block_h_b).unwrap();
+        let r3 = b3.root;
+        let mut batch = WriteBatch::default();
+        b3.flush(&stores, &mut batch, bs_update, block_h_update).unwrap();
+        db.write(batch).unwrap();
+
+        // bs=14 — insert K3
+        let mut p4 = SmtProcessor::new(&stores, bs_insert, tight_pov_bounds(bs_insert), r3);
+        p4.update_lane(k3, tip_c);
+        let b4 = p4.build(|bh| bh == block_h_a || bh == block_h_b || bh == block_h_update).unwrap();
+        b4.root
+    };
+
+    // ----- IBD path: streaming_import K1, K2 at pp=10, then chain blocks -----
+    let ibd_root = {
+        let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let stores = make_stores(&db);
+
+        let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a, blue_score: bs_a });
+        let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score: bs_b });
+        let import_root = slo_root(vec![LeafUpdate { key: k1, leaf_hash: leaf_a }, LeafUpdate { key: k2, leaf_hash: leaf_b }]);
+
+        let mut import_lanes = vec![
+            ImportLane { lane_key: k1, lane_tip: tip_a, blue_score: bs_a, proof: None },
+            ImportLane { lane_key: k2, lane_tip: tip_b, blue_score: bs_b, proof: None },
+        ];
+        import_lanes.sort_by_key(|l| l.lane_key);
+        let imported = streaming_import(&db, &stores, ZERO_HASH, 2, import_root, std::iter::once(import_lanes), 64).unwrap();
+        assert_eq!(imported.root, import_root);
+
+        // bs=12 — update K1 (post-IBD)
+        let mut p3 = SmtProcessor::new(&stores, bs_update, tight_pov_bounds(bs_update), import_root);
+        p3.update_lane(k1, tip_a_new);
+        let b3 = p3.build(|bh| bh == ZERO_HASH).unwrap();
+        let r3 = b3.root;
+        let mut batch = WriteBatch::default();
+        b3.flush(&stores, &mut batch, bs_update, block_h_update).unwrap();
+        db.write(batch).unwrap();
+
+        // bs=14 — insert K3
+        let mut p4 = SmtProcessor::new(&stores, bs_insert, tight_pov_bounds(bs_insert), r3);
+        p4.update_lane(k3, tip_c);
+        let b4 = p4.build(|bh| bh == ZERO_HASH || bh == block_h_update).unwrap();
+        b4.root
+    };
+
+    // ----- SLO oracle: the canonical SMT state at bs=14 -----
+    // At bs=14 with threshold=5, K2 is out of the active window
+    // (bs_b=8 < bs_insert-TIGHT_THRESHOLD=9). K1's latest tip is tip_a_new
+    // updated at bs=12. K3 is inserted at bs=14. Active set: {K1, K3}.
+    let leaf_k1_at_14 = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a_new, blue_score: bs_update });
+    let leaf_k3_at_14 = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_c, blue_score: bs_insert });
+    let oracle_root =
+        slo_root(vec![LeafUpdate { key: k1, leaf_hash: leaf_k1_at_14 }, LeafUpdate { key: k3, leaf_hash: leaf_k3_at_14 }]);
+
+    assert_eq!(live_root, oracle_root, "live path must match SLO oracle (active set = {{K1, K3}}, K2 expired)");
+    assert_eq!(
+        ibd_root, oracle_root,
+        "IBD path must match SLO oracle. If this fails with ibd_root != live_root, IBD-imported entries are overstaying their active window — see streaming_import bs-keying"
+    );
 }
 
 /// Prune version stores: entries at/below cutoff are deleted, entries above remain.

@@ -5,7 +5,7 @@ use kaspa_core::time::unix_now;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use super::miner::Miner;
+use super::miner::{LaneProducer, Miner, MinerOptions, NativeLaneProducer};
 
 use kaspa_consensus::config::Config;
 use kaspa_consensus::consensus::Consensus;
@@ -15,6 +15,7 @@ use kaspa_database::utils::DbLifetime;
 use kaspa_database::{create_permanent_db, create_temp_db};
 use kaspa_utils::fd_budget;
 use kaspa_utils::sim::Simulation;
+use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, DbLifetime);
 
@@ -29,10 +30,22 @@ pub struct KaspaNetworkSimulator {
     bps: f64,                   // Blocks per second
     target_blocks: Option<u64>, // Target simulation blocks
     output_dir: Option<String>, // Possible permanent output directory
+    seed: Option<u64>,          // Optional deterministic simulation seed
 }
 
 impl KaspaNetworkSimulator {
     pub fn new(delay: f64, bps: f64, target_blocks: Option<u64>, config: Arc<Config>, output_dir: Option<String>) -> Self {
+        Self::new_with_seed(delay, bps, target_blocks, config, output_dir, None)
+    }
+
+    pub fn new_with_seed(
+        delay: f64,
+        bps: f64,
+        target_blocks: Option<u64>,
+        config: Arc<Config>,
+        output_dir: Option<String>,
+        seed: Option<u64>,
+    ) -> Self {
         Self {
             simulation: Simulation::with_start_time((delay * 1000.0) as u64, config.genesis.timestamp),
             consensuses: Vec::new(),
@@ -40,6 +53,7 @@ impl KaspaNetworkSimulator {
             config,
             target_blocks,
             output_dir,
+            seed,
         }
     }
 
@@ -53,8 +67,31 @@ impl KaspaNetworkSimulator {
         rocksdb_mem_budget: Option<usize>,
         long_payload: bool,
     ) -> &mut Self {
+        self.init_with_lane_producer(
+            num_miners,
+            target_txs_per_block,
+            rocksdb_stats,
+            rocksdb_stats_period_sec,
+            rocksdb_files_limit,
+            rocksdb_mem_budget,
+            long_payload,
+            |_| Box::new(NativeLaneProducer),
+        )
+    }
+
+    pub fn init_with_lane_producer(
+        &mut self,
+        num_miners: u64,
+        target_txs_per_block: u64,
+        rocksdb_stats: bool,
+        rocksdb_stats_period_sec: Option<u32>,
+        rocksdb_files_limit: Option<i32>,
+        rocksdb_mem_budget: Option<usize>,
+        long_payload: bool,
+        lane_producer: impl Fn(u64) -> Box<dyn LaneProducer>,
+    ) -> &mut Self {
         let secp = secp256k1::Secp256k1::new();
-        let mut rng = rand::thread_rng();
+        let mut rng = self.seed.map(StdRng::seed_from_u64).unwrap_or_else(StdRng::from_entropy);
         for i in 0..num_miners {
             let mut builder = ConnBuilder::default().with_files_limit(fd_budget::limit() / 2 / num_miners as i32);
             if let Some(rocksdb_files_limit) = rocksdb_files_limit {
@@ -91,6 +128,7 @@ impl KaspaNetworkSimulator {
             ));
             let handles = consensus.run_processors();
             let (sk, pk) = secp.generate_keypair(&mut rng);
+            let miner_rng = StdRng::seed_from_u64(rng.next_u64());
             let miner_process = Box::new(Miner::new(
                 i,
                 self.bps,
@@ -99,9 +137,13 @@ impl KaspaNetworkSimulator {
                 pk,
                 consensus.clone(),
                 &self.config,
-                target_txs_per_block,
-                self.target_blocks,
-                long_payload,
+                MinerOptions {
+                    rng: miner_rng,
+                    target_txs_per_block,
+                    target_blocks: self.target_blocks,
+                    long_payload,
+                    lane_producer: lane_producer(i),
+                },
             ));
             self.simulation.register(i, miner_process);
             self.consensuses.push((consensus, handles, lifetime));

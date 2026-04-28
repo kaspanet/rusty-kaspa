@@ -6,22 +6,50 @@ use kaspa_consensus::params::Params;
 use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::{Block, TemplateBuildMode, TemplateTransactionSelector};
 use kaspa_consensus_core::coinbase::MinerData;
+use kaspa_consensus_core::constants::{TX_VERSION, TX_VERSION_TOCCATA};
 use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_consensus_core::sign::sign;
-use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+use kaspa_consensus_core::subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId};
 use kaspa_consensus_core::tx::{
     MutableTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use kaspa_consensus_core::utxo::utxo_view::UtxoView;
 use kaspa_core::trace;
 use kaspa_utils::sim::{Environment, Process, Resumption, Suspension};
-use rand::Rng;
-use rand::rngs::ThreadRng;
+use rand::{Rng, rngs::StdRng};
 use rand_distr::{Distribution, Exp};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;
 use std::iter::once;
 use std::sync::Arc;
+
+pub struct LaneContext {
+    pub miner_id: u64,
+    pub sim_time: u64,
+    pub block_index: u64,
+    pub tx_index: u64,
+    pub outpoint: TransactionOutpoint,
+}
+
+pub trait LaneProducer: Send {
+    fn next_lane(&mut self, ctx: LaneContext) -> SubnetworkId;
+}
+
+pub struct NativeLaneProducer;
+
+impl LaneProducer for NativeLaneProducer {
+    fn next_lane(&mut self, _ctx: LaneContext) -> SubnetworkId {
+        SUBNETWORK_ID_NATIVE
+    }
+}
+
+pub struct MinerOptions {
+    pub rng: StdRng,
+    pub target_txs_per_block: u64,
+    pub target_blocks: Option<u64>,
+    pub long_payload: bool,
+    pub lane_producer: Box<dyn LaneProducer>,
+}
 
 struct OnetimeTxSelector {
     txs: Option<Vec<Transaction>>,
@@ -64,7 +92,7 @@ pub struct Miner {
 
     // Rand
     dist: Exp<f64>, // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
-    rng: ThreadRng,
+    rng: StdRng,
 
     // Counters
     num_blocks: u64,
@@ -75,6 +103,7 @@ pub struct Miner {
     target_blocks: Option<u64>,
     max_cached_outpoints: usize,
     long_payload: bool,
+    lane_producer: Box<dyn LaneProducer>,
 
     // Mass calculator
     mass_calculator: MassCalculator,
@@ -89,9 +118,7 @@ impl Miner {
         pk: secp256k1::PublicKey,
         consensus: Arc<Consensus>,
         params: &Params,
-        target_txs_per_block: u64,
-        target_blocks: Option<u64>,
-        long_payload: bool,
+        options: MinerOptions,
     ) -> Self {
         let (schnorr_public_key, _) = pk.x_only_public_key();
         let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
@@ -104,18 +131,19 @@ impl Miner {
             secret_key: sk,
             possible_unspent_outpoints: IndexSet::new(),
             dist: Exp::new(bps * hashrate).unwrap(),
-            rng: rand::thread_rng(),
+            rng: options.rng,
             num_blocks: 0,
             sim_time: 0,
-            target_txs_per_block,
-            target_blocks,
+            target_txs_per_block: options.target_txs_per_block,
+            target_blocks: options.target_blocks,
             max_cached_outpoints: 10_000,
             mass_calculator: MassCalculator::new(
                 params.mass_per_tx_byte,
                 params.mass_per_script_pub_key_byte,
                 params.storage_mass_parameter,
             ),
-            long_payload,
+            long_payload: options.long_payload,
+            lane_producer: options.lane_producer,
         }
     }
 
@@ -140,19 +168,30 @@ impl Miner {
         let virtual_utxo_view = &virtual_read.utxo_set;
         let multiple_outputs = self.possible_unspent_outpoints.len() < 5_000;
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &self.secret_key.secret_bytes()).unwrap();
-        let txs = self
-            .possible_unspent_outpoints
-            .iter()
-            .filter_map(|&outpoint| {
-                let entry = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score)?;
-                let mut unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
-                if self.long_payload {
-                    unsigned_tx.payload = vec![0; 90_000];
-                }
-                Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
-            })
-            .take(self.target_txs_per_block as usize)
-            .collect::<Vec<_>>()
+        let mut mutable_txs = Vec::with_capacity(self.target_txs_per_block as usize);
+        for &outpoint in &self.possible_unspent_outpoints {
+            if mutable_txs.len() == self.target_txs_per_block as usize {
+                break;
+            }
+            let Some(entry) = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) else {
+                continue;
+            };
+            let tx_index = mutable_txs.len() as u64;
+            let lane = self.lane_producer.next_lane(LaneContext {
+                miner_id: self.id,
+                sim_time: self.sim_time,
+                block_index: self.num_blocks,
+                tx_index,
+                outpoint,
+            });
+            let mut unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs, lane);
+            if self.long_payload {
+                unsigned_tx.payload = vec![0; 90_000];
+            }
+            mutable_txs.push(MutableTransaction::with_entries(unsigned_tx, vec![entry]));
+        }
+
+        let txs = mutable_txs
             .into_par_iter()
             .map(|mutable_tx| {
                 let signed_tx = sign(mutable_tx, schnorr_key);
@@ -186,9 +225,15 @@ impl Miner {
         Some(entry)
     }
 
-    fn create_unsigned_tx(&self, outpoint: TransactionOutpoint, input_amount: u64, multiple_outputs: bool) -> Transaction {
+    fn create_unsigned_tx(
+        &self,
+        outpoint: TransactionOutpoint,
+        input_amount: u64,
+        multiple_outputs: bool,
+        subnetwork_id: SubnetworkId,
+    ) -> Transaction {
         Transaction::new_non_finalized(
-            0,
+            if subnetwork_id.is_native() { TX_VERSION } else { TX_VERSION_TOCCATA },
             vec![TransactionInput::new(outpoint, vec![], 0, 0)],
             if multiple_outputs && input_amount > 4 {
                 vec![
@@ -199,7 +244,7 @@ impl Miner {
                 vec![TransactionOutput::new(input_amount - 1, self.miner_data.script_public_key.clone())]
             },
             0,
-            SUBNETWORK_ID_NATIVE,
+            subnetwork_id,
             0,
             vec![],
         )
