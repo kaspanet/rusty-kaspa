@@ -525,9 +525,7 @@ fn export_import_roundtrip() {
         .collect();
     import_lanes.sort_by_key(|l| l.lane_key);
     let lane_count = import_lanes.len() as u64;
-    let result =
-        streaming_import(&db2, &import_stores, pp_blue_score, ZERO_HASH, lane_count, final_root, std::iter::once(import_lanes), 64)
-            .unwrap();
+    let result = streaming_import(&db2, &import_stores, ZERO_HASH, lane_count, final_root, std::iter::once(import_lanes), 64).unwrap();
     assert_eq!(result.root, final_root, "import must reproduce the same root");
 
     // Verify lanes are readable with correct blue_scores
@@ -863,8 +861,7 @@ fn streaming_import_matches_export_roundtrip_root() {
     let (_lt2, db2) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let import_stores = make_stores(&db2);
     let result =
-        streaming_import(&db2, &import_stores, 400, ZERO_HASH, exported.len() as u64, ZERO_HASH, std::iter::once(exported), 64)
-            .unwrap();
+        streaming_import(&db2, &import_stores, ZERO_HASH, exported.len() as u64, ZERO_HASH, std::iter::once(exported), 64).unwrap();
     assert_eq!(result.root, final_root);
     assert_eq!(result.lanes_imported, 4);
 
@@ -875,16 +872,6 @@ fn streaming_import_matches_export_roundtrip_root() {
     let leaf_updates: Vec<_> = import_stores.score_index.get_leaf_updates(0..=u64::MAX).collect::<Result<Vec<_>, _>>().unwrap();
     let leaf_lane_keys: std::collections::HashSet<Hash> = leaf_updates.iter().flat_map(|e| e.data().iter()).copied().collect();
     assert_eq!(leaf_lane_keys, expected_keys, "LeafUpdate entries must cover all imported lanes");
-
-    // Verify Structural entries: every lane appears at pp_blue_score=400
-    let all_entries: Vec<_> = import_stores.score_index.get_all(0..=u64::MAX).collect::<Result<Vec<_>, _>>().unwrap();
-    let structural_lane_keys: std::collections::HashSet<Hash> = all_entries
-        .iter()
-        .filter(|e| e.blue_score() == 400) // structural entries are at pp_blue_score
-        .flat_map(|e| e.data().iter())
-        .copied()
-        .collect();
-    assert_eq!(structural_lane_keys, expected_keys, "Structural entries must cover all imported lanes at pp_blue_score");
 }
 
 /// Verify score index tracks structural changes through collapsed node split and merge.
@@ -995,7 +982,6 @@ fn streaming_import_root_matches_golden_vector() {
     let bs_a = 100u64;
     let bs_b = 200u64;
     let bs_c = 300u64;
-    let pp_blue_score = 500u64;
 
     let leaf_a = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_a, blue_score: bs_a });
     let leaf_b = smt_leaf_hash(&SmtLeafInput { lane_tip: &tip_b, blue_score: bs_b });
@@ -1013,8 +999,7 @@ fn streaming_import_root_matches_golden_vector() {
     ];
     import_lanes.sort_by_key(|l| l.lane_key);
 
-    let result =
-        streaming_import(&db, &stores, pp_blue_score, ZERO_HASH, 3, slo_reference, std::iter::once(import_lanes), 64).unwrap();
+    let result = streaming_import(&db, &stores, ZERO_HASH, 3, slo_reference, std::iter::once(import_lanes), 64).unwrap();
 
     // Layer 1: streaming_import must agree with the SLO reference.
     assert_eq!(result.root, slo_reference, "streaming_import must match SLO reference");
@@ -1075,8 +1060,7 @@ fn prune_after_streaming_import_removes_all_imported_entries() {
     );
 
     let result =
-        streaming_import(&db, &stores, pp, ZERO_HASH, sorted.len() as u64, slo_reference, std::iter::once(sorted.clone()), 64)
-            .unwrap();
+        streaming_import(&db, &stores, ZERO_HASH, sorted.len() as u64, slo_reference, std::iter::once(sorted.clone()), 64).unwrap();
     assert_eq!(result.root, slo_reference);
 
     // Sanity: imported lanes are present before pruning.
@@ -1165,8 +1149,7 @@ fn ibd_branch_entries_keyed_by_per_leaf_blue_score() {
     ];
     import_lanes.sort_by_key(|l| l.lane_key);
 
-    let result =
-        streaming_import(&db, &stores, pp_blue_score, ZERO_HASH, 2, expected_root, std::iter::once(import_lanes), 64).unwrap();
+    let result = streaming_import(&db, &stores, ZERO_HASH, 2, expected_root, std::iter::once(import_lanes), 64).unwrap();
     assert_eq!(result.root, expected_root, "import must reproduce the SLO root");
 
     // Helper: collect all (blue_score, block_hash) pairs at a given (depth, node_key).
@@ -1252,7 +1235,6 @@ fn ibd_vs_live_root_after_chain_processing() {
 
     let bs_a = 3u64;
     let bs_b = 8u64;
-    let pp = 10u64;
     let bs_update = 12u64;
     let bs_insert = 14u64;
 
@@ -1315,7 +1297,7 @@ fn ibd_vs_live_root_after_chain_processing() {
             ImportLane { lane_key: k2, lane_tip: tip_b, blue_score: bs_b, proof: None },
         ];
         import_lanes.sort_by_key(|l| l.lane_key);
-        let imported = streaming_import(&db, &stores, pp, ZERO_HASH, 2, import_root, std::iter::once(import_lanes), 64).unwrap();
+        let imported = streaming_import(&db, &stores, ZERO_HASH, 2, import_root, std::iter::once(import_lanes), 64).unwrap();
         assert_eq!(imported.root, import_root);
 
         // bs=12 — update K1 (post-IBD)

@@ -72,7 +72,6 @@ impl ImportProgress {
 pub fn streaming_import(
     db: &DB,
     stores: &SmtStores,
-    pp_blue_score: u64,
     block_hash: BlockHash,
     total_count: u64,
     lanes_root: Hash,
@@ -118,7 +117,7 @@ pub fn streaming_import(
         }
 
         write_lane_versions(stores, block_hash, &chunk, &mut lane_batch, &mut batch_count)?;
-        write_score_index(stores, pp_blue_score, block_hash, &chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;
+        write_score_index(stores, block_hash, &chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;
 
         if batch_count >= max_batch_entries {
             db.write(std::mem::take(&mut lane_batch)).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
@@ -144,7 +143,6 @@ pub fn streaming_import(
 
 fn write_score_index(
     stores: &SmtStores,
-    pp_blue_score: u64,
     block_hash: BlockHash,
     chunk: &[ImportLane],
     score_groups: &mut BTreeMap<u64, Vec<Hash>>,
@@ -164,23 +162,6 @@ fn write_score_index(
             .map_err(StreamError::Sink)?;
         *batch_count += 1;
     }
-
-    // Structural: all lanes at the pruning point's blue_score.
-    //
-    // We intentionally keep these at `pp_blue_score` (not the per-lane bs).
-    // `Structural` describes the structural snapshot at the pruning point —
-    // distinct from the per-lane `LeafUpdate` history. After the bs-keying
-    // fix to `branch_version`, prune-time delete-key derivation
-    // (`processor::prune_chunk`) will emit no-op delete keys at depths
-    // where no entry at `pp_blue_score` exists; RocksDB tolerates that and
-    // the cost is negligible because pruning is rare. Do not "fix" this
-    // to lane_bs — it would erase the structural-snapshot semantic.
-    let all_keys: Vec<Hash> = chunk.iter().map(|l| l.lane_key).collect();
-    stores
-        .score_index
-        .put_batched(BatchDbWriter::new(batch), pp_blue_score, ScoreIndexKind::Structural, block_hash, &all_keys, batch_id)
-        .map_err(StreamError::Sink)?;
-    *batch_count += 1;
 
     Ok(())
 }
