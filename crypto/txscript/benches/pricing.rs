@@ -32,6 +32,7 @@ const ADVERSARIAL_OUTPUT_SPK_DATA_LEN: usize = 160;
 const ADVERSARIAL_PAYLOAD_LEN: usize = 256;
 const ADVERSARIAL_ROUNDS: usize = 12;
 const HASHING_SIGSCRIPT_DATA_LEN: usize = 10_000;
+const HASHING_KEY_LEN: usize = 32;
 const HASHING_ROUNDS: usize = 20;
 const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = 124_923;
 const OP_DUP_BASE_DUP_COUNT: usize = 243;
@@ -52,6 +53,7 @@ struct BenchBlock {
 }
 
 type TxBuilder = fn(u32) -> (Transaction, Vec<UtxoEntry>);
+type RoundTxBuilder = fn(u32, usize) -> (Transaction, Vec<UtxoEntry>);
 
 fn pricing_flags(covenants_enabled: bool) -> EngineFlags {
     EngineFlags { covenants_enabled, sigop_script_units: Gram(1000).into() }
@@ -391,6 +393,31 @@ fn build_blake2b_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
     ScriptPublicKey::new(0, builder.drain().into())
 }
 
+fn build_blake2b_with_key_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
+    let mut builder = ScriptBuilder::new();
+    for _ in 0..rounds {
+        builder.add_op(codes::Op2Dup).unwrap();
+        builder.add_op(codes::OpBlake2bWithKey).unwrap();
+        builder.add_op(OpDrop).unwrap();
+    }
+    builder.add_op(OpDrop).unwrap();
+    builder.add_op(OpDrop).unwrap();
+    builder.add_op(codes::OpTrue).unwrap();
+    ScriptPublicKey::new(0, builder.drain().into())
+}
+
+fn build_blake3_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
+    let mut builder = ScriptBuilder::new();
+    for _ in 0..rounds {
+        builder.add_op(OpDup).unwrap();
+        builder.add_op(codes::OpBlake3).unwrap();
+        builder.add_op(OpDrop).unwrap();
+    }
+    builder.add_op(OpDrop).unwrap();
+    builder.add_op(codes::OpTrue).unwrap();
+    ScriptPublicKey::new(0, builder.drain().into())
+}
+
 fn build_large_push_dup_cat_script_public_key() -> ScriptPublicKey {
     let mut builder = ScriptBuilder::new();
     for _ in 0..1 {
@@ -514,9 +541,32 @@ fn build_blake2b_storm_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 }
 
 fn build_blake2b_storm_tx_with_rounds(nonce: u32, rounds: usize) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_tx_with_rounds(nonce, rounds, "blake2b_storm", build_blake2b_storm_script_public_key, false)
+}
+
+fn build_blake2b_with_key_storm_tx_with_rounds(nonce: u32, rounds: usize) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_tx_with_rounds(nonce, rounds, "blake2b_with_key_storm", build_blake2b_with_key_storm_script_public_key, true)
+}
+
+fn build_blake3_storm_tx_with_rounds(nonce: u32, rounds: usize) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_tx_with_rounds(nonce, rounds, "blake3_storm", build_blake3_storm_script_public_key, false)
+}
+
+fn build_hash_storm_tx_with_rounds(
+    nonce: u32,
+    rounds: usize,
+    label: &str,
+    script_builder: fn(usize) -> ScriptPublicKey,
+    keyed: bool,
+) -> (Transaction, Vec<UtxoEntry>) {
     let outpoint = input_outpoint(0, nonce);
-    let redeem_script = build_blake2b_storm_script_public_key(rounds);
-    let signature_prefix = ScriptBuilder::new().add_data(&vec![0x42u8; HASHING_SIGSCRIPT_DATA_LEN]).unwrap().drain();
+    let redeem_script = script_builder(rounds);
+    let mut signature_builder = ScriptBuilder::new();
+    signature_builder.add_data(&vec![0x42u8; HASHING_SIGSCRIPT_DATA_LEN]).unwrap();
+    if keyed {
+        signature_builder.add_data(&vec![0x24u8; HASHING_KEY_LEN]).unwrap();
+    }
+    let signature_prefix = signature_builder.drain();
     let signature_script = pay_to_script_hash_signature_script(redeem_script.script().to_vec(), signature_prefix).unwrap();
     let entries = vec![UtxoEntry::new(20_000, pay_to_script_hash_script(redeem_script.script()), 0, false, None)];
     let tx = Transaction::new(
@@ -533,7 +583,7 @@ fn build_blake2b_storm_tx_with_rounds(nonce: u32, rounds: usize) -> (Transaction
         0,
         vec![],
     );
-    (build_budgeted_charged_tx("blake2b_storm", &tx, &entries), entries)
+    (build_budgeted_charged_tx(label, &tx, &entries), entries)
 }
 
 fn fits_block_mass(tx: &Transaction) -> bool {
@@ -541,13 +591,25 @@ fn fits_block_mass(tx: &Transaction) -> bool {
 }
 
 fn build_blake2b_storm_single_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_single_tx(nonce, build_blake2b_storm_tx_with_rounds)
+}
+
+fn build_blake2b_with_key_storm_single_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_single_tx(nonce, build_blake2b_with_key_storm_tx_with_rounds)
+}
+
+fn build_blake3_storm_single_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_single_tx(nonce, build_blake3_storm_tx_with_rounds)
+}
+
+fn build_hash_storm_single_tx(nonce: u32, builder: RoundTxBuilder) -> (Transaction, Vec<UtxoEntry>) {
     let mut low_rounds = HASHING_ROUNDS;
     let mut high_rounds = low_rounds;
-    let mut best = build_blake2b_storm_tx_with_rounds(nonce, low_rounds);
+    let mut best = builder(nonce, low_rounds);
 
     loop {
         high_rounds = high_rounds.saturating_mul(2);
-        let candidate = build_blake2b_storm_tx_with_rounds(nonce, high_rounds);
+        let candidate = builder(nonce, high_rounds);
         if !fits_block_mass(&candidate.0) {
             break;
         }
@@ -557,7 +619,7 @@ fn build_blake2b_storm_single_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 
     while low_rounds + 1 < high_rounds {
         let mid_rounds = low_rounds + (high_rounds - low_rounds) / 2;
-        let candidate = build_blake2b_storm_tx_with_rounds(nonce, mid_rounds);
+        let candidate = builder(nonce, mid_rounds);
         if fits_block_mass(&candidate.0) {
             low_rounds = mid_rounds;
             best = candidate;
@@ -738,6 +800,16 @@ fn build_blake2b_storm_single_tx_block() -> BenchBlock {
     single_tx_block("blake2b_storm_single_tx", tx, entries)
 }
 
+fn build_blake2b_with_key_storm_single_tx_block() -> BenchBlock {
+    let (tx, entries) = build_blake2b_with_key_storm_single_tx(0);
+    single_tx_block("blake2b_with_key_storm_single_tx", tx, entries)
+}
+
+fn build_blake3_storm_single_tx_block() -> BenchBlock {
+    let (tx, entries) = build_blake3_storm_single_tx(0);
+    single_tx_block("blake3_storm_single_tx", tx, entries)
+}
+
 fn build_large_push_dup_cat_block() -> BenchBlock {
     let (tx, entries) = build_large_push_dup_cat_tx(0);
     let tx_compute_mass = compute_mass(&tx);
@@ -783,6 +855,8 @@ fn bench_blocks() -> &'static [BenchBlock] {
             build_introspection_cat_substr_math_block(),
             build_blake2b_storm_block(),
             build_blake2b_storm_single_tx_block(),
+            build_blake2b_with_key_storm_single_tx_block(),
+            build_blake3_storm_single_tx_block(),
             build_large_push_dup_cat_block(),
             build_op_dup_block(),
             build_op_dup_free_budget_block(),
