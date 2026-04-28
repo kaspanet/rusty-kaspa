@@ -564,7 +564,7 @@ fn build_hash_storm_tx_with_rounds(
     let mut signature_builder = ScriptBuilder::new();
     signature_builder.add_data(&vec![0x42u8; HASHING_SIGSCRIPT_DATA_LEN]).unwrap();
     if keyed {
-        signature_builder.add_data(&vec![0x24u8; HASHING_KEY_LEN]).unwrap();
+        signature_builder.add_data(&[0x24u8; HASHING_KEY_LEN]).unwrap();
     }
     let signature_prefix = signature_builder.drain();
     let signature_script = pay_to_script_hash_signature_script(redeem_script.script().to_vec(), signature_prefix).unwrap();

@@ -916,8 +916,9 @@ mod tests {
     use std::iter::once;
 
     use crate::opcodes::codes::{
-        OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigFromStack, OpCheckSigFromStackECDSA, OpCheckSigVerify,
-        OpData1, OpData2, OpData32, OpDrop, OpDup, OpEndIf, OpEqual, OpFalse, OpIf, OpPushData1, OpTrue, OpVerify,
+        OpBlake2b, OpBlake2bWithKey, OpBlake3, OpBlake3WithKey, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigFromStack,
+        OpCheckSigFromStackECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDrop, OpDup, OpEndIf, OpEqual, OpFalse, OpIf,
+        OpPushData1, OpTrue, OpVerify,
     };
 
     use super::*;
@@ -926,7 +927,9 @@ mod tests {
     use kaspa_consensus_core::config::params::MAINNET_PARAMS;
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
-    use kaspa_consensus_core::mass::{ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, SigopCount};
+    use kaspa_consensus_core::mass::{
+        ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits, SigopCount,
+    };
     use kaspa_consensus_core::tx::{
         MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
         TransactionOutput, TxInputMass,
@@ -1149,6 +1152,60 @@ mod tests {
                 limit: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1
             })
         );
+    }
+
+    #[test]
+    fn test_hash_opcodes_charge_hashed_data_bytes() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let data = vec![42u8; 11];
+        let blake_key = vec![24u8; blake2b_simd::KEYBYTES];
+        let blake3_key = vec![36u8; blake3::KEY_LEN];
+
+        let test_cases = [
+            (
+                "blake2b",
+                ScriptBuilder::new().add_data(&data).unwrap().add_op(OpBlake2b).unwrap().drain(),
+                ScriptUnits(data.len() as u64 * 2 + 32),
+            ),
+            (
+                "blake2b_with_key",
+                ScriptBuilder::new().add_data(&data).unwrap().add_data(&blake_key).unwrap().add_op(OpBlake2bWithKey).unwrap().drain(),
+                ScriptUnits(data.len() as u64 * 2 + 32),
+            ),
+            (
+                "blake3",
+                ScriptBuilder::new().add_data(&data).unwrap().add_op(OpBlake3).unwrap().drain(),
+                ScriptUnits(data.len() as u64 + 32),
+            ),
+            (
+                "blake3_with_key",
+                ScriptBuilder::new().add_data(&data).unwrap().add_data(&blake3_key).unwrap().add_op(OpBlake3WithKey).unwrap().drain(),
+                ScriptUnits(data.len() as u64 + 32),
+            ),
+        ];
+
+        for (name, script, expected_units) in test_cases {
+            let mut vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_script_units_limit(
+                &script,
+                &reused_values,
+                &sig_cache,
+                expected_units,
+                EngineFlags { covenants_enabled: true, ..Default::default() },
+            );
+            assert!(vm.execute().is_ok(), "{name}");
+            assert_eq!(vm.used_script_units(), expected_units, "{name}");
+
+            let mut underbudget_vm =
+                TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_script_units_limit(
+                    &script,
+                    &reused_values,
+                    &sig_cache,
+                    expected_units.saturating_sub(ScriptUnits(1)),
+                    EngineFlags { covenants_enabled: true, ..Default::default() },
+                );
+            assert!(matches!(underbudget_vm.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { .. })), "{name}");
+        }
     }
 
     #[test]
