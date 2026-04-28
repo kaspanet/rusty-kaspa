@@ -12,6 +12,7 @@ mod serde_impl;
 use crate::mass::{
     ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
 };
+pub use crate::utxo::UtxoEntry;
 use crate::{
     errors::tx::PopulateGenesisCovenantsError,
     hashing,
@@ -35,7 +36,6 @@ use std::{
     ops::Range,
     str::{self},
 };
-pub use crate::utxo::UtxoEntry;
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;

@@ -40,14 +40,15 @@ fn spk(version: u16, script: &[u8]) -> ScriptPublicKey {
 }
 
 /// Reconstructs the pre-Toccata coinbase transaction whose bincode is checked
-/// in as `transaction_v0_coinbase`. Building via [`Transaction::new`] finalizes
-/// a fresh post-Toccata cached id; structural eq against the deserialized
-/// fixture then implicitly asserts that the post-Toccata `finalize()` produces
-/// the same id as pre-Toccata for v0 transactions — a real cross-fork invariant.
+/// in as `transaction_v0_coinbase`. Canonical Kaspa coinbase shape: NO inputs.
+/// Building via [`Transaction::new`] finalizes a fresh post-Toccata cached id;
+/// structural eq against the deserialized fixture then implicitly asserts that
+/// the post-Toccata `finalize()` produces the same id as pre-Toccata for v0
+/// transactions — a real cross-fork invariant.
 fn expected_coinbase_v0() -> Transaction {
     Transaction::new(
         0,
-        vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_bytes([0; 32]), 0xffff_ffff), vec![0xaa, 0xbb], 0, 0)],
+        vec![],
         vec![TransactionOutput::new(50_000_000_000, spk(0, &[0x51, 0x52]))],
         0,
         SUBNETWORK_ID_COINBASE,
@@ -60,13 +61,15 @@ fn expected_regular_v0() -> Transaction {
     Transaction::new(
         0,
         vec![
-            TransactionInput::new(TransactionOutpoint::new(Hash::from_bytes([0x11; 32]), 0), vec![0xde, 0xad, 0xbe, 0xef], 0x00ff_ff00_ff00_ff00, 1),
+            TransactionInput::new(
+                TransactionOutpoint::new(Hash::from_bytes([0x11; 32]), 0),
+                vec![0xde, 0xad, 0xbe, 0xef],
+                0x00ff_ff00_ff00_ff00,
+                1,
+            ),
             TransactionInput::new(TransactionOutpoint::new(Hash::from_bytes([0x22; 32]), 7), vec![0x01, 0x02, 0x03, 0x04, 0x05], 0, 7),
         ],
-        vec![
-            TransactionOutput::new(1_000, spk(0, &[0x20, 0x21, 0x22])),
-            TransactionOutput::new(2_000_000, spk(0, &[0x30])),
-        ],
+        vec![TransactionOutput::new(1_000, spk(0, &[0x20, 0x21, 0x22])), TransactionOutput::new(2_000_000, spk(0, &[0x30]))],
         12_345,
         SUBNETWORK_ID_NATIVE,
         0,
@@ -76,14 +79,15 @@ fn expected_regular_v0() -> Transaction {
 
 #[test]
 fn decode_pre_toccata_coinbase_transaction() {
-    let decoded: Transaction = bincode::deserialize(fixture("transaction_v0_coinbase")).expect("decode pre-Toccata coinbase Transaction");
+    let decoded: Transaction =
+        bincode::deserialize(fixture("transaction_v0_coinbase")).expect("decode pre-Toccata coinbase Transaction");
     assert_eq!(decoded, expected_coinbase_v0());
 }
 
-
 #[test]
 fn decode_pre_toccata_regular_transaction() {
-    let decoded: Transaction = bincode::deserialize(fixture("transaction_v0_regular")).expect("decode pre-Toccata regular Transaction");
+    let decoded: Transaction =
+        bincode::deserialize(fixture("transaction_v0_regular")).expect("decode pre-Toccata regular Transaction");
     assert_eq!(decoded, expected_regular_v0());
 }
 
