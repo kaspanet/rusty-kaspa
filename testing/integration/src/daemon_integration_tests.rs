@@ -364,8 +364,8 @@ async fn daemon_cleaning_test() {
         let mut kaspad1 = Daemon::new_random_with_args(args, total_fd_limit);
         let dyn_consensus_manager = kaspad1.core.find(ConsensusManager::IDENT).unwrap();
         let dyn_async_runtime = kaspad1.core.find(AsyncRuntime::IDENT).unwrap();
-        consensus_manager = Arc::downgrade(&Arc::downcast::<ConsensusManager>(dyn_consensus_manager.arc_any()).unwrap());
-        async_runtime = Arc::downgrade(&Arc::downcast::<AsyncRuntime>(dyn_async_runtime.arc_any()).unwrap());
+        consensus_manager = Arc::downgrade(&Arc::downcast::<ConsensusManager>(dyn_consensus_manager.into_any_arc()).unwrap());
+        async_runtime = Arc::downgrade(&Arc::downcast::<AsyncRuntime>(dyn_async_runtime.into_any_arc()).unwrap());
         core = Arc::downgrade(&kaspad1.core);
 
         let rpc_client1 = kaspad1.start().await;

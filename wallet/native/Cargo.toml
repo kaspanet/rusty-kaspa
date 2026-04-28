@@ -13,7 +13,7 @@ repository.workspace = true
 default = []
 
 [dependencies]
-async-std.workspace = true
+async-lock.workspace = true
 async-trait.workspace = true
 kaspa-cli.workspace = true
 tokio.workspace = true
