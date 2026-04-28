@@ -13,7 +13,9 @@ use zerocopy::{FromBytes, IntoBytes};
 /// Records lane changes per block, keyed by `(rev_blue_score, kind, block_hash)`.
 /// Each block may produce two entries:
 /// - `LeafUpdate` — lanes inserted or updated (score = lane's blue_score)
-/// - `Structural` — tree structure changed: expiration, merge/split (score = block's blue_score)
+/// - `Structural` — lanes expired by this block (score = block's blue_score),
+///   recorded only so pruning can delete the branch_version entries on those
+///   lanes' paths; expired lane_keys do not reappear in `LeafUpdate`.
 ///
 /// These are **historical records** of what happened at a given score,
 /// not a reflection of current lane state.
