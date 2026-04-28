@@ -107,6 +107,7 @@ impl<H: SmtHasher> MergeSink for RootOnlyMergeSink<H> {
         _parent_key: BranchKey,
         _left_info: ChildInfo,
         _right_info: ChildInfo,
+        _parent_blue_score: u64,
     ) -> Result<Hash, Self::Error> {
         Ok(hash_node::<H>(left, right))
     }
@@ -117,6 +118,7 @@ impl<H: SmtHasher> MergeSink for RootOnlyMergeSink<H> {
         from_depth: usize,
         to_depth: usize,
         representative_key: &Hash,
+        _blue_score: u64,
     ) -> Result<Hash, Self::Error> {
         let mut current_hash = hash;
 
@@ -131,7 +133,7 @@ impl<H: SmtHasher> MergeSink for RootOnlyMergeSink<H> {
         Ok(current_hash)
     }
 
-    fn write_collapsed(&mut self, _branch_key: BranchKey, _leaf: CollapsedLeaf) -> Result<(), Self::Error> {
+    fn write_collapsed(&mut self, _branch_key: BranchKey, _leaf: CollapsedLeaf, _blue_score: u64) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -228,7 +230,7 @@ impl SmtStores {
         for lane in self.lane_version.iter_all_canonical(None, bounds.min_blue_score, Some(bounds.target_blue_score), is_canonical) {
             let (lane_key, verified) = lane?;
             let leaf_hash = smt_leaf_hash(&SmtLeafInput { lane_tip: verified.data(), blue_score: verified.blue_score() });
-            builder.feed(lane_key, leaf_hash).map_err(stream_error_to_store_error)?;
+            builder.feed(lane_key, leaf_hash, verified.blue_score()).map_err(stream_error_to_store_error)?;
             count += 1;
         }
 

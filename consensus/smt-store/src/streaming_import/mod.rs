@@ -72,7 +72,6 @@ impl ImportProgress {
 pub fn streaming_import(
     db: &DB,
     stores: &SmtStores,
-    blue_score: u64,
     block_hash: BlockHash,
     total_count: u64,
     lanes_root: Hash,
@@ -83,7 +82,10 @@ pub fn streaming_import(
         return Ok(StreamingImportResult { root: SeqCommitActiveNode::empty_root(), lanes_imported: 0, nodes_written: 0 });
     }
 
-    let sink = DbSink::new(db, stores, blue_score, block_hash, max_batch_entries);
+    // `branch_version` writes are versioned per-leaf (see `DbSink::write_node`)
+    // so they age out of the read window at the same rate the live processor
+    // would have produced. The sink itself doesn't need a sink-wide bs.
+    let sink = DbSink::new(db, stores, block_hash, max_batch_entries);
     let mut builder = StreamingSmtBuilder::<SeqCommitActiveNode, _>::new(total_count, sink);
     let mut lane_batch = WriteBatch::default();
     let mut batch_count = 0usize;
@@ -115,7 +117,7 @@ pub fn streaming_import(
         }
 
         write_lane_versions(stores, block_hash, &chunk, &mut lane_batch, &mut batch_count)?;
-        write_score_index(stores, blue_score, block_hash, &chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;
+        write_score_index(stores, block_hash, &chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;
 
         if batch_count >= max_batch_entries {
             db.write(std::mem::take(&mut lane_batch)).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
@@ -123,8 +125,8 @@ pub fn streaming_import(
         }
         batch_id += 1;
 
-        for (lane_key, leaf_hash) in &leaf_hashes {
-            builder.feed(*lane_key, *leaf_hash)?;
+        for (lane, &(lane_key, leaf_hash)) in chunk.iter().zip(leaf_hashes.iter()) {
+            builder.feed(lane_key, leaf_hash, lane.blue_score)?;
         }
         lanes_imported += chunk.len() as u64;
         progress.report(chunk.len());
@@ -141,7 +143,6 @@ pub fn streaming_import(
 
 fn write_score_index(
     stores: &SmtStores,
-    pp_blue_score: u64,
     block_hash: BlockHash,
     chunk: &[ImportLane],
     score_groups: &mut BTreeMap<u64, Vec<Hash>>,
@@ -161,14 +162,6 @@ fn write_score_index(
             .map_err(StreamError::Sink)?;
         *batch_count += 1;
     }
-
-    // Structural: all lanes at the pruning point's blue_score (tree is built at this point)
-    let all_keys: Vec<Hash> = chunk.iter().map(|l| l.lane_key).collect();
-    stores
-        .score_index
-        .put_batched(BatchDbWriter::new(batch), pp_blue_score, ScoreIndexKind::Structural, block_hash, &all_keys, batch_id)
-        .map_err(StreamError::Sink)?;
-    *batch_count += 1;
 
     Ok(())
 }

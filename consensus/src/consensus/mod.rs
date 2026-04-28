@@ -1141,12 +1141,10 @@ impl ConsensusApi for Consensus {
         use kaspa_hashes::ZERO_HASH;
         use kaspa_smt_store::streaming_import::streaming_import;
 
-        let pp_header = self.storage.headers_store.get_header(new_pruning_point).unwrap();
         let result = self.virtual_processor.install(|| {
             streaming_import(
                 &self.db,
                 &self.storage.smt_stores,
-                pp_header.blue_score,
                 ZERO_HASH,
                 expected_lane_count,
                 lanes_root,

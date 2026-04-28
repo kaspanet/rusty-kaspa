@@ -38,18 +38,32 @@ impl<E: fmt::Debug> fmt::Display for StreamError<E> {
 }
 
 /// Describes a child node in a merge operation (for the sink to persist).
+///
+/// `Collapsed.blue_score` carries the lane's own blue_score so the sink can
+/// version the persisted entry at the leaf's bs (not at the import-level
+/// pp_blue_score), matching the live processor's "node bs = max bs of
+/// leaves underneath" invariant.
 #[derive(Clone, Copy)]
 pub enum ChildInfo {
     Empty,
-    Collapsed { branch_key: BranchKey, leaf: CollapsedLeaf },
+    Collapsed { branch_key: BranchKey, leaf: CollapsedLeaf, blue_score: u64 },
     Internal,
 }
 
 /// Callback interface for persisting SMT nodes produced by [`StreamingSmtBuilder`].
+///
+/// Every persisted node carries a `blue_score`. For collapsed leaves, this is
+/// the lane's own blue_score; for internal nodes (whether produced by `merge`
+/// or by `merge_chain_with_empty`), it is the maximum blue_score of all
+/// leaves underneath that node.
 pub trait MergeSink {
     type Error: fmt::Debug;
 
     /// Merge two sibling subtrees into a parent node. Returns the parent hash.
+    ///
+    /// `parent_blue_score` is `max(left_max_bs, right_max_bs)` of the leaves
+    /// underneath this parent — the version that the live processor would
+    /// have produced at this branch position.
     fn merge(
         &mut self,
         left: Hash,
@@ -57,19 +71,25 @@ pub trait MergeSink {
         parent_key: BranchKey,
         left_info: ChildInfo,
         right_info: ChildInfo,
+        parent_blue_score: u64,
     ) -> Result<Hash, Self::Error>;
 
     /// Chain a subtree upward through empty siblings, from `from_depth` to `to_depth`.
+    ///
+    /// `blue_score` is the max blue_score of all leaves in the chained
+    /// subtree; every intermediate Internal node written during the chain
+    /// inherits it.
     fn merge_chain_with_empty(
         &mut self,
         hash: Hash,
         from_depth: usize,
         to_depth: usize,
         representative_key: &Hash,
+        blue_score: u64,
     ) -> Result<Hash, Self::Error>;
 
     /// Write a collapsed single-leaf subtree at the given position.
-    fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf) -> Result<(), Self::Error>;
+    fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf, blue_score: u64) -> Result<(), Self::Error>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,14 +104,22 @@ struct StackEntry {
     hash: Hash,
     representative_key: Hash,
     kind: EntryKind,
+    /// Maximum blue_score among all leaves contained in this subtree.
+    /// For a `Collapsed` entry it is the leaf's own bs. For an `Internal`
+    /// entry it is the max over both child subtrees, propagated via
+    /// `merge_pair`. Used by the sink to version persisted nodes at the
+    /// blue_score the live processor would have written.
+    max_blue_score: u64,
 }
 
 impl StackEntry {
     fn child_info(&self, child_depth: u8) -> ChildInfo {
         match self.kind {
-            EntryKind::Collapsed(leaf) => {
-                ChildInfo::Collapsed { branch_key: BranchKey::new(child_depth, &self.representative_key), leaf }
-            }
+            EntryKind::Collapsed(leaf) => ChildInfo::Collapsed {
+                branch_key: BranchKey::new(child_depth, &self.representative_key),
+                leaf,
+                blue_score: self.max_blue_score,
+            },
             EntryKind::Internal => ChildInfo::Internal,
         }
     }
@@ -129,7 +157,11 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
 
     /// Feed the next leaf (must be in strictly ascending key order).
     /// Automatically finalizes when `total_count` leaves have been fed.
-    pub fn feed(&mut self, lane_key: Hash, leaf_hash: Hash) -> Result<(), StreamError<S::Error>> {
+    ///
+    /// `blue_score` is the lane's own blue_score; it propagates upward through
+    /// merges as `max_blue_score` so internal nodes are written at the bs the
+    /// live processor would have produced (max bs of leaves underneath).
+    pub fn feed(&mut self, lane_key: Hash, leaf_hash: Hash, blue_score: u64) -> Result<(), StreamError<S::Error>> {
         if self.root.is_some() {
             return Err(StreamError::AlreadyFinalized);
         }
@@ -155,6 +187,7 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
             hash: collapsed_hash,
             representative_key: lane_key,
             kind: EntryKind::Collapsed(collapsed),
+            max_blue_score: blue_score,
         });
 
         if self.remaining == 0 {
@@ -206,7 +239,13 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
                 if current.depth > chain_to {
                     current.hash = self
                         .sink
-                        .merge_chain_with_empty(current.hash, current.depth, chain_to, &current.representative_key)
+                        .merge_chain_with_empty(
+                            current.hash,
+                            current.depth,
+                            chain_to,
+                            &current.representative_key,
+                            current.max_blue_score,
+                        )
                         .map_err(StreamError::Sink)?;
                 }
                 current.depth = target_depth;
@@ -227,7 +266,12 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
             (ChildInfo::Internal, ChildInfo::Internal)
         };
 
-        let result = self.sink.merge(left.hash, current.hash, parent_key, left_info, right_info).map_err(StreamError::Sink)?;
+        let parent_blue_score = left.max_blue_score.max(current.max_blue_score);
+
+        let result = self
+            .sink
+            .merge(left.hash, current.hash, parent_key, left_info, right_info, parent_blue_score)
+            .map_err(StreamError::Sink)?;
 
         if merge_depth == 0 {
             self.root_written = true;
@@ -237,6 +281,7 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
         current.hash = result;
         current.representative_key = left.representative_key;
         current.kind = EntryKind::Internal;
+        current.max_blue_score = parent_blue_score;
 
         Ok(())
     }
@@ -253,7 +298,7 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
         match current.kind {
             EntryKind::Collapsed(cl) => {
                 let bk = BranchKey::new(0, &current.representative_key);
-                self.sink.write_collapsed(bk, cl).map_err(StreamError::Sink)?;
+                self.sink.write_collapsed(bk, cl, current.max_blue_score).map_err(StreamError::Sink)?;
                 self.root = Some(hash_node::<H::CollapsedHasher>(cl.lane_key, cl.leaf_hash));
             }
             EntryKind::Internal => {
@@ -262,7 +307,7 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
                 } else {
                     let result = self
                         .sink
-                        .merge_chain_with_empty(current.hash, 1, 0, &current.representative_key)
+                        .merge_chain_with_empty(current.hash, 1, 0, &current.representative_key, current.max_blue_score)
                         .map_err(StreamError::Sink)?;
                     self.root = Some(result);
                 }
@@ -321,12 +366,13 @@ mod tests {
             parent_key: BranchKey,
             left_info: ChildInfo,
             right_info: ChildInfo,
+            _parent_blue_score: u64,
         ) -> Result<Hash, Self::Error> {
             use crate::store::Node;
-            if let ChildInfo::Collapsed { branch_key, leaf } = left_info {
+            if let ChildInfo::Collapsed { branch_key, leaf, .. } = left_info {
                 self.nodes.push((branch_key, Node::Collapsed(leaf)));
             }
-            if let ChildInfo::Collapsed { branch_key, leaf } = right_info {
+            if let ChildInfo::Collapsed { branch_key, leaf, .. } = right_info {
                 self.nodes.push((branch_key, Node::Collapsed(leaf)));
             }
 
@@ -341,6 +387,7 @@ mod tests {
             from_depth: usize,
             to_depth: usize,
             representative_key: &Hash,
+            _blue_score: u64,
         ) -> Result<Hash, Self::Error> {
             use crate::store::Node;
             let mut current_hash = hash;
@@ -358,7 +405,7 @@ mod tests {
             Ok(current_hash)
         }
 
-        fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf) -> Result<(), Self::Error> {
+        fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf, _blue_score: u64) -> Result<(), Self::Error> {
             self.nodes.push((branch_key, crate::store::Node::Collapsed(leaf)));
             Ok(())
         }
@@ -375,7 +422,7 @@ mod tests {
         let sink = InlineMergeSink::<H>::new();
         let mut builder = StreamingSmtBuilder::<H, _>::new(normalized.len() as u64, sink);
         for u in normalized.iter() {
-            builder.feed(u.key, u.leaf_hash).unwrap();
+            builder.feed(u.key, u.leaf_hash, 0).unwrap();
         }
         let (root, sink) = builder.finish().unwrap();
 
@@ -479,29 +526,29 @@ mod tests {
         let k1 = Hash::from_bytes([2; 32]);
         let k2 = Hash::from_bytes([1; 32]);
         let mut builder = StreamingSmtBuilder::<H, _>::new(2, InlineMergeSink::<H>::new());
-        builder.feed(k1, Hash::from_bytes([0xAA; 32])).unwrap();
-        assert!(matches!(builder.feed(k2, Hash::from_bytes([0xBB; 32])), Err(StreamError::UnsortedKey)));
+        builder.feed(k1, Hash::from_bytes([0xAA; 32]), 0).unwrap();
+        assert!(matches!(builder.feed(k2, Hash::from_bytes([0xBB; 32]), 0), Err(StreamError::UnsortedKey)));
     }
 
     #[test]
     fn error_duplicate() {
         let k = Hash::from_bytes([1; 32]);
         let mut builder = StreamingSmtBuilder::<H, _>::new(2, InlineMergeSink::<H>::new());
-        builder.feed(k, Hash::from_bytes([0xAA; 32])).unwrap();
-        assert!(matches!(builder.feed(k, Hash::from_bytes([0xBB; 32])), Err(StreamError::DuplicateKey)));
+        builder.feed(k, Hash::from_bytes([0xAA; 32]), 0).unwrap();
+        assert!(matches!(builder.feed(k, Hash::from_bytes([0xBB; 32]), 0), Err(StreamError::DuplicateKey)));
     }
 
     #[test]
     fn error_feed_after_finalized() {
         let mut builder = StreamingSmtBuilder::<H, _>::new(1, InlineMergeSink::<H>::new());
-        builder.feed(Hash::from_bytes([1; 32]), Hash::from_bytes([2; 32])).unwrap();
-        assert!(matches!(builder.feed(Hash::from_bytes([3; 32]), Hash::from_bytes([4; 32])), Err(StreamError::AlreadyFinalized)));
+        builder.feed(Hash::from_bytes([1; 32]), Hash::from_bytes([2; 32]), 0).unwrap();
+        assert!(matches!(builder.feed(Hash::from_bytes([3; 32]), Hash::from_bytes([4; 32]), 0), Err(StreamError::AlreadyFinalized)));
     }
 
     #[test]
     fn error_not_finalized() {
         let mut builder = StreamingSmtBuilder::<H, _>::new(2, InlineMergeSink::<H>::new());
-        builder.feed(Hash::from_bytes([1; 32]), Hash::from_bytes([2; 32])).unwrap();
+        builder.feed(Hash::from_bytes([1; 32]), Hash::from_bytes([2; 32]), 0).unwrap();
         assert!(matches!(builder.finish(), Err(StreamError::NotFinalized)));
     }
 }
