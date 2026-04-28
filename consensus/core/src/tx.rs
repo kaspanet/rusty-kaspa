@@ -8,7 +8,6 @@
 
 mod script_public_key;
 mod serde_impl;
-mod utxo_entry;
 
 use crate::mass::{
     ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
@@ -36,7 +35,7 @@ use std::{
     ops::Range,
     str::{self},
 };
-pub use utxo_entry::UtxoEntry;
+pub use crate::utxo::UtxoEntry;
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;

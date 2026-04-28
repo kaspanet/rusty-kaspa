@@ -21,26 +21,13 @@
 
 use super::{CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass};
 use crate::mass::{ComputeBudget, SigopCount};
-use kaspa_utils::serde_bytes;
+use kaspa_utils::serde_bytes::{self, ByteBuf, Bytes};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, DeserializeSeed, IntoDeserializer, MapAccess, SeqAccess, Visitor},
     ser::{SerializeSeq, SerializeStruct},
 };
 use serde_value::Value as BufferedValue;
-
-#[repr(transparent)]
-struct SerdeBytesRef<'a>(&'a [u8]);
-
-impl Serialize for SerdeBytesRef<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serde_bytes::serialize(&self.0, serializer)
-    }
-}
-
-#[derive(Deserialize)]
-#[repr(transparent)]
-struct SerdeBytesOwned(#[serde(with = "serde_bytes")] Vec<u8>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -225,7 +212,7 @@ impl Serialize for Transaction {
         state.serialize_field("lockTime", &self.lock_time)?;
         state.serialize_field("subnetworkId", &self.subnetwork_id)?;
         state.serialize_field("gas", &self.gas)?;
-        state.serialize_field("payload", &SerdeBytesRef(&self.payload))?;
+        state.serialize_field("payload", &Bytes(&self.payload))?;
         state.serialize_field("mass", &self.mass)?;
         state.serialize_field("id", &self.id)?;
         state.end()
@@ -234,6 +221,8 @@ impl Serialize for Transaction {
 
 /// Field discriminator for `visit_map`. Declared at module scope (rather than
 /// inside the deserializer body) so `visit_seq` / `visit_map` stay compact.
+#[derive(Deserialize)]
+#[serde(field_identifier, rename_all = "camelCase")]
 enum Field {
     Version,
     Inputs,
@@ -244,36 +233,6 @@ enum Field {
     Payload,
     Mass,
     Id,
-}
-
-impl<'de> Deserialize<'de> for Field {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "camelCase")]
-        enum FieldInner {
-            Version,
-            Inputs,
-            Outputs,
-            LockTime,
-            SubnetworkId,
-            Gas,
-            Payload,
-            Mass,
-            Id,
-        }
-
-        Ok(match FieldInner::deserialize(deserializer)? {
-            FieldInner::Version => Field::Version,
-            FieldInner::Inputs => Field::Inputs,
-            FieldInner::Outputs => Field::Outputs,
-            FieldInner::LockTime => Field::LockTime,
-            FieldInner::SubnetworkId => Field::SubnetworkId,
-            FieldInner::Gas => Field::Gas,
-            FieldInner::Payload => Field::Payload,
-            FieldInner::Mass => Field::Mass,
-            FieldInner::Id => Field::Id,
-        })
-    }
 }
 
 /// Threads the transaction `version` into the per-input deserialization so
@@ -322,7 +281,7 @@ impl<'de> Visitor<'de> for TransactionVisitor {
         let lock_time = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
         let subnetwork_id = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(4, &self))?;
         let gas = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
-        let payload = seq.next_element::<SerdeBytesOwned>()?.ok_or_else(|| de::Error::invalid_length(6, &self))?.0;
+        let payload = seq.next_element::<ByteBuf>()?.ok_or_else(|| de::Error::invalid_length(6, &self))?.0;
         // `mass` keeps its historical `#[serde(default)]` leniency; `id` is required and
         // read verbatim — serde does not recompute the txid on deserialization.
         let mass = seq.next_element()?.unwrap_or_default();
@@ -403,7 +362,7 @@ impl<'de> Visitor<'de> for TransactionVisitor {
                     if payload.is_some() {
                         return Err(de::Error::duplicate_field("payload"));
                     }
-                    payload = Some(map.next_value::<SerdeBytesOwned>()?.0);
+                    payload = Some(map.next_value::<ByteBuf>()?.0);
                 }
                 Field::Mass => {
                     if mass.is_some() {

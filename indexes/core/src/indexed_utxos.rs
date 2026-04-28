@@ -50,6 +50,10 @@ impl From<UtxoEntry> for CompactUtxoEntry {
 
 /// Shadow struct used on the human-readable serde path so JSON consumers keep
 /// seeing the pre-Toccata object shape with `covenant_id` optional.
+///
+/// Human-readable formats (JSON, YAML, TOML) retain field labels on the wire,
+/// so an absent `covenant_id` is naturally handled by `#[serde(default)]`.
+/// The EOF-tolerance trick the bincode path uses below is unnecessary here.
 #[derive(Deserialize)]
 struct CompactUtxoEntryHumanReadable {
     amount: u64,
@@ -76,7 +80,7 @@ impl<'de> Deserialize<'de> for CompactUtxoEntry {
                 type Value = CompactUtxoEntry;
 
                 fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    f.write_str("a CompactUtxoEntry tuple (amount, block_daa_score, is_coinbase[, covenant_id])")
+                    f.write_str("struct CompactUtxoEntry")
                 }
 
                 fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<CompactUtxoEntry, A::Error> {
@@ -93,7 +97,8 @@ impl<'de> Deserialize<'de> for CompactUtxoEntry {
                 }
             }
 
-            deserializer.deserialize_tuple(4, CompactUtxoEntryVisitor)
+            const FIELDS: &[&str] = &["amount", "blockDaaScore", "isCoinbase", "covenantId"];
+            deserializer.deserialize_struct("CompactUtxoEntry", FIELDS, CompactUtxoEntryVisitor)
         }
     }
 }
@@ -119,23 +124,50 @@ mod tests {
     /// Bincode encoding produced by the pre-Toccata `CompactUtxoEntry` (3-field
     /// layout, no trailing `covenant_id` Option tag).
     const PRE_TOCCATA_HEX: &str = "efcdab89674523012a0000000000000001";
-    const PRE_TOCCATA_AMOUNT: u64 = 0x0123_4567_89ab_cdef;
-    const PRE_TOCCATA_DAA_SCORE: u64 = 42;
+    /// Post-Toccata wire for the same logical entry with `covenant_id = None`.
+    const POST_TOCCATA_NONE_HEX: &str = "efcdab89674523012a000000000000000100";
+    /// Post-Toccata wire with `covenant_id = Some(Hash::from_bytes([0x5a; 32]))`.
+    const POST_TOCCATA_SOME_HEX: &str =
+        "efcdab89674523012a0000000000000001015a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
+    const SHARED_AMOUNT: u64 = 0x0123_4567_89ab_cdef;
+    const SHARED_DAA_SCORE: u64 = 42;
+
+    fn bytes_from_hex(hex: &str) -> Vec<u8> {
+        let mut bytes = vec![0u8; hex.len() / 2];
+        faster_hex::hex_decode(hex.as_bytes(), &mut bytes).unwrap();
+        bytes
+    }
 
     fn pre_toccata_bytes() -> Vec<u8> {
-        let mut bytes = vec![0u8; PRE_TOCCATA_HEX.len() / 2];
-        faster_hex::hex_decode(PRE_TOCCATA_HEX.as_bytes(), &mut bytes).unwrap();
-        bytes
+        bytes_from_hex(PRE_TOCCATA_HEX)
+    }
+
+    fn shared_expected(covenant_id: Option<Hash>) -> CompactUtxoEntry {
+        CompactUtxoEntry::new(SHARED_AMOUNT, SHARED_DAA_SCORE, true, covenant_id)
     }
 
     #[test]
     fn decode_pre_toccata() {
         let decoded: CompactUtxoEntry = bincode::deserialize(&pre_toccata_bytes()).expect("decode pre-Toccata CompactUtxoEntry");
+        assert_eq!(decoded, shared_expected(None));
+    }
 
-        assert_eq!(decoded.amount, PRE_TOCCATA_AMOUNT, "amount");
-        assert_eq!(decoded.block_daa_score, PRE_TOCCATA_DAA_SCORE, "block_daa_score");
-        assert!(decoded.is_coinbase, "is_coinbase");
-        assert_eq!(decoded.covenant_id, None, "covenant_id");
+    #[test]
+    fn decode_post_toccata_none() {
+        let bytes = bytes_from_hex(POST_TOCCATA_NONE_HEX);
+        let decoded: CompactUtxoEntry = bincode::deserialize(&bytes).expect("decode post-Toccata None CompactUtxoEntry");
+        let expected = shared_expected(None);
+        assert_eq!(decoded, expected);
+        assert_eq!(bincode::serialize(&expected).unwrap(), bytes, "encode must reproduce frozen wire");
+    }
+
+    #[test]
+    fn decode_post_toccata_some() {
+        let bytes = bytes_from_hex(POST_TOCCATA_SOME_HEX);
+        let decoded: CompactUtxoEntry = bincode::deserialize(&bytes).expect("decode post-Toccata Some CompactUtxoEntry");
+        let expected = shared_expected(Some(Hash::from_bytes([0x5a; 32])));
+        assert_eq!(decoded, expected);
+        assert_eq!(bincode::serialize(&expected).unwrap(), bytes, "encode must reproduce frozen wire");
     }
 
     #[test]

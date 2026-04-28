@@ -1,6 +1,9 @@
 pub mod pre_toccata;
 pub mod utxo_collection;
 pub mod utxo_diff;
+pub mod utxo_entry;
 pub mod utxo_error;
 pub mod utxo_inquirer;
 pub mod utxo_view;
+
+pub use utxo_entry::UtxoEntry;

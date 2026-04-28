@@ -46,6 +46,10 @@ impl MemSizeEstimator for UtxoEntry {}
 
 /// Shadow struct used on the human-readable serde path so JSON/RPC consumers
 /// keep seeing a camelCase object shape with `covenant_id` optional.
+///
+/// Human-readable formats (JSON, YAML, TOML) retain field labels on the wire,
+/// so an absent `covenant_id` is naturally handled by `#[serde(default)]`.
+/// The EOF-tolerance trick the bincode path uses below is unnecessary here.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UtxoEntryHumanReadable {
@@ -80,7 +84,7 @@ impl<'de> Deserialize<'de> for UtxoEntry {
                 type Value = UtxoEntry;
 
                 fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    f.write_str("a UtxoEntry tuple (amount, script_public_key, block_daa_score, is_coinbase[, covenant_id])")
+                    f.write_str("struct UtxoEntry")
                 }
 
                 fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<UtxoEntry, A::Error> {
@@ -98,7 +102,8 @@ impl<'de> Deserialize<'de> for UtxoEntry {
                 }
             }
 
-            deserializer.deserialize_tuple(5, UtxoEntryVisitor)
+            const FIELDS: &[&str] = &["amount", "scriptPublicKey", "blockDaaScore", "isCoinbase", "covenantId"];
+            deserializer.deserialize_struct("UtxoEntry", FIELDS, UtxoEntryVisitor)
         }
     }
 }
@@ -111,30 +116,77 @@ mod tests {
     /// Bincode encoding produced by the pre-Toccata `UtxoEntry` (4-field layout,
     /// no trailing `covenant_id` Option tag).
     const PRE_TOCCATA_HEX: &str = "efcdab89674523010000060000000000000076a9140102032a0000000000000001";
-    const PRE_TOCCATA_AMOUNT: u64 = 0x0123_4567_89ab_cdef;
-    const PRE_TOCCATA_DAA_SCORE: u64 = 42;
-    const PRE_TOCCATA_SPK_SCRIPT: &[u8] = &[0x76, 0xa9, 0x14, 0x01, 0x02, 0x03];
+    /// Post-Toccata wire for the same logical entry with `covenant_id = None`
+    /// (4 fields + Option tag `0x00`).
+    const POST_TOCCATA_NONE_HEX: &str = "efcdab89674523010000060000000000000076a9140102032a000000000000000100";
+    /// Post-Toccata wire for the same logical entry with `covenant_id = Some(Hash::from_bytes([0x5a; 32]))`
+    /// (4 fields + Option tag `0x01` + 32-byte hash).
+    const POST_TOCCATA_SOME_HEX: &str = "efcdab89674523010000060000000000000076a9140102032a000000000000000101\
+                                         5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
+    const SHARED_AMOUNT: u64 = 0x0123_4567_89ab_cdef;
+    const SHARED_DAA_SCORE: u64 = 42;
+    const SHARED_SPK_SCRIPT: &[u8] = &[0x76, 0xa9, 0x14, 0x01, 0x02, 0x03];
+
+    fn bytes_from_hex(hex: &str) -> Vec<u8> {
+        let mut bytes = vec![0u8; hex.len() / 2];
+        faster_hex::hex_decode(hex.as_bytes(), &mut bytes).unwrap();
+        bytes
+    }
 
     fn pre_toccata_bytes() -> Vec<u8> {
-        let mut bytes = vec![0u8; PRE_TOCCATA_HEX.len() / 2];
-        faster_hex::hex_decode(PRE_TOCCATA_HEX.as_bytes(), &mut bytes).unwrap();
-        bytes
+        bytes_from_hex(PRE_TOCCATA_HEX)
     }
 
     fn spk(version: u16, script: &[u8]) -> ScriptPublicKey {
         ScriptPublicKey::new(version, script.iter().copied().collect())
     }
 
+    fn shared_expected(covenant_id: Option<Hash>) -> UtxoEntry {
+        UtxoEntry::new(SHARED_AMOUNT, spk(0, SHARED_SPK_SCRIPT), SHARED_DAA_SCORE, true, covenant_id)
+    }
+
     #[test]
     fn decode_pre_toccata() {
         let decoded: UtxoEntry = bincode::deserialize(&pre_toccata_bytes()).expect("decode pre-Toccata UtxoEntry");
+        assert_eq!(decoded, shared_expected(None));
+    }
 
-        assert_eq!(decoded.amount, PRE_TOCCATA_AMOUNT, "amount");
-        assert_eq!(decoded.block_daa_score, PRE_TOCCATA_DAA_SCORE, "block_daa_score");
-        assert!(decoded.is_coinbase, "is_coinbase");
-        assert_eq!(decoded.script_public_key.version, 0, "spk version");
-        assert_eq!(decoded.script_public_key.script(), PRE_TOCCATA_SPK_SCRIPT, "spk script");
-        assert_eq!(decoded.covenant_id, None, "covenant_id");
+    /// Cross-check that the hex-pinned `PRE_TOCCATA_HEX` constant is genuinely the
+    /// pre-Toccata wire format — independent of the EOF-tolerance trick in
+    /// `UtxoEntry::deserialize`. Decodes the same bytes through
+    /// `PreToccataUtxoEntry`'s plain four-field `Deserialize` and re-encodes
+    /// to confirm both directions match.
+    #[test]
+    fn pre_toccata_hex_decodes_as_pre_toccata_entry() {
+        use crate::utxo::pre_toccata::PreToccataUtxoEntry;
+        let bytes = pre_toccata_bytes();
+        let decoded: PreToccataUtxoEntry = bincode::deserialize(&bytes).unwrap();
+        let expected = PreToccataUtxoEntry {
+            amount: SHARED_AMOUNT,
+            script_public_key: spk(0, SHARED_SPK_SCRIPT),
+            block_daa_score: SHARED_DAA_SCORE,
+            is_coinbase: true,
+        };
+        assert_eq!(decoded, expected);
+        assert_eq!(bincode::serialize(&expected).unwrap(), bytes, "encode must reproduce frozen wire");
+    }
+
+    #[test]
+    fn decode_post_toccata_none() {
+        let bytes = bytes_from_hex(POST_TOCCATA_NONE_HEX);
+        let decoded: UtxoEntry = bincode::deserialize(&bytes).expect("decode post-Toccata None UtxoEntry");
+        let expected = shared_expected(None);
+        assert_eq!(decoded, expected);
+        assert_eq!(bincode::serialize(&expected).unwrap(), bytes, "encode must reproduce frozen wire");
+    }
+
+    #[test]
+    fn decode_post_toccata_some() {
+        let bytes = bytes_from_hex(POST_TOCCATA_SOME_HEX);
+        let decoded: UtxoEntry = bincode::deserialize(&bytes).expect("decode post-Toccata Some UtxoEntry");
+        let expected = shared_expected(Some(Hash::from_bytes([0x5a; 32])));
+        assert_eq!(decoded, expected);
+        assert_eq!(bincode::serialize(&expected).unwrap(), bytes, "encode must reproduce frozen wire");
     }
 
     #[test]

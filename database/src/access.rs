@@ -239,6 +239,11 @@ where
         Ok(data)
     }
 
+    /// Probes the live prefix first and falls back to `fallback_prefix` for legacy
+    /// rows. Used to access a store whose key *prefix* changed across releases —
+    /// readers transparently see both old and new locations during the migration
+    /// window.
+    ///
     /// Note: `has_with_fallback` and [`Self::read_with_fallback`] are the
     /// prefix-migration helpers, orthogonal to the version-suffix mechanism.
     /// They are not aware of `version_suffix` and are not intended to be
@@ -407,10 +412,8 @@ where
     where
         TKey: Clone + AsRef<[u8]>,
     {
-        if let Some(suffix) = self.version_suffix {
-            let mut versioned_key = DbKey::new(&self.prefix, key.clone());
-            versioned_key.add_suffix([suffix]);
-            writer.delete(versioned_key)?;
+        if self.version_suffix.is_some() {
+            writer.delete(self.build_write_key(key.clone()))?;
         }
         writer.delete(DbKey::new(&self.prefix, key))?;
         Ok(())
