@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_hashes::Hash;
-use rocksdb::{DBRawIteratorWithThreadMode, DBWithThreadMode, MultiThreaded};
 use self_cell::self_cell;
 use zerocopy::{FromBytes, IntoBytes};
 
 use crate::keys::LaneVersionKey;
 use crate::maybe_fork::{MaybeFork, Verified};
+use crate::reacquire_iter::{RawCursor, ReacquiringRawIterator};
 use crate::values::LaneTipHash;
 
-type LaneRawIter<'a> = DBRawIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>;
+type LaneRawIter<'a> = ReacquiringRawIterator<'a>;
 
 self_cell!(
     struct LaneIterCell {
@@ -188,7 +188,7 @@ impl DbLaneVersionStore {
         let max_blue_score = max_blue_score.unwrap_or(u64::MAX);
         let start_seek = start_seek_key(prefix, from_lane_key, max_blue_score);
 
-        let mut iter = self.db.raw_iterator();
+        let mut iter = ReacquiringRawIterator::new(&self.db, 8192);
         let mut done = start_seek.is_none();
         if let Some(seek) = start_seek {
             iter.seek(seek);
@@ -223,7 +223,7 @@ impl DbLaneVersionStore {
         let done = start_seek.is_none();
 
         let cell = LaneIterCell::new(self.db.clone(), |db| {
-            let mut iter = db.raw_iterator();
+            let mut iter = ReacquiringRawIterator::new(db.as_ref(), 8192);
             if let Some(seek) = start_seek {
                 iter.seek(seek);
             }
@@ -268,8 +268,8 @@ fn start_seek_key(prefix: u8, from_lane_key: Option<Hash>, target_blue_score: u6
 /// previously inlined into `iter_all_canonical` — extracted so both the
 /// borrowed and owned iterators share one implementation. The caller owns
 /// `done`; this function sets it when the iterator is exhausted.
-fn advance_canonical_lane(
-    iter: &mut LaneRawIter<'_>,
+fn advance_canonical_lane<I: RawCursor>(
+    iter: &mut I,
     prefix: u8,
     min_blue_score: u64,
     max_blue_score: u64,

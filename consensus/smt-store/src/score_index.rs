@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind, ScoreIndexValue};
 use crate::maybe_fork::MaybeFork;
+use crate::reacquire_iter::{RawCursor, ReacquiringRawIterator};
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -171,7 +172,7 @@ impl DbScoreIndex {
         let seek_key = ScoreIndexKey::seek_key(self.prefix, target_blue_score);
         let score_prefix = [self.prefix];
 
-        let mut iter = self.db.raw_iterator();
+        let mut iter = ReacquiringRawIterator::new(&self.db, 8192);
         iter.seek(seek_key);
 
         let mut done = false;
