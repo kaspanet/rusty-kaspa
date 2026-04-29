@@ -4,7 +4,9 @@ use std::time::Duration;
 use criterion::{BenchmarkId, Criterion, SamplingMode, black_box, criterion_group, criterion_main};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::config::params::MAINNET_PARAMS;
-use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
+use kaspa_consensus_core::hashing::sighash::{
+    SigHashReusedValuesSync, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
+};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::mass::{ComputeBudget, Gram, MassCalculator, ScriptUnits};
 use kaspa_consensus_core::tx::{
@@ -16,7 +18,8 @@ use kaspa_txscript::opcodes::codes::{self, OpDrop, OpDup};
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::{
     EngineCtx, EngineFlags, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, TxScriptEngine, pay_to_address_script, pay_to_script_hash_script,
-    pay_to_script_hash_signature_script, zk_precompiles::tests::helpers::build_stark_script,
+    pay_to_script_hash_signature_script,
+    zk_precompiles::tests::helpers::{build_groth_script, build_stark_script},
 };
 use kaspa_txscript_errors::TxScriptError;
 use rayon::ThreadPoolBuilder;
@@ -208,6 +211,47 @@ fn build_schnorr_2in1_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
         let msg = Message::from_digest_slice(sig_hash.as_bytes().as_slice()).expect("valid sighash");
         let sig = kp.sign_schnorr(msg);
         tx.inputs[input_idx].signature_script = std::iter::once(65u8).chain(*sig.as_ref()).chain([SIG_HASH_ALL.to_u8()]).collect();
+    }
+
+    (tx, utxos)
+}
+
+fn build_ecdsa_2in1_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    let kp1 = schnorr_keypair(nonce.wrapping_mul(2).wrapping_add(1));
+    let kp2 = schnorr_keypair(nonce.wrapping_mul(2).wrapping_add(2));
+    let out_kp = schnorr_keypair(nonce.wrapping_mul(2).wrapping_add(3));
+    let dummy_out1 = input_outpoint(0, nonce.wrapping_mul(2));
+    let dummy_out2 = input_outpoint(1, nonce.wrapping_mul(2).wrapping_add(1));
+
+    let addr1 = Address::new(Prefix::Mainnet, Version::PubKeyECDSA, &kp1.public_key().serialize());
+    let addr2 = Address::new(Prefix::Mainnet, Version::PubKeyECDSA, &kp2.public_key().serialize());
+    let out_addr = Address::new(Prefix::Mainnet, Version::PubKeyECDSA, &out_kp.public_key().serialize());
+
+    let utxos = vec![
+        UtxoEntry::new(20_000, pay_to_address_script(&addr1), 0, false, None),
+        UtxoEntry::new(20_000, pay_to_address_script(&addr2), 0, false, None),
+    ];
+    let outputs = vec![TransactionOutput { value: 30_000, script_public_key: pay_to_address_script(&out_addr), covenant: None }];
+    let mut tx = Transaction::new(
+        1,
+        vec![
+            TransactionInput { previous_outpoint: dummy_out1, signature_script: vec![], sequence: 0, mass: ComputeBudget(10).into() },
+            TransactionInput { previous_outpoint: dummy_out2, signature_script: vec![], sequence: 0, mass: ComputeBudget(10).into() },
+        ],
+        outputs,
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+
+    for (input_idx, kp) in [kp1, kp2].iter().enumerate() {
+        let populated = PopulatedTransaction::new(&tx, utxos.clone());
+        let sig_hash = calc_ecdsa_signature_hash(&populated, input_idx, SIG_HASH_ALL, &SigHashReusedValuesUnsync::new());
+        let msg = Message::from_digest_slice(sig_hash.as_bytes().as_slice()).expect("valid sighash");
+        let sig = kp.secret_key().sign_ecdsa(msg);
+        tx.inputs[input_idx].signature_script =
+            std::iter::once(65u8).chain(sig.serialize_compact()).chain([SIG_HASH_ALL.to_u8()]).collect();
     }
 
     (tx, utxos)
@@ -664,6 +708,32 @@ fn build_single_stark_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     build_budgeted_single_input_tx(nonce, ScriptPublicKey::new(0, build_stark_script(false).into()), vec![])
 }
 
+fn build_groth16_script_with_tags(tag_count: usize) -> Vec<u8> {
+    assert!(tag_count > 0, "groth16 script should contain at least one tag");
+
+    let groth16_script = build_groth_script();
+    let mut script = Vec::with_capacity(groth16_script.len() * tag_count + tag_count.saturating_sub(1));
+    for tag_idx in 0..tag_count {
+        if tag_idx > 0 {
+            script.push(OpDrop);
+        }
+        script.extend_from_slice(&groth16_script);
+    }
+    script
+}
+
+fn build_groth16_tx_with_tags(nonce: u32, tag_count: usize) -> (Transaction, Vec<UtxoEntry>) {
+    build_budgeted_single_input_tx(nonce, ScriptPublicKey::new(0, build_groth16_script_with_tags(tag_count).into()), vec![])
+}
+
+fn build_groth16_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_groth16_tx_with_tags(nonce, 1)
+}
+
+fn build_groth16_3tags_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_groth16_tx_with_tags(nonce, 3)
+}
+
 fn build_large_push_dup_cat_tx_with_data_len(nonce: u32, data_len: usize) -> (Transaction, Vec<UtxoEntry>) {
     let signature_script = ScriptBuilder::new().add_data(&vec![0x6du8; data_len]).unwrap().drain();
     build_budgeted_single_input_tx(nonce, build_large_push_dup_cat_script_public_key(), signature_script)
@@ -806,8 +876,22 @@ fn single_tx_block(name: &'static str, tx: Transaction, entries: Vec<UtxoEntry>)
     }
 }
 
+fn fixed_txs_block(name: &'static str, tx_entries: Vec<(Transaction, Vec<UtxoEntry>)>) -> BenchBlock {
+    let tx_count = tx_entries.len();
+    let input_count = tx_entries.iter().map(|(tx, _)| tx.inputs.len()).sum();
+    let compute_mass = tx_entries.iter().map(|(tx, _)| compute_mass(tx)).sum();
+    let transient_mass = tx_entries.iter().map(|(tx, _)| transient_mass(tx)).sum();
+    let txs = tx_entries.into_iter().map(|(tx, entries)| prepare_bench_tx(tx, entries)).collect();
+
+    BenchBlock { name, txs, tx_count, input_count, compute_mass, transient_mass }
+}
+
 fn build_schnorr_block() -> BenchBlock {
     pack_repeated_txs("schnorr_2in1", build_schnorr_2in1_tx)
+}
+
+fn build_ecdsa_block() -> BenchBlock {
+    pack_repeated_txs("ecdsa_2in1", build_ecdsa_2in1_tx)
 }
 
 fn build_op_dup_block() -> BenchBlock {
@@ -880,6 +964,15 @@ fn build_single_stark_block() -> BenchBlock {
     single_tx_block("single_stark", tx, entries)
 }
 
+fn build_groth16_3tx_block() -> BenchBlock {
+    fixed_txs_block("groth16_3tx", vec![build_groth16_tx(0), build_groth16_tx(1), build_groth16_tx(2)])
+}
+
+fn build_groth16_3tags_single_tx_block() -> BenchBlock {
+    let (tx, entries) = build_groth16_3tags_tx(0);
+    single_tx_block("groth16_3tags_single_tx", tx, entries)
+}
+
 fn bench_blocks() -> &'static [BenchBlock] {
     static BLOCKS: OnceLock<Vec<BenchBlock>> = OnceLock::new();
     BLOCKS.get_or_init(|| {
@@ -897,6 +990,7 @@ fn bench_blocks() -> &'static [BenchBlock] {
 
         let blocks = vec![
             build_schnorr_block(),
+            build_ecdsa_block(),
             build_introspection_cat_substr_math_block(),
             build_blake2b_storm_block(),
             build_blake2b_storm_single_tx_block(),
@@ -910,6 +1004,8 @@ fn bench_blocks() -> &'static [BenchBlock] {
             build_op_dup_p2sh_block(),
             build_op_dup_one_tx_block(),
             build_single_stark_block(),
+            build_groth16_3tx_block(),
+            build_groth16_3tags_single_tx_block(),
         ];
 
         for block in &blocks {
