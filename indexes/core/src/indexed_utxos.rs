@@ -71,32 +71,33 @@ impl From<CompactUtxoEntryHumanReadable> for CompactUtxoEntry {
 
 impl<'de> Deserialize<'de> for CompactUtxoEntry {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct CompactUtxoEntryVisitor;
+
+        impl<'de> Visitor<'de> for CompactUtxoEntryVisitor {
+            type Value = CompactUtxoEntry;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("struct CompactUtxoEntry")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<CompactUtxoEntry, A::Error> {
+                let amount: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(0, &self))?;
+                let block_daa_score: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(1, &self))?;
+                let is_coinbase: bool = seq.next_element()?.ok_or_else(|| DeError::invalid_length(2, &self))?;
+                // Pre-Toccata entries have no trailing Option tag; the
+                // bincode reader hits EOF here and we treat that as None.
+                let covenant_id: Option<Hash> = match seq.next_element::<Option<Hash>>() {
+                    Ok(Some(value)) => value,
+                    Ok(None) | Err(_) => None,
+                };
+
+                Ok(CompactUtxoEntry { amount, block_daa_score, is_coinbase, covenant_id })
+            }
+        }
+
         if deserializer.is_human_readable() {
             CompactUtxoEntryHumanReadable::deserialize(deserializer).map(Into::into)
         } else {
-            struct CompactUtxoEntryVisitor;
-
-            impl<'de> Visitor<'de> for CompactUtxoEntryVisitor {
-                type Value = CompactUtxoEntry;
-
-                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    f.write_str("struct CompactUtxoEntry")
-                }
-
-                fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<CompactUtxoEntry, A::Error> {
-                    let amount: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(0, &self))?;
-                    let block_daa_score: u64 = seq.next_element()?.ok_or_else(|| DeError::invalid_length(1, &self))?;
-                    let is_coinbase: bool = seq.next_element()?.ok_or_else(|| DeError::invalid_length(2, &self))?;
-                    // Pre-Toccata entries have no trailing Option tag; the
-                    // bincode reader hits EOF here and we treat that as None.
-                    let covenant_id: Option<Hash> = match seq.next_element::<Option<Hash>>() {
-                        Ok(Some(value)) => value,
-                        Ok(None) | Err(_) => None,
-                    };
-                    Ok(CompactUtxoEntry { amount, block_daa_score, is_coinbase, covenant_id })
-                }
-            }
-
             const FIELDS: &[&str] = &["amount", "blockDaaScore", "isCoinbase", "covenantId"];
             deserializer.deserialize_struct("CompactUtxoEntry", FIELDS, CompactUtxoEntryVisitor)
         }

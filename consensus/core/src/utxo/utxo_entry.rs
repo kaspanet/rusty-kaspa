@@ -95,9 +95,11 @@ impl<'de> Deserialize<'de> for UtxoEntry {
                     Ok(Some(value)) => value,
                     Ok(None) | Err(_) => None,
                 };
+
                 Ok(UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, covenant_id })
             }
         }
+
         if deserializer.is_human_readable() {
             UtxoEntryHumanReadable::deserialize(deserializer).map(Into::into)
         } else {
