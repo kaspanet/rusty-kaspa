@@ -18,11 +18,21 @@ pub(crate) struct DbSink<'a> {
     max_batch_entries: usize,
     block_hash: BlockHash,
     nodes_written: usize,
+    running_max_depth: u8,
 }
 
 impl<'a> DbSink<'a> {
     pub(crate) fn new(db: &'a DB, stores: &'a SmtStores, block_hash: BlockHash, max_batch_entries: usize) -> Self {
-        Self { db, stores, batch: WriteBatch::default(), batch_count: 0, max_batch_entries, block_hash, nodes_written: 0 }
+        Self {
+            db,
+            stores,
+            batch: WriteBatch::default(),
+            batch_count: 0,
+            max_batch_entries,
+            block_hash,
+            nodes_written: 0,
+            running_max_depth: 0,
+        }
     }
 
     /// Persist a branch_version entry at the given `blue_score`.
@@ -51,6 +61,9 @@ impl<'a> DbSink<'a> {
         )?;
         self.batch_count += 1;
         self.nodes_written += 1;
+        if bk.depth > self.running_max_depth {
+            self.running_max_depth = bk.depth;
+        }
         if self.batch_count >= self.max_batch_entries {
             self.flush_batch()?;
         }
@@ -67,6 +80,13 @@ impl<'a> DbSink<'a> {
 
     pub(crate) fn nodes_written(&self) -> usize {
         self.nodes_written
+    }
+
+    /// Deepest branch-key depth observed across every `write_node` since
+    /// construction. Monotone — used by `streaming_import` to stamp each
+    /// chunk's score-index entries with a tight `max_depth` bound.
+    pub(crate) fn running_max_depth(&self) -> u8 {
+        self.running_max_depth
     }
 
     fn write_collapsed_child(&mut self, info: &ChildInfo) -> StoreResult<()> {
