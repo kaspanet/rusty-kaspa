@@ -30,7 +30,24 @@ struct IbdBenchArgs {
     override_params_file: Option<PathBuf>,
 
     /// Path to a consensus RocksDB directory
-    #[arg(long, value_name = "DIR")]
+    #[arg(
+        long,
+        value_name = "DIR",
+        long_help = r#"Path to a consensus RocksDB directory.
+
+For a regular kaspad network DB, pass the active consensus directory:
+<DATADIR>/consensus/consensus-00X
+
+By default, <DATADIR> is:
+Linux: ~/.rusty-kaspa/kaspa-<NET>/datadir
+Windows: %LOCALAPPDATA%\rusty-kaspa\kaspa-<NET>\datadir
+
+For example:
+--db ~/.rusty-kaspa/kaspa-testnet-10/datadir/consensus/consensus-001
+
+For a simpa-generated DB, pass the exact simpa output directory. For example, if simpa writes to /tmp/simpa, pass:
+--db /tmp/simpa"#
+    )]
     db: PathBuf,
 
     /// Use mainnet consensus params
