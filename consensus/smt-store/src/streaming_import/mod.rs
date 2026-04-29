@@ -155,10 +155,22 @@ fn write_score_index(
     for lane in chunk {
         score_groups.entry(lane.blue_score).or_default().push(lane.lane_key);
     }
+    // IBD score-index entries record `max_depth = 255`: the streaming sink
+    // writes branches *after* the score-index entry is emitted, so we don't
+    // know the true max depth here. 255 preserves correctness (pruning still
+    // covers every depth that may have been touched), at the cost of leaving
+    // the per-block depth-bound optimization off for IBD-imported entries —
+    // which exist only briefly between IBD completion and the next prune wave.
+    //
+    // TODO: track per-(blue_score, block_hash) max_depth in the streaming sink
+    // as it writes branches, then emit score-index entries at finalize with
+    // the observed value. Would let pruning of IBD-imported entries also use
+    // the bounded `0..=max_depth` delete range.
+    const IBD_MAX_DEPTH: u8 = 255;
     for (bs, keys) in score_groups.iter() {
         stores
             .score_index
-            .put_batched(BatchDbWriter::new(batch), *bs, ScoreIndexKind::LeafUpdate, block_hash, keys, batch_id)
+            .put_batched(BatchDbWriter::new(batch), *bs, ScoreIndexKind::LeafUpdate, block_hash, keys, batch_id, IBD_MAX_DEPTH)
             .map_err(StreamError::Sink)?;
         *batch_count += 1;
     }

@@ -87,6 +87,7 @@ struct PruneEntry {
     lane_key: Hash,
     blue_score: u64,
     block_hash: Hash,
+    max_depth: u8,
 }
 
 struct RootOnlyMergeSink<H>(PhantomData<H>);
@@ -284,8 +285,10 @@ impl SmtStores {
             let entry = entry.unwrap();
             let blue_score = entry.blue_score();
             let block_hash = entry.block_hash();
-            for lk in entry.data().iter() {
-                entries.push(PruneEntry { lane_key: *lk, blue_score, block_hash });
+            let value = entry.data();
+            let max_depth = value.max_depth;
+            for lk in value.lane_keys.iter() {
+                entries.push(PruneEntry { lane_key: *lk, blue_score, block_hash, max_depth });
             }
             entries_in_chunk += 1;
 
@@ -332,12 +335,14 @@ impl SmtStores {
             self.lane_version.delete(BatchDbWriter::new(&mut batch), e.lane_key, e.blue_score, e.block_hash).unwrap();
         }
 
-        // Derive branch keys at all 256 depths from each entry. BTreeSet
-        // deduplicates: at low depths many lane_keys map to the same node_key
-        // (e.g. depth 0 always maps to ZERO_HASH).
+        // Derive branch keys at depths `0..=max_depth` per entry, where
+        // `max_depth` is the deepest branch the originating block actually
+        // touched (recorded in the score-index value). BTreeSet deduplicates:
+        // at low depths many lane_keys map to the same node_key (e.g. depth 0
+        // always maps to ZERO_HASH).
         let mut branch_keys: BTreeSet<(BranchKey, u64, Hash)> = BTreeSet::new();
         for e in entries {
-            for depth in 0..=255u8 {
+            for depth in 0..=e.max_depth {
                 branch_keys.insert((BranchKey::new(depth, &e.lane_key), e.blue_score, e.block_hash));
             }
         }
@@ -407,15 +412,35 @@ impl BlockLaneChanges {
         Ok(())
     }
 
-    pub fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
+    pub fn flush_score_index(
+        &self,
+        stores: &SmtStores,
+        batch: &mut WriteBatch,
+        block_hash: BlockHash,
+        max_depth: u8,
+    ) -> StoreResult<()> {
         use crate::keys::ScoreIndexKind;
         let updated: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| v.as_ref().map(|_| *k)).collect();
         let expired: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| if v.is_none() { Some(*k) } else { None }).collect();
         if !updated.is_empty() {
-            stores.score_index.put(BatchDbWriter::new(batch), self.blue_score, ScoreIndexKind::LeafUpdate, block_hash, &updated)?;
+            stores.score_index.put(
+                BatchDbWriter::new(batch),
+                self.blue_score,
+                ScoreIndexKind::LeafUpdate,
+                block_hash,
+                &updated,
+                max_depth,
+            )?;
         }
         if !expired.is_empty() {
-            stores.score_index.put(BatchDbWriter::new(batch), self.blue_score, ScoreIndexKind::Structural, block_hash, &expired)?;
+            stores.score_index.put(
+                BatchDbWriter::new(batch),
+                self.blue_score,
+                ScoreIndexKind::Structural,
+                block_hash,
+                &expired,
+                max_depth,
+            )?;
         }
         Ok(())
     }
@@ -501,8 +526,16 @@ impl SmtBuild {
     ) -> StoreResult<Hash> {
         let root = self.root;
 
+        // Track the deepest branch depth this block actually touched so the
+        // score-index entry can record it. Pruning later uses it to bound the
+        // depth range of branch-version deletes (`0..=max_depth`) instead of
+        // iterating all 256 depths.
+        let mut max_depth: u8 = 0;
         for (bk, node) in &self.node_changes {
             stores.branch_version.put(BatchDbWriter::new(batch), bk.depth, bk.node_key, branch_blue_score, block_hash, *node)?;
+            if bk.depth > max_depth {
+                max_depth = bk.depth;
+            }
         }
         {
             let mut bc = stores.branch_cache.lock();
@@ -512,7 +545,7 @@ impl SmtBuild {
         }
 
         self.lane_changes.flush_lanes(stores, batch, block_hash)?;
-        self.lane_changes.flush_score_index(stores, batch, block_hash)?;
+        self.lane_changes.flush_score_index(stores, batch, block_hash, max_depth)?;
 
         Ok(root)
     }

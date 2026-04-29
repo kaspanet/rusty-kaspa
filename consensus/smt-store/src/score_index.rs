@@ -1,12 +1,20 @@
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
-use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind};
+use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind, ScoreIndexValue};
 use crate::maybe_fork::MaybeFork;
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::FromBytes;
+
+/// Owned counterpart of [`ScoreIndexValue`], used by iterators that hand out
+/// owned data (`MaybeFork`).
+#[derive(Debug, Clone)]
+pub struct ScoreIndexValueOwned {
+    pub max_depth: u8,
+    pub lane_keys: Vec<Hash>,
+}
 
 /// Append-only score index.
 ///
@@ -35,6 +43,9 @@ impl DbScoreIndex {
     }
 
     /// Write lane keys for a block with the given change kind.
+    ///
+    /// `max_depth` is the deepest branch depth touched by this block; pruning
+    /// uses it to bound the depth range of branch-version deletes.
     pub fn put(
         &self,
         mut writer: impl DbWriter,
@@ -42,9 +53,10 @@ impl DbScoreIndex {
         kind: ScoreIndexKind,
         block_hash: Hash,
         lane_keys: &[Hash],
+        max_depth: u8,
     ) -> StoreResult<()> {
         let key = ScoreIndexKey::new(self.prefix, blue_score, kind, block_hash);
-        let value = lane_keys.as_bytes();
+        let value = ScoreIndexValue::to_value_bytes(max_depth, lane_keys);
         writer.put(key, value).map_err(StoreError::DbError)
     }
 
@@ -60,9 +72,10 @@ impl DbScoreIndex {
         block_hash: Hash,
         lane_keys: &[Hash],
         batch_id: u32,
+        max_depth: u8,
     ) -> StoreResult<()> {
         let key = BatchedScoreIndexKey::new(self.prefix, blue_score, kind, block_hash, batch_id);
-        let value = lane_keys.as_bytes();
+        let value = ScoreIndexValue::to_value_bytes(max_depth, lane_keys);
         writer.put(key, value).map_err(StoreError::DbError)
     }
 
@@ -128,14 +141,14 @@ impl DbScoreIndex {
                     done = true;
                     return None;
                 };
-                let lane_keys = match <[Hash]>::ref_from_bytes(value_bytes) {
-                    Ok(k) => k,
+                let view = match ScoreIndexValue::ref_from_bytes(value_bytes) {
+                    Ok(v) => v,
                     Err(e) => {
                         done = true;
                         return Some(Err(StoreError::DataInconsistency(format!("score index value: {e}"))));
                     }
                 };
-                let result = MaybeFork::new(lane_keys.to_vec(), blue_score, key.block_hash);
+                let result = MaybeFork::new(view.lane_keys.to_vec(), blue_score, key.block_hash);
                 iter.next();
                 return Some(Ok(result));
             }
@@ -144,9 +157,15 @@ impl DbScoreIndex {
 
     /// Iterate **all** entries (both `LeafUpdate` and `Structural`) across the inclusive score band.
     ///
-    /// Returns `(lane_keys, blue_score, block_hash)` for pruning lane_version and branch_version
-    /// stores. The score index itself is pruned separately via [`delete_range`].
-    pub fn get_all(&self, blue_score_range: RangeInclusive<u64>) -> impl Iterator<Item = StoreResult<MaybeFork<Vec<Hash>>>> + '_ {
+    /// Returns `(ScoreIndexValueOwned, blue_score, block_hash)` for pruning
+    /// lane_version and branch_version stores. The owned value carries
+    /// `max_depth` so pruning can bound branch deletes by the deepest depth
+    /// touched by the block, and the lane keys for which to delete entries.
+    /// The score index itself is pruned separately via [`delete_range`].
+    pub fn get_all(
+        &self,
+        blue_score_range: RangeInclusive<u64>,
+    ) -> impl Iterator<Item = StoreResult<MaybeFork<ScoreIndexValueOwned>>> + '_ {
         let min_blue_score = *blue_score_range.start();
         let target_blue_score = *blue_score_range.end();
         let seek_key = ScoreIndexKey::seek_key(self.prefix, target_blue_score);
@@ -166,7 +185,7 @@ impl DbScoreIndex {
                 return iter.status().err().map(|e| Err(StoreError::DbError(e)));
             }
 
-            let result = (|| -> StoreResult<Option<MaybeFork<Vec<Hash>>>> {
+            let result = (|| -> StoreResult<Option<MaybeFork<ScoreIndexValueOwned>>> {
                 let Some(key_bytes) = iter.key() else { return Ok(None) };
                 if !key_bytes.starts_with(&score_prefix) {
                     return Ok(None);
@@ -178,9 +197,10 @@ impl DbScoreIndex {
                     return Ok(None);
                 }
                 let Some(value_bytes) = iter.value() else { return Ok(None) };
-                let lane_keys = <[Hash]>::ref_from_bytes(value_bytes)
+                let view = ScoreIndexValue::ref_from_bytes(value_bytes)
                     .map_err(|e| StoreError::DataInconsistency(format!("score index value: {e}")))?;
-                Ok(Some(MaybeFork::new(lane_keys.to_vec(), blue_score, key.block_hash)))
+                let owned = ScoreIndexValueOwned { max_depth: view.max_depth, lane_keys: view.lane_keys.to_vec() };
+                Ok(Some(MaybeFork::new(owned, blue_score, key.block_hash)))
             })();
 
             match result {
@@ -234,7 +254,7 @@ mod tests {
         let block = hash(0xBB);
         let lanes = vec![hash(0x11), hash(0x22)];
 
-        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &lanes).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &lanes, 0).unwrap();
 
         let results: Vec<_> = store.get_leaf_updates(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
@@ -246,8 +266,8 @@ mod tests {
         let (_lt, store) = make_store();
         let block = hash(0xBB);
 
-        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &[hash(0x22)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)], 0).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &[hash(0x22)], 0).unwrap();
 
         let updated: Vec<_> = store.get_leaf_updates(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(updated.len(), 1);
@@ -259,22 +279,22 @@ mod tests {
         let (_lt, store) = make_store();
         let block = hash(0xBB);
 
-        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &[hash(0x22)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)], 0).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &[hash(0x22)], 0).unwrap();
 
         let all: Vec<_> = store.get_all(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(all.len(), 2);
-        assert_eq!(all[0].data(), &[hash(0x11)]);
-        assert_eq!(all[1].data(), &[hash(0x22)]);
+        assert_eq!(all[0].data().lane_keys, vec![hash(0x11)]);
+        assert_eq!(all[1].data().lane_keys, vec![hash(0x22)]);
     }
 
     #[test]
     fn mixed_scores_leaf_updates_only() {
         let (_lt, store) = make_store();
 
-        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::Structural, hash(0xA0), &[hash(0x02)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, hash(0xA1), &[hash(0x03)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)], 0).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::Structural, hash(0xA0), &[hash(0x02)], 0).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, hash(0xA1), &[hash(0x03)], 0).unwrap();
 
         let updated: Vec<_> = store.get_leaf_updates(0..=200).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(updated.len(), 2);
@@ -286,9 +306,9 @@ mod tests {
     fn delete_range_prunes_both_kinds() {
         let (_lt, store) = make_store();
 
-        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::Structural, hash(0xA0), &[hash(0x02)]).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 200, ScoreIndexKind::LeafUpdate, hash(0xA2), &[hash(0x03)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)], 0).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::Structural, hash(0xA0), &[hash(0x02)], 0).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 200, ScoreIndexKind::LeafUpdate, hash(0xA2), &[hash(0x03)], 0).unwrap();
 
         store.delete_range(DirectDbWriter::new(&store.db), 100).unwrap();
 
@@ -306,8 +326,8 @@ mod tests {
         let block = hash(0xBB);
 
         // Two batched writes at same (score, kind, block_hash) with different batch_ids
-        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)], 0).unwrap();
-        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x22)], 1).unwrap();
+        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)], 0, 0).unwrap();
+        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x22)], 1, 0).unwrap();
 
         let results: Vec<_> = store.get_leaf_updates(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 2);
@@ -323,9 +343,9 @@ mod tests {
         let block = hash(0xBB);
 
         // Normal 42-byte key
-        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)]).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x11)], 0).unwrap();
         // Batched 46-byte key at same score
-        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x22)], 0).unwrap();
+        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &[hash(0x22)], 0, 0).unwrap();
 
         let updated: Vec<_> = store.get_leaf_updates(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(updated.len(), 2);
@@ -338,9 +358,9 @@ mod tests {
     fn delete_range_handles_batched_entries() {
         let (_lt, store) = make_store();
 
-        store.put_batched(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)], 0).unwrap();
-        store.put_batched(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x02)], 1).unwrap();
-        store.put(DirectDbWriter::new(&store.db), 200, ScoreIndexKind::LeafUpdate, hash(0xA2), &[hash(0x03)]).unwrap();
+        store.put_batched(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x01)], 0, 0).unwrap();
+        store.put_batched(DirectDbWriter::new(&store.db), 50, ScoreIndexKind::LeafUpdate, hash(0xA0), &[hash(0x02)], 1, 0).unwrap();
+        store.put(DirectDbWriter::new(&store.db), 200, ScoreIndexKind::LeafUpdate, hash(0xA2), &[hash(0x03)], 0).unwrap();
 
         store.delete_range(DirectDbWriter::new(&store.db), 100).unwrap();
 
@@ -350,5 +370,22 @@ mod tests {
         // Score 200 should remain
         let results: Vec<_> = store.get_all(0..=200).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn roundtrip_max_depth() {
+        let (_lt, store) = make_store();
+        let block = hash(0xBB);
+        let lanes = [hash(0x11), hash(0x22), hash(0x33)];
+
+        store.put(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::LeafUpdate, block, &lanes, 42).unwrap();
+        store.put_batched(DirectDbWriter::new(&store.db), 100, ScoreIndexKind::Structural, block, &lanes, 7, 200).unwrap();
+
+        let all: Vec<_> = store.get_all(0..=100).collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(all.len(), 2);
+        let leaf = all.iter().find(|r| r.data().max_depth == 42).expect("LeafUpdate entry with max_depth=42");
+        assert_eq!(leaf.data().lane_keys, lanes);
+        let structural = all.iter().find(|r| r.data().max_depth == 200).expect("Structural entry with max_depth=200");
+        assert_eq!(structural.data().lane_keys, lanes);
     }
 }

@@ -935,7 +935,7 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
     // Block 2 score index: Structural entry with [A] (expiration caused collapse)
     let all2: Vec<_> = stores.score_index.get_all(bs2..=bs2).collect::<Result<Vec<_>, _>>().unwrap();
     let structural_keys2: std::collections::HashSet<Hash> =
-        all2.iter().filter(|e| e.blue_score() == bs2).flat_map(|e| e.data().iter()).copied().collect();
+        all2.iter().filter(|e| e.blue_score() == bs2).flat_map(|e| e.data().lane_keys.iter()).copied().collect();
     assert!(structural_keys2.contains(&key_a), "Structural entry must record expired lane A (collapse trigger)");
 
     // Block 3: Insert C → collapsed node (B) splits back to internal
