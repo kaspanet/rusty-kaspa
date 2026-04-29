@@ -29,6 +29,7 @@ use rocksdb::WriteBatch;
 
 use crate::branch_version_store::DbBranchVersionStore;
 use crate::cache::{BranchEntity, BranchVersionCache, LaneVersionCache};
+use crate::keys::AnyScoreIndexKey;
 use crate::lane_version_store::DbLaneVersionStore;
 use crate::maybe_fork::Verified;
 use crate::score_index::DbScoreIndex;
@@ -271,43 +272,43 @@ impl SmtStores {
     /// `WriteBatch` memory. After all chunks, the score index itself is
     /// range-deleted and caches are evicted.
     pub fn prune(&self, db: &DB, cutoff_blue_score: u64) {
-        // Number of score-index entries to accumulate before flushing a WriteBatch.
+        // Score-index entries drained per outer iteration.
         const CHUNK_ENTRIES: usize = 1024;
 
-        let mut entries: Vec<PruneEntry> = Vec::new();
-        let mut entries_in_chunk = 0usize;
         let mut total_lane_deletes = 0u64;
         let mut total_branch_deletes = 0u64;
         let mut chunks_written = 0u64;
 
-        // Iterate both LeafUpdate and Structural entries at scores ≤ cutoff
-        for entry in self.score_index.get_all(0..=cutoff_blue_score) {
-            let entry = entry.unwrap();
-            let blue_score = entry.blue_score();
-            let block_hash = entry.block_hash();
-            let value = entry.data();
-            let max_depth = value.max_depth;
-            for lk in value.lane_keys.iter() {
-                entries.push(PruneEntry { lane_key: *lk, blue_score, block_hash, max_depth });
-            }
-            entries_in_chunk += 1;
+        // Read in chunks so the read iterator does not outlive the writes:
+        // `collect_chunk` opens, seeks, drains, and drops the iterator
+        // inside one call; `resume_after` carries the seek anchor.
+        let mut resume_after: Option<AnyScoreIndexKey> = None;
+        loop {
+            let (chunk, next_after) = self.score_index.collect_chunk(0..=cutoff_blue_score, resume_after, CHUNK_ENTRIES).unwrap();
 
-            if entries_in_chunk >= CHUNK_ENTRIES {
-                let (ld, bd) = self.prune_chunk(db, &entries);
-                total_lane_deletes += ld;
-                total_branch_deletes += bd;
-                chunks_written += 1;
-                entries.clear();
-                entries_in_chunk = 0;
+            if chunk.is_empty() {
+                break;
             }
-        }
 
-        // Flush remaining entries
-        if !entries.is_empty() {
+            let mut entries: Vec<PruneEntry> = Vec::with_capacity(chunk.len());
+            for entry in &chunk {
+                let blue_score = entry.blue_score();
+                let block_hash = entry.block_hash();
+                let value = entry.data();
+                for lk in value.lane_keys.iter() {
+                    entries.push(PruneEntry { lane_key: *lk, blue_score, block_hash, max_depth: value.max_depth });
+                }
+            }
+
             let (ld, bd) = self.prune_chunk(db, &entries);
             total_lane_deletes += ld;
             total_branch_deletes += bd;
             chunks_written += 1;
+
+            match next_after {
+                Some(k) => resume_after = Some(k),
+                None => break,
+            }
         }
 
         // Range-delete score-index entries at scores ≤ cutoff (single tombstone)

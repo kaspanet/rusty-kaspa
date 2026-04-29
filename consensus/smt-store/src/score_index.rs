@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
-use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind, ScoreIndexValue};
+use crate::keys::{AnyScoreIndexKey, BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind, ScoreIndexValue};
 use crate::maybe_fork::MaybeFork;
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
@@ -15,6 +15,10 @@ pub struct ScoreIndexValueOwned {
     pub max_depth: u8,
     pub lane_keys: Vec<Hash>,
 }
+
+/// One page of [`DbScoreIndex::collect_chunk`]: the entries collected and an
+/// optional resume key to feed back as `after_key` on the next call.
+pub type ScoreIndexChunk = (Vec<MaybeFork<ScoreIndexValueOwned>>, Option<AnyScoreIndexKey>);
 
 /// Append-only score index.
 ///
@@ -172,6 +176,7 @@ impl DbScoreIndex {
         let score_prefix = [self.prefix];
 
         let mut iter = self.db.raw_iterator();
+
         iter.seek(seek_key);
 
         let mut done = false;
@@ -218,6 +223,81 @@ impl DbScoreIndex {
                 }
             }
         })
+    }
+
+    /// Drain up to `max_entries` from the score band for chunked pruning.
+    ///
+    /// Opens a fresh RocksDB iterator scoped to this single call and drops
+    /// it on return, so the read iterator does not outlive the writes that
+    /// follow it. Callers chain calls by feeding the returned `next_after`
+    /// back as `after_key`, which seeks past the last yielded entry.
+    ///
+    /// `next_after` is `Some(_)` when the chunk filled to `max_entries`
+    /// (more *might* exist past it). When iteration was exhausted before
+    /// `max_entries`, returns `None` so the caller can stop.
+    pub fn collect_chunk(
+        &self,
+        blue_score_range: RangeInclusive<u64>,
+        after_key: Option<AnyScoreIndexKey>,
+        max_entries: usize,
+    ) -> StoreResult<ScoreIndexChunk> {
+        let min_blue_score = *blue_score_range.start();
+        let target_blue_score = *blue_score_range.end();
+        let score_prefix = [self.prefix];
+
+        let mut iter = self.db.raw_iterator();
+        match after_key.as_ref() {
+            Some(k) => {
+                let bytes = k.as_ref();
+                iter.seek(bytes);
+                // The resume key is one we've already processed last call.
+                // If RocksDB lands us on it again, step past; otherwise the
+                // key was deleted/skipped and we resume on whatever's next.
+                if iter.valid() && iter.key() == Some(bytes) {
+                    iter.next();
+                }
+            }
+            None => {
+                iter.seek(ScoreIndexKey::seek_key(self.prefix, target_blue_score));
+            }
+        }
+
+        let mut entries = Vec::with_capacity(max_entries);
+        let mut last_key: Option<AnyScoreIndexKey> = None;
+
+        while iter.valid() && entries.len() < max_entries {
+            let key_bytes = iter.key().expect("valid iterator has key");
+            if !key_bytes.starts_with(&score_prefix) {
+                break;
+            }
+
+            let key = ScoreIndexKey::try_ref_from_key_bytes(key_bytes)
+                .map_err(|e| StoreError::DataInconsistency(format!("score index key: {e}")))?;
+            let blue_score = key.rev_blue_score.blue_score();
+            if blue_score < min_blue_score {
+                break;
+            }
+            let block_hash = key.block_hash;
+
+            let value_bytes = iter.value().expect("valid iterator has value");
+            let view = ScoreIndexValue::ref_from_bytes(value_bytes)
+                .map_err(|e| StoreError::DataInconsistency(format!("score index value: {e}")))?;
+            let owned = ScoreIndexValueOwned { max_depth: view.max_depth, lane_keys: view.lane_keys.to_vec() };
+
+            last_key =
+                Some(AnyScoreIndexKey::try_from_key_bytes(key_bytes).ok_or_else(|| {
+                    StoreError::DataInconsistency(format!("score index key: unexpected length {}", key_bytes.len()))
+                })?);
+            entries.push(MaybeFork::new(owned, blue_score, block_hash));
+            iter.next();
+        }
+
+        if let Some(e) = iter.status().err() {
+            return Err(StoreError::DbError(e));
+        }
+
+        let next_after = if entries.len() == max_entries { last_key } else { None };
+        Ok((entries, next_after))
     }
 
     /// Range delete for pruning: remove all entries with `actual_blue_score <= up_to_blue_score`.
@@ -370,6 +450,66 @@ mod tests {
         // Score 200 should remain
         let results: Vec<_> = store.get_all(0..=200).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn collect_chunk_resumes_across_calls() {
+        let (_lt, store) = make_store();
+        // 10 LeafUpdate entries at scores 100..110 — distinct (score, block_hash).
+        for s in 100u64..110 {
+            store
+                .put(
+                    DirectDbWriter::new(&store.db),
+                    s,
+                    ScoreIndexKind::LeafUpdate,
+                    hash(s as u8),
+                    &[hash(0xAA), hash(s as u8)],
+                    s as u8,
+                )
+                .unwrap();
+        }
+
+        // Reference: full single-shot iteration via get_all.
+        let reference: Vec<(u64, Hash, Vec<Hash>, u8)> = store
+            .get_all(0..=200)
+            .map(|r| {
+                let e = r.unwrap();
+                (e.blue_score(), e.block_hash(), e.data().lane_keys.clone(), e.data().max_depth)
+            })
+            .collect();
+        assert_eq!(reference.len(), 10);
+
+        // Drive collect_chunk in 3-entry pages and accumulate.
+        let mut collected: Vec<(u64, Hash, Vec<Hash>, u8)> = Vec::new();
+        let mut resume: Option<AnyScoreIndexKey> = None;
+        loop {
+            let (chunk, next) = store.collect_chunk(0..=200, resume, 3).unwrap();
+            if chunk.is_empty() {
+                break;
+            }
+            for e in &chunk {
+                collected.push((e.blue_score(), e.block_hash(), e.data().lane_keys.clone(), e.data().max_depth));
+            }
+            match next {
+                Some(k) => resume = Some(k),
+                None => break,
+            }
+        }
+
+        assert_eq!(collected, reference, "chunked iteration must yield exactly the same sequence as get_all");
+    }
+
+    #[test]
+    fn collect_chunk_signals_done_when_exhausted() {
+        let (_lt, store) = make_store();
+        // Fewer entries than the chunk size — must come back as `None`
+        // resume even though the chunk filled with all entries available.
+        for s in 50u64..53 {
+            store.put(DirectDbWriter::new(&store.db), s, ScoreIndexKind::LeafUpdate, hash(s as u8), &[hash(0x11)], 0).unwrap();
+        }
+        let (chunk, next) = store.collect_chunk(0..=100, None, 100).unwrap();
+        assert_eq!(chunk.len(), 3);
+        assert!(next.is_none(), "exhausted iteration must return next_after = None");
     }
 
     #[test]
