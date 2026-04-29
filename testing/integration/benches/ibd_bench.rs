@@ -1,7 +1,7 @@
-use clap::Parser;
+use clap::{ArgGroup, Parser};
 use criterion::Criterion;
 use kaspa_consensus::consensus::factory::{ConsensusEntryType, MultiConsensusManagementStore};
-use kaspa_consensus_core::network::NetworkId;
+use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_core::info;
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_grpc_client::GrpcClient;
@@ -10,8 +10,8 @@ use kaspa_testing_integration::common::daemon::Daemon;
 use kaspa_utils::fd_budget;
 use kaspad_lib::args::Args;
 use std::{
+    ffi::OsString,
     fs,
-    iter::once,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -23,14 +23,35 @@ const META_DIR_NAME: &str = "meta";
 const SEEDED_CONSENSUS_DIR_NAME: &str = "consensus-001";
 
 #[derive(Parser, Debug)]
+#[command(group(ArgGroup::new("network").args(["mainnet", "devnet", "simnet", "testnet"]).multiple(false)))]
 struct IbdBenchArgs {
-    /// Path to a JSON file produced by simpa via --override-params-output
+    /// Optional path to a JSON file with override consensus params
     #[arg(long, value_name = "FILE")]
-    override_params_file: PathBuf,
+    override_params_file: Option<PathBuf>,
 
-    /// Path to a simpa-generated consensus RocksDB directory
+    /// Path to a consensus RocksDB directory
     #[arg(long, value_name = "DIR")]
-    simpa_db: PathBuf,
+    db: PathBuf,
+
+    /// Use mainnet consensus params
+    #[arg(long)]
+    mainnet: bool,
+
+    /// Use devnet consensus params
+    #[arg(long)]
+    devnet: bool,
+
+    /// Use simnet consensus params
+    #[arg(long)]
+    simnet: bool,
+
+    /// Use testnet consensus params
+    #[arg(long)]
+    testnet: bool,
+
+    /// Network suffix for networks that support one
+    #[arg(long, default_value_t = 10)]
+    netsuffix: u32,
 
     /// Maximum benchmark runtime before failing
     #[arg(long, default_value_t = 1800)]
@@ -39,43 +60,46 @@ struct IbdBenchArgs {
     /// Poll interval for sync progress
     #[arg(long, default_value_t = 250)]
     poll_interval_millis: u64,
+
+    // Cargo/libtest appends --bench to the benchmark executable invocation. Accept it explicitly so clap stays strict
+    // for benchmark-specific arguments while tolerating the harness flag.
+    #[arg(long, hide = true)]
+    bench: bool,
 }
 
 impl IbdBenchArgs {
     fn from_env_args() -> Self {
-        let args: Vec<String> = std::env::args().collect();
+        let args: Vec<OsString> = std::env::args_os().collect();
         let args_start = args.iter().position(|x| x == "--").map_or(1, |x| x + 1);
-
-        // Keep only sync bench args so this parser co-exists with Criterion CLI args.
-        let mut filtered = vec!["ibd-bench".to_owned()];
-        let mut i = args_start;
-        while i < args.len() {
-            let arg = &args[i];
-            let is_supported_flag =
-                arg == "--override-params-file" || arg == "--simpa-db" || arg == "--timeout-secs" || arg == "--poll-interval-millis";
-
-            if is_supported_flag {
-                filtered.push(arg.clone());
-                i += 1;
-                assert!(i < args.len(), "missing value for argument {}", arg);
-                filtered.push(args[i].clone());
-            }
-
-            i += 1;
-        }
-
-        let args = once("ibd-bench".to_owned()).chain(filtered.into_iter().skip(1));
-        Self::parse_from(args)
+        Self::parse_from(std::iter::once(OsString::from("ibd-bench")).chain(args.into_iter().skip(args_start)))
     }
 
     fn base_args(&self) -> Args {
+        let network = self.network_type();
         Args {
-            devnet: true,
+            devnet: network == NetworkType::Devnet,
+            simnet: network == NetworkType::Simnet,
+            testnet: network == NetworkType::Testnet,
+            testnet_suffix: self.netsuffix,
             disable_upnp: true,
+            disable_dns_seeding: true,
+            outbound_target: 0,
             unsafe_rpc: true,
             yes: true,
-            override_params_file: Some(self.override_params_file.display().to_string()),
+            override_params_file: self.override_params_file.as_ref().map(|path| path.display().to_string()),
             ..Default::default()
+        }
+    }
+
+    fn network_type(&self) -> NetworkType {
+        if self.mainnet {
+            NetworkType::Mainnet
+        } else if self.simnet {
+            NetworkType::Simnet
+        } else if self.testnet {
+            NetworkType::Testnet
+        } else {
+            NetworkType::Devnet
         }
     }
 }
@@ -124,9 +148,9 @@ fn initialize_active_consensus_in_meta_db(meta_db_dir: &Path) {
     }
 }
 
-fn seed_syncer_database(appdir: &Path, network: NetworkId, simpa_db: &Path) {
-    assert!(simpa_db.exists(), "simpa db path does not exist: {}", simpa_db.display());
-    assert!(simpa_db.is_dir(), "simpa db path is not a directory: {}", simpa_db.display());
+fn seed_syncer_database(appdir: &Path, network: NetworkId, db: &Path) {
+    assert!(db.exists(), "db path does not exist: {}", db.display());
+    assert!(db.is_dir(), "db path is not a directory: {}", db.display());
 
     let network_data_dir = appdir.join(network.to_prefixed()).join(DATA_DIR_NAME);
 
@@ -138,7 +162,7 @@ fn seed_syncer_database(appdir: &Path, network: NetworkId, simpa_db: &Path) {
         fs::remove_dir_all(&target_consensus_dir).unwrap();
     }
     fs::create_dir_all(&consensus_root).unwrap();
-    copy_dir_all(simpa_db, &target_consensus_dir).unwrap();
+    copy_dir_all(db, &target_consensus_dir).unwrap();
 
     if meta_db_dir.exists() {
         fs::remove_dir_all(&meta_db_dir).unwrap();
@@ -149,12 +173,10 @@ fn seed_syncer_database(appdir: &Path, network: NetworkId, simpa_db: &Path) {
 
 impl IbdBenchFixture {
     async fn setup(bench_args: &IbdBenchArgs) -> Self {
-        assert!(
-            bench_args.override_params_file.is_file(),
-            "override params file does not exist: {}",
-            bench_args.override_params_file.display()
-        );
-        assert!(bench_args.simpa_db.is_dir(), "simpa db directory does not exist: {}", bench_args.simpa_db.display());
+        if let Some(override_params_file) = bench_args.override_params_file.as_ref() {
+            assert!(override_params_file.is_file(), "override params file does not exist: {}", override_params_file.display());
+        }
+        assert!(bench_args.db.is_dir(), "db directory does not exist: {}", bench_args.db.display());
 
         let fd_total_budget = (fd_budget::limit() / 2).max(64);
         let base_args = bench_args.base_args();
@@ -165,12 +187,12 @@ impl IbdBenchFixture {
         syncer_args.appdir = Some(syncer_appdir.path().to_str().unwrap().to_owned());
 
         info!("Setting up syncer with appdir: {}", syncer_args.appdir.as_ref().unwrap());
-        seed_syncer_database(syncer_appdir.path(), syncer_args.network(), &bench_args.simpa_db);
+        seed_syncer_database(syncer_appdir.path(), syncer_args.network(), &bench_args.db);
 
         let mut syncer = Daemon::new_random_with_args(syncer_args, fd_total_budget);
         let syncer_client = syncer.start().await;
         let syncer_tip = syncer_client.get_block_dag_info().await.unwrap();
-        assert!(syncer_tip.block_count > 0, "syncer loaded a zero-height DB; regenerate simpa DB with non-trivial block count");
+        assert!(syncer_tip.block_count > 0, "syncer loaded a zero-height DB; regenerate the DB with non-trivial block count");
 
         info!("Syncer started. target sink: {}, target block_count: {}", syncer_tip.sink, syncer_tip.block_count);
 
@@ -236,7 +258,7 @@ impl IbdBenchFixture {
     }
 }
 
-fn bench_syncee_ibd_time_from_simpa_db(c: &mut Criterion) {
+fn bench_syncee_ibd_time_from_db(c: &mut Criterion) {
     kaspa_core::log::try_init_logger("info,kaspa_core::time=debug");
     kaspa_core::panic::configure_panic();
 
@@ -248,7 +270,7 @@ fn bench_syncee_ibd_time_from_simpa_db(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("syncee_ibd_time");
     group.sample_size(10);
-    group.bench_function("bench_syncee_ibd_time_from_simpa_db", |b| {
+    group.bench_function("bench_syncee_ibd_time_from_db", |b| {
         b.iter_custom(|iters| {
             let mut total = Duration::ZERO;
             for _ in 0..iters {
@@ -262,9 +284,9 @@ fn bench_syncee_ibd_time_from_simpa_db(c: &mut Criterion) {
     runtime.block_on(fixture.shutdown());
 }
 
-// Run with `cargo bench --package kaspa-testing-integration --bench ibd_bench -- --override-params-file /path/to/simpa/override_params.json --simpa-db /path/to/simpa/db`
+// Run with `cargo bench --package kaspa-testing-integration --bench ibd_bench -- --override-params-file /path/to/override_params.json --db /path/to/db`
 fn main() {
     let mut criterion = Criterion::default();
-    bench_syncee_ibd_time_from_simpa_db(&mut criterion);
+    bench_syncee_ibd_time_from_db(&mut criterion);
     criterion.final_summary();
 }
