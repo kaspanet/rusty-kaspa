@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=RKStratum
+Comment=Stratum bridge for Kaspa mining
+Exec=stratum-bridge
+Icon=stratum-bridge
+Categories=Network;
+Terminal=true

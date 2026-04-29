@@ -13,7 +13,6 @@ The bridge can run against:
 - **External** node (you run `kaspad` yourself)
 - **In-process** node (the bridge starts `kaspad` in the same process)
 
-
 ### Running from a release
 
 If you are running from GitHub Releases (without `cargo run`):
@@ -35,6 +34,14 @@ Then run in external mode:
 ```bash
 ./stratum-bridge --config bridge/config.yaml --node-mode external
 ```
+
+**Linux AppImage (optional):** Releases ship `stratum-bridge-<version>-x86_64.AppImage.tar.gz` only (the AppImage inside
+preserves `+x` after `tar -xzf ...` or your archive manager). Extract, then run the `.AppImage`. When launched from a desktop
+(no terminal), `AppRun` tries to open a system terminal window so startup logs stay visible; set `RKSTRATUM_NO_AUTO_TERMINAL=1` to
+disable that. The AppImage looks for `config.yaml` at `$XDG_CONFIG_HOME/stratum-bridge/config.yaml` (usually
+`~/.config/stratum-bridge/config.yaml`) when that file exists; otherwise it uses built-in defaults. Extra CLI arguments are
+forwarded to the bridge (an explicit `--config` skips that default). To build the AppImage locally after a musl `stratum-bridge`
+release build: `bash bridge/appimage/build.sh <version-label>`.
 
 ### CLI Help
 

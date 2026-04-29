@@ -1434,28 +1434,7 @@ impl ShareHandler {
 
                 let tip_short = if tip.len() > 28 { format!("{}...{}", &tip[..16], &tip[tip.len() - 8..]) } else { tip.to_string() };
 
-                let net_short = {
-                    let mut network_type = None;
-                    let mut suffix = None;
-                    if let Some(pos) = net.find("network_type:") {
-                        let s = &net[pos + "network_type:".len()..];
-                        let s = s.trim_start();
-                        network_type = s.split(&[',', '}'][..]).next().map(|v| v.trim());
-                    }
-                    if let Some(pos) = net.find("suffix:") {
-                        let s = &net[pos + "suffix:".len()..];
-                        let s = s.trim_start();
-                        let raw = s.split(&[',', '}'][..]).next().map(|v| v.trim());
-                        if raw != Some("None") {
-                            suffix = raw;
-                        }
-                    }
-                    match (network_type, suffix) {
-                        (Some(nt), Some(suf)) => format!("{}-{}", nt, suf),
-                        (Some(nt), None) => nt.to_string(),
-                        _ => net.to_string(),
-                    }
-                };
+                let net_short = crate::kaspaapi::network_display_from_id(Some(net)).unwrap_or_else(|| net.to_string());
 
                 out.push(format!(
                     "[NODE] {}|{} | n={} | v={} | p={} | vd={} | blk={}/{} | d={} | mp={} | tip={}",
@@ -1678,6 +1657,9 @@ pub trait KaspaApiTrait: Send + Sync {
     ) -> Result<Vec<(String, u64)>, Box<dyn std::error::Error + Send + Sync>>;
 
     async fn get_current_block_color(&self, block_hash: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// `true` only when the node reports fully synced for mining (`getSyncStatus`: sink recent + not in transitional IBD).
+    async fn is_node_synced_for_mining(&self) -> bool;
 }
 
 pub struct WorkerContext<'a> {
