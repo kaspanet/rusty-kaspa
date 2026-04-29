@@ -93,7 +93,7 @@ pub struct Daemon {
     shutdown_requested: Listener,
     workers: Option<Vec<std::thread::JoinHandle<()>>>,
 
-    _appdir_tempdir: TempDir,
+    _appdir_tempdir: Option<TempDir>,
 }
 
 fn free_port() -> u16 {
@@ -136,8 +136,14 @@ impl Daemon {
     }
 
     pub fn with_manager(client_manager: Arc<ClientManager>, fd_total_budget: i32) -> Daemon {
-        let appdir_tempdir = get_kaspa_tempdir();
-        client_manager.args.write().appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
+        // We need to keep the resource for cleanup only if the appdir is not set by the caller, otherwise we assume the caller will take care of cleanup.
+        let appdir_tempdir = if client_manager.args.read().appdir.is_some() {
+            None
+        } else {
+            let tmp = get_kaspa_tempdir();
+            client_manager.args.write().appdir = Some(tmp.path().to_str().unwrap().to_owned());
+            Some(tmp)
+        };
         let (core, _) = create_core_with_runtime(&Default::default(), &client_manager.args.read(), fd_total_budget);
         let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().arc_any()).unwrap();
         let rpc_core_service = &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().arc_any()).unwrap();
