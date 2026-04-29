@@ -54,6 +54,7 @@ type OpCodeResult = Result<(), TxScriptError>;
 enum HashOpcodePricing {
     Blake2b,
     Blake3,
+    Sha256,
 }
 
 impl HashOpcodePricing {
@@ -61,6 +62,7 @@ impl HashOpcodePricing {
         match self {
             Self::Blake2b => 2,
             Self::Blake3 => 1,
+            Self::Sha256 => 1,
         }
     }
 
@@ -900,6 +902,7 @@ opcode_list! {
 
     opcode OpSHA256<0xa8, 1>(self, vm) {
         let [last] = vm.dstack.pop_raw()?;
+        vm.consume_script_units(HashOpcodePricing::Sha256.script_units_for_data(last.len()))?;
         let mut hasher = Sha256::new();
         hasher.update(last);
         vm.dstack.push(hasher.finalize().as_slice().into())

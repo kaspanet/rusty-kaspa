@@ -418,6 +418,31 @@ fn build_blake3_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
     ScriptPublicKey::new(0, builder.drain().into())
 }
 
+fn build_blake3_with_key_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
+    let mut builder = ScriptBuilder::new();
+    for _ in 0..rounds {
+        builder.add_op(codes::Op2Dup).unwrap();
+        builder.add_op(codes::OpBlake3WithKey).unwrap();
+        builder.add_op(OpDrop).unwrap();
+    }
+    builder.add_op(OpDrop).unwrap();
+    builder.add_op(OpDrop).unwrap();
+    builder.add_op(codes::OpTrue).unwrap();
+    ScriptPublicKey::new(0, builder.drain().into())
+}
+
+fn build_sha256_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
+    let mut builder = ScriptBuilder::new();
+    for _ in 0..rounds {
+        builder.add_op(OpDup).unwrap();
+        builder.add_op(codes::OpSHA256).unwrap();
+        builder.add_op(OpDrop).unwrap();
+    }
+    builder.add_op(OpDrop).unwrap();
+    builder.add_op(codes::OpTrue).unwrap();
+    ScriptPublicKey::new(0, builder.drain().into())
+}
+
 fn build_large_push_dup_cat_script_public_key() -> ScriptPublicKey {
     let mut builder = ScriptBuilder::new();
     for _ in 0..1 {
@@ -552,6 +577,14 @@ fn build_blake3_storm_tx_with_rounds(nonce: u32, rounds: usize) -> (Transaction,
     build_hash_storm_tx_with_rounds(nonce, rounds, "blake3_storm", build_blake3_storm_script_public_key, false)
 }
 
+fn build_blake3_with_key_storm_tx_with_rounds(nonce: u32, rounds: usize) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_tx_with_rounds(nonce, rounds, "blake3_with_key_storm", build_blake3_with_key_storm_script_public_key, true)
+}
+
+fn build_sha256_storm_tx_with_rounds(nonce: u32, rounds: usize) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_tx_with_rounds(nonce, rounds, "sha256_storm", build_sha256_storm_script_public_key, false)
+}
+
 fn build_hash_storm_tx_with_rounds(
     nonce: u32,
     rounds: usize,
@@ -600,6 +633,14 @@ fn build_blake2b_with_key_storm_single_tx(nonce: u32) -> (Transaction, Vec<UtxoE
 
 fn build_blake3_storm_single_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     build_hash_storm_single_tx(nonce, build_blake3_storm_tx_with_rounds)
+}
+
+fn build_blake3_with_key_storm_single_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_single_tx(nonce, build_blake3_with_key_storm_tx_with_rounds)
+}
+
+fn build_sha256_storm_single_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_hash_storm_single_tx(nonce, build_sha256_storm_tx_with_rounds)
 }
 
 fn build_hash_storm_single_tx(nonce: u32, builder: RoundTxBuilder) -> (Transaction, Vec<UtxoEntry>) {
@@ -810,6 +851,16 @@ fn build_blake3_storm_single_tx_block() -> BenchBlock {
     single_tx_block("blake3_storm_single_tx", tx, entries)
 }
 
+fn build_blake3_with_key_storm_single_tx_block() -> BenchBlock {
+    let (tx, entries) = build_blake3_with_key_storm_single_tx(0);
+    single_tx_block("blake3_with_key_storm_single_tx", tx, entries)
+}
+
+fn build_sha256_storm_single_tx_block() -> BenchBlock {
+    let (tx, entries) = build_sha256_storm_single_tx(0);
+    single_tx_block("sha256_storm_single_tx", tx, entries)
+}
+
 fn build_large_push_dup_cat_block() -> BenchBlock {
     let (tx, entries) = build_large_push_dup_cat_tx(0);
     let tx_compute_mass = compute_mass(&tx);
@@ -857,6 +908,8 @@ fn bench_blocks() -> &'static [BenchBlock] {
             build_blake2b_storm_single_tx_block(),
             build_blake2b_with_key_storm_single_tx_block(),
             build_blake3_storm_single_tx_block(),
+            build_blake3_with_key_storm_single_tx_block(),
+            build_sha256_storm_single_tx_block(),
             build_large_push_dup_cat_block(),
             build_op_dup_block(),
             build_op_dup_free_budget_block(),

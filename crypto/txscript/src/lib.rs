@@ -918,7 +918,7 @@ mod tests {
     use crate::opcodes::codes::{
         OpBlake2b, OpBlake2bWithKey, OpBlake3, OpBlake3WithKey, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigFromStack,
         OpCheckSigFromStackECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDrop, OpDup, OpEndIf, OpEqual, OpFalse, OpIf,
-        OpPushData1, OpTrue, OpVerify,
+        OpPushData1, OpSHA256, OpTrue, OpVerify,
     };
 
     use super::*;
@@ -1181,6 +1181,11 @@ mod tests {
             (
                 "blake3_with_key",
                 ScriptBuilder::new().add_data(&data).unwrap().add_data(&blake3_key).unwrap().add_op(OpBlake3WithKey).unwrap().drain(),
+                ScriptUnits(data.len() as u64 + 32),
+            ),
+            (
+                "sha256",
+                ScriptBuilder::new().add_data(&data).unwrap().add_op(OpSHA256).unwrap().drain(),
                 ScriptUnits(data.len() as u64 + 32),
             ),
         ];
