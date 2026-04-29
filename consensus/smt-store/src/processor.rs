@@ -9,6 +9,8 @@
 //! branches. `flush()` persists to a `WriteBatch`; the caller commits atomically.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::convert::Infallible;
+use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
@@ -18,10 +20,11 @@ use kaspa_database::prelude::{BatchDbWriter, DB, DirectDbWriter, StoreError, Sto
 use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
-use kaspa_smt::SmtHasher;
 use kaspa_smt::proof::OwnedSmtProof;
-use kaspa_smt::store::{BranchKey, Node, SmtStore, SortedLeafUpdates};
+use kaspa_smt::store::{BranchKey, CollapsedLeaf, Node, SmtStore, SortedLeafUpdates};
+use kaspa_smt::streaming::{ChildInfo, MergeSink, StreamError, StreamingSmtBuilder};
 use kaspa_smt::tree::{SmtNodeChanges, SparseMerkleTree, compute_root_update};
+use kaspa_smt::{DEPTH, SmtHasher, bit_at, hash_node};
 use rocksdb::WriteBatch;
 
 use crate::branch_version_store::DbBranchVersionStore;
@@ -84,6 +87,59 @@ struct PruneEntry {
     lane_key: Hash,
     blue_score: u64,
     block_hash: Hash,
+}
+
+struct RootOnlyMergeSink<H>(PhantomData<H>);
+
+impl<H> Default for RootOnlyMergeSink<H> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<H: SmtHasher> MergeSink for RootOnlyMergeSink<H> {
+    type Error = Infallible;
+
+    fn merge(
+        &mut self,
+        left: Hash,
+        right: Hash,
+        _parent_key: BranchKey,
+        _left_info: ChildInfo,
+        _right_info: ChildInfo,
+        _parent_blue_score: u64,
+    ) -> Result<Hash, Self::Error> {
+        Ok(hash_node::<H>(left, right))
+    }
+
+    fn merge_chain_with_empty(
+        &mut self,
+        hash: Hash,
+        from_depth: usize,
+        to_depth: usize,
+        representative_key: &Hash,
+        _blue_score: u64,
+    ) -> Result<Hash, Self::Error> {
+        let mut current_hash = hash;
+
+        for depth in (to_depth..from_depth).rev() {
+            let height = DEPTH - 1 - depth;
+            let empty_hash = H::EMPTY_HASHES[height];
+            let goes_right = bit_at(representative_key, depth);
+            let (left_hash, right_hash) = if goes_right { (empty_hash, current_hash) } else { (current_hash, empty_hash) };
+            current_hash = hash_node::<H>(left_hash, right_hash);
+        }
+
+        Ok(current_hash)
+    }
+
+    fn write_collapsed(&mut self, _branch_key: BranchKey, _leaf: CollapsedLeaf, _blue_score: u64) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+fn stream_error_to_store_error<E: std::fmt::Debug>(err: StreamError<E>) -> StoreError {
+    StoreError::DataInconsistency(format!("streaming SMT root recompute: {err}"))
 }
 
 impl SmtStores {
@@ -157,6 +213,29 @@ impl SmtStores {
             },
             None => kaspa_hashes::SeqCommitActiveNode::empty_root(),
         }
+    }
+
+    /// Recompute the lanes root directly from the active lane-version stream,
+    /// without writing any branch nodes or using temporary stores.
+    pub fn recompute_lanes_root_from_leaf_stream(
+        &self,
+        bounds: SmtReadBounds,
+        total_count: u64,
+        is_canonical: impl Fn(Hash) -> bool,
+    ) -> StoreResult<(Hash, u64)> {
+        let mut builder =
+            StreamingSmtBuilder::<SeqCommitActiveNode, _>::new(total_count, RootOnlyMergeSink::<SeqCommitActiveNode>::default());
+        let mut count = 0u64;
+
+        for lane in self.lane_version.iter_all_canonical(None, bounds.min_blue_score, Some(bounds.target_blue_score), is_canonical) {
+            let (lane_key, verified) = lane?;
+            let leaf_hash = smt_leaf_hash(&SmtLeafInput { lane_tip: verified.data(), blue_score: verified.blue_score() });
+            builder.feed(lane_key, leaf_hash, verified.blue_score()).map_err(stream_error_to_store_error)?;
+            count += 1;
+        }
+
+        let (root, _) = builder.finish().map_err(stream_error_to_store_error)?;
+        Ok((root, count))
     }
 
     /// Generate an inclusion proof for `lane_key` in the canonical tree as of
