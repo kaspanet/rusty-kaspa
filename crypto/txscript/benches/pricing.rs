@@ -15,8 +15,8 @@ use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::{self, OpDrop, OpDup};
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::{
-    EngineCtx, EngineFlags, TxScriptEngine, pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script,
-    zk_precompiles::tests::helpers::build_stark_script,
+    EngineCtx, EngineFlags, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, TxScriptEngine, pay_to_address_script, pay_to_script_hash_script,
+    pay_to_script_hash_signature_script, zk_precompiles::tests::helpers::build_stark_script,
 };
 use kaspa_txscript_errors::TxScriptError;
 use rayon::ThreadPoolBuilder;
@@ -34,7 +34,10 @@ const ADVERSARIAL_ROUNDS: usize = 12;
 const HASHING_SIGSCRIPT_DATA_LEN: usize = 10_000;
 const HASHING_KEY_LEN: usize = 32;
 const HASHING_ROUNDS: usize = 20;
-const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = 124_923;
+const LARGE_PUSH_DUP_CAT_CAT_COUNT: usize = 3;
+const LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR: usize = 1 << LARGE_PUSH_DUP_CAT_CAT_COUNT;
+const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = MAX_SCRIPT_ELEMENT_SIZE / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
+const LARGE_PUSH_DUP_CAT_DUP_COUNT: usize = MAX_STACK_SIZE - 1;
 const OP_DUP_BASE_DUP_COUNT: usize = 243;
 const OP_DUP_FREE_BUDGET_DUP_COUNT: usize = 1107;
 const OP_DUP_ONE_TX_PAIR_SEARCH_STEP: usize = 20;
@@ -445,29 +448,14 @@ fn build_sha256_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
 
 fn build_large_push_dup_cat_script_public_key() -> ScriptPublicKey {
     let mut builder = ScriptBuilder::new();
-    for _ in 0..1 {
+    for _ in 0..LARGE_PUSH_DUP_CAT_CAT_COUNT {
         builder.add_op(OpDup).unwrap();
-        builder.add_op(OpDrop).unwrap();
+        builder.add_op(codes::OpCat).unwrap();
     }
-    builder.add_op(OpDup).unwrap();
-    builder.add_op(codes::OpCat).unwrap();
-    for _ in 0..1 {
-        builder.add_op(OpDup).unwrap();
-        builder.add_op(OpDrop).unwrap();
-    }
-    builder.add_op(OpDup).unwrap();
-    builder.add_op(codes::OpCat).unwrap();
-    builder.add_op(OpDup).unwrap();
-    builder.add_op(codes::OpCat).unwrap();
-    for _ in 0..12 {
-        builder.add_op(OpDup).unwrap();
-        builder.add_op(codes::OpBlake2b).unwrap();
-        builder.add_op(OpDrop).unwrap();
-    }
-    for _ in 0..22 {
+    for _ in 0..LARGE_PUSH_DUP_CAT_DUP_COUNT {
         builder.add_op(OpDup).unwrap();
     }
-    for _ in 0..22 {
+    for _ in 0..LARGE_PUSH_DUP_CAT_DUP_COUNT {
         builder.add_op(OpDrop).unwrap();
     }
     builder.add_op(OpDrop).unwrap();
@@ -696,6 +684,12 @@ fn build_large_push_dup_cat_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
             high_len = mid_len;
         }
     }
+
+    assert_eq!(LARGE_PUSH_DUP_CAT_DUP_COUNT + 1, MAX_STACK_SIZE, "large_push_dup_cat should reach the stack depth limit");
+    assert!(
+        low_len * LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR <= MAX_SCRIPT_ELEMENT_SIZE,
+        "large_push_dup_cat expanded element should stay within the element size limit"
+    );
 
     best
 }
