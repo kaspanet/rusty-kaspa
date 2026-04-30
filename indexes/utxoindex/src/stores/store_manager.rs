@@ -81,8 +81,11 @@ impl Store {
         from_daa_score: Option<u64>,
         to_daa_score: Option<u64>,
     ) -> StoreResult<OrderedUtxoSetByScriptPublicKey> {
-        self.utxos_by_script_public_key_store
-            .get_utxos_from_script_public_keys_by_daa_score(script_public_keys, from_daa_score, to_daa_score)
+        self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys_by_daa_score(
+            script_public_keys,
+            from_daa_score,
+            to_daa_score,
+        )
     }
 
     pub fn get_balance_by_script_public_key(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey> {
