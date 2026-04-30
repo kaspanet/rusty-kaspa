@@ -1,20 +1,35 @@
 use kaspa_database::prelude::DB;
 use rocksdb::{DBRawIteratorWithThreadMode, DBWithThreadMode, MultiThreaded};
+use std::time::{Duration, Instant};
 
 pub type RawIter<'a> = DBRawIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>;
+pub const DEFAULT_REACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct ReacquiringRawIterator<'a> {
     db: &'a DB,
     iter: RawIter<'a>,
     steps_until_reacquire: usize,
     reacquire_interval: usize,
+    last_reacquire: Instant,
+    reacquire_timeout: Duration,
 }
 
 impl<'a> ReacquiringRawIterator<'a> {
     pub fn new(db: &'a DB, reacquire_interval: usize) -> Self {
+        Self::new_with_timeout(db, reacquire_interval, DEFAULT_REACQUIRE_TIMEOUT)
+    }
+
+    pub fn new_with_timeout(db: &'a DB, reacquire_interval: usize, reacquire_timeout: Duration) -> Self {
         let reacquire_interval = reacquire_interval.max(1);
 
-        Self { db, iter: db.raw_iterator(), steps_until_reacquire: reacquire_interval, reacquire_interval }
+        Self {
+            db,
+            iter: db.raw_iterator(),
+            steps_until_reacquire: reacquire_interval,
+            reacquire_interval,
+            last_reacquire: Instant::now(),
+            reacquire_timeout,
+        }
     }
 
     pub fn valid(&self) -> bool {
@@ -31,20 +46,22 @@ impl<'a> ReacquiringRawIterator<'a> {
 
     pub fn seek(&mut self, key: impl AsRef<[u8]>) {
         self.iter.seek(key.as_ref());
-        self.consume_budget_at_current();
+        self.reacquire_if_expired();
     }
 
     pub fn next(&mut self) {
         self.iter.next();
-        self.consume_budget_at_current();
+        self.reacquire_if_expired();
     }
 
     pub fn status(&self) -> Result<(), rocksdb::Error> {
         self.iter.status()
     }
 
-    fn consume_budget_at_current(&mut self) {
-        if self.steps_until_reacquire <= 1 {
+    fn reacquire_if_expired(&mut self) {
+        if self.steps_until_reacquire <= 1
+            || Instant::now().checked_duration_since(self.last_reacquire).unwrap_or_default() >= self.reacquire_timeout
+        {
             self.reacquire_at_current();
         } else {
             self.steps_until_reacquire -= 1;
@@ -66,11 +83,12 @@ impl<'a> ReacquiringRawIterator<'a> {
         iter.seek(key);
 
         self.iter = iter;
-        self.reset_budget();
+        self.reset_expiration();
     }
 
-    fn reset_budget(&mut self) {
+    fn reset_expiration(&mut self) {
         self.steps_until_reacquire = self.reacquire_interval;
+        self.last_reacquire = Instant::now();
     }
 }
 
@@ -130,7 +148,7 @@ mod tests {
         }
 
         let mut raw = db.raw_iterator();
-        let mut reacq = ReacquiringRawIterator::new(&db, 3);
+        let mut reacq = ReacquiringRawIterator::new_with_timeout(&db, 3, Duration::MAX);
 
         raw.seek([0]);
         reacq.seek([0]);
@@ -180,7 +198,7 @@ mod tests {
         // the budget says "reacquire now". The wrapper must not replace/re-seek/reset
         // into some different iterator state.
         let mut raw = db.raw_iterator();
-        let mut reacq = ReacquiringRawIterator::new(&db, 1);
+        let mut reacq = ReacquiringRawIterator::new_with_timeout(&db, 1, Duration::MAX);
 
         raw.seek([0]);
         reacq.seek([0]);
@@ -226,7 +244,7 @@ mod tests {
         }
 
         let mut raw = db.raw_iterator();
-        let mut reacq = ReacquiringRawIterator::new(&db, 1);
+        let mut reacq = ReacquiringRawIterator::new_with_timeout(&db, 1, Duration::MAX);
 
         // 7 is missing; RocksDB should land on 8.
         raw.seek([7]);
@@ -246,7 +264,7 @@ mod tests {
         }
 
         let mut raw = db.raw_iterator();
-        let mut reacq = ReacquiringRawIterator::new(&db, 1);
+        let mut reacq = ReacquiringRawIterator::new_with_timeout(&db, 1, Duration::MAX);
 
         raw.seek([99]);
         reacq.seek([99]);
@@ -272,7 +290,7 @@ mod tests {
         }
 
         let mut raw = db.raw_iterator();
-        let mut reacq = ReacquiringRawIterator::new(&db, 7);
+        let mut reacq = ReacquiringRawIterator::new_with_timeout(&db, 7, Duration::MAX);
 
         for start in [0u8, 1, 17, 42, 99, 155, 199] {
             raw.seek([start]);
@@ -297,7 +315,7 @@ mod tests {
         }
 
         let mut raw = db.raw_iterator();
-        let mut reacq = ReacquiringRawIterator::new(&db, 3);
+        let mut reacq = ReacquiringRawIterator::new_with_timeout(&db, 3, Duration::MAX);
 
         raw.seek([0]);
         reacq.seek([0]);
@@ -310,6 +328,37 @@ mod tests {
 
         // With reacquire interval 3, the seek to 0 and next to 1 consumed two budget
         // steps, so the next move to 2 triggers reacquisition at key 2.
+        db.delete([2]).unwrap();
+
+        raw.next();
+        reacq.next();
+
+        assert_eq!(current(&raw), Some((vec![2], vec![102])));
+        assert_eq!(current(&reacq), Some((vec![3], vec![103])));
+    }
+
+    #[test]
+    fn reacquiring_iterator_reacquires_when_timeout_elapses() {
+        let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+
+        for i in 0..4u8 {
+            db.put([i], [i + 100]).unwrap();
+        }
+
+        let mut raw = db.raw_iterator();
+        let mut reacq = ReacquiringRawIterator::new_with_timeout(&db, 100, Duration::ZERO);
+
+        raw.seek([0]);
+        reacq.seek([0]);
+        assert_eq!(current(&raw), current(&reacq));
+
+        raw.next();
+        reacq.next();
+        assert_eq!(current(&raw), Some((vec![1], vec![101])));
+        assert_eq!(current(&raw), current(&reacq));
+
+        // The step budget is far from exhausted, so this reacquisition is forced
+        // only by the elapsed-time policy.
         db.delete([2]).unwrap();
 
         raw.next();
