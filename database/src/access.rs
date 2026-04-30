@@ -251,15 +251,13 @@ where
             db_iterator.next();
         }
 
-        db_iterator
-            .take(limit)
-            .map(move |item| match item {
-                Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
-                    Ok(value) => Ok((key_bytes[db_key.prefix_len()..].into(), value)),
-                    Err(err) => Err(err.into()),
-                },
+        db_iterator.take(limit).map(move |item| match item {
+            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
+                Ok(value) => Ok((key_bytes[db_key.prefix_len()..].into(), value)),
                 Err(err) => Err(err.into()),
-            })
+            },
+            Err(err) => Err(err.into()),
+        })
     }
 
     pub fn prefix(&self) -> &[u8] {
