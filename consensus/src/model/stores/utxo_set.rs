@@ -23,7 +23,7 @@ pub trait UtxoSetStoreReader {
 pub trait UtxoSetStore: UtxoSetStoreReader {
     /// Updates the store according to the UTXO diff -- adding and deleting entries correspondingly.
     /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
-    /// This is because concurrent readers can interfere with cache consistency.  
+    /// This is because concurrent readers can interfere with cache consistency.
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
 }

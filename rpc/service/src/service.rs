@@ -743,9 +743,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         let mut entries = Vec::new();
         for (script_public_key, ordered_entries) in ordered_utxos_by_script_public_key {
-            let address = script_public_key_to_address
-                .get(&script_public_key)
-                .expect("script public key should map to source address");
+            let address =
+                script_public_key_to_address.get(&script_public_key).expect("script public key should map to source address");
             entries.extend(ordered_entries.into_iter().map(|(key_data, compact_utxo)| RpcUtxosByAddressesEntry {
                 address: Some(address.clone()),
                 outpoint: key_data.transaction_outpoint.into(),

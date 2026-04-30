@@ -317,9 +317,8 @@ mod tests {
                 .expect("expected script public key to be in database");
             for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
                 let utxo_entry_key_data = UtxoEntryKeyData::new(utxo_entry.block_daa_score, tx_outpoint);
-                let compact_utxo = indexed_compact_utxo_collection
-                    .get(&utxo_entry_key_data)
-                    .expect("expected utxo entry key data as key");
+                let compact_utxo =
+                    indexed_compact_utxo_collection.get(&utxo_entry_key_data).expect("expected utxo entry key data as key");
                 assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
                 assert_eq!(utxo_entry.amount, compact_utxo.amount);
                 assert_eq!(utxo_entry.block_daa_score, utxo_entry_key_data.daa_score);
@@ -369,12 +368,7 @@ mod tests {
 
         for (script_public_key, compact_utxo_collection) in utxo_changes.removed.iter() {
             for (utxo_entry_key_data, compact_utxo_entry) in compact_utxo_collection.iter() {
-                assert!(
-                    virtual_change_emulator
-                        .accumulated_utxo_diff
-                        .remove
-                        .contains_key(&utxo_entry_key_data.transaction_outpoint)
-                );
+                assert!(virtual_change_emulator.accumulated_utxo_diff.remove.contains_key(&utxo_entry_key_data.transaction_outpoint));
                 let utxo_entry = virtual_change_emulator
                     .accumulated_utxo_diff
                     .remove
@@ -412,9 +406,8 @@ mod tests {
                 .expect("expected script public key to be in database");
             for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
                 let utxo_entry_key_data = UtxoEntryKeyData::new(utxo_entry.block_daa_score, tx_outpoint);
-                let compact_utxo = indexed_compact_utxo_collection
-                    .get(&utxo_entry_key_data)
-                    .expect("expected utxo entry key data as key");
+                let compact_utxo =
+                    indexed_compact_utxo_collection.get(&utxo_entry_key_data).expect("expected utxo entry key data as key");
                 assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
                 assert_eq!(utxo_entry.amount, compact_utxo.amount);
                 assert_eq!(utxo_entry.block_daa_score, utxo_entry_key_data.daa_score);

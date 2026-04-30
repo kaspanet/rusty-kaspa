@@ -138,7 +138,6 @@ impl AsRef<[u8]> for UtxoEntryInnerKey {
     }
 }
 
-
 /// Full [CompactUtxoEntry] access key.
 /// Consists of variable amount of bytes of [ScriptPublicKeyBucket], followed by [DaaScoreKey], and [TransactionOutpointKey].
 #[derive(Eq, Hash, PartialEq, Debug, Clone, Serialize, Deserialize)]
@@ -152,8 +151,13 @@ impl Display for UtxoEntryFullAccessKey {
 
 impl UtxoEntryFullAccessKey {
     /// Creates a new [UtxoEntryFullAccessKey] from a [ScriptPublicKeyBucket] and [TransactionOutpointKey].
-    pub fn new(script_public_key_bucket: ScriptPublicKeyBucket, daa_score_key: DaaScoreKey, transaction_outpoint_key: TransactionOutpointKey) -> Self {
-        let mut bytes = Vec::with_capacity(DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE + script_public_key_bucket.as_ref().len());
+    pub fn new(
+        script_public_key_bucket: ScriptPublicKeyBucket,
+        daa_score_key: DaaScoreKey,
+        transaction_outpoint_key: TransactionOutpointKey,
+    ) -> Self {
+        let mut bytes =
+            Vec::with_capacity(DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE + script_public_key_bucket.as_ref().len());
         bytes.extend_from_slice(script_public_key_bucket.as_ref());
         bytes.extend_from_slice(daa_score_key.as_ref());
         bytes.extend_from_slice(transaction_outpoint_key.as_ref());
@@ -287,8 +291,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
 
         debug!(
             "IDXPRC, Executed a DAA-range query for the utxo set of {} script public keys yielding {} entries",
-            script_count,
-            entries_count
+            script_count, entries_count
         );
 
         Ok(utxos_by_script_public_keys)

@@ -49,7 +49,7 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     ///
     /// Note:
     /// 1) Use a read lock when accessing this method
-    /// 2) due to potential sync-gaps is_synced is unreliable while consensus is actively resolving virtual states.  
+    /// 2) due to potential sync-gaps is_synced is unreliable while consensus is actively resolving virtual states.
     fn is_synced(&self) -> UtxoIndexResult<bool>;
 
     /// Update the utxoindex with the given utxo_diff, and tips.
@@ -89,9 +89,7 @@ impl UtxoIndexProxy {
         to_daa_score: Option<u64>,
     ) -> StoreResult<OrderedUtxoSetByScriptPublicKey> {
         spawn_blocking(move || {
-            self.inner
-                .read()
-                .get_utxos_by_script_public_keys_by_daa_score(script_public_keys, from_daa_score, to_daa_score)
+            self.inner.read().get_utxos_by_script_public_keys_by_daa_score(script_public_keys, from_daa_score, to_daa_score)
         })
         .await
         .unwrap()
