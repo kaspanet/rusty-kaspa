@@ -371,7 +371,7 @@ impl Wallet {
                     .collect::<Vec<_>>()
             };
             Some(
-                futures::stream::iter(stored_accounts.into_iter())
+                futures::stream::iter(stored_accounts)
                     .then(|(account, meta)| try_load_account(self, account, meta))
                     .try_collect::<Vec<_>>()
                     // .try_collect::<Result<Vec<_>>>()
@@ -1096,11 +1096,10 @@ impl Wallet {
 
     async fn handle_event(self: &Arc<Self>, event: Box<Events>) -> Result<()> {
         match &*event {
-            Events::Pending { record } | Events::Maturity { record } | Events::Reorg { record } => {
-                if !record.is_change() {
+            Events::Pending { record } | Events::Maturity { record } | Events::Reorg { record }
+                if !record.is_change() => {
                     self.store().as_transaction_record_store()?.store(&[record]).await?;
                 }
-            }
 
             _ => {}
         }

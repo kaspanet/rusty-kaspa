@@ -1621,7 +1621,7 @@ opcode_list! {
                     let auth_input_idx = output.covenant.as_ref()
                         .map(|c| c.authorizing_input as i64)
                         .unwrap_or(-1i64);
-                    push_number(auth_input_idx as i64, vm)
+                    push_number(auth_input_idx, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpOutputAuthorizingInput only applies to transaction inputs".to_string()))
             }

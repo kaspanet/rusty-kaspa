@@ -18,6 +18,12 @@ pub struct CovenantInputContext {
     pub auth_outputs: Vec<usize>,
 }
 
+impl Default for CovenantInputContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CovenantInputContext {
     pub fn new() -> Self {
         Self { auth_outputs: Default::default() }
@@ -120,7 +126,7 @@ impl CovenantsContext {
                     // Continuation case: the authorizing input already carries the same covenant id.
                     // Record the output under both the per-input context and the shared covenant context.
 
-                    ctx.input_ctxs.entry(auth_input_idx).or_insert_with(|| CovenantInputContext::new()).auth_outputs.push(i);
+                    ctx.input_ctxs.entry(auth_input_idx).or_insert_with(CovenantInputContext::new).auth_outputs.push(i);
 
                     ctx.shared_ctxs
                         .get_mut(&covenant_id)
