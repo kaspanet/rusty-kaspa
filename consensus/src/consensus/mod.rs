@@ -634,6 +634,15 @@ impl Consensus {
     pub fn count_stale_smt_entries(&self, cutoff_blue_score: u64) -> StoreResult<StaleSmtEntriesCount> {
         self.storage.smt_stores.count_entries_at_or_below(cutoff_blue_score)
     }
+
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    #[doc(hidden)]
+    /// Diagnostic invariant helper: return whether the pruning checkpoint has
+    /// caught up with the retention-period root, which marks pruning complete.
+    pub fn is_pruning_stable(&self) -> StoreResult<bool> {
+        let pruning_point_read = self.pruning_point_store.read();
+        Ok(pruning_point_read.retention_checkpoint()? == pruning_point_read.retention_period_root()?)
+    }
 }
 
 impl ConsensusApi for Consensus {

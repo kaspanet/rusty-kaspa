@@ -1,7 +1,12 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    thread::sleep,
+    time::{Duration, Instant},
+};
 
 use kaspa_consensus::{
     config::ConfigBuilder,
+    consensus::Consensus,
     constants::perf::PerfParams,
     model::stores::ghostdag::KType,
     params::{DEVNET_PARAMS, ForkActivation, NETWORK_DELAY_BOUND, Params},
@@ -35,6 +40,8 @@ const MIN_TARGET_BLOCKS: u64 = 2_000;
 const TARGET_BLOCKS: u64 =
     if MIN_TARGET_BLOCKS > PRUNING_DEPTH + 2 * FINALITY_DEPTH { MIN_TARGET_BLOCKS } else { PRUNING_DEPTH + 2 * FINALITY_DEPTH };
 const SMT_CHUNK_SIZE: usize = 4096;
+const SMT_PRUNING_SETTLE_TIMEOUT: Duration = Duration::from_secs(30);
+const SMT_PRUNING_SETTLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 static REPRO_LOCK: Mutex<()> = Mutex::new(());
 
@@ -74,14 +81,16 @@ fn assert_pruning_point_smt_roundtrip(seed: u64) {
             Box::new(ChurningLaneProducer::new(seed ^ miner_id, LANE_COUNT, LANE_BAND, LANE_EPOCH_BLOCKS, LANE_CARRY_PERCENT))
         })
         .run(u64::MAX);
+
+    wait_for_smt_pruning_to_settle(&consensus, seed);
     consensus.shutdown(handles);
 
     let pp = consensus.pruning_point();
-    let pp_header = consensus.get_header(pp).unwrap();
+    let pp_blue_score = consensus.get_header(pp).unwrap().blue_score;
+    let smt_cutoff = pp_blue_score.saturating_sub(FINALITY_DEPTH).saturating_sub(1);
     let metadata = consensus.get_pruning_point_smt_metadata(pp).unwrap();
     let (imported_root, imported_lanes) =
-        import_exported_pruning_point_smt(&*consensus, pp, pp_header.blue_score, metadata.lanes_root, metadata.active_lanes_count);
-    let smt_cutoff = pp_header.blue_score.saturating_sub(FINALITY_DEPTH).saturating_sub(1);
+        import_exported_pruning_point_smt(&*consensus, pp, pp_blue_score, metadata.lanes_root, metadata.active_lanes_count);
     let stale = consensus
         .count_stale_smt_entries(smt_cutoff)
         .unwrap_or_else(|e| panic!("seed {seed}: failed to count stale SMT entries at or below cutoff {smt_cutoff}: {e}"));
@@ -103,6 +112,27 @@ fn assert_pruning_point_smt_roundtrip(seed: u64) {
 
     assert_eq!(imported_lanes, metadata_lanes, "seed {seed}: imported lane count does not match pruning-point metadata");
     assert_eq!(imported_root, metadata_root, "seed {seed}: imported SMT root does not match pruning-point metadata");
+}
+
+fn wait_for_smt_pruning_to_settle(consensus: &Consensus, seed: u64) {
+    let start = Instant::now();
+
+    // The simulator stops producing blocks before the pruning processor has
+    // necessarily drained its last message. Shutting down here can interrupt a
+    // pruning-point move after the pruning point store advances but before SMT
+    // pruning completes. The retention checkpoint catches up with the
+    // retention-period root only after pruning has completed.
+    loop {
+        if consensus.is_pruning_stable().unwrap_or_else(|e| panic!("seed {seed}: failed to read pruning stability marker: {e}")) {
+            return;
+        }
+
+        if start.elapsed() >= SMT_PRUNING_SETTLE_TIMEOUT {
+            panic!("seed {seed}: pruning did not settle within {SMT_PRUNING_SETTLE_TIMEOUT:?}");
+        }
+
+        sleep(SMT_PRUNING_SETTLE_POLL_INTERVAL);
+    }
 }
 
 fn apply_pruning_repro_params(params: &mut Params) {
