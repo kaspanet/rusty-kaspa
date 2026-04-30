@@ -150,7 +150,7 @@ impl Transaction {
 
     /// Recompute and finalize the tx id based on updated tx fields
     pub fn finalize(&self) -> Result<TransactionId> {
-        let tx: cctx::Transaction = self.into();
+        let tx: cctx::Transaction = self.try_into()?;
         self.inner().id = tx.id();
         Ok(self.inner().id)
     }
@@ -352,19 +352,29 @@ impl From<cctx::Transaction> for Transaction {
     }
 }
 
-impl From<&Transaction> for cctx::Transaction {
-    fn from(tx: &Transaction) -> Self {
+impl TryFrom<&Transaction> for cctx::Transaction {
+    type Error = Error;
+
+    fn try_from(tx: &Transaction) -> Result<Self> {
         let inner = tx.inner();
         let inputs: Vec<cctx::TransactionInput> = inner
             .inputs
             .clone()
             .into_iter()
-            .map(|input| input.as_ref().with_version(inner.version).into())
-            .collect::<Vec<cctx::TransactionInput>>();
+            .map(|input| input.as_ref().with_version(inner.version).try_into())
+            .collect::<Result<Vec<cctx::TransactionInput>>>()?;
         let outputs: Vec<cctx::TransactionOutput> =
             inner.outputs.clone().into_iter().map(|output| output.as_ref().into()).collect::<Vec<cctx::TransactionOutput>>();
-        cctx::Transaction::new(inner.version, inputs, outputs, inner.lock_time, inner.subnetwork_id, inner.gas, inner.payload.clone())
-            .with_mass(inner.mass)
+        Ok(cctx::Transaction::new(
+            inner.version,
+            inputs,
+            outputs,
+            inner.lock_time,
+            inner.subnetwork_id,
+            inner.gas,
+            inner.payload.clone(),
+        )
+        .with_mass(inner.mass))
     }
 }
 
@@ -409,7 +419,7 @@ impl Transaction {
             .clone()
             .into_iter()
             .map(|input| {
-                inputs.push(input.as_ref().with_version(inner.version).into());
+                inputs.push(input.as_ref().with_version(inner.version).try_into()?);
                 Ok(input.get_utxo().ok_or(Error::MissingUtxoEntry)?.entry().as_ref().into())
             })
             .collect::<Result<Vec<_>>>()?;
@@ -445,17 +455,20 @@ impl Transaction {
         inner.outputs.iter().map(|output| output.into()).collect::<Vec<cctx::TransactionOutput>>()
     }
 
-    pub fn inputs(&self) -> Vec<cctx::TransactionInput> {
+    pub fn inputs(&self) -> Result<Vec<cctx::TransactionInput>> {
         let inner = self.inner();
-        inner.inputs.iter().map(|input| input.with_version(inner.version).into()).collect::<Vec<cctx::TransactionInput>>()
+        inner.inputs.iter().map(|input| input.with_version(inner.version).try_into()).collect::<Result<Vec<cctx::TransactionInput>>>()
     }
 
-    pub fn inputs_outputs(&self) -> (Vec<cctx::TransactionInput>, Vec<cctx::TransactionOutput>) {
+    pub fn inputs_outputs(&self) -> Result<(Vec<cctx::TransactionInput>, Vec<cctx::TransactionOutput>)> {
         let inner = self.inner();
-        let inputs =
-            inner.inputs.iter().map(|input| input.with_version(inner.version).into()).collect::<Vec<cctx::TransactionInput>>();
+        let inputs = inner
+            .inputs
+            .iter()
+            .map(|input| input.with_version(inner.version).try_into())
+            .collect::<Result<Vec<cctx::TransactionInput>>>()?;
         let outputs = inner.outputs.iter().map(Into::into).collect::<Vec<cctx::TransactionOutput>>();
-        (inputs, outputs)
+        Ok((inputs, outputs))
     }
 
     pub fn set_signature_script(&self, input_index: usize, signature_script: Vec<u8>) -> Result<()> {
@@ -475,7 +488,7 @@ impl Transaction {
     }
 
     pub fn populate_genesis_covenants(&self, groups: &[GenesisCovenantGroup]) -> Result<()> {
-        let mut tx: cctx::Transaction = self.into();
+        let mut tx: cctx::Transaction = self.try_into()?;
         tx.populate_genesis_covenants(groups)?;
         self.inner().outputs = tx.outputs.iter().map(TransactionOutput::from).collect::<Vec<TransactionOutput>>();
         Ok(())
@@ -558,6 +571,28 @@ mod tests {
             .expect("transaction construction should succeed")
     }
 
+    fn construct_tx_with_input_mass(version: u16, sig_op_count: u8, compute_budget: u16) -> Transaction {
+        let fixed_txid = TransactionId::from_slice(&[0u8; 32]);
+        let spk = construct_spk();
+        let expects_compute_budget = cctx::TxInputMass::version_expects_compute_budget_field(version);
+        let input = TransactionInput::new(
+            TransactionOutpoint::new(fixed_txid, 0),
+            None,
+            0,
+            if expects_compute_budget { 0 } else { sig_op_count },
+            if expects_compute_budget { compute_budget } else { 0 },
+            None,
+        );
+        let output = TransactionOutput::ctor(100, &spk, None);
+
+        let tx = Transaction::new(None, version, vec![input], vec![output], 0, SubnetworkId::from_bytes([0u8; 20]), 0, vec![], 0)
+            .expect("transaction construction should succeed");
+        let input = tx.inner().inputs[0].clone();
+        input.inner().sig_op_count = sig_op_count;
+        input.inner().compute_budget = compute_budget;
+        tx
+    }
+
     // Helper - construct GenesisCovenantGroup[] JS array
     fn construct_groups_array(groups: &[(u16, &[u32])]) -> js_sys::Array {
         let arr = js_sys::Array::new();
@@ -607,5 +642,16 @@ mod tests {
             assert_eq!(output.value(), 100);
             assert_eq!(output.get_script_public_key(), spk);
         }
+    }
+
+    #[wasm_bindgen_test]
+    fn test_try_into_cctx_transaction_rejects_version_incompatible_input_mass_fields() {
+        let v0_tx = construct_tx_with_input_mass(0, 1, 7);
+        let v0_err = cctx::Transaction::try_from(&v0_tx).expect_err("v0 conversion should reject non-zero compute budget");
+        assert!(v0_err.to_string().contains("compute_budget"));
+
+        let v1_tx = construct_tx_with_input_mass(1, 1, 7);
+        let v1_err = cctx::Transaction::try_from(&v1_tx).expect_err("v1 conversion should reject non-zero sig op count");
+        assert!(v1_err.to_string().contains("sig_op_count"));
     }
 }

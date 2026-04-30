@@ -300,7 +300,7 @@ impl MassCalculator {
 
     /// Calculates the overall mass of this transaction, combining both compute and storage masses.
     pub fn calc_overall_mass_for_unsigned_client_transaction(&self, tx: &kcc::Transaction, minimum_signatures: u16) -> Result<u64> {
-        let cctx = Transaction::from(tx);
+        let cctx = Transaction::try_from(tx)?;
         let storage_mass = self.calc_storage_mass_for_transaction(tx)?.ok_or(Error::MassCalculationError)?;
         let compute_mass = self.calc_compute_mass_for_unsigned_consensus_transaction(&cctx, minimum_signatures);
         Ok(self.combine_mass(compute_mass, storage_mass))
