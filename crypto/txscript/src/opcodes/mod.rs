@@ -424,39 +424,59 @@ opcode_list! {
     opcode OpVer<0x62, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
     opcode OpIf<0x63, 1>(self, vm) {
-        // TODO: Allow in vm.flags.covenants_enabled non-minimal encoding of bool. Instead of vm.dstack.pop() we should probably pop bool directly with vm.dstack.pop_items()
-        let mut cond = OpCond::Skip;
-        if vm.is_executing() {
-            // This code seems identical to pop_bool, but was written this way to preserve
-            // the similar flow of go-kaspad
-            let mut cond_buf = vm.dstack.pop()?;
-            if cond_buf.len() > 1 {
-                return Err(TxScriptError::InvalidState("expected boolean".to_string()));
+        let cond = if vm.is_executing() {
+            if vm.flags.covenants_enabled {
+                let [cond]: [bool; 1] = vm.dstack.pop_items()?;
+                if cond {
+                    OpCond::True
+                } else {
+                    OpCond::False
+                }
+            } else {
+                // This code seems identical to pop_bool, but was written this way to preserve
+                // the similar flow of go-kaspad
+                let mut cond_buf = vm.dstack.pop()?;
+                if cond_buf.len() > 1 {
+                    return Err(TxScriptError::InvalidState("expected boolean".to_string()));
+                }
+                match cond_buf.pop() {
+                    Some(1) => OpCond::True,
+                    Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
+                    None => OpCond::False,
+                }
             }
-            cond = match cond_buf.pop() {
-              Some(1) => OpCond::True,
-              Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
-              None => OpCond::False,
-            };
-        }
+        } else {
+            OpCond::Skip
+        };
+
         vm.cond_stack.push(cond);
         Ok(())
     }
 
     opcode OpNotIf<0x64, 1>(self, vm) {
-        // TODO: Allow in vm.flags.covenants_enabled non-minimal encoding of bool. Instead of vm.dstack.pop() we should probably pop bool directly with vm.dstack.pop_items()
-        let mut cond = OpCond::Skip;
-        if vm.is_executing() {
-            let mut cond_buf = vm.dstack.pop()?;
-            if cond_buf.len() > 1 {
-                return Err(TxScriptError::InvalidState("expected boolean".to_string()));
+        let cond = if vm.is_executing() {
+            if vm.flags.covenants_enabled {
+                let [cond]: [bool; 1] = vm.dstack.pop_items()?;
+                if cond {
+                    OpCond::False
+                } else {
+                    OpCond::True
+                }
+            } else {
+                let mut cond_buf = vm.dstack.pop()?;
+                if cond_buf.len() > 1 {
+                    return Err(TxScriptError::InvalidState("expected boolean".to_string()));
+                }
+                match cond_buf.pop() {
+                    Some(1) => OpCond::False,
+                    Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
+                    None => OpCond::True,
+                }
             }
-            cond = match cond_buf.pop() {
-                Some(1) => OpCond::False,
-                Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
-                None => OpCond::True,
-            }
-        }
+        }else{
+            OpCond::Skip
+        };
+
         vm.cond_stack.push(cond);
         Ok(())
     }
