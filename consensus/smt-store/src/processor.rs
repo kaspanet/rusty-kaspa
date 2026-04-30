@@ -412,16 +412,26 @@ impl BlockLaneChanges {
         Ok(())
     }
 
+    /// Flush the score index for this block.
+    ///
+    /// `structural_extra` is appended to the `Structural` entry alongside this
+    /// block's expired lanes. Caller contract: every key in `structural_extra`
+    /// must be (a) disjoint from `self.changes` (touched lanes are already
+    /// covered by the `LeafUpdate`/expired sets) and (b) internally de-duped.
+    /// Both conditions must hold so the Vec build below can chain without a
+    /// per-call set-allocation.
     pub fn flush_score_index(
         &self,
         stores: &SmtStores,
         batch: &mut WriteBatch,
         block_hash: BlockHash,
         max_depth: u8,
+        structural_extra: impl IntoIterator<Item = LaneKey>,
     ) -> StoreResult<()> {
         use crate::keys::ScoreIndexKind;
         let updated: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| v.as_ref().map(|_| *k)).collect();
-        let expired: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| if v.is_none() { Some(*k) } else { None }).collect();
+        let structural: Vec<LaneKey> =
+            self.changes.iter().filter_map(|(k, v)| if v.is_none() { Some(*k) } else { None }).chain(structural_extra).collect();
         if !updated.is_empty() {
             stores.score_index.put(
                 BatchDbWriter::new(batch),
@@ -432,13 +442,13 @@ impl BlockLaneChanges {
                 max_depth,
             )?;
         }
-        if !expired.is_empty() {
+        if !structural.is_empty() {
             stores.score_index.put(
                 BatchDbWriter::new(batch),
                 self.blue_score,
                 ScoreIndexKind::Structural,
                 block_hash,
-                &expired,
+                &structural,
                 max_depth,
             )?;
         }
@@ -545,7 +555,23 @@ impl SmtBuild {
         }
 
         self.lane_changes.flush_lanes(stores, batch, block_hash)?;
-        self.lane_changes.flush_score_index(stores, batch, block_hash, max_depth)?;
+        // SLO promotion may write a tombstone at `(depth+1, X-prefix)` whose
+        // node_key derives from the surviving sibling lane X — never from a
+        // touched/expired lane. Pruning enumerates `BranchKey::new(d, &lk)`
+        // over score-index lane_keys, so it would miss that tombstone unless
+        // X is recorded. Every such promotion records `Collapsed(cl)` in
+        // node_changes at the parent depth (record_change normalizes
+        // existing_for_write to None via expand_singleton, so the parent
+        // write is unconditional); cl.lane_key is X. Filter out lanes the
+        // block already touched — those are covered by the `LeafUpdate` /
+        // base structural sets — and add the rest.
+        let promoted_lane_keys: BTreeSet<LaneKey> = self
+            .node_changes
+            .values()
+            .filter_map(|n| if let Some(Node::Collapsed(cl)) = n { Some(cl.lane_key) } else { None })
+            .filter(|lk| !self.lane_changes.changes.contains_key(lk))
+            .collect();
+        self.lane_changes.flush_score_index(stores, batch, block_hash, max_depth, promoted_lane_keys)?;
 
         Ok(root)
     }
