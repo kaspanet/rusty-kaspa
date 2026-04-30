@@ -163,6 +163,9 @@ impl DbScoreIndex {
     /// `max_depth` so pruning can bound branch deletes by the deepest depth
     /// touched by the block, and the lane keys for which to delete entries.
     /// The score index itself is pruned separately via [`delete_range`].
+    ///
+    /// Uses a reacquiring iterator; callers must ensure compatible consistency
+    /// semantics for the scanned range while consuming the iterator.
     pub fn get_all(
         &self,
         blue_score_range: RangeInclusive<u64>,

@@ -177,6 +177,9 @@ impl DbLaneVersionStore {
     /// RocksDB iterator (and implicit snapshot) is dropped as soon as the
     /// caller finishes consuming it — so the pruning lock is only held for
     /// bounded work.
+    ///
+    /// Uses a reacquiring iterator; callers must ensure compatible consistency
+    /// semantics for the scanned range while consuming the iterator.
     pub fn iter_all_canonical<'a>(
         &'a self,
         from_lane_key: Option<Hash>,
@@ -207,6 +210,9 @@ impl DbLaneVersionStore {
     /// every `SMT_CHUNK_SIZE` batch. `max_blue_score` lets the caller clip
     /// the iteration to the pruning point's own blue score so versions from
     /// blocks past the pruning point are never scanned.
+    ///
+    /// Uses a reacquiring iterator; callers must ensure compatible consistency
+    /// semantics for the scanned range while consuming the iterator.
     pub fn iter_all_canonical_owned<F>(
         &self,
         from_lane_key: Option<Hash>,
