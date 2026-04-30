@@ -71,6 +71,7 @@ harness = false
 [features]
 html_reports = []
 devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]
+test-smt-pruning-diagnostics = ["kaspa-smt-store/test-smt-pruning-diagnostics"]
 
 [lints]
 workspace = true

@@ -935,7 +935,7 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
     // Block 2 score index: Structural entry with [A] (expiration caused collapse)
     let all2: Vec<_> = stores.score_index.get_all(bs2..=bs2).collect::<Result<Vec<_>, _>>().unwrap();
     let structural_keys2: std::collections::HashSet<Hash> =
-        all2.iter().filter(|e| e.blue_score() == bs2).flat_map(|e| e.data().iter()).copied().collect();
+        all2.iter().filter(|e| e.blue_score() == bs2).flat_map(|e| e.data().lane_keys.iter()).copied().collect();
     assert!(structural_keys2.contains(&key_a), "Structural entry must record expired lane A (collapse trigger)");
 
     // Block 3: Insert C → collapsed node (B) splits back to internal
@@ -1397,4 +1397,193 @@ fn prune_removes_old_versions_keeps_new() {
     proc3.update_lane(key_a, hash(0xA3));
     let build3 = proc3.build(|_| true).unwrap();
     assert_ne!(build3.root, root2, "updating A should change the root");
+}
+
+fn count_branch_entries(db: &DB) -> usize {
+    let prefix: u8 = kaspa_database::registry::DatabaseStorePrefixes::SmtBranchVersions.into();
+    let mut iter = db.raw_iterator();
+    iter.seek([prefix]);
+    let mut count = 0usize;
+    while iter.valid() {
+        let Some(k) = iter.key() else { break };
+        if !k.starts_with(&[prefix]) {
+            break;
+        }
+        count += 1;
+        iter.next();
+    }
+    count
+}
+
+/// Pruning after streaming import must clear every imported branch — even
+/// when the streaming SMT builder defers most of its merges past the
+/// per-chunk feed loop.
+///
+/// Three lane keys split across two chunks chosen so every `feed` lands in
+/// the no-write `Collapsed` `chain_up` path (L1 = `[0;32]`, L2 = `[0x80,0..]`,
+/// L3 = `[0x80,..,0x01]`). The auto-`finalize()` triggered by feeding the
+/// last leaf writes all 257 branches at depths up to 255. The fix relies on
+/// `MergeSink::record_seal` to feed an authoritative per-bs depth into
+/// `DbSink` as each leaf actually seals — including L1, which only seals
+/// during finalize when its collapsed leaf is written at `BranchKey(1, ZERO)`.
+#[test]
+fn streaming_import_prune_clears_all_branches_after_deferred_merges() {
+    use kaspa_hashes::ZERO_HASH;
+    use kaspa_smt_store::streaming_import::streaming_import;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    let l1 = Hash::from_bytes([0u8; 32]);
+    let l2 = Hash::from_bytes({
+        let mut b = [0u8; 32];
+        b[0] = 0x80;
+        b
+    });
+    let l3 = Hash::from_bytes({
+        let mut b = [0u8; 32];
+        b[0] = 0x80;
+        b[31] = 0x01;
+        b
+    });
+    assert!(l1 < l2 && l2 < l3, "lane keys must be strictly ascending for streaming import");
+
+    let block_hash = hash(0xBB);
+    let bs = 100u64;
+
+    let chunk1 = vec![
+        ImportLane { lane_key: l1, lane_tip: hash(0xC1), blue_score: bs, proof: None },
+        ImportLane { lane_key: l2, lane_tip: hash(0xC2), blue_score: bs, proof: None },
+    ];
+    let chunk2 = vec![ImportLane { lane_key: l3, lane_tip: hash(0xC3), blue_score: bs, proof: None }];
+
+    // lanes_root only matters when proofs are Some; we pass None proofs.
+    streaming_import(&db, &stores, block_hash, 3, ZERO_HASH, vec![chunk1, chunk2].into_iter(), 64).unwrap();
+
+    let branches_after_import = count_branch_entries(&db);
+    assert!(branches_after_import > 1, "import must have written multiple branch entries (got {branches_after_import})");
+
+    // Score-index entries should record max_depth >= 1 for the chunk
+    // containing L1 — its collapsed leaf at `BranchKey(1, ZERO_HASH)` is
+    // written during finalize and only that depth lets prune delete it.
+    let score_entries: Vec<_> = stores.score_index.get_all(0..=bs).collect::<Result<Vec<_>, _>>().unwrap();
+    assert_eq!(score_entries.len(), 2, "expected one score-index entry per chunk");
+    let chunk1_entry = score_entries.iter().find(|e| e.data().lane_keys.contains(&l1)).expect("chunk-1 score-index entry must exist");
+    assert!(
+        chunk1_entry.data().max_depth >= 1,
+        "chunk-1 score-index entry must record max_depth >= 1 to cover L1's collapsed leaf, got {}",
+        chunk1_entry.data().max_depth
+    );
+
+    stores.prune(&db, bs * 2);
+
+    let branches_after_prune = count_branch_entries(&db);
+    assert_eq!(
+        branches_after_prune, 0,
+        "branch_version must be empty after pruning all imported data, but {branches_after_prune} entries remained"
+    );
+}
+
+/// Single-leaf streaming import goes through `write_collapsed` (no
+/// `merge_pair` runs) — its seal must still be recorded so the score-index
+/// `max_depth` covers the lone branch at depth 0 and prune clears it.
+#[test]
+fn streaming_import_single_leaf_prunes_clean() {
+    use kaspa_hashes::ZERO_HASH;
+    use kaspa_smt_store::streaming_import::streaming_import;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    let bs = 50u64;
+    let block_hash = hash(0xCC);
+    let lane = ImportLane { lane_key: lane_key(&[0xAB; 20]), lane_tip: hash(0xDD), blue_score: bs, proof: None };
+
+    streaming_import(&db, &stores, block_hash, 1, ZERO_HASH, std::iter::once(vec![lane]), 64).unwrap();
+    assert!(count_branch_entries(&db) >= 1, "single-leaf import must write the root branch");
+
+    stores.prune(&db, bs * 2);
+
+    assert_eq!(
+        count_branch_entries(&db),
+        0,
+        "single-leaf prune must clear branch_version (write_collapsed seal path is the only seal event for the lone leaf)"
+    );
+}
+
+/// Multi-chunk import where most lanes seal during subsequent chunk feeds
+/// (rather than only at finalize). Exercises the in-loop
+/// `flush_resolved_pending` path: pending entries from earlier chunks should
+/// resolve and flush as later chunks pop their lanes from the stack.
+///
+/// The scenario uses six lanes with byte-0 prefixes 0x00, 0x40, 0x80, 0xC0,
+/// 0xE0, 0xF0 — pairwise high-bit divergences ensure that as new chunks
+/// feed, earlier chunks' lanes get popped from the stack and sealed. After
+/// import the score-index must already have flushed several entries. After
+/// prune, every imported branch_version entry must be gone.
+#[test]
+fn streaming_import_multi_chunk_in_loop_flush_then_prune_clean() {
+    use kaspa_hashes::ZERO_HASH;
+    use kaspa_smt_store::streaming_import::streaming_import;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    let mut lanes: Vec<ImportLane> = vec![0x00u8, 0x40, 0x80, 0xC0, 0xE0, 0xF0]
+        .into_iter()
+        .enumerate()
+        .map(|(i, b0)| {
+            let mut k = [0u8; 32];
+            k[0] = b0;
+            k[1] = i as u8; // tie-break secondary bytes for ordering safety
+            ImportLane { lane_key: Hash::from_bytes(k), lane_tip: hash(0xA0 + i as u8), blue_score: 100 + i as u64, proof: None }
+        })
+        .collect();
+    lanes.sort_by_key(|l| l.lane_key);
+    let block_hash = hash(0xBB);
+    let total = lanes.len() as u64;
+
+    // 3 chunks of 2 lanes each — distinct chunk boundaries so per-chunk
+    // pending entries get a chance to flush mid-loop as later chunks force
+    // earlier-stack lanes to seal via `seal_up_to`.
+    let chunks: Vec<Vec<ImportLane>> = lanes.chunks(2).map(|c| c.to_vec()).collect();
+    streaming_import(&db, &stores, block_hash, total, ZERO_HASH, chunks.into_iter(), 64).unwrap();
+
+    let branches_pre = count_branch_entries(&db);
+    assert!(branches_pre > 0, "import must write branches");
+    let score_pre = stores.score_index.get_all(0..=u64::MAX).count();
+    assert!(score_pre >= 3, "expected >= one score-index entry per chunk, got {score_pre}");
+
+    stores.prune(&db, 1_000);
+
+    assert_eq!(count_branch_entries(&db), 0, "all imported branches must be pruned");
+    assert!(stores.score_index.get_all(0..=u64::MAX).next().is_none(), "score-index must be empty after prune");
+}
+
+/// Empty chunks interleaved with non-empty ones must be skipped without
+/// affecting correctness. This is a regression check on the
+/// `if chunk.is_empty() { continue; }` path now that the score-index batch
+/// accumulator runs through the same loop.
+#[test]
+fn streaming_import_skips_empty_chunks() {
+    use kaspa_hashes::ZERO_HASH;
+    use kaspa_smt_store::streaming_import::streaming_import;
+
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = make_stores(&db);
+
+    let mut lanes: Vec<ImportLane> = (0u8..4)
+        .map(|i| ImportLane { lane_key: lane_key(&[i + 1; 20]), lane_tip: hash(0xA0 + i), blue_score: 100, proof: None })
+        .collect();
+    lanes.sort_by_key(|l| l.lane_key);
+
+    // Sandwich the lanes between two empty chunks.
+    let chunks: Vec<Vec<ImportLane>> = vec![vec![], lanes.clone(), vec![]];
+
+    streaming_import(&db, &stores, hash(0xBB), lanes.len() as u64, ZERO_HASH, chunks.into_iter(), 64).unwrap();
+
+    assert!(count_branch_entries(&db) > 0, "non-empty middle chunk must produce branches");
+
+    stores.prune(&db, 1_000);
+    assert_eq!(count_branch_entries(&db), 0, "all imported branches must be pruned");
 }
