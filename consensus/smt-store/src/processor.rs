@@ -90,6 +90,19 @@ struct PruneEntry {
     max_depth: u8,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StaleSmtEntriesCount {
+    pub branch_versions: usize,
+    pub lane_versions: usize,
+    pub score_index: usize,
+}
+
+impl StaleSmtEntriesCount {
+    pub const fn total(self) -> usize {
+        self.branch_versions + self.lane_versions + self.score_index
+    }
+}
+
 struct RootOnlyMergeSink<H>(PhantomData<H>);
 
 impl<H> Default for RootOnlyMergeSink<H> {
@@ -365,6 +378,14 @@ impl SmtStores {
         self.score_index.delete_all();
         self.branch_cache.lock().clear();
         self.lane_cache.lock().clear();
+    }
+
+    pub fn count_entries_at_or_below(&self, cutoff_blue_score: u64) -> StoreResult<StaleSmtEntriesCount> {
+        Ok(StaleSmtEntriesCount {
+            branch_versions: self.branch_version.count_entries_at_or_below(cutoff_blue_score)?,
+            lane_versions: self.lane_version.count_entries_at_or_below(cutoff_blue_score)?,
+            score_index: self.score_index.count_entries_at_or_below(cutoff_blue_score)?,
+        })
     }
 }
 

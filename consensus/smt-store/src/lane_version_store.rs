@@ -60,6 +60,30 @@ impl DbLaneVersionStore {
         writer.delete(key).map_err(StoreError::DbError)
     }
 
+    pub fn count_entries_at_or_below(&self, cutoff_blue_score: u64) -> StoreResult<usize> {
+        let prefix_bytes = [self.prefix];
+        let mut iter = self.db.raw_iterator();
+        iter.seek(prefix_bytes);
+
+        let mut count = 0usize;
+        while iter.valid() {
+            let Some(key_bytes) = iter.key() else { break };
+            if !key_bytes.starts_with(&prefix_bytes) {
+                break;
+            }
+            let key = LaneVersionKey::ref_from_bytes(key_bytes)
+                .map_err(|e| StoreError::DataInconsistency(format!("lane version key: {e}")))?;
+            let blue_score = key.rev_blue_score.blue_score();
+            if blue_score <= cutoff_blue_score {
+                count += 1;
+            }
+            iter.next();
+        }
+
+        iter.status().map_err(StoreError::DbError)?;
+        Ok(count)
+    }
+
     /// Find the latest canonical version in `[min_blue_score, target_blue_score]`.
     ///
     /// Iterates via `get_at` from `target_blue_score` downward, stopping at
