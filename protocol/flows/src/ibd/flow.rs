@@ -147,9 +147,8 @@ impl IbdFlow {
                         pruning_point, self.router
                     );
                     self.sync_new_smt_state(&session, pruning_point).await?;
-                } else {
-                    info!("SMT state for pruning point {} is already stable, skipping SMT sync step", pruning_point);
                 }
+
                 if !is_utxo_stable
                 // Utxo might not be available even if the pruning point block data is.
                 // Utxo must be synced before all so the node could function
@@ -159,9 +158,8 @@ impl IbdFlow {
                         self.router
                     );
                     self.sync_new_utxo_set(&session, pruning_point).await?;
-                } else {
-                    info!("utxoset for pruning point {} is already stable, skipping utxoset sync step", pruning_point);
                 }
+
                 // Once utxo is valid, simply sync missing headers
                 self.sync_headers(
                     &session,
@@ -494,10 +492,18 @@ impl IbdFlow {
                         info!("Finished downloading {} blocks from the pruning point anticone", entries.len() - 1);
                         info!("Starting to download the pruning point chain segment");
                     }
-                    header_only_chain_segment.push(entry.block.header.clone())
+                    header_only_chain_segment.push(entry.block.header.clone());
+                    if header_only_chain_segment.len().is_multiple_of(1000) {
+                        info!("Downloaded {} headers from the pruning point chain segment", header_only_chain_segment.len());
+                    }
                 }
                 // We expect all header-only entries to be sent after all non-header-only entries
-                false if header_only_chain_segment.is_empty() => entries.push(entry),
+                false if header_only_chain_segment.is_empty() => {
+                    entries.push(entry);
+                    if (entries.len() - 1).is_multiple_of(1000) {
+                        info!("Downloaded {} blocks from the pruning point anticone", entries.len() - 1);
+                    }
+                }
                 false => {
                     return Err(ProtocolError::Other("trusted body entries arrived after header-only trusted entries"));
                 }

@@ -266,19 +266,14 @@ mod tests {
         (tx2, entries2)
     }
 
-    /// Builds inputs whose script consumes exactly one compute-budget unit worth of script units,
+    /// Builds inputs whose script exceeds the free per-input allowance but fits in one compute-budget unit,
     /// so the test can check per-input budget enforcement around that boundary.
     fn build_parallel_push_budget_test_tx(num_inputs: usize) -> (Transaction, Vec<UtxoEntry>) {
         assert!(num_inputs > CHECK_SCRIPTS_PARALLELISM_THRESHOLD);
 
-        let redeem_script = ScriptBuilder::new()
-            .add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize])
-            .unwrap()
-            .add_op(OpDup)
-            .unwrap()
-            .add_op(OpDrop)
-            .unwrap()
-            .drain();
+        let signature_prefix =
+            ScriptBuilder::new().add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize]).unwrap().drain();
+        let redeem_script = ScriptBuilder::new().add_op(OpDup).unwrap().add_op(OpDrop).unwrap().drain();
         let script_public_key = pay_to_script_hash_script(&redeem_script);
         let outputs = vec![TransactionOutput {
             value: 1,
@@ -292,7 +287,8 @@ mod tests {
                     transaction_id: TransactionId::from_bytes([(i as u8).wrapping_add(1); 32]),
                     index: 0,
                 },
-                signature_script: pay_to_script_hash_signature_script(redeem_script.clone(), vec![]).expect("the script is canonical"),
+                signature_script: pay_to_script_hash_signature_script(redeem_script.clone(), signature_prefix.clone())
+                    .expect("the script is canonical"),
                 sequence: 0,
                 mass: TxInputMass::ComputeBudget(1.into()),
             })

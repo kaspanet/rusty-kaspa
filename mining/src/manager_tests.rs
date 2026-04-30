@@ -177,7 +177,7 @@ mod tests {
             // when the mempool will submit this transaction for validation.
             let mut transaction = create_transaction_with_utxo_entry(0, 1);
             Arc::make_mut(&mut transaction.tx).gas = 1000;
-            let tx_err = TxRuleError::TxHasGas;
+            let tx_err = TxRuleError::TxHasGas("simulated non-zero gas validation error");
             let expected = match rbf_policy {
                 RbfPolicy::Forbidden | RbfPolicy::Allowed => Err(RuleError::from(tx_err.clone())),
                 RbfPolicy::Mandatory => Err(RuleError::RejectRbfNoDoubleSpend),

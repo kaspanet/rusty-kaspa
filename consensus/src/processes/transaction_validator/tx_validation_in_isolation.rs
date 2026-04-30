@@ -123,13 +123,17 @@ fn check_gas(tx: &Transaction) -> TxResult<()> {
         return Ok(());
     }
 
+    if tx.version < TX_VERSION_TOCCATA {
+        return Err(TxRuleError::TxHasGas("gas is only allowed for Toccata-or-newer tx versions"));
+    }
+
     // Only post-Toccata non-system lanes may carry gas; reserved system lanes
     // have a 19-byte zero suffix and must remain gas-free.
-    if tx.version >= TX_VERSION_TOCCATA && !matches!(tx.subnetwork_id.as_bytes(), [_x, rest @ ..] if rest == ZEROES_19) {
+    if !matches!(tx.subnetwork_id.as_bytes(), [_x, rest @ ..] if rest == ZEROES_19) {
         return Ok(());
     }
 
-    Err(TxRuleError::TxHasGas)
+    Err(TxRuleError::TxHasGas("native / system subnetworks must use zero gas"))
 }
 
 fn check_transaction_version(tx: &Transaction) -> TxResult<()> {
@@ -360,7 +364,7 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.gas = 1;
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TxHasGas));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TxHasGas(_)));
 
         let mut tx = valid_tx.clone();
         tx.payload = vec![0];
@@ -458,16 +462,16 @@ mod tests {
 
         let user_lane = sid([0, 0, 0, 1], [0; SUBNETWORK_ZERO_TAIL_LEN]);
         let reserved_shape = SubnetworkId::from_byte(2);
-        for (subnetwork_id, version, expected) in [
-            (SUBNETWORK_ID_NATIVE, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
-            (SUBNETWORK_ID_COINBASE, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
-            (reserved_shape, TX_VERSION_TOCCATA, Err(TxRuleError::TxHasGas)),
-            (user_lane, TX_VERSION, Err(TxRuleError::TxHasGas)),
-            (user_lane, TX_VERSION_TOCCATA, Ok(())),
+        for (subnetwork_id, version, gas_allowed) in [
+            (SUBNETWORK_ID_NATIVE, TX_VERSION_TOCCATA, false),
+            (SUBNETWORK_ID_COINBASE, TX_VERSION_TOCCATA, false),
+            (reserved_shape, TX_VERSION_TOCCATA, false),
+            (user_lane, TX_VERSION, false),
+            (user_lane, TX_VERSION_TOCCATA, true),
         ] {
             let mut tx = tx_with(subnetwork_id, version);
             tx.gas = 1;
-            assert_eq!(super::check_gas(&tx), expected);
+            assert_match!((super::check_gas(&tx), gas_allowed), (Ok(()), true) | (Err(TxRuleError::TxHasGas(_)), false));
         }
     }
 }
