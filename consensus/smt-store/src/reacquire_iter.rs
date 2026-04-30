@@ -292,4 +292,35 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn reacquiring_iterator_seeks_next_key_when_current_key_is_deleted_before_reacquire() {
+        let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+
+        for i in 0..4u8 {
+            db.put([i], [i + 100]).unwrap();
+        }
+
+        let mut raw = db.raw_iterator();
+        let mut reacq = ReacquiringRawIterator::new(&db, 3);
+
+        raw.seek([0]);
+        reacq.seek([0]);
+        assert_eq!(current(&raw), current(&reacq));
+
+        raw.next();
+        reacq.next();
+        assert_eq!(current(&raw), Some((vec![1], vec![101])));
+        assert_eq!(current(&raw), current(&reacq));
+
+        // With reacquire interval 3, the seek to 0 and next to 1 consumed two budget
+        // steps, so the next move to 2 triggers reacquisition at key 2.
+        db.delete([2]).unwrap();
+
+        raw.next();
+        reacq.next();
+
+        assert_eq!(current(&raw), Some((vec![2], vec![102])));
+        assert_eq!(current(&reacq), Some((vec![3], vec![103])));
+    }
 }
