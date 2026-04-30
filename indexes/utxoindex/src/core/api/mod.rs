@@ -6,7 +6,7 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::spawn_blocking;
 use kaspa_database::prelude::StoreResult;
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKey};
 use parking_lot::RwLock;
 use std::{collections::HashSet, fmt::Debug, sync::Arc};
 
@@ -26,6 +26,14 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     ///
     /// Note: Use a read lock when accessing this method
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
+
+    /// Retrieve ordered UTXOs for multiple script public keys, bounded by an inclusive DAA-score range.
+    fn get_utxos_by_script_public_keys_by_daa_score(
+        &self,
+        script_public_keys: ScriptPublicKeys,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKey>;
 
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
 
@@ -72,6 +80,21 @@ impl UtxoIndexProxy {
 
     pub async fn get_utxos_by_script_public_keys(self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         spawn_blocking(move || self.inner.read().get_utxos_by_script_public_keys(script_public_keys)).await.unwrap()
+    }
+
+    pub async fn get_utxos_by_script_public_keys_by_daa_score(
+        self,
+        script_public_keys: ScriptPublicKeys,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKey> {
+        spawn_blocking(move || {
+            self.inner
+                .read()
+                .get_utxos_by_script_public_keys_by_daa_score(script_public_keys, from_daa_score, to_daa_score)
+        })
+        .await
+        .unwrap()
     }
 
     pub async fn get_balance_by_script_public_keys(

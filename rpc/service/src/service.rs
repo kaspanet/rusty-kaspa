@@ -708,6 +708,59 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
     }
 
+    async fn get_utxos_by_addresses_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxosByAddressesV2Request,
+    ) -> RpcResult<GetUtxosByAddressesV2Response> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let GetUtxosByAddressesV2Request { addresses, from_daa_score, to_daa_score } = request;
+
+        let mut script_public_key_to_address = HashMap::new();
+        for address in addresses {
+            script_public_key_to_address.entry(pay_to_address_script(&address)).or_insert(address);
+        }
+
+        let ordered_utxos_by_script_public_key = self
+            .utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_by_script_public_keys_by_daa_score(
+                script_public_key_to_address.keys().cloned().collect(),
+                from_daa_score,
+                to_daa_score,
+            )
+            .await
+            .map_err(|e| RpcError::General(e.to_string()))?;
+
+        let mut entries = Vec::new();
+        for (script_public_key, ordered_entries) in ordered_utxos_by_script_public_key {
+            let address = script_public_key_to_address
+                .get(&script_public_key)
+                .expect("script public key should map to source address");
+            entries.extend(ordered_entries.into_iter().map(|(key_data, compact_utxo)| RpcUtxosByAddressesEntry {
+                address: Some(address.clone()),
+                outpoint: key_data.transaction_outpoint.into(),
+                utxo_entry: RpcUtxoEntry::new(
+                    compact_utxo.amount,
+                    script_public_key.clone(),
+                    key_data.daa_score,
+                    compact_utxo.is_coinbase,
+                ),
+            }));
+        }
+
+        Ok(GetUtxosByAddressesV2Response::new(entries))
+    }
+
     async fn get_balance_by_address_call(
         &self,
         _connection: Option<&DynRpcConnection>,

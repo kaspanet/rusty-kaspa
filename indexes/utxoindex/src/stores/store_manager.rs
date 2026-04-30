@@ -6,22 +6,27 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKey};
 
 use crate::{
     IDENT,
+    errors::{UtxoIndexError, UtxoIndexResult},
     model::UtxoSetByScriptPublicKey,
     stores::{
+        db_version::{DbUtxoIndexDbVersionStore, UtxoIndexDbVersionStore, UtxoIndexDbVersionStoreReader},
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },
 };
 
+pub const UTXOINDEX_DB_VERSION: u16 = 1;
+
 #[derive(Clone)]
 pub struct Store {
     utxoindex_tips_store: DbUtxoIndexTipsStore,
     circulating_supply_store: DbCirculatingSupplyStore,
+    db_version_store: DbUtxoIndexDbVersionStore,
     utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore,
 }
 
@@ -30,12 +35,54 @@ impl Store {
         Self {
             utxoindex_tips_store: DbUtxoIndexTipsStore::new(db.clone()),
             circulating_supply_store: DbCirculatingSupplyStore::new(db.clone()),
+            db_version_store: DbUtxoIndexDbVersionStore::new(db.clone()),
             utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty),
         }
     }
 
-    pub fn get_utxos_by_script_public_key(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
+    pub fn has_legacy_db_version(&self) -> UtxoIndexResult<bool> {
+        let tips_exist = match self.utxoindex_tips_store.get() {
+            Ok(_) => true,
+            Err(kaspa_database::prelude::StoreError::KeyNotFound(_)) => false,
+            Err(err) => return Err(UtxoIndexError::StoreAccessError(err)),
+        };
+
+        let supply_exists = match self.circulating_supply_store.get() {
+            Ok(_) => true,
+            Err(kaspa_database::prelude::StoreError::KeyNotFound(_)) => false,
+            Err(err) => return Err(UtxoIndexError::StoreAccessError(err)),
+        };
+
+        match self.db_version_store.get() {
+            Ok(version) => Ok(version != UTXOINDEX_DB_VERSION),
+            Err(kaspa_database::prelude::StoreError::KeyNotFound(_)) => Ok(tips_exist || supply_exists),
+            Err(err) => Err(UtxoIndexError::StoreAccessError(err)),
+        }
+    }
+
+    pub fn ensure_db_version_current(&mut self) -> UtxoIndexResult<()> {
+        match self.db_version_store.get() {
+            Ok(version) if version == UTXOINDEX_DB_VERSION => Ok(()),
+            Ok(_) | Err(kaspa_database::prelude::StoreError::KeyNotFound(_)) => {
+                self.db_version_store.set(UTXOINDEX_DB_VERSION)?;
+                Ok(())
+            }
+            Err(err) => Err(UtxoIndexError::StoreAccessError(err)),
+        }
+    }
+
+    pub fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys(script_public_keys)
+    }
+
+    pub fn get_utxos_by_script_public_keys_by_daa_score(
+        &self,
+        script_public_keys: ScriptPublicKeys,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKey> {
+        self.utxos_by_script_public_key_store
+            .get_utxos_from_script_public_keys_by_daa_score(script_public_keys, from_daa_score, to_daa_score)
     }
 
     pub fn get_balance_by_script_public_key(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey> {
@@ -114,6 +161,7 @@ impl Store {
         // Clear all
         self.utxoindex_tips_store.remove()?;
         self.circulating_supply_store.remove()?;
+        self.db_version_store.remove()?;
         self.utxos_by_script_public_key_store.delete_all()?;
 
         trace!("[{0}] clearing utxoindex database - success!", IDENT);

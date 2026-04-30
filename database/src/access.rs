@@ -218,6 +218,7 @@ where
         &self,
         bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
         seek_from: Option<TKey>, // iter whole range if None
+        seek_to: Option<TKey>,   // iter until the seek_to key (exclusive) if Some, else iter whole range.
         limit: usize,            // amount to take.
         skip_first: bool,        // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
     ) -> impl Iterator<Item = KeyDataResult<TData>> + '_
@@ -244,17 +245,25 @@ where
             None => self.db.iterator_opt(IteratorMode::Start, read_opts),
         };
 
+        let seek_to_bytes = seek_to.map(|seek_key| DbKey::new(&self.prefix, seek_key).as_ref().to_vec());
+
         if skip_first {
             db_iterator.next();
         }
 
-        db_iterator.take(limit).map(move |item| match item {
-            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
-                Ok(value) => Ok((key_bytes[db_key.prefix_len()..].into(), value)),
+        db_iterator
+            .take_while(move |item| match (&seek_to_bytes, item) {
+                (Some(seek_to_bytes), Ok((key_bytes, _))) => key_bytes.as_ref() < seek_to_bytes.as_slice(),
+                _ => true,
+            })
+            .take(limit)
+            .map(move |item| match item {
+                Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
+                    Ok(value) => Ok((key_bytes[db_key.prefix_len()..].into(), value)),
+                    Err(err) => Err(err.into()),
+                },
                 Err(err) => Err(err.into()),
-            },
-            Err(err) => Err(err.into()),
-        })
+            })
     }
 
     pub fn prefix(&self) -> &[u8] {

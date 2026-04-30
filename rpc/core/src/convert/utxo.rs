@@ -16,10 +16,15 @@ pub fn utxo_set_into_rpc(item: &UtxoSetByScriptPublicKey, prefix: Option<Prefix>
             let address = prefix.and_then(|x| extract_script_pub_key_address(script_public_key, x).ok());
             utxo_collection
                 .iter()
-                .map(|(outpoint, entry)| RpcUtxosByAddressesEntry {
+                .map(|(utxo_entry_key_data, entry)| RpcUtxosByAddressesEntry {
                     address: address.clone(),
-                    outpoint: (*outpoint).into(),
-                    utxo_entry: RpcUtxoEntry::new(entry.amount, script_public_key.clone(), entry.block_daa_score, entry.is_coinbase),
+                    outpoint: utxo_entry_key_data.transaction_outpoint.into(),
+                    utxo_entry: RpcUtxoEntry::new(
+                        entry.amount,
+                        script_public_key.clone(),
+                        utxo_entry_key_data.daa_score,
+                        entry.is_coinbase,
+                    ),
                 })
                 .collect::<Vec<_>>()
         })

@@ -4,6 +4,7 @@ use kaspa_consensus_core::{
     utxo::utxo_diff::UtxoDiff,
 };
 use kaspa_hashes::Hash;
+use kaspa_index_core::indexed_utxos::UtxoEntryKeyData;
 use kaspa_utils::hashmap::NestedHashMapExtensions;
 
 use crate::model::{CirculatingSupplyDiff, CompactUtxoEntry, UtxoChanges, UtxoSetByScriptPublicKey};
@@ -34,8 +35,8 @@ impl UtxoIndexChanges {
 
             self.utxo_changes.added.insert_into_nested(
                 utxo_entry.script_public_key,
-                transaction_outpoint,
-                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+                UtxoEntryKeyData::new(utxo_entry.block_daa_score, transaction_outpoint),
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.is_coinbase),
             );
         }
 
@@ -44,8 +45,8 @@ impl UtxoIndexChanges {
 
             self.utxo_changes.removed.insert_into_nested(
                 utxo_entry.script_public_key,
-                transaction_outpoint,
-                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+                UtxoEntryKeyData::new(utxo_entry.block_daa_score, transaction_outpoint),
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.is_coinbase),
             );
         }
     }
@@ -59,8 +60,8 @@ impl UtxoIndexChanges {
 
             self.utxo_changes.added.insert_into_nested(
                 utxo_entry.script_public_key,
-                transaction_outpoint,
-                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+                UtxoEntryKeyData::new(utxo_entry.block_daa_score, transaction_outpoint),
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.is_coinbase),
             );
         }
     }

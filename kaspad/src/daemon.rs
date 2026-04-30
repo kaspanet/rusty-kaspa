@@ -607,14 +607,32 @@ Do you confirm? (y/n)";
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
-            .with_db_path(utxoindex_db_dir)
+        let mut utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
+            .with_db_path(utxoindex_db_dir.clone())
             .with_files_limit(utxo_files_limit)
             .with_preset(rocksdb_preset)
             .with_wal_dir(wal_dir.clone())
             .with_cache_budget(cache_budget)
             .build()
             .unwrap();
+
+        if UtxoIndex::has_legacy_db_version(utxoindex_db.clone()).expect("failed checking UTXO index db version") {
+            let msg = "UTXO index database has an older db version and must be rebuilt to continue. Do you confirm rebuilding the UTXO index DB? (y/n)";
+            get_user_approval_or_exit(msg, args.yes);
+            drop(utxoindex_db);
+            fs::remove_dir_all(utxoindex_db_dir.as_path()).unwrap();
+            fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+
+            utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
+                .with_db_path(utxoindex_db_dir.clone())
+                .with_files_limit(utxo_files_limit)
+                .with_preset(rocksdb_preset)
+                .with_wal_dir(wal_dir.clone())
+                .with_cache_budget(cache_budget)
+                .build()
+                .unwrap();
+        }
+
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), subscription_context.clone(), Some(utxoindex)));
         Some(index_service)

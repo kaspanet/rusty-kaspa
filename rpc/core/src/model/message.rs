@@ -1508,6 +1508,68 @@ impl Deserializer for GetUtxosByAddressesResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GetUtxosByAddressesV2Request {
+    pub addresses: Vec<RpcAddress>,
+    pub from_daa_score: Option<u64>,
+    pub to_daa_score: Option<u64>,
+}
+
+impl GetUtxosByAddressesV2Request {
+    pub fn new(addresses: Vec<RpcAddress>, from_daa_score: Option<u64>, to_daa_score: Option<u64>) -> Self {
+        Self { addresses, from_daa_score, to_daa_score }
+    }
+}
+
+impl Serializer for GetUtxosByAddressesV2Request {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcAddress>, &self.addresses, writer)?;
+        store!(Option<u64>, &self.from_daa_score, writer)?;
+        store!(Option<u64>, &self.to_daa_score, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByAddressesV2Request {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let addresses = load!(Vec<RpcAddress>, reader)?;
+        let from_daa_score = load!(Option<u64>, reader)?;
+        let to_daa_score = load!(Option<u64>, reader)?;
+        Ok(Self { addresses, from_daa_score, to_daa_score })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByAddressesV2Response {
+    pub entries: Vec<RpcUtxosByAddressesEntry>,
+}
+
+impl GetUtxosByAddressesV2Response {
+    pub fn new(entries: Vec<RpcUtxosByAddressesEntry>) -> Self {
+        Self { entries }
+    }
+}
+
+impl Serializer for GetUtxosByAddressesV2Response {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.entries, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByAddressesV2Response {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+        Ok(Self { entries })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BanRequest {
     pub ip: RpcIpAddress,
 }
