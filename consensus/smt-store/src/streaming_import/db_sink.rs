@@ -150,10 +150,6 @@ impl MergeSink for DbSink<'_> {
     }
 
     fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf, blue_score: u64) -> Result<(), Self::Error> {
-        // Single-leaf-tree finalize path: ensure the lane is recorded as
-        // sealed at the actual write depth. `chain_up` may have already
-        // recorded `target_depth + 1`; the `and_modify` below keeps the max.
-        self.record_seal(leaf.lane_key, branch_key.depth);
         self.write_node(branch_key, Node::Collapsed(leaf), blue_score)
     }
 

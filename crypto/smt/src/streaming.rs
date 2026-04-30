@@ -91,13 +91,13 @@ pub trait MergeSink {
     /// Write a collapsed single-leaf subtree at the given position.
     fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf, blue_score: u64) -> Result<(), Self::Error>;
 
-    /// Called once per leaf, when the leaf's stack position is fixed and its
-    /// collapsed-leaf write depth is known. Fires from `chain_up` for a
-    /// leaf settling onto the stack (or being aligned right before its merge),
-    /// and from `merge_pair` for any `Collapsed` child being merged. Both
-    /// paths converge on the same `seal_depth = parent_depth + 1` clamped to
-    /// `DEPTH - 1`, so a leaf may legitimately receive multiple `record_seal`
-    /// calls — implementations should treat them as idempotent (max).
+    /// Called once per leaf, when the leaf's stack position is fixed.
+    /// Fires exactly once from `chain_up`'s Collapsed branch — either when
+    /// the leaf is being aligned right before its first `merge_pair`, or
+    /// when it's settling onto the stack via the after-loop `chain_up` (the
+    /// "stays on stack until popped later" case). `seal_depth` is
+    /// `target_depth + 1` clamped to `DEPTH - 1`, equal to where the leaf's
+    /// collapsed-leaf write will land when something later pops it.
     ///
     /// Default no-op so test sinks need not implement it.
     fn record_seal(&mut self, _lane_key: Hash, _seal_depth: u8) {}
@@ -291,16 +291,6 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
         };
 
         let parent_blue_score = left.max_blue_score.max(current.max_blue_score);
-
-        // Each Collapsed child is being merged for the first (and only) time as a leaf.
-        // After this, current.kind becomes Internal and the lane_key never reappears as a rep_key.
-        let seal_depth = parent_depth.saturating_add(1).min((DEPTH - 1) as u8);
-        if let EntryKind::Collapsed(leaf) = left.kind {
-            self.sink.record_seal(leaf.lane_key, seal_depth);
-        }
-        if let EntryKind::Collapsed(leaf) = current.kind {
-            self.sink.record_seal(leaf.lane_key, seal_depth);
-        }
 
         let result = self
             .sink
