@@ -85,10 +85,14 @@ use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
 use kaspa_core::info;
+#[cfg(feature = "test-smt-pruning-diagnostics")]
+use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_smt_store::processor::SmtReadBounds;
+#[cfg(feature = "test-smt-pruning-diagnostics")]
+use kaspa_smt_store::processor::StaleSmtEntriesCount;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -621,6 +625,23 @@ impl Consensus {
         }
 
         Ok(())
+    }
+
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    #[doc(hidden)]
+    /// Diagnostic invariant helper: count versioned SMT entries at or below a
+    /// pruning cutoff. Used by integration tests to catch stale pruning data.
+    pub fn count_stale_smt_entries(&self, cutoff_blue_score: u64) -> StoreResult<StaleSmtEntriesCount> {
+        self.storage.smt_stores.count_entries_at_or_below(cutoff_blue_score)
+    }
+
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    #[doc(hidden)]
+    /// Diagnostic invariant helper: return whether the pruning checkpoint has
+    /// caught up with the retention-period root, which marks pruning complete.
+    pub fn is_pruning_stable(&self) -> StoreResult<bool> {
+        let pruning_point_read = self.pruning_point_store.read();
+        Ok(pruning_point_read.retention_checkpoint()? == pruning_point_read.retention_period_root()?)
     }
 }
 
@@ -1236,7 +1257,18 @@ impl ConsensusApi for Consensus {
             Ok(ImportLane { lane_key, lane_tip: *verified.data(), blue_score: verified.blue_score(), proof })
         });
 
-        Ok(Box::new(mapped))
+        // Chain a one-shot tail so a fully drained stream verifies that
+        // pruning did not advance before the stream completed.
+        let sl = self.session_lock().clone();
+        let pps = self.pruning_point_store.clone();
+        let final_check = std::iter::once_with(move || {
+            let _g = sl.blocking_read();
+            let upp = pps.read().pruning_point().unwrap();
+            if upp != pp { Some(Err(ConsensusError::UnexpectedPruningPoint)) } else { None }
+        })
+        .flatten();
+
+        Ok(Box::new(mapped.chain(final_check)))
     }
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {

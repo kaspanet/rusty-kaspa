@@ -90,6 +90,17 @@ pub trait MergeSink {
 
     /// Write a collapsed single-leaf subtree at the given position.
     fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf, blue_score: u64) -> Result<(), Self::Error>;
+
+    /// Called once per leaf, when the leaf's stack position is fixed.
+    /// Fires exactly once from `chain_up`'s Collapsed branch — either when
+    /// the leaf is being aligned right before its first `merge_pair`, or
+    /// when it's settling onto the stack via the after-loop `chain_up` (the
+    /// "stays on stack until popped later" case). `seal_depth` is
+    /// `target_depth + 1` clamped to `DEPTH - 1`, equal to where the leaf's
+    /// collapsed-leaf write will land when something later pops it.
+    ///
+    /// Default no-op so test sinks need not implement it.
+    fn record_seal(&mut self, _lane_key: Hash, _seal_depth: u8) {}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -209,6 +220,10 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
         &self.sink
     }
 
+    pub fn sink_mut(&mut self) -> &mut S {
+        &mut self.sink
+    }
+
     fn seal_up_to(&mut self, current: &mut StackEntry, target_depth: usize) -> Result<(), StreamError<S::Error>> {
         while let Some(&StackEntry { depth: top_depth, .. }) = self.stack.last()
             && top_depth >= target_depth
@@ -233,7 +248,16 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
             return Ok(());
         }
         match current.kind {
-            EntryKind::Collapsed(_) => current.depth = target_depth,
+            EntryKind::Collapsed(leaf) => {
+                // The leaf settles on the stack at `target_depth`; whenever it
+                // later gets popped as `left`, its collapsed-leaf write lands
+                // at `target_depth + 1`. Recording the seal eagerly here lets
+                // downstream sinks resolve pending bookkeeping for this leaf
+                // without waiting for the deferred merge.
+                let seal_depth = (target_depth + 1).min(DEPTH - 1) as u8;
+                self.sink.record_seal(leaf.lane_key, seal_depth);
+                current.depth = target_depth;
+            }
             EntryKind::Internal => {
                 let chain_to = target_depth + 1;
                 if current.depth > chain_to {

@@ -31,5 +31,8 @@ kaspa-seq-commit.workspace = true
 kaspa-smt = { workspace = true, features = ["test-utils"] }
 rand.workspace = true
 
+[features]
+test-smt-pruning-diagnostics = []
+
 [lints]
 workspace = true

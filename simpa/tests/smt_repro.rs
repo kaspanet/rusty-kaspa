@@ -1,16 +1,26 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    thread::sleep,
+    time::{Duration, Instant},
+};
 
 use kaspa_consensus::{
     config::ConfigBuilder,
+    consensus::Consensus,
     constants::perf::PerfParams,
     model::stores::ghostdag::KType,
     params::{DEVNET_PARAMS, ForkActivation, NETWORK_DELAY_BOUND, Params},
 };
 use kaspa_consensus_core::{
-    BlockLevel, api::ConsensusApi, config::bps::calculate_ghostdag_k, subnets::SubnetworkId, tx::TransactionOutpoint,
+    BlockLevel,
+    api::{ConsensusApi, ImportLane},
+    config::bps::calculate_ghostdag_k,
+    subnets::SubnetworkId,
+    tx::TransactionOutpoint,
 };
+use kaspa_database::{create_temp_db, prelude::ConnBuilder};
 use kaspa_hashes::{Hash, ZERO_HASH};
-use kaspa_smt_store::processor::SmtReadBounds;
+use kaspa_smt_store::{processor::SmtStores, streaming_import::streaming_import};
 use simpa::simulator::{
     miner::{LaneContext, LaneProducer},
     network::KaspaNetworkSimulator,
@@ -29,6 +39,9 @@ const PRUNING_DEPTH: u64 = 100 * 2 * 2 + 50;
 const MIN_TARGET_BLOCKS: u64 = 2_000;
 const TARGET_BLOCKS: u64 =
     if MIN_TARGET_BLOCKS > PRUNING_DEPTH + 2 * FINALITY_DEPTH { MIN_TARGET_BLOCKS } else { PRUNING_DEPTH + 2 * FINALITY_DEPTH };
+const SMT_CHUNK_SIZE: usize = 4096;
+const SMT_PRUNING_SETTLE_TIMEOUT: Duration = Duration::from_secs(30);
+const SMT_PRUNING_SETTLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 static REPRO_LOCK: Mutex<()> = Mutex::new(());
 
@@ -68,29 +81,58 @@ fn assert_pruning_point_smt_roundtrip(seed: u64) {
             Box::new(ChurningLaneProducer::new(seed ^ miner_id, LANE_COUNT, LANE_BAND, LANE_EPOCH_BLOCKS, LANE_CARRY_PERCENT))
         })
         .run(u64::MAX);
+
+    wait_for_smt_pruning_to_settle(&consensus, seed);
     consensus.shutdown(handles);
 
     let pp = consensus.pruning_point();
-    let pp_header = consensus.get_header(pp).unwrap();
+    let pp_blue_score = consensus.get_header(pp).unwrap().blue_score;
+    let smt_cutoff = pp_blue_score.saturating_sub(FINALITY_DEPTH).saturating_sub(1);
     let metadata = consensus.get_pruning_point_smt_metadata(pp).unwrap();
-    let exported_lanes = count_exported_smt_lanes(&*consensus, pp);
-    let (recomputed_root, recomputed_lanes) = consensus
-        .smt_stores
-        .recompute_lanes_root_from_leaf_stream(
-            SmtReadBounds::for_pov(pp_header.blue_score, FINALITY_DEPTH),
-            metadata.active_lanes_count,
-            |bh| bh == ZERO_HASH || consensus.is_chain_ancestor_of(bh, pp).unwrap_or(false),
-        )
-        .unwrap();
+    let (imported_root, imported_lanes) =
+        import_exported_pruning_point_smt(&*consensus, pp, pp_blue_score, metadata.lanes_root, metadata.active_lanes_count);
+    let stale = consensus
+        .count_stale_smt_entries(smt_cutoff)
+        .unwrap_or_else(|e| panic!("seed {seed}: failed to count stale SMT entries at or below cutoff {smt_cutoff}: {e}"));
+    if stale.total() > 0 {
+        panic!(
+            "seed {seed}: stale SMT entries remained at or below cutoff {smt_cutoff}: \
+             branch_versions={}, lane_versions={}, score_index={}, total={}",
+            stale.branch_versions,
+            stale.lane_versions,
+            stale.score_index,
+            stale.total()
+        );
+    }
     let metadata_lanes = metadata.active_lanes_count;
     let metadata_root = metadata.lanes_root;
 
     drop(consensus);
     drop(lifetime);
 
-    assert_eq!(exported_lanes, metadata_lanes, "seed {seed}: exported lane count does not match pruning-point metadata");
-    assert_eq!(recomputed_lanes, metadata_lanes, "seed {seed}: recomputed lane count does not match pruning-point metadata");
-    assert_eq!(recomputed_root, metadata_root, "seed {seed}: recomputed SMT root does not match pruning-point metadata");
+    assert_eq!(imported_lanes, metadata_lanes, "seed {seed}: imported lane count does not match pruning-point metadata");
+    assert_eq!(imported_root, metadata_root, "seed {seed}: imported SMT root does not match pruning-point metadata");
+}
+
+fn wait_for_smt_pruning_to_settle(consensus: &Consensus, seed: u64) {
+    let start = Instant::now();
+
+    // The simulator stops producing blocks before the pruning processor has
+    // necessarily drained its last message. Shutting down here can interrupt a
+    // pruning-point move after the pruning point store advances but before SMT
+    // pruning completes. The retention checkpoint catches up with the
+    // retention-period root only after pruning has completed.
+    loop {
+        if consensus.is_pruning_stable().unwrap_or_else(|e| panic!("seed {seed}: failed to read pruning stability marker: {e}")) {
+            return;
+        }
+
+        if start.elapsed() >= SMT_PRUNING_SETTLE_TIMEOUT {
+            panic!("seed {seed}: pruning did not settle within {SMT_PRUNING_SETTLE_TIMEOUT:?}");
+        }
+
+        sleep(SMT_PRUNING_SETTLE_POLL_INTERVAL);
+    }
 }
 
 fn apply_pruning_repro_params(params: &mut Params) {
@@ -133,16 +175,43 @@ fn apply_perf_params(perf: &mut PerfParams) {
     perf.virtual_processor_num_threads = 2;
 }
 
-fn count_exported_smt_lanes(consensus: &dyn ConsensusApi, pp: Hash) -> u64 {
-    let stream = consensus.open_pruning_point_smt_lane_stream(pp).unwrap();
-    let mut count = 0u64;
+fn import_exported_pruning_point_smt(
+    consensus: &dyn ConsensusApi,
+    pp: Hash,
+    pp_blue_score: u64,
+    lanes_root: Hash,
+    expected_lane_count: u64,
+) -> (Hash, u64) {
+    let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let stores = SmtStores::new(db.clone(), 1, 1);
+    let mut stream = consensus.open_pruning_point_smt_lane_stream(pp).unwrap();
+    let chunks = std::iter::from_fn(move || {
+        let mut batch: Vec<ImportLane> = Vec::with_capacity(SMT_CHUNK_SIZE);
+        for _ in 0..SMT_CHUNK_SIZE {
+            let Some(lane) = stream.next() else { break };
+            batch.push(lane.unwrap());
+        }
+        (!batch.is_empty()).then_some(batch)
+    });
 
-    for lane in stream {
-        lane.unwrap();
-        count += 1;
-    }
+    let result = streaming_import(&db, &stores, ZERO_HASH, expected_lane_count, lanes_root, chunks, 4096).unwrap();
+    let imported_root = result.root;
+    let imported_lanes = result.lanes_imported;
 
-    count
+    stores.prune(&db, pp_blue_score);
+    let stale = stores.count_entries_at_or_below(pp_blue_score).unwrap();
+    assert_eq!(
+        stale.total(),
+        0,
+        "imported SMT stores must be empty after pruning at pruning-point score {pp_blue_score}: \
+         branch_versions={}, lane_versions={}, score_index={}, total={}",
+        stale.branch_versions,
+        stale.lane_versions,
+        stale.score_index,
+        stale.total()
+    );
+
+    (imported_root, imported_lanes)
 }
 
 struct ChurningLaneProducer {
@@ -198,14 +267,14 @@ impl ChurningLaneProducer {
     }
 }
 
-impl LaneProducer for ChurningLaneProducer {
-    fn next_lane(&mut self, ctx: LaneContext) -> SubnetworkId {
-        SubnetworkId::from_namespace(self.lane_number(&ctx).to_be_bytes())
-    }
-}
-
 fn outpoint_fingerprint(outpoint: TransactionOutpoint) -> u64 {
     let mut bytes = [0u8; 8];
     bytes.copy_from_slice(&outpoint.transaction_id.as_bytes()[..8]);
     u64::from_le_bytes(bytes) ^ outpoint.index as u64
+}
+
+impl LaneProducer for ChurningLaneProducer {
+    fn next_lane(&mut self, ctx: LaneContext) -> SubnetworkId {
+        SubnetworkId::from_namespace(self.lane_number(&ctx).to_be_bytes())
+    }
 }

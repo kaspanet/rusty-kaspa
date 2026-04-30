@@ -19,7 +19,6 @@ kaspa-core.workspace = true
 kaspa-database.workspace = true
 kaspa-hashes.workspace = true
 kaspa-perf-monitor.workspace = true
-kaspa-smt-store.workspace = true
 kaspa-utils.workspace = true
 
 async-channel.workspace = true
@@ -43,6 +42,9 @@ serde.workspace = true
 faster-hex.workspace = true
 kaspa-testing-integration.workspace = true
 
+[dev-dependencies]
+kaspa-consensus = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
+kaspa-smt-store = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]
