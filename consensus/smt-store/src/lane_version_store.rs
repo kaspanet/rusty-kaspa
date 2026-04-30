@@ -7,7 +7,7 @@ use zerocopy::{FromBytes, IntoBytes};
 
 use crate::keys::LaneVersionKey;
 use crate::maybe_fork::{MaybeFork, Verified};
-use crate::reacquire_iter::{RawCursor, ReacquiringRawIterator};
+use crate::reacquire_iter::ReacquiringRawIterator;
 use crate::values::LaneTipHash;
 
 type LaneRawIter<'a> = ReacquiringRawIterator<'a>;
@@ -268,8 +268,8 @@ fn start_seek_key(prefix: u8, from_lane_key: Option<Hash>, target_blue_score: u6
 /// previously inlined into `iter_all_canonical` — extracted so both the
 /// borrowed and owned iterators share one implementation. The caller owns
 /// `done`; this function sets it when the iterator is exhausted.
-fn advance_canonical_lane<I: RawCursor>(
-    iter: &mut I,
+fn advance_canonical_lane(
+    iter: &mut ReacquiringRawIterator<'_>,
     prefix: u8,
     min_blue_score: u64,
     max_blue_score: u64,

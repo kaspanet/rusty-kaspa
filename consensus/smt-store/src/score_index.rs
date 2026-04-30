@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind, ScoreIndexValue};
 use crate::maybe_fork::MaybeFork;
-use crate::reacquire_iter::{RawCursor, ReacquiringRawIterator};
+use crate::reacquire_iter::ReacquiringRawIterator;
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;

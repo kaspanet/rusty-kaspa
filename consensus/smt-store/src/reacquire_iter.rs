@@ -3,15 +3,6 @@ use rocksdb::{DBRawIteratorWithThreadMode, DBWithThreadMode, MultiThreaded};
 
 pub type RawIter<'a> = DBRawIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>;
 
-pub trait RawCursor {
-    fn valid(&self) -> bool;
-    fn key(&self) -> Option<&[u8]>;
-    fn value(&self) -> Option<&[u8]>;
-    fn seek(&mut self, key: impl AsRef<[u8]>);
-    fn next(&mut self);
-    fn status(&self) -> Result<(), rocksdb::Error>;
-}
-
 pub struct ReacquiringRawIterator<'a> {
     db: &'a DB,
     iter: RawIter<'a>,
@@ -25,37 +16,33 @@ impl<'a> ReacquiringRawIterator<'a> {
 
         Self { db, iter: db.raw_iterator(), steps_until_reacquire: reacquire_interval, reacquire_interval }
     }
-}
 
-impl RawCursor for ReacquiringRawIterator<'_> {
-    fn valid(&self) -> bool {
+    pub fn valid(&self) -> bool {
         self.iter.valid()
     }
 
-    fn key(&self) -> Option<&[u8]> {
+    pub fn key(&self) -> Option<&[u8]> {
         self.iter.key()
     }
 
-    fn value(&self) -> Option<&[u8]> {
+    pub fn value(&self) -> Option<&[u8]> {
         self.iter.value()
     }
 
-    fn seek(&mut self, key: impl AsRef<[u8]>) {
+    pub fn seek(&mut self, key: impl AsRef<[u8]>) {
         self.iter.seek(key.as_ref());
         self.consume_budget_at_current();
     }
 
-    fn next(&mut self) {
+    pub fn next(&mut self) {
         self.iter.next();
         self.consume_budget_at_current();
     }
 
-    fn status(&self) -> Result<(), rocksdb::Error> {
+    pub fn status(&self) -> Result<(), rocksdb::Error> {
         self.iter.status()
     }
-}
 
-impl ReacquiringRawIterator<'_> {
     fn consume_budget_at_current(&mut self) {
         if self.steps_until_reacquire <= 1 {
             self.reacquire_at_current();
@@ -87,39 +74,47 @@ impl ReacquiringRawIterator<'_> {
     }
 }
 
-impl RawCursor for RawIter<'_> {
-    fn valid(&self) -> bool {
-        self.valid()
-    }
-
-    fn key(&self) -> Option<&[u8]> {
-        self.key()
-    }
-
-    fn value(&self) -> Option<&[u8]> {
-        self.value()
-    }
-
-    fn seek(&mut self, key: impl AsRef<[u8]>) {
-        self.seek(key);
-    }
-
-    fn next(&mut self) {
-        self.next();
-    }
-
-    fn status(&self) -> Result<(), rocksdb::Error> {
-        self.status()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::ConnBuilder;
 
-    fn current(cursor: &impl RawCursor) -> Option<(Vec<u8>, Vec<u8>)> {
+    trait TestCursor {
+        fn valid(&self) -> bool;
+        fn key(&self) -> Option<&[u8]>;
+        fn value(&self) -> Option<&[u8]>;
+    }
+
+    impl TestCursor for RawIter<'_> {
+        fn valid(&self) -> bool {
+            self.valid()
+        }
+
+        fn key(&self) -> Option<&[u8]> {
+            self.key()
+        }
+
+        fn value(&self) -> Option<&[u8]> {
+            self.value()
+        }
+    }
+
+    impl TestCursor for ReacquiringRawIterator<'_> {
+        fn valid(&self) -> bool {
+            self.valid()
+        }
+
+        fn key(&self) -> Option<&[u8]> {
+            self.key()
+        }
+
+        fn value(&self) -> Option<&[u8]> {
+            self.value()
+        }
+    }
+
+    fn current(cursor: &impl TestCursor) -> Option<(Vec<u8>, Vec<u8>)> {
         if !cursor.valid() {
             return None;
         }
