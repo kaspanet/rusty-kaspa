@@ -427,6 +427,18 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetUtxosByAddressesV2 => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32])];
+                    let response = rpc_client
+                        .get_utxos_by_addresses_v2_call(None, GetUtxosByAddressesV2Request::new(addresses, None, None))
+                        .await
+                        .unwrap();
+                    assert!(response.entries.is_empty());
+                })
+            }
+
             KaspadPayloadOps::GetBalanceByAddress => {
                 let rpc_client = client.clone();
                 tst!(op, {
