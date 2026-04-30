@@ -238,24 +238,20 @@ where
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
 
-        let mut db_iterator = match seek_from {
-            Some(seek_key) => {
-                self.db.iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
-            }
-            None => self.db.iterator_opt(IteratorMode::Start, read_opts),
+        if let Some(seek_from) = &seek_from {
+            read_opts.set_iterate_lower_bound(DbKey::new(db_key.as_ref(), seek_from).as_ref());
+        };
+        if let Some(seek_to) = &seek_to {
+            read_opts.set_iterate_upper_bound(DbKey::new(db_key.as_ref(), seek_to).as_ref());
         };
 
-        let seek_to_bytes = seek_to.map(|seek_key| DbKey::new(&self.prefix, seek_key).as_ref().to_vec());
+        let mut db_iterator = self.db.iterator_opt(IteratorMode::Start, read_opts);
 
         if skip_first {
             db_iterator.next();
         }
 
         db_iterator
-            .take_while(move |item| match (&seek_to_bytes, item) {
-                (Some(seek_to_bytes), Ok((key_bytes, _))) => key_bytes.as_ref() < seek_to_bytes.as_slice(),
-                _ => true,
-            })
             .take(limit)
             .map(move |item| match item {
                 Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
