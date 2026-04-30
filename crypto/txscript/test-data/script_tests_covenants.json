@@ -4848,14 +4848,14 @@
     "",
     "IF 1 ENDIF",
     "",
-    "UNBALANCED_CONDITIONAL",
+    "INVALID_STACK_OPERATION",
     "The following tests check the if(stack.size() < N) tests in each opcode"
   ],
   [
     "",
     "NOTIF 1 ENDIF",
     "",
-    "UNBALANCED_CONDITIONAL",
+    "INVALID_STACK_OPERATION",
     "They are here to catch copy-and-paste errors"
   ],
   [
@@ -5976,13 +5976,13 @@
     "2",
     "IF TRUE ELSE FALSE",
     "",
-    "MINIMALIF"
+    "UNBALANCED_CONDITIONAL"
   ],
   [
     "2",
     "NOTIF TRUE ELSE FALSE",
     "",
-    "MINIMALIF"
+    "UNBALANCED_CONDITIONAL"
   ],
   [
     "Order of CHECKMULTISIG evaluation tests, inverted by swapping the order of"
