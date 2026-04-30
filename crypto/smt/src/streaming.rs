@@ -90,6 +90,15 @@ pub trait MergeSink {
 
     /// Write a collapsed single-leaf subtree at the given position.
     fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf, blue_score: u64) -> Result<(), Self::Error>;
+
+    /// Called when a leaf's collapsed-leaf state transitions into a merge —
+    /// once per leaf, at the moment its first/only `merge_pair` runs.
+    /// `seal_depth` is `parent_depth + 1` clamped to `DEPTH - 1`.
+    ///
+    /// Default no-op so test sinks need not implement it.
+    fn record_seal(&mut self, _lane_key: Hash, _blue_score: u64, _seal_depth: u8) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -209,6 +218,10 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
         &self.sink
     }
 
+    pub fn sink_mut(&mut self) -> &mut S {
+        &mut self.sink
+    }
+
     fn seal_up_to(&mut self, current: &mut StackEntry, target_depth: usize) -> Result<(), StreamError<S::Error>> {
         while let Some(&StackEntry { depth: top_depth, .. }) = self.stack.last()
             && top_depth >= target_depth
@@ -233,7 +246,16 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
             return Ok(());
         }
         match current.kind {
-            EntryKind::Collapsed(_) => current.depth = target_depth,
+            EntryKind::Collapsed(leaf) => {
+                // The leaf settles on the stack at `target_depth`; whenever it
+                // later gets popped as `left`, its collapsed-leaf write lands
+                // at `target_depth + 1`. Recording the seal eagerly here lets
+                // downstream sinks resolve pending bookkeeping for this leaf
+                // without waiting for the deferred merge.
+                let seal_depth = (target_depth + 1).min(DEPTH - 1) as u8;
+                self.sink.record_seal(leaf.lane_key, current.max_blue_score, seal_depth).map_err(StreamError::Sink)?;
+                current.depth = target_depth;
+            }
             EntryKind::Internal => {
                 let chain_to = target_depth + 1;
                 if current.depth > chain_to {
@@ -267,6 +289,16 @@ impl<H: SmtHasher, S: MergeSink> StreamingSmtBuilder<H, S> {
         };
 
         let parent_blue_score = left.max_blue_score.max(current.max_blue_score);
+
+        // Each Collapsed child is being merged for the first (and only) time as a leaf.
+        // After this, current.kind becomes Internal and the lane_key never reappears as a rep_key.
+        let seal_depth = parent_depth.saturating_add(1).min((DEPTH - 1) as u8);
+        if let EntryKind::Collapsed(leaf) = left.kind {
+            self.sink.record_seal(leaf.lane_key, left.max_blue_score, seal_depth).map_err(StreamError::Sink)?;
+        }
+        if let EntryKind::Collapsed(leaf) = current.kind {
+            self.sink.record_seal(leaf.lane_key, current.max_blue_score, seal_depth).map_err(StreamError::Sink)?;
+        }
 
         let result = self
             .sink

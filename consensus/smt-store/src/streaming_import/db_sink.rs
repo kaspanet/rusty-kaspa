@@ -1,5 +1,7 @@
 //! Batched RocksDB node writer implementing [`MergeSink`].
 
+use std::collections::HashMap;
+
 use kaspa_database::prelude::{BatchDbWriter, DB, StoreError, StoreResult};
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_smt::store::{BranchKey, CollapsedLeaf, Node};
@@ -18,7 +20,13 @@ pub(crate) struct DbSink<'a> {
     max_batch_entries: usize,
     block_hash: BlockHash,
     nodes_written: usize,
-    running_max_depth: u8,
+    /// Per-lane seal depth, populated by [`MergeSink::record_seal`] callbacks.
+    /// Presence in the map = the lane has been sealed (its seal_depth is the
+    /// deepest depth we'll ever need for branches with rep_key matching this
+    /// lane). Absence = unsealed; its containing pending score-index entry
+    /// can't flush yet. `streaming_import` calls [`forget_lane`] after
+    /// flushing an entry to bound memory.
+    lane_seal_depth: HashMap<Hash, u8>,
 }
 
 impl<'a> DbSink<'a> {
@@ -31,7 +39,7 @@ impl<'a> DbSink<'a> {
             max_batch_entries,
             block_hash,
             nodes_written: 0,
-            running_max_depth: 0,
+            lane_seal_depth: HashMap::with_capacity(max_batch_entries),
         }
     }
 
@@ -61,9 +69,6 @@ impl<'a> DbSink<'a> {
         )?;
         self.batch_count += 1;
         self.nodes_written += 1;
-        if bk.depth > self.running_max_depth {
-            self.running_max_depth = bk.depth;
-        }
         if self.batch_count >= self.max_batch_entries {
             self.flush_batch()?;
         }
@@ -82,11 +87,19 @@ impl<'a> DbSink<'a> {
         self.nodes_written
     }
 
-    /// Deepest branch-key depth observed across every `write_node` since
-    /// construction. Monotone — used by `streaming_import` to stamp each
-    /// chunk's score-index entries with a tight `max_depth` bound.
-    pub(crate) fn running_max_depth(&self) -> u8 {
-        self.running_max_depth
+    /// `Some(depth)` if the lane has been sealed, `None` otherwise.
+    pub(crate) fn seal_depth_for(&self, lane_key: &Hash) -> Option<u8> {
+        self.lane_seal_depth.get(lane_key).copied()
+    }
+
+    /// Drop the per-lane seal entry for each given `lane_key`. Called by
+    /// `streaming_import` after a pending score-index entry has been flushed,
+    /// so the map's footprint stays bounded by unflushed lanes rather than
+    /// the full import.
+    pub(crate) fn forget_lanes<I: IntoIterator<Item = Hash>>(&mut self, lane_keys: I) {
+        for lk in lane_keys {
+            self.lane_seal_depth.remove(&lk);
+        }
     }
 
     fn write_collapsed_child(&mut self, info: &ChildInfo) -> StoreResult<()> {
@@ -137,6 +150,15 @@ impl MergeSink for DbSink<'_> {
     }
 
     fn write_collapsed(&mut self, branch_key: BranchKey, leaf: CollapsedLeaf, blue_score: u64) -> Result<(), Self::Error> {
+        // Single-leaf-tree finalize path: ensure the lane is recorded as
+        // sealed at the actual write depth. `chain_up` may have already
+        // recorded `target_depth + 1`; the `and_modify` below keeps the max.
+        self.record_seal(leaf.lane_key, blue_score, branch_key.depth)?;
         self.write_node(branch_key, Node::Collapsed(leaf), blue_score)
+    }
+
+    fn record_seal(&mut self, lane_key: Hash, _blue_score: u64, seal_depth: u8) -> Result<(), Self::Error> {
+        self.lane_seal_depth.entry(lane_key).and_modify(|d| *d = (*d).max(seal_depth)).or_insert(seal_depth);
+        Ok(())
     }
 }
