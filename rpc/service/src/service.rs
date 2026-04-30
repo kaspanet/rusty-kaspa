@@ -72,6 +72,7 @@ use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use kaspa_utxoindex::model::OrderedUtxoSetByScriptPublicKey;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -271,6 +272,20 @@ impl RpcCoreService {
             .clone()
             .unwrap()
             .get_balance_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+            .await
+            .unwrap_or_default()
+    }
+
+    async fn get_ordered_utxo_set_by_script_public_key<'a>(
+        &self,
+        addresses: impl Iterator<Item = &'a RpcAddress>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+    ) -> OrderedUtxoSetByScriptPublicKey {
+        self.utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_by_script_public_keys_by_daa_score(addresses.map(pay_to_address_script).collect(), from_daa_score, to_daa_score)
             .await
             .unwrap_or_default()
     }
@@ -722,42 +737,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             return Err(RpcError::ConsensusInTransitionalIbdState);
         }
 
-        let GetUtxosByAddressesV2Request { addresses, from_daa_score, to_daa_score } = request;
+        let ordered_entry_map = self
+            .get_ordered_utxo_set_by_script_public_key(request.addresses.iter(), request.from_daa_score, request.to_daa_score)
+            .await;
 
-        let mut script_public_key_to_address = HashMap::new();
-        for address in addresses {
-            script_public_key_to_address.entry(pay_to_address_script(&address)).or_insert(address);
-        }
-
-        let ordered_utxos_by_script_public_key = self
-            .utxoindex
-            .clone()
-            .unwrap()
-            .get_utxos_by_script_public_keys_by_daa_score(
-                script_public_key_to_address.keys().cloned().collect(),
-                from_daa_score,
-                to_daa_score,
-            )
-            .await
-            .map_err(|e| RpcError::General(e.to_string()))?;
-
-        let mut entries = Vec::new();
-        for (script_public_key, ordered_entries) in ordered_utxos_by_script_public_key {
-            let address =
-                script_public_key_to_address.get(&script_public_key).expect("script public key should map to source address");
-            entries.extend(ordered_entries.into_iter().map(|(key_data, compact_utxo)| RpcUtxosByAddressesEntry {
-                address: Some(address.clone()),
-                outpoint: key_data.transaction_outpoint.into(),
-                utxo_entry: RpcUtxoEntry::new(
-                    compact_utxo.amount,
-                    script_public_key.clone(),
-                    key_data.daa_score,
-                    compact_utxo.is_coinbase,
-                ),
-            }));
-        }
-
-        Ok(GetUtxosByAddressesV2Response::new(entries))
+        Ok(GetUtxosByAddressesV2Response::new(self.index_converter.get_ordered_utxos_by_addresses_entries(&ordered_entry_map)))
     }
 
     async fn get_balance_by_address_call(

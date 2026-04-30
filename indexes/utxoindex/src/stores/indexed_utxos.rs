@@ -1,6 +1,4 @@
-use crate::core::model::{
-    CompactUtxoCollection, CompactUtxoEntry, OrderedUtxoSetByScriptPublicKey, UtxoSetByScriptPublicKey,
-};
+use crate::core::model::{CompactUtxoCollection, CompactUtxoEntry, OrderedUtxoSetByScriptPublicKey, UtxoSetByScriptPublicKey};
 
 use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
