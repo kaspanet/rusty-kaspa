@@ -9,6 +9,7 @@ use crate::{
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
+use kaspa_consensus_core::mass::ScriptUnits;
 use kaspa_consensus_core::tx::VerifiableTransaction;
 use kaspa_hashes::Hash;
 use kaspa_hashes::ZERO_HASH;
@@ -48,6 +49,27 @@ impl OpCond {
 }
 
 type OpCodeResult = Result<(), TxScriptError>;
+
+#[derive(Copy, Clone)]
+enum HashOpcodePricing {
+    Blake2b,
+    Blake3,
+    Sha256,
+}
+
+impl HashOpcodePricing {
+    const fn units_per_byte(self) -> u64 {
+        match self {
+            Self::Blake2b => 2,
+            Self::Blake3 => 1,
+            Self::Sha256 => 1,
+        }
+    }
+
+    fn script_units_for_data(self, data_len: usize) -> ScriptUnits {
+        ScriptUnits((data_len as u64).saturating_mul(self.units_per_byte()))
+    }
+}
 
 pub(crate) struct OpCode<const CODE: u8> {
     data: Vec<u8>,
@@ -402,39 +424,59 @@ opcode_list! {
     opcode OpVer<0x62, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
     opcode OpIf<0x63, 1>(self, vm) {
-        // TODO: Allow in vm.flags.covenants_enabled non-minimal encoding of bool. Instead of vm.dstack.pop() we should probably pop bool directly with vm.dstack.pop_items()
-        let mut cond = OpCond::Skip;
-        if vm.is_executing() {
-            // This code seems identical to pop_bool, but was written this way to preserve
-            // the similar flow of go-kaspad
-            let mut cond_buf = vm.dstack.pop()?;
-            if cond_buf.len() > 1 {
-                return Err(TxScriptError::InvalidState("expected boolean".to_string()));
+        let cond = if vm.is_executing() {
+            if vm.flags.covenants_enabled {
+                let [cond]: [bool; 1] = vm.dstack.pop_items()?;
+                if cond {
+                    OpCond::True
+                } else {
+                    OpCond::False
+                }
+            } else {
+                // This code seems identical to pop_bool, but was written this way to preserve
+                // the similar flow of go-kaspad
+                let mut cond_buf = vm.dstack.pop()?;
+                if cond_buf.len() > 1 {
+                    return Err(TxScriptError::InvalidState("expected boolean".to_string()));
+                }
+                match cond_buf.pop() {
+                    Some(1) => OpCond::True,
+                    Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
+                    None => OpCond::False,
+                }
             }
-            cond = match cond_buf.pop() {
-              Some(1) => OpCond::True,
-              Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
-              None => OpCond::False,
-            };
-        }
+        } else {
+            OpCond::Skip
+        };
+
         vm.cond_stack.push(cond);
         Ok(())
     }
 
     opcode OpNotIf<0x64, 1>(self, vm) {
-        // TODO: Allow in vm.flags.covenants_enabled non-minimal encoding of bool. Instead of vm.dstack.pop() we should probably pop bool directly with vm.dstack.pop_items()
-        let mut cond = OpCond::Skip;
-        if vm.is_executing() {
-            let mut cond_buf = vm.dstack.pop()?;
-            if cond_buf.len() > 1 {
-                return Err(TxScriptError::InvalidState("expected boolean".to_string()));
+        let cond = if vm.is_executing() {
+            if vm.flags.covenants_enabled {
+                let [cond]: [bool; 1] = vm.dstack.pop_items()?;
+                if cond {
+                    OpCond::False
+                } else {
+                    OpCond::True
+                }
+            } else {
+                let mut cond_buf = vm.dstack.pop()?;
+                if cond_buf.len() > 1 {
+                    return Err(TxScriptError::InvalidState("expected boolean".to_string()));
+                }
+                match cond_buf.pop() {
+                    Some(1) => OpCond::False,
+                    Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
+                    None => OpCond::True,
+                }
             }
-            cond = match cond_buf.pop() {
-                Some(1) => OpCond::False,
-                Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
-                None => OpCond::True,
-            }
-        }
+        }else{
+            OpCond::Skip
+        };
+
         vm.cond_stack.push(cond);
         Ok(())
     }
@@ -870,6 +912,7 @@ opcode_list! {
             if key.len() > blake2b_simd::KEYBYTES {
                 return Err(TxScriptError::ElementTooBig(key.len(), blake2b_simd::KEYBYTES))
             }
+            vm.consume_script_units(HashOpcodePricing::Blake2b.script_units_for_data(data.len()))?;
             let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
             vm.dstack.push(hash.as_bytes().into())
         } else {
@@ -879,6 +922,7 @@ opcode_list! {
 
     opcode OpSHA256<0xa8, 1>(self, vm) {
         let [last] = vm.dstack.pop_raw()?;
+        vm.consume_script_units(HashOpcodePricing::Sha256.script_units_for_data(last.len()))?;
         let mut hasher = Sha256::new();
         hasher.update(last);
         vm.dstack.push(hasher.finalize().as_slice().into())
@@ -890,7 +934,7 @@ opcode_list! {
 
     opcode OpBlake2b<0xaa, 1>(self, vm) {
         let [last] = vm.dstack.pop_raw()?;
-        //let hash = blake2b(last.as_slice());
+        vm.consume_script_units(HashOpcodePricing::Blake2b.script_units_for_data(last.len()))?;
         let hash = Params::new().hash_length(32).to_state().update(&last).finalize();
         vm.dstack.push(hash.as_bytes().into())
     }
@@ -1611,6 +1655,7 @@ opcode_list! {
     opcode OpBlake3<0xd9, 1>(self, vm) {
         if vm.flags.covenants_enabled {
             let [data] = vm.dstack.pop_raw()?;
+            vm.consume_script_units(HashOpcodePricing::Blake3.script_units_for_data(data.len()))?;
             let hash = blake3::hash(&data);
             vm.dstack.push(hash.as_slice().into())
         } else {
@@ -1624,6 +1669,7 @@ opcode_list! {
             let key: &[u8; blake3::KEY_LEN] = key.as_slice().try_into().map_err(|_| {
                 TxScriptError::MalformedPush(blake3::KEY_LEN, key.len())
             })?;
+            vm.consume_script_units(HashOpcodePricing::Blake3.script_units_for_data(data.len()))?;
             let hash = blake3::keyed_hash(key, &data);
             vm.dstack.push(hash.as_slice().into())
         } else {

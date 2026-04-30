@@ -94,8 +94,10 @@ pub mod consensus {
     // ~~~~~~~~~~~~~~~~~~~ Toccata lane limits ~~~~~~~~~~~~~~~~~~~
     //
 
+    /// At 10 BPS, allows a worst-case rate of 500 SMT lane updates per second. Determined by benchmarking.
     pub const DEFAULT_LANES_PER_BLOCK_LIMIT: usize = 50;
-    pub const DEFAULT_GAS_PER_LANE_LIMIT: u64 = 500_000;
+    /// Set high enough to allow maximal gas-cost granularity for lane/subnet applications.
+    pub const DEFAULT_GAS_PER_LANE_LIMIT: u64 = 1_000_000_000;
 }
 
 pub mod perf {
