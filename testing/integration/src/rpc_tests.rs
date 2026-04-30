@@ -4,7 +4,12 @@ use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
-use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
+use kaspa_consensus_core::{
+    constants::MAX_SOMPI,
+    header::Header,
+    subnets::{SUBNETWORK_ID_COINBASE, SubnetworkId},
+    tx::Transaction,
+};
 use kaspa_core::{assert_match, info};
 use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
@@ -708,6 +713,20 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetSeqCommitLaneProof => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    // A non-existent block must yield an error.
+                    let result = rpc_client
+                        .get_seq_commit_lane_proof_call(
+                            None,
+                            GetSeqCommitLaneProofRequest { block_hash: 0.into(), lane_key: 0.into() },
+                        )
+                        .await;
+                    assert!(result.is_err());
+                })
+            }
+
             KaspadPayloadOps::NotifyBlockAdded => {
                 let rpc_client = client.clone();
                 let id = listener_id;
@@ -802,4 +821,159 @@ async fn sanity_test() {
     client.disconnect().await.unwrap();
     drop(client);
     daemon.shutdown();
+}
+
+/// End-to-end test for `get_seq_commit_lane_proof` over both gRPC and wRPC.
+///
+/// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::seq_commit_lane_proof_test`
+#[tokio::test]
+async fn seq_commit_lane_proof_test() {
+    kaspa_core::log::try_init_logger("info");
+    kaspa_core::panic::configure_panic();
+
+    let args = Args {
+        simnet: true,
+        disable_upnp: true,
+        enable_unsynced_mining: true,
+        block_template_cache_lifetime: Some(0),
+        unsafe_rpc: true,
+        ..Default::default()
+    };
+
+    let fd_total_budget = fd_budget::test_limit();
+    let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
+    let grpc = daemon.start().await;
+
+    // Mine one block on top of genesis so there's a chain block with a selected parent.
+    let GetBlockTemplateResponse { block, .. } = grpc
+        .get_block_template_call(
+            None,
+            GetBlockTemplateRequest { pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]), extra_data: Vec::new() },
+        )
+        .await
+        .unwrap();
+    let header: Header = (&block.header).try_into().unwrap();
+    let block_hash = header.hash;
+    let submit = grpc.submit_block(block, false).await.unwrap();
+    assert_eq!(submit.report, kaspa_rpc_core::SubmitBlockReport::Success);
+
+    // Wait for the submitted block to become the sink.
+    for _ in 0..50 {
+        let sink = grpc.get_sink_call(None, GetSinkRequest {}).await.unwrap().sink;
+        if sink == block_hash {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(grpc.get_sink_call(None, GetSinkRequest {}).await.unwrap().sink, block_hash);
+
+    // Pick an arbitrary lane key. If the lane is absent, we still get a valid non-inclusion proof.
+    let lane_key = kaspa_seq_commit::hashing::lane_key(&[0x77; 20]);
+
+    // ---- gRPC path ----
+    let grpc_proof = grpc.get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest { block_hash, lane_key }).await.unwrap();
+    verify_lane_proof_locally(&header, lane_key, &grpc_proof);
+
+    // ---- wRPC path ----
+    let wrpc = daemon.client_manager().new_wrpc_client();
+    wrpc.connect(Some(kaspa_wrpc_client::prelude::ConnectOptions {
+        block_async_connect: true,
+        strategy: kaspa_wrpc_client::prelude::ConnectStrategy::Retry,
+        ..Default::default()
+    }))
+    .await
+    .unwrap();
+    let wrpc_proof = wrpc.get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest { block_hash, lane_key }).await.unwrap();
+    verify_lane_proof_locally(&header, lane_key, &wrpc_proof);
+
+    // Sanity: both transports returned the same proof.
+    assert_eq!(grpc_proof.smt_proof, wrpc_proof.smt_proof);
+    assert_eq!(grpc_proof.lane_tip, wrpc_proof.lane_tip);
+    assert_eq!(grpc_proof.lane_blue_score, wrpc_proof.lane_blue_score);
+    assert_eq!(grpc_proof.payload_and_ctx_digest, wrpc_proof.payload_and_ctx_digest);
+    assert_eq!(grpc_proof.parent_seq_commit, wrpc_proof.parent_seq_commit);
+
+    // Negative: unknown block hash.
+    let unknown = Hash::from_bytes([0xDE; 32]);
+    let err =
+        grpc.get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest { block_hash: unknown, lane_key }).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            kaspa_rpc_core::RpcError::ConsensusError(kaspa_consensus_core::errors::consensus::ConsensusError::BlockNotFound(_))
+                | kaspa_rpc_core::RpcError::BlockNotInSelectedChain(_)
+                | kaspa_rpc_core::RpcError::General(_)
+        ),
+        "unexpected error: {err:?}"
+    );
+
+    // Mine a second block so the first block's coinbase becomes an accepted
+    // tx at the second block — that populates the coinbase-subnetwork lane.
+    let GetBlockTemplateResponse { block: block2, .. } = grpc
+        .get_block_template_call(
+            None,
+            GetBlockTemplateRequest { pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]), extra_data: Vec::new() },
+        )
+        .await
+        .unwrap();
+    let header2: Header = (&block2.header).try_into().unwrap();
+    let block_hash2 = header2.hash;
+    let submit2 = grpc.submit_block(block2, false).await.unwrap();
+    assert_eq!(submit2.report, kaspa_rpc_core::SubmitBlockReport::Success);
+    for _ in 0..50 {
+        let sink = grpc.get_sink_call(None, GetSinkRequest {}).await.unwrap().sink;
+        if sink == block_hash2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(grpc.get_sink_call(None, GetSinkRequest {}).await.unwrap().sink, block_hash2);
+
+    // Inclusion proof for the coinbase lane at B2.
+    let coinbase_lane_key = kaspa_seq_commit::hashing::lane_key(SUBNETWORK_ID_COINBASE.as_bytes());
+    let coinbase_proof = grpc
+        .get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest { block_hash: block_hash2, lane_key: coinbase_lane_key })
+        .await
+        .unwrap();
+    assert!(coinbase_proof.lane_tip.is_some(), "coinbase lane must be populated at B2");
+    assert!(coinbase_proof.lane_blue_score.is_some());
+    verify_lane_proof_locally(&header2, coinbase_lane_key, &coinbase_proof);
+
+    wrpc.disconnect().await.unwrap();
+    drop(wrpc);
+    grpc.disconnect().await.unwrap();
+    drop(grpc);
+    daemon.shutdown();
+}
+
+fn verify_lane_proof_locally(header: &Header, lane_key: Hash, response: &GetSeqCommitLaneProofResponse) {
+    use kaspa_hashes::SeqCommitActiveNode;
+    use kaspa_seq_commit::{
+        hashing::smt_leaf_hash,
+        types::SmtLeafInput,
+        verify::{SmtMetadata, verify_smt_metadata},
+    };
+    use kaspa_smt::proof::OwnedSmtProof;
+
+    // Parse wire-format proof.
+    let proof = OwnedSmtProof::from_bytes(&response.smt_proof).expect("proof wire format");
+
+    // Reconstruct the SMT leaf (None = non-inclusion proof).
+    let leaf =
+        response.lane_tip.zip(response.lane_blue_score).map(|(t, bs)| smt_leaf_hash(&SmtLeafInput { lane_tip: &t, blue_score: bs }));
+
+    // Compute lanes_root from the proof.
+    let lanes_root = proof.as_proof().compute_root::<SeqCommitActiveNode>(&lane_key, leaf).expect("compute_root");
+
+    // Verify metadata chains to the header's seq_commit.
+    verify_smt_metadata(
+        &SmtMetadata {
+            lanes_root: &lanes_root,
+            payload_and_ctx_digest: &response.payload_and_ctx_digest,
+            parent_seq_commit: &response.parent_seq_commit,
+        },
+        header.accepted_id_merkle_root,
+        response.parent_seq_commit,
+    )
+    .expect("verify_smt_metadata");
 }

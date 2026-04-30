@@ -5,7 +5,10 @@
 use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, Hash,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
-    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ImportLane, ImportLaneBatchIterator},
+    api::{
+        BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ImportLane, ImportLaneBatchIterator,
+        SeqCommitLaneProof,
+    },
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
@@ -425,6 +428,10 @@ impl ConsensusSessionOwned {
 
     pub async fn async_is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
         self.clone().spawn_blocking(move |c| c.is_chain_block(hash)).await
+    }
+
+    pub async fn async_get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
+        self.clone().spawn_blocking(move |c| c.get_seq_commit_lane_proof(block_hash, lane_key)).await
     }
 
     pub async fn async_get_pruning_point_utxos(

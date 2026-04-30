@@ -78,6 +78,23 @@ pub struct SmtExportMetadata {
     pub active_lanes_count: u64,
 }
 
+/// Witness for verifying a single lane against the `seq_commit` of a canonical block.
+///
+/// Given the block's header (which carries `seq_commit` in `accepted_id_merkle_root`),
+/// a client can reconstruct the lane's SMT leaf and verify the proof chain:
+/// `smt_leaf → compute_root → lanes_root → seq_state_root → seq_commit`.
+///
+/// `lane_tip`/`lane_blue_score` are both `None` when the lane is absent at this POV —
+/// the SMT proof is then a non-inclusion proof.
+#[derive(Clone, Debug)]
+pub struct SeqCommitLaneProof {
+    pub smt_proof: kaspa_smt::proof::OwnedSmtProof,
+    pub lane_tip: Option<Hash>,
+    pub lane_blue_score: Option<u64>,
+    pub payload_and_ctx_digest: Hash,
+    pub parent_seq_commit: Hash,
+}
+
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
 pub trait ConsensusApi: Send + Sync {
@@ -429,6 +446,14 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        unimplemented!()
+    }
+
+    /// Returns a self-contained witness for verifying the lane `lane_key` against
+    /// the `seq_commit` carried in `block_hash`'s header. The block must be a
+    /// chain (selected-parent) block; non-canonical blocks are rejected with
+    /// [`ConsensusError::BlockNotInSelectedChain`].
+    fn get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
         unimplemented!()
     }
 
