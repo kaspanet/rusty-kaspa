@@ -1095,12 +1095,10 @@ impl Wallet {
     }
 
     async fn handle_event(self: &Arc<Self>, event: Box<Events>) -> Result<()> {
-        match &*event {
-            Events::Pending { record } | Events::Maturity { record } | Events::Reorg { record } if !record.is_change() => {
-                self.store().as_transaction_record_store()?.store(&[record]).await?;
-            }
-
-            _ => {}
+        if let Events::Pending { record } | Events::Maturity { record } | Events::Reorg { record } = &*event
+            && !record.is_change()
+        {
+            self.store().as_transaction_record_store()?.store(&[record]).await?;
         }
 
         Ok(())
