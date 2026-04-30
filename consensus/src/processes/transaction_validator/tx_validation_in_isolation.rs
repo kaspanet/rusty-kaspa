@@ -471,7 +471,7 @@ mod tests {
         ] {
             let mut tx = tx_with(subnetwork_id, version);
             tx.gas = 1;
-            assert!(matches!((super::check_gas(&tx), gas_allowed), (Ok(()), true) | (Err(TxRuleError::TxHasGas(_)), false)));
+            assert_match!((super::check_gas(&tx), gas_allowed), (Ok(()), true) | (Err(TxRuleError::TxHasGas(_)), false));
         }
     }
 }
