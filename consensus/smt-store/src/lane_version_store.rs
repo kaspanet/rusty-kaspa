@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_hashes::Hash;
-use rocksdb::{DBRawIteratorWithThreadMode, DBWithThreadMode, MultiThreaded};
 use self_cell::self_cell;
 use zerocopy::{FromBytes, IntoBytes};
 
 use crate::keys::LaneVersionKey;
 use crate::maybe_fork::{MaybeFork, Verified};
+use crate::reacquire_iter::ReacquiringRawIterator;
 use crate::values::LaneTipHash;
 
-type LaneRawIter<'a> = DBRawIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>;
+type LaneRawIter<'a> = ReacquiringRawIterator<'a>;
 
 self_cell!(
     struct LaneIterCell {
@@ -177,6 +177,9 @@ impl DbLaneVersionStore {
     /// RocksDB iterator (and implicit snapshot) is dropped as soon as the
     /// caller finishes consuming it — so the pruning lock is only held for
     /// bounded work.
+    ///
+    /// Uses a reacquiring iterator; callers must ensure compatible consistency
+    /// semantics for the scanned range while consuming the iterator.
     pub fn iter_all_canonical<'a>(
         &'a self,
         from_lane_key: Option<Hash>,
@@ -188,7 +191,7 @@ impl DbLaneVersionStore {
         let max_blue_score = max_blue_score.unwrap_or(u64::MAX);
         let start_seek = start_seek_key(prefix, from_lane_key, max_blue_score);
 
-        let mut iter = self.db.raw_iterator();
+        let mut iter = ReacquiringRawIterator::new(&self.db);
         let mut done = start_seek.is_none();
         if let Some(seek) = start_seek {
             iter.seek(seek);
@@ -207,6 +210,9 @@ impl DbLaneVersionStore {
     /// every `SMT_CHUNK_SIZE` batch. `max_blue_score` lets the caller clip
     /// the iteration to the pruning point's own blue score so versions from
     /// blocks past the pruning point are never scanned.
+    ///
+    /// Uses a reacquiring iterator; callers must ensure compatible consistency
+    /// semantics for the scanned range while consuming the iterator.
     pub fn iter_all_canonical_owned<F>(
         &self,
         from_lane_key: Option<Hash>,
@@ -223,7 +229,7 @@ impl DbLaneVersionStore {
         let done = start_seek.is_none();
 
         let cell = LaneIterCell::new(self.db.clone(), |db| {
-            let mut iter = db.raw_iterator();
+            let mut iter = ReacquiringRawIterator::new(db.as_ref());
             if let Some(seek) = start_seek {
                 iter.seek(seek);
             }
@@ -269,7 +275,7 @@ fn start_seek_key(prefix: u8, from_lane_key: Option<Hash>, target_blue_score: u6
 /// borrowed and owned iterators share one implementation. The caller owns
 /// `done`; this function sets it when the iterator is exhausted.
 fn advance_canonical_lane(
-    iter: &mut LaneRawIter<'_>,
+    iter: &mut ReacquiringRawIterator<'_>,
     prefix: u8,
     min_blue_score: u64,
     max_blue_score: u64,

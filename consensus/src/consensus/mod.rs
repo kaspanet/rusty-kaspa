@@ -1236,7 +1236,18 @@ impl ConsensusApi for Consensus {
             Ok(ImportLane { lane_key, lane_tip: *verified.data(), blue_score: verified.blue_score(), proof })
         });
 
-        Ok(Box::new(mapped))
+        // Chain a one-shot tail so a fully drained stream verifies that
+        // pruning did not advance before the stream completed.
+        let sl = self.session_lock().clone();
+        let pps = self.pruning_point_store.clone();
+        let final_check = std::iter::once_with(move || {
+            let _g = sl.blocking_read();
+            let upp = pps.read().pruning_point().unwrap();
+            if upp != pp { Some(Err(ConsensusError::UnexpectedPruningPoint)) } else { None }
+        })
+        .flatten();
+
+        Ok(Box::new(mapped.chain(final_check)))
     }
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
