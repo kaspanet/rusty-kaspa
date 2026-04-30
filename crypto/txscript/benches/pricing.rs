@@ -765,39 +765,55 @@ fn build_large_push_dup_cat_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 }
 
 fn build_op_dup_one_tx_script_public_key(nonce: u32) -> ScriptPublicKey {
-    let mut script = ScriptBuilder::new();
-    script.add_i64(1).unwrap();
-    for _ in 0..OP_DUP_BASE_DUP_COUNT {
-        script.add_op(OpDup).unwrap();
-    }
-    for _ in 0..OP_DUP_BASE_DUP_COUNT {
-        script.add_op(OpDrop).unwrap();
+    // Adds OpDrop/OpDup pairs to increase opcode work while keeping stack depth stable.
+    fn script_for_opcode_pairs(opcode_pairs: usize) -> ScriptPublicKey {
+        let mut builder = ScriptBuilder::new();
+        builder.add_i64(1).unwrap();
+        for _ in 0..OP_DUP_BASE_DUP_COUNT {
+            builder.add_op(OpDup).unwrap();
+        }
+        for _ in 0..opcode_pairs {
+            builder.add_op(OpDrop).unwrap();
+            builder.add_op(OpDup).unwrap();
+        }
+        for _ in 0..OP_DUP_BASE_DUP_COUNT {
+            builder.add_op(OpDrop).unwrap();
+        }
+        ScriptPublicKey::new(0, builder.drain().into())
     }
 
-    let mut best_script = ScriptPublicKey::new(0, script.drain().into());
-    let mut pair_count = 0usize;
-    loop {
-        let mut candidate_builder = ScriptBuilder::new();
-        candidate_builder.add_i64(1).unwrap();
-        for _ in 0..OP_DUP_BASE_DUP_COUNT {
-            candidate_builder.add_op(OpDup).unwrap();
-        }
-        for _ in 0..pair_count + OP_DUP_ONE_TX_PAIR_SEARCH_STEP {
-            candidate_builder.add_op(OpDrop).unwrap();
-            candidate_builder.add_op(OpDup).unwrap();
-        }
-        for _ in 0..OP_DUP_BASE_DUP_COUNT {
-            candidate_builder.add_op(OpDrop).unwrap();
-        }
-        let candidate_script = ScriptPublicKey::new(0, candidate_builder.drain().into());
+    fn valid_candidate(nonce: u32, opcode_pairs: usize) -> Option<ScriptPublicKey> {
+        let candidate_script = script_for_opcode_pairs(opcode_pairs);
         let Ok((candidate_tx, _)) = try_build_budgeted_single_input_tx(nonce, candidate_script.clone(), vec![]) else {
-            break;
+            return None;
         };
         if compute_mass(&candidate_tx) > BLOCK_COMPUTE_MASS_LIMIT {
-            break;
+            return None;
         }
+        Some(candidate_script)
+    }
+
+    let mut low_opcode_pairs = 0usize;
+    let mut high_opcode_pairs = OP_DUP_ONE_TX_PAIR_SEARCH_STEP;
+    let mut best_script = valid_candidate(nonce, low_opcode_pairs).expect("base op_dup_one_tx script should be valid");
+
+    loop {
+        let Some(candidate_script) = valid_candidate(nonce, high_opcode_pairs) else {
+            break;
+        };
         best_script = candidate_script;
-        pair_count += OP_DUP_ONE_TX_PAIR_SEARCH_STEP;
+        low_opcode_pairs = high_opcode_pairs;
+        high_opcode_pairs = high_opcode_pairs.saturating_mul(2);
+    }
+
+    while low_opcode_pairs + 1 < high_opcode_pairs {
+        let mid_opcode_pairs = low_opcode_pairs + (high_opcode_pairs - low_opcode_pairs) / 2;
+        if let Some(candidate_script) = valid_candidate(nonce, mid_opcode_pairs) {
+            best_script = candidate_script;
+            low_opcode_pairs = mid_opcode_pairs;
+        } else {
+            high_opcode_pairs = mid_opcode_pairs;
+        }
     }
 
     best_script
@@ -805,6 +821,43 @@ fn build_op_dup_one_tx_script_public_key(nonce: u32) -> ScriptPublicKey {
 
 fn build_op_dup_one_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     build_budgeted_single_input_tx(nonce, build_op_dup_one_tx_script_public_key(nonce), vec![])
+}
+
+fn build_max_opcodes_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    fn try_tx_with_opcode_count(nonce: u32, opcode_count: usize) -> Option<(Transaction, Vec<UtxoEntry>)> {
+        let redeem_script = ScriptPublicKey::new(0, vec![codes::OpNop; opcode_count].into());
+        let signature_script = pay_to_script_hash_signature_script(redeem_script.script().to_vec(), vec![codes::OpTrue]).unwrap();
+        try_build_budgeted_single_input_tx(nonce, pay_to_script_hash_script(redeem_script.script()), signature_script).ok()
+    }
+
+    let mut low_count = 0usize;
+    let mut high_count = OP_DUP_ONE_TX_PAIR_SEARCH_STEP;
+    let mut best = try_tx_with_opcode_count(nonce, low_count).expect("empty max_opcodes script should be valid");
+
+    loop {
+        let Some(candidate) = try_tx_with_opcode_count(nonce, high_count) else {
+            break;
+        };
+        if !fits_block_mass(&candidate.0) {
+            break;
+        }
+        best = candidate;
+        low_count = high_count;
+        high_count = high_count.saturating_mul(2);
+    }
+
+    while low_count + 1 < high_count {
+        let mid_count = low_count + (high_count - low_count) / 2;
+        match try_tx_with_opcode_count(nonce, mid_count) {
+            Some(candidate) if fits_block_mass(&candidate.0) => {
+                low_count = mid_count;
+                best = candidate;
+            }
+            _ => high_count = mid_count,
+        }
+    }
+
+    best
 }
 
 fn build_budgeted_charged_tx(label: &str, tx: &Transaction, entries: &[UtxoEntry]) -> Transaction {
@@ -959,6 +1012,21 @@ fn build_op_dup_one_tx_block() -> BenchBlock {
     single_tx_block("op_dup_one_tx", tx, entries)
 }
 
+fn build_max_opcodes_block() -> BenchBlock {
+    let (tx, entries) = build_max_opcodes_tx(0);
+    let tx_compute_mass = compute_mass(&tx);
+    let tx_transient_mass = transient_mass(&tx);
+    assert!(
+        tx_compute_mass <= BLOCK_COMPUTE_MASS_LIMIT,
+        "max_opcodes compute mass {tx_compute_mass} exceeds block limit {BLOCK_COMPUTE_MASS_LIMIT}"
+    );
+    assert!(
+        tx_transient_mass <= BLOCK_TRANSIENT_MASS_LIMIT,
+        "max_opcodes transient mass {tx_transient_mass} exceeds block limit {BLOCK_TRANSIENT_MASS_LIMIT}"
+    );
+    single_tx_block("max_opcodes", tx, entries)
+}
+
 fn build_single_stark_block() -> BenchBlock {
     let (tx, entries) = build_single_stark_tx(0);
     single_tx_block("single_stark", tx, entries)
@@ -1003,6 +1071,7 @@ fn bench_blocks() -> &'static [BenchBlock] {
             build_op_dup_free_budget_block(),
             build_op_dup_p2sh_block(),
             build_op_dup_one_tx_block(),
+            build_max_opcodes_block(),
             build_single_stark_block(),
             build_groth16_3tx_block(),
             build_groth16_3tags_single_tx_block(),
