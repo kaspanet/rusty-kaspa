@@ -41,6 +41,12 @@ impl Store {
     }
 
     pub fn has_legacy_db_version(&self) -> UtxoIndexResult<bool> {
+        // Older UTXO index databases may not have a db-version marker at all.
+        // In that case we need to distinguish between:
+        // 1) a fresh/empty DB (no rebuild prompt needed), and
+        // 2) an existing pre-versioned DB (must rebuild before continuing).
+        // Tips and circulating-supply are cheap sentinel stores that indicate
+        // whether the UTXO index DB has already been populated.
         let tips_exist = match self.utxoindex_tips_store.get() {
             Ok(_) => true,
             Err(kaspa_database::prelude::StoreError::KeyNotFound(_)) => false,
