@@ -181,42 +181,6 @@ impl AsRef<[u8]> for ScoreIndexKey {
     }
 }
 
-/// Either layout of a stored score-index key.
-///
-/// `Plain` is the live-processor layout ([`ScoreIndexKey`], 42 bytes);
-/// `Batched` is the IBD layout ([`BatchedScoreIndexKey`], 46 bytes with a
-/// `batch_id` suffix). Both can coexist within the same prefix range, so a
-/// resume anchor used for chunked iteration must remember which layout it
-/// was read from. Length-discriminated parsing handles dispatch.
-#[derive(Clone, Copy)]
-pub enum AnyScoreIndexKey {
-    Plain(ScoreIndexKey),
-    Batched(BatchedScoreIndexKey),
-}
-
-impl AnyScoreIndexKey {
-    /// Parse an on-disk key, dispatching on length: 42 → `Plain`, 46 → `Batched`.
-    /// Returns `None` for any other length.
-    pub fn try_from_key_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() == std::mem::size_of::<ScoreIndexKey>() {
-            ScoreIndexKey::try_ref_from_bytes(bytes).ok().copied().map(Self::Plain)
-        } else if bytes.len() == std::mem::size_of::<BatchedScoreIndexKey>() {
-            BatchedScoreIndexKey::try_ref_from_bytes(bytes).ok().copied().map(Self::Batched)
-        } else {
-            None
-        }
-    }
-}
-
-impl AsRef<[u8]> for AnyScoreIndexKey {
-    fn as_ref(&self) -> &[u8] {
-        match self {
-            Self::Plain(k) => k.as_ref(),
-            Self::Batched(k) => k.as_ref(),
-        }
-    }
-}
-
 /// Score index value.
 ///
 /// Layout: `max_depth(1) | lane_keys(N * 32)` — total `1 + N * 32` bytes.
