@@ -6,6 +6,10 @@ pub type RawIter<'a> = DBRawIteratorWithThreadMode<'a, DBWithThreadMode<MultiThr
 
 const DEFAULT_REACQUIRE_STEPS: usize = 16384;
 const DEFAULT_REACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
+#[cfg(not(test))]
+const DEFAULT_TIMEOUT_CHECK_STEPS: usize = 256;
+#[cfg(test)]
+const DEFAULT_TIMEOUT_CHECK_STEPS: usize = 4;
 
 /// A RocksDB raw iterator wrapper that periodically recreates the underlying iterator.
 ///
@@ -24,7 +28,8 @@ pub struct ReacquiringRawIterator<'a> {
 
 impl<'a> ReacquiringRawIterator<'a> {
     /// Creates a reacquiring iterator with the default policy: capture DB resources
-    /// for at most 1 second and at most 16,384 iterator actions between reacquisitions.
+    /// for at most 16,384 iterator actions between reacquisitions, checking every
+    /// 256 actions whether 1 second has elapsed.
     pub fn new(db: &'a DB) -> Self {
         Self::with_policy(db, DEFAULT_REACQUIRE_STEPS, DEFAULT_REACQUIRE_TIMEOUT)
     }
@@ -69,12 +74,17 @@ impl<'a> ReacquiringRawIterator<'a> {
     }
 
     fn reacquire_if_expired(&mut self) {
-        if self.steps_until_reacquire <= 1
-            || Instant::now().checked_duration_since(self.last_reacquire).unwrap_or_default() >= self.reacquire_timeout
+        if self.steps_until_reacquire <= 1 {
+            self.reacquire_at_current();
+            return;
+        }
+
+        self.steps_until_reacquire -= 1;
+
+        if self.steps_until_reacquire.is_multiple_of(DEFAULT_TIMEOUT_CHECK_STEPS)
+            && Instant::now().checked_duration_since(self.last_reacquire).unwrap_or_default() >= self.reacquire_timeout
         {
             self.reacquire_at_current();
-        } else {
-            self.steps_until_reacquire -= 1;
         }
     }
 
@@ -351,30 +361,41 @@ mod tests {
     fn reacquiring_iterator_reacquires_when_timeout_elapses() {
         let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
 
-        for i in 0..4u8 {
+        let reacquire_steps = 10;
+        // The initial seek consumes one step. Derive the next timeout-check
+        // boundary from the remaining step count so the delete happens exactly
+        // before the next action that checks elapsed time.
+        let steps_after_initial_seek = reacquire_steps - 1;
+        let timeout_check_at = steps_after_initial_seek % DEFAULT_TIMEOUT_CHECK_STEPS;
+        let steps_until_timeout_check = if timeout_check_at == 0 { DEFAULT_TIMEOUT_CHECK_STEPS } else { timeout_check_at };
+        let deleted_key = steps_until_timeout_check as u8;
+        let next_key = deleted_key + 1;
+
+        for i in 0..12u8 {
             db.put([i], [i + 100]).unwrap();
         }
 
         let mut raw = db.raw_iterator();
-        let mut reacq = ReacquiringRawIterator::with_policy(&db, 100, Duration::ZERO);
+        let mut reacq = ReacquiringRawIterator::with_policy(&db, reacquire_steps, Duration::ZERO);
 
         raw.seek([0]);
         reacq.seek([0]);
         assert_eq!(current(&raw), current(&reacq));
 
-        raw.next();
-        reacq.next();
-        assert_eq!(current(&raw), Some((vec![1], vec![101])));
-        assert_eq!(current(&raw), current(&reacq));
+        for _ in 1..steps_until_timeout_check {
+            raw.next();
+            reacq.next();
+            assert_eq!(current(&raw), current(&reacq));
+        }
 
         // The step budget is far from exhausted, so this reacquisition is forced
         // only by the elapsed-time policy.
-        db.delete([2]).unwrap();
+        db.delete([deleted_key]).unwrap();
 
         raw.next();
         reacq.next();
 
-        assert_eq!(current(&raw), Some((vec![2], vec![102])));
-        assert_eq!(current(&reacq), Some((vec![3], vec![103])));
+        assert_eq!(current(&raw), Some((vec![deleted_key], vec![deleted_key + 100])));
+        assert_eq!(current(&reacq), Some((vec![next_key], vec![next_key + 100])));
     }
 }
