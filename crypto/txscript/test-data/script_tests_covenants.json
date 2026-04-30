@@ -5985,6 +5985,34 @@
     "UNBALANCED_CONDITIONAL"
   ],
   [
+    "0x020000",
+    "IF FALSE ELSE TRUE ENDIF",
+    "",
+    "OK",
+    "OP_IF accepts a non-minimal false value under covenants"
+  ],
+  [
+    "2",
+    "IF TRUE ELSE FALSE ENDIF",
+    "",
+    "OK",
+    "OP_IF accepts a non-minimal true value under covenants"
+  ],
+  [
+    "0x020000",
+    "NOTIF TRUE ELSE FALSE ENDIF",
+    "",
+    "OK",
+    "OP_NOTIF accepts a non-minimal false value under covenants"
+  ],
+  [
+    "2",
+    "NOTIF FALSE ELSE TRUE ENDIF",
+    "",
+    "OK",
+    "OP_NOTIF accepts a non-minimal true value under covenants"
+  ],
+  [
     "Order of CHECKMULTISIG evaluation tests, inverted by swapping the order of"
   ],
   [
