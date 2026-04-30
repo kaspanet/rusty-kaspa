@@ -90,13 +90,19 @@ struct PruneEntry {
     max_depth: u8,
 }
 
+#[cfg(feature = "test-smt-pruning-diagnostics")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[doc(hidden)]
+/// Diagnostic counts for versioned SMT entries at or below a pruning cutoff.
+///
+/// This is exposed for integration invariants, not as a consensus API surface.
 pub struct StaleSmtEntriesCount {
     pub branch_versions: usize,
     pub lane_versions: usize,
     pub score_index: usize,
 }
 
+#[cfg(feature = "test-smt-pruning-diagnostics")]
 impl StaleSmtEntriesCount {
     pub const fn total(self) -> usize {
         self.branch_versions + self.lane_versions + self.score_index
@@ -380,6 +386,10 @@ impl SmtStores {
         self.lane_cache.lock().clear();
     }
 
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    #[doc(hidden)]
+    /// Diagnostic invariant helper: count versioned SMT entries at or below a
+    /// pruning cutoff. Tests use this to assert pruning left no stale data.
     pub fn count_entries_at_or_below(&self, cutoff_blue_score: u64) -> StoreResult<StaleSmtEntriesCount> {
         Ok(StaleSmtEntriesCount {
             branch_versions: self.branch_version.count_entries_at_or_below(cutoff_blue_score)?,

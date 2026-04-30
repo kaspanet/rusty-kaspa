@@ -49,7 +49,8 @@ impl DbBranchVersionStore {
         writer.delete(key).map_err(StoreError::DbError)
     }
 
-    pub fn count_entries_at_or_below(&self, cutoff_blue_score: u64) -> StoreResult<usize> {
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    pub(crate) fn count_entries_at_or_below(&self, cutoff_blue_score: u64) -> StoreResult<usize> {
         let prefix_bytes = [self.prefix];
         let mut iter = self.db.raw_iterator();
         iter.seek(prefix_bytes);

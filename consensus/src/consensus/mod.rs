@@ -85,10 +85,14 @@ use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
 use kaspa_core::info;
-use kaspa_database::prelude::{StoreResult, StoreResultExt};
+#[cfg(feature = "test-smt-pruning-diagnostics")]
+use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_smt_store::processor::{SmtReadBounds, StaleSmtEntriesCount};
+use kaspa_smt_store::processor::SmtReadBounds;
+#[cfg(feature = "test-smt-pruning-diagnostics")]
+use kaspa_smt_store::processor::StaleSmtEntriesCount;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -623,6 +627,10 @@ impl Consensus {
         Ok(())
     }
 
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    #[doc(hidden)]
+    /// Diagnostic invariant helper: count versioned SMT entries at or below a
+    /// pruning cutoff. Used by integration tests to catch stale pruning data.
     pub fn count_stale_smt_entries(&self, cutoff_blue_score: u64) -> StoreResult<StaleSmtEntriesCount> {
         self.storage.smt_stores.count_entries_at_or_below(cutoff_blue_score)
     }
