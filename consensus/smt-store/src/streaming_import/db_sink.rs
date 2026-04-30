@@ -153,12 +153,11 @@ impl MergeSink for DbSink<'_> {
         // Single-leaf-tree finalize path: ensure the lane is recorded as
         // sealed at the actual write depth. `chain_up` may have already
         // recorded `target_depth + 1`; the `and_modify` below keeps the max.
-        self.record_seal(leaf.lane_key, blue_score, branch_key.depth)?;
+        self.record_seal(leaf.lane_key, branch_key.depth);
         self.write_node(branch_key, Node::Collapsed(leaf), blue_score)
     }
 
-    fn record_seal(&mut self, lane_key: Hash, _blue_score: u64, seal_depth: u8) -> Result<(), Self::Error> {
+    fn record_seal(&mut self, lane_key: Hash, seal_depth: u8) {
         self.lane_seal_depth.entry(lane_key).and_modify(|d| *d = (*d).max(seal_depth)).or_insert(seal_depth);
-        Ok(())
     }
 }

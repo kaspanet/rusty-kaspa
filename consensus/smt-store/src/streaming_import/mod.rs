@@ -174,7 +174,7 @@ pub fn streaming_import(
         &mut score_batch_count,
         max_batch_entries,
     )?;
-    debug_assert!(pending.is_empty(), "post-finalize: every pending score-index entry must be resolvable");
+    assert!(pending.is_empty(), "post-finalize: every pending score-index entry must be resolvable");
     if score_batch_count > 0 {
         db.write(score_batch).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
     }
