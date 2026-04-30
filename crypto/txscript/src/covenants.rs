@@ -12,9 +12,6 @@ use std::{collections::HashMap, sync::LazyLock};
 /// (e.g., 1-to-N splits) without scanning unrelated outputs.
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct CovenantInputContext {
-    /// The covenant ID shared by this input and its authorized outputs.
-    pub _covenant_id: Hash, // TODO(pre-covpp): Remove if unused.
-
     /// Indices of outputs that explicitly declare this input as their `authorizing_input`.
     ///
     /// This defines the input's direct "children" in the transaction.
@@ -22,8 +19,8 @@ pub struct CovenantInputContext {
 }
 
 impl CovenantInputContext {
-    pub fn new(covenant_id: Hash) -> Self {
-        Self { _covenant_id: covenant_id, auth_outputs: Default::default() }
+    pub fn new() -> Self {
+        Self { auth_outputs: Default::default() }
     }
 }
 
@@ -123,11 +120,7 @@ impl CovenantsContext {
                     // Continuation case: the authorizing input already carries the same covenant id.
                     // Record the output under both the per-input context and the shared covenant context.
 
-                    ctx.input_ctxs
-                        .entry(auth_input_idx)
-                        .or_insert_with(|| CovenantInputContext::new(covenant_id))
-                        .auth_outputs
-                        .push(i);
+                    ctx.input_ctxs.entry(auth_input_idx).or_insert_with(|| CovenantInputContext::new()).auth_outputs.push(i);
 
                     ctx.shared_ctxs
                         .get_mut(&covenant_id)
@@ -379,7 +372,7 @@ mod tests {
         // Genesis outputs (1, 2, 3) should not appear in contexts
         let covenant_42: Hash = 42u64.into();
         let expected_ctx = CovenantsContext {
-            input_ctxs: HashMap::from_iter([(0, CovenantInputContext { _covenant_id: covenant_42, auth_outputs: vec![0] })]),
+            input_ctxs: HashMap::from_iter([(0, CovenantInputContext { auth_outputs: vec![0] })]),
             shared_ctxs: HashMap::from_iter([(
                 covenant_42,
                 CovenantSharedContext { input_indices: vec![0], output_indices: vec![0] },

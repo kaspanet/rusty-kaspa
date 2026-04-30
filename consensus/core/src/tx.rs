@@ -130,7 +130,7 @@ pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    pub mass: TxInputMass, // TODO(covpp-mainnet): Take care of DB compatibility.
+    pub mass: TxInputMass,
 }
 
 impl TransactionInput {
