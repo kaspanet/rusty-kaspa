@@ -188,7 +188,7 @@ impl DbLaneVersionStore {
         let max_blue_score = max_blue_score.unwrap_or(u64::MAX);
         let start_seek = start_seek_key(prefix, from_lane_key, max_blue_score);
 
-        let mut iter = ReacquiringRawIterator::new(&self.db, 8192);
+        let mut iter = ReacquiringRawIterator::new(&self.db);
         let mut done = start_seek.is_none();
         if let Some(seek) = start_seek {
             iter.seek(seek);
@@ -223,7 +223,7 @@ impl DbLaneVersionStore {
         let done = start_seek.is_none();
 
         let cell = LaneIterCell::new(self.db.clone(), |db| {
-            let mut iter = ReacquiringRawIterator::new(db.as_ref(), 8192);
+            let mut iter = ReacquiringRawIterator::new(db.as_ref());
             if let Some(seek) = start_seek {
                 iter.seek(seek);
             }

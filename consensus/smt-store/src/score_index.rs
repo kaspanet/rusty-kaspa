@@ -172,7 +172,7 @@ impl DbScoreIndex {
         let seek_key = ScoreIndexKey::seek_key(self.prefix, target_blue_score);
         let score_prefix = [self.prefix];
 
-        let mut iter = ReacquiringRawIterator::new(&self.db, 8192);
+        let mut iter = ReacquiringRawIterator::new(&self.db);
         iter.seek(seek_key);
 
         let mut done = false;
