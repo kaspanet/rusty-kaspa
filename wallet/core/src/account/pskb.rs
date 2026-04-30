@@ -256,8 +256,8 @@ pub fn finalize_pskt_one_or_more_sig_and_redeem_script(pskt: PSKT<Finalizer>) ->
                 let signatures: Vec<_> = input
                     .partial_sigs
                     .clone()
-                    .into_iter()
-                    .flat_map(|(_, signature)| iter::once(OpData65).chain(signature.into_bytes()).chain([input.sighash_type.to_u8()]))
+                    .into_values()
+                    .flat_map(|signature| iter::once(OpData65).chain(signature.into_bytes()).chain([input.sighash_type.to_u8()]))
                     .collect();
 
                 signatures
