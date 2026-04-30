@@ -6,6 +6,7 @@ pub mod keys;
 pub mod lane_version_store;
 pub mod maybe_fork;
 pub mod processor;
+pub mod reacquire_iter;
 pub mod reverse_blue_score;
 pub mod score_index;
 pub mod streaming_import;

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind, ScoreIndexValue};
 use crate::maybe_fork::MaybeFork;
+use crate::reacquire_iter::ReacquiringRawIterator;
 use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -162,6 +163,9 @@ impl DbScoreIndex {
     /// `max_depth` so pruning can bound branch deletes by the deepest depth
     /// touched by the block, and the lane keys for which to delete entries.
     /// The score index itself is pruned separately via [`delete_range`].
+    ///
+    /// Uses a reacquiring iterator; callers must ensure compatible consistency
+    /// semantics for the scanned range while consuming the iterator.
     pub fn get_all(
         &self,
         blue_score_range: RangeInclusive<u64>,
@@ -171,7 +175,7 @@ impl DbScoreIndex {
         let seek_key = ScoreIndexKey::seek_key(self.prefix, target_blue_score);
         let score_prefix = [self.prefix];
 
-        let mut iter = self.db.raw_iterator();
+        let mut iter = ReacquiringRawIterator::new(&self.db);
         iter.seek(seek_key);
 
         let mut done = false;
