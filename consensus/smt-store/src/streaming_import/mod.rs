@@ -64,11 +64,18 @@ impl ImportProgress {
 /// `chunks` yields `Vec<ImportLane>` already sized by the upstream
 /// wire-level chunker (see `SMT_CHUNK_SIZE` in `protocol/flows/src/ibd/streams.rs`).
 /// Each incoming Vec is processed as one step — parallel leaf hashing, proof
-/// verification, DB batching, and `builder.feed`. No internal re-batching or
-/// accumulator.
+/// verification, lane-version DB batching, and `builder.feed`.
 ///
-/// `max_batch_entries` remains the RocksDB `WriteBatch` flush threshold for
-/// lane/score-index writes; it is independent of the incoming chunk size.
+/// Score-index writes are emitted as soon as a chunk's lanes are all sealed
+/// (per-lane seal events fed into [`DbSink`] via [`MergeSink::record_seal`]
+/// callbacks). Pending entries that contain still-unsealed lanes wait until
+/// later feeds or `builder.finish()` complete the sealing. After each flush
+/// the corresponding lane entries are dropped from the per-lane map so its
+/// footprint stays bounded by unflushed lanes.
+///
+/// `max_batch_entries` is the RocksDB `WriteBatch` flush threshold for
+/// lane-version and score-index writes; it is independent of the incoming
+/// chunk size.
 pub fn streaming_import(
     db: &DB,
     stores: &SmtStores,
@@ -90,7 +97,9 @@ pub fn streaming_import(
     let mut lane_batch = WriteBatch::default();
     let mut batch_count = 0usize;
     let mut batch_id = 0u32;
-    let mut score_groups: BTreeMap<u64, Vec<Hash>> = BTreeMap::new();
+    let mut pending: Vec<PendingScoreIndex> = Vec::new();
+    let mut score_batch = WriteBatch::default();
+    let mut score_batch_count = 0usize;
     let mut lanes_imported = 0u64;
     let mut progress = ImportProgress::new(total_count);
     let mut leaf_hashes: Vec<(Hash, Hash)> = Vec::new();
@@ -116,8 +125,12 @@ pub fn streaming_import(
             };
         }
 
+        for (lane, &(lane_key, leaf_hash)) in chunk.iter().zip(leaf_hashes.iter()) {
+            builder.feed(lane_key, leaf_hash, lane.blue_score)?;
+        }
+
         write_lane_versions(stores, block_hash, &chunk, &mut lane_batch, &mut batch_count)?;
-        write_score_index(stores, block_hash, &chunk, &mut score_groups, &mut lane_batch, &mut batch_count, batch_id)?;
+        pending.push(PendingScoreIndex::from_chunk(batch_id, &chunk));
 
         if batch_count >= max_batch_entries {
             db.write(std::mem::take(&mut lane_batch)).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
@@ -125,11 +138,22 @@ pub fn streaming_import(
         }
         batch_id += 1;
 
-        for (lane, &(lane_key, leaf_hash)) in chunk.iter().zip(leaf_hashes.iter()) {
-            builder.feed(lane_key, leaf_hash, lane.blue_score)?;
-        }
         lanes_imported += chunk.len() as u64;
         progress.report(chunk.len());
+
+        // After this chunk's feed, some lanes from earlier chunks may have
+        // sealed (via `seal_up_to` / `chain_up` callbacks). Flush whatever's
+        // resolvable and drop those lanes from the per-lane seal map.
+        flush_resolved_pending(
+            db,
+            stores,
+            block_hash,
+            &mut pending,
+            builder.sink_mut(),
+            &mut score_batch,
+            &mut score_batch_count,
+            max_batch_entries,
+        )?;
     }
 
     progress.report_completion();
@@ -138,31 +162,114 @@ pub fn streaming_import(
     sink.flush_batch().map_err(StreamError::Sink)?;
     flush_lane_batch(db, lane_batch, batch_count)?;
 
+    // After finalize, every leaf has sealed — any pending entry that
+    // didn't resolve in-loop must resolve now.
+    flush_resolved_pending(
+        db,
+        stores,
+        block_hash,
+        &mut pending,
+        &mut sink,
+        &mut score_batch,
+        &mut score_batch_count,
+        max_batch_entries,
+    )?;
+    assert!(pending.is_empty(), "post-finalize: every pending score-index entry must be resolvable");
+    if score_batch_count > 0 {
+        db.write(score_batch).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
+    }
+
     Ok(StreamingImportResult { root, lanes_imported, nodes_written: sink.nodes_written() })
 }
 
-fn write_score_index(
-    stores: &SmtStores,
-    block_hash: BlockHash,
-    chunk: &[ImportLane],
-    score_groups: &mut BTreeMap<u64, Vec<Hash>>,
-    batch: &mut WriteBatch,
-    batch_count: &mut usize,
+/// One chunk's worth of score-index args, awaiting per-lane seal events.
+struct PendingScoreIndex {
     batch_id: u32,
-) -> Result<(), StreamError<StoreError>> {
-    // LeafUpdate: grouped by each lane's own blue_score
-    score_groups.clear();
-    for lane in chunk {
-        score_groups.entry(lane.blue_score).or_default().push(lane.lane_key);
-    }
-    for (bs, keys) in score_groups.iter() {
-        stores
-            .score_index
-            .put_batched(BatchDbWriter::new(batch), *bs, ScoreIndexKind::LeafUpdate, block_hash, keys, batch_id)
-            .map_err(StreamError::Sink)?;
-        *batch_count += 1;
+    /// Lane keys grouped by their blue_score, ordered by bs (BTreeMap drained into Vec).
+    groups: Vec<(u64, Vec<Hash>)>,
+}
+
+impl PendingScoreIndex {
+    fn from_chunk(batch_id: u32, chunk: &[ImportLane]) -> Self {
+        let mut groups: BTreeMap<u64, Vec<Hash>> = BTreeMap::new();
+        for lane in chunk {
+            groups.entry(lane.blue_score).or_default().push(lane.lane_key);
+        }
+        Self { batch_id, groups: groups.into_iter().collect() }
     }
 
+    /// True when every lane in every bs group has been sealed. Required
+    /// before flushing — the score-index entry's `max_depth` must cover
+    /// every lane that will share its `(bs, batch_id)` storage slot.
+    fn is_resolvable(&self, sink: &DbSink<'_>) -> bool {
+        self.groups.iter().all(|(_, lks)| lks.iter().all(|lk| sink.seal_depth_for(lk).is_some()))
+    }
+
+    /// Caller must have verified [`Self::is_resolvable`]; this consumes the
+    /// entry's lane keys so the caller can hand them to `forget_lanes`.
+    fn write_to_batch(
+        &self,
+        batch: &mut WriteBatch,
+        stores: &SmtStores,
+        block_hash: BlockHash,
+        sink: &DbSink<'_>,
+    ) -> Result<usize, StreamError<StoreError>> {
+        let mut written = 0;
+        for (bs, lane_keys) in &self.groups {
+            // All lanes in this group are sealed (verified by is_resolvable).
+            // Take the max seal depth across the group as the entry's `max_depth`.
+            let max_depth = lane_keys.iter().filter_map(|lk| sink.seal_depth_for(lk)).max().unwrap_or(0);
+            stores
+                .score_index
+                .put_batched(
+                    BatchDbWriter::new(batch),
+                    *bs,
+                    ScoreIndexKind::LeafUpdate,
+                    block_hash,
+                    lane_keys,
+                    self.batch_id,
+                    max_depth,
+                )
+                .map_err(StreamError::Sink)?;
+            written += 1;
+        }
+        Ok(written)
+    }
+
+    fn into_lane_keys(self) -> impl Iterator<Item = Hash> {
+        self.groups.into_iter().flat_map(|(_, lks)| lks)
+    }
+}
+
+/// Walk `pending` once, flushing every entry whose lanes are all sealed and
+/// dropping those lanes from the sink's per-lane map. Out-of-order is fine —
+/// each entry has a distinct `(batch_id, bs, ...)` storage slot.
+fn flush_resolved_pending(
+    db: &DB,
+    stores: &SmtStores,
+    block_hash: BlockHash,
+    pending: &mut Vec<PendingScoreIndex>,
+    sink: &mut DbSink<'_>,
+    score_batch: &mut WriteBatch,
+    score_batch_count: &mut usize,
+    max_batch_entries: usize,
+) -> Result<(), StreamError<StoreError>> {
+    let mut i = 0;
+    while i < pending.len() {
+        if pending[i].is_resolvable(sink) {
+            let entry = pending.swap_remove(i);
+            let written = entry.write_to_batch(score_batch, stores, block_hash, sink)?;
+            *score_batch_count += written;
+            sink.forget_lanes(entry.into_lane_keys());
+            if *score_batch_count >= max_batch_entries {
+                db.write(std::mem::take(score_batch)).map_err(|e| StreamError::Sink(StoreError::DbError(e)))?;
+                *score_batch_count = 0;
+            }
+            // Don't advance `i` — `swap_remove` moved a fresh entry into this slot.
+        } else {
+            i += 1;
+        }
+    }
     Ok(())
 }
 

@@ -181,6 +181,32 @@ impl AsRef<[u8]> for ScoreIndexKey {
     }
 }
 
+/// Score index value.
+///
+/// Layout: `max_depth(1) | lane_keys(N * 32)` — total `1 + N * 32` bytes.
+///
+/// `max_depth` is the deepest branch depth touched by the block whose
+/// `(blue_score, kind, block_hash)` keys this entry. Pruning uses it to bound
+/// the depth range when issuing branch-version deletes (`0..=max_depth`)
+/// instead of blindly iterating all 256 depths.
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+#[repr(C)]
+pub struct ScoreIndexValue {
+    pub max_depth: u8,
+    pub lane_keys: [Hash],
+}
+
+impl ScoreIndexValue {
+    /// Build the on-disk bytes for `(max_depth, lane_keys)` in the same
+    /// layout `Self::ref_from_bytes` reads back.
+    pub fn to_value_bytes(max_depth: u8, lane_keys: &[Hash]) -> Vec<u8> {
+        let mut v = Vec::with_capacity(1 + lane_keys.len() * 32);
+        v.push(max_depth);
+        v.extend_from_slice(lane_keys.as_bytes());
+        v
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
