@@ -63,6 +63,10 @@ pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct TransactionOutpointKey([u8; TRANSACTION_OUTPOINT_KEY_SIZE]);
 
+impl TransactionOutpointKey {
+    pub const EMPTY: Self = TransactionOutpointKey([0; TRANSACTION_OUTPOINT_KEY_SIZE]);
+}
+
 impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
         let transaction_id = Hash::from_slice(&key.0[..kaspa_hashes::HASH_SIZE]);
@@ -104,6 +108,7 @@ impl AsRef<[u8]> for DaaScoreKey {
     }
 }
 
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct UtxoEntryInnerKey([u8; DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE]);
 
 impl From<(u64, TransactionOutpoint)> for UtxoEntryInnerKey {
@@ -255,6 +260,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         }
 
         let script_count = script_public_keys.len();
+
         let mut script_public_keys = script_public_keys.into_iter().collect::<Vec<_>>();
         script_public_keys.sort_by(|a, b| a.version().cmp(&b.version()).then_with(|| a.script().cmp(b.script())));
 
@@ -265,25 +271,26 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                 let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
                 let seek_from = UtxoEntryFullAccessKey::new(
                     script_public_key_bucket.clone(),
-                    DaaScoreKey::from(from_daa_score),
-                    TransactionOutpointKey([0; TRANSACTION_OUTPOINT_KEY_SIZE]),
+                    from_daa_score.into(),
+                    TransactionOutpointKey::EMPTY,
                 );
+
                 let seek_to = (to_daa_score < u64::MAX).then(|| {
                     UtxoEntryFullAccessKey::new(
                         script_public_key_bucket.clone(),
-                        DaaScoreKey::from(to_daa_score + 1),
-                        TransactionOutpointKey([0; TRANSACTION_OUTPOINT_KEY_SIZE]),
+                        (to_daa_score + 1).into(),
+                        TransactionOutpointKey::EMPTY,
                     )
                 });
 
                 let mut entries = Vec::new();
-                for res in
-                    self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), Some(seek_from), seek_to, usize::MAX, false)
-                {
+                for res in self.access.seek_iterator(None, Some(seek_from), seek_to, usize::MAX, false) {
                     let (key, value) = res.unwrap();
-                    let key_data: UtxoEntryKeyData =
-                        UtxoEntryInnerKey(<[u8; DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap())
-                            .into();
+                    let bucket_len = script_public_key_bucket.as_ref().len();
+                    let key_data: UtxoEntryKeyData = UtxoEntryInnerKey(
+                        <[u8; DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[bucket_len..]).unwrap(),
+                    )
+                    .into();
                     entries.push((key_data, value));
                 }
                 entries
