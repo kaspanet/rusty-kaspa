@@ -246,10 +246,37 @@ pub type LaneVersionCache = VersionedCache<Hash, LaneTipHash>;
 
 #[cfg(test)]
 mod tests {
+    use std::mem::size_of;
+
     use super::*;
 
     fn hash(v: u8) -> Hash {
         Hash::from_bytes([v; 32])
+    }
+
+    #[test]
+    #[ignore]
+    fn print_cache_entry_byte_sizes() {
+        let lane_logical_entry_bytes = size_of::<Hash>() + size_of::<LaneTipHash>();
+        let branch_logical_entry_bytes = size_of::<BranchEntity>() + size_of::<Option<Node>>();
+        let lane_indexed_entry_bytes = size_of::<(EntityVersionKey<Hash>, LaneTipHash)>() + size_of::<(ScoreEntityKey<Hash>, ())>();
+        let branch_indexed_entry_bytes =
+            size_of::<(EntityVersionKey<BranchEntity>, Option<Node>)>() + size_of::<(ScoreEntityKey<BranchEntity>, ())>();
+
+        println!("Hash: {}", size_of::<Hash>());
+        println!("LaneTipHash: {}", size_of::<LaneTipHash>());
+        println!("BranchEntity: {}", size_of::<BranchEntity>());
+        println!("Option<Node>: {}", size_of::<Option<Node>>());
+        println!("EntityVersionKey<Hash>: {}", size_of::<EntityVersionKey<Hash>>());
+        println!("ScoreEntityKey<Hash>: {}", size_of::<ScoreEntityKey<Hash>>());
+        println!("EntityVersionKey<BranchEntity>: {}", size_of::<EntityVersionKey<BranchEntity>>());
+        println!("ScoreEntityKey<BranchEntity>: {}", size_of::<ScoreEntityKey<BranchEntity>>());
+        println!("lane logical entry bytes: {lane_logical_entry_bytes}");
+        println!("branch logical entry bytes: {branch_logical_entry_bytes}");
+        println!("lane indexed entry bytes: {lane_indexed_entry_bytes}");
+        println!("branch indexed entry bytes: {branch_indexed_entry_bytes}");
+        println!("lane budget for 50k entries: {}", lane_indexed_entry_bytes * 50_000);
+        println!("branch budget for 500k entries: {}", branch_indexed_entry_bytes * 500_000);
     }
 
     #[test]

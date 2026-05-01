@@ -5,7 +5,7 @@ use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     config::params::{TESTNET_PARAMS, TESTNET12_PARAMS},
-    constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_POST_COV_HF},
+    constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_TOCCATA},
     hashing::covenant_id::covenant_id,
     network::NetworkType,
     sign::sign,
@@ -636,7 +636,7 @@ fn generate_tx(
 
     // set base version according to the usage of covenant
     let mut tx_version = match with_covenant_id {
-        true => TX_VERSION_POST_COV_HF,
+        true => TX_VERSION_TOCCATA,
         false => TX_VERSION,
     };
 
@@ -654,7 +654,7 @@ fn generate_tx(
 
     let unsigned_tx = Transaction::new_non_finalized(tx_version, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, data);
     let mut unsigned_tx = MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec());
-    if tx_version == TX_VERSION_POST_COV_HF {
+    if tx_version == TX_VERSION_TOCCATA {
         apply_random_covenant_binding_from_inputs(&mut unsigned_tx, with_covenant_id);
     }
     let signed_tx = sign(unsigned_tx, schnorr_key);

@@ -115,7 +115,7 @@ impl ConsensusStorage {
         let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
 
-        // If the fork is already scheduled, prefer the long-term, permanent values
+        // Window sizes in bytes
         let difficulty_window_bytes = params.difficulty_window_size * size_of::<SortableBlock>();
         let median_window_bytes = params.past_median_time_window_size * size_of::<SortableBlock>();
 
@@ -230,11 +230,17 @@ impl ConsensusStorage {
         let virtual_stores =
             Arc::new(RwLock::new(VirtualStores::new(db.clone(), lkg_virtual_state.clone(), utxo_set_builder.build())));
 
-        // SMT stores (KIP-21)
-        // TODO: make cache capacities configurable via consensus params
-        let smt_stores = Arc::new(SmtStores::new(db.clone(), 500_000, 50_000));
-        // TODO: tune SMT metadata cache budget based on profiling
-        let smt_metadata_builder = PolicyBuilder::new().max_items(pruning_size_for_caches).untracked();
+        // SMT stores (KIP-21).
+        //
+        // The branch cache is larger because each lane update can touch multiple
+        // branch versions along the collapsed path. With the current tuple sizes,
+        // the selected capacities correspond to ~116MB for branches (500k * 232B)
+        // and ~18MB for lanes (100k * 176B).
+        // TODO: decide if SMT cache capacities should be determined from byte budgets
+        let smt_stores = Arc::new(SmtStores::new(db.clone(), scaled(500_000), scaled(100_000)));
+        // Use the header-data cache size for now because SMT metadata entries are small.
+        // TODO: tune SMT metadata cache budget based on profiling.
+        let smt_metadata_builder = PolicyBuilder::new().max_items(perf_params.header_data_cache_size).untracked();
         let smt_metadata_store = Arc::new(DbSmtMetadataStore::new(db.clone(), smt_metadata_builder.build()));
 
         // Ensure that reachability stores are initialized

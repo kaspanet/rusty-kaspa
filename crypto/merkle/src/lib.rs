@@ -40,14 +40,12 @@ pub fn calc_merkle_root_with_hasher<H: Hasher>(mut hashes: impl ExactSizeIterato
     for (i, hash) in hashes.enumerate() {
         merkles[i] = Some(hash);
     }
-    let mut offset = next_pot;
-    for i in (0..vec_len - 1).step_by(2) {
+    for (offset, i) in (next_pot..).zip((0..vec_len - 1).step_by(2)) {
         if merkles[i].is_none() {
             merkles[offset] = None;
         } else {
             merkles[offset] = Some(merkle_hash_with_hasher(merkles[i].unwrap(), merkles[i + 1].unwrap_or(ZERO_HASH), H::default()));
         }
-        offset += 1
     }
     merkles.last().unwrap().unwrap()
 }

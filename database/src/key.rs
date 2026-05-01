@@ -27,6 +27,19 @@ impl DbKey {
         db_key
     }
 
+    /// Convenience constructor: `[prefix || key || suffix]`. The suffix bytes
+    /// sit *after* the logical key and are not counted toward `prefix_len` —
+    /// see [`DbKey::add_suffix`] for the rationale.
+    pub fn new_with_suffix<TKey, TSuffix>(prefix: &[u8], key: TKey, suffix: TSuffix) -> Self
+    where
+        TKey: Clone + AsRef<[u8]>,
+        TSuffix: AsRef<[u8]>,
+    {
+        let mut db_key = Self::new(prefix, key);
+        db_key.add_suffix(suffix);
+        db_key
+    }
+
     pub fn prefix_only(prefix: &[u8]) -> Self {
         Self::new(prefix, [])
     }
@@ -46,6 +59,21 @@ impl DbKey {
     {
         self.path.extend(key.as_ref().iter().copied());
         self.prefix_len += key.as_ref().len();
+    }
+
+    /// Append bytes after the logical key without changing `prefix_len`.
+    ///
+    /// Unlike [`DbKey::add_bucket`] and [`DbKey::add_key`] — both of which sit
+    /// conceptually in front of the row key and therefore grow `prefix_len` —
+    /// a suffix is part of the row key itself (for example a version byte
+    /// appended to a versioned store's keys). `prefix_len` must continue to
+    /// reflect only the store/bucket path so that iterator helpers that strip
+    /// the prefix see the correct boundary.
+    pub fn add_suffix<TSuffix>(&mut self, suffix: TSuffix)
+    where
+        TSuffix: AsRef<[u8]>,
+    {
+        self.path.extend(suffix.as_ref().iter().copied());
     }
 
     pub fn prefix_len(&self) -> usize {
@@ -138,5 +166,24 @@ mod tests {
         let _ = key5.to_string();
         let _ = key6.to_string();
         let _ = key7.to_string();
+    }
+
+    #[test]
+    fn test_add_suffix_and_new_with_suffix() {
+        // `new_with_suffix` produces [prefix || key || suffix] and reports the
+        // store-prefix length (without the suffix) via `prefix_len()`.
+        let prefix: [u8; 1] = [42];
+        let key = [0x01u8; 4];
+        let suffix = [0xFFu8];
+        let db_key = DbKey::new_with_suffix(&prefix, key, suffix);
+        assert_eq!(db_key.as_ref(), &[42, 0x01, 0x01, 0x01, 0x01, 0xFF]);
+        assert_eq!(db_key.prefix_len(), prefix.len(), "suffix must not grow prefix_len");
+
+        // `add_suffix` on an existing key appends bytes and keeps prefix_len untouched.
+        let mut extended = DbKey::new(&prefix, key);
+        let prefix_len_before = extended.prefix_len();
+        extended.add_suffix([0x77u8, 0x88u8]);
+        assert_eq!(extended.as_ref(), &[42, 0x01, 0x01, 0x01, 0x01, 0x77, 0x88]);
+        assert_eq!(extended.prefix_len(), prefix_len_before);
     }
 }

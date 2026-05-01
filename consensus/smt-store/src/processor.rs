@@ -9,6 +9,8 @@
 //! branches. `flush()` persists to a `WriteBatch`; the caller commits atomically.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::convert::Infallible;
+use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
@@ -18,10 +20,11 @@ use kaspa_database::prelude::{BatchDbWriter, DB, DirectDbWriter, StoreError, Sto
 use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
 use kaspa_seq_commit::hashing::smt_leaf_hash;
 use kaspa_seq_commit::types::SmtLeafInput;
-use kaspa_smt::SmtHasher;
 use kaspa_smt::proof::OwnedSmtProof;
-use kaspa_smt::store::{BranchKey, Node, SmtStore, SortedLeafUpdates};
+use kaspa_smt::store::{BranchKey, CollapsedLeaf, Node, SmtStore, SortedLeafUpdates};
+use kaspa_smt::streaming::{ChildInfo, MergeSink, StreamError, StreamingSmtBuilder};
 use kaspa_smt::tree::{SmtNodeChanges, SparseMerkleTree, compute_root_update};
+use kaspa_smt::{DEPTH, SmtHasher, bit_at, hash_node};
 use rocksdb::WriteBatch;
 
 use crate::branch_version_store::DbBranchVersionStore;
@@ -84,6 +87,79 @@ struct PruneEntry {
     lane_key: Hash,
     blue_score: u64,
     block_hash: Hash,
+    max_depth: u8,
+}
+
+#[cfg(feature = "test-smt-pruning-diagnostics")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[doc(hidden)]
+/// Diagnostic counts for versioned SMT entries at or below a pruning cutoff.
+///
+/// This is exposed for integration invariants, not as a consensus API surface.
+pub struct StaleSmtEntriesCount {
+    pub branch_versions: usize,
+    pub lane_versions: usize,
+    pub score_index: usize,
+}
+
+#[cfg(feature = "test-smt-pruning-diagnostics")]
+impl StaleSmtEntriesCount {
+    pub const fn total(self) -> usize {
+        self.branch_versions + self.lane_versions + self.score_index
+    }
+}
+
+struct RootOnlyMergeSink<H>(PhantomData<H>);
+
+impl<H> Default for RootOnlyMergeSink<H> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<H: SmtHasher> MergeSink for RootOnlyMergeSink<H> {
+    type Error = Infallible;
+
+    fn merge(
+        &mut self,
+        left: Hash,
+        right: Hash,
+        _parent_key: BranchKey,
+        _left_info: ChildInfo,
+        _right_info: ChildInfo,
+        _parent_blue_score: u64,
+    ) -> Result<Hash, Self::Error> {
+        Ok(hash_node::<H>(left, right))
+    }
+
+    fn merge_chain_with_empty(
+        &mut self,
+        hash: Hash,
+        from_depth: usize,
+        to_depth: usize,
+        representative_key: &Hash,
+        _blue_score: u64,
+    ) -> Result<Hash, Self::Error> {
+        let mut current_hash = hash;
+
+        for depth in (to_depth..from_depth).rev() {
+            let height = DEPTH - 1 - depth;
+            let empty_hash = H::EMPTY_HASHES[height];
+            let goes_right = bit_at(representative_key, depth);
+            let (left_hash, right_hash) = if goes_right { (empty_hash, current_hash) } else { (current_hash, empty_hash) };
+            current_hash = hash_node::<H>(left_hash, right_hash);
+        }
+
+        Ok(current_hash)
+    }
+
+    fn write_collapsed(&mut self, _branch_key: BranchKey, _leaf: CollapsedLeaf, _blue_score: u64) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+fn stream_error_to_store_error<E: std::fmt::Debug>(err: StreamError<E>) -> StoreError {
+    StoreError::DataInconsistency(format!("streaming SMT root recompute: {err}"))
 }
 
 impl SmtStores {
@@ -159,6 +235,29 @@ impl SmtStores {
         }
     }
 
+    /// Recompute the lanes root directly from the active lane-version stream,
+    /// without writing any branch nodes or using temporary stores.
+    pub fn recompute_lanes_root_from_leaf_stream(
+        &self,
+        bounds: SmtReadBounds,
+        total_count: u64,
+        is_canonical: impl Fn(Hash) -> bool,
+    ) -> StoreResult<(Hash, u64)> {
+        let mut builder =
+            StreamingSmtBuilder::<SeqCommitActiveNode, _>::new(total_count, RootOnlyMergeSink::<SeqCommitActiveNode>::default());
+        let mut count = 0u64;
+
+        for lane in self.lane_version.iter_all_canonical(None, bounds.min_blue_score, Some(bounds.target_blue_score), is_canonical) {
+            let (lane_key, verified) = lane?;
+            let leaf_hash = smt_leaf_hash(&SmtLeafInput { lane_tip: verified.data(), blue_score: verified.blue_score() });
+            builder.feed(lane_key, leaf_hash, verified.blue_score()).map_err(stream_error_to_store_error)?;
+            count += 1;
+        }
+
+        let (root, _) = builder.finish().map_err(stream_error_to_store_error)?;
+        Ok((root, count))
+    }
+
     /// Generate an inclusion proof for `lane_key` in the canonical tree as of
     /// `target_blue_score`.
     pub fn prove_lane(
@@ -205,8 +304,10 @@ impl SmtStores {
             let entry = entry.unwrap();
             let blue_score = entry.blue_score();
             let block_hash = entry.block_hash();
-            for lk in entry.data().iter() {
-                entries.push(PruneEntry { lane_key: *lk, blue_score, block_hash });
+            let value = entry.data();
+            let max_depth = value.max_depth;
+            for lk in value.lane_keys.iter() {
+                entries.push(PruneEntry { lane_key: *lk, blue_score, block_hash, max_depth });
             }
             entries_in_chunk += 1;
 
@@ -253,12 +354,14 @@ impl SmtStores {
             self.lane_version.delete(BatchDbWriter::new(&mut batch), e.lane_key, e.blue_score, e.block_hash).unwrap();
         }
 
-        // Derive branch keys at all 256 depths from each entry. BTreeSet
-        // deduplicates: at low depths many lane_keys map to the same node_key
-        // (e.g. depth 0 always maps to ZERO_HASH).
+        // Derive branch keys at depths `0..=max_depth` per entry, where
+        // `max_depth` is the deepest branch the originating block actually
+        // touched (recorded in the score-index value). BTreeSet deduplicates:
+        // at low depths many lane_keys map to the same node_key (e.g. depth 0
+        // always maps to ZERO_HASH).
         let mut branch_keys: BTreeSet<(BranchKey, u64, Hash)> = BTreeSet::new();
         for e in entries {
-            for depth in 0..=255u8 {
+            for depth in 0..=e.max_depth {
                 branch_keys.insert((BranchKey::new(depth, &e.lane_key), e.blue_score, e.block_hash));
             }
         }
@@ -281,6 +384,18 @@ impl SmtStores {
         self.score_index.delete_all();
         self.branch_cache.lock().clear();
         self.lane_cache.lock().clear();
+    }
+
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    #[doc(hidden)]
+    /// Diagnostic invariant helper: count versioned SMT entries at or below a
+    /// pruning cutoff. Tests use this to assert pruning left no stale data.
+    pub fn count_entries_at_or_below(&self, cutoff_blue_score: u64) -> StoreResult<StaleSmtEntriesCount> {
+        Ok(StaleSmtEntriesCount {
+            branch_versions: self.branch_version.count_entries_at_or_below(cutoff_blue_score)?,
+            lane_versions: self.lane_version.count_entries_at_or_below(cutoff_blue_score)?,
+            score_index: self.score_index.count_entries_at_or_below(cutoff_blue_score)?,
+        })
     }
 }
 
@@ -328,15 +443,45 @@ impl BlockLaneChanges {
         Ok(())
     }
 
-    pub fn flush_score_index(&self, stores: &SmtStores, batch: &mut WriteBatch, block_hash: BlockHash) -> StoreResult<()> {
+    /// Flush the score index for this block.
+    ///
+    /// `structural_extra` is appended to the `Structural` entry alongside this
+    /// block's expired lanes. Caller contract: every key in `structural_extra`
+    /// must be (a) disjoint from `self.changes` (touched lanes are already
+    /// covered by the `LeafUpdate`/expired sets) and (b) internally de-duped.
+    /// Both conditions must hold so the Vec build below can chain without a
+    /// per-call set-allocation.
+    pub fn flush_score_index(
+        &self,
+        stores: &SmtStores,
+        batch: &mut WriteBatch,
+        block_hash: BlockHash,
+        max_depth: u8,
+        structural_extra: impl IntoIterator<Item = LaneKey>,
+    ) -> StoreResult<()> {
         use crate::keys::ScoreIndexKind;
         let updated: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| v.as_ref().map(|_| *k)).collect();
-        let expired: Vec<LaneKey> = self.changes.iter().filter_map(|(k, v)| if v.is_none() { Some(*k) } else { None }).collect();
+        let structural: Vec<LaneKey> =
+            self.changes.iter().filter_map(|(k, v)| if v.is_none() { Some(*k) } else { None }).chain(structural_extra).collect();
         if !updated.is_empty() {
-            stores.score_index.put(BatchDbWriter::new(batch), self.blue_score, ScoreIndexKind::LeafUpdate, block_hash, &updated)?;
+            stores.score_index.put(
+                BatchDbWriter::new(batch),
+                self.blue_score,
+                ScoreIndexKind::LeafUpdate,
+                block_hash,
+                &updated,
+                max_depth,
+            )?;
         }
-        if !expired.is_empty() {
-            stores.score_index.put(BatchDbWriter::new(batch), self.blue_score, ScoreIndexKind::Structural, block_hash, &expired)?;
+        if !structural.is_empty() {
+            stores.score_index.put(
+                BatchDbWriter::new(batch),
+                self.blue_score,
+                ScoreIndexKind::Structural,
+                block_hash,
+                &structural,
+                max_depth,
+            )?;
         }
         Ok(())
     }
@@ -422,8 +567,16 @@ impl SmtBuild {
     ) -> StoreResult<Hash> {
         let root = self.root;
 
+        // Track the deepest branch depth this block actually touched so the
+        // score-index entry can record it. Pruning later uses it to bound the
+        // depth range of branch-version deletes (`0..=max_depth`) instead of
+        // iterating all 256 depths.
+        let mut max_depth: u8 = 0;
         for (bk, node) in &self.node_changes {
             stores.branch_version.put(BatchDbWriter::new(batch), bk.depth, bk.node_key, branch_blue_score, block_hash, *node)?;
+            if bk.depth > max_depth {
+                max_depth = bk.depth;
+            }
         }
         {
             let mut bc = stores.branch_cache.lock();
@@ -433,7 +586,23 @@ impl SmtBuild {
         }
 
         self.lane_changes.flush_lanes(stores, batch, block_hash)?;
-        self.lane_changes.flush_score_index(stores, batch, block_hash)?;
+        // SLO promotion may write a tombstone at `(depth+1, X-prefix)` whose
+        // node_key derives from the surviving sibling lane X — never from a
+        // touched/expired lane. Pruning enumerates `BranchKey::new(d, &lk)`
+        // over score-index lane_keys, so it would miss that tombstone unless
+        // X is recorded. Every such promotion records `Collapsed(cl)` in
+        // node_changes at the parent depth (record_change normalizes
+        // existing_for_write to None via expand_singleton, so the parent
+        // write is unconditional); cl.lane_key is X. Filter out lanes the
+        // block already touched — those are covered by the `LeafUpdate` /
+        // base structural sets — and add the rest.
+        let promoted_lane_keys: BTreeSet<LaneKey> = self
+            .node_changes
+            .values()
+            .filter_map(|n| if let Some(Node::Collapsed(cl)) = n { Some(cl.lane_key) } else { None })
+            .filter(|lk| !self.lane_changes.changes.contains_key(lk))
+            .collect();
+        self.lane_changes.flush_score_index(stores, batch, block_hash, max_depth, promoted_lane_keys)?;
 
         Ok(root)
     }

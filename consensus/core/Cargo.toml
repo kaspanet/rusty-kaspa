@@ -36,9 +36,10 @@ kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
 rand.workspace = true
 secp256k1.workspace = true
-serde_json.workspace = true
+serde-value.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
@@ -50,6 +51,8 @@ workflow-wasm.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 bincode.workspace = true
+serde_yaml = "0.9"
+toml.workspace = true
 wasm-bindgen-test.workspace = true
 web-sys.workspace = true
 

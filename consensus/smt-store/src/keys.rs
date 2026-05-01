@@ -78,18 +78,20 @@ impl AsRef<[u8]> for LaneVersionKey {
 
 /// Distinguishes score index entry kinds.
 ///
-/// - `LeafUpdate` (0): a lane was inserted or updated at this score.
-///   Keyed by the lane's own blue_score. Used by expiration logic to find stale lanes,
-///   and by pruning to delete lane_version + branch_version entries.
-/// - `Structural` (1): tree structure changed at this score (expiration, collapsed node merge/split).
-///   Keyed by the block's blue_score (or pruning point blue_score during IBD).
-///   Used by pruning to delete branch_version entries only.
+/// - `LeafUpdate` (0): a lane was inserted or updated at this score. Keyed by
+///   the lane's own blue_score. Used by expiration logic to find stale lanes,
+///   and by pruning to delete lane_version + branch_version entries
+/// - `Structural` (1): a lane was expired by a block. Keyed by the block's
+///   blue_score and used solely by pruning to delete the branch_version
+///   entries along the expired lane's path — those branches were touched at
+///   the block's bs but the lane_key no longer appears in any `LeafUpdate`,
+///   so it cannot be discovered via that route. Not used to drive future
+///   expirations.
 #[derive(TryFromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ScoreIndexKind {
     /// Lane inserted or updated. Score = lane's blue_score.
     LeafUpdate = 0,
-    /// Tree structure changed (expiration, merge/split). Score = block's blue_score.
     Structural = 1,
 }
 
@@ -176,6 +178,32 @@ impl AsRef<[u8]> for BatchedScoreIndexKey {
 impl AsRef<[u8]> for ScoreIndexKey {
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
+    }
+}
+
+/// Score index value.
+///
+/// Layout: `max_depth(1) | lane_keys(N * 32)` — total `1 + N * 32` bytes.
+///
+/// `max_depth` is the deepest branch depth touched by the block whose
+/// `(blue_score, kind, block_hash)` keys this entry. Pruning uses it to bound
+/// the depth range when issuing branch-version deletes (`0..=max_depth`)
+/// instead of blindly iterating all 256 depths.
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+#[repr(C)]
+pub struct ScoreIndexValue {
+    pub max_depth: u8,
+    pub lane_keys: [Hash],
+}
+
+impl ScoreIndexValue {
+    /// Build the on-disk bytes for `(max_depth, lane_keys)` in the same
+    /// layout `Self::ref_from_bytes` reads back.
+    pub fn to_value_bytes(max_depth: u8, lane_keys: &[Hash]) -> Vec<u8> {
+        let mut v = Vec::with_capacity(1 + lane_keys.len() * 32);
+        v.push(max_depth);
+        v.extend_from_slice(lane_keys.as_bytes());
+        v
     }
 }
 

@@ -12,8 +12,8 @@ pub enum TxRuleError {
     #[error("transaction has duplicate inputs")]
     TxDuplicateInputs,
 
-    #[error("transaction has non zero gas value")]
-    TxHasGas,
+    #[error("transaction has non-zero gas: {0}")]
+    TxHasGas(&'static str),
 
     #[error("transaction version {0} is unknown")]
     UnknownTxVersion(u16),

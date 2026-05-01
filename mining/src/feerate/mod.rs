@@ -1,7 +1,7 @@
 //! See the accompanying fee_estimation.ipynb Jupyter Notebook which details the reasoning
 //! behind this fee estimator.
 
-use crate::block_template::selector::ALPHA;
+use crate::mempool::model::frontier::selectors::ALPHA;
 use itertools::Itertools;
 use std::fmt::Display;
 

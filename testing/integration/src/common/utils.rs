@@ -2,7 +2,7 @@ use super::client::ListeningClient;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
+    constants::{TX_VERSION, TX_VERSION_TOCCATA},
     header::Header,
     mass::SigopCount,
     sign::sign,
@@ -133,7 +133,7 @@ fn generate_level_lane_assignments<R: Rng + ?Sized>(
 /// Like [`generate_tx_dag`] but each level draws tx lanes from a level-local pool
 /// of `lanes_per_level` unique subnetwork IDs.
 ///
-/// Uses `TX_VERSION_POST_COV_HF` so non-native subnetworks pass validation.
+/// Uses `TX_VERSION_TOCCATA` so non-native subnetworks pass validation.
 pub fn generate_tx_dag_with_lanes(
     mut utxoset: UtxoCollection,
     schnorr_key: Keypair,
@@ -167,7 +167,7 @@ pub fn generate_tx_dag_with_lanes(
                 let outputs = (0..num_outputs)
                     .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
                     .collect_vec();
-                let unsigned_tx = Transaction::new(TX_VERSION_POST_COV_HF, inputs, outputs, 0, subnetwork, 0, vec![]);
+                let unsigned_tx = Transaction::new(TX_VERSION_TOCCATA, inputs, outputs, 0, subnetwork, 0, vec![]);
                 sign(SignableTransaction::with_entries(unsigned_tx, entries), schnorr_key)
             })
             .collect::<Vec<_>>()

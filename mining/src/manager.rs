@@ -29,6 +29,7 @@ use kaspa_consensus_core::{
     block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
+    mass::{BlockLaneLimits, BlockMassLimits},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
 use kaspa_consensusmanager::{ConsensusProxy, spawn_blocking};
@@ -49,24 +50,26 @@ impl MiningManager {
     pub fn new(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
-        block_mass_limits: kaspa_consensus_core::mass::BlockMassLimits,
+        block_mass_limits: BlockMassLimits,
+        block_lane_limits: BlockLaneLimits,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
-        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, block_mass_limits);
+        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, block_mass_limits, block_lane_limits);
         Self::with_config(config, cache_lifetime, counters)
     }
 
     pub fn new_with_extended_config(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
-        block_mass_limits: kaspa_consensus_core::mass::BlockMassLimits,
+        block_mass_limits: BlockMassLimits,
+        block_lane_limits: BlockLaneLimits,
         ram_scale: f64,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
-        let config =
-            Config::build_default(target_time_per_block, relay_non_std_transactions, block_mass_limits).apply_ram_scale(ram_scale);
+        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, block_mass_limits, block_lane_limits)
+            .apply_ram_scale(ram_scale);
         Self::with_config(config, cache_lifetime, counters)
     }
 

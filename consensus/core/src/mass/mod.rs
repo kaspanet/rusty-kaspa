@@ -197,6 +197,12 @@ pub struct BlockMassLimits {
     pub transient: u64,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BlockLaneLimits {
+    pub lanes_per_block: usize,
+    pub gas_per_lane: u64,
+}
+
 impl BlockMassLimits {
     /// Create limits with the same value for all dimensions.
     #[inline]

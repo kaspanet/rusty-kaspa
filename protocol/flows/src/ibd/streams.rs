@@ -80,7 +80,6 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
         if let Ok(Some(_)) = res {
             self.i += 1;
             if self.i.is_multiple_of(IBD_BATCH_SIZE) {
-                info!("Downloaded {} blocks from the pruning point anticone", self.i - 1);
                 self.router
                     .enqueue(make_message!(
                         Payload::RequestNextPruningPointAndItsAnticoneBlocks,

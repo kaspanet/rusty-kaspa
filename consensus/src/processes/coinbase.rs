@@ -139,7 +139,7 @@ impl CoinbaseManager {
         let payload = self.serialize_coinbase_payload(&CoinbaseData { blue_score: ghostdag_data.blue_score, subsidy, miner_data })?;
 
         let tx_version =
-            if self.covenants_activation.is_active(daa_score) { constants::TX_VERSION_POST_COV_HF } else { constants::TX_VERSION };
+            if self.covenants_activation.is_active(daa_score) { constants::TX_VERSION_TOCCATA } else { constants::TX_VERSION };
 
         Ok(CoinbaseTransactionTemplate {
             tx: Transaction::new(tx_version, vec![], outputs, 0, subnets::SUBNETWORK_ID_COINBASE, 0, payload),
@@ -611,7 +611,7 @@ mod tests {
             cbm.expected_coinbase_transaction(100, miner_data, &ghostdag_data, &mergeset_rewards, &mergeset_non_daa).unwrap();
 
         assert_eq!(pre_activation.tx.version, constants::TX_VERSION);
-        assert_eq!(post_activation.tx.version, constants::TX_VERSION_POST_COV_HF);
+        assert_eq!(post_activation.tx.version, constants::TX_VERSION_TOCCATA);
     }
 
     fn create_manager(params: &Params) -> CoinbaseManager {

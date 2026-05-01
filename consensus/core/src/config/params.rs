@@ -6,7 +6,7 @@ pub use super::{
 use crate::{
     BlockLevel, KType,
     constants::STORAGE_MASS_PARAMETER,
-    mass::BlockMassLimits,
+    mass::{BlockLaneLimits, BlockMassLimits},
     network::{NetworkId, NetworkType},
 };
 use kaspa_addresses::Prefix;
@@ -202,6 +202,7 @@ pub struct OverrideParams {
     pub mass_per_script_pub_key_byte: Option<u64>,
     pub mass_per_sig_op: Option<u64>,
     pub block_mass_limits: Option<BlockMassLimits>,
+    pub block_lane_limits: Option<BlockLaneLimits>,
 
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
     pub storage_mass_parameter: Option<u64>,
@@ -244,6 +245,7 @@ impl From<Params> for OverrideParams {
             mass_per_script_pub_key_byte: Some(p.mass_per_script_pub_key_byte),
             mass_per_sig_op: Some(p.mass_per_sig_op),
             block_mass_limits: Some(p.block_mass_limits),
+            block_lane_limits: Some(p.block_lane_limits),
             storage_mass_parameter: Some(p.storage_mass_parameter),
             deflationary_phase_daa_score: Some(p.deflationary_phase_daa_score),
             pre_deflationary_phase_base_subsidy: Some(p.pre_deflationary_phase_base_subsidy),
@@ -296,6 +298,7 @@ pub struct Params {
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
     pub block_mass_limits: BlockMassLimits,
+    pub block_lane_limits: BlockLaneLimits,
 
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
     pub storage_mass_parameter: u64,
@@ -465,6 +468,7 @@ impl Params {
             mass_per_script_pub_key_byte: overrides.mass_per_script_pub_key_byte.unwrap_or(self.mass_per_script_pub_key_byte),
             mass_per_sig_op: overrides.mass_per_sig_op.unwrap_or(self.mass_per_sig_op),
             block_mass_limits: overrides.block_mass_limits.unwrap_or(self.block_mass_limits),
+            block_lane_limits: overrides.block_lane_limits.unwrap_or(self.block_lane_limits),
 
             storage_mass_parameter: overrides.storage_mass_parameter.unwrap_or(self.storage_mass_parameter),
 
@@ -578,6 +582,7 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
+    block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -635,6 +640,7 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
+    block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
@@ -712,6 +718,7 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
     // Transient mass is increased for stark proofs
     block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -753,6 +760,7 @@ pub const DEVNET_PARAMS: Params = Params {
 
     // Transient mass is increased for stark proofs
     block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
