@@ -234,6 +234,7 @@ pub mod serde_bytes_fixed;
 /// assert_eq!(test_struct, from_json);
 /// ```
 pub mod serde_bytes_fixed_ref;
+pub mod serde_bytes_fixed_ref_optional;
 #[cfg(feature = "sim")]
 pub mod sim;
 

@@ -43,11 +43,12 @@ serde.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
 tokio-stream = { workspace = true, features = ["net"] }
-tonic = { workspace = true, features = ["tls", "gzip"] }
+tonic = { workspace = true, features = ["gzip"] }
+tonic-prost.workspace = true
 uuid.workspace = true
 
 [build-dependencies]
-tonic-build = { workspace = true, features = ["prost"] }
+tonic-prost-build = { workspace = true }
 
 [dev-dependencies]
 hex.workspace = true
