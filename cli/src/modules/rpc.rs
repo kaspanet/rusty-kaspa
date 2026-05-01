@@ -313,6 +313,27 @@ impl Rpc {
 
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetUtxosByAddressesV2 => {
+                let mut args = argv;
+
+                let to_daa_score = args.last().and_then(|arg| arg.parse::<u64>().ok()).inspect(|_| {
+                    args.pop();
+                });
+
+                let from_daa_score = args.last().and_then(|arg| arg.parse::<u64>().ok()).inspect(|_| {
+                    args.pop();
+                });
+
+                if args.is_empty() {
+                    return Err(Error::custom("Please specify at least one address"));
+                }
+
+                let addresses = args.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
+                let result = rpc
+                    .get_utxos_by_addresses_v2_call(None, GetUtxosByAddressesV2Request { addresses, from_daa_score, to_daa_score })
+                    .await?;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());
