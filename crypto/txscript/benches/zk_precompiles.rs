@@ -71,7 +71,7 @@ fn benchmark_r0_batch_parallelism(c: &mut Criterion) {
 fn benchmark_groth16_prepare_inputs(c: &mut Criterion) {
     use ark_bn254::{Bn254, Fr};
     use ark_groth16::Groth16;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
     struct Circuit {
         num_public_inputs: usize,
@@ -85,11 +85,11 @@ fn benchmark_groth16_prepare_inputs(c: &mut Criterion) {
                 let input = cs.new_input_variable(|| Ok(Fr::from(i as u64)))?;
                 running_sum += i as u64;
                 let new_sum_var = cs.new_witness_variable(|| Ok(Fr::from(running_sum)))?;
-                let one = ark_relations::r1cs::Variable::One;
-                cs.enforce_constraint(
-                    ark_relations::lc!() + sum_var + input,
-                    ark_relations::lc!() + one,
-                    ark_relations::lc!() + new_sum_var,
+                let one = ark_relations::gr1cs::Variable::One;
+                cs.enforce_r1cs_constraint(
+                    || ark_relations::lc!() + sum_var + input,
+                    || ark_relations::lc!() + one,
+                    || ark_relations::lc!() + new_sum_var,
                 )?;
                 sum_var = new_sum_var;
             }
