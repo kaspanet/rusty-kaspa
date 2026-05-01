@@ -3,9 +3,8 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{
     ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
-use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
+use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref, serde_bytes_fixed_ref_optional, serde_bytes_optional};
 use serde::{Deserialize, Serialize};
-use serde_nested_with::serde_nested;
 use workflow_serializer::prelude::*;
 
 use crate::{
@@ -145,10 +144,9 @@ impl Deserializer for RpcOptionalUtxoEntryVerboseData {
 
 /// Represents a Kaspa transaction outpoint
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionOutpoint {
-    #[serde_nested(sub = "TransactionId", serde(with = "serde_bytes_fixed_ref"))]
+    #[serde(with = "serde_bytes_fixed_ref_optional")]
     pub transaction_id: Option<TransactionId>,
     pub index: Option<TransactionIndexType>,
 }
@@ -208,12 +206,11 @@ impl Deserializer for RpcOptionalTransactionOutpoint {
 
 /// Represents a Kaspa transaction input
 #[derive(Clone, Serialize, Deserialize)]
-#[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionInput {
     /// Level: High
     pub previous_outpoint: Option<RpcOptionalTransactionOutpoint>,
-    #[serde_nested(sub = "Vec<u8>", serde(with = "hex::serde"))]
+    #[serde(with = "serde_bytes_optional")]
     /// Level: Low
     pub signature_script: Option<Vec<u8>>,
     /// Level: High
@@ -405,7 +402,6 @@ impl Deserializer for RpcOptionalTransactionOutputVerboseData {
 
 /// Represents a Kaspa transaction
 #[derive(Clone, Serialize, Deserialize)]
-#[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransaction {
     /// Level: Full
@@ -418,7 +414,7 @@ pub struct RpcOptionalTransaction {
     pub subnetwork_id: Option<RpcSubnetworkId>,
     /// Level: Full
     pub gas: Option<u64>,
-    #[serde_nested(sub = "Vec<u8>", serde(with = "hex::serde"))]
+    #[serde(with = "serde_bytes_optional")]
     /// Level: High
     pub payload: Option<Vec<u8>>,
     /// Level: High
@@ -493,18 +489,17 @@ impl Deserializer for RpcOptionalTransaction {
 
 /// Represent Kaspa transaction verbose data
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionVerboseData {
-    #[serde_nested(sub = "RpcTransactionId", serde(with = "serde_bytes_fixed_ref"))]
+    #[serde(with = "serde_bytes_fixed_ref_optional")]
     /// Level: Low
     pub transaction_id: Option<RpcTransactionId>,
-    #[serde_nested(sub = "RpcHash", serde(with = "serde_bytes_fixed_ref"))]
+    #[serde(with = "serde_bytes_fixed_ref_optional")]
     /// Level: Low
     pub hash: Option<RpcHash>,
     /// Level: High
     pub compute_mass: Option<u64>,
-    #[serde_nested(sub = "RpcHash", serde(with = "serde_bytes_fixed_ref"))]
+    #[serde(with = "serde_bytes_fixed_ref_optional")]
     /// Level: Low
     pub block_hash: Option<RpcHash>,
     /// Level: Low

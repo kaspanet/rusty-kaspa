@@ -20,7 +20,7 @@ workflow-log.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ctrlc = { workspace = true, features = ["termination"] }
-intertrait.workspace = true
+downcast.workspace = true
 log4rs = { workspace = true, features = ["all_components", "gzip", "background_rotation"] }
 num_cpus.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time"] }
