@@ -217,7 +217,7 @@ parking_lot = "0.12.1"
 paste = "1.0.15"
 pbkdf2 = "0.12.2"
 portable-atomic = { version = "1.5.1", features = ["float"] }
-prost = "0.13.2"
+prost = "0.14.3"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rand_core = { version = "0.6.4", features = ["std"] }
@@ -256,8 +256,9 @@ thiserror = "1.0.50"
 tokio = { version = "1.42.1", features = ["sync", "rt-multi-thread"] }
 tokio-stream = "0.1.14"
 toml = "0.8.8"
-tonic = { version = "0.12.3", features = ["tls-webpki-roots", "gzip", "transport"] }
-tonic-build = { version = "0.12.3", features = ["prost"] }
+tonic = { version = "0.14.5", features = ["tls-webpki-roots", "gzip", "transport"] }
+tonic-prost = "0.14.5"
+tonic-prost-build = { version = "0.14.5" }
 triggered = "0.1.2"
 uuid = { version = "1.16.0", features = ["v4", "fast-rng", "serde", "js"] }
 wasm-bindgen = { version = "=0.2.100", features = ["serde-serialize"] }

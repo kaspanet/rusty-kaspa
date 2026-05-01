@@ -9,7 +9,7 @@ use kaspa_core::{debug, info};
 use kaspa_utils::networking::NetAddress;
 use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
-    middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
+    middleware::{CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
@@ -79,8 +79,8 @@ impl ConnectionHandler {
 
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
-                .layer(MapRequestBodyLayer::new(move |body| CountBytesBody::new(body, bytes_rx.clone()).boxed_unsync()))
-                .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone())))
+                .layer(MapRequestBodyLayer::new(move |body| tonic::body::Body::new(CountBytesBody::new(body, bytes_rx.clone()))))
+                .layer(MapResponseBodyLayer::new(move |body| tonic::body::Body::new(CountBytesBody::new(body, bytes_tx.clone()))))
                 .add_service(proto_server)
                 .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                 .await;
@@ -108,8 +108,12 @@ impl ConnectionHandler {
             .await?;
 
         let channel = ServiceBuilder::new()
-            .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, self.counters.bytes_rx.clone())))
-            .layer(MapRequestBodyLayer::new(move |body| CountBytesBody::new(body, self.counters.bytes_tx.clone()).boxed_unsync()))
+            .layer(MapResponseBodyLayer::new(move |body| {
+                tonic::body::Body::new(CountBytesBody::new(body, self.counters.bytes_rx.clone()))
+            }))
+            .layer(MapRequestBodyLayer::new(move |body| {
+                tonic::body::Body::new(CountBytesBody::new(body, self.counters.bytes_tx.clone()))
+            }))
             .service(channel);
 
         let mut client = ProtoP2pClient::new(channel)
