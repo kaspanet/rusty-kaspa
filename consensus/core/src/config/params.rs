@@ -672,6 +672,8 @@ pub const TESTNET12_PARAMS: Params = Params {
         "tn12-dnsseed.kas.pa",
         // This DNS seeder is run by iziodev
         "tn12-dnsseed.kasia.fyi",
+        // This DNS seeder is run by supertypo
+        "n-testnet-12.kaspa.ws",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 12),
     genesis: TESTNET12_GENESIS,
