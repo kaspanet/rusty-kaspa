@@ -11,19 +11,22 @@ use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use std::{error::Error, fmt::Display, sync::Arc};
+use std::{fmt::Display, sync::Arc};
 
-type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + 'a>;
+type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), StoreError>> + 'a>;
+type OwnedUtxoCollectionIterator = Box<dyn Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), StoreError>> + Send>;
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_>;
+    fn iterator(&self) -> UtxoCollectionIterator<'_>;
+    fn iterator_owned(&self) -> OwnedUtxoCollectionIterator;
+    fn seek_iterator(&self, seek_from: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
     /// Updates the store according to the UTXO diff -- adding and deleting entries correspondingly.
     /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
-    /// This is because concurrent readers can interfere with cache consistency.  
+    /// This is because concurrent readers can interfere with cache consistency.
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
 }
@@ -50,7 +53,7 @@ impl TryFrom<&[u8]> for UtxoKey {
         if UTXO_KEY_SIZE < slice.len() {
             return Err("src slice is too large");
         }
-        if slice.len() < kaspa_hashes::HASH_SIZE + 1 {
+        if slice.len() < kaspa_hashes::HASH_SIZE {
             return Err("src slice is too short");
         }
         // If the slice is shorter than HASH len + u32 len then we pad with zeros, effectively
@@ -111,19 +114,6 @@ impl DbUtxoSetStore {
         Ok(())
     }
 
-    pub fn iterator(&self) -> impl Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), Box<dyn Error>>> + '_ {
-        self.access.iterator().map(|iter_result| match iter_result {
-            Ok((key_bytes, utxo_entry)) => match UtxoKey::try_from(key_bytes.as_ref()) {
-                Ok(utxo_key) => {
-                    let outpoint: TransactionOutpoint = utxo_key.into();
-                    Ok((outpoint, utxo_entry))
-                }
-                Err(e) => Err(e.into()),
-            },
-            Err(e) => Err(e),
-        })
-    }
-
     /// Clear the store completely in DB and cache
     pub fn clear(&mut self) -> Result<(), StoreError> {
         self.access.delete_all(DirectDbWriter::new(&self.db))
@@ -151,12 +141,27 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         self.access.read((*outpoint).into())
     }
 
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_> {
-        let seek_key = from_outpoint.map(UtxoKey::from);
-        Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
-            let (key, entry) = res?;
-            let outpoint: TransactionOutpoint = UtxoKey::try_from(key.as_ref()).unwrap().into();
-            Ok((outpoint, UtxoEntry::clone(&entry)))
+    fn iterator(&self) -> UtxoCollectionIterator<'_> {
+        Box::new(self.access.iterator().map(|res| {
+            let (k, v) = res?;
+            let outpoint: TransactionOutpoint = k.into();
+            Ok((outpoint, v))
+        }))
+    }
+
+    fn seek_iterator(&self, seek_from: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_> {
+        Box::new(self.access.seek_iterator(None, seek_from.map(UtxoKey::from), limit, skip_first).map(|res| {
+            let (k, v) = res?;
+            let outpoint: TransactionOutpoint = k.into();
+            Ok((outpoint, v))
+        }))
+    }
+
+    fn iterator_owned(&self) -> OwnedUtxoCollectionIterator {
+        Box::new(self.access.iterator_owned().map(|res| {
+            let (k, v) = res?;
+            let outpoint: TransactionOutpoint = k.into();
+            Ok((outpoint, v))
         }))
     }
 }

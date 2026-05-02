@@ -214,12 +214,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_virtual_utxos(
-        &self,
-        from_outpoint: Option<TransactionOutpoint>,
-        chunk_size: usize,
-        skip_first: bool,
-    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+    fn get_virtual_utxo_iter_owned(&self) -> Box<dyn Iterator<Item = (TransactionOutpoint, Arc<UtxoEntry>)> + Send> {
         unimplemented!()
     }
 
@@ -364,7 +359,7 @@ pub trait ConsensusApi: Send + Sync {
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
-    ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
+    ) -> ConsensusResult<Vec<(TransactionOutpoint, Arc<UtxoEntry>)>> {
         unimplemented!()
     }
 

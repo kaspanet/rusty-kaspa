@@ -50,21 +50,6 @@ impl UtxoIndexChanges {
         }
     }
 
-    /// Add a [`Vec<(TransactionOutpoint, UtxoEntry)>`] the [`UtxoIndexChanges`] struct
-    ///
-    /// Note: This is meant to be used when resyncing.
-    pub fn add_utxos_from_vector(&mut self, utxo_vector: Vec<(TransactionOutpoint, UtxoEntry)>) {
-        for (transaction_outpoint, utxo_entry) in utxo_vector.into_iter() {
-            self.supply_change += utxo_entry.amount as CirculatingSupplyDiff;
-
-            self.utxo_changes.added.insert_into_nested(
-                utxo_entry.script_public_key,
-                transaction_outpoint,
-                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-            );
-        }
-    }
-
     pub fn set_tips(&mut self, tips: Vec<Hash>) {
         self.tips = BlockHashSet::from_iter(tips);
     }

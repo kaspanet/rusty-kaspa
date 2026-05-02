@@ -66,6 +66,19 @@ impl From<AddressKey> for IpAddr {
     }
 }
 
+impl TryFrom<&[u8]> for AddressKey {
+    type Error = &'static str;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        if slice.len() != ADDRESS_KEY_SIZE {
+            return Err("Invalid slice length for AddressKey");
+        }
+        let mut bytes = [0u8; ADDRESS_KEY_SIZE];
+        bytes.copy_from_slice(slice);
+        Ok(Self(bytes))
+    }
+}
+
 #[derive(Clone)]
 pub struct DbBannedAddressesStore {
     db: Arc<DB>,
@@ -79,15 +92,11 @@ impl DbBannedAddressesStore {
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(IpAddr, ConnectionBanTimestamp), Box<dyn Error>>> + '_ {
         self.access.iterator().map(|iter_result| match iter_result {
-            Ok((key_bytes, connection_ban_timestamp)) => match <[u8; ADDRESS_KEY_SIZE]>::try_from(&key_bytes[..]) {
-                Ok(address_key_slice) => {
-                    let addr_key = AddressKey(address_key_slice);
-                    let address: IpAddr = addr_key.into();
-                    Ok((address, connection_ban_timestamp))
-                }
-                Err(e) => Err(e.into()),
-            },
-            Err(e) => Err(e),
+            Ok((key, connection_ban_timestamp)) => {
+                let address: IpAddr = key.into();
+                Ok((address, connection_ban_timestamp))
+            }
+            Err(e) => Err(e.into()),
         })
     }
 }

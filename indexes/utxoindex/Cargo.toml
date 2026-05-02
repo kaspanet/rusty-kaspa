@@ -18,6 +18,7 @@ kaspa-database.workspace = true
 kaspa-hashes.workspace = true
 kaspa-index-core.workspace = true
 kaspa-utils.workspace = true
+itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rocksdb.workspace = true
