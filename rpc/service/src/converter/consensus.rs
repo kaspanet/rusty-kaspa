@@ -21,7 +21,7 @@ use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
     BlockAddedNotification, Notification, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData,
     RpcChainBlockAcceptedTransactions, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
-    RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction, RpcOptionalTransactionInput,
+    RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalBlock, RpcOptionalHeader, RpcOptionalTransaction, RpcOptionalTransactionInput,
     RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput, RpcOptionalTransactionOutputVerboseData,
     RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData, RpcResult, RpcTransaction,
     RpcTransactionInput, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput,
@@ -491,6 +491,76 @@ impl ConsensusConverter {
                 Default::default()
             },
         })
+    }
+
+    /// Converts a consensus [`Block`] into an [`RpcOptionalBlock`] with verbosity control.
+    ///
+    /// When `signable_transactions` is provided (for chain blocks at High+ verbosity),
+    /// uses them to populate UTXO entries in input verbose data.
+    pub async fn get_block_with_verbosity(
+        &self,
+        consensus: &ConsensusProxy,
+        block: &Block,
+        header_verbosity: Option<&RpcHeaderVerbosity>,
+        tx_verbosity: Option<&RpcTransactionVerbosity>,
+        signable_transactions: Option<&[SignableTransaction]>,
+    ) -> RpcResult<RpcOptionalBlock> {
+        let hash = block.hash();
+        let ghostdag_data = consensus.async_get_ghostdag_data(hash).await.ok();
+        let block_status = consensus.async_get_block_status(hash).await;
+        let children = consensus.async_get_block_children(hash).await.unwrap_or_default();
+        let is_chain_block = consensus.async_is_chain_block(hash).await.unwrap_or(false);
+
+        let verbose_data = ghostdag_data.as_ref().map(|gd| RpcBlockVerboseData {
+            hash,
+            difficulty: self.get_difficulty_ratio(block.header.bits),
+            selected_parent_hash: gd.selected_parent,
+            transaction_ids: block.transactions.iter().map(|x| x.id()).collect(),
+            is_header_only: block_status.map_or(true, |s| s.is_header_only()),
+            blue_score: gd.blue_score,
+            children_hashes: children,
+            merge_set_blues_hashes: gd.mergeset_blues.clone(),
+            merge_set_reds_hashes: gd.mergeset_reds.clone(),
+            is_chain_block,
+        });
+
+        let header = if let Some(hv) = header_verbosity {
+            let h = self.adapt_header_to_header_with_verbosity(hv, &block.header)?;
+            if h.is_empty() { None } else { Some(h) }
+        } else {
+            None
+        };
+
+        let transactions = if let Some(tv) = tx_verbosity {
+            if let Some(signable_txs) = signable_transactions {
+                // Chain block with UTXO enrichment
+                let mut txs = Vec::with_capacity(signable_txs.len());
+                for stx in signable_txs {
+                    let rpc_tx = self
+                        .convert_signable_transaction_with_verbosity(consensus, stx, Some(hash), block.header.timestamp, tv)
+                        .await?;
+                    if !rpc_tx.is_empty() {
+                        txs.push(rpc_tx);
+                    }
+                }
+                txs
+            } else {
+                // No UTXO enrichment (anticone blocks or Low verbosity)
+                let mut txs = Vec::with_capacity(block.transactions.len());
+                for tx in block.transactions.iter() {
+                    let rpc_tx =
+                        self.convert_transaction_with_verbosity(consensus, tx, Some(hash), block.header.timestamp, tv).await?;
+                    if !rpc_tx.is_empty() {
+                        txs.push(rpc_tx);
+                    }
+                }
+                txs
+            }
+        } else {
+            vec![]
+        };
+
+        Ok(RpcOptionalBlock { header, transactions, verbose_data })
     }
 
     pub async fn get_accepted_transactions_with_verbosity(

@@ -500,6 +500,21 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetVirtualChainFromBlockV2Request,
     ) -> RpcResult<GetVirtualChainFromBlockV2Response>;
 
+    /// Requests blocks between a certain block `low_hash` up to this node's current virtual (V2 with verbosity).
+    async fn get_blocks_v2(
+        &self,
+        low_hash: Option<RpcHash>,
+        include_blocks: bool,
+        data_verbosity_level: Option<RpcDataVerbosityLevel>,
+    ) -> RpcResult<GetBlocksV2Response> {
+        self.get_blocks_v2_call(None, GetBlocksV2Request::new(low_hash, include_blocks, data_verbosity_level)).await
+    }
+    async fn get_blocks_v2_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetBlocksV2Request,
+    ) -> RpcResult<GetBlocksV2Response>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

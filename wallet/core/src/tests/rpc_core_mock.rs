@@ -395,6 +395,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_blocks_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetBlocksV2Request,
+    ) -> RpcResult<GetBlocksV2Response> {
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

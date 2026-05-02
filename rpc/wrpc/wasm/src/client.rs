@@ -1006,6 +1006,9 @@ build_wrpc_wasm_bindgen_interface!(
         /// Retrieves multiple blocks from the Kaspa BlockDAG.
         /// Returned information: List of block information.
         GetBlocks,
+        /// Retrieves multiple blocks from the Kaspa BlockDAG with verbosity control.
+        /// Returned information: List of block information with optional UTXO enrichment.
+        GetBlocksV2,
         /// Generates a new block template for mining.
         /// Returned information: Block template information.
         GetBlockTemplate,

@@ -533,6 +533,21 @@ from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, prot
     }
 });
 
+from!(item: &kaspa_rpc_core::GetBlocksV2Request, protowire::GetBlocksV2RequestMessage, {
+    Self {
+        low_hash: item.low_hash.map_or(Default::default(), |x| x.to_string()),
+        include_blocks: item.include_blocks,
+        data_verbosity_level: item.data_verbosity_level.map(|v| v as i32),
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetBlocksV2Response>, protowire::GetBlocksV2ResponseMessage, {
+    Self {
+        block_hashes: item.block_hashes.iter().map(|x| x.to_string()).collect(),
+        blocks: item.blocks.iter().map(protowire::RpcOptionalBlock::from).collect(),
+        error: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
@@ -798,6 +813,20 @@ try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult
         removed_chain_block_hashes: Arc::new(item.removed_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
         added_chain_block_hashes: Arc::new(item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
         chain_block_accepted_transactions: Arc::new(item.chain_block_accepted_transactions.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
+    }
+});
+
+try_from!(item: &protowire::GetBlocksV2RequestMessage, kaspa_rpc_core::GetBlocksV2Request, {
+    Self {
+        low_hash: if item.low_hash.is_empty() { None } else { Some(RpcHash::from_str(&item.low_hash)?) },
+        include_blocks: item.include_blocks,
+        data_verbosity_level: item.data_verbosity_level.map(RpcDataVerbosityLevel::try_from).transpose()?,
+    }
+});
+try_from!(item: &protowire::GetBlocksV2ResponseMessage, RpcResult<kaspa_rpc_core::GetBlocksV2Response>, {
+    Self {
+        block_hashes: item.block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        blocks: item.blocks.iter().map(kaspa_rpc_core::RpcOptionalBlock::try_from).collect::<Result<Vec<_>, _>>()?,
     }
 });
 

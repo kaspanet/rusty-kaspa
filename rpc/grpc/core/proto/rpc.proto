@@ -1084,6 +1084,24 @@ message GetVirtualChainFromBlockV2ResponseMessage {
   RPCError error = 1000;
 }
 
+message RpcOptionalBlock {
+  optional RpcOptionalHeader header = 1;
+  repeated RpcOptionalTransaction transactions = 2;
+  optional RpcBlockVerboseData verboseData = 3;
+}
+
+message GetBlocksV2RequestMessage {
+  string lowHash = 1;
+  bool includeBlocks = 2;
+  optional RpcDataVerbosityLevel dataVerbosityLevel = 3;
+}
+
+message GetBlocksV2ResponseMessage {
+  repeated string blockHashes = 1;
+  repeated RpcOptionalBlock blocks = 2;
+  RPCError error = 1000;
+}
+
 message GetCurrentBlockColorRequestMessage {
   string hash = 1;
 }

@@ -689,6 +689,20 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetBlocksV2 => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_blocks_v2_call(
+                            None,
+                            GetBlocksV2Request { low_hash: None, include_blocks: true, data_verbosity_level: None },
+                        )
+                        .await
+                        .unwrap();
+                    assert!(!response.block_hashes.is_empty());
+                })
+            }
+
             KaspadPayloadOps::GetVirtualChainFromBlockV2 => {
                 let rpc_client = client.clone();
                 tst!(op, {

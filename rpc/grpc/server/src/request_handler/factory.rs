@@ -83,6 +83,7 @@ impl Factory {
                 GetCurrentBlockColor,
                 GetUtxoReturnAddress,
                 GetVirtualChainFromBlockV2,
+                GetBlocksV2,
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,
                 NotifyFinalityConflict,

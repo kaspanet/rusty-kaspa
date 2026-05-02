@@ -833,6 +833,43 @@ try_from! ( args: GetBlocksResponse, IGetBlocksResponse, {
 // ---
 
 declare! {
+    IGetBlocksV2Request,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetBlocksV2Request {
+        lowHash? : HexString;
+        includeBlocks : boolean;
+        dataVerbosityLevel? : DataVerbosityLevel;
+    }
+    "#,
+}
+
+try_from! ( args: IGetBlocksV2Request, GetBlocksV2Request, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetBlocksV2Response,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetBlocksV2Response {
+        blockHashes : HexString[];
+        blocks : IOptionalBlock[];
+    }
+    "#,
+}
+
+try_from! ( args: GetBlocksV2Response, IGetBlocksV2Response, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
     IGetBlockTemplateRequest,
     r#"
     /**
