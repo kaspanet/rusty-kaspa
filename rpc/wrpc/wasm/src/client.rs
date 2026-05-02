@@ -887,6 +887,11 @@ build_wrpc_wasm_bindgen_subscriptions!([
     /// Block added notification event is produced when a new
     /// block is added to the Kaspa BlockDAG.
     BlockAdded,
+    /// Manage subscription for a block header added notification event.
+    /// Block header added notification event is produced when a new
+    /// block is added to the Kaspa BlockDAG. Contains only the block
+    /// header (no transactions), making it more lightweight.
+    BlockHeaderAdded,
     /// Manage subscription for a finality conflict notification event.
     /// Finality conflict notification event is produced when a finality
     /// conflict occurs in the Kaspa BlockDAG.

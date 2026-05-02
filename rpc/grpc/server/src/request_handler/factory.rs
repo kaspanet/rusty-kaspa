@@ -84,6 +84,7 @@ impl Factory {
                 GetUtxoReturnAddress,
                 GetVirtualChainFromBlockV2,
                 NotifyBlockAdded,
+                NotifyBlockHeaderAdded,
                 NotifyNewBlockTemplate,
                 NotifyFinalityConflict,
                 NotifyUtxosChanged,

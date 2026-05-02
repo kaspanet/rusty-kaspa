@@ -1,9 +1,10 @@
 //! Conversion of Notification related types
 
 use crate::{
-    BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification, NewBlockTemplateNotification,
-    Notification, PruningPointUtxoSetOverrideNotification, RpcAcceptedTransactionIds, SinkBlueScoreChangedNotification,
-    UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification, convert::utxo::utxo_set_into_rpc,
+    BlockAddedNotification, BlockHeaderAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification,
+    NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification, RpcAcceptedTransactionIds,
+    SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
+    convert::utxo::utxo_set_into_rpc,
 };
 use kaspa_consensus_notify::notification as consensus_notify;
 use kaspa_index_core::notification as index_notify;
@@ -23,6 +24,7 @@ impl From<&consensus_notify::Notification> for Notification {
     fn from(item: &consensus_notify::Notification) -> Self {
         match item {
             consensus_notify::Notification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
+            consensus_notify::Notification::BlockHeaderAdded(msg) => Notification::BlockHeaderAdded(msg.into()),
             consensus_notify::Notification::VirtualChainChanged(msg) => Notification::VirtualChainChanged(msg.into()),
             consensus_notify::Notification::FinalityConflict(msg) => Notification::FinalityConflict(msg.into()),
             consensus_notify::Notification::FinalityConflictResolved(msg) => Notification::FinalityConflictResolved(msg.into()),
@@ -38,6 +40,12 @@ impl From<&consensus_notify::Notification> for Notification {
 impl From<&consensus_notify::BlockAddedNotification> for BlockAddedNotification {
     fn from(item: &consensus_notify::BlockAddedNotification) -> Self {
         Self { block: Arc::new((&item.block).into()) }
+    }
+}
+
+impl From<&consensus_notify::BlockHeaderAddedNotification> for BlockHeaderAddedNotification {
+    fn from(item: &consensus_notify::BlockHeaderAddedNotification) -> Self {
+        Self { header: Arc::new((&*item.header).into()) }
     }
 }
 

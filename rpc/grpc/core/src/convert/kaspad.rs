@@ -67,6 +67,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetVirtualChainFromBlockV2);
 
     impl_into_kaspad_request!(NotifyBlockAdded);
+    impl_into_kaspad_request!(NotifyBlockHeaderAdded);
     impl_into_kaspad_request!(NotifyNewBlockTemplate);
     impl_into_kaspad_request!(NotifyUtxosChanged);
     impl_into_kaspad_request!(NotifyPruningPointUtxoSetOverride);
@@ -206,6 +207,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetVirtualChainFromBlockV2);
 
     impl_into_kaspad_notify_response!(NotifyBlockAdded);
+    impl_into_kaspad_notify_response!(NotifyBlockHeaderAdded);
     impl_into_kaspad_notify_response!(NotifyNewBlockTemplate);
     impl_into_kaspad_notify_response!(NotifyUtxosChanged);
     impl_into_kaspad_notify_response!(NotifyPruningPointUtxoSetOverride);

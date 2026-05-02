@@ -175,6 +175,11 @@ from!(item: &kaspa_rpc_core::NotifyBlockAddedRequest, protowire::NotifyBlockAdde
 });
 from!(RpcResult<&kaspa_rpc_core::NotifyBlockAddedResponse>, protowire::NotifyBlockAddedResponseMessage);
 
+from!(item: &kaspa_rpc_core::NotifyBlockHeaderAddedRequest, protowire::NotifyBlockHeaderAddedRequestMessage, {
+    Self { command: item.command.into() }
+});
+from!(RpcResult<&kaspa_rpc_core::NotifyBlockHeaderAddedResponse>, protowire::NotifyBlockHeaderAddedResponseMessage);
+
 from!(&kaspa_rpc_core::GetInfoRequest, protowire::GetInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetInfoResponse>, protowire::GetInfoResponseMessage, {
     Self {
@@ -654,6 +659,11 @@ try_from!(item: &protowire::NotifyBlockAddedRequestMessage, kaspa_rpc_core::Noti
     Self { command: item.command.into() }
 });
 try_from!(&protowire::NotifyBlockAddedResponseMessage, RpcResult<kaspa_rpc_core::NotifyBlockAddedResponse>);
+
+try_from!(item: &protowire::NotifyBlockHeaderAddedRequestMessage, kaspa_rpc_core::NotifyBlockHeaderAddedRequest, {
+    Self { command: item.command.into() }
+});
+try_from!(&protowire::NotifyBlockHeaderAddedResponseMessage, RpcResult<kaspa_rpc_core::NotifyBlockHeaderAddedResponse>);
 
 try_from!(&protowire::GetInfoRequestMessage, kaspa_rpc_core::GetInfoRequest);
 try_from!(item: &protowire::GetInfoResponseMessage, RpcResult<kaspa_rpc_core::GetInfoResponse>, {

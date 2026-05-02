@@ -40,6 +40,7 @@ pub enum RpcApiOps {
     NotifyVirtualDaaScoreChanged = 16,
     NotifyVirtualChainChanged = 17,
     NotifySinkBlueScoreChanged = 18,
+    NotifyBlockHeaderAdded = 19,
 
     // Notification ops required by wRPC
 
@@ -54,6 +55,7 @@ pub enum RpcApiOps {
     VirtualDaaScoreChangedNotification = 66,
     PruningPointUtxoSetOverrideNotification = 67,
     NewBlockTemplateNotification = 68,
+    BlockHeaderAddedNotification = 69,
 
     // RPC methods
     /// Ping the node to check if connection is alive
@@ -155,6 +157,7 @@ impl RpcApiOps {
                 | RpcApiOps::NotifyFinalityConflictResolved
                 | RpcApiOps::NotifySinkBlueScoreChanged
                 | RpcApiOps::NotifyVirtualDaaScoreChanged
+                | RpcApiOps::NotifyBlockHeaderAdded
                 | RpcApiOps::Subscribe
                 | RpcApiOps::Unsubscribe
         )
@@ -181,6 +184,7 @@ impl From<EventType> for RpcApiOps {
             EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
             EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
             EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+            EventType::BlockHeaderAdded => RpcApiOps::BlockHeaderAddedNotification,
         }
     }
 }

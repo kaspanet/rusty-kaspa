@@ -1,9 +1,9 @@
 //! Conversion of Notification Scope related types
 
 use crate::{
-    NotifyBlockAddedRequest, NotifyFinalityConflictRequest, NotifyNewBlockTemplateRequest, NotifyPruningPointUtxoSetOverrideRequest,
-    NotifySinkBlueScoreChangedRequest, NotifyUtxosChangedRequest, NotifyVirtualChainChangedRequest,
-    NotifyVirtualDaaScoreChangedRequest,
+    NotifyBlockAddedRequest, NotifyBlockHeaderAddedRequest, NotifyFinalityConflictRequest, NotifyNewBlockTemplateRequest,
+    NotifyPruningPointUtxoSetOverrideRequest, NotifySinkBlueScoreChangedRequest, NotifyUtxosChangedRequest,
+    NotifyVirtualChainChangedRequest, NotifyVirtualDaaScoreChangedRequest,
 };
 use kaspa_notify::scope::*;
 
@@ -46,6 +46,7 @@ macro_rules! from {
 }
 
 from!(BlockAdded);
+from!(BlockHeaderAdded);
 from!(item: VirtualChainChanged, {
     Self::new(item.include_accepted_transaction_ids)
 });

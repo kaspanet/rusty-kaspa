@@ -2885,6 +2885,83 @@ impl Deserializer for BlockAddedNotification {
     }
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// BlockHeaderAddedNotification
+
+/// NotifyBlockHeaderAddedRequest registers this connection for blockHeaderAdded notifications.
+///
+/// See: BlockHeaderAddedNotification
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifyBlockHeaderAddedRequest {
+    pub command: Command,
+}
+impl NotifyBlockHeaderAddedRequest {
+    pub fn new(command: Command) -> Self {
+        Self { command }
+    }
+}
+
+impl Serializer for NotifyBlockHeaderAddedRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for NotifyBlockHeaderAddedRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifyBlockHeaderAddedResponse {}
+
+impl Serializer for NotifyBlockHeaderAddedResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for NotifyBlockHeaderAddedResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+/// BlockHeaderAddedNotification is sent whenever a block has been added
+/// into the DAG. Contains only the block header (no transactions).
+///
+/// See: NotifyBlockHeaderAddedRequest
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockHeaderAddedNotification {
+    pub header: Arc<RpcHeader>,
+}
+
+impl Serializer for BlockHeaderAddedNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcHeader, &self.header, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for BlockHeaderAddedNotification {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let header = deserialize!(RpcHeader, reader)?;
+        Ok(Self { header: header.into() })
+    }
+}
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // VirtualChainChangedNotification
 

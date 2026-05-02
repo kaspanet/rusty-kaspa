@@ -202,6 +202,25 @@ message BlockAddedNotificationMessage {
   RpcBlock block = 3;
 }
 
+// NotifyBlockHeaderAddedRequestMessage registers this connection for blockHeaderAdded notifications.
+//
+// See: BlockHeaderAddedNotificationMessage
+message NotifyBlockHeaderAddedRequestMessage {
+  RpcNotifyCommand command = 101;
+}
+
+message NotifyBlockHeaderAddedResponseMessage {
+  RPCError error = 1000;
+}
+
+// BlockHeaderAddedNotificationMessage is sent whenever a block has been added (NOT accepted)
+// into the DAG. Contains only the block header (no transactions).
+//
+// See: NotifyBlockHeaderAddedRequestMessage
+message BlockHeaderAddedNotificationMessage {
+  RpcBlockHeader header = 1;
+}
+
 // GetPeerAddressesRequestMessage requests the list of known kaspad addresses in the
 // current network. (mainnet, testnet, etc.)
 message GetPeerAddressesRequestMessage {}
