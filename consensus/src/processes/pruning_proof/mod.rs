@@ -395,6 +395,9 @@ impl PruningProofManager {
 
     pub fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
+        if pp == self.genesis_hash {
+            return Err(ConsensusError::GeneralOwned(format!("local pruning point is genesis {}", pp)));
+        }
         let mut cache_lock = self.cached_anticone.lock();
         if let Some(cache) = cache_lock.clone()
             && cache.pruning_point == pp
