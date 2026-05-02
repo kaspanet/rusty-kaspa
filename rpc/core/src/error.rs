@@ -78,6 +78,9 @@ pub enum RpcError {
     #[error("Method unavailable in safe mode. Run the node with --unsaferpc argument.")]
     UnavailableInSafeMode,
 
+    #[error("Authentication required. Provide a valid auth token.")]
+    AuthenticationRequired,
+
     #[error("Cannot ban IP {0} because it has some permanent connection.")]
     IpHasPermanentConnection(IpAddress),
 

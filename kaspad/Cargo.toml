@@ -47,6 +47,7 @@ cfg-if.workspace = true
 clap = { workspace = true, features = ["env"]}
 dhat = { workspace = true, optional = true }
 dirs.workspace = true
+faster-hex.workspace = true
 futures-util.workspace = true
 itertools.workspace = true
 log.workspace = true
