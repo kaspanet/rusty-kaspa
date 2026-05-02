@@ -1,6 +1,6 @@
 use kaspa_core::{time::Stopwatch, trace};
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::model::candidate_tx::CandidateTransaction;
 
@@ -253,6 +253,53 @@ impl TemplateTransactionSelector for RebalancingWeightedTransactionSelector {
         self.overall_rejections == 0
             || (self.total_mass as f64) > self.policy.max_block_mass as f64 * SUFFICIENT_MASS_THRESHOLD
             || (self.overall_rejections as f64) < self.transactions.len() as f64 * LOW_REJECTION_FRACTION
+    }
+}
+
+/// A wrapper selector that yields local (operator-submitted) transactions first,
+/// then delegates to the inner frontier selector for remaining block capacity.
+/// Used by `MiningManager` when local transactions have been submitted via
+/// `SubmitLocalTransaction` RPC.
+pub struct LocalFirstSelector {
+    /// Local transactions to include, consumed on first `select_transactions()` call
+    local_txs: Vec<Transaction>,
+    /// IDs of local transactions that have been yielded and not yet rejected
+    local_tx_ids: HashSet<TransactionId>,
+    /// The normal frontier-based selector
+    inner: Box<dyn TemplateTransactionSelector>,
+    /// Whether local transactions have already been yielded
+    local_yielded: bool,
+}
+
+impl LocalFirstSelector {
+    pub fn new(local_txs: Vec<Transaction>, inner: Box<dyn TemplateTransactionSelector>) -> Self {
+        let local_tx_ids: HashSet<TransactionId> = local_txs.iter().map(|tx| tx.id()).collect();
+        Self { local_txs, local_tx_ids, inner, local_yielded: false }
+    }
+}
+
+impl TemplateTransactionSelector for LocalFirstSelector {
+    fn select_transactions(&mut self) -> Vec<Transaction> {
+        if !self.local_yielded {
+            self.local_yielded = true;
+            if !self.local_txs.is_empty() {
+                return std::mem::take(&mut self.local_txs);
+            }
+        }
+        self.inner.select_transactions()
+    }
+
+    fn reject_selection(&mut self, tx_id: TransactionId) {
+        if self.local_tx_ids.remove(&tx_id) {
+            // Local tx was rejected by consensus — just drop it silently.
+            // Do NOT propagate to inner selector since this tx was never in it.
+        } else {
+            self.inner.reject_selection(tx_id);
+        }
+    }
+
+    fn is_successful(&self) -> bool {
+        self.inner.is_successful() || !self.local_tx_ids.is_empty()
     }
 }
 

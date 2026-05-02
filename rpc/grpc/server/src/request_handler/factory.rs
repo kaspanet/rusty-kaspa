@@ -56,6 +56,7 @@ impl Factory {
                 AddPeer,
                 SubmitTransaction,
                 SubmitTransactionReplacement,
+                SubmitLocalTransaction,
                 GetSubnetwork,
                 GetVirtualChainFromBlock,
                 GetBlockCount,

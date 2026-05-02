@@ -794,6 +794,62 @@ impl Deserializer for SubmitTransactionReplacementResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitLocalTransactionRequest {
+    pub transaction: RpcTransaction,
+}
+
+impl SubmitLocalTransactionRequest {
+    pub fn new(transaction: RpcTransaction) -> Self {
+        Self { transaction }
+    }
+}
+
+impl Serializer for SubmitLocalTransactionRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcTransaction, &self.transaction, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for SubmitLocalTransactionRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction = deserialize!(RpcTransaction, reader)?;
+        Ok(Self { transaction })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitLocalTransactionResponse {
+    pub transaction_id: RpcTransactionId,
+}
+
+impl SubmitLocalTransactionResponse {
+    pub fn new(transaction_id: RpcTransactionId) -> Self {
+        Self { transaction_id }
+    }
+}
+
+impl Serializer for SubmitLocalTransactionResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcTransactionId, &self.transaction_id, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for SubmitLocalTransactionResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_id = load!(RpcTransactionId, reader)?;
+        Ok(Self { transaction_id })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSubnetworkRequest {

@@ -1,6 +1,6 @@
 use crate::{
     MempoolCountersSnapshot, MiningCounters, P2pTxCountSample,
-    block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
+    block_template::{builder::BlockTemplateBuilder, errors::BuilderError, selector::LocalFirstSelector},
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
     feerate::{FeeEstimateVerbose, FeerateEstimations, FeerateEstimatorArgs},
@@ -35,7 +35,7 @@ use kaspa_consensusmanager::{ConsensusProxy, spawn_blocking};
 use kaspa_core::{debug, error, info, time::Stopwatch, warn};
 use kaspa_mining_errors::{manager::MiningManagerError, mempool::RuleError};
 use parking_lot::RwLock;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct MiningManager {
@@ -43,6 +43,10 @@ pub struct MiningManager {
     block_template_cache: BlockTemplateCache,
     mempool: RwLock<Mempool>,
     counters: Arc<MiningCounters>,
+    /// Local transactions submitted by the node operator for prioritized inclusion
+    /// in block templates. These bypass the mempool relay fee check and are NOT
+    /// broadcast to peers.
+    local_transactions: RwLock<HashMap<TransactionId, Arc<Transaction>>>,
 }
 
 impl MiningManager {
@@ -74,7 +78,7 @@ impl MiningManager {
         let config = Arc::new(config);
         let mempool = RwLock::new(Mempool::new(config.clone(), counters.clone()));
         let block_template_cache = BlockTemplateCache::new(cache_lifetime);
-        Self { config, block_template_cache, mempool, counters }
+        Self { config, block_template_cache, mempool, counters, local_transactions: RwLock::new(HashMap::new()) }
     }
 
     pub fn get_block_template(&self, consensus: &dyn ConsensusApi, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
@@ -197,9 +201,13 @@ impl MiningManager {
         }
     }
 
-    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
+    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier.
+    /// If local transactions have been submitted, wraps the frontier selector with a `LocalFirstSelector`
+    /// that yields local transactions before frontier transactions.
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
-        self.mempool.read().build_selector()
+        let frontier_selector = self.mempool.read().build_selector();
+        let local_txs: Vec<Transaction> = self.local_transactions.read().values().map(|tx| tx.as_ref().clone()).collect();
+        if local_txs.is_empty() { frontier_selector } else { Box::new(LocalFirstSelector::new(local_txs, frontier_selector)) }
     }
 
     /// Returns realtime feerate estimations based on internal mempool state
@@ -286,6 +294,60 @@ impl MiningManager {
         rbf_policy: RbfPolicy,
     ) -> MiningManagerResult<TransactionInsertion> {
         self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan, rbf_policy)
+    }
+
+    /// Validates and inserts a transaction into the local transaction store for
+    /// prioritized inclusion in block templates. Local transactions bypass the
+    /// mempool relay fee check and are NOT broadcast to peers.
+    ///
+    /// The transaction undergoes full standard checks (dust, mass, script class)
+    /// via the mempool's existing validation, plus full consensus validation
+    /// (signatures, UTXO existence, locktime). Only the relay fee check is skipped.
+    ///
+    /// The transaction is stored separately from the mempool and injected first
+    /// into block templates via `LocalFirstSelector`.
+    // TODO: Consider adding a CLI flag (e.g. --enable-submit-local-transaction) to
+    // gate access to this feature. Currently, any RPC client can call this endpoint.
+    pub fn validate_and_insert_local_transaction(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction: Transaction,
+    ) -> MiningManagerResult<TransactionInsertion> {
+        let transaction_id = transaction.id();
+
+        // Check if already in local store
+        if self.local_transactions.read().contains_key(&transaction_id) {
+            return Err(MiningManagerError::MempoolError(RuleError::RejectDuplicate(transaction_id)));
+        }
+
+        let mut mtx = MutableTransaction::from_tx(transaction);
+
+        // Calculate non-contextual masses (needed for standard and consensus validation)
+        mtx.calculated_non_contextual_masses = Some(consensus.calculate_transaction_non_contextual_masses(&mtx.tx));
+
+        // Standard checks in isolation (no UTXO needed):
+        // TX version, compute/transient mass limits, sig script size,
+        // output script class, and dust output check.
+        // These protect the network from UTXO set pollution even for fee-exempt local TXs.
+        self.mempool.read().check_transaction_standard_in_isolation(&mtx).map_err(RuleError::from)?;
+
+        // Full consensus validation: signatures, UTXO lookups, locktime.
+        // feerate_threshold = None skips the consensus-level fee check.
+        let args = TransactionValidationArgs::new(None);
+        validate_mempool_transaction(consensus, &mut mtx, &args)?;
+
+        // Standard checks in context (needs populated UTXO entries):
+        // storage mass limit, input script class, P2SH sig op count.
+        // Relay fee check is skipped (check_fee = false) — this is the purpose of local TX.
+        self.mempool.read().check_transaction_standard_in_context(&mtx, false).map_err(RuleError::from)?;
+
+        // Store in local transaction map
+        let tx = mtx.tx.clone();
+        self.local_transactions.write().insert(transaction_id, tx.clone());
+
+        info!("Local transaction {} accepted into local store", transaction_id);
+
+        Ok(TransactionInsertion::new(None, vec![tx]))
     }
 
     /// Exposed for tests only
@@ -591,6 +653,16 @@ impl MiningManager {
         // write lock on mempool
         let unorphaned_transactions = self.mempool.write().handle_new_block_transactions(block_daa_score, block_transactions)?;
 
+        // Clean up local transactions that were included in the block
+        {
+            let mut local = self.local_transactions.write();
+            if !local.is_empty() {
+                for transaction in block_transactions[1..].iter() {
+                    local.remove(&transaction.id());
+                }
+            }
+        }
+
         // alternate no & write lock on mempool
         let accepted_transactions = self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions);
 
@@ -886,6 +958,16 @@ impl MiningManagerProxy {
             .clone()
             .spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan, rbf_policy))
             .await
+    }
+
+    /// Validates and inserts a transaction into the local transaction store.
+    /// See `MiningManager::validate_and_insert_local_transaction` for details.
+    pub async fn validate_and_insert_local_transaction(
+        self,
+        consensus: &ConsensusProxy,
+        transaction: Transaction,
+    ) -> MiningManagerResult<TransactionInsertion> {
+        consensus.clone().spawn_blocking(move |c| self.inner.validate_and_insert_local_transaction(c, transaction)).await
     }
 
     /// Validates a batch of transactions, handling iteratively only the independent ones, and

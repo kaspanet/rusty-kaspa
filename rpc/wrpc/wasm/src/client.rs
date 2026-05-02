@@ -1052,6 +1052,10 @@ build_wrpc_wasm_bindgen_interface!(
         /// Submits an RBF transaction to the Kaspa network.
         /// Returned information: Submitted Transaction Id, Transaction that was replaced.
         SubmitTransactionReplacement,
+        /// Submits a transaction to the local store for prioritized inclusion
+        /// in block templates without relay fee requirements. Not broadcast to peers.
+        /// Returned information: Submitted Transaction Id.
+        SubmitLocalTransaction,
         /// Unbans a previously banned peer, allowing it to connect
         /// to the Kaspa node again.
         /// Returned information: None.

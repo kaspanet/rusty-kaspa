@@ -226,6 +226,18 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: SubmitTransactionReplacementRequest,
     ) -> RpcResult<SubmitTransactionReplacementResponse>;
 
+    /// Submits a transaction to the local transaction store for prioritized inclusion
+    /// in block templates mined by this node. The transaction bypasses the relay fee
+    /// check and is NOT broadcast to peers.
+    async fn submit_local_transaction(&self, transaction: RpcTransaction) -> RpcResult<RpcTransactionId> {
+        Ok(self.submit_local_transaction_call(None, SubmitLocalTransactionRequest { transaction }).await?.transaction_id)
+    }
+    async fn submit_local_transaction_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: SubmitLocalTransactionRequest,
+    ) -> RpcResult<SubmitLocalTransactionResponse>;
+
     /// Requests information about a specific block.
     async fn get_block(&self, hash: RpcHash, include_transactions: bool) -> RpcResult<RpcBlock> {
         Ok(self.get_block_call(None, GetBlockRequest::new(hash, include_transactions)).await?.block)

@@ -1458,6 +1458,60 @@ try_from! ( args: SubmitBlockResponse, ISubmitBlockResponse, {
 // ---
 
 declare! {
+    ISubmitLocalTransactionRequest,
+    r#"
+    /**
+     * Submit a transaction to the local store for prioritized inclusion
+     * in block templates without relay fee requirements. Not broadcast to peers.
+     *
+     * @category Node RPC
+     */
+    export interface ISubmitLocalTransactionRequest {
+        transaction : Transaction,
+    }
+    "#,
+}
+
+try_from! ( args: ISubmitLocalTransactionRequest, SubmitLocalTransactionRequest, {
+    let transaction = if let Some(transaction) = args.try_get_value("transaction")? {
+        transaction
+    } else {
+        args.into()
+    };
+
+    let request = if let Ok(transaction) = Transaction::try_owned_from(&transaction) {
+        SubmitLocalTransactionRequest {
+            transaction : transaction.into(),
+        }
+    } else {
+        from_value(transaction)?
+    };
+    Ok(request)
+});
+
+declare! {
+    ISubmitLocalTransactionResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface ISubmitLocalTransactionResponse {
+        transactionId : HexString;
+    }
+    "#,
+}
+
+try_from! ( args: SubmitLocalTransactionResponse, ISubmitLocalTransactionResponse, {
+    let response = ISubmitLocalTransactionResponse::default();
+    response.set("transactionId", &args.transaction_id.into())?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
     ISubmitTransactionReplacementRequest,
     // "ISubmitTransactionRequest | Transaction",
     r#"
