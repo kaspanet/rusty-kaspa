@@ -128,7 +128,7 @@ mod tests {
         notifier::test_helpers::NotifyMock,
         subscription::{
             context::SubscriptionContext,
-            single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+            single::{BlockAddedSubscription, OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
         },
     };
     use derive_more::Display;
@@ -156,6 +156,10 @@ mod tests {
 
     impl crate::notification::Notification for OutgoingNotification {
         fn apply_overall_subscription(&self, _: &OverallSubscription, _: &SubscriptionContext) -> Option<Self> {
+            unimplemented!()
+        }
+
+        fn apply_block_added_subscription(&self, _: &BlockAddedSubscription, _: &SubscriptionContext) -> Option<Self> {
             unimplemented!()
         }
 

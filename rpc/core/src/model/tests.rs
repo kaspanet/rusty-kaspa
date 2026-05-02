@@ -1297,7 +1297,7 @@ mod mockery {
 
     impl Mock for NotifyBlockAddedRequest {
         fn mock() -> Self {
-            NotifyBlockAddedRequest { command: Command::Start }
+            NotifyBlockAddedRequest { include_transactions: true, command: Command::Start }
         }
     }
 

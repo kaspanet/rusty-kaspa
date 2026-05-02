@@ -56,7 +56,7 @@ impl Scope {
 
 impl Serializer for Scope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(Scope, self, writer)?;
         Ok(())
     }
@@ -69,20 +69,67 @@ impl Deserializer for Scope {
     }
 }
 
-#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct BlockAddedScope {}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockAddedScope {
+    #[serde(default = "default_true")]
+    pub include_transactions: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for BlockAddedScope {
+    fn default() -> Self {
+        Self { include_transactions: true }
+    }
+}
+
+impl BlockAddedScope {
+    pub fn new(include_transactions: bool) -> Self {
+        Self { include_transactions }
+    }
+}
+
+impl std::fmt::Display for BlockAddedScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlockAddedScope{}", if self.include_transactions { " with transactions" } else { "" })
+    }
+}
+
+impl BorshSerialize for BlockAddedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        BorshSerialize::serialize(&self.include_transactions, writer)
+    }
+}
+
+impl BorshDeserialize for BlockAddedScope {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        match BorshDeserialize::deserialize_reader(reader) {
+            Ok(include_transactions) => Ok(Self { include_transactions }),
+            Err(_) => Ok(Self::default()),
+        }
+    }
+}
 
 impl Serializer for BlockAddedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
+        store!(bool, &self.include_transactions, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for BlockAddedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
-        Ok(Self {})
+        let version = load!(u16, reader)?;
+        match version {
+            1 => Ok(Self { include_transactions: true }),
+            _ => {
+                let include_transactions = load!(bool, reader)?;
+                Ok(Self { include_transactions })
+            }
+        }
     }
 }
 

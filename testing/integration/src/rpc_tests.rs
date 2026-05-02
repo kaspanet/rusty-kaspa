@@ -1,6 +1,6 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
+use crate::common::{client_notify::ChannelNotify, daemon::Daemon, listener::Listener};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
@@ -712,7 +712,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 let id = listener_id;
                 tst!(op, {
-                    rpc_client.start_notify(id, BlockAddedScope {}.into()).await.unwrap();
+                    rpc_client.start_notify(id, BlockAddedScope::default().into()).await.unwrap();
                 })
             }
 
@@ -801,5 +801,108 @@ async fn sanity_test() {
     //
     client.disconnect().await.unwrap();
     drop(client);
+    daemon.shutdown();
+}
+
+/// Test that BlockAdded notifications with `include_transactions: false`
+/// actually strip transactions from the delivered block.
+///
+/// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::block_added_slim_notification_test`
+#[tokio::test]
+async fn block_added_slim_notification_test() {
+    kaspa_core::log::try_init_logger("info");
+    kaspa_core::panic::configure_panic();
+
+    let args = Args {
+        simnet: true,
+        disable_upnp: true,
+        enable_unsynced_mining: true,
+        block_template_cache_lifetime: Some(0),
+        utxoindex: false,
+        unsafe_rpc: true,
+        ..Default::default()
+    };
+
+    let fd_total_budget = fd_budget::limit();
+    let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
+    let rpc_client = daemon.start().await;
+
+    // Create a multi-listener client for notifications
+    let notify_client = daemon.new_multi_listener_client().await;
+    notify_client.start(None).await;
+
+    // Register two listeners with different BlockAdded scopes
+    let full_listener =
+        Listener::subscribe(notify_client.clone(), Scope::BlockAdded(BlockAddedScope::new(true))).await.unwrap();
+    let slim_listener =
+        Listener::subscribe(notify_client.clone(), Scope::BlockAdded(BlockAddedScope::new(false))).await.unwrap();
+
+    // Get a block template and submit it
+    let GetBlockTemplateResponse { block, .. } = rpc_client
+        .get_block_template_call(
+            None,
+            GetBlockTemplateRequest { pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]), extra_data: Vec::new() },
+        )
+        .await
+        .unwrap();
+
+    let response = rpc_client.submit_block(block.clone(), false).await.unwrap();
+    assert_eq!(response.report, SubmitBlockReport::Success);
+
+    // Receive the full notification
+    let full_notification = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match full_listener.receiver.recv().await.unwrap() {
+                Notification::BlockAdded(msg) => break msg,
+                _ => continue,
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for full BlockAdded notification");
+
+    // Receive the slim notification
+    let slim_notification = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match slim_listener.receiver.recv().await.unwrap() {
+                Notification::BlockAdded(msg) => break msg,
+                _ => continue,
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for slim BlockAdded notification");
+
+    // Verify: both notifications refer to the same block
+    assert_eq!(
+        full_notification.block.header.hash, slim_notification.block.header.hash,
+        "full and slim notifications should be for the same block"
+    );
+
+    // Verify: slim notification has NO transactions
+    assert!(
+        slim_notification.block.transactions.is_empty(),
+        "slim notification should have no transactions, got {}",
+        slim_notification.block.transactions.len()
+    );
+
+    // Verify: slim notification preserves verbose_data
+    assert_eq!(
+        full_notification.block.verbose_data.as_ref().map(|v| &v.hash),
+        slim_notification.block.verbose_data.as_ref().map(|v| &v.hash)
+    );
+
+    info!(
+        "BlockAdded slim notification test passed: full={} txs, slim={} txs, hash={}",
+        full_notification.block.transactions.len(),
+        slim_notification.block.transactions.len(),
+        full_notification.block.header.hash
+    );
+
+    // Cleanup
+    notify_client.disconnect().await.unwrap();
+    rpc_client.disconnect().await.unwrap();
+    drop(notify_client);
+    drop(rpc_client);
     daemon.shutdown();
 }
