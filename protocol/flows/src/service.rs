@@ -1,13 +1,14 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use kaspa_addressmanager::NetAddress;
-use kaspa_connectionmanager::ConnectionManager;
+use kaspa_connectionmanager::{ConnectionManager, HostnameResolver, TokioHostnameResolver};
 use kaspa_core::{
-    task::service::{AsyncService, AsyncServiceFuture},
+    error,
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
 use kaspa_p2p_lib::Adaptor;
-use kaspa_utils::triggers::SingleTrigger;
+use kaspa_utils::{networking::PeerEndpoint, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use crate::flow_context::FlowContext;
@@ -16,13 +17,20 @@ const P2P_CORE_SERVICE: &str = "p2p-service";
 
 pub struct P2pService {
     flow_context: Arc<FlowContext>,
-    connect_peers: Vec<NetAddress>,
-    add_peers: Vec<NetAddress>,
+    connect_peers: Vec<PeerEndpoint>,
+    add_peers: Vec<PeerEndpoint>,
     listen: NetAddress,
     outbound_target: usize,
     inbound_limit: usize,
     dns_seeders: &'static [&'static str],
     default_port: u16,
+    /// Cadence for periodic hostname re-resolution. `Duration::ZERO`
+    /// disables periodic refresh; dial-failure-triggered re-resolution
+    /// remains active in either case.
+    hostname_refresh_interval: Duration,
+    /// Async DNS resolver dependency. Production wires
+    /// [`TokioHostnameResolver`]; tests can supply a fake.
+    resolver: Arc<dyn HostnameResolver>,
     shutdown: SingleTrigger,
     counters: Arc<TowerConnectionCounters>,
 }
@@ -30,13 +38,14 @@ pub struct P2pService {
 impl P2pService {
     pub fn new(
         flow_context: Arc<FlowContext>,
-        connect_peers: Vec<NetAddress>,
-        add_peers: Vec<NetAddress>,
+        connect_peers: Vec<PeerEndpoint>,
+        add_peers: Vec<PeerEndpoint>,
         listen: NetAddress,
         outbound_target: usize,
         inbound_limit: usize,
         dns_seeders: &'static [&'static str],
         default_port: u16,
+        hostname_refresh_interval: Duration,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         Self {
@@ -49,8 +58,16 @@ impl P2pService {
             inbound_limit,
             dns_seeders,
             default_port,
+            hostname_refresh_interval,
+            resolver: Arc::new(TokioHostnameResolver),
             counters,
         }
+    }
+
+    /// Replace the default Tokio resolver. Test seam.
+    pub fn with_resolver(mut self, resolver: Arc<dyn HostnameResolver>) -> Self {
+        self.resolver = resolver;
+        self
     }
 }
 
@@ -71,8 +88,6 @@ impl AsyncService for P2pService {
             Adaptor::bidirectional(self.listen, self.flow_context.hub().clone(), self.flow_context.clone(), self.counters.clone())
                 .unwrap()
         };
-        // Hostname refresh is disabled at the FlowService entry point; the
-        // operator-facing CLI plumbs a configured interval in via kaspad.
         let connection_manager = ConnectionManager::new(
             p2p_adaptor.clone(),
             self.outbound_target,
@@ -80,8 +95,8 @@ impl AsyncService for P2pService {
             self.dns_seeders,
             self.default_port,
             self.flow_context.address_manager.clone(),
-            std::time::Duration::ZERO,
-            std::sync::Arc::new(kaspa_connectionmanager::TokioHostnameResolver),
+            self.hostname_refresh_interval,
+            self.resolver.clone(),
         );
 
         self.flow_context.set_connection_manager(connection_manager.clone());
@@ -89,8 +104,16 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            for peer_address in self.connect_peers.iter().cloned().chain(self.add_peers.iter().cloned()) {
-                connection_manager.add_connection_request(peer_address.into(), true).await;
+            // Resolve operator-facing endpoints before the service settles into
+            // its event loop. A typo or unresolvable hostname here aborts kaspad
+            // startup with an explicit error rather than letting the node sit
+            // up with a silently broken peer list.
+            for endpoint in self.connect_peers.iter().cloned().chain(self.add_peers.iter().cloned()) {
+                if let Err(e) = connection_manager.add_endpoint_request(endpoint.clone(), true, self.default_port).await {
+                    let host = endpoint.hostname().unwrap_or("").to_owned();
+                    error!("Failed to resolve peer endpoint `{endpoint}`: {e}");
+                    return Err(AsyncServiceError::Service(format!("PeerHostResolutionFailed: host=`{host}` reason=`{e}`")));
+                }
             }
 
             // Keep the P2P server running until a service shutdown signal is received

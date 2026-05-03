@@ -10,12 +10,133 @@
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use async_trait::async_trait;
 use kaspa_utils::networking::{PeerEndpointResolveError, resolve_with_timeout};
+
+/// What triggered a hostname resolution attempt. Captured as a metric label.
+///
+/// Marked `#[non_exhaustive]` so additional trigger labels (e.g. an
+/// operator-driven `ForceRefresh`, a future `RotationCadence`) can be
+/// added in a later release without a SemVer-major break for downstream
+/// matchers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ResolveTrigger {
+    /// First resolution at registration time (operator added the entry).
+    Initial,
+    /// Re-resolution after a dial against a previously-resolved socket failed.
+    DialFailure,
+    /// Periodic background re-resolution at the configured cadence.
+    Periodic,
+}
+
+impl ResolveTrigger {
+    pub fn as_label(self) -> &'static str {
+        match self {
+            Self::Initial => "initial",
+            Self::DialFailure => "dial_failure",
+            Self::Periodic => "periodic",
+        }
+    }
+}
+
+/// Outcome of a hostname resolution attempt. Captured as a metric label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ResolveStatus {
+    Ok,
+    Failed,
+}
+
+impl ResolveStatus {
+    pub fn as_label(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// Counter buckets for `peer_hostname_resolutions_total`. Six combinations:
+/// `{ok,failed} x {initial, dial_failure, periodic}`.
+#[derive(Default, Debug)]
+pub struct HostnameMetrics {
+    initial_ok: AtomicU64,
+    initial_failed: AtomicU64,
+    dial_failure_ok: AtomicU64,
+    dial_failure_failed: AtomicU64,
+    periodic_ok: AtomicU64,
+    periodic_failed: AtomicU64,
+}
+
+impl HostnameMetrics {
+    pub fn record(&self, trigger: ResolveTrigger, status: ResolveStatus) {
+        let counter = match (trigger, status) {
+            (ResolveTrigger::Initial, ResolveStatus::Ok) => &self.initial_ok,
+            (ResolveTrigger::Initial, ResolveStatus::Failed) => &self.initial_failed,
+            (ResolveTrigger::DialFailure, ResolveStatus::Ok) => &self.dial_failure_ok,
+            (ResolveTrigger::DialFailure, ResolveStatus::Failed) => &self.dial_failure_failed,
+            (ResolveTrigger::Periodic, ResolveStatus::Ok) => &self.periodic_ok,
+            (ResolveTrigger::Periodic, ResolveStatus::Failed) => &self.periodic_failed,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn snapshot(&self) -> HostnameMetricsSnapshot {
+        HostnameMetricsSnapshot {
+            resolutions_total: ResolutionsTotal {
+                initial_ok: self.initial_ok.load(Ordering::Relaxed),
+                initial_failed: self.initial_failed.load(Ordering::Relaxed),
+                dial_failure_ok: self.dial_failure_ok.load(Ordering::Relaxed),
+                dial_failure_failed: self.dial_failure_failed.load(Ordering::Relaxed),
+                periodic_ok: self.periodic_ok.load(Ordering::Relaxed),
+                periodic_failed: self.periodic_failed.load(Ordering::Relaxed),
+            },
+            // Gauges are populated by the caller from the live registry.
+            active: 0,
+            resolved_addrs: 0,
+        }
+    }
+
+    pub fn get(&self, trigger: ResolveTrigger, status: ResolveStatus) -> u64 {
+        let counter = match (trigger, status) {
+            (ResolveTrigger::Initial, ResolveStatus::Ok) => &self.initial_ok,
+            (ResolveTrigger::Initial, ResolveStatus::Failed) => &self.initial_failed,
+            (ResolveTrigger::DialFailure, ResolveStatus::Ok) => &self.dial_failure_ok,
+            (ResolveTrigger::DialFailure, ResolveStatus::Failed) => &self.dial_failure_failed,
+            (ResolveTrigger::Periodic, ResolveStatus::Ok) => &self.periodic_ok,
+            (ResolveTrigger::Periodic, ResolveStatus::Failed) => &self.periodic_failed,
+        };
+        counter.load(Ordering::Relaxed)
+    }
+}
+
+/// Aggregated counter values for `peer_hostname_resolutions_total`.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResolutionsTotal {
+    pub initial_ok: u64,
+    pub initial_failed: u64,
+    pub dial_failure_ok: u64,
+    pub dial_failure_failed: u64,
+    pub periodic_ok: u64,
+    pub periodic_failed: u64,
+}
+
+/// Point-in-time snapshot suitable for export to Prometheus / RPC. The
+/// `active` and `resolved_addrs` gauges are filled by the producer at
+/// snapshot time from the live `HostnameRegistry`.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostnameMetricsSnapshot {
+    pub resolutions_total: ResolutionsTotal,
+    pub active: u64,
+    pub resolved_addrs: u64,
+}
 
 /// Async DNS resolver dependency for the connection manager. Test seam:
 /// production code uses [`TokioHostnameResolver`]; unit tests inject a
@@ -195,7 +316,8 @@ impl HostnameRegistry {
         deltas
     }
 
-    /// Resolve every hostname entry through `resolver` and return the
+    /// Resolve every hostname entry through `resolver`, record the result
+    /// in `metrics` under the given `trigger` label, and return the
     /// reconciliation deltas. Idempotent: an unchanged DNS result yields
     /// an empty delta. Resolution failures bump `refresh_failures` and
     /// leave `last_resolved` untouched -- the entry is retained even
@@ -206,13 +328,19 @@ impl HostnameRegistry {
     /// [`Self::pending_refreshes`] / [`Self::apply_refresh_results`] pair so DNS
     /// lookups run outside the registry lock; this method is retained
     /// for unit-test ergonomics.
-    pub async fn refresh_all<R: HostnameResolver + ?Sized>(&mut self, resolver: &R) -> Vec<HostnameDelta> {
+    pub async fn refresh_all<R: HostnameResolver + ?Sized>(
+        &mut self,
+        resolver: &R,
+        metrics: &HostnameMetrics,
+        trigger: ResolveTrigger,
+    ) -> Vec<HostnameDelta> {
         let snapshots: Vec<(Arc<str>, u16, HashSet<SocketAddr>)> =
             self.requests.iter().map(|(k, v)| (k.clone(), v.port, v.last_resolved.clone())).collect();
         let mut deltas = Vec::with_capacity(snapshots.len());
         for (host, port, prev) in snapshots {
             match resolver.resolve(&host, port).await {
                 Ok(resolved) => {
+                    metrics.record(trigger, ResolveStatus::Ok);
                     let new_set: HashSet<SocketAddr> = resolved.into_iter().collect();
                     let added: Vec<SocketAddr> = new_set.difference(&prev).copied().collect();
                     let removed: Vec<SocketAddr> = prev.difference(&new_set).copied().collect();
@@ -226,6 +354,7 @@ impl HostnameRegistry {
                     }
                 }
                 Err(_e) => {
+                    metrics.record(trigger, ResolveStatus::Failed);
                     if let Some(entry) = self.requests.get_mut(&host) {
                         entry.refresh_failures = entry.refresh_failures.saturating_add(1);
                     }
@@ -233,6 +362,12 @@ impl HostnameRegistry {
             }
         }
         deltas
+    }
+
+    /// Sum of distinct resolved socket addresses across all hostname
+    /// entries (gauge value for `peer_hostname_resolved_addrs`).
+    pub fn total_resolved_addrs(&self) -> usize {
+        self.requests.values().map(|r| r.last_resolved.len()).sum()
     }
 
     /// Return the snapshot of `(host, last_resolved)` pairs needed by the
@@ -314,7 +449,7 @@ mod tests {
         reg.upsert("a.example", 16111, true, prev);
         let resolver = FakeResolver::new();
         resolver.set("a.example", 16111, Ok(vec![sock("10.0.0.1:16111"), sock("10.0.0.2:16111")]));
-        let deltas = reg.refresh_all(&resolver).await;
+        let deltas = reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert_eq!(deltas.len(), 1);
         assert_eq!(deltas[0].added, vec![sock("10.0.0.2:16111")]);
         assert!(deltas[0].removed.is_empty());
@@ -330,7 +465,7 @@ mod tests {
         reg.upsert("a.example", 16111, true, prev);
         let resolver = FakeResolver::new();
         resolver.set("a.example", 16111, Ok(vec![sock("10.0.0.1:16111")]));
-        let deltas = reg.refresh_all(&resolver).await;
+        let deltas = reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert_eq!(deltas.len(), 1);
         assert!(deltas[0].added.is_empty());
         assert_eq!(deltas[0].removed, vec![sock("10.0.0.2:16111")]);
@@ -345,7 +480,7 @@ mod tests {
         reg.upsert("a.example", 16111, true, prev);
         let resolver = FakeResolver::new();
         resolver.set("a.example", 16111, Ok(vec![sock("10.0.0.3:16111"), sock("10.0.0.4:16111")]));
-        let deltas = reg.refresh_all(&resolver).await;
+        let deltas = reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert_eq!(deltas.len(), 1);
         let mut added = deltas[0].added.clone();
         let mut removed = deltas[0].removed.clone();
@@ -362,9 +497,9 @@ mod tests {
         reg.upsert("a.example", 16111, true, prev);
         let resolver = FakeResolver::new();
         resolver.set("a.example", 16111, Ok(vec![sock("10.0.0.1:16111")]));
-        let deltas = reg.refresh_all(&resolver).await;
+        let deltas = reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert!(deltas.is_empty(), "expected empty delta for unchanged DNS, got {deltas:?}");
-        let deltas = reg.refresh_all(&resolver).await;
+        let deltas = reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert!(deltas.is_empty());
     }
 
@@ -375,7 +510,7 @@ mod tests {
         reg.upsert("a.example", 16111, true, prev);
         let resolver = FakeResolver::new();
         resolver.set("a.example", 16111, Err("synthetic DNS failure".to_owned()));
-        let deltas = reg.refresh_all(&resolver).await;
+        let deltas = reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert!(deltas.is_empty(), "no delta emitted on failure, got {deltas:?}");
         let entry = reg.get("a.example").unwrap();
         assert_eq!(entry.refresh_failures, 1);
@@ -389,7 +524,7 @@ mod tests {
         let resolver = FakeResolver::new();
         resolver.set("a.example", 16111, Err("transient".to_owned()));
         for _ in 0..5 {
-            reg.refresh_all(&resolver).await;
+            reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         }
         let entry = reg.get("a.example").unwrap();
         assert!(entry.is_permanent);
@@ -403,7 +538,7 @@ mod tests {
         reg.upsert("a.example", 16111, true, HashSet::new());
         let resolver = FakeResolver::new();
         resolver.set("a.example", 16111, Ok(vec![sock("10.0.0.1:16111"), sock("10.0.0.2:16111"), sock("10.0.0.3:16111")]));
-        let deltas = reg.refresh_all(&resolver).await;
+        let deltas = reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert_eq!(deltas.len(), 1);
         assert_eq!(deltas[0].added.len(), 3);
         assert!(deltas[0].removed.is_empty());
@@ -440,11 +575,40 @@ mod tests {
         reg.upsert("a.example", 16111, true, HashSet::new());
         let resolver = FakeResolver::new();
         resolver.set("a.example", 16111, Err("first miss".to_owned()));
-        reg.refresh_all(&resolver).await;
+        reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert_eq!(reg.get("a.example").unwrap().refresh_failures, 1);
         resolver.set("a.example", 16111, Ok(vec![sock("10.0.0.1:16111")]));
-        reg.refresh_all(&resolver).await;
+        reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert_eq!(reg.get("a.example").unwrap().refresh_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn metrics_record_initial_ok_and_failed_separately() {
+        let metrics = HostnameMetrics::default();
+        metrics.record(ResolveTrigger::Initial, ResolveStatus::Ok);
+        metrics.record(ResolveTrigger::Initial, ResolveStatus::Failed);
+        metrics.record(ResolveTrigger::Initial, ResolveStatus::Ok);
+        assert_eq!(metrics.get(ResolveTrigger::Initial, ResolveStatus::Ok), 2);
+        assert_eq!(metrics.get(ResolveTrigger::Initial, ResolveStatus::Failed), 1);
+        assert_eq!(metrics.get(ResolveTrigger::Periodic, ResolveStatus::Ok), 0);
+        assert_eq!(metrics.get(ResolveTrigger::DialFailure, ResolveStatus::Failed), 0);
+    }
+
+    #[tokio::test]
+    async fn metrics_record_refresh_periodic_then_dial_failure_buckets() {
+        let mut reg = HostnameRegistry::new();
+        reg.upsert("a.example", 16111, true, HashSet::new());
+        let metrics = HostnameMetrics::default();
+        let resolver = FakeResolver::new();
+        resolver.set("a.example", 16111, Ok(vec![sock("10.0.0.1:16111")]));
+        reg.refresh_all(&resolver, &metrics, ResolveTrigger::Periodic).await;
+        resolver.set("a.example", 16111, Err("synthetic".to_owned()));
+        reg.refresh_all(&resolver, &metrics, ResolveTrigger::DialFailure).await;
+        let snap = metrics.snapshot();
+        assert_eq!(snap.resolutions_total.periodic_ok, 1);
+        assert_eq!(snap.resolutions_total.dial_failure_failed, 1);
+        assert_eq!(snap.resolutions_total.dial_failure_ok, 0);
+        assert_eq!(snap.resolutions_total.periodic_failed, 0);
     }
 
     #[test]
@@ -462,7 +626,7 @@ mod tests {
         let resolver = FakeResolver::new();
         resolver.set("ok.example", 16111, Ok(vec![sock("10.0.0.1:16111")]));
         resolver.set("bad.example", 16111, Err("synthetic".to_owned()));
-        reg.refresh_all(&resolver).await;
+        reg.refresh_all(&resolver, &HostnameMetrics::default(), ResolveTrigger::Periodic).await;
         assert_eq!(reg.get("ok.example").unwrap().refresh_failures, 0);
         assert_eq!(reg.get("ok.example").unwrap().last_resolved.len(), 1);
         assert_eq!(reg.get("bad.example").unwrap().refresh_failures, 1);
