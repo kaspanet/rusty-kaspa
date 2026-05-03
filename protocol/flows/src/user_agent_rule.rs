@@ -121,15 +121,16 @@ impl UserAgentRule {
 
 impl VersionOp {
     fn matches(self, left: &Version, right: &Version) -> bool {
-        match (self, compare_version_core(left, right)) {
-            (VersionOp::Lt, Ordering::Less) => true,
-            (VersionOp::Lte, Ordering::Less | Ordering::Equal) => true,
-            (VersionOp::Gt, Ordering::Greater) => true,
-            (VersionOp::Gte, Ordering::Greater | Ordering::Equal) => true,
-            (VersionOp::Eq, Ordering::Equal) => true,
-            (VersionOp::Ne, Ordering::Less | Ordering::Greater) => true,
-            _ => false,
-        }
+        let cmp = compare_version_core(left, right);
+        matches!(
+            (self, cmp),
+            (VersionOp::Lt, Ordering::Less)
+                | (VersionOp::Lte, Ordering::Less | Ordering::Equal)
+                | (VersionOp::Gt, Ordering::Greater)
+                | (VersionOp::Gte, Ordering::Greater | Ordering::Equal)
+                | (VersionOp::Eq, Ordering::Equal)
+                | (VersionOp::Ne, Ordering::Less | Ordering::Greater)
+        )
     }
 }
 
