@@ -31,13 +31,14 @@ wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["time", "net"] }
 
 [dev-dependencies]
 bincode.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
 futures-util.workspace = true
-tokio = { workspace = true, features = ["rt", "time", "macros"] }
+tokio = { workspace = true, features = ["rt", "time", "macros", "net", "test-util"] }
 criterion.workspace = true
 rand.workspace = true
 
