@@ -71,6 +71,8 @@ impl AsyncService for P2pService {
             Adaptor::bidirectional(self.listen, self.flow_context.hub().clone(), self.flow_context.clone(), self.counters.clone())
                 .unwrap()
         };
+        // Hostname refresh is disabled at the FlowService entry point; the
+        // operator-facing CLI plumbs a configured interval in via kaspad.
         let connection_manager = ConnectionManager::new(
             p2p_adaptor.clone(),
             self.outbound_target,
@@ -78,6 +80,8 @@ impl AsyncService for P2pService {
             self.dns_seeders,
             self.default_port,
             self.flow_context.address_manager.clone(),
+            std::time::Duration::ZERO,
+            std::sync::Arc::new(kaspa_connectionmanager::TokioHostnameResolver),
         );
 
         self.flow_context.set_connection_manager(connection_manager.clone());

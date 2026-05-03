@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 duration-string.workspace = true
 futures-util.workspace = true
 itertools.workspace = true
@@ -20,7 +21,11 @@ kaspa-utils = { workspace = true, features = ["triggers"] }
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
-tokio.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 
 [lints]
 workspace = true
