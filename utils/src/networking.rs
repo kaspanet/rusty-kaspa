@@ -408,12 +408,34 @@ where
 /// distinction is preserved as first-class state so the connection
 /// manager can periodically re-resolve hostname-origin entries and
 /// reconcile the resulting socket-address sets.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+///
+/// `Serialize`/`Deserialize` use the canonical [`Display`] form -- a
+/// flat string -- so JSON wire payloads, borsh v2 payloads, and the
+/// kaspad CLI all share the same textual representation.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize)]
 pub enum PeerEndpoint {
     /// Numeric IP literal -- no DNS required at any point in its lifecycle.
     Address(ContextualNetAddress),
     /// Textual hostname -- resolved by the connection manager.
     Hostname { host: String, port: Option<u16> },
+}
+
+impl Serialize for PeerEndpoint {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for PeerEndpoint {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = <String as Deserialize>::deserialize(deserializer)?;
+        // Wrap the inner `PeerEndpointParseError` Display in the same
+        // shape `RpcError::InvalidPeerEndpoint`'s `#[error]` form
+        // produces, so the JSON-RPC text-match path sees a byte-identical
+        // `invalid peer endpoint `<endpoint>`: <reason>` message and the
+        // cross-transport contract documented on the variant holds.
+        Self::parse(&s).map_err(|e| serde::de::Error::custom(format!("invalid peer endpoint `{s}`: {e}")))
+    }
 }
 
 impl PeerEndpoint {
@@ -1011,6 +1033,70 @@ mod tests {
         let bytes = borsh::to_vec(&ep).unwrap();
         let back: PeerEndpoint = BorshDeserialize::try_from_slice(&bytes).unwrap();
         assert_eq!(ep, back);
+    }
+
+    #[test]
+    fn peer_endpoint_serde_deserialize_error_wraps_to_canonical_shape() {
+        // The Deserialize impl wraps the inner PeerEndpointParseError
+        // Display in `invalid peer endpoint `<endpoint>`: <reason>` so
+        // the JSON-RPC text-match path is byte-identical to
+        // `RpcError::InvalidPeerEndpoint`'s `#[error]` form (the
+        // cross-transport contract documented on that variant). Pin
+        // the exact byte form via `assert_eq!` so a future serde_json
+        // change (e.g. `make_error` / `parse_line_col` re-introducing
+        // an ` at line N column M` suffix on user-supplied custom
+        // errors) breaks this test instead of silently weakening the
+        // claim.
+        let err = serde_json::from_str::<PeerEndpoint>(r#""host:abc""#).unwrap_err();
+        assert_eq!(err.to_string(), "invalid peer endpoint `host:abc`: invalid port `abc`");
+        // Two more inner-reason variants the wrap covers.
+        let err = serde_json::from_str::<PeerEndpoint>(r#""""#).unwrap_err();
+        assert_eq!(err.to_string(), "invalid peer endpoint ``: empty endpoint string");
+        let err = serde_json::from_str::<PeerEndpoint>(r#""host_with_underscore.example.com""#).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid peer endpoint `host_with_underscore.example.com`: invalid hostname: label contains non-LDH (non-letter/digit/hyphen) character",
+        );
+    }
+
+    #[test]
+    fn peer_endpoint_serde_deserialize_error_wraps_inside_struct_field() {
+        // JSON-RPC realistic surface: `PeerEndpoint` is rarely the
+        // top-level deserialization target; in practice it sits as a
+        // struct field (e.g. `AddPeerRequest { peer_address, ... }`).
+        //
+        // serde_json convention: when a `Deserialize` impl returns a
+        // user-supplied `de::Error::custom(...)` from a nested
+        // struct-field deserializer, the surrounding deserializer
+        // attaches the parser's current position via `fix_position`,
+        // so the surfaced Display picks up an ` at line N column M`
+        // suffix. (Top-level deserialization of a bare `PeerEndpoint`
+        // has line=0/col=0 and no suffix -- pinned in the sibling
+        // test above.)
+        //
+        // Pin both the inner-format prefix (load-bearing for the JSON-
+        // RPC text-match contract) and the serde_json position-suffix
+        // shape so a future serde_json upgrade that changes either
+        // surfaces here rather than silently weakening the contract.
+        #[derive(Debug, Deserialize)]
+        struct Wrapper {
+            #[allow(dead_code)]
+            ep: PeerEndpoint,
+        }
+        let err = serde_json::from_str::<Wrapper>(r#"{"ep":"host:abc"}"#).unwrap_err();
+        let msg = err.to_string();
+        let (prefix, suffix) = match msg.split_once(" at line ") {
+            Some((p, s)) => (p, s),
+            None => panic!("expected ` at line N column M` suffix when deserialized in nested struct context; got `{msg}`"),
+        };
+        assert_eq!(
+            prefix, "invalid peer endpoint `host:abc`: invalid port `abc`",
+            "inner-format prefix must match the variant `#[error]` form byte-for-byte; got `{msg}`",
+        );
+        assert!(
+            suffix.starts_with("1 column ") && suffix.chars().skip(9).all(|c| c.is_ascii_digit()),
+            "serde_json position suffix must be `<line> column <col>` (positive integers); got ` at line {suffix}`",
+        );
     }
 
     #[test]

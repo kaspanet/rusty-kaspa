@@ -482,6 +482,23 @@ mod mockery {
         }
     }
 
+    impl Mock for RpcPeerEndpoint {
+        fn mock() -> Self {
+            // Borsh dispatch in `AddPeerRequest::serialize` emits v1 for
+            // `Address` payloads and v2 for `Hostname` payloads. Alternate
+            // randomly so the macro-driven `test!(AddPeerRequest)` round
+            // trip exercises both wire layouts across runs; deterministic
+            // byte-level coverage of each version lives in
+            // `mod add_peer_request_borsh_tests` (`message.rs`).
+            if rand::random::<bool>() {
+                RpcPeerEndpoint::Address(mock())
+            } else {
+                let port: u16 = mock();
+                RpcPeerEndpoint::Hostname { host: "node.example.com".to_string(), port: Some(port) }
+            }
+        }
+    }
+
     impl Mock for RpcPeerInfo {
         fn mock() -> Self {
             RpcPeerInfo {

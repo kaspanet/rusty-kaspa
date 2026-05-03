@@ -1066,7 +1066,19 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             warn!("AddPeer RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
         }
-        let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
+        // `RpcPeerEndpoint` is either an already-resolved IP literal (Address
+        // variant -- normalize and dial directly, the long-standing path) or a
+        // textual hostname (Hostname variant -- requires DNS resolution, which
+        // the connection manager does not yet expose to the RPC handler).
+        let peer_address = match &request.peer_address {
+            kaspa_rpc_core::RpcPeerEndpoint::Address(addr) => addr.normalize(self.config.net.default_p2p_port()),
+            kaspa_rpc_core::RpcPeerEndpoint::Hostname { host, .. } => {
+                return Err(RpcError::PeerHostResolutionFailed {
+                    host: host.clone(),
+                    reason: "hostname resolution not yet wired to the RPC AddPeer handler".to_owned(),
+                });
+            }
+        };
         if let Some(connection_manager) = self.flow_context.connection_manager() {
             connection_manager.add_connection_request(peer_address.into(), request.is_permanent).await;
         } else {

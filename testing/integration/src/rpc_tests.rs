@@ -321,7 +321,7 @@ async fn sanity_test() {
             KaspadPayloadOps::AddPeer => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let peer_address = ContextualNetAddress::from_str("1.2.3.4").unwrap();
+                    let peer_address = kaspa_rpc_core::RpcPeerEndpoint::Address(ContextualNetAddress::from_str("1.2.3.4").unwrap());
                     let _ = rpc_client.add_peer_call(None, AddPeerRequest { peer_address, is_permanent: true }).await.unwrap();
 
                     // Add peer only adds the IP to a connection request. It will only be added to known_addresses if it
@@ -338,7 +338,16 @@ async fn sanity_test() {
                     let peer_address = ContextualNetAddress::from_str("5.6.7.8").unwrap();
                     let ip = peer_address.normalize(1).ip;
 
-                    let _ = rpc_client.add_peer_call(None, AddPeerRequest { peer_address, is_permanent: false }).await.unwrap();
+                    let _ = rpc_client
+                        .add_peer_call(
+                            None,
+                            AddPeerRequest {
+                                peer_address: kaspa_rpc_core::RpcPeerEndpoint::Address(peer_address),
+                                is_permanent: false,
+                            },
+                        )
+                        .await
+                        .unwrap();
                     let _ = rpc_client.ban_call(None, BanRequest { ip }).await.unwrap();
 
                     let response = rpc_client.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await.unwrap();

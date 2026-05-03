@@ -117,6 +117,46 @@ pub enum RpcError {
     #[error("RPC Server (remote error) -> {0}")]
     RpcSubsystem(String),
 
+    /// Returned by RPC frontends (gRPC, wRPC) when a textual peer endpoint
+    /// fails to parse as [`kaspa_utils::networking::PeerEndpoint`]. Structured
+    /// so RPC clients can match on the variant rather than parsing the
+    /// stringly-typed [`Self::General`] tail.
+    ///
+    /// Cross-transport behavior: the typed variant is emitted from gRPC
+    /// (via the `try_from!` mapping in `kaspa-grpc-core::convert::message`)
+    /// and from the Borsh wRPC deserializer (which wraps the typed
+    /// `RpcError` as the `source` of an `io::Error`, downcastable by the
+    /// caller). The JSON-RPC path goes through `<PeerEndpoint as
+    /// serde::Deserialize>` which wraps the inner
+    /// `PeerEndpointParseError` Display in an `invalid peer endpoint
+    /// <endpoint>: <reason>` message. The wrap's inner-format prefix --
+    /// `invalid peer endpoint <endpoint>: <reason>` -- is byte-identical
+    /// to this variant's `#[error]` form, so JSON-RPC clients that match
+    /// against that prefix interoperate with gRPC + Borsh wRPC clients
+    /// that match on the typed variant.
+    ///
+    /// Surfacing nuance for JSON-RPC clients: when the deserialization
+    /// happens inside a struct-field context (the realistic surface for
+    /// `AddPeerRequest`), serde_json attaches its parser-position info
+    /// via `fix_position`, so the *outer* Display picks up an
+    /// ` at line N column M` suffix beyond the inner-format prefix.
+    /// Top-level deserialization of a bare `PeerEndpoint` has no such
+    /// suffix. Match against the inner-format prefix (with an optional
+    /// ` at line ...` suffix tolerated) for portable cross-transport
+    /// matching. gRPC and Borsh wRPC clients see no suffix because
+    /// neither transport routes through serde_json's position-aware
+    /// outer wrapper. The pair of regression tests in
+    /// `kaspa_utils::networking::tests::peer_endpoint_serde_deserialize_error_wraps_*`
+    /// pins both surfaces.
+    ///
+    /// Marked `#[non_exhaustive]` so additional descriptive fields (e.g.
+    /// a stable parse-error code, an error position offset) can be added
+    /// in a future release without a SemVer-major break for downstream
+    /// matchers.
+    #[error("invalid peer endpoint `{endpoint}`: {reason}")]
+    #[non_exhaustive]
+    InvalidPeerEndpoint { endpoint: String, reason: String },
+
     #[error("{0}")]
     General(String),
 
@@ -149,6 +189,21 @@ pub enum RpcError {
 
     #[error(transparent)]
     CompressedParentsError(#[from] CompressedParentsError),
+
+    #[error("Failed to resolve peer host `{host}`: {reason}")]
+    PeerHostResolutionFailed { host: String, reason: String },
+}
+
+impl RpcError {
+    /// Construct an [`RpcError::InvalidPeerEndpoint`] from any pair of
+    /// string-convertible fields. Provided so callers in sibling
+    /// crates can build the variant despite the `#[non_exhaustive]`
+    /// attribute on the variant body. Future descriptive fields land
+    /// here (with `Default::default()` or `None` for fields the caller
+    /// does not provide), so existing call sites stay source-compatible.
+    pub fn invalid_peer_endpoint(endpoint: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self::InvalidPeerEndpoint { endpoint: endpoint.into(), reason: reason.into() }
+    }
 }
 
 impl From<String> for RpcError {
