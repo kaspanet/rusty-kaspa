@@ -3,6 +3,7 @@ use crate::flowcontext::{
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
+use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
 use crate::{v7, v8, v9};
 use async_trait::async_trait;
 use futures::future::join_all;
@@ -221,6 +222,7 @@ pub struct FlowContextInner {
     mining_manager: MiningManagerProxy,
     pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
+    user_agent_rules: UserAgentRuleSet,
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
@@ -310,6 +312,7 @@ impl FlowContext {
     ) -> Self {
         let bps = config.bps() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
+        let user_agent_rules = UserAgentRuleSet::parse_lossy(&config.user_agent_rules);
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
@@ -330,6 +333,7 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
+                user_agent_rules,
                 block_event_logger: Some(BlockEventLogger::new(bps)),
                 bps,
                 orphan_resolution_range,
@@ -733,6 +737,26 @@ impl ConnectionInitializer for FlowContext {
 
         if peer_version.network != network_name {
             return Err(ProtocolError::WrongNetwork(network_name, peer_version.network));
+        }
+
+        if let Some(reason) = self.user_agent_rules.reject_reason(&peer_version.user_agent) {
+            match reason {
+                UserAgentRuleRejectReason::AllowanceExcluded => {
+                    info!(
+                        "Rejecting peer {} because user agent is outside configured allowance rules: {}",
+                        router, peer_version.user_agent
+                    );
+                }
+                UserAgentRuleRejectReason::Rejection(rule) => {
+                    info!(
+                        "Rejecting peer {} because user agent matched rejection rule `{}`: {}",
+                        router,
+                        rule.source(),
+                        peer_version.user_agent
+                    );
+                }
+            }
+            return Err(ProtocolError::OtherOwned(format!("peer user agent rejected: {}", peer_version.user_agent)));
         }
 
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
