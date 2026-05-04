@@ -1,10 +1,10 @@
 # ---------------------------------------- Chef image -------------------------------------------
-FROM rust:1.91-alpine AS chef
+FROM rust:1.91-alpine3.23 AS chef
 RUN apk --no-cache add \
   musl-dev \
   protobuf-dev \
   g++ \
-  clang15-dev \
+  clang21-dev \
   linux-headers \
   wasm-pack \
   openssl-dev
