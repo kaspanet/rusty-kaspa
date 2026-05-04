@@ -770,11 +770,11 @@ impl ConnectionInitializer for FlowContext {
 
         // Build and register the peer properties
         let peer_properties = Arc::new(PeerProperties {
-            user_agent: peer_version.user_agent.to_owned(),
+            user_agent: peer_version.user_agent,
             advertised_protocol_version: peer_version.protocol_version,
             protocol_version: applied_protocol_version,
             disable_relay_tx: peer_version.disable_relay_tx,
-            subnetwork_id: peer_version.subnetwork_id.to_owned(),
+            subnetwork_id: peer_version.subnetwork_id,
             time_offset,
         });
         router.set_properties(peer_properties);
