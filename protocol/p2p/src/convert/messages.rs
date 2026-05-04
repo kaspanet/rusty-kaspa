@@ -48,6 +48,7 @@ impl TryFrom<protowire::VersionMessage> for Version {
     fn try_from(msg: protowire::VersionMessage) -> Result<Self, Self::Error> {
         let mut user_agent = msg.user_agent;
         user_agent.truncate(user_agent.floor_char_boundary(MAX_USER_AGENT_LEN));
+        user_agent.shrink_to_fit();
         Ok(Self {
             protocol_version: msg.protocol_version,
             services: msg.services,
