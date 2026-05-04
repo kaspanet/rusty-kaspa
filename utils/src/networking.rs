@@ -492,6 +492,13 @@ impl PeerEndpoint {
     /// [`tokio::time::timeout`] with [`PEER_ENDPOINT_RESOLVE_TIMEOUT`].
     /// Multi-record results yield one `NetAddress` per resolved
     /// socket address, in the order returned by the OS resolver.
+    ///
+    /// Not available on `wasm32-*` targets: the underlying
+    /// `tokio::net` resolver requires `mio`, which has no `wasm32`
+    /// implementation. wasm32 callers do not need a DNS resolver
+    /// (the kaspad connection manager that drives this method is
+    /// itself non-wasm32).
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn resolve(&self, default_port: u16) -> Result<Vec<NetAddress>, PeerEndpointResolveError> {
         match self {
             Self::Address(addr) => Ok(vec![addr.normalize(default_port)]),

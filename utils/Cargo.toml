@@ -31,6 +31,12 @@ wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit = { workspace = true, optional = true }
+# `tokio` is only used by `PeerEndpoint::resolve` (gated on the same
+# `cfg`), so utils' wasm32 build carries no tokio dep at all and cannot
+# inherit any wasm32-incompatible features (`net`, `rt-multi-thread`)
+# from the workspace tokio entry. Non-wasm32 builds inherit whatever
+# the workspace declares plus the `time` + `net` features actually used
+# by the resolver.
 tokio = { workspace = true, features = ["time", "net"] }
 
 [dev-dependencies]
