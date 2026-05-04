@@ -610,7 +610,7 @@ pub const MAINNET_PARAMS: Params = Params {
 pub const TESTNET_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Tiram
-        "seeder1-testnet.kaspad.net",
+        "seeder1-tn.kaspad.net",
         // This DNS seeder is run by -gerri-
         "dnsseeder-kaspa-testnet.x-con.at",
         // This DNS seeder is run by supertypo
@@ -674,6 +674,8 @@ pub const TESTNET12_PARAMS: Params = Params {
         "tn12-dnsseed.kasia.fyi",
         // This DNS seeder is run by supertypo
         "n-testnet-12.kaspa.ws",
+        // This DNS seeder is run by Tiram
+        "seeder1-tn12.kaspad.net",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 12),
     genesis: TESTNET12_GENESIS,
