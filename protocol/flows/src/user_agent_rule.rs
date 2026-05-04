@@ -1,6 +1,6 @@
 use kaspa_core::warn;
 use regex::Regex;
-use semver::Version;
+use semver::{Op, Version};
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -26,17 +26,7 @@ enum UserAgentRuleAction {
 #[derive(Debug)]
 enum UserAgentRuleMatcher {
     Regex(Regex),
-    Version { name: String, op: VersionOp, version: Version },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum VersionOp {
-    Lt,
-    Lte,
-    Gt,
-    Gte,
-    Eq,
-    Ne,
+    Version { name: String, op: Op, version: Version },
 }
 
 #[derive(Debug)]
@@ -114,24 +104,9 @@ impl UserAgentRule {
         match &self.matcher {
             UserAgentRuleMatcher::Regex(regex) => regex.is_match(user_agent),
             UserAgentRuleMatcher::Version { name, op, version } => {
-                user_agent_versions(user_agent, name).any(|ua_version| op.matches(&ua_version, version))
+                user_agent_versions(user_agent, name).any(|ua_version| version_matches(*op, &ua_version, version))
             }
         }
-    }
-}
-
-impl VersionOp {
-    fn matches(self, left: &Version, right: &Version) -> bool {
-        let cmp = compare_version_core(left, right);
-        matches!(
-            (self, cmp),
-            (VersionOp::Lt, Ordering::Less)
-                | (VersionOp::Lte, Ordering::Less | Ordering::Equal)
-                | (VersionOp::Gt, Ordering::Greater)
-                | (VersionOp::Gte, Ordering::Greater | Ordering::Equal)
-                | (VersionOp::Eq, Ordering::Equal)
-                | (VersionOp::Ne, Ordering::Less | Ordering::Greater)
-        )
     }
 }
 
@@ -153,29 +128,42 @@ fn parse_version_matcher(expr: &str) -> Result<UserAgentRuleMatcher, UserAgentRu
         return Err(UserAgentRuleParseError("expected user agent name in version rule".to_string()));
     }
 
-    let version = Version::parse(version).map_err(|err| UserAgentRuleParseError(format!("invalid version: {}", err)))?;
+    let version = parse_normalized_version(version)?;
     Ok(UserAgentRuleMatcher::Version { name: name.to_string(), op, version })
 }
 
-fn find_version_op(expr: &str) -> Option<(usize, usize, VersionOp)> {
+fn find_version_op(expr: &str) -> Option<(usize, usize, Op)> {
     // `min_by_key` keeps the first candidate on equal indexes, so we keep longer
-    // overlapping operators before their prefixes (`<=` before `<`, etc.).
-    [
-        ("<=", VersionOp::Lte),
-        (">=", VersionOp::Gte),
-        ("==", VersionOp::Eq),
-        ("!=", VersionOp::Ne),
-        ("<", VersionOp::Lt),
-        (">", VersionOp::Gt),
-        ("=", VersionOp::Eq),
-    ]
-    .iter()
-    .filter_map(|(symbol, op)| expr.find(symbol).map(|index| (index, symbol.len(), *op)))
-    .min_by_key(|(index, _, _)| *index)
+    // overlapping operators before their prefixes (`<=` before `<`, etc.). For
+    // example, `kaspad<=1.1.1` must split at `<=`, not at `<`.
+    [("<=", Op::LessEq), (">=", Op::GreaterEq), ("==", Op::Exact), ("<", Op::Less), (">", Op::Greater)]
+        .iter()
+        .filter_map(|(symbol, op)| expr.find(symbol).map(|index| (index, symbol.len(), *op)))
+        .min_by_key(|(index, _, _)| *index)
 }
 
-fn compare_version_core(left: &Version, right: &Version) -> Ordering {
-    (left.major, left.minor, left.patch).cmp(&(right.major, right.minor, right.patch))
+fn version_matches(op: Op, left: &Version, right: &Version) -> bool {
+    let cmp = left.cmp_precedence(right);
+    matches!(
+        (op, cmp),
+        (Op::Less, Ordering::Less)
+            | (Op::LessEq, Ordering::Less | Ordering::Equal)
+            | (Op::Greater, Ordering::Greater)
+            | (Op::GreaterEq, Ordering::Greater | Ordering::Equal)
+            | (Op::Exact, Ordering::Equal)
+    )
+}
+
+fn parse_normalized_version(version: &str) -> Result<Version, UserAgentRuleParseError> {
+    Version::parse(version)
+        .map(|version| normalize_version(&version))
+        .map_err(|err| UserAgentRuleParseError(format!("invalid version: {}", err)))
+}
+
+fn normalize_version(version: &Version) -> Version {
+    // User agent policies compare release numbers only: suffixes such as
+    // `1.1.1-toc.1` should match the same rules as `1.1.1`.
+    Version::new(version.major, version.minor, version.patch)
 }
 
 fn user_agent_versions<'a>(user_agent: &'a str, expected_name: &'a str) -> impl Iterator<Item = Version> + 'a {
@@ -186,7 +174,7 @@ fn user_agent_versions<'a>(user_agent: &'a str, expected_name: &'a str) -> impl 
         }
 
         let version = version.split_once('(').map_or(version, |(version, _)| version).trim();
-        Version::parse(version).ok()
+        parse_normalized_version(version).ok()
     })
 }
 
@@ -227,11 +215,10 @@ mod tests {
         assert!(UserAgentRule::parse("reject;ver:kaspad>=1.1.1").unwrap().is_match("/kaspad:1.1.1-toc.1/"));
         assert!(!UserAgentRule::parse("reject;ver:kaspad>=1.1.1").unwrap().is_match("/kaspad:1.1.0/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad>1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad=1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad=1.1.1").unwrap().is_match("/kaspad:1.1.1(testnet-12)/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad==1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad!=1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
-        assert!(!UserAgentRule::parse("reject;ver:kaspad!=1.1.1").unwrap().is_match("/kaspad:1.1.1-toc.1/"));
+        assert!(UserAgentRule::parse("reject;ver:kaspad==1.1.1").unwrap().is_match("/kaspad:1.1.1(testnet-12)/"));
+        assert!(UserAgentRule::parse("reject;ver:kaspad=1.1.1").is_err());
+        assert!(UserAgentRule::parse("reject;ver:kaspad!=1.1.1").is_err());
     }
 
     #[test]
