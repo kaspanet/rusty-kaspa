@@ -389,7 +389,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .value_name("RULE")
                 .action(ArgAction::Append)
                 .require_equals(true)
-                .help("User agent admission rule. Forms: allow;regex:<regex>, reject;regex:<regex>, allow;ver:<name><op><version>, reject;ver:<name><op><version>."),
+                .help("User agent admission rule. Forms: allow;regex:<regex>, reject;regex:<regex>, allow;ver:<name><op><version>, reject;ver:<name><op><version>. Policy: if allow rules exist and none match, reject; if any reject rule matches, reject; otherwise accept."),
         )
         .arg(
             Arg::new("externalip")
