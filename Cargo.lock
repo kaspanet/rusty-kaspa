@@ -3488,6 +3488,8 @@ dependencies = [
  "log",
  "parking_lot",
  "rand 0.8.6",
+ "regex",
+ "semver",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
@@ -6217,11 +6219,12 @@ checksum = "b12e76d157a900eb52e81bc6e9f3069344290341720e9178cde2407113ac8d89"
 
 [[package]]
 name = "semver"
-version = "1.0.23"
+version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 dependencies = [
  "serde",
+ "serde_core",
 ]
 
 [[package]]

@@ -11,7 +11,7 @@ pub const MAX_USER_AGENT_LEN: usize = 256;
 pub struct Version {
     pub protocol_version: u32,
     pub network: String,
-    pub services: u64, // TODO
+    pub services: u64,
     pub timestamp: u64,
     pub address: Option<NetAddress>,
     pub id: PeerId,
@@ -31,7 +31,7 @@ impl Version {
         Self {
             protocol_version,
             network,
-            services: 0, // TODO: get number of live services
+            services: 0,
             timestamp: unix_now(),
             address,
             id,
@@ -45,6 +45,6 @@ impl Version {
         let comments = if !comments.is_empty() { format!("({})", comments.join("; ")) } else { "".to_string() };
         let new_user_agent = format!("{}:{}{}", name, version, comments);
         self.user_agent = format!("{}{}/", self.user_agent, new_user_agent);
-        self.user_agent.truncate(MAX_USER_AGENT_LEN);
+        self.user_agent.truncate(self.user_agent.floor_char_boundary(MAX_USER_AGENT_LEN));
     }
 }
