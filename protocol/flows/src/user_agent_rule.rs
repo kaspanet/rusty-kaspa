@@ -1,3 +1,4 @@
+use kaspa_core::warn;
 use regex::Regex;
 use semver::Version;
 use std::cmp::Ordering;
@@ -57,7 +58,7 @@ impl UserAgentRuleSet {
         for rule in rules {
             match UserAgentRule::parse(rule) {
                 Ok(rule) => rule_set.add(rule),
-                Err(err) => log::warn!("Ignoring invalid user agent rule `{}`: {}", rule, err),
+                Err(err) => warn!("Ignoring invalid user agent rule `{}`: {}", rule, err),
             }
         }
         rule_set
@@ -220,12 +221,14 @@ mod tests {
     #[test]
     fn supports_version_rule_colon_form_and_comparison_ops() {
         assert!(UserAgentRule::parse("reject;ver:kaspad:<1.1.1").unwrap().is_match("/kaspad:1.1.0/"));
+        assert!(UserAgentRule::parse("reject;ver:kaspad:<1.1.1").unwrap().is_match("/kaspad:1.1.0(testnet-12)/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad<=1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
         assert!(!UserAgentRule::parse("reject;ver:kaspad<=1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad>=1.1.1").unwrap().is_match("/kaspad:1.1.1-toc.1/"));
         assert!(!UserAgentRule::parse("reject;ver:kaspad>=1.1.1").unwrap().is_match("/kaspad:1.1.0/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad>1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad=1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
+        assert!(UserAgentRule::parse("reject;ver:kaspad=1.1.1").unwrap().is_match("/kaspad:1.1.1(testnet-12)/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad==1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad!=1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
         assert!(!UserAgentRule::parse("reject;ver:kaspad!=1.1.1").unwrap().is_match("/kaspad:1.1.1-toc.1/"));
