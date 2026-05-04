@@ -157,6 +157,8 @@ fn parse_version_matcher(expr: &str) -> Result<UserAgentRuleMatcher, UserAgentRu
 }
 
 fn find_version_op(expr: &str) -> Option<(usize, usize, VersionOp)> {
+    // `min_by_key` keeps the first candidate on equal indexes, so we keep longer
+    // overlapping operators before their prefixes (`<=` before `<`, etc.).
     [
         ("<=", VersionOp::Lte),
         (">=", VersionOp::Gte),
@@ -219,10 +221,14 @@ mod tests {
     fn supports_version_rule_colon_form_and_comparison_ops() {
         assert!(UserAgentRule::parse("reject;ver:kaspad:<1.1.1").unwrap().is_match("/kaspad:1.1.0/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad<=1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
+        assert!(!UserAgentRule::parse("reject;ver:kaspad<=1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad>=1.1.1").unwrap().is_match("/kaspad:1.1.1-toc.1/"));
+        assert!(!UserAgentRule::parse("reject;ver:kaspad>=1.1.1").unwrap().is_match("/kaspad:1.1.0/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad>1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad=1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
+        assert!(UserAgentRule::parse("reject;ver:kaspad==1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
         assert!(UserAgentRule::parse("reject;ver:kaspad!=1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
+        assert!(!UserAgentRule::parse("reject;ver:kaspad!=1.1.1").unwrap().is_match("/kaspad:1.1.1-toc.1/"));
     }
 
     #[test]
