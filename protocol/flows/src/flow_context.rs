@@ -716,7 +716,6 @@ impl ConnectionInitializer for FlowContext {
         // Subnets are not currently supported
         let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
-        // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd
 
         // Perform the handshake
