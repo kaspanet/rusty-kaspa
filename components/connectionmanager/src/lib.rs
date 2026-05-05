@@ -12,13 +12,9 @@ use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
 use kaspa_p2p_lib::{ConnectionError, Peer, common::ProtocolError};
-use kaspa_utils::{
-    networking::{PeerEndpoint, PeerEndpointResolveError},
-    triggers::SingleTrigger,
-};
+use kaspa_utils::{networking::PeerEndpoint, triggers::SingleTrigger};
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
-use thiserror::Error;
 use tokio::{
     select,
     sync::{
@@ -41,16 +37,8 @@ pub mod hostname;
 use hostname::{HostnameMetrics, HostnameRegistry, ResolveStatus, ResolveTrigger};
 pub use hostname::{HostnameMetricsSnapshot, HostnameResolver, TokioHostnameResolver};
 
-/// Errors raised by [`ConnectionManager::add_endpoint_request`].
-#[derive(Error, Debug)]
-pub enum AddEndpointError {
-    /// DNS resolution failed for the hostname variant.
-    #[error("hostname resolution failed: {0}")]
-    Resolve(#[from] PeerEndpointResolveError),
-    /// Hostname resolved to zero socket addresses.
-    #[error("hostname `{0}` resolved to zero addresses")]
-    EmptyResult(String),
-}
+#[cfg(feature = "test-utils")]
+pub mod test_support;
 
 pub struct ConnectionManager {
     p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
@@ -192,37 +180,69 @@ impl ConnectionManager {
 
     /// Insert a peer endpoint into the connection-request set. `Address`
     /// variants short-circuit to the existing IP-keyed path. `Hostname`
-    /// variants resolve synchronously (so the caller learns about typos
-    /// immediately), record state in the hostname registry, and seed
+    /// variants register the hostname for periodic re-resolution and seed
     /// `connection_requests` with one entry per resolved socket address.
+    ///
+    /// A hostname that does not currently resolve is **registered anyway**:
+    /// the entry lives in the hostname registry with an empty `last_resolved`
+    /// set, the `initial_failed` metric is bumped, a `warn!` line names
+    /// the host plus the underlying resolver error, and the entry is
+    /// marked stale so the next refresh tick retries immediately rather
+    /// than waiting the full periodic cadence. The unresolvable-host path
+    /// and the unreachable-IP path share the same retry-forever loop.
     ///
     /// Concurrent registrations for the same hostname are de-duplicated
     /// via the `pending_registrations` set: the second
-    /// caller short-circuits with `Ok(())` rather than racing the
-    /// first call's resolve+upsert. The DNS lookup runs outside the
+    /// caller short-circuits rather than racing the first call's
+    /// resolve+upsert. The DNS lookup runs outside the
     /// `hostname_state` lock so the registry stays available to
     /// periodic-refresh and metric-snapshot consumers during the
     /// (up to [`kaspa_utils::networking::PEER_ENDPOINT_RESOLVE_TIMEOUT`]-long) resolve.
-    pub async fn add_endpoint_request(
-        &self,
-        endpoint: PeerEndpoint,
-        is_permanent: bool,
-        default_port: u16,
-    ) -> Result<(), AddEndpointError> {
+    ///
+    /// Re-registration semantics are variant-specific:
+    ///
+    /// - `Hostname` arm (registry-backed): **first-write-wins**. A
+    ///   second caller that registers a host already present in the
+    ///   registry returns without modifying the existing entry, even
+    ///   if its `is_permanent` flag differs from the first caller's.
+    ///   RPC clients that issue `AddPeer { is_permanent: true }`
+    ///   against a hostname already registered by `--addpeer=<host>`
+    ///   (default `is_permanent = false`) will NOT upgrade the
+    ///   existing entry's permanence; the operator must remove the
+    ///   host and re-register if a flag change is required.
+    /// - `Address` arm (IP-literal): delegates to
+    ///   `add_connection_request`, whose contract is
+    ///   **last-write-wins** -- the existing entry's attempts count
+    ///   resets and `is_permanent` is overwritten by the new caller's
+    ///   value. Two RPC `AddPeer` calls against the same IP literal
+    ///   with differing `is_permanent` flags therefore mutate the
+    ///   existing entry, in contrast to the `Hostname` arm above.
+    ///
+    /// The asymmetry is by design: hostname-origin entries carry
+    /// registry-side bookkeeping (resolve cadence, `last_resolved`,
+    /// `refresh_failures`, `pending_registrations` dedup) that
+    /// first-write-wins protects from concurrent re-resolution
+    /// thrash; IP-literal entries have no comparable state and
+    /// preserving the upstream `addnode` last-write-wins behaviour
+    /// avoids regressing operator workflows that retry registration
+    /// with a corrected `is_permanent` flag.
+    ///
+    /// Source: <https://github.com/bitcoin/bitcoin/blob/8f4a3ba8972dae9412ba975a040cea22c227f983/src/net.cpp#L2974>
+    /// (`ThreadOpenAddedConnections`).
+    pub async fn add_endpoint_request(&self, endpoint: PeerEndpoint, is_permanent: bool, default_port: u16) {
         match endpoint {
             PeerEndpoint::Address(addr) => {
                 let socket = SocketAddr::from(addr.normalize(default_port));
                 self.add_connection_request(socket, is_permanent).await;
-                Ok(())
             }
             PeerEndpoint::Hostname { host, port } => {
                 let port = port.unwrap_or(default_port);
                 let host_arc: Arc<str> = Arc::from(host.as_str());
 
                 // Dedup pass 1: pending-registrations set. Concurrent
-                // same-host caller gets `Ok(())` and short-circuits.
+                // same-host caller short-circuits rather than racing.
                 if !self.pending_registrations.lock().insert(host_arc.clone()) {
-                    return Ok(());
+                    return;
                 }
                 // RAII cleanup: any return path below clears the
                 // pending entry exactly once, including panics in the
@@ -231,37 +251,101 @@ impl ConnectionManager {
 
                 // Dedup pass 2: registry already has the host.
                 if self.hostname_state.lock().await.contains(&host) {
-                    return Ok(());
+                    return;
                 }
 
                 // Resolve outside any registry-related lock so other
-                // consumers of `hostname_state` are not blocked.
-                let resolved = match self.resolver.resolve(&host, port).await {
-                    Ok(addrs) => {
+                // consumers of `hostname_state` are not blocked. A
+                // failed / empty resolve is tolerated -- the entry is
+                // still registered for periodic retry below.
+                //
+                // The `(<trigger>, status=Failed)` metric bucket aggregates
+                // both "resolver returned no addresses" (NXDOMAIN-equivalent)
+                // and "resolver errored / timed out" across every trigger
+                // label (`Initial`, `InitialRetry`, `DialFailure`,
+                // `Periodic`) by design: Bitcoin Core's
+                // `ThreadOpenAddedConnections` / `getaddrinfo` path does
+                // not distinguish either, so this matches the parity
+                // reference. The conflation lives at three sites that
+                // must stay in lock-step: this match arm in
+                // `add_endpoint_request` (initial registration), Phase 3a
+                // of `refresh_hostnames` (periodic and dial-failure
+                // re-resolution), and the `Ok` arm of
+                // `HostnameRegistry::refresh_all` / `apply_refresh_results`
+                // (the registry-side state transition that maps `Ok(empty)`
+                // to `StaleReason::PeriodicEmpty` so the fast-retry path
+                // engages on periodic-empty just as it does on
+                // initial-empty). The two operationally distinct cases
+                // ARE distinguishable on the operator side via the
+                // `warn!` lines emitted below
+                // (`resolver returned no addresses` vs `<resolver-error>`)
+                // and via the per-host `refresh_failures` counter in the
+                // registry. A future wire-additive split into
+                // `<trigger>_failed_lookup` and `<trigger>_failed_empty`
+                // (with a `PeerHostnameMetrics` borsh v2 bump) is
+                // straightforward if operators request finer-grained
+                // signal; deferred here to keep parity with Bitcoin
+                // Core's coarser metric shape.
+                let resolved: Vec<SocketAddr> = match self.resolver.resolve(&host, port).await {
+                    Ok(addrs) if !addrs.is_empty() => {
                         self.hostname_metrics.record(ResolveTrigger::Initial, ResolveStatus::Ok);
                         addrs
                     }
+                    Ok(_) => {
+                        self.hostname_metrics.record(ResolveTrigger::Initial, ResolveStatus::Failed);
+                        warn!("addpeer: resolver returned no addresses for `{host}`; queued for periodic retry");
+                        Vec::new()
+                    }
                     Err(e) => {
                         self.hostname_metrics.record(ResolveTrigger::Initial, ResolveStatus::Failed);
-                        return Err(AddEndpointError::Resolve(e));
+                        // `PeerEndpointResolveError` Display already names the host.
+                        warn!("addpeer: {e}; queued for periodic retry");
+                        Vec::new()
                     }
                 };
-                if resolved.is_empty() {
-                    return Err(AddEndpointError::EmptyResult(host));
-                }
                 let initial: HashSet<SocketAddr> = resolved.iter().copied().collect();
-                let host_arc_inserted = {
+                if resolved.is_empty() {
+                    // Initial resolve was empty / errored; the entry has
+                    // never resolved successfully. Mark stale with the
+                    // `InitialRetry` reason so the next refresh tick
+                    // retries immediately and records its outcome under
+                    // the `initial_retry_*` metric bucket -- distinct
+                    // from `dial_failure_*` (reserved for re-resolves
+                    // after a dial against a previously-resolved socket
+                    // failed). No `connection_requests` seeding on this
+                    // arm: there is nothing to dial yet.
                     let mut hostname_state = self.hostname_state.lock().await;
-                    hostname_state.upsert(&host, port, is_permanent, initial)
-                };
-                info!("addpeer: resolved {host} -> {resolved:?}");
-                let mut requests = self.connection_requests.lock().await;
-                for addr in resolved {
-                    requests.insert(addr, ConnectionRequest::new_hostname_origin(is_permanent, host_arc_inserted.clone()));
+                    hostname_state.upsert(&host, port, is_permanent, initial);
+                    hostname_state.mark_stale(&host, hostname::StaleReason::InitialRetry);
+                    return;
                 }
-                drop(requests);
+                // Cancellation-atomicity contract for the resolved-non-empty
+                // arm: acquire BOTH `hostname_state` and `connection_requests`
+                // before performing any state mutation. Every commit
+                // (`hostname_state.upsert`, `connection_requests.insert`)
+                // happens in the synchronous tail under both guards, so a
+                // future cancelled at either lock-acquisition `.await` drops
+                // out without committing either side. Lock order is
+                // `hostname_state` -> `connection_requests`; the only other
+                // path that holds both serially is `refresh_hostnames`
+                // (Phase 3b releases `hostname_state` before Phase 4 acquires
+                // `connection_requests`), and `handle_connection_requests`
+                // releases `connection_requests` before taking
+                // `hostname_state` for `mark_stale`, so no path nests the
+                // pair in the opposite order.
+                {
+                    let mut hostname_state = self.hostname_state.lock().await;
+                    let mut requests = self.connection_requests.lock().await;
+                    let key = hostname_state.upsert(&host, port, is_permanent, initial);
+                    for addr in &resolved {
+                        requests.insert(*addr, ConnectionRequest::new_hostname_origin(is_permanent, key.clone()));
+                    }
+                }
+                info!(
+                    "addpeer: resolved {host} -> {resolved}",
+                    resolved = resolved.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",")
+                );
                 let _ = self.force_next_iteration.send(());
-                Ok(())
             }
         }
     }
@@ -286,12 +370,16 @@ impl ConnectionManager {
                 None
             };
             loop {
-                if self.shutdown_signal.trigger.is_triggered() {
-                    break;
-                }
+                // Shutdown is fully handled by the `select!` listener arm;
+                // a leading `is_triggered()` check would fire one iteration
+                // sooner only if shutdown landed between two select! polls,
+                // which the listener arm picks up on the very next poll
+                // anyway (a `SingleTrigger` listener whose trigger fired is
+                // immediately ready). No correctness or latency benefit
+                // from a separate sync-poll guard.
                 select! {
-                    _ = next_periodic_tick(&mut ticker) => self.clone().refresh_hostnames(ResolveTrigger::Periodic).await,
-                    _ = refresh_rx.recv() => self.clone().refresh_hostnames(ResolveTrigger::DialFailure).await,
+                    _ = next_periodic_tick(&mut ticker) => self.clone().refresh_hostnames().await,
+                    _ = refresh_rx.recv() => self.clone().refresh_hostnames().await,
                     _ = self.shutdown_signal.listener.clone() => break,
                 }
             }
@@ -302,11 +390,16 @@ impl ConnectionManager {
     /// Resolve eligible hostname entries through the configured
     /// resolver and reconcile each delta into `connection_requests`.
     ///
-    /// Eligibility is gated on `last_refresh + cadence <= now` (or
-    /// the entry is marked stale via [`HostnameRegistry::mark_stale`]);
-    /// hosts whose cadence window has not elapsed are skipped on this
-    /// tick, so a dial-failure wakeup re-resolves only the hosts the
-    /// dial loop actually flagged.
+    /// Eligibility is computed per-entry in
+    /// [`HostnameRegistry::pending_refreshes`]: an entry is eligible
+    /// either because its cadence window has elapsed (labeled
+    /// [`ResolveTrigger::Periodic`]) or because the dial loop flagged
+    /// it via [`HostnameRegistry::mark_stale`] (labeled
+    /// [`ResolveTrigger::DialFailure`]). The wakeup arm (periodic
+    /// ticker vs `force_hostname_refresh` channel) does not determine
+    /// the metric label -- the per-entry trigger does -- so a
+    /// dial-failure wakeup that happens to coincide with cadence-elapsed
+    /// entries records each entry under its own eligibility reason.
     ///
     /// DNS lookups run outside the `hostname_state` lock and in
     /// parallel via `join_all`, so a slow resolver does not block
@@ -314,9 +407,10 @@ impl ConnectionManager {
     /// `host_for_socket`, metric snapshots). Per-result metric
     /// recording runs after the resolves complete and before the
     /// re-acquisition of the registry lock.
-    pub async fn refresh_hostnames(self: Arc<Self>, trigger: ResolveTrigger) {
+    pub async fn refresh_hostnames(self: Arc<Self>) {
         // Phase 1: snapshot eligible hosts under lock; lock is dropped
-        // before any DNS work begins.
+        // before any DNS work begins. Each snapshot carries the
+        // per-entry trigger derived from the eligibility reason.
         let snapshots = {
             let state = self.hostname_state.lock().await;
             state.pending_refreshes(self.hostname_refresh_interval)
@@ -325,25 +419,51 @@ impl ConnectionManager {
             return;
         }
         // Phase 2: resolve concurrently outside the registry lock.
-        let resolves = snapshots.into_iter().map(|(host, port, _prev)| {
+        let resolves = snapshots.into_iter().map(|pending| {
             let resolver = self.resolver.clone();
             async move {
-                let result = resolver.resolve(&host, port).await;
-                (host, result)
+                let result = resolver.resolve(&pending.host, pending.port).await;
+                (pending.host, pending.trigger, pending.snapshot_last_refresh, result)
             }
         });
-        let results = join_all(resolves).await;
-        // Phase 3a: record per-result metrics outside the registry lock.
-        for (_, result) in &results {
-            let status = if result.is_ok() { ResolveStatus::Ok } else { ResolveStatus::Failed };
-            self.hostname_metrics.record(trigger, status);
+        let triggered_results = join_all(resolves).await;
+        // Phase 3a: record per-entry metrics outside the registry lock,
+        // labeled by the entry's own eligibility trigger. `Ok(empty)`
+        // folds into the `(<trigger>, Failed)` bucket -- mirroring
+        // `add_endpoint_request`'s `(Initial, Failed)` aggregation so
+        // the metric semantics are uniform across trigger labels (see
+        // the design-intent comment on `add_endpoint_request` for the
+        // Bitcoin-Core parity rationale). The registry-side fast-retry
+        // contract for `Ok(empty)` is enforced in
+        // `apply_refresh_results` below via `StaleReason::PeriodicEmpty`.
+        for (_, trigger, _, result) in &triggered_results {
+            let status = match result {
+                Ok(addrs) if !addrs.is_empty() => ResolveStatus::Ok,
+                _ => ResolveStatus::Failed,
+            };
+            self.hostname_metrics.record(*trigger, status);
         }
         // Phase 3b: re-acquire lock, apply results, capture permanence
-        // for delta reconciliation in one pass.
+        // for delta reconciliation in one pass. The trigger is dropped
+        // here -- registry reconciliation is trigger-agnostic. The
+        // snapshot's `last_refresh` is forwarded so apply_refresh_results
+        // can detect a concurrent mark_stale that fired between snapshot
+        // and apply (race-detection contract).
+        let outcomes: Vec<hostname::HostnameResolveOutcome> = triggered_results
+            .into_iter()
+            .map(|(host, _trigger, snapshot_last_refresh, result)| (host, snapshot_last_refresh, result))
+            .collect();
         let (deltas, permanence) = {
             let mut state = self.hostname_state.lock().await;
-            let deltas = state.apply_refresh_results(results);
-            let permanence: HashMap<Arc<str>, bool> = state.iter().map(|(host, req)| (host.clone(), req.is_permanent)).collect();
+            let deltas = state.apply_refresh_results(outcomes);
+            // Skip the permanence map build when no deltas need reconciliation.
+            // Empty-deltas is the common case for a stable DNS configuration;
+            // skipping saves O(N) Arc<str>::clone + bool copies per refresh.
+            let permanence: HashMap<Arc<str>, bool> = if deltas.is_empty() {
+                HashMap::new()
+            } else {
+                state.iter().map(|(host, req)| (host.clone(), req.is_permanent)).collect()
+            };
             (deltas, permanence)
         };
         if deltas.is_empty() {
@@ -355,9 +475,9 @@ impl ConnectionManager {
         for delta in &deltas {
             info!("addpeer: {} +{} new, -{} removed", delta.host, delta.added.len(), delta.removed.len());
             // `permanence` is built under the same `hostname_state` lock
-            // acquisition that produced `deltas` (Phase 3 above), and
-            // `apply_refresh_results` only emits a delta for a host that
-            // exists in the registry -- so every delta's host is
+            // acquisition that produced `deltas` (Phase 3b above), and
+            // `apply_refresh_results` only emits a delta for a host
+            // that exists in the registry -- so every delta's host is
             // structurally present in `permanence`. A missing key is a
             // future-regression signal (e.g. a refactor splits the
             // permanence-build from the apply across separate lock
@@ -394,6 +514,16 @@ impl ConnectionManager {
         snapshot
     }
 
+    // FIXME: the dial-loop body holds `connection_requests` across N
+    // `connect_peer().await` calls. While dials are in flight, sibling
+    // consumers of `connection_requests` (`add_connection_request`,
+    // `add_endpoint_request` reconciliation, `is_permanent`, `is_banned`,
+    // `ip_has_permanent_connection`, `refresh_hostnames` Phase 4) cannot
+    // make progress. A cleanup pass should snapshot the work under the
+    // lock, drop the lock, await the dials sequentially, and re-acquire
+    // the lock to apply outcomes -- the merge logic must preserve
+    // concurrent inserts during the await window (see
+    // https://github.com/kaspanet/rusty-kaspa/issues/986).
     async fn handle_connection_requests(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
         let mut requests = self.connection_requests.lock().await;
         let mut new_requests = HashMap::with_capacity(requests.len());
@@ -450,7 +580,7 @@ impl ConnectionManager {
         if !stale_hosts.is_empty() {
             let mut hostname_state = self.hostname_state.lock().await;
             for host in &stale_hosts {
-                hostname_state.mark_stale(host);
+                hostname_state.mark_stale(host, hostname::StaleReason::DialFailure);
             }
             // Best-effort wakeup of the refresh task; if the channel is closed
             // (shutdown), the next periodic tick still picks up the stale flag.

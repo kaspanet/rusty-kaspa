@@ -476,6 +476,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
         storage_metrics: item.storage_metrics.as_ref().map(|x| x.into()),
+        peer_hostname_metrics: item.peer_hostname_metrics.as_ref().map(|x| x.into()),
         // TODO
         // custom_metrics : None,
         error: None,
@@ -1028,6 +1029,7 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         storage_metrics: item.storage_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        peer_hostname_metrics: item.peer_hostname_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         // TODO
         custom_metrics: None,
     }

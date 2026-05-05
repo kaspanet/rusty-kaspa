@@ -1,21 +1,27 @@
+use kaspa_connectionmanager::HostnameMetricsSnapshot;
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::{ClientPool, GrpcClient};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_p2p_flows::service::{P2P_CORE_SERVICE, P2pService};
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::{networking::ContextualNetAddress, triggers::Listener};
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use kaspa_wrpc_server::address::WrpcNetAddress;
-use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
+use kaspad_lib::{
+    args::Args,
+    daemon::{DaemonOverrides, create_core_with_runtime},
+};
 use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tempfile::TempDir;
 
 pub struct ClientManager {
     pub args: RwLock<Args>,
+    pub overrides: RwLock<DaemonOverrides>,
 
     /// Type and suffix of the daemon network
     pub network: NetworkId,
@@ -31,6 +37,10 @@ pub struct ClientManager {
 
 impl ClientManager {
     pub fn new(args: Args) -> Self {
+        Self::new_with_overrides(args, DaemonOverrides::default())
+    }
+
+    pub fn new_with_overrides(args: Args, overrides: DaemonOverrides) -> Self {
         let network = args.network();
         let context = SubscriptionContext::with_options(None);
         let rpc_port = args.rpclisten.unwrap().normalize(0).port;
@@ -40,7 +50,8 @@ impl ClientManager {
             _ => panic!("Test infrastructure requires custom wRPC address with port"),
         };
         let args = RwLock::new(args);
-        Self { args, network, context, rpc_port, p2p_port, rpc_borsh_port }
+        let overrides = RwLock::new(overrides);
+        Self { args, overrides, network, context, rpc_port, p2p_port, rpc_borsh_port }
     }
 
     pub async fn new_client(&self) -> GrpcClient {
@@ -108,6 +119,7 @@ pub struct Daemon {
     pub core: Arc<Core>,
     grpc_server_started: Listener,
     shutdown_requested: Listener,
+    p2p_service: Arc<P2pService>,
     workers: Option<Vec<std::thread::JoinHandle<()>>>,
 
     _appdir_tempdir: TempDir,
@@ -146,23 +158,50 @@ impl Daemon {
         Self::new_random_with_args(args, fd_total_budget)
     }
 
-    pub fn new_random_with_args(mut args: Args, fd_total_budget: i32) -> Daemon {
+    pub fn new_random_with_args(args: Args, fd_total_budget: i32) -> Daemon {
+        Self::new_random_with_args_and_overrides(args, DaemonOverrides::default(), fd_total_budget)
+    }
+
+    pub fn new_random_with_args_and_overrides(mut args: Args, overrides: DaemonOverrides, fd_total_budget: i32) -> Daemon {
         Self::fill_args_with_random_ports(&mut args);
-        let client_manager = Arc::new(ClientManager::new(args));
+        let client_manager = Arc::new(ClientManager::new_with_overrides(args, overrides));
         Self::with_manager(client_manager, fd_total_budget)
     }
 
     pub fn with_manager(client_manager: Arc<ClientManager>, fd_total_budget: i32) -> Daemon {
         let appdir_tempdir = get_kaspa_tempdir();
         client_manager.args.write().appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
-        let (core, _) = create_core_with_runtime(&Default::default(), &client_manager.args.read(), fd_total_budget);
+        let (core, _) = create_core_with_runtime(
+            &Default::default(),
+            &client_manager.args.read(),
+            &client_manager.overrides.read(),
+            fd_total_budget,
+        );
         let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().into_any_arc()).unwrap();
         let rpc_core_service =
             &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().into_any_arc()).unwrap();
         let shutdown_requested = rpc_core_service.core_shutdown_request_listener();
         let grpc_server = &Arc::downcast::<GrpcService>(async_service.find(GrpcService::IDENT).unwrap().into_any_arc()).unwrap();
         let grpc_server_started = grpc_server.started();
-        Daemon { client_manager, core, grpc_server_started, shutdown_requested, workers: None, _appdir_tempdir: appdir_tempdir }
+        let p2p_service = Arc::downcast::<P2pService>(async_service.find(P2P_CORE_SERVICE).unwrap().into_any_arc()).unwrap();
+        Daemon {
+            client_manager,
+            core,
+            grpc_server_started,
+            shutdown_requested,
+            p2p_service,
+            workers: None,
+            _appdir_tempdir: appdir_tempdir,
+        }
+    }
+
+    /// Read-only snapshot of the running daemon's hostname metrics.
+    /// Returns `None` until the running [`P2pService`] has wired the
+    /// connection manager into the flow context (typically once
+    /// [`Daemon::run`] has been called and the service has spun up).
+    pub async fn hostname_metrics_snapshot(&self) -> Option<HostnameMetricsSnapshot> {
+        let cm = self.p2p_service.flow_context().connection_manager()?;
+        Some(cm.hostname_metrics_snapshot().await)
     }
 
     pub fn client_manager(&self) -> Arc<ClientManager> {

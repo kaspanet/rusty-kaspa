@@ -10,6 +10,8 @@ use kaspa_utils::networking::{ContextualNetAddress, PeerEndpoint};
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, serde_as};
+#[cfg(feature = "devnet-prealloc")]
+use std::sync::Arc;
 use std::{ffi::OsString, fs};
 use toml::from_str;
 
@@ -19,8 +21,6 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_txscript::pay_to_address_script;
-#[cfg(feature = "devnet-prealloc")]
-use std::sync::Arc;
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]

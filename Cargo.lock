@@ -3789,6 +3789,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-alloc",
  "kaspa-bip32",
+ "kaspa-connectionmanager",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -3830,6 +3831,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "workflow-perf-monitor",
+ "workflow-serializer",
 ]
 
 [[package]]
@@ -4346,6 +4348,7 @@ dependencies = [
  "kaspa-addressmanager",
  "kaspa-alloc",
  "kaspa-build-info",
+ "kaspa-connectionmanager",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",

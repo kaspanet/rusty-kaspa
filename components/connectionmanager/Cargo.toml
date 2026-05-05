@@ -27,5 +27,10 @@ tokio = { workspace = true, features = ["net", "time"] }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 
+[features]
+# Exposes [`test_support::FakeHostnameResolver`] for downstream
+# integration tests. Off by default; enabled by `kaspa-testing-integration`.
+test-utils = []
+
 [lints]
 workspace = true

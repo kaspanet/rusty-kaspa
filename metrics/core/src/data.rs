@@ -494,6 +494,18 @@ impl TryFrom<GetMetricsResponse> for MetricsData {
             bandwidth_metrics,
             process_metrics,
             storage_metrics,
+            // `peer_hostname_metrics` is surfaced via `kaspa-cli
+            // getmetrics` directly off the wire response; it does not
+            // feed the `MetricsData` -> `MetricsSnapshot` interactive
+            // view that the long-running metrics console renders. The
+            // destructure below discards it explicitly so an exhaustive
+            // match catches future field additions (a new wire field
+            // forces a compile error here, surfacing the gap to whoever
+            // adds it). When the interactive view is extended to display
+            // hostname resolutions, the field will land in the
+            // `MetricsData` mapping at lines 533-589 alongside the other
+            // grouped wire metrics.
+            peer_hostname_metrics: _,
             custom_metrics: _,
         } = response; //rpc.get_metrics(true, true, true, true, true, false).await?;
 

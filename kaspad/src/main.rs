@@ -9,7 +9,7 @@ use kaspa_core::{info, signals::Signals};
 use kaspa_utils::fd_budget;
 use kaspad_lib::{
     args::parse_args,
-    daemon::{DESIRED_DAEMON_SOFT_FD_LIMIT, MINIMUM_DAEMON_SOFT_FD_LIMIT, create_core},
+    daemon::{DESIRED_DAEMON_SOFT_FD_LIMIT, DaemonOverrides, MINIMUM_DAEMON_SOFT_FD_LIMIT, create_core},
 };
 
 #[cfg(feature = "heap")]
@@ -40,7 +40,7 @@ pub fn main() {
     }
 
     let fd_total_budget = fd_budget::limit() - args.rpc_max_clients as i32 - args.inbound_limit as i32 - args.outbound_target as i32;
-    let (core, _) = create_core(args, fd_total_budget);
+    let (core, _) = create_core(args, DaemonOverrides::default(), fd_total_budget);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
