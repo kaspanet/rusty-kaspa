@@ -50,7 +50,6 @@ async function groth16Verify() {
 
         console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
-       
 
         const r0ScriptBuilder=new R0ScriptBuilder();
         r0ScriptBuilder.commitToGroth16("75641a540ee2ad9ee5902bcdcdb8b55c0bef4a28287309b858f97b1356c6c2e0")
@@ -116,7 +115,7 @@ async function groth16Verify() {
         
         
       
-        console.log(`Signature script length: ${Buffer.from(signatureScript, 'hex').length} bytes`);
+        console.log(`Signature script length: ${Buffer.from(signatureScript.sigScript, 'hex').length} bytes`);
         
 
         // Construct the P2SH UTXO entry
@@ -145,7 +144,7 @@ async function groth16Verify() {
         );
 
         // Set the signature script
-        redeemTx.inputs[0].signatureScript = signatureScript;
+        redeemTx.inputs[0].signatureScript = signatureScript.sigScript;
 
         console.log('Redeem transaction created');
         console.log('Submitting redeem transaction with Groth16 proof verification...');

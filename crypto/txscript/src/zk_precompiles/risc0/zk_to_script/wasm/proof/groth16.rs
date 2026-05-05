@@ -1,7 +1,8 @@
 use crate::error::Error;
 use crate::result::Result;
+use crate::zk_precompiles::risc0::zk_to_script::wasm::proof::FinalizedR0Script;
 use crate::zk_precompiles::risc0::zk_to_script::wasm::{InnerState, R0ScriptBuilder, into_array_32};
-use kaspa_wasm_core::types::{BinaryT, HexString};
+use kaspa_wasm_core::types::BinaryT;
 use risc0_zkvm::{Groth16Receipt, ReceiptClaim};
 use wasm_bindgen::prelude::wasm_bindgen;
 use workflow_wasm::prelude::*;
@@ -10,9 +11,10 @@ use workflow_wasm::prelude::*;
 impl R0ScriptBuilder {
     /// Finalizes a Groth16-bounded script with a borsh-encoded
     /// `Groth16Receipt<ReceiptClaim>` and a 32-byte journal hash. Returns the
-    /// finalized script bytes as a hex string and consumes the builder.
+    /// spending script and the inner redeem script. If this is a preparation
+    /// in order to unlock a ZK-locked UTXO the script is now ready.
     #[wasm_bindgen(js_name = "finalizeWithGroth16Proof")]
-    pub fn finalize_with_groth16_proof(&mut self, receipt: BinaryT, journal_hash: BinaryT) -> Result<HexString> {
+    pub fn finalize_with_groth16_proof(&mut self, receipt: BinaryT, journal_hash: BinaryT) -> Result<FinalizedR0Script> {
         let receipt_bytes = receipt.try_as_vec_u8()?;
         let journal_hash = into_array_32(journal_hash.try_as_vec_u8()?, "journalHash")?;
         let receipt: Groth16Receipt<ReceiptClaim> =
@@ -20,8 +22,8 @@ impl R0ScriptBuilder {
 
         match self.take() {
             InnerState::BoundedGroth16(b) => {
-                let bytes = b.finalize_with_proof(receipt, journal_hash).map_err(|e| Error::custom(e.to_string()))?;
-                Ok(HexString::from(bytes.as_slice()))
+                let finalized = b.finalize_with_proof(receipt, journal_hash).map_err(|e| Error::custom(e.to_string()))?;
+                Ok(finalized.into())
             }
             other => {
                 self.inner = other;

@@ -5,6 +5,8 @@ mod builder;
 #[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))]
 pub mod wasm;
 
+pub use builder::FinalizedR0Script;
+
 /// This represents R0 zk script builder
 /// that has not yet been committed to a specific proof system
 /// i.e. we have not yet added the tag nor which image id
@@ -20,10 +22,6 @@ pub struct BoundedR0Groth16Script;
 /// succinct proof system, at this stage it can only accept
 /// a succinct proof in order to advance and finalize the script.
 pub struct BoundedR0SuccinctScript;
-
-/// A finalized r0 script builder, at this stage the script is finalized
-/// no further changes can be done.
-pub struct FinalizedR0Script;
 
 #[derive(Default)]
 /// A wrapper around the native ScriptBuilder to abstract away the

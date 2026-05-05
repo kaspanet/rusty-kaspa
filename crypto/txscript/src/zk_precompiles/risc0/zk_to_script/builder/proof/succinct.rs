@@ -1,18 +1,17 @@
 use super::Result;
-use crate::zk_precompiles::risc0::zk_to_script::{BoundedR0SuccinctScript, R0ScriptBuilder};
+use crate::zk_precompiles::risc0::zk_to_script::{BoundedR0SuccinctScript, R0ScriptBuilder, builder::proof::FinalizedR0Script};
 use risc0_binfmt::Digestible;
 use risc0_zkvm::{Digest, SuccinctReceipt, sha};
 
 impl R0ScriptBuilder<BoundedR0SuccinctScript> {
+    /// Add the proof to an existing succinct commit script and return both
+    /// the spending script and the inner redeem script.
     pub fn finalize_with_proof<Claim: Digestible + Clone>(
         mut self,
         receipt: SuccinctReceipt<Claim>,
         journal: Digest,
-    ) -> Result<Vec<u8>> {
-        // Capture the already-built locking-script bytes so we can append
-        // them after the spending pushes — execution must run spending first
-        // (to populate the stack) then locking (to consume).
-        let commit_script = self.builder.drain();
+    ) -> Result<FinalizedR0Script> {
+        let redeem_script = self.builder.drain();
 
         // The claim here might be already or not digested
         // but in either case we need to extract the digest
@@ -40,11 +39,8 @@ impl R0ScriptBuilder<BoundedR0SuccinctScript> {
         // program
         self.builder.add_data(journal.as_bytes())?;
 
-        // Concatenate: spending bytes first (so they execute first and place
-        // proof data on the stack), then the commit script (which reads
-        // those pushes and dispatches OpZkPrecompile).
-        let mut full = self.builder.drain();
-        full.extend_from_slice(&commit_script);
-        Ok(full)
+        self.builder.add_data(&redeem_script)?; // push the redeem script 
+
+        Ok(FinalizedR0Script { sig_script: self.builder.drain(), redeem_script })
     }
 }

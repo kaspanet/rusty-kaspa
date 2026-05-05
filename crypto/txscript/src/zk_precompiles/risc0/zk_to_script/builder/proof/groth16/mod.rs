@@ -1,6 +1,7 @@
 mod vk;
 
 use super::Result;
+use crate::zk_precompiles::risc0::zk_to_script::builder::proof::FinalizedR0Script;
 pub use crate::zk_precompiles::risc0::zk_to_script::builder::proof::groth16::vk::R0_SERIALIZED_UNCOMPRESSED_VK;
 use crate::zk_precompiles::risc0::zk_to_script::{BoundedR0Groth16Script, R0ScriptBuilder};
 use crate::zk_precompiles::{
@@ -14,18 +15,16 @@ use risc0_binfmt::Digestible;
 use risc0_groth16::Seal;
 use risc0_zkvm::Groth16Receipt;
 
+
 impl R0ScriptBuilder<BoundedR0Groth16Script> {
-    /// Add the proof to an existing groth16 commit script
-    /// returning the full script (including the signature).
-    /// The mental model here is that we commit first, then redeem
-    /// but since the script execution expects the signature script first,
-    /// we need to place the commitment in the end.
+    /// Add the proof to an existing groth16 commit script and return both the
+    /// spending script and the inner redeem script.
     pub fn finalize_with_proof<Claim: Digestible + Clone>(
         mut self,
         receipt: Groth16Receipt<Claim>,
         journal_hash: [u8; 32],
-    ) -> Result<Vec<u8>> {
-        let commit_script = self.builder.drain();
+    ) -> Result<FinalizedR0Script> {
+        let redeem_script = self.builder.drain();
 
         // Decode the seal
         let seal = Seal::decode(&receipt.seal).map_err(|e| R0Error::SealDecoding(e.to_string()))?;
@@ -46,10 +45,8 @@ impl R0ScriptBuilder<BoundedR0Groth16Script> {
         self.builder.add_data(&journal_hash)?; // push the journal hash, i.e. what we claim to be
         self.builder.add_data(&encoded_proof)?; // push the proof that asserts the claim
 
-        self.builder.add_data(&commit_script)?;
+        self.builder.add_data(&redeem_script)?; // push the redeem script
 
-        // Thats it, now the commit script will consume these inputs and execute the
-        // program.
-        Ok(self.builder.drain())
+        Ok(FinalizedR0Script { sig_script: self.builder.drain(), redeem_script })
     }
 }

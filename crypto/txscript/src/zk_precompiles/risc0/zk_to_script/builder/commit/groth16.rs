@@ -64,8 +64,13 @@ impl R0ScriptBuilder<UnboundedR0Script> {
 
         // Recompute Output digest in a UTXO script.
         // SHA256( SHA256("risc0.Output") || journal_hash || ZERO || u16_le(2) )
-        self.builder.add_data(b"risc0.Output")?;
-        self.builder.add_op(OpSHA256)?; // [..., image_id, journal_hash, tag_hash]
+        self.builder.add_data(
+            [
+                119, 234, 254, 179, 102, 167, 139, 71, 116, 125, 224, 215, 187, 23, 98, 132, 8, 95, 245, 86, 72, 135, 0, 154, 91, 230,
+                61, 163, 45, 53, 89, 212,
+            ]
+            .as_slice(),
+        )?;
         self.builder.add_op(OpSwap)?; // [..., image_id, tag_hash, journal_hash]
         self.builder.add_op(OpCat)?; // [..., image_id, tag_hash || journal_hash]
         self.builder.add_data(&[0u8; 32])?; // ZERO assumptions [..., image_id, tag||journal, ZERO]
@@ -77,8 +82,13 @@ impl R0ScriptBuilder<UnboundedR0Script> {
         // Recompute the ReceiptClaim digest in a UTXO script.
         // SHA256( SHA256("risc0.ReceiptClaim") || ZERO_input || image_id || post_digest
         //       || output_digest || u32_le(0) || u32_le(0) || u16_le(4) )
-        self.builder.add_data(b"risc0.ReceiptClaim")?;
-        self.builder.add_op(OpSHA256)?; // [..., image_id, output_digest, tag_hash]
+        self.builder.add_data(
+            [
+                203, 31, 239, 205, 31, 45, 154, 100, 151, 92, 187, 191, 110, 22, 30, 41, 20, 67, 75, 12, 187, 153, 96, 184, 77, 245,
+                215, 23, 232, 107, 72, 175,
+            ]
+            .as_slice(),
+        )?;
         self.builder.add_data(&[0u8; 32])?; // ZERO input
         self.builder.add_op(OpCat)?; // [..., image_id, output_digest, tag||ZERO]
         self.builder.add_op(OpRot)?; // [..., output_digest, tag||ZERO, image_id]
@@ -135,11 +145,37 @@ impl R0ScriptBuilder<UnboundedR0Script> {
 #[cfg(test)]
 mod tests {
     use risc0_binfmt::Digestible;
-    use risc0_zkvm::{Digest, SystemState, sha};
+    use risc0_zkvm::{SystemState, sha};
+    use sha2::Digest;
 
     #[test]
     fn test_post_digest_halted_zero() {
-        let digest = SystemState { pc: 0, merkle_root: Digest::ZERO }.digest::<sha::Impl>();
+        let digest = SystemState { pc: 0, merkle_root: risc0_zkvm::Digest::ZERO }.digest::<sha::Impl>();
         assert_eq!(digest.as_bytes(), super::POST_DIGEST_HALTED_ZERO);
+    }
+
+    #[test]
+    fn verify_tagged_struct_hashes() {
+        let output = "risc0.Output";
+        let receipt_claim = "risc0.ReceiptClaim";
+        let output_hash = sha2::Sha256::digest(output.as_bytes());
+        let receipt_claim_hash = sha2::Sha256::digest(receipt_claim.as_bytes());
+
+        let output_hash_bytes: [u8; 32] = output_hash.into();
+        let receipt_claim_hash_bytes: [u8; 32] = receipt_claim_hash.into();
+        assert_eq!(
+            output_hash_bytes,
+            [
+                119, 234, 254, 179, 102, 167, 139, 71, 116, 125, 224, 215, 187, 23, 98, 132, 8, 95, 245, 86, 72, 135, 0, 154, 91, 230,
+                61, 163, 45, 53, 89, 212
+            ]
+        );
+        assert_eq!(
+            receipt_claim_hash_bytes,
+            [
+                203, 31, 239, 205, 31, 45, 154, 100, 151, 92, 187, 191, 110, 22, 30, 41, 20, 67, 75, 12, 187, 153, 96, 184, 77, 245,
+                215, 23, 232, 107, 72, 175
+            ]
+        );
     }
 }
