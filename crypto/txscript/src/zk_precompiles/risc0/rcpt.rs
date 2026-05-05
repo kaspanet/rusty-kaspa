@@ -53,7 +53,7 @@ impl TryFrom<&str> for HashFnId {
             "blake2b" => Ok(HashFnId::Blake2b),
             "poseidon2" => Ok(HashFnId::Poseidon2),
             "sha-256" => Ok(HashFnId::Sha256),
-            _ => Err(R0Error::InvalidHashFnId(value.as_bytes().get(0).copied().unwrap_or(255))),
+            _ => Err(R0Error::InvalidHashFnId(value.as_bytes().first().copied().unwrap_or(255))),
         }
     }
 }

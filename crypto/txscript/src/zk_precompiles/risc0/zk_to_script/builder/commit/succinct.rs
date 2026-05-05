@@ -1,4 +1,3 @@
-use risc0_zkvm::Digest;
 use std::marker::PhantomData;
 
 use super::super::super::Result;

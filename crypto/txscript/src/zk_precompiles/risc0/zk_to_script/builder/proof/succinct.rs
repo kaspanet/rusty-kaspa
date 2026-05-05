@@ -20,7 +20,7 @@ impl R0ScriptBuilder<BoundedR0SuccinctScript> {
         // stark proof.
         let serialized_claim: Digest = receipt.claim.digest::<sha::Impl>();
 
-        self.builder.add_data(&serialized_claim.as_bytes())?;
+        self.builder.add_data(serialized_claim.as_bytes())?;
 
         // Extract the control index and control digests
         // which are the merkle proof of inclusion.

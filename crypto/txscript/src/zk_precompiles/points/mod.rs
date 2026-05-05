@@ -44,14 +44,14 @@ impl<'input> PointFromBytes<'input> for G2 {
     }
 }
 
-impl Into<G1Affine> for G1 {
-    fn into(self) -> G1Affine {
-        self.0
+impl From<G1> for G1Affine {
+    fn from(g1: G1) -> G1Affine {
+        g1.0
     }
 }
 
-impl Into<G2Affine> for G2 {
-    fn into(self) -> G2Affine {
-        self.0
+impl From<G2> for G2Affine {
+    fn from(g2: G2) -> G2Affine {
+        g2.0
     }
 }
