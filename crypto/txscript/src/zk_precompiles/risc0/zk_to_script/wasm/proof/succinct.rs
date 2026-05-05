@@ -16,8 +16,7 @@ impl R0ScriptBuilder {
     pub fn finalize_with_succinct_proof(&mut self, receipt: BinaryT, journal: BinaryT) -> Result<FinalizedR0Script> {
         let receipt_bytes = receipt.try_as_vec_u8()?;
         let journal_bytes = journal.try_as_vec_u8()?;
-        let journal_digest: Digest =
-            journal_bytes.as_slice().try_into().map_err(|_| Error::custom("journal must be 32 bytes"))?;
+        let journal_digest: Digest = journal_bytes.as_slice().try_into().map_err(|_| Error::custom("journal must be 32 bytes"))?;
         let receipt: SuccinctReceipt<ReceiptClaim> =
             borsh::from_slice(&receipt_bytes).map_err(|e| Error::custom(format!("failed to decode succinct receipt: {e}")))?;
 

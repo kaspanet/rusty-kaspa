@@ -13,17 +13,10 @@ impl R0ScriptBuilder {
     /// "poseidon2", or "sha-256"; defaults to "poseidon2" when omitted.
     /// Transitions an unbounded builder into the succinct-bounded state.
     #[wasm_bindgen(js_name = "commitToSuccinct")]
-    pub fn commit_to_succinct(
-        &mut self,
-        image_id: BinaryT,
-        control_id: BinaryT,
-        hash_fn_id: Option<String>,
-    ) -> Result<()> {
+    pub fn commit_to_succinct(&mut self, image_id: BinaryT, control_id: BinaryT, hash_fn_id: Option<String>) -> Result<()> {
         let image_id = into_array_32(image_id.try_as_vec_u8()?, "imageId")?;
         let control_id = into_array_32(control_id.try_as_vec_u8()?, "controlId")?;
-        let hash_fn = hash_fn_id
-            .map(|s| HashFnId::try_from(s.as_str()).map_err(|e| Error::custom(e.to_string())))
-            .transpose()?;
+        let hash_fn = hash_fn_id.map(|s| HashFnId::try_from(s.as_str()).map_err(|e| Error::custom(e.to_string()))).transpose()?;
 
         match self.take() {
             InnerState::Unbounded(b) => {

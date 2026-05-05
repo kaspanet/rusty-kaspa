@@ -15,7 +15,6 @@ use risc0_binfmt::Digestible;
 use risc0_groth16::Seal;
 use risc0_zkvm::Groth16Receipt;
 
-
 impl R0ScriptBuilder<BoundedR0Groth16Script> {
     /// Add the proof to an existing groth16 commit script and return both the
     /// spending script and the inner redeem script.

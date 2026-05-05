@@ -8,7 +8,10 @@ mod fast_zk_tests {
         get_zk_script_units_upper_bound, hex,
         zk_precompiles::{risc0::zk_to_script::R0ScriptBuilder, tags::ZkTag},
     };
-    use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, tx::{PopulatedTransaction, ScriptPublicKey}};
+    use kaspa_consensus_core::{
+        hashing::sighash::SigHashReusedValuesUnsync,
+        tx::{PopulatedTransaction, ScriptPublicKey},
+    };
     use kaspa_txscript_errors::TxScriptError;
     use risc0_zkvm::{Digest, Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 
@@ -132,6 +135,4 @@ mod fast_zk_tests {
             },
         }
     }
-
-
 }
