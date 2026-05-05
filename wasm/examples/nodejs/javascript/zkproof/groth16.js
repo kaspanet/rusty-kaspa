@@ -1,6 +1,7 @@
 const { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
     payToScriptHashScript, addressFromScriptPublicKey,
-    createTransaction, signTransaction } = require('./kaspa');
+    createTransaction, signTransaction, 
+    Encoding} = require('./kaspa');
 
 // Configuration  
 const NETWORK_ID = 'devnet';
@@ -41,7 +42,7 @@ async function groth16Verify() {
 
     const rpc = new RpcClient({
         url: RPC_URL,
-        encoding: 'borsh',
+        encoding: Encoding.Borsh,
         networkId: NETWORK_ID
     });
 
@@ -88,6 +89,10 @@ async function groth16Verify() {
         const p2shAddress = addressFromScriptPublicKey(lockingScript, NETWORK_ID);
         console.log(`P2SH address: ${p2shAddress}`);
 
+        if(!p2shAddress) {
+            console.error('Failed to derive P2SH address from redeem script');
+            return;
+        }
         // Create COMMIT transaction
         const utxoToSpend = matureUtxos[0];
         const commitAmount = utxoToSpend.amount - 10000n;
@@ -121,7 +126,7 @@ async function groth16Verify() {
         console.log('Commit transaction signed');
 
         const submitResult = await rpc.submitTransaction({ transaction: signedCommitTx });
-        const commitTxId = submitResult.transactionId || submitResult;
+        const commitTxId = submitResult.transactionId;
         console.log(`Commit transaction submitted: ${commitTxId}`);
 
         // Wait for commit transaction confirmation
@@ -204,9 +209,7 @@ async function groth16Verify() {
 
     } catch (error) {
         console.error('Error:', error);
-        if (error.stack) {
-            console.error('Stack:', error.stack);
-        }
+       
     } finally {
         await rpc.disconnect();
     }
