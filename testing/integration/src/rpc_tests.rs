@@ -17,7 +17,7 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{Notification, api::rpc::RpcApi, model::*};
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
-use kaspad_lib::args::Args;
+use kaspad_lib::{args::Args, daemon::DaemonOverrides};
 use tokio::task::JoinHandle;
 
 #[macro_export]
@@ -821,6 +821,188 @@ async fn sanity_test() {
     //
     // Fold-up
     //
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
+
+// =============================================================================
+// Hostname endpoint RPC tests
+// =============================================================================
+
+/// `add_peer` over gRPC accepts a hostname endpoint, resolves it, and returns
+/// success.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rpc_add_peer_hostname_localhost_success() {
+    use kaspa_utils::networking::PeerEndpoint;
+    let args = Args { simnet: true, unsafe_rpc: true, disable_upnp: true, ..Default::default() };
+    let total_fd_limit = fd_budget::test_limit();
+    let mut daemon = Daemon::new_random_with_args(args, total_fd_limit);
+    let client = daemon.start().await;
+    let endpoint = PeerEndpoint::from_str("localhost").unwrap();
+    client.add_peer(endpoint, true).await.expect("hostname endpoint must succeed against the local resolver");
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
+
+/// `add_peer` over gRPC with a well-formed but unresolvable hostname
+/// returns `Ok(AddPeerResponse {})`: the connection manager registers the
+/// hostname for periodic retry, bumps the `initial_failed` metric, and
+/// the daemon continues serving normally. The unresolvable-host path and
+/// the unreachable-IP path are symmetric: both queue the entry for the
+/// dial loop's retry-forever cadence rather than failing the RPC call.
+///
+/// Source: https://github.com/bitcoin/bitcoin/blob/8f4a3ba8972dae9412ba975a040cea22c227f983/src/net.cpp#L3740
+/// (`CConnman::AddNode`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rpc_add_peer_hostname_unresolvable_accepts() {
+    use kaspa_connectionmanager::test_support::FakeHostnameResolver;
+    use kaspa_consensus_core::network::{NetworkId, NetworkType};
+    use kaspa_utils::networking::PeerEndpoint;
+
+    let host = "nonexistent.kas947.invalid";
+    // Derive the active network's default p2p port from the
+    // `kaspa-consensus-core` `NetworkId` API so the resolver mapping
+    // stays in sync with the port the connection manager hands it on
+    // omitted-port endpoints.
+    let simnet_p2p_port = NetworkId::new(NetworkType::Simnet).default_p2p_port();
+    let resolver = Arc::new(FakeHostnameResolver::new());
+    resolver.set_err(host, simnet_p2p_port, "fake resolver: nonexistent.kas947.invalid does not resolve");
+
+    let args = Args { simnet: true, unsafe_rpc: true, disable_upnp: true, ..Default::default() };
+    let overrides = DaemonOverrides { hostname_resolver: Some(resolver.clone()) };
+    let total_fd_limit = fd_budget::test_limit();
+    let mut daemon = Daemon::new_random_with_args_and_overrides(args, overrides, total_fd_limit);
+    let client = daemon.start().await;
+
+    let endpoint = PeerEndpoint::from_str(host).unwrap();
+    client.add_peer(endpoint, true).await.expect("unresolvable hostname must be accepted (registered for periodic retry, no error)");
+
+    // The connection manager bumped the failed-initial counter when it
+    // recorded the failed initial resolution.
+    let snapshot =
+        daemon.hostname_metrics_snapshot().await.expect("connection manager should be wired into the flow context after start()");
+    assert!(
+        snapshot.resolutions_total.initial_failed >= 1,
+        "expected initial_failed >= 1 after registering an unresolvable hostname; snapshot = {snapshot:?}; resolver call_count = {}",
+        resolver.call_count(),
+    );
+
+    // Node still up: a follow-up RPC succeeds against the same client.
+    let _info =
+        client.get_info_call(None, GetInfoRequest {}).await.expect("node must remain up after registering the unresolvable peer");
+
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
+
+/// `add_peer` over gRPC with an IPv4 literal takes the same short-circuit
+/// path as before the hostname work landed; this is the IP-only regression
+/// guard.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rpc_add_peer_ipv4_unchanged() {
+    use kaspa_utils::networking::{ContextualNetAddress, PeerEndpoint};
+    let args = Args { simnet: true, unsafe_rpc: true, disable_upnp: true, ..Default::default() };
+    let total_fd_limit = fd_budget::test_limit();
+    let mut daemon = Daemon::new_random_with_args(args, total_fd_limit);
+    let client = daemon.start().await;
+    let addr = ContextualNetAddress::from_str("1.2.3.4").unwrap();
+    client.add_peer(PeerEndpoint::Address(addr), true).await.expect("IPv4 literal must succeed");
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
+
+/// A hand-encoded v1 byte buffer for `AddPeerRequest` decodes correctly via
+/// the same `workflow_serializer::Deserializer` path the wRPC server uses,
+/// and the resulting `RpcPeerEndpoint::Address` reaches
+/// `ConnectionManager::add_endpoint_request` end-to-end through a running
+/// daemon. This is the IP-only-`AddPeerRequest` wire-compatibility test:
+/// a v1 emitter (any client that pre-dates the hostname-endpoint wire
+/// format) interoperates with the post-hostname-endpoint server.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rpc_add_peer_v1_wire_compat() {
+    use kaspa_rpc_core::model::AddPeerRequest;
+    use kaspa_utils::networking::PeerEndpoint;
+    use workflow_serializer::prelude::Deserializer;
+
+    // Hand-encoded v1 wire buffer matching the `add_peer_request_v1_byte_buffer_decodes_to_address`
+    // unit-test fixture (rpc/core/src/model/message.rs::v1_fixture_bytes).
+    // Layout: u16=1 LE | IpAddress { variant=0 (V4), octets [1,2,3,4] }
+    //       | Option<u16>::Some=1, port=16111 LE | bool=true
+    let v1_bytes: Vec<u8> = vec![
+        0x01, 0x00, // u16 version = 1
+        0x00, // IpAddress variant tag: V4
+        0x01, 0x02, 0x03, 0x04, // octets 1.2.3.4
+        0x01, // Option::Some
+        0xef, 0x3e, // u16 LE port = 16111 (0x3eef)
+        0x01, // bool is_permanent = true
+    ];
+    let mut cursor = std::io::Cursor::new(&v1_bytes);
+    let decoded: AddPeerRequest =
+        Deserializer::deserialize(&mut cursor).expect("v1 borsh buffer must decode through the same path the wRPC server uses");
+    assert!(decoded.is_permanent, "v1 fixture pinned is_permanent=true");
+    let endpoint = decoded.peer_address.clone();
+    assert!(matches!(endpoint, PeerEndpoint::Address(_)), "v1 wire buffer must decode to the Address variant; got {endpoint:?}");
+
+    // Now feed the decoded endpoint to a running daemon over gRPC. The
+    // gRPC handler routes through the SAME `ConnectionManager::add_endpoint_request`
+    // path the wRPC server uses on the v1 buffer's decoded result, so a
+    // success here proves end-to-end v1 wire-format compatibility.
+    let args = Args { simnet: true, unsafe_rpc: true, disable_upnp: true, ..Default::default() };
+    let total_fd_limit = fd_budget::test_limit();
+    let mut daemon = Daemon::new_random_with_args(args, total_fd_limit);
+    let client = daemon.start().await;
+    client
+        .add_peer(decoded.peer_address, decoded.is_permanent)
+        .await
+        .expect("v1-decoded address must route through add_endpoint_request");
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
+
+/// A fresh `AddPeerRequest` round-trips through the v2 borsh wire format
+/// emitted by post-hostname-endpoint wRPC clients: serialize via the
+/// `workflow_serializer::Serializer` (which writes the v2 layout
+/// unconditionally), confirm the byte buffer carries the v2 magic, decode
+/// via the matching `Deserializer`, and confirm the round-tripped struct
+/// reaches `ConnectionManager::add_endpoint_request` end-to-end. This is
+/// the v2-default-emit interoperability test.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rpc_add_peer_v2_emit_default() {
+    use kaspa_rpc_core::model::AddPeerRequest;
+    use kaspa_utils::networking::PeerEndpoint;
+    use workflow_serializer::prelude::{Deserializer, Serializer};
+
+    let original = AddPeerRequest::new(PeerEndpoint::from_str("localhost").expect("parse hostname"), true);
+    let mut bytes = Vec::new();
+    Serializer::serialize(&original, &mut bytes).expect("v2 serialization must succeed");
+    assert_eq!(
+        &bytes[..2],
+        &[0x02, 0x00],
+        "wRPC client built from this branch must emit the v2 version prefix; got {:?}",
+        &bytes[..2]
+    );
+    let mut cursor = std::io::Cursor::new(&bytes);
+    let decoded: AddPeerRequest =
+        Deserializer::deserialize(&mut cursor).expect("v2 borsh buffer must decode through the same path the wRPC server uses");
+    assert_eq!(decoded.peer_address, original.peer_address);
+    assert_eq!(decoded.is_permanent, original.is_permanent);
+
+    // Hand the v2 round-tripped endpoint to a running daemon over gRPC --
+    // the gRPC handler shares `add_endpoint_request` with wRPC, so success
+    // here proves the v2 default-emit path interoperates end-to-end.
+    let args = Args { simnet: true, unsafe_rpc: true, disable_upnp: true, ..Default::default() };
+    let total_fd_limit = fd_budget::test_limit();
+    let mut daemon = Daemon::new_random_with_args(args, total_fd_limit);
+    let client = daemon.start().await;
+    client
+        .add_peer(decoded.peer_address, decoded.is_permanent)
+        .await
+        .expect("v2-decoded endpoint must route through add_endpoint_request");
     client.disconnect().await.unwrap();
     drop(client);
     daemon.shutdown();
