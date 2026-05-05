@@ -3,13 +3,13 @@ use crate::{
     opcodes::codes::OpZkPrecompile,
     script_builder::ScriptBuilder,
     zk_precompiles::{
-        risc0::{rcpt::HashFnId, zk_to_script::R0ScriptBuilder},
+        risc0::{rcpt::HashFnId, zk_to_script::{R0ScriptBuilder, UnboundedScript}},
         tags::ZkTag,
     },
 };
 use risc0_binfmt::Digestible;
 use risc0_zkvm::{Digest, SuccinctReceipt, sha};
-impl R0ScriptBuilder {
+impl R0ScriptBuilder<UnboundedScript> {
     /// Converts a SuccinctReceipt into a Kaspa script.
     /// This script unlocks the UTXO if the verification of the receipt
     /// succeeds.
