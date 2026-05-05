@@ -1,89 +1,59 @@
 mod vk;
-use std::marker::PhantomData;
 
 use super::Result;
 pub use crate::zk_precompiles::risc0::zk_to_script::builder::proof::groth16::vk::R0_SERIALIZED_UNCOMPRESSED_VK;
-use crate::zk_precompiles::risc0::zk_to_script::{
-     BoundedGroth16Script, FinalizedZkScript, R0ScriptBuilder,
-};
-use crate::{
-    opcodes::codes::OpZkPrecompile,
-    script_builder::ScriptBuilder,
-    zk_precompiles::{
-        points::{G1, G2, PointFromBytes},
-        risc0::{R0Error},
-        tags::ZkTag,
-    },
+use crate::zk_precompiles::risc0::zk_to_script::{BoundedR0Groth16Script, R0ScriptBuilder};
+use crate::zk_precompiles::{
+    points::{G1, G2, PointFromBytes},
+    risc0::R0Error,
 };
 use ark_bn254::Bn254;
 use ark_groth16::Proof;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_serialize::CanonicalSerialize;
 use risc0_binfmt::Digestible;
 use risc0_groth16::Seal;
-use risc0_zkvm::{Digest, Groth16Receipt, Groth16ReceiptVerifierParameters, sha};
+use risc0_zkvm::Groth16Receipt;
 
-/// Splits a r0 digest into two 32 byte arrays
-fn split_digest_bytes(d: Digest) -> ([u8; 32], [u8; 32]) {
-    let bytes = d.as_bytes();
-    let mut lo = [0u8; 32];
-    let mut hi = [0u8; 32];
-    lo[..16].copy_from_slice(&bytes[..16]);
-    hi[..16].copy_from_slice(&bytes[16..32]);
-    (lo, hi)
-}
+impl R0ScriptBuilder<BoundedR0Groth16Script> {
+    /// Add the proof to an existing groth16 commit script
+    /// returning the full script (including the signature).
+    /// The mental model here is that we commit first, then redeem
+    /// but since the script execution expects the signature script first,
+    /// we need to place the commitment in the end.
+    pub fn finalize_with_proof<Claim: Digestible + Clone>(
+        mut self,
+        receipt: Groth16Receipt<Claim>,
+        journal_hash: [u8; 32],
+    ) -> Result<Vec<u8>> {
+        let commit_script = self.builder.drain();
 
-impl R0ScriptBuilder<BoundedGroth16Script> {
-    pub fn add_proof_data<Claim: Digestible + Clone>(mut self,receipt: Groth16Receipt<Claim>,journal: Digest) -> Result<R0ScriptBuilder<FinalizedZkScript>> {
-        // Get the default parameters for the g16 verifier
-        let params = Groth16ReceiptVerifierParameters::default();
-        let seal = &receipt.seal;
-        let digested_claim = receipt.claim.digest::<sha::Impl>();
+        // Decode the seal
+        let seal = Seal::decode(&receipt.seal).map_err(|e| R0Error::SealDecoding(e.to_string()))?;
 
-        // Because a 32 byte sha256 digest can be too large
-        // for the bn254 field, we split the digest into two 16byte parts
-        // and pad them. This way we can guarantee that we wont overflow.
-        let (a0, a1) = split_digest_bytes(params.control_root);
-        let (c0, c1) = split_digest_bytes(digested_claim);
-        let id_bn254: [u8; 32] = params.bn254_control_id.into();
-
-        // Decode the R0 seal.
-        let seal = Seal::decode(seal).map_err(|e| R0Error::SealDecoding(e.to_string()))?;
-
-        // Utilize the groth16 R0 VK, which is used to verify
-        // r0 circuits such as the lift program.
-        let verifying_key = ark_groth16::VerifyingKey::<Bn254>::deserialize_uncompressed(R0_SERIALIZED_UNCOMPRESSED_VK.as_slice())?;
-
-        // Create the groups
+        // Decode the bytes into group elements.
         let g1 = G1::from_r0_bytes(&seal.a)?;
         let g1_c = G1::from_r0_bytes(&seal.c)?;
         let g2 = G2::from_r0_bytes(&seal.b)?;
 
-        // Create an ark proof from the R0 proof data
+        // Create the three group elements.
+        let proof: Proof<ark_ec::bn::Bn<ark_bn254::Config>> = Proof::<Bn254> { a: g1.0, b: g2.0, c: g1_c.0 };
         let mut encoded_proof = Vec::new();
 
-        // The proof itself is not to be used for script-specific logic
-        // as such it should be serialized in its compressed form to save space.
-        let proof: Proof<ark_ec::bn::Bn<ark_bn254::Config>> = Proof::<Bn254> { a: g1.0, b: g2.0, c: g1_c.0 };
+        // Operations on proof is not deemed to be of necessity
+        // therefore we use compressed form.
         proof.serialize_compressed(&mut encoded_proof)?;
 
-        // Serialize the verifying key in compressed form as well, to save space
-        // the verifying key here will never change, and as such it can be used
-        // for script specific logic.
-        let mut serialized_vk = Vec::new();
-        verifying_key.serialize_compressed(&mut serialized_vk).map_err(|_| R0Error::BincodeVkSerialization)?;
+        self.builder.add_data(&journal_hash)?; // push the journal hash, i.e. what we claim to be
+        self.builder.add_data(&encoded_proof)?; // push the proof that asserts the claim
 
-        // push all public inputs to the script.
-        self.builder.add_data(&id_bn254)?; // control id
-        self.builder.add_data(&c1)?;  // claim digest hi
-        self.builder.add_data(&c0)?; // claim digest lo
-        self.builder.add_data(&a1)?; // control root hi
-        self.builder.add_data(&a0)?; // control root lo
-        self.builder.add_i64(5)?; // Inform how many public inputs there are, 
-        self.builder.add_data(&encoded_proof)?; // the proof itself, 
+        let mut full = self.builder.drain();
 
-        Ok(R0ScriptBuilder {
-            builder: self.builder,
-            _state: PhantomData,
-        })
+        // place the commit script at the end since the
+        // proof script is expected to be on top of the stack.
+        full.extend_from_slice(&commit_script);
+
+        // Thats it, now the commit script will consume these inputs and execute the
+        // program.
+        Ok(full)
     }
 }

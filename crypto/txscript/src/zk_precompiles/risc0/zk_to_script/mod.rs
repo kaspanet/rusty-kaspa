@@ -1,45 +1,66 @@
-use std::marker::PhantomData;
-
-use crate::{opcodes::codes::OpZkPrecompile, script_builder::ScriptBuilder};
 use super::result::Result;
-pub mod groth16;
+use crate::script_builder::ScriptBuilder;
+use std::marker::PhantomData;
+//pub mod groth16;
 //mod succinct;
 mod builder;
 
-struct UninitializedZkScript;
-struct UnboundedZkScript; 
-struct BoundedGroth16Script;
-struct BoundedR0SuccinctScript;
-struct FinalizedZkScript;
-#[non_exhaustive]
+/// This represents R0 zk script builder
+/// that has not yet been committed to a specific proof system
+/// i.e. we have not yet added the tag nor which image id
+/// or identifier we are proving for.
+pub struct UnboundedR0Script;
+
+/// An r0 script builder that committed to the
+/// groth16 proof system, at this stage it can only accept
+/// a groth16 proof in order to advance and finalize the script.
+pub struct BoundedR0Groth16Script;
+
+/// An r0 script builder that committed to the
+/// succinct proof system, at this stage it can only accept
+/// a succinct proof in order to advance and finalize the script.
+pub struct BoundedR0SuccinctScript;
+
+/// A finalized r0 script builder, at this stage the script is finalized
+/// no further changes can be done.
+pub struct FinalizedR0Script;
+
+#[derive(Default)]
+/// A wrapper around the native ScriptBuilder to abstract away the
+/// complex implementation details of verifying a risc0 proof
+/// whilst utilizing the OpZkPrecompile opcode.
 pub struct R0ScriptBuilder<State> {
     builder: ScriptBuilder,
-    _state:PhantomData<State>,
+    _state: PhantomData<State>,
 }
 
-impl R0ScriptBuilder<UninitializedZkScript> {
+impl R0ScriptBuilder<UnboundedR0Script> {
     pub fn new() -> Self {
-        Self {
-            builder: ScriptBuilder::new(),
-            _state: PhantomData,
-        }
-    }
-
-    /// Initializes that this script is a zk precompile script
-    /// by adding the OpZkPrecompile opcode.
-    pub fn initialize( self) -> Result<R0ScriptBuilder<UnboundedZkScript>> {
-        Ok(R0ScriptBuilder {
-            builder: self.builder,
-            _state: PhantomData,
-        })
+        Self { builder: ScriptBuilder::new(), _state: PhantomData }
     }
 }
 
-impl From<ScriptBuilder> for R0ScriptBuilder<UninitializedZkScript> {
+impl<ScriptType> R0ScriptBuilder<ScriptType> {
+    /// Get the script as bytes
+    pub fn script(&self) -> &[u8] {
+        self.builder.script()
+    }
+
+    /// Get a mutable reference to the script bytes,
+    /// this allows for in place modifications
+    pub fn script_mut(&mut self) -> &mut Vec<u8> {
+        self.builder.script_mut()
+    }
+
+    /// Drain the builder and return the script as bytes,
+    /// this consumes the builder
+    pub fn drain(mut self) -> Vec<u8> {
+        self.builder.drain()
+    }
+}
+
+impl From<ScriptBuilder> for R0ScriptBuilder<UnboundedR0Script> {
     fn from(value: ScriptBuilder) -> Self {
-        R0ScriptBuilder {
-            builder: value,
-            _state: PhantomData,
-        }
+        R0ScriptBuilder { builder: value, _state: PhantomData }
     }
 }

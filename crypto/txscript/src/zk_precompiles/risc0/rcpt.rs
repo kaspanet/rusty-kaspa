@@ -123,16 +123,6 @@ impl SuccinctReceipt {
             HashFnId::Sha256 => Sha256HashSuite::new_suite(),
         };
 
-let maybe_control_id_hex = hex::encode(
-    self.seal
-        .iter()
-        .take(16)
-        .enumerate()
-        .filter_map(|(i, elem)| (i & 1 == 0).then_some(elem))
-        .flat_map(|elem| elem.as_u32().to_le_bytes())
-        .collect::<Vec<u8>>(),
-);
-println!("maybe control id hex: {}", maybe_control_id_hex);
         // There are only some control roots allowed, specifying which circuits are allowed
         // to be verified with this proof. We verify that the control id of the receipt verifies
         // as a valid merkle proof.

@@ -1,4 +1,2 @@
-mod tag;
-mod bind;
+mod commit;
 mod proof;
-mod finalize;

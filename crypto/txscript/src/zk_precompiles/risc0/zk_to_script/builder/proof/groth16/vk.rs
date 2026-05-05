@@ -39,7 +39,6 @@ mod tests {
 
     use crate::zk_precompiles::risc0::zk_to_script::builder::proof::groth16::vk::R0_SERIALIZED_UNCOMPRESSED_VK;
 
-
     #[test]
     fn verify_upstream_vk_roundtrip() {
         let upstream_vk = risc0_groth16::verifying_key();
