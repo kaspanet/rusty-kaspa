@@ -1,9 +1,9 @@
 use super::result::Result;
 use crate::script_builder::ScriptBuilder;
 use std::marker::PhantomData;
-//pub mod groth16;
-//mod succinct;
 mod builder;
+#[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))]
+pub mod wasm;
 
 /// This represents R0 zk script builder
 /// that has not yet been committed to a specific proof system

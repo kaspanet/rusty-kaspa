@@ -57,7 +57,7 @@ impl R0ScriptBuilder<UnboundedR0Script> {
         // working area. We'll bring it back at Stage F.
         self.builder.add_op(OpToAltStack)?; // alt:[..., proof]   main:[..., journal_hash]
 
-        // Stage B: arrange [id_bn254, image_id, journal_hash] on top.
+        //  arrange [id_bn254, image_id, journal_hash] on top.
         self.builder.add_data(&id_bn254)?; // [..., journal_hash, id_bn254]
         self.builder.add_data(&image_id)?; // [..., journal_hash, id_bn254, image_id]
         self.builder.add_op(OpRot)?; // [..., id_bn254, image_id, journal_hash]

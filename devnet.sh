@@ -1,0 +1,2 @@
+cargo run --release --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex --disable-upnp
+

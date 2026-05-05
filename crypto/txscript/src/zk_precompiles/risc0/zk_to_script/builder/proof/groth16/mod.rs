@@ -46,14 +46,10 @@ impl R0ScriptBuilder<BoundedR0Groth16Script> {
         self.builder.add_data(&journal_hash)?; // push the journal hash, i.e. what we claim to be
         self.builder.add_data(&encoded_proof)?; // push the proof that asserts the claim
 
-        let mut full = self.builder.drain();
-
-        // place the commit script at the end since the
-        // proof script is expected to be on top of the stack.
-        full.extend_from_slice(&commit_script);
+        self.builder.add_data(&commit_script)?;
 
         // Thats it, now the commit script will consume these inputs and execute the
         // program.
-        Ok(full)
+        Ok(self.builder.drain())
     }
 }
