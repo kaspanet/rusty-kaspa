@@ -5402,7 +5402,7 @@
     "0x09 0x300602010102010101 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
     "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
     "",
-    "NULLFAIL",
+    "PUBKEYFORMAT",
     "BIP66-compliant but not NULLFAIL-compliant 4"
   ],
   [

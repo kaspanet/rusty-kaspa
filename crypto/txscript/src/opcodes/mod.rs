@@ -1,9 +1,10 @@
 #[macro_use]
 mod macros;
+use crate::MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA;
 use crate::zk_precompiles::{parse_tag, verify_zk};
 use crate::{
-    EngineFlags, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED,
-    SEQUENCE_LOCK_TIME_MASK, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError,
+    EngineFlags, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError,
     data_stack::{OpcodeData, StackEntry, serialize_i64},
 };
 use blake2b_simd::Params;
@@ -264,8 +265,9 @@ fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 
 fn substring(data: &[u8], start: usize, end: usize) -> Result<Vec<u8>, TxScriptError> {
     let diff = end.checked_sub(start).ok_or(TxScriptError::InvalidRange { start, end })?;
-    if diff > MAX_SCRIPT_ELEMENT_SIZE {
-        return Err(TxScriptError::ElementTooBig(diff, MAX_SCRIPT_ELEMENT_SIZE));
+    // Since this function is only used post-Toccata, we can use the post-Toccata max size here.
+    if diff > MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA {
+        return Err(TxScriptError::ElementTooBig(diff, MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA));
     }
     data.get(start..end).map(<[u8]>::to_vec).ok_or(TxScriptError::OutOfBoundsSubstring(start, end, data.len()))
 }
@@ -4633,7 +4635,7 @@ mod test {
                 run_script(&tx_large, entries_large.clone(), 0, spk_payload_substr_oob).expect_err("payload substr out of bounds");
             assert!(matches!(err, TxScriptError::OutOfBoundsSubstring(_, _, _)));
 
-            // TODO(pre-covpp): Re-enable once MAX_SCRIPT_ELEMENT_SIZE is finalized.
+            // TODO(pre-covpp): Re-enable once max script element size is finalized.
             // let spk_payload_substr_too_long = script(|sb| sb.add_i64(0)?.add_i64(600)?.add_op(codes::OpTxPayloadSubstr));
             // let err = run_script(&tx_large, entries_large.clone(), 0, spk_payload_substr_too_long).expect_err("payload substr >520");
             // assert!(matches!(err, TxScriptError::ElementTooBig(_, _)));
@@ -4938,7 +4940,7 @@ mod test {
             let err = run_script(&tx, entries.clone(), 0, spk_bad_output_index).expect_err("invalid output index");
             assert!(matches!(err, TxScriptError::InvalidOutputIndex(_, _)));
 
-            // TODO(pre-covpp): Re-enable once MAX_SCRIPT_ELEMENT_SIZE is finalized.
+            // TODO(pre-covpp): Re-enable once max script element size is finalized.
             // // Large input SPK to trigger ElementTooBig via substring length
             // let mut large_entries = entries.clone();
             // large_entries[1].script_public_key = ScriptPublicKey::new(0, vec![0u8; 600].into());

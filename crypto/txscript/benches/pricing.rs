@@ -17,7 +17,7 @@ use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::{self, OpDrop, OpDup};
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::{
-    EngineCtx, EngineFlags, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, TxScriptEngine, pay_to_address_script, pay_to_script_hash_script,
+    EngineCtx, EngineFlags, MAX_STACK_SIZE, TxScriptEngine, max_script_element_size, pay_to_address_script, pay_to_script_hash_script,
     pay_to_script_hash_signature_script,
     zk_precompiles::tests::helpers::{build_groth_script, build_stark_script},
 };
@@ -39,7 +39,7 @@ const HASHING_KEY_LEN: usize = 32;
 const HASHING_ROUNDS: usize = 20;
 const LARGE_PUSH_DUP_CAT_CAT_COUNT: usize = 3;
 const LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR: usize = 1 << LARGE_PUSH_DUP_CAT_CAT_COUNT;
-const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = MAX_SCRIPT_ELEMENT_SIZE / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
+const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = max_script_element_size(true) / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
 const LARGE_PUSH_DUP_CAT_DUP_COUNT: usize = MAX_STACK_SIZE - 1;
 const OP_DUP_BASE_DUP_COUNT: usize = 243;
 const OP_DUP_FREE_BUDGET_DUP_COUNT: usize = 1107;
@@ -757,7 +757,7 @@ fn build_large_push_dup_cat_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 
     assert_eq!(LARGE_PUSH_DUP_CAT_DUP_COUNT + 1, MAX_STACK_SIZE, "large_push_dup_cat should reach the stack depth limit");
     assert!(
-        low_len * LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR <= MAX_SCRIPT_ELEMENT_SIZE,
+        low_len * LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR <= max_script_element_size(true),
         "large_push_dup_cat expanded element should stay within the element size limit"
     );
 

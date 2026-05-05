@@ -271,9 +271,16 @@ mod tests {
     fn build_parallel_push_budget_test_tx(num_inputs: usize) -> (Transaction, Vec<UtxoEntry>) {
         assert!(num_inputs > CHECK_SCRIPTS_PARALLELISM_THRESHOLD);
 
-        let signature_prefix =
-            ScriptBuilder::new().add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize]).unwrap().drain();
-        let redeem_script = ScriptBuilder::new().add_op(OpDup).unwrap().add_op(OpDrop).unwrap().drain();
+        let signature_prefix = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+            .add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize])
+            .unwrap()
+            .drain();
+        let redeem_script = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+            .add_op(OpDup)
+            .unwrap()
+            .add_op(OpDrop)
+            .unwrap()
+            .drain();
         let script_public_key = pay_to_script_hash_script(&redeem_script);
         let outputs = vec![TransactionOutput {
             value: 1,

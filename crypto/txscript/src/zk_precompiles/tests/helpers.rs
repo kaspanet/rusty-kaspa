@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub fn build_zk_script(elements: &[&[u8]]) -> ScriptBuilderResult<Vec<u8>> {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() });
     for element in elements {
         builder.add_data(element)?;
     }

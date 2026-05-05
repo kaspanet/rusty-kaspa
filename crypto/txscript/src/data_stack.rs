@@ -1,4 +1,4 @@
-use crate::{MAX_SCRIPT_ELEMENT_SIZE, TxScriptError};
+use crate::{MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, TxScriptError};
 use core::fmt::Debug;
 use core::iter;
 use kaspa_hashes::Hash;
@@ -325,7 +325,7 @@ impl Stack {
     }
 
     fn max_element_size(&self) -> usize {
-        if self.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE } else { usize::MAX }
+        if self.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA } else { usize::MAX }
     }
 
     #[inline]
