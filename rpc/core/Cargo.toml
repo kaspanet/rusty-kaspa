@@ -28,7 +28,6 @@ kaspa-math.workspace = true
 kaspa-mining-errors.workspace = true
 kaspa-notify.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils = { workspace = true, features = ["peer-id"] }
 kaspa-rpc-macros.workspace = true
 
 async-channel.workspace = true
@@ -45,7 +44,6 @@ paste.workspace = true
 rand.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
-serde_nested_with.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
@@ -53,6 +51,7 @@ wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-serializer.workspace = true
 workflow-wasm.workspace = true
+kaspa-utils = { workspace = true, features = ["peer-id"] }
 
 [dev-dependencies]
 serde_json.workspace = true

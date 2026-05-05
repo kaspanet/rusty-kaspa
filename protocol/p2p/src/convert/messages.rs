@@ -3,7 +3,7 @@ use super::{
     header::Versioned,
     model::{
         trusted::{TrustedDataEntry, TrustedDataPackage},
-        version::Version,
+        version::{MAX_USER_AGENT_LEN, Version},
     },
     option::TryIntoOptionEx,
 };
@@ -46,16 +46,19 @@ impl From<Version> for protowire::VersionMessage {
 impl TryFrom<protowire::VersionMessage> for Version {
     type Error = ConversionError;
     fn try_from(msg: protowire::VersionMessage) -> Result<Self, Self::Error> {
+        let mut user_agent = msg.user_agent;
+        user_agent.truncate(user_agent.floor_char_boundary(MAX_USER_AGENT_LEN));
+        user_agent.shrink_to_fit();
         Ok(Self {
             protocol_version: msg.protocol_version,
             services: msg.services,
             timestamp: msg.timestamp as u64,
             address: msg.address.map(TryInto::try_into).transpose()?,
             id: PeerId::from_slice(&msg.id)?,
-            user_agent: msg.user_agent.clone(),
+            user_agent,
             disable_relay_tx: msg.disable_relay_tx,
             subnetwork_id: msg.subnetwork_id.map(TryInto::try_into).transpose()?,
-            network: msg.network.clone(),
+            network: msg.network,
         })
     }
 }
