@@ -53,7 +53,7 @@ async fn sanity_test() {
         ..Default::default()
     };
 
-    let fd_total_budget = fd_budget::limit();
+    let fd_total_budget = fd_budget::test_limit();
     let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
     let client = daemon.start().await;
     let (sender, _) = async_channel::unbounded();
