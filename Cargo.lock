@@ -5987,6 +5987,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rocknroll"
+version = "1.1.1-toc.1"
+dependencies = [
+ "clap",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-smt-store",
+ "kaspad",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "rocksdb"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

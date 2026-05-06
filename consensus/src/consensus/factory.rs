@@ -83,13 +83,17 @@ pub struct MultiConsensusManagementStore {
 
 impl MultiConsensusManagementStore {
     pub fn new(db: Arc<DB>) -> Self {
-        let mut store = Self {
+        let mut store = Self::new_readonly(db);
+        store.init();
+        store
+    }
+
+    pub fn new_readonly(db: Arc<DB>) -> Self {
+        Self {
             db: db.clone(),
             entries: CachedDbAccess::new(db.clone(), CachePolicy::Count(16), DatabaseStorePrefixes::ConsensusEntries.into()),
             metadata: CachedDbItem::new(db, DatabaseStorePrefixes::MultiConsensusMetadata.into()),
-        };
-        store.init();
-        store
+        }
     }
 
     fn init(&mut self) {
@@ -105,7 +109,7 @@ impl MultiConsensusManagementStore {
     pub fn active_consensus_dir_name(&self) -> StoreResult<Option<String>> {
         let metadata = self.metadata.read()?;
         match metadata.current_consensus_key {
-            Some(key) => Ok(Some(self.entries.read(key.into()).unwrap().directory_name)),
+            Some(key) => Ok(Some(self.entries.read(key.into())?.directory_name)),
             None => Ok(None),
         }
     }

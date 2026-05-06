@@ -167,6 +167,13 @@ impl ConnBuilder<PathBuf, false, Unspecified, i32> {
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
         Ok(db)
     }
+
+    pub fn build_readonly(self) -> Result<Arc<DB>, Box<dyn std::error::Error>> {
+        let (opts, guard) =
+            default_opts!(self).map_err(|err: kaspa_utils::fd_budget::Error| -> Box<dyn std::error::Error> { Box::new(err) })?;
+        let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open_for_read_only(&opts, &self.db_path, false)?, guard));
+        Ok(db)
+    }
 }
 
 impl ConnBuilder<PathBuf, true, Unspecified, i32> {
