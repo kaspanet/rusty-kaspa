@@ -318,34 +318,39 @@ impl Rpc {
 
                 if args.len() < 6 {
                     return Err(Error::custom(
-                        "Usage: rpc get-utxos-by-addresses-v2 <addr...> <from_daa_score> <to_daa_score> <start_address> <start_daa_score> <limit> (limit is a soft cap at the script public key + DAA boundary)",
+                        "Usage: rpc get-utxos-by-addresses-v2 <addr...> <from_daa_score|None> <to_daa_score|None> <start_address|None> <start_daa_score|None> <limit|None> (limit is a soft cap at the script public key + DAA boundary)",
                     ));
                 }
 
-                let limit = args.pop().unwrap().parse::<u64>()?;
-                let start_daa_score = args.pop().unwrap().parse::<u64>()?;
-                let start_address = Address::try_from(args.pop().unwrap().as_str())?;
-                let to_daa_score = args.pop().unwrap().parse::<u64>()?;
-                let from_daa_score = args.pop().unwrap().parse::<u64>()?;
+                let parse_optional_u64 = |value: String| -> Result<Option<u64>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(value.parse::<u64>()?)) }
+                };
+
+                let parse_optional_address = |value: String| -> Result<Option<Address>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(Address::try_from(value.as_str())?)) }
+                };
+
+                let limit = parse_optional_u64(args.pop().unwrap())?;
+                let start_daa_score = parse_optional_u64(args.pop().unwrap())?;
+                let start_address = parse_optional_address(args.pop().unwrap())?;
+                let to_daa_score = parse_optional_u64(args.pop().unwrap())?;
+                let from_daa_score = parse_optional_u64(args.pop().unwrap())?;
 
                 if args.is_empty() {
                     return Err(Error::custom("Please specify at least one address"));
                 }
 
                 let addresses = args.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
-                if !addresses.iter().any(|address| address == &start_address) {
-                    return Err(Error::custom("start_address must be included in addresses"));
-                }
                 let result = rpc
                     .get_utxos_by_addresses_v2_call(
                         None,
                         GetUtxosByAddressesV2Request::new(
                             addresses,
-                            Some(from_daa_score),
-                            Some(to_daa_score),
-                            Some(start_address),
-                            Some(start_daa_score),
-                            Some(limit),
+                            from_daa_score,
+                            to_daa_score,
+                            start_address,
+                            start_daa_score,
+                            limit,
                         ),
                     )
                     .await?;

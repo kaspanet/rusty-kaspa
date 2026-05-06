@@ -168,6 +168,14 @@ impl UtxoEntryFullAccessKey {
         Self(Arc::new(bytes))
     }
 
+    /// Creates a new key from inner components (DAA score + outpoint) for bucket-scoped seeks.
+    pub fn new_inner(daa_score_key: DaaScoreKey, transaction_outpoint_key: TransactionOutpointKey) -> Self {
+        let mut bytes = Vec::with_capacity(DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE);
+        bytes.extend_from_slice(daa_score_key.as_ref());
+        bytes.extend_from_slice(transaction_outpoint_key.as_ref());
+        Self(Arc::new(bytes))
+    }
+
     pub fn extract_outpoint(&self) -> TransactionOutpoint {
         TransactionOutpoint::from(TransactionOutpointKey(self.0[(self.0.len() - TRANSACTION_OUTPOINT_KEY_SIZE)..].try_into().unwrap()))
     }
@@ -292,6 +300,8 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         let mut utxos_by_script_public_keys = Vec::with_capacity(script_public_keys.len());
 
         for (index, script_public_key) in script_public_keys.into_iter().enumerate().skip(start_index) {
+            // Required for the first address only, resume from the cursor DAA score (if provided),
+            // but never below the global from_daa_score; later addresses use from_daa_score.
             let effective_from_daa_score = if index == start_index {
                 start_daa_score.map(|start| start.max(from_daa_score)).unwrap_or(from_daa_score)
             } else {
@@ -303,24 +313,17 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             }
 
             let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
-            let seek_from = UtxoEntryFullAccessKey::new(
-                script_public_key_bucket.clone(),
-                effective_from_daa_score.into(),
-                TransactionOutpointKey::EMPTY,
-            );
+            let seek_from = UtxoEntryFullAccessKey::new_inner(effective_from_daa_score.into(), TransactionOutpointKey::EMPTY);
 
-            let seek_to = (to_daa_score < u64::MAX).then(|| {
-                UtxoEntryFullAccessKey::new(script_public_key_bucket.clone(), (to_daa_score + 1).into(), TransactionOutpointKey::EMPTY)
-            });
+            let seek_to = (to_daa_score < u64::MAX)
+                .then(|| UtxoEntryFullAccessKey::new_inner((to_daa_score + 1).into(), TransactionOutpointKey::EMPTY));
 
             let mut ordered_entries = Vec::new();
-            for res in self.access.seek_iterator(None, Some(seek_from), seek_to, usize::MAX, false) {
+            for res in self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), Some(seek_from), seek_to, usize::MAX, false)
+            {
                 let (key, value) = res.unwrap();
-                let bucket_len = script_public_key_bucket.as_ref().len();
-                let key_data: UtxoEntryKeyData = UtxoEntryInnerKey(
-                    <[u8; DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[bucket_len..]).unwrap(),
-                )
-                .into();
+                let key_data: UtxoEntryKeyData =
+                    UtxoEntryInnerKey(<[u8; DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap()).into();
                 let daa_score = key_data.daa_score;
 
                 if let Some((current_index, current_daa_score)) = current_group {
