@@ -141,6 +141,8 @@ pub enum RpcApiOps {
     /// Get Virtual Chain from Block V2
     GetVirtualChainFromBlockV2 = 151,
     /// Get a list of UTXOs for multiple addresses with optional DAA-score range filtering.
+    /// Supports cursor pagination via start_address/start_daa_score and a soft limit that completes
+    /// the current script public key + DAA-score group before returning next_address/next_daa_score.
     GetUtxosByAddressesV2 = 152,
 }
 

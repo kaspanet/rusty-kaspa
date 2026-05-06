@@ -318,7 +318,7 @@ impl Rpc {
 
                 if args.len() < 6 {
                     return Err(Error::custom(
-                        "Usage: rpc get-utxos-by-addresses-v2 <addr...> <from_daa_score> <to_daa_score> <start_address> <start_daa_score> <limit>",
+                        "Usage: rpc get-utxos-by-addresses-v2 <addr...> <from_daa_score> <to_daa_score> <start_address> <start_daa_score> <limit> (limit is a soft cap at the script public key + DAA boundary)",
                     ));
                 }
 

@@ -1514,6 +1514,7 @@ pub struct GetUtxosByAddressesV2Request {
     pub to_daa_score: Option<u64>,
     pub start_address: Option<RpcAddress>,
     pub start_daa_score: Option<u64>,
+    /// Soft cap on entries; a page may exceed this to finish the current script public key + DAA-score group.
     pub limit: Option<u64>,
 }
 

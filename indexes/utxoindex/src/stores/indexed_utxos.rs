@@ -450,12 +450,12 @@ mod tests {
     use super::*;
     use kaspa_database::{create_temp_db, prelude::ConnBuilder};
 
-    fn outpoint(word: u64, index: u32) -> TransactionOutpoint {
+    fn create_outpoint(word: u64, index: u32) -> TransactionOutpoint {
         TransactionOutpoint::new(Hash::from_u64_word(word), index)
     }
 
     #[test]
-    fn test_get_utxos_from_script_public_keys_by_daa_score_page_is_ordered_and_range_filtered() {
+    fn test_page_ordered_and_range_filtered() {
         let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let mut store = DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty);
 
@@ -467,15 +467,15 @@ mod tests {
         to_add.insert(
             script_public_key_a.clone(),
             CompactUtxoCollection::from_iter([
-                (UtxoEntryKeyData::new(10, outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
-                (UtxoEntryKeyData::new(20, outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
+                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
+                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
             ]),
         );
         to_add.insert(
             script_public_key_b.clone(),
             CompactUtxoCollection::from_iter([
-                (UtxoEntryKeyData::new(15, outpoint(15, 0)), CompactUtxoEntry::new(150, false)),
-                (UtxoEntryKeyData::new(25, outpoint(25, 0)), CompactUtxoEntry::new(250, false)),
+                (UtxoEntryKeyData::new(15, create_outpoint(15, 0)), CompactUtxoEntry::new(150, false)),
+                (UtxoEntryKeyData::new(25, create_outpoint(25, 0)), CompactUtxoEntry::new(250, false)),
             ]),
         );
 
@@ -511,5 +511,101 @@ mod tests {
             .unwrap();
         assert_eq!(all.get(&script_public_key_a).unwrap().len(), 2);
         assert_eq!(all.get(&script_public_key_b).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_page_soft_limit_finishes_group() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty);
+
+        let script_public_key_a = ScriptPublicKey::from_vec(0, vec![0x01]);
+        let script_public_key_b = ScriptPublicKey::from_vec(0, vec![0x02]);
+
+        let mut to_add = UtxoSetByScriptPublicKey::new();
+        to_add.insert(
+            script_public_key_a.clone(),
+            CompactUtxoCollection::from_iter([
+                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
+                (UtxoEntryKeyData::new(10, create_outpoint(10, 1)), CompactUtxoEntry::new(110, false)),
+                (UtxoEntryKeyData::new(11, create_outpoint(11, 0)), CompactUtxoEntry::new(120, false)),
+            ]),
+        );
+        to_add.insert(
+            script_public_key_b.clone(),
+            CompactUtxoCollection::from_iter([(UtxoEntryKeyData::new(12, create_outpoint(12, 0)), CompactUtxoEntry::new(130, false))]),
+        );
+
+        store.add_utxo_entries(&to_add).unwrap();
+
+        let page = store
+            .get_utxos_from_script_public_keys_by_daa_score_page(
+                ScriptPublicKeys::from_iter([script_public_key_b.clone(), script_public_key_a.clone()]),
+                None,
+                None,
+                None,
+                None,
+                Some(1),
+            )
+            .unwrap();
+
+        assert_eq!(page.next_script_public_key, Some(script_public_key_a.clone()));
+        assert_eq!(page.next_daa_score, Some(11));
+
+        let ordered = page.entries;
+        assert_eq!(ordered.len(), 1);
+        assert_eq!(ordered[0].0, script_public_key_a);
+        assert_eq!(ordered[0].1.len(), 2);
+        assert!(ordered[0].1.iter().all(|(key, _)| key.daa_score == 10));
+    }
+
+    #[test]
+    fn test_page_resumes_from_start_daa_score() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty);
+
+        let script_public_key_a = ScriptPublicKey::from_vec(0, vec![0x01]);
+        let script_public_key_b = ScriptPublicKey::from_vec(0, vec![0x02]);
+
+        let mut to_add = UtxoSetByScriptPublicKey::new();
+        to_add.insert(
+            script_public_key_a.clone(),
+            CompactUtxoCollection::from_iter([
+                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
+                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
+            ]),
+        );
+        to_add.insert(
+            script_public_key_b.clone(),
+            CompactUtxoCollection::from_iter([
+                (UtxoEntryKeyData::new(15, create_outpoint(15, 0)), CompactUtxoEntry::new(150, false)),
+                (UtxoEntryKeyData::new(25, create_outpoint(25, 0)), CompactUtxoEntry::new(250, false)),
+            ]),
+        );
+
+        store.add_utxo_entries(&to_add).unwrap();
+
+        let page = store
+            .get_utxos_from_script_public_keys_by_daa_score_page(
+                ScriptPublicKeys::from_iter([script_public_key_b.clone(), script_public_key_a.clone()]),
+                Some(10),
+                Some(30),
+                Some(script_public_key_a.clone()),
+                Some(18),
+                None,
+            )
+            .unwrap();
+
+        assert!(page.next_script_public_key.is_none());
+        assert!(page.next_daa_score.is_none());
+
+        let ordered = page.entries;
+        assert_eq!(ordered.len(), 2);
+        assert_eq!(ordered[0].0, script_public_key_a);
+        assert_eq!(ordered[0].1.len(), 1);
+        assert_eq!(ordered[0].1[0].0.daa_score, 20);
+        assert_eq!(ordered[1].0, script_public_key_b);
+        assert_eq!(ordered[1].1.len(), 2);
+        assert_eq!(ordered[1].1[0].0.daa_score, 15);
+        assert_eq!(ordered[1].1[1].0.daa_score, 25);
     }
 }

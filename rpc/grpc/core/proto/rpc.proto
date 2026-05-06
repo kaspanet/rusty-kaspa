@@ -573,6 +573,7 @@ message GetUtxosByAddressesV2RequestMessage {
   optional uint64 toDaaScore = 3;
   optional string startAddress = 4;
   optional uint64 startDaaScore = 5;
+  // Soft cap on entries; a page may exceed this to finish the current address + DAA-score group.
   optional uint64 limit = 6;
 }
 
