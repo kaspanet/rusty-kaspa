@@ -1,4 +1,5 @@
 use super::client::ListeningClient;
+use super::listener::Listener;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
@@ -25,7 +26,7 @@ use std::{
     collections::{HashMap, HashSet, hash_map::Entry::Occupied},
     future::Future,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::time::timeout;
 
@@ -182,6 +183,40 @@ pub fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_
     entry.block_daa_score + needed_confirmations <= virtual_daa_score
 }
 
+/// Per-wait deadline budget for block-propagation notification waits in
+/// `mine_block`. Generous enough to absorb scheduler jitter on contended
+/// CI runners while still well under nextest's default per-test timeout.
+const NOTIFICATION_WAIT_BUDGET: Duration = Duration::from_secs(30);
+
+/// Wait for a notification matching `matcher` from `listener`, bounded by
+/// a shared `deadline`. `kind` names the notification being awaited and
+/// is woven into the diagnostic on deadline expiry or channel close.
+/// Unrelated notifications are discarded and the wait continues under
+/// the same deadline (replacing the prior
+/// `_ => panic!("wrong notification type")` behaviour, which made the
+/// test brittle to incidental notification ordering on busy runners).
+///
+/// Returns:
+/// - `Ok(notification)` when `matcher` accepts a received notification.
+/// - `Err(_)` when the channel closes or the deadline elapses.
+async fn await_notification_until(
+    deadline: Instant,
+    listener: &Listener,
+    kind: &str,
+    matcher: impl Fn(&Notification) -> bool,
+) -> Result<Notification, String> {
+    loop {
+        let remaining =
+            deadline.checked_duration_since(Instant::now()).ok_or_else(|| format!("deadline expired waiting for {kind}"))?;
+        match timeout(remaining, listener.receiver.recv()).await {
+            Ok(Ok(n)) if matcher(&n) => return Ok(n),
+            Ok(Ok(_)) => continue,
+            Ok(Err(e)) => return Err(format!("notification channel closed waiting for {kind}: {e}")),
+            Err(_) => return Err(format!("deadline expired waiting for {kind}")),
+        }
+    }
+}
+
 pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[ListeningClient]) {
     // Discard all unreceived block added notifications in each listening client
     listening_clients.iter().for_each(|x| x.block_added_listener().unwrap().drain());
@@ -192,23 +227,31 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
     let block_hash = header.hash;
     submitting_client.submit_block(template.block, false).await.unwrap();
 
-    let timeout_duration = Duration::from_millis(10_000);
-
     // Wait for each listening client to get notified the submitted block was added to the DAG
     for client in listening_clients.iter() {
-        let block_daa_score: u64 =
-            match timeout(timeout_duration, client.block_added_listener().unwrap().receiver.recv()).await.unwrap().unwrap() {
-                Notification::BlockAdded(BlockAddedNotification { block }) => {
-                    assert_eq!(block.header.hash, block_hash);
-                    block.header.daa_score
-                }
-                _ => panic!("wrong notification type"),
-            };
-        match timeout(timeout_duration, client.virtual_daa_score_changed_listener().unwrap().receiver.recv()).await.unwrap().unwrap() {
-            Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification { virtual_daa_score }) => {
-                assert_eq!(virtual_daa_score, block_daa_score + 1);
-            }
-            _ => panic!("wrong notification type"),
-        }
+        let block_added_listener = client.block_added_listener().unwrap();
+        let block_added_deadline = Instant::now() + NOTIFICATION_WAIT_BUDGET;
+        let block_added = await_notification_until(block_added_deadline, &block_added_listener, "BlockAdded", |n| {
+            matches!(n, Notification::BlockAdded(_))
+        })
+        .await
+        .expect("BlockAdded notification");
+        let Notification::BlockAdded(BlockAddedNotification { block }) = block_added else {
+            unreachable!("matcher restricts to BlockAdded");
+        };
+        assert_eq!(block.header.hash, block_hash);
+        let block_daa_score = block.header.daa_score;
+
+        let daa_listener = client.virtual_daa_score_changed_listener().unwrap();
+        let daa_deadline = Instant::now() + NOTIFICATION_WAIT_BUDGET;
+        let daa_changed = await_notification_until(daa_deadline, &daa_listener, "VirtualDaaScoreChanged", |n| {
+            matches!(n, Notification::VirtualDaaScoreChanged(_))
+        })
+        .await
+        .expect("VirtualDaaScoreChanged notification");
+        let Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification { virtual_daa_score }) = daa_changed else {
+            unreachable!("matcher restricts to VirtualDaaScoreChanged");
+        };
+        assert_eq!(virtual_daa_score, block_daa_score + 1);
     }
 }
