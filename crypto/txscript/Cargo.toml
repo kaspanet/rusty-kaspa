@@ -45,7 +45,6 @@ workflow-wasm.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 smallvec.workspace = true
-hex.workspace = true
 serde_json.workspace = true
 
 [[bench]]
