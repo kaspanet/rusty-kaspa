@@ -24,7 +24,7 @@ default = []
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-async-std.workspace = true
+async-lock.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true
