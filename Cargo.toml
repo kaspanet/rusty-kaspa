@@ -75,7 +75,7 @@ license = "ISC"
 repository = "https://github.com/kaspanet/rusty-kaspa"
 edition = "2024"
 include = [
-    "src/*risc0-zkvm.workspace*/*.rs",
+    "src/**/*.rs",
     "src/**/*.s",
     "src/**/*.r",
     "proto/**/*.proto",
