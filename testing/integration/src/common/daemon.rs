@@ -139,10 +139,11 @@ impl Daemon {
         let appdir_tempdir = get_kaspa_tempdir();
         client_manager.args.write().appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
         let (core, _) = create_core_with_runtime(&Default::default(), &client_manager.args.read(), fd_total_budget);
-        let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().arc_any()).unwrap();
-        let rpc_core_service = &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().arc_any()).unwrap();
+        let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().into_any_arc()).unwrap();
+        let rpc_core_service =
+            &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().into_any_arc()).unwrap();
         let shutdown_requested = rpc_core_service.core_shutdown_request_listener();
-        let grpc_server = &Arc::downcast::<GrpcService>(async_service.find(GrpcService::IDENT).unwrap().arc_any()).unwrap();
+        let grpc_server = &Arc::downcast::<GrpcService>(async_service.find(GrpcService::IDENT).unwrap().into_any_arc()).unwrap();
         let grpc_server_started = grpc_server.started();
         Daemon { client_manager, core, grpc_server_started, shutdown_requested, workers: None, _appdir_tempdir: appdir_tempdir }
     }
