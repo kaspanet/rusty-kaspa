@@ -18,6 +18,7 @@ async function groth16Verify() {
     const sourceAddress = keypair.toAddress(NETWORK_ID);
 
     // Parse proof data
+
     console.log(`Verifying Groth16 proof with:`);
 
     const rpc = new RpcClient({
@@ -94,6 +95,7 @@ async function groth16Verify() {
             1
         );
 
+
         console.log('Commit transaction created');
 
         const signedCommitTx = signTransaction(commitTx, [privateKey], false);
@@ -109,7 +111,6 @@ async function groth16Verify() {
 
         // Create REDEEM transaction
         console.log('Creating redeem transaction...');
-
         console.log(`Signature script length: ${Buffer.from(signatureScript.sigScript, 'hex').length} bytes`);
 
         // Construct the P2SH UTXO entry
@@ -137,18 +138,19 @@ async function groth16Verify() {
             0
         );
 
-        // Set the signature script
+        // Set the signature script & compute budget
         redeemTx.inputs[0].signatureScript = signatureScript.sigScript;
         redeemTx.inputs[0].computeBudget = 1400;
         redeemTx.version=1;
+
         console.log('Redeem transaction created');
         console.log('Submitting redeem transaction with Groth16 proof verification...');
 
         // Submit redeem transaction
         const redeemResult = await rpc.submitTransaction({ transaction: redeemTx });
         const redeemTxId = redeemResult.transactionId || redeemResult;
-        console.log(`✓ Redeem transaction submitted: ${redeemTxId}`);
-        console.log('✓ Groth16 proof verification successful!');
+        console.log(`Redeem transaction submitted: ${redeemTxId}`);
+        console.log('Groth16 proof verification successful!');
 
     } catch (error) {
         console.error('Error:', error);

@@ -24,7 +24,7 @@ const PUBLIC_INPUTS = [
     'c07a65145c3cb48b6101962ea607a4dd93c753bb26975cb47feb00d3666e4404'
 ];
 
-async function groth16Verify() {
+async function groth16VerifyNoBuilder() {
     const privateKey = new PrivateKey(PRIVATE_KEY);
     const keypair = privateKey.toKeypair();
     const sourceAddress = keypair.toAddress(NETWORK_ID);
@@ -149,12 +149,9 @@ async function groth16Verify() {
         }
         signatureScriptBuilder.addI64(BigInt(numInputs));
 
-        // Push verifying key
-        // Push proof
         signatureScriptBuilder.addData(proof);
-        // Push number of inputs (little-endian u16)
-        
-                signatureScriptBuilder.addData(unpreparedVk);
+
+        signatureScriptBuilder.addData(unpreparedVk);
 
         // Push redeem script (P2SH requirement)
         signatureScriptBuilder.addData(Buffer.from(redeemScript, 'hex'));
@@ -192,20 +189,22 @@ async function groth16Verify() {
             }],
             0n,
             '',
-            104
+            0
         );
 
-        // Set the signature script
+        // Set the signature script & compute budget
         redeemTx.inputs[0].signatureScript = signatureScript;
-
+        redeemTx.inputs[0].computeBudget = 1400;
+        redeemTx.version=1;
+        
         console.log('Redeem transaction created');
         console.log('Submitting redeem transaction with Groth16 proof verification...');
 
         // Submit redeem transaction
         const redeemResult = await rpc.submitTransaction({ transaction: redeemTx });
         const redeemTxId = redeemResult.transactionId || redeemResult;
-        console.log(`✓ Redeem transaction submitted: ${redeemTxId}`);
-        console.log('✓ Groth16 proof verification successful!');
+        console.log(`Redeem transaction submitted: ${redeemTxId}`);
+        console.log('Groth16 proof verification successful!');
 
     } catch (error) {
         console.error('Error:', error);
@@ -215,4 +214,4 @@ async function groth16Verify() {
     }
 }
 
-groth16Verify().catch(console.error);
+groth16VerifyNoBuilder().catch(console.error);
