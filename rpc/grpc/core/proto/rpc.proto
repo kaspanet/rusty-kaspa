@@ -571,10 +571,15 @@ message GetUtxosByAddressesV2RequestMessage {
   repeated string addresses = 1;
   optional uint64 fromDaaScore = 2;
   optional uint64 toDaaScore = 3;
+  optional string startAddress = 4;
+  optional uint64 startDaaScore = 5;
+  optional uint64 limit = 6;
 }
 
 message GetUtxosByAddressesV2ResponseMessage {
   repeated RpcUtxosByAddressesEntry entries = 1;
+  optional string nextAddress = 2;
+  optional uint64 nextDaaScore = 3;
 
   RPCError error = 1000;
 }

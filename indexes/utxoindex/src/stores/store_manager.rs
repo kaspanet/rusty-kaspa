@@ -2,11 +2,11 @@ use std::{collections::HashSet, sync::Arc};
 
 use kaspa_consensus_core::{
     BlockHashSet,
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKey};
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage};
 
 use crate::{
     IDENT,
@@ -81,16 +81,22 @@ impl Store {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys(script_public_keys)
     }
 
-    pub fn get_utxos_by_script_public_keys_by_daa_score(
+    pub fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
         script_public_keys: ScriptPublicKeys,
         from_daa_score: Option<u64>,
         to_daa_score: Option<u64>,
-    ) -> StoreResult<OrderedUtxoSetByScriptPublicKey> {
-        self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys_by_daa_score(
+        start_script_public_key: Option<ScriptPublicKey>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
+        self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys_by_daa_score_page(
             script_public_keys,
             from_daa_score,
             to_daa_score,
+            start_script_public_key,
+            start_daa_score,
+            limit,
         )
     }
 

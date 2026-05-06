@@ -316,21 +316,38 @@ impl Rpc {
             RpcApiOps::GetUtxosByAddressesV2 => {
                 let mut args = argv;
 
-                let to_daa_score = args.last().and_then(|arg| arg.parse::<u64>().ok()).inspect(|_| {
-                    args.pop();
-                });
+                if args.len() < 6 {
+                    return Err(Error::custom(
+                        "Usage: rpc get-utxos-by-addresses-v2 <addr...> <from_daa_score> <to_daa_score> <start_address> <start_daa_score> <limit>",
+                    ));
+                }
 
-                let from_daa_score = args.last().and_then(|arg| arg.parse::<u64>().ok()).inspect(|_| {
-                    args.pop();
-                });
+                let limit = args.pop().unwrap().parse::<u64>()?;
+                let start_daa_score = args.pop().unwrap().parse::<u64>()?;
+                let start_address = Address::try_from(args.pop().unwrap().as_str())?;
+                let to_daa_score = args.pop().unwrap().parse::<u64>()?;
+                let from_daa_score = args.pop().unwrap().parse::<u64>()?;
 
                 if args.is_empty() {
                     return Err(Error::custom("Please specify at least one address"));
                 }
 
                 let addresses = args.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
+                if !addresses.iter().any(|address| address == &start_address) {
+                    return Err(Error::custom("start_address must be included in addresses"));
+                }
                 let result = rpc
-                    .get_utxos_by_addresses_v2_call(None, GetUtxosByAddressesV2Request { addresses, from_daa_score, to_daa_score })
+                    .get_utxos_by_addresses_v2_call(
+                        None,
+                        GetUtxosByAddressesV2Request::new(
+                            addresses,
+                            Some(from_daa_score),
+                            Some(to_daa_score),
+                            Some(start_address),
+                            Some(start_daa_score),
+                            Some(limit),
+                        ),
+                    )
                     .await?;
                 self.println(&ctx, result);
             }

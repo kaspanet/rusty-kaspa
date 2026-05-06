@@ -13,6 +13,24 @@ pub type OrderedUtxoCollection = Vec<(UtxoEntryKeyData, CompactUtxoEntry)>;
 /// A deterministic ordered list of UTXO collections keyed by [`ScriptPublicKey`].
 pub type OrderedUtxoSetByScriptPublicKey = Vec<(ScriptPublicKey, OrderedUtxoCollection)>;
 
+/// A page of ordered UTXOs with an optional cursor for the next group.
+#[derive(Clone, Debug, Default)]
+pub struct OrderedUtxoSetByScriptPublicKeyPage {
+    pub entries: OrderedUtxoSetByScriptPublicKey,
+    pub next_script_public_key: Option<ScriptPublicKey>,
+    pub next_daa_score: Option<u64>,
+}
+
+impl OrderedUtxoSetByScriptPublicKeyPage {
+    pub fn new(
+        entries: OrderedUtxoSetByScriptPublicKey,
+        next_script_public_key: Option<ScriptPublicKey>,
+        next_daa_score: Option<u64>,
+    ) -> Self {
+        Self { entries, next_script_public_key, next_daa_score }
+    }
+}
+
 /// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxoEntry`].
 pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
 

@@ -1,12 +1,12 @@
 use kaspa_consensus_core::{
     BlockHashSet,
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
 };
 use kaspa_consensusmanager::spawn_blocking;
 use kaspa_database::prelude::StoreResult;
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKey};
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage};
 use parking_lot::RwLock;
 use std::{collections::HashSet, fmt::Debug, sync::Arc};
 
@@ -27,13 +27,16 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     /// Note: Use a read lock when accessing this method
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
 
-    /// Retrieve ordered UTXOs for multiple script public keys, bounded by an inclusive DAA-score range.
-    fn get_utxos_by_script_public_keys_by_daa_score(
+    /// Retrieve ordered UTXOs for multiple script public keys with cursor pagination.
+    fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
         script_public_keys: ScriptPublicKeys,
         from_daa_score: Option<u64>,
         to_daa_score: Option<u64>,
-    ) -> StoreResult<OrderedUtxoSetByScriptPublicKey>;
+        start_script_public_key: Option<ScriptPublicKey>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage>;
 
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
 
@@ -82,14 +85,24 @@ impl UtxoIndexProxy {
         spawn_blocking(move || self.inner.read().get_utxos_by_script_public_keys(script_public_keys)).await.unwrap()
     }
 
-    pub async fn get_utxos_by_script_public_keys_by_daa_score(
+    pub async fn get_utxos_by_script_public_keys_by_daa_score_page(
         self,
         script_public_keys: ScriptPublicKeys,
         from_daa_score: Option<u64>,
         to_daa_score: Option<u64>,
-    ) -> StoreResult<OrderedUtxoSetByScriptPublicKey> {
+        start_script_public_key: Option<ScriptPublicKey>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
         spawn_blocking(move || {
-            self.inner.read().get_utxos_by_script_public_keys_by_daa_score(script_public_keys, from_daa_score, to_daa_score)
+            self.inner.read().get_utxos_by_script_public_keys_by_daa_score_page(
+                script_public_keys,
+                from_daa_score,
+                to_daa_score,
+                start_script_public_key,
+                start_daa_score,
+                limit,
+            )
         })
         .await
         .unwrap()

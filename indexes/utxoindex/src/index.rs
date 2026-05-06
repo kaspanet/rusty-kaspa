@@ -6,12 +6,16 @@ use crate::{
     stores::store_manager::Store,
     update_container::UtxoIndexChanges,
 };
-use kaspa_consensus_core::{BlockHashSet, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
+use kaspa_consensus_core::{
+    BlockHashSet,
+    tx::{ScriptPublicKey, ScriptPublicKeys},
+    utxo::utxo_diff::UtxoDiff,
+};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{DB, StoreError, StoreResult};
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKey};
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage};
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
@@ -68,14 +72,24 @@ impl UtxoIndexApi for UtxoIndex {
         self.store.get_utxos_by_script_public_keys(script_public_keys)
     }
 
-    fn get_utxos_by_script_public_keys_by_daa_score(
+    fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
         script_public_keys: ScriptPublicKeys,
         from_daa_score: Option<u64>,
         to_daa_score: Option<u64>,
-    ) -> StoreResult<OrderedUtxoSetByScriptPublicKey> {
-        trace!("[{0}] retrieving utxos by daa-score range for {1} script public keys", IDENT, script_public_keys.len());
-        self.store.get_utxos_by_script_public_keys_by_daa_score(script_public_keys, from_daa_score, to_daa_score)
+        start_script_public_key: Option<ScriptPublicKey>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
+        trace!("[{0}] retrieving utxos by daa-score range for {1} script public keys (paged)", IDENT, script_public_keys.len());
+        self.store.get_utxos_by_script_public_keys_by_daa_score_page(
+            script_public_keys,
+            from_daa_score,
+            to_daa_score,
+            start_script_public_key,
+            start_daa_score,
+            limit,
+        )
     }
 
     /// Retrieve utxos by script public keys from the utxoindex db.

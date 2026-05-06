@@ -1512,11 +1512,21 @@ pub struct GetUtxosByAddressesV2Request {
     pub addresses: Vec<RpcAddress>,
     pub from_daa_score: Option<u64>,
     pub to_daa_score: Option<u64>,
+    pub start_address: Option<RpcAddress>,
+    pub start_daa_score: Option<u64>,
+    pub limit: Option<u64>,
 }
 
 impl GetUtxosByAddressesV2Request {
-    pub fn new(addresses: Vec<RpcAddress>, from_daa_score: Option<u64>, to_daa_score: Option<u64>) -> Self {
-        Self { addresses, from_daa_score, to_daa_score }
+    pub fn new(
+        addresses: Vec<RpcAddress>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        start_address: Option<RpcAddress>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> Self {
+        Self { addresses, from_daa_score, to_daa_score, start_address, start_daa_score, limit }
     }
 }
 
@@ -1526,6 +1536,9 @@ impl Serializer for GetUtxosByAddressesV2Request {
         store!(Vec<RpcAddress>, &self.addresses, writer)?;
         store!(Option<u64>, &self.from_daa_score, writer)?;
         store!(Option<u64>, &self.to_daa_score, writer)?;
+        store!(Option<RpcAddress>, &self.start_address, writer)?;
+        store!(Option<u64>, &self.start_daa_score, writer)?;
+        store!(Option<u64>, &self.limit, writer)?;
         Ok(())
     }
 }
@@ -1536,7 +1549,10 @@ impl Deserializer for GetUtxosByAddressesV2Request {
         let addresses = load!(Vec<RpcAddress>, reader)?;
         let from_daa_score = load!(Option<u64>, reader)?;
         let to_daa_score = load!(Option<u64>, reader)?;
-        Ok(Self { addresses, from_daa_score, to_daa_score })
+        let start_address = load!(Option<RpcAddress>, reader)?;
+        let start_daa_score = load!(Option<u64>, reader)?;
+        let limit = load!(Option<u64>, reader)?;
+        Ok(Self { addresses, from_daa_score, to_daa_score, start_address, start_daa_score, limit })
     }
 }
 
@@ -1544,11 +1560,13 @@ impl Deserializer for GetUtxosByAddressesV2Request {
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxosByAddressesV2Response {
     pub entries: Vec<RpcUtxosByAddressesEntry>,
+    pub next_address: Option<RpcAddress>,
+    pub next_daa_score: Option<u64>,
 }
 
 impl GetUtxosByAddressesV2Response {
-    pub fn new(entries: Vec<RpcUtxosByAddressesEntry>) -> Self {
-        Self { entries }
+    pub fn new(entries: Vec<RpcUtxosByAddressesEntry>, next_address: Option<RpcAddress>, next_daa_score: Option<u64>) -> Self {
+        Self { entries, next_address, next_daa_score }
     }
 }
 
@@ -1556,6 +1574,8 @@ impl Serializer for GetUtxosByAddressesV2Response {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
         serialize!(Vec<RpcUtxosByAddressesEntry>, &self.entries, writer)?;
+        store!(Option<RpcAddress>, &self.next_address, writer)?;
+        store!(Option<u64>, &self.next_daa_score, writer)?;
         Ok(())
     }
 }
@@ -1564,7 +1584,9 @@ impl Deserializer for GetUtxosByAddressesV2Response {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
-        Ok(Self { entries })
+        let next_address = load!(Option<RpcAddress>, reader)?;
+        let next_daa_score = load!(Option<u64>, reader)?;
+        Ok(Self { entries, next_address, next_daa_score })
     }
 }
 

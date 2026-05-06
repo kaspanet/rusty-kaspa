@@ -364,8 +364,15 @@ pub trait RpcApi: Sync + Send + AnySync {
         addresses: Vec<RpcAddress>,
         from_daa_score: Option<u64>,
         to_daa_score: Option<u64>,
+        start_address: Option<RpcAddress>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
     ) -> RpcResult<GetUtxosByAddressesV2Response> {
-        self.get_utxos_by_addresses_v2_call(None, GetUtxosByAddressesV2Request::new(addresses, from_daa_score, to_daa_score)).await
+        self.get_utxos_by_addresses_v2_call(
+            None,
+            GetUtxosByAddressesV2Request::new(addresses, from_daa_score, to_daa_score, start_address, start_daa_score, limit),
+        )
+        .await
     }
     async fn get_utxos_by_addresses_v2_call(
         &self,

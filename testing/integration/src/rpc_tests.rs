@@ -432,7 +432,10 @@ async fn sanity_test() {
                 tst!(op, {
                     let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32])];
                     let response = rpc_client
-                        .get_utxos_by_addresses_v2_call(None, GetUtxosByAddressesV2Request::new(addresses, None, None))
+                        .get_utxos_by_addresses_v2_call(
+                            None,
+                            GetUtxosByAddressesV2Request::new(addresses, None, None, None, None, None),
+                        )
                         .await
                         .unwrap();
                     assert!(response.entries.is_empty());
