@@ -146,7 +146,7 @@ ahash = "0.8.6"
 arc-swap = "1.6.0"
 argon2 = "0.5.2"
 async-channel = "2.0.0"
-async-std = { version = "1.12.0", features = ['attributes'] }
+async-lock = { version = "3.4.2" }
 async-stream = "0.3.5"
 async-trait = "0.1.88"
 base64 = "0.22.1"
@@ -167,7 +167,6 @@ crossbeam-channel = "0.5.8"
 ctrlc = "3.4.1"
 crypto_box = { version = "0.9.1", features = ["chacha20"] }
 dashmap = "6.0.1"
-derivative = "2.2.0"
 derive_builder = "0.20.0"
 derive_more = "0.99.17"
 # derive_more = { version = "1.0.0", features = ["full"] }
@@ -196,16 +195,15 @@ hmac = { version = "0.12.1", default-features = false }
 home = "0.5.5"
 http-body = "1.0.1"
 http-body-util = "0.1.2"
-igd-next = { version = "0.14.2", features = ["aio_tokio"] }
+igd-next = { version = "0.17.0", features = ["aio_tokio"] }
 indexmap = "2.1.0"
-intertrait = "0.2.2"
 ipnet = "2.9.0"
 itertools = "0.13.0"
 js-sys = "=0.3.77"
 keccak = "0.1.4"
 local-ip-address = "0.6.1"
 log = "0.4.20"
-log4rs = "1.2.0"
+log4rs = "1.4.0"
 mac_address = "1.1.7"
 malachite-base = "0.4.4"
 malachite-nz = "0.4.4"
@@ -219,7 +217,7 @@ parking_lot = "0.12.1"
 paste = "1.0.15"
 pbkdf2 = "0.12.2"
 portable-atomic = { version = "1.5.1", features = ["float"] }
-prost = "0.13.2"
+prost = "0.14.3"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rand_core = { version = "0.6.4", features = ["std"] }
@@ -229,7 +227,7 @@ regex = "1.10.2"
 ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"
 rocksdb = "0.24.0"
-rv = "0.16.4"
+rv = "0.19.2"
 secp256k1 = { version = "0.29.0", features = [
     "global-context",
     "rand-std",
@@ -239,7 +237,6 @@ separator = "0.4.1"
 seqlock = "0.2.0"
 serde = { version = "1.0.190", features = ["derive", "rc"] }
 serde_bytes = "0.11.12"
-serde_nested_with = "0.2.5" # helper, can be removed when https://github.com/serde-rs/serde/issues/723 is reseolved
 serde_json = "1.0.107"
 serde_repr = "0.1.18"
 serde-value = "0.7.0"
@@ -255,11 +252,12 @@ sysinfo = "0.31.2"
 tempfile = "3.8.1"
 textwrap = "0.16.0"
 thiserror = "1.0.50"
-tokio = { version = "1.33.0", features = ["sync", "rt-multi-thread"] }
+tokio = { version = "1.42.1", features = ["sync", "rt-multi-thread"] }
 tokio-stream = "0.1.14"
 toml = "0.8.8"
-tonic = { version = "0.12.3", features = ["tls-webpki-roots", "gzip", "transport"] }
-tonic-build = { version = "0.12.3", features = ["prost"] }
+tonic = { version = "0.14.5", features = ["tls-webpki-roots", "gzip", "transport"] }
+tonic-prost = "0.14.5"
+tonic-prost-build = { version = "0.14.5" }
 triggered = "0.1.2"
 uuid = { version = "1.16.0", features = ["v4", "fast-rng", "serde", "js"] }
 wasm-bindgen = { version = "=0.2.100", features = ["serde-serialize"] }
@@ -281,7 +279,7 @@ indexed_db_futures = "0.5.0"
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
 workflow-perf-monitor = "0.0.2"
 nw-sys = "0.1.6"
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.18", default-features = false, features = ["ring"] }
 
 # workflow dependencies
 workflow-core = { version = "0.18.0" }

@@ -80,6 +80,7 @@ mod tests {
         subnets::SubnetworkId,
         tx::*,
     };
+    use kaspa_utils::hex::FromHex;
     use rand::thread_rng;
     use secp256k1::Keypair;
     use std::{iter, iter::empty};
@@ -93,12 +94,12 @@ mod tests {
     fn kp() -> [Keypair; 3] {
         let kp1 = Keypair::from_seckey_slice(
             secp256k1::SECP256K1,
-            hex::decode("1d99c236b1f37b3b845336e6c568ba37e9ced4769d83b7a096eec446b940d160").unwrap().as_slice(),
+            Vec::from_hex("1d99c236b1f37b3b845336e6c568ba37e9ced4769d83b7a096eec446b940d160").unwrap().as_slice(),
         )
         .unwrap();
         let kp2 = Keypair::from_seckey_slice(
             secp256k1::SECP256K1,
-            hex::decode("349ca0c824948fed8c2c568ce205e9d9be4468ef099cad76e3e5ec918954aca4").unwrap().as_slice(),
+            Vec::from_hex("349ca0c824948fed8c2c568ce205e9d9be4468ef099cad76e3e5ec918954aca4").unwrap().as_slice(),
         )
         .unwrap();
         let kp3 = Keypair::new(secp256k1::SECP256K1, &mut thread_rng());
