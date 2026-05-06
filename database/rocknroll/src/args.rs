@@ -28,13 +28,14 @@ impl NetworkArgs {
             return Err(Error::InvalidArgs("select exactly one network flag: --testnet, --devnet, or --simnet".to_string()));
         }
 
-        let mut args = KaspadArgs::default();
-        args.appdir = appdir;
-        args.testnet = self.testnet;
-        args.testnet_suffix = self.netsuffix;
-        args.devnet = self.devnet;
-        args.simnet = self.simnet;
-        Ok(args)
+        Ok(KaspadArgs {
+            appdir,
+            testnet: self.testnet,
+            testnet_suffix: self.netsuffix,
+            devnet: self.devnet,
+            simnet: self.simnet,
+            ..Default::default()
+        })
     }
 
     pub fn network(&self) -> Result<NetworkId> {
