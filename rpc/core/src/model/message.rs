@@ -1509,12 +1509,17 @@ impl Deserializer for GetUtxosByAddressesResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxosByAddressesV2Request {
+    /// Addresses to query UTXOs for.
     pub addresses: Vec<RpcAddress>,
+    /// Inclusive DAA-score range start; None defaults to 0.
     pub from_daa_score: Option<u64>,
+    /// Inclusive DAA-score range end; None defaults to u64::MAX.
     pub to_daa_score: Option<u64>,
+    /// Cursor start address; None starts from the first address.
     pub start_address: Option<RpcAddress>,
+    /// Cursor start DAA score for start_address; None starts from from_daa_score.
     pub start_daa_score: Option<u64>,
-    /// Soft cap on entries; a page may exceed this to finish the current script public key + DAA-score group.
+    /// Soft cap on entries; None means no limit, and a page may exceed this to finish the current script public key + DAA-score group.
     pub limit: Option<u64>,
 }
 
@@ -1560,8 +1565,11 @@ impl Deserializer for GetUtxosByAddressesV2Request {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxosByAddressesV2Response {
+    /// UTXO entries for the requested addresses and DAA-score range.
     pub entries: Vec<RpcUtxosByAddressesEntry>,
+    /// Cursor address for the next page; None means there is no next page.
     pub next_address: Option<RpcAddress>,
+    /// Cursor DAA score for the next page; None means there is no next page.
     pub next_daa_score: Option<u64>,
 }
 
