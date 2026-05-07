@@ -2246,9 +2246,11 @@ mod bitcoind_tests {
         }
 
         fn run_test(sig_script: String, script_pub_key: String, flags: EngineFlags) -> Result<(), UnifiedError> {
-            let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
-            let script_pub_key =
-                ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
+            let script_sig = opcodes::parse_short_form_with_flags(sig_script, flags).map_err(UnifiedError::ScriptBuilderError)?;
+            let script_pub_key = ScriptPublicKey::from_vec(
+                0,
+                opcodes::parse_short_form_with_flags(script_pub_key, flags).map_err(UnifiedError::ScriptBuilderError)?,
+            );
 
             // Create transaction
             let tx = create_spending_transaction(script_sig, script_pub_key.clone());
