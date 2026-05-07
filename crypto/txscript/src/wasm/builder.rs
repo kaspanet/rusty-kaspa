@@ -40,6 +40,7 @@ impl Default for ScriptBuilder {
     }
 }
 
+// TODO: Add `ScriptBuilder::with_flags` method that allows setting script engine flags for the builder.
 #[wasm_bindgen]
 impl ScriptBuilder {
     #[wasm_bindgen(constructor)]
