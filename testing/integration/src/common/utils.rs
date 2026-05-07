@@ -105,15 +105,14 @@ pub fn generate_tx_dag(
 
 fn make_lane_id(level_idx: usize, lane_idx: usize) -> SubnetworkId {
     // KIP-21 user-lane shape: `[namespace (4 bytes), 0×16]` with a non-zero
-    // namespace. Pack (level, lane) into the namespace: 0xFF marker keeps the
-    // namespace non-zero (incl. for (0, 0)), then a 16-bit level and an 8-bit
-    // lane. 2^16 levels × 2^8 lanes/level covers any test load; the 16-byte
-    // zero tail satisfies the shape rule.
+    // namespace. Keep bytes[1..4] non-zero even for (level, lane) = (0, 0),
+    // otherwise `[x, 0×19]` is interpreted as a reserved system ID before the
+    // user-lane rule is reached.
     assert!(level_idx <= u16::MAX as usize, "level_idx must fit in u16");
     assert!(lane_idx <= u8::MAX as usize, "lane_idx must fit in u8");
     let mut bytes = [0u8; 20];
-    bytes[0] = 0xFF;
-    bytes[1..3].copy_from_slice(&(level_idx as u16).to_be_bytes());
+    bytes[0..2].copy_from_slice(&(level_idx as u16).to_be_bytes());
+    bytes[2] = 0xFF;
     bytes[3] = lane_idx as u8;
     SubnetworkId::from_bytes(bytes)
 }
