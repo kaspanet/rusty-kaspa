@@ -4,7 +4,7 @@ use crate::{
         args::ArgsBuilder,
         client_notify::ChannelNotify,
         daemon::{ClientManager, Daemon},
-        utils::{CONTRACT_FACTOR, EXPAND_FACTOR},
+        utils::CONTRACT_FACTOR,
     },
     tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
 };
@@ -479,6 +479,10 @@ async fn bench_bbt_latency_stark() {
     const TX_LEVEL_WIDTH: usize = 100;
     const TPS_PRESSURE: u64 = u64::MAX;
 
+    // STARK proof verification nearly fills the standard tx compute-mass limit, so each tx can fit only one proof input.
+    const STARK_CONTRACT_FACTOR: u64 = 1;
+    const STARK_EXPAND_FACTOR: u64 = 1;
+
     const SUBMIT_BLOCK_CLIENTS: usize = 20;
     const SUBMIT_TX_CLIENTS: usize = 4;
 
@@ -531,7 +535,7 @@ async fn bench_bbt_latency_stark() {
     let stark_signature_script =
         pay_to_script_hash_signature_script(stark_redeem_script.clone(), stark_signature_prefix).expect("canonical signature script");
 
-    let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, 500)
+    let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * STARK_CONTRACT_FACTOR as u64, 500)
         .prealloc_address(prealloc_address.clone())
         .apply_args(Daemon::fill_args_with_random_ports)
         .build();
@@ -580,6 +584,8 @@ async fn bench_bbt_latency_stark() {
         input_compute_budget,
         TX_COUNT / TX_LEVEL_WIDTH,
         TX_LEVEL_WIDTH,
+        STARK_CONTRACT_FACTOR,
+        STARK_EXPAND_FACTOR,
         &params,
     );
     common::utils::verify_tx_dag(&utxoset, &txs);
@@ -616,10 +622,12 @@ fn generate_stark_tx_dag(
     input_compute_budget: ComputeBudget,
     target_levels: usize,
     target_width: usize,
+    contract_factor: u64,
+    expand_factor: u64,
     params: &Params,
 ) -> Vec<Arc<Transaction>> {
-    let num_inputs = CONTRACT_FACTOR as usize;
-    let num_outputs = EXPAND_FACTOR;
+    let num_inputs = contract_factor as usize;
+    let num_outputs = expand_factor;
     let signature_script = Arc::new(signature_script);
     let mass_calculator = MassCalculator::new_with_consensus_params(params);
     let mass_cofactors = params.block_mass_limits.cofactors();
