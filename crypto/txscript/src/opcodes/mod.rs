@@ -4458,7 +4458,6 @@ mod test {
             CovenantBinding, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput,
             TransactionOutpoint, TransactionOutput, UtxoEntry,
         };
-        use kaspa_core::assert_match;
         use kaspa_hashes::{Hash, ZERO_HASH};
         use kaspa_txscript_errors::CovenantsError;
 

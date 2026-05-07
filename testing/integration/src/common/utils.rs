@@ -264,7 +264,7 @@ pub async fn fetch_spendable_utxos(
         assert_eq!(*resp_entry.address.as_ref().unwrap(), address);
         utxos.push((TransactionOutpoint::from(resp_entry.outpoint), UtxoEntry::from(resp_entry.utxo_entry)));
     }
-    utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
+    utxos.sort_by_key(|(_, entry)| std::cmp::Reverse(entry.amount));
     utxos
 }
 
