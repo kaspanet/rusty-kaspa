@@ -512,16 +512,15 @@ mod tests {
                 expected: Ok(once(OpPushData2).chain([8, 2]).chain(repeat_n(0x49, 520)).collect()),
                 unchecked: false,
             },
-            // TODO(covpp-mainnet): Re-enable once max script element size is finalized.
-            // // BIP0062: OP_PUSHDATA4 can never be used, as pushes over 520
-            // // bytes are not allowed, and those below can be done using
-            // // other operators.
-            // Test {
-            //     name: "push data len 521",
-            //     data: vec![0x49; 521],
-            //     expected: Err(ScriptBuilderError::ElementExceedsMaxSize(521, max_script_element_size(false))),
-            //     unchecked: false,
-            // },
+            // BIP0062: OP_PUSHDATA4 can never be used, as pushes over 520
+            // bytes are not allowed, and those below can be done using
+            // other operators.
+            Test {
+                name: "push data len 521",
+                data: vec![0x49; 521],
+                expected: Err(ScriptBuilderError::ElementExceedsMaxSize(521, max_script_element_size(false))),
+                unchecked: false,
+            },
             Test {
                 name: "push data len 300001 (canonical)",
                 data: vec![0x1; 3000001],

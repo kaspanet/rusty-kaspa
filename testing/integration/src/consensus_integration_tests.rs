@@ -2243,7 +2243,7 @@ async fn mass_per_sig_op_does_not_change_block_capacity() {
     let mut tx = MutableTransaction::from_tx(transactions[0].clone());
     assert_match!(
         consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()),
-        Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { .. }))
+        Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededCommittedScriptUnits { .. }))
     );
     assert_match!(
         consensus.validate_and_insert_block(six_tx_block).virtual_state_task.await,

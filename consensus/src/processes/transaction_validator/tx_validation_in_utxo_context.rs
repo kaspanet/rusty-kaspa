@@ -326,7 +326,7 @@ mod tests {
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert_match!(
             result,
-            Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { limit, .. }))
+            Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededCommittedScriptUnits { limit, .. }))
                 if limit == free_script_units_per_input().0
         );
 
@@ -423,7 +423,7 @@ mod tests {
                 tv.validate_populated_transaction_and_get_fee(&verifiable_tx, 0, 0, TxValidationFlags::SkipMassCheck, None, None);
             assert_match!(
                 result,
-                Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { .. })),
+                Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededCommittedScriptUnits { .. })),
                 "expected sigop budget enforcement for tx version {version}"
             );
         }

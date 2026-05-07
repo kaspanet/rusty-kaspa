@@ -1037,7 +1037,7 @@ mod tests {
                 tight_budget,
                 EngineFlags { covenants_enabled: true, ..Default::default() },
             );
-        assert_eq!(vm_tight_budget.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 3, limit: 2 }));
+        assert_eq!(vm_tight_budget.execute(), Err(TxScriptError::ExceededCommittedScriptUnits { used: 3, limit: 2 }));
 
         let mut vm_exact_budget =
             TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_script_units_limit(
@@ -1077,7 +1077,7 @@ mod tests {
                 tight_budget,
                 EngineFlags { covenants_enabled: true, ..Default::default() },
             );
-        assert_eq!(vm_covenants_enabled.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 128, limit: 64 }));
+        assert_eq!(vm_covenants_enabled.execute(), Err(TxScriptError::ExceededCommittedScriptUnits { used: 128, limit: 64 }));
     }
 
     #[test]
@@ -1162,7 +1162,7 @@ mod tests {
             );
         assert_eq!(
             underbudget_vm.execute(),
-            Err(TxScriptError::ExceededScriptUnitsLimit {
+            Err(TxScriptError::ExceededCommittedScriptUnits {
                 used: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
                 limit: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1
             })
@@ -1224,7 +1224,7 @@ mod tests {
                     expected_units.saturating_sub(ScriptUnits(1)),
                     EngineFlags { covenants_enabled: true, ..Default::default() },
                 );
-            assert!(matches!(underbudget_vm.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { .. })), "{name}");
+            assert!(matches!(underbudget_vm.execute(), Err(TxScriptError::ExceededCommittedScriptUnits { .. })), "{name}");
         }
     }
 
@@ -1321,7 +1321,10 @@ mod tests {
             too_tight_budget,
         );
 
-        assert_eq!(vm_too_tight.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 100_000, limit: too_tight_budget.0 }));
+        assert_eq!(
+            vm_too_tight.execute(),
+            Err(TxScriptError::ExceededCommittedScriptUnits { used: 100_000, limit: too_tight_budget.0 })
+        );
         let exact_budget = flags.sigop_script_units;
         let mut vm_exact = TxScriptEngine::from_transaction_input_with_script_units_limit(
             &populated_tx,
@@ -1397,7 +1400,11 @@ mod tests {
             EngineFlags { covenants_enabled: true, sigop_script_units },
             budget_allows_one_sigop_only,
         );
-        assert_match!(vm.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { .. }), "expected sigop budget enforcement for tx");
+        assert_match!(
+            vm.execute(),
+            Err(TxScriptError::ExceededCommittedScriptUnits { .. }),
+            "expected sigop budget enforcement for tx"
+        );
 
         let mut vm_with_doubled_budget = TxScriptEngine::from_transaction_input_with_script_units_limit(
             &verifiable_tx,
