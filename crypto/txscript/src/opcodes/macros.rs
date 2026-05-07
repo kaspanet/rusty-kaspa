@@ -138,7 +138,13 @@ macro_rules! opcode_list {
         #[allow(unused_comparisons)]
         pub fn parse_short_form(script: String) -> ScriptBuilderResult<Vec<u8>>
         {
-            let mut builder = ScriptBuilder::new();
+            parse_short_form_with_flags(script, crate::EngineFlags::default())
+        }
+
+        #[allow(unused_comparisons)]
+        pub fn parse_short_form_with_flags(script: String, flags: crate::EngineFlags) -> ScriptBuilderResult<Vec<u8>>
+        {
+            let mut builder = ScriptBuilder::with_flags(flags);
             for line in script.lines() {
                 let line = line.split('#').next().unwrap_or_default();
                 for token in line.split_whitespace() {

@@ -58,9 +58,12 @@ pub use engine_context::{EngineCtx, EngineCtxSync, EngineCtxUnsync};
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
-pub const MAX_SCRIPTS_SIZE: usize = 1_000_000; // TODO(covpp-mainnet): Add proper activation logic s.t. the pre-fork limit is restored, and the post-fork is unlimited.
-pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 1_000_000; // TODO(covpp-mainnet): Add proper activation logic s.t. the pre-fork limit is restored
-pub const MAX_OPS_PER_SCRIPT: i32 = 1_000_000; // TODO(covpp-mainnet): Add proper activation logic s.t. the pre-fork limit is restored, and the post-fork is unlimited.
+pub const MAX_SCRIPTS_SIZE_PRE_TOCCATA: usize = 10_000;
+pub const MAX_SCRIPTS_SIZE_POST_TOCCATA: usize = 1_000_000;
+pub const MAX_SCRIPT_ELEMENT_SIZE_PRE_TOCCATA: usize = 520;
+pub const MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA: usize = 1_000_000;
+pub const MAX_OPS_PER_SCRIPT_PRE_TOCCATA: i32 = 201;
+pub const MAX_OPS_PER_SCRIPT_POST_TOCCATA: i32 = 1_000_000;
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
 pub const SEQUENCE_LOCK_TIME_DISABLED: u64 = 1 << 63;
 pub const SEQUENCE_LOCK_TIME_MASK: u64 = 0x00000000ffffffff;
@@ -112,6 +115,18 @@ impl Default for EngineFlags {
     fn default() -> Self {
         Self { covenants_enabled: false, sigop_script_units: Gram(1000).into() }
     }
+}
+
+pub const fn max_scripts_size(covenants_enabled: bool) -> usize {
+    if covenants_enabled { MAX_SCRIPTS_SIZE_POST_TOCCATA } else { MAX_SCRIPTS_SIZE_PRE_TOCCATA }
+}
+
+pub const fn max_script_element_size(covenants_enabled: bool) -> usize {
+    if covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA } else { MAX_SCRIPT_ELEMENT_SIZE_PRE_TOCCATA }
+}
+
+pub const fn max_ops_per_script(covenants_enabled: bool) -> i32 {
+    if covenants_enabled { MAX_OPS_PER_SCRIPT_POST_TOCCATA } else { MAX_OPS_PER_SCRIPT_PRE_TOCCATA }
 }
 
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> Deref for TxScriptEngine<'a, T, Reused> {
@@ -524,11 +539,11 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
             self.num_ops += 1;
-            if self.num_ops > MAX_OPS_PER_SCRIPT {
-                return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
+            if self.num_ops > max_ops_per_script(self.flags.covenants_enabled) {
+                return Err(TxScriptError::TooManyOperations(max_ops_per_script(self.flags.covenants_enabled)));
             }
-        } else if opcode.len() > MAX_SCRIPT_ELEMENT_SIZE {
-            return Err(TxScriptError::ElementTooBig(opcode.len(), MAX_SCRIPT_ELEMENT_SIZE));
+        } else if opcode.len() > max_script_element_size(self.flags.covenants_enabled) {
+            return Err(TxScriptError::ElementTooBig(opcode.len(), max_script_element_size(self.flags.covenants_enabled)));
         }
 
         if self.is_executing() || opcode.is_conditional() {
@@ -633,8 +648,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         if scripts.iter().all(|e| e.is_empty()) {
             return Err(TxScriptError::EvalFalse);
         }
-        if let Some(s) = scripts.iter().find(|e| e.len() > MAX_SCRIPTS_SIZE) {
-            return Err(TxScriptError::ScriptSize(s.len(), MAX_SCRIPTS_SIZE));
+        if let Some(s) = scripts.iter().find(|e| e.len() > max_scripts_size(self.flags.covenants_enabled)) {
+            return Err(TxScriptError::ScriptSize(s.len(), max_scripts_size(self.flags.covenants_enabled)));
         }
 
         let mut saved_stack: Option<Stack> = None;
@@ -710,8 +725,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         let num_keys_usize = num_keys as usize;
 
         self.num_ops += num_keys;
-        if self.num_ops > MAX_OPS_PER_SCRIPT {
-            return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
+        if self.num_ops > max_ops_per_script(self.flags.covenants_enabled) {
+            return Err(TxScriptError::TooManyOperations(max_ops_per_script(self.flags.covenants_enabled)));
         }
 
         let pub_keys = match self.dstack.len() >= num_keys_usize {
@@ -1022,7 +1037,7 @@ mod tests {
                 tight_budget,
                 EngineFlags { covenants_enabled: true, ..Default::default() },
             );
-        assert_eq!(vm_tight_budget.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 3, limit: 2 }));
+        assert_eq!(vm_tight_budget.execute(), Err(TxScriptError::ExceededCommittedScriptUnits { used: 3, limit: 2 }));
 
         let mut vm_exact_budget =
             TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script_with_script_units_limit(
@@ -1062,7 +1077,7 @@ mod tests {
                 tight_budget,
                 EngineFlags { covenants_enabled: true, ..Default::default() },
             );
-        assert_eq!(vm_covenants_enabled.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 128, limit: 64 }));
+        assert_eq!(vm_covenants_enabled.execute(), Err(TxScriptError::ExceededCommittedScriptUnits { used: 128, limit: 64 }));
     }
 
     #[test]
@@ -1105,7 +1120,8 @@ mod tests {
     fn test_used_script_units_can_drive_compute_budget_selection() {
         let sig_cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let script = ScriptBuilder::new()
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
+        let script = ScriptBuilder::with_flags(flags)
             .add_data(&vec![42u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize])
             .unwrap()
             .add_op(OpDup)
@@ -1113,7 +1129,6 @@ mod tests {
             .add_op(OpDrop)
             .unwrap()
             .drain();
-        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
 
         let mut unrestricted_vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
             &script,
@@ -1147,7 +1162,7 @@ mod tests {
             );
         assert_eq!(
             underbudget_vm.execute(),
-            Err(TxScriptError::ExceededScriptUnitsLimit {
+            Err(TxScriptError::ExceededCommittedScriptUnits {
                 used: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT,
                 limit: SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT - 1
             })
@@ -1209,7 +1224,7 @@ mod tests {
                     expected_units.saturating_sub(ScriptUnits(1)),
                     EngineFlags { covenants_enabled: true, ..Default::default() },
                 );
-            assert!(matches!(underbudget_vm.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { .. })), "{name}");
+            assert!(matches!(underbudget_vm.execute(), Err(TxScriptError::ExceededCommittedScriptUnits { .. })), "{name}");
         }
     }
 
@@ -1306,7 +1321,10 @@ mod tests {
             too_tight_budget,
         );
 
-        assert_eq!(vm_too_tight.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { used: 100_000, limit: too_tight_budget.0 }));
+        assert_eq!(
+            vm_too_tight.execute(),
+            Err(TxScriptError::ExceededCommittedScriptUnits { used: 100_000, limit: too_tight_budget.0 })
+        );
         let exact_budget = flags.sigop_script_units;
         let mut vm_exact = TxScriptEngine::from_transaction_input_with_script_units_limit(
             &populated_tx,
@@ -1382,7 +1400,11 @@ mod tests {
             EngineFlags { covenants_enabled: true, sigop_script_units },
             budget_allows_one_sigop_only,
         );
-        assert_match!(vm.execute(), Err(TxScriptError::ExceededScriptUnitsLimit { .. }), "expected sigop budget enforcement for tx");
+        assert_match!(
+            vm.execute(),
+            Err(TxScriptError::ExceededCommittedScriptUnits { .. }),
+            "expected sigop budget enforcement for tx"
+        );
 
         let mut vm_with_doubled_budget = TxScriptEngine::from_transaction_input_with_script_units_limit(
             &verifiable_tx,
@@ -2231,9 +2253,11 @@ mod bitcoind_tests {
         }
 
         fn run_test(sig_script: String, script_pub_key: String, flags: EngineFlags) -> Result<(), UnifiedError> {
-            let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
-            let script_pub_key =
-                ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
+            let script_sig = opcodes::parse_short_form_with_flags(sig_script, flags).map_err(UnifiedError::ScriptBuilderError)?;
+            let script_pub_key = ScriptPublicKey::from_vec(
+                0,
+                opcodes::parse_short_form_with_flags(script_pub_key, flags).map_err(UnifiedError::ScriptBuilderError)?,
+            );
 
             // Create transaction
             let tx = create_spending_transaction(script_sig, script_pub_key.clone());
@@ -2360,7 +2384,7 @@ mod bitcoind_tests {
                         _ => vec![],
                     },
                     UnifiedError::ScriptBuilderError(e) => match e {
-                        ScriptBuilderError::ElementExceedsMaxSize(_) => vec!["PUSH_SIZE"],
+                        ScriptBuilderError::ElementExceedsMaxSize(_, _) => vec!["PUSH_SIZE"],
                         _ => vec![],
                     },
                 },

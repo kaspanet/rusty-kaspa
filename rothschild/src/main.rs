@@ -479,7 +479,7 @@ async fn fetch_spendable_utxos(
         // Eliminates UTXOs we already tried to spend so we don't try to spend them again in this period
         .filter(|(outpoint,_)| !pending.contains_key(outpoint))
         .collect::<Vec<_>>();
-    utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
+    utxos.sort_by_key(|(_, entry)| std::cmp::Reverse(entry.amount));
     utxos
 }
 

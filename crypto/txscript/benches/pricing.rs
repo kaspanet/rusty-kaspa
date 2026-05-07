@@ -17,8 +17,8 @@ use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::{self, OpDrop, OpDup};
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::{
-    EngineCtx, EngineFlags, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, TxScriptEngine, pay_to_address_script, pay_to_script_hash_script,
-    pay_to_script_hash_signature_script,
+    EngineCtx, EngineFlags, MAX_STACK_SIZE, TxScriptEngine, max_script_element_size, pay_to_address_script, pay_to_script_hash_script,
+    pay_to_script_hash_signature_script_with_flags,
     zk_precompiles::tests::helpers::{build_groth_script, build_stark_script},
 };
 use kaspa_txscript_errors::TxScriptError;
@@ -39,7 +39,7 @@ const HASHING_KEY_LEN: usize = 32;
 const HASHING_ROUNDS: usize = 20;
 const LARGE_PUSH_DUP_CAT_CAT_COUNT: usize = 3;
 const LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR: usize = 1 << LARGE_PUSH_DUP_CAT_CAT_COUNT;
-const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = MAX_SCRIPT_ELEMENT_SIZE / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
+const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = max_script_element_size(true) / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
 const LARGE_PUSH_DUP_CAT_DUP_COUNT: usize = MAX_STACK_SIZE - 1;
 const OP_DUP_BASE_DUP_COUNT: usize = 243;
 const OP_DUP_FREE_BUDGET_DUP_COUNT: usize = 1107;
@@ -63,6 +63,14 @@ type RoundTxBuilder = fn(u32, usize) -> (Transaction, Vec<UtxoEntry>);
 
 fn pricing_flags(covenants_enabled: bool) -> EngineFlags {
     EngineFlags { covenants_enabled, sigop_script_units: Gram(1000).into() }
+}
+
+fn new_script_builder() -> ScriptBuilder {
+    ScriptBuilder::with_flags(pricing_flags(true))
+}
+
+fn new_p2sh_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> Vec<u8> {
+    pay_to_script_hash_signature_script_with_flags(redeem_script, signature, pricing_flags(true)).unwrap()
 }
 
 fn stack_entry_inline_capacity() -> usize {
@@ -258,7 +266,7 @@ fn build_ecdsa_2in1_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 }
 
 fn build_op_dup_script_public_key_with_seed(seed: &[u8], dup_count: usize) -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     builder.add_data(seed).unwrap();
     for _ in 0..dup_count {
         builder.add_op(OpDup).unwrap();
@@ -274,7 +282,7 @@ fn build_op_dup_script_public_key() -> ScriptPublicKey {
 }
 
 fn build_op_dup_free_budget_script_public_key() -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     for _ in 0..OP_DUP_FREE_BUDGET_DUP_COUNT {
         builder.add_op(OpDup).unwrap();
         builder.add_op(OpDrop).unwrap();
@@ -283,14 +291,14 @@ fn build_op_dup_free_budget_script_public_key() -> ScriptPublicKey {
 }
 
 fn build_adversarial_output_script_public_key() -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     builder.add_data(&[0x5au8; ADVERSARIAL_OUTPUT_SPK_DATA_LEN]).unwrap();
     builder.add_op(OpDrop).unwrap();
     ScriptPublicKey::new(0, builder.drain().into())
 }
 
 fn build_introspection_cat_substr_math_script_public_key() -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
 
     builder.add_op(OpDrop).unwrap();
 
@@ -429,7 +437,7 @@ fn build_introspection_cat_substr_math_script_public_key() -> ScriptPublicKey {
 }
 
 fn build_blake2b_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     for _ in 0..rounds {
         builder.add_op(OpDup).unwrap();
         builder.add_op(codes::OpBlake2b).unwrap();
@@ -441,7 +449,7 @@ fn build_blake2b_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
 }
 
 fn build_blake2b_with_key_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     for _ in 0..rounds {
         builder.add_op(codes::Op2Dup).unwrap();
         builder.add_op(codes::OpBlake2bWithKey).unwrap();
@@ -454,7 +462,7 @@ fn build_blake2b_with_key_storm_script_public_key(rounds: usize) -> ScriptPublic
 }
 
 fn build_blake3_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     for _ in 0..rounds {
         builder.add_op(OpDup).unwrap();
         builder.add_op(codes::OpBlake3).unwrap();
@@ -466,7 +474,7 @@ fn build_blake3_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
 }
 
 fn build_blake3_with_key_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     for _ in 0..rounds {
         builder.add_op(codes::Op2Dup).unwrap();
         builder.add_op(codes::OpBlake3WithKey).unwrap();
@@ -479,7 +487,7 @@ fn build_blake3_with_key_storm_script_public_key(rounds: usize) -> ScriptPublicK
 }
 
 fn build_sha256_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     for _ in 0..rounds {
         builder.add_op(OpDup).unwrap();
         builder.add_op(codes::OpSHA256).unwrap();
@@ -491,7 +499,7 @@ fn build_sha256_storm_script_public_key(rounds: usize) -> ScriptPublicKey {
 }
 
 fn build_large_push_dup_cat_script_public_key() -> ScriptPublicKey {
-    let mut builder = ScriptBuilder::new();
+    let mut builder = new_script_builder();
     for _ in 0..LARGE_PUSH_DUP_CAT_CAT_COUNT {
         builder.add_op(OpDup).unwrap();
         builder.add_op(codes::OpCat).unwrap();
@@ -559,14 +567,14 @@ fn build_op_dup_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 
 fn build_op_dup_free_budget_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let redeem_script = build_op_dup_free_budget_script_public_key();
-    let signature_prefix = ScriptBuilder::new().add_data(&vec![0x5au8; op_dup_free_budget_element_len()]).unwrap().drain();
-    let signature_script = pay_to_script_hash_signature_script(redeem_script.script().to_vec(), signature_prefix).unwrap();
+    let signature_prefix = new_script_builder().add_data(&vec![0x5au8; op_dup_free_budget_element_len()]).unwrap().drain();
+    let signature_script = new_p2sh_signature_script(redeem_script.script().to_vec(), signature_prefix);
     build_budgeted_single_input_tx(nonce, pay_to_script_hash_script(redeem_script.script()), signature_script)
 }
 
 fn build_op_dup_p2sh_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let redeem_script = build_op_dup_script_public_key();
-    let signature_script = pay_to_script_hash_signature_script(redeem_script.script().to_vec(), vec![]).unwrap();
+    let signature_script = new_p2sh_signature_script(redeem_script.script().to_vec(), vec![]);
     build_budgeted_single_input_tx(nonce, pay_to_script_hash_script(redeem_script.script()), signature_script)
 }
 
@@ -574,7 +582,7 @@ fn build_introspection_cat_substr_math_tx(nonce: u32) -> (Transaction, Vec<UtxoE
     let outpoint = input_outpoint(0, nonce);
     let input_spk = build_introspection_cat_substr_math_script_public_key();
     let output_spk = build_adversarial_output_script_public_key();
-    let signature_script = ScriptBuilder::new().add_data(&[0xa5u8; ADVERSARIAL_SIGSCRIPT_DATA_LEN]).unwrap().drain();
+    let signature_script = new_script_builder().add_data(&[0xa5u8; ADVERSARIAL_SIGSCRIPT_DATA_LEN]).unwrap().drain();
     let entries = vec![UtxoEntry::new(20_000, input_spk, 0, false, None)];
     let tx = Transaction::new(
         1,
@@ -626,13 +634,13 @@ fn build_hash_storm_tx_with_rounds(
 ) -> (Transaction, Vec<UtxoEntry>) {
     let outpoint = input_outpoint(0, nonce);
     let redeem_script = script_builder(rounds);
-    let mut signature_builder = ScriptBuilder::new();
+    let mut signature_builder = new_script_builder();
     signature_builder.add_data(&vec![0x42u8; HASHING_SIGSCRIPT_DATA_LEN]).unwrap();
     if keyed {
         signature_builder.add_data(&[0x24u8; HASHING_KEY_LEN]).unwrap();
     }
     let signature_prefix = signature_builder.drain();
-    let signature_script = pay_to_script_hash_signature_script(redeem_script.script().to_vec(), signature_prefix).unwrap();
+    let signature_script = new_p2sh_signature_script(redeem_script.script().to_vec(), signature_prefix);
     let entries = vec![UtxoEntry::new(20_000, pay_to_script_hash_script(redeem_script.script()), 0, false, None)];
     let tx = Transaction::new(
         1,
@@ -735,7 +743,7 @@ fn build_groth16_3tags_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 }
 
 fn build_large_push_dup_cat_tx_with_data_len(nonce: u32, data_len: usize) -> (Transaction, Vec<UtxoEntry>) {
-    let signature_script = ScriptBuilder::new().add_data(&vec![0x6du8; data_len]).unwrap().drain();
+    let signature_script = new_script_builder().add_data(&vec![0x6du8; data_len]).unwrap().drain();
     build_budgeted_single_input_tx(nonce, build_large_push_dup_cat_script_public_key(), signature_script)
 }
 
@@ -757,7 +765,7 @@ fn build_large_push_dup_cat_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 
     assert_eq!(LARGE_PUSH_DUP_CAT_DUP_COUNT + 1, MAX_STACK_SIZE, "large_push_dup_cat should reach the stack depth limit");
     assert!(
-        low_len * LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR <= MAX_SCRIPT_ELEMENT_SIZE,
+        low_len * LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR <= max_script_element_size(true),
         "large_push_dup_cat expanded element should stay within the element size limit"
     );
 
@@ -767,7 +775,7 @@ fn build_large_push_dup_cat_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 fn build_op_dup_one_tx_script_public_key(nonce: u32) -> ScriptPublicKey {
     // Adds OpDrop/OpDup pairs to increase opcode work while keeping stack depth stable.
     fn script_for_opcode_pairs(opcode_pairs: usize) -> ScriptPublicKey {
-        let mut builder = ScriptBuilder::new();
+        let mut builder = new_script_builder();
         builder.add_i64(1).unwrap();
         for _ in 0..OP_DUP_BASE_DUP_COUNT {
             builder.add_op(OpDup).unwrap();
@@ -826,7 +834,7 @@ fn build_op_dup_one_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 fn build_max_opcodes_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     fn try_tx_with_opcode_count(nonce: u32, opcode_count: usize) -> Option<(Transaction, Vec<UtxoEntry>)> {
         let redeem_script = ScriptPublicKey::new(0, vec![codes::OpNop; opcode_count].into());
-        let signature_script = pay_to_script_hash_signature_script(redeem_script.script().to_vec(), vec![codes::OpTrue]).unwrap();
+        let signature_script = new_p2sh_signature_script(redeem_script.script().to_vec(), vec![codes::OpTrue]);
         try_build_budgeted_single_input_tx(nonce, pay_to_script_hash_script(redeem_script.script()), signature_script).ok()
     }
 
