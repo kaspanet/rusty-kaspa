@@ -508,7 +508,7 @@ async fn bench_bbt_latency_stark() {
 
     let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
-    let stark_signature_prefix = ScriptBuilder::new()
+    let stark_signature_prefix = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
         .add_data(&claim)
         .unwrap()
         .add_data(&control_index)

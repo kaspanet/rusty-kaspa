@@ -98,7 +98,7 @@ pub fn build_groth_script() -> Vec<u8> {
     let input3 = hex::decode("d223ffcb21c6ffcb7c8f60392ca49dde00000000000000000000000000000000").unwrap();
     let input4 = hex::decode("c07a65145c3cb48b6101962ea607a4dd93c753bb26975cb47feb00d3666e4404").unwrap();
 
-    ScriptBuilder::new()
+    ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
         .add_data(&input4)
         .unwrap()
         .add_data(&input3)
