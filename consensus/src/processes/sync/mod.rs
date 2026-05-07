@@ -165,13 +165,10 @@ impl<
         }
 
         let mut highest_with_body = None;
-        let mut forward_iterator = self.reachability_service.forward_chain_iterator(pp, high, true).tuple_windows();
+        let forward_iterator = self.reachability_service.forward_chain_iterator(pp, high, true).tuple_windows();
         let mut backward_iterator = self.reachability_service.backward_chain_iterator(high, pp, true);
-        loop {
+        for (parent, current) in forward_iterator {
             // We loop from both directions in parallel in order to use the shorter path
-            let Some((parent, current)) = forward_iterator.next() else {
-                break;
-            };
             let status = self.statuses_store.read().get(current).unwrap();
             if status.is_header_only() {
                 // Going up, the first parent which has a header-only child is our target

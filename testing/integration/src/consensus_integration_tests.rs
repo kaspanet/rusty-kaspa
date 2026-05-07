@@ -52,7 +52,7 @@ use kaspa_seq_commit::hashing::{
 };
 use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
 use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
-use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
+use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, pay_to_script_hash_script};
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
@@ -1742,9 +1742,9 @@ async fn push_limit_activation_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
-            let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
+            let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA as u64;
             p.block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
-            p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE;
+            p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA;
             p.storage_mass_parameter = 1;
             p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
         })
@@ -1808,13 +1808,16 @@ async fn push_limit_activation_test() {
     }
     assert_eq!(consensus.get_virtual_daa_score(), ACTIVATION_DAA_SCORE - 1);
 
-    // Pre-activation: inserting block with a transaction that pushes more than MAX_SCRIPT_ELEMENT_SIZE bytes onto the stack should be accepted
+    // Pre-activation: inserting block with a transaction that pushes more than the max script element size onto the stack should be accepted
     {
-        // Transaction spending the UTXO that pushes more than MAX_SCRIPT_ELEMENT_SIZE bytes onto the stack
+        // Transaction spending the UTXO that pushes more than the max script element size onto the stack
         let mut tx = Transaction::new(
             0,
             vec![TransactionInput::new(funding_outpoint2, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
-            vec![TransactionOutput::new(funding_amount2 - 5000, ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE + 1]))],
+            vec![TransactionOutput::new(
+                funding_amount2 - 5000,
+                ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA + 1]),
+            )],
             0,
             SUBNETWORK_ID_NATIVE,
             0,
@@ -1859,11 +1862,14 @@ async fn push_limit_activation_test() {
 
     // Post-activation: a similar transaction should now be rejected
     {
-        // Transaction spending the UTXO that pushes more than MAX_SCRIPT_ELEMENT_SIZE bytes onto the stack
+        // Transaction spending the UTXO that pushes more than the max script element size onto the stack
         let mut tx = Transaction::new(
             0,
             vec![TransactionInput::new(funding_outpoint1, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
-            vec![TransactionOutput::new(funding_amount1 - 5000, ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE + 1]))],
+            vec![TransactionOutput::new(
+                funding_amount1 - 5000,
+                ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA + 1]),
+            )],
             0,
             SUBNETWORK_ID_NATIVE,
             0,
@@ -2104,7 +2110,7 @@ fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle
 
     let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
-    let stark_signature_prefix = ScriptBuilder::new()
+    let stark_signature_prefix = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
         .add_data(&claim)
         .unwrap()
         .add_data(&control_index)
@@ -2237,7 +2243,7 @@ async fn mass_per_sig_op_does_not_change_block_capacity() {
     let mut tx = MutableTransaction::from_tx(transactions[0].clone());
     assert_match!(
         consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()),
-        Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededScriptUnitsLimit { .. }))
+        Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededCommittedScriptUnits { .. }))
     );
     assert_match!(
         consensus.validate_and_insert_block(six_tx_block).virtual_state_task.await,
