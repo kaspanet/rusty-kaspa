@@ -38,7 +38,7 @@ use kaspa_rpc_core::{
 use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
 use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
-    middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
+    middleware::{CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
 use regex::Regex;
 use std::{
@@ -544,8 +544,8 @@ impl Inner {
         let bytes_rx = &counters.bytes_rx;
         let bytes_tx = &counters.bytes_tx;
         let channel = ServiceBuilder::new()
-            .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_rx.clone())))
-            .layer(MapRequestBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone()).boxed_unsync()))
+            .layer(MapResponseBodyLayer::new(move |body| tonic::body::Body::new(CountBytesBody::new(body, bytes_rx.clone()))))
+            .layer(MapRequestBodyLayer::new(move |body| tonic::body::Body::new(CountBytesBody::new(body, bytes_tx.clone()))))
             .service(channel);
 
         // Build the gRPC client with an interceptor setting the request timeout
