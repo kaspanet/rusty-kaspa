@@ -2,6 +2,15 @@ use crate::imports::*;
 use convert_case::{Case, Casing};
 use kaspa_rpc_core::api::ops::RpcApiOps;
 
+fn parse_get_headers_direction(direction: Option<&str>) -> Result<bool> {
+    match direction.map(str::to_ascii_lowercase).as_deref() {
+        None => Ok(true),
+        Some("ascending" | "asc" | "true" | "1") => Ok(true),
+        Some("descending" | "desc" | "false" | "0") => Ok(false),
+        Some(_) => Err(Error::custom("Direction must be one of: ascending, asc, true, 1, descending, desc, false, 0")),
+    }
+}
+
 #[derive(Default, Handler)]
 #[help("Execute RPC commands against the connected Kaspa node")]
 pub struct Rpc;
@@ -162,10 +171,16 @@ impl Rpc {
                 let result = rpc.shutdown_call(None, ShutdownRequest {}).await?;
                 self.println(&ctx, result);
             }
-            // RpcApiOps::GetHeaders => {
-            //     let result = rpc.get_headers_call(GetHeadersRequest {  }).await?;
-            //     self.println(&ctx, result);
-            // }
+            RpcApiOps::GetHeaders => {
+                if argv.len() < 2 {
+                    return Err(Error::custom("Usage: rpc get-headers <start_hash> <limit> [ascending|descending|true|false]"));
+                }
+                let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
+                let limit = argv.remove(0).parse::<u64>()?;
+                let is_ascending = parse_get_headers_direction(argv.first().map(String::as_str))?;
+                let result = rpc.get_headers_call(None, GetHeadersRequest { start_hash, limit, is_ascending }).await?;
+                self.println(&ctx, result);
+            }
             RpcApiOps::GetUtxosByAddresses => {
                 if argv.is_empty() {
                     return Err(Error::custom("Please specify at least one address"));
@@ -338,5 +353,31 @@ impl Rpc {
         tprintln!(ctx);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_headers_direction_defaults_to_ascending() {
+        assert!(parse_get_headers_direction(None).unwrap());
+    }
+
+    #[test]
+    fn get_headers_direction_accepts_aliases() {
+        for direction in ["ascending", "asc", "true", "1"] {
+            assert!(parse_get_headers_direction(Some(direction)).unwrap());
+        }
+
+        for direction in ["descending", "desc", "false", "0"] {
+            assert!(!parse_get_headers_direction(Some(direction)).unwrap());
+        }
+    }
+
+    #[test]
+    fn get_headers_direction_rejects_unknown_values() {
+        assert!(parse_get_headers_direction(Some("sideways")).is_err());
     }
 }
