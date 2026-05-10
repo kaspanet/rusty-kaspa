@@ -61,6 +61,7 @@ use kaspa_consensus_core::{
         consensus::{ConsensusError, ConsensusResult},
         difficulty::DifficultyError,
         pruning::PruningImportError,
+        sync::SyncManagerError,
         tx::TxResult,
     },
     header::Header,
@@ -1157,6 +1158,32 @@ impl ConsensusApi for Consensus {
         }
 
         Ok(self.services.sync_manager.create_virtual_selected_chain_block_locator(low, high)?)
+    }
+
+    fn get_virtual_selected_chain_from(&self, start: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
+        let _guard = self.pruning_lock.blocking_read();
+        self.validate_block_exists(start)?;
+
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let selected_chain = self.storage.selected_chain_store.read();
+        let start_index =
+            selected_chain.get_by_hash(start).optional().unwrap().ok_or(SyncManagerError::BlockNotInSelectedParentChain(start))?;
+        let (tip_index, _) =
+            selected_chain.get_tip().map_err(|err| ConsensusError::GeneralOwned(format!("selected chain tip read failed: {err}")))?;
+        let limit_end_index = start_index.saturating_add(limit.saturating_sub(1) as u64);
+        let end_index = cmp::min(tip_index, limit_end_index);
+        let mut hashes = Vec::with_capacity((end_index - start_index + 1) as usize);
+        for index in start_index..=end_index {
+            hashes.push(
+                selected_chain
+                    .get_by_index(index)
+                    .map_err(|err| ConsensusError::GeneralOwned(format!("selected chain hash read failed: {err}")))?,
+            );
+        }
+        Ok(hashes)
     }
 
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {

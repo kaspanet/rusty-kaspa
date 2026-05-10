@@ -125,6 +125,7 @@ pub struct RpcCoreService {
 }
 
 const RPC_CORE: &str = "rpc-core";
+const GET_HEADERS_MAX_WINDOW_SIZE: u32 = MAX_SAFE_WINDOW_SIZE;
 
 impl RpcCoreService {
     pub const IDENT: &'static str = "rpc-core-service";
@@ -924,9 +925,45 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     async fn get_headers_call(
         &self,
         _connection: Option<&DynRpcConnection>,
-        _request: GetHeadersRequest,
+        request: GetHeadersRequest,
     ) -> RpcResult<GetHeadersResponse> {
-        Err(RpcError::NotImplemented)
+        if request.limit > u64::from(GET_HEADERS_MAX_WINDOW_SIZE) {
+            let requested_limit = request.limit.min(u64::from(u32::MAX)) as u32;
+            return Err(RpcError::WindowSizeExceedingMaximum(requested_limit, GET_HEADERS_MAX_WINDOW_SIZE));
+        }
+
+        let requested_limit = request.limit as u32;
+        let session = self.consensus_manager.consensus().session().await;
+        session.async_get_header(request.start_hash).await?;
+
+        let limit = requested_limit as usize;
+        if limit == 0 {
+            return Ok(GetHeadersResponse::new(Vec::new()));
+        }
+
+        let hashes = if request.is_ascending {
+            session.async_get_virtual_selected_chain_from(request.start_hash, limit).await?
+        } else {
+            session.async_get_virtual_selected_chain_from(request.start_hash, 1).await?;
+            let mut hashes = Vec::with_capacity(limit);
+            let mut current = request.start_hash;
+            while hashes.len() < limit {
+                hashes.push(current);
+                if current == self.config.genesis.hash {
+                    break;
+                }
+                current = session.async_get_ghostdag_data(current).await?.selected_parent;
+            }
+            hashes
+        };
+
+        let mut headers = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            let header = session.async_get_header(hash).await?;
+            headers.push(header.as_ref().into());
+        }
+
+        Ok(GetHeadersResponse::new(headers))
     }
 
     async fn get_block_dag_info_call(

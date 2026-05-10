@@ -489,8 +489,9 @@ message ShutdownResponseMessage {
   RPCError error = 1000;
 }
 
-// GetHeadersRequestMessage requests headers between the given startHash and the
-// current virtual, up to the given limit.
+// GetHeadersRequestMessage requests selected-parent-chain headers from
+// startHash, up to the inclusive limit. Ascending requests walk toward the
+// sink; descending requests walk toward genesis.
 message GetHeadersRequestMessage {
   string startHash = 1;
   uint64 limit = 2;
@@ -499,6 +500,7 @@ message GetHeadersRequestMessage {
 
 message GetHeadersResponseMessage {
   repeated string headers = 1;
+  repeated RpcBlockHeader blockHeaders = 2;
   RPCError error = 1000;
 }
 

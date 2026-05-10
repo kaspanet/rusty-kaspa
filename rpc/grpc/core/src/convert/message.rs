@@ -327,7 +327,11 @@ from!(item: &kaspa_rpc_core::GetHeadersRequest, protowire::GetHeadersRequestMess
     Self { start_hash: item.start_hash.to_string(), limit: item.limit, is_ascending: item.is_ascending }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetHeadersResponse>, protowire::GetHeadersResponseMessage, {
-    Self { headers: item.headers.iter().map(|x| x.hash.to_string()).collect(), error: None }
+    Self {
+        headers: item.headers.iter().map(|x| x.hash.to_string()).collect(),
+        block_headers: item.headers.iter().map(protowire::RpcBlockHeader::from).collect(),
+        error: None,
+    }
 });
 
 from!(item: &kaspa_rpc_core::GetUtxosByAddressesRequest, protowire::GetUtxosByAddressesRequestMessage, {
@@ -848,8 +852,19 @@ try_from!(item: &protowire::GetHeadersRequestMessage, kaspa_rpc_core::GetHeaders
     Self { start_hash: RpcHash::from_str(&item.start_hash)?, limit: item.limit, is_ascending: item.is_ascending }
 });
 try_from!(item: &protowire::GetHeadersResponseMessage, RpcResult<kaspa_rpc_core::GetHeadersResponse>, {
-    // TODO
-    Self { headers: vec![] }
+    if !item.headers.is_empty() && item.block_headers.is_empty() {
+        return Err(RpcError::General("get headers response contains only header hashes without full headers".to_string()));
+    }
+    let headers = item.block_headers.iter().map(kaspa_rpc_core::RpcHeader::try_from).collect::<RpcResult<Vec<_>>>()?;
+    if item.headers.len() != headers.len() {
+        return Err(RpcError::General("get headers response has inconsistent legacy hashes and full headers".to_string()));
+    }
+    for (legacy_hash, header) in item.headers.iter().zip(headers.iter()) {
+        if RpcHash::from_str(legacy_hash)? != header.hash {
+            return Err(RpcError::General("get headers response has inconsistent legacy hashes and full headers".to_string()));
+        }
+    }
+    Self { headers }
 });
 
 try_from!(item: &protowire::GetUtxosByAddressesRequestMessage, kaspa_rpc_core::GetUtxosByAddressesRequest, {
@@ -1099,9 +1114,112 @@ try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa
 
 #[cfg(test)]
 mod tests {
-    use kaspa_rpc_core::{RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
+    use kaspa_consensus_core::header::Header;
+    use kaspa_rpc_core::{
+        GetHeadersResponse, RpcError, RpcHash, RpcHeader, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse,
+    };
 
-    use crate::protowire::{self, SubmitBlockResponseMessage, submit_block_response_message::RejectReason};
+    use crate::protowire::{self, GetHeadersResponseMessage, SubmitBlockResponseMessage, submit_block_response_message::RejectReason};
+
+    fn new_unique() -> RpcHash {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+        RpcHash::from_u64_word(c)
+    }
+
+    fn rpc_header() -> RpcHeader {
+        Header::new_finalized(
+            0,
+            vec![vec![new_unique()]].try_into().unwrap(),
+            new_unique(),
+            new_unique(),
+            new_unique(),
+            123,
+            456,
+            789,
+            101_112,
+            131_415.into(),
+            161_718,
+            new_unique(),
+        )
+        .into()
+    }
+
+    fn legacy_header_hash() -> String {
+        new_unique().to_string()
+    }
+
+    #[test]
+    fn get_headers_response_accepts_empty_success() {
+        let protowire = GetHeadersResponseMessage { headers: Vec::new(), block_headers: Vec::new(), error: None };
+
+        let rpc_core: RpcResult<GetHeadersResponse> = (&protowire).try_into();
+
+        assert!(matches!(rpc_core, Ok(GetHeadersResponse { headers }) if headers.is_empty()));
+    }
+
+    #[test]
+    fn get_headers_response_rejects_hashes_without_full_headers() {
+        let protowire = GetHeadersResponseMessage { headers: vec![legacy_header_hash()], block_headers: Vec::new(), error: None };
+
+        let rpc_core: RpcResult<GetHeadersResponse> = (&protowire).try_into();
+
+        assert!(
+            matches!(rpc_core, Err(RpcError::General(message)) if message == "get headers response contains only header hashes without full headers")
+        );
+    }
+
+    #[test]
+    fn get_headers_response_accepts_matching_legacy_hashes_and_full_headers() {
+        let header = rpc_header();
+        let protowire =
+            GetHeadersResponseMessage { headers: vec![header.hash.to_string()], block_headers: vec![(&header).into()], error: None };
+
+        let rpc_core: RpcResult<GetHeadersResponse> = (&protowire).try_into();
+
+        let headers = rpc_core.unwrap().headers;
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].hash, header.hash);
+    }
+
+    #[test]
+    fn get_headers_response_rejects_legacy_hash_count_mismatch() {
+        let header = rpc_header();
+        let protowire = GetHeadersResponseMessage { headers: Vec::new(), block_headers: vec![(&header).into()], error: None };
+
+        let rpc_core: RpcResult<GetHeadersResponse> = (&protowire).try_into();
+
+        assert!(
+            matches!(rpc_core, Err(RpcError::General(message)) if message == "get headers response has inconsistent legacy hashes and full headers")
+        );
+    }
+
+    #[test]
+    fn get_headers_response_rejects_legacy_hash_mismatch() {
+        let header = rpc_header();
+        let protowire =
+            GetHeadersResponseMessage { headers: vec![legacy_header_hash()], block_headers: vec![(&header).into()], error: None };
+
+        let rpc_core: RpcResult<GetHeadersResponse> = (&protowire).try_into();
+
+        assert!(
+            matches!(rpc_core, Err(RpcError::General(message)) if message == "get headers response has inconsistent legacy hashes and full headers")
+        );
+    }
+
+    #[test]
+    fn get_headers_response_error_takes_precedence_over_payload() {
+        let protowire = GetHeadersResponseMessage {
+            headers: vec![legacy_header_hash()],
+            block_headers: Vec::new(),
+            error: Some(protowire::RpcError { message: "upstream error".to_string() }),
+        };
+
+        let rpc_core: RpcResult<GetHeadersResponse> = (&protowire).try_into();
+
+        assert!(matches!(rpc_core, Err(RpcError::General(message)) if message == "upstream error"));
+    }
 
     #[test]
     fn test_submit_block_response() {

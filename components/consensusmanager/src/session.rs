@@ -338,7 +338,7 @@ impl ConsensusSessionOwned {
             .await
     }
 
-    /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.
+    /// Returns the antipast of block `hash` from the POV of `context`, i.e. the intersection of `antipast(hash)` and `past(context)`.
     /// Since this might be an expensive operation for deep blocks, we allow the caller to specify a limit
     /// `max_traversal_allowed` on the maximum amount of blocks to traverse for obtaining the answer
     pub async fn async_get_antipast_from_pov(
@@ -365,6 +365,11 @@ impl ConsensusSessionOwned {
         high: Option<Hash>,
     ) -> ConsensusResult<Vec<Hash>> {
         self.clone().spawn_blocking(move |c| c.create_virtual_selected_chain_block_locator(low, high)).await
+    }
+
+    /// Returns up to `limit` hashes from `start` toward the virtual selected-chain tip, including `start`.
+    pub async fn async_get_virtual_selected_chain_from(&self, start: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_selected_chain_from(start, limit)).await
     }
 
     pub async fn async_create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
