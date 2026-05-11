@@ -1500,6 +1500,11 @@ impl ConsensusApi for Consensus {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(block_hash)?;
 
+        // Genesis has no selected parent; reject before we try to dereference one.
+        if block_hash == self.config.params.genesis.hash {
+            return Err(ConsensusError::BlockIsGenesis(block_hash));
+        }
+
         // Canonicality: must be a selected-parent-chain block (ancestor of or equal to sink).
         let sink = self.get_sink();
         if !self.services.reachability_service.is_chain_ancestor_of(block_hash, sink) {
@@ -1539,14 +1544,12 @@ impl ConsensusApi for Consensus {
         // In debug builds, verify the proof is consistent with the stored lanes_root
         // and that metadata chains to the header's seq_commit.
         debug_assert!({
-            use kaspa_consensus_core::BlueWorkType;
             use kaspa_hashes::SeqCommitActiveNode;
             use kaspa_seq_commit::{
                 hashing::smt_leaf_hash,
                 types::SmtLeafInput,
                 verify::{SmtMetadata, verify_smt_metadata},
             };
-            let _ = BlueWorkType::default(); // silence unused-import if feature flags disable use
             let lanes_root = self.storage.smt_stores.get_lanes_root(current_bounds, is_canonical);
             let leaf = lane_tip.zip(lane_blue_score).map(|(t, bs)| smt_leaf_hash(&SmtLeafInput { lane_tip: &t, blue_score: bs }));
             let computed_root = smt_proof.as_proof().compute_root::<SeqCommitActiveNode>(&lane_key, leaf).unwrap();

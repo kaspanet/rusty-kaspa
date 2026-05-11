@@ -464,8 +464,10 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Returns a self-contained witness for verifying the lane `lane_key` against
     /// the `seq_commit` carried in `block_hash`'s header. The block must be a
-    /// chain (selected-parent) block; non-canonical blocks are rejected with
-    /// [`ConsensusError::BlockNotInSelectedChain`].
+    /// chain (selected-parent) block at or after the current pruning point;
+    /// non-canonical blocks are rejected with [`ConsensusError::BlockNotInSelectedChain`],
+    /// too-deep blocks with [`ConsensusError::BlockTooDeep`], and genesis with
+    /// [`ConsensusError::BlockIsGenesis`].
     fn get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
         unimplemented!()
     }

@@ -893,19 +893,27 @@ async fn seq_commit_lane_proof_test() {
     assert_eq!(grpc_proof.payload_and_ctx_digest, wrpc_proof.payload_and_ctx_digest);
     assert_eq!(grpc_proof.parent_seq_commit, wrpc_proof.parent_seq_commit);
 
-    // Negative: unknown block hash.
+    // Negative: unknown block hash. gRPC stringifies RpcError, so the typed
+    // ConsensusError::HeaderNotFound becomes RpcError::General with the Display
+    // text of HeaderNotFound ("cannot find header ...").
     let unknown = Hash::from_bytes([0xDE; 32]);
     let err =
         grpc.get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest { block_hash: unknown, lane_key }).await.unwrap_err();
-    assert!(
-        matches!(
-            err,
-            kaspa_rpc_core::RpcError::ConsensusError(kaspa_consensus_core::errors::consensus::ConsensusError::BlockNotFound(_))
-                | kaspa_rpc_core::RpcError::BlockNotInSelectedChain(_)
-                | kaspa_rpc_core::RpcError::General(_)
-        ),
-        "unexpected error: {err:?}"
-    );
+    let kaspa_rpc_core::RpcError::General(msg) = &err else {
+        panic!("unexpected error: {err:?}");
+    };
+    assert!(msg.contains("cannot find header"), "unexpected message: {msg}");
+
+    // Negative: genesis has no selected parent. Same gRPC stringification — the
+    // ConsensusError::BlockIsGenesis Display text is carried in RpcError::General.
+    let err = grpc
+        .get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest { block_hash: SIMNET_GENESIS.hash, lane_key })
+        .await
+        .unwrap_err();
+    let kaspa_rpc_core::RpcError::General(msg) = &err else {
+        panic!("unexpected error: {err:?}");
+    };
+    assert!(msg.contains("is genesis"), "unexpected message: {msg}");
 
     // Mine a second block so the first block's coinbase becomes an accepted
     // tx at the second block — that populates the coinbase-subnetwork lane.

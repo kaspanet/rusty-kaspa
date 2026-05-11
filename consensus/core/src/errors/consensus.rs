@@ -54,6 +54,9 @@ pub enum ConsensusError {
 
     #[error("block {0} is too deep (before the current pruning point)")]
     BlockTooDeep(Hash),
+
+    #[error("block {0} is genesis and has no selected parent")]
+    BlockIsGenesis(Hash),
 }
 
 pub type ConsensusResult<T> = std::result::Result<T, ConsensusError>;
