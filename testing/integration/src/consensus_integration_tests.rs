@@ -1743,7 +1743,8 @@ async fn push_limit_activation_test() {
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
             let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA as u64;
-            p.block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
+            p.prior_block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
+            p.new_transient_mass_limit = mass_limit;
             p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA;
             p.storage_mass_parameter = 1;
             p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
@@ -1932,11 +1933,11 @@ async fn payload_test() {
         0,
         SubnetworkId::default(),
         0,
-        vec![0; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
+        vec![0; (config.params.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
     );
 
     // Create a tx with transient mass over the block limit
-    txx.payload = vec![0; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR + 100) as usize];
+    txx.payload = vec![0; (config.params.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR + 100) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
@@ -1944,7 +1945,7 @@ async fn payload_test() {
     assert_match!(consensus_res, Err(RuleError::ExceedsTransientMassLimit(_, _)));
 
     // Fix the payload to be below the limit
-    txx.payload = vec![0; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    txx.payload = vec![0; (config.params.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
@@ -1995,7 +1996,7 @@ async fn payload_for_native_tx_test() {
     consensus.init();
 
     // Create transaction with large payload
-    let large_payload = vec![0u8; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    let large_payload = vec![0u8; (config.params.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx_with_payload = Transaction::new(
         0,
         vec![TransactionInput::new(
@@ -2061,7 +2062,8 @@ fn build_p2pk_block(
             let genesis_header: Header = (&p.genesis).into();
             p.genesis.hash = genesis_header.hash;
             p.mass_per_sig_op = mass_per_sig_op;
-            p.block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
+            p.prior_block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
+            p.new_transient_mass_limit = u64::MAX;
             p.covenants_activation = ForkActivation::always();
         })
         .build();
@@ -2273,7 +2275,7 @@ async fn testnet12_accepts_one_valid_stark_proof_but_rejects_two() {
         .to_immutable();
     assert_match!(
         consensus.validate_and_insert_block(two_stark_block).virtual_state_task.await,
-        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == TESTNET12_PARAMS.block_mass_limits.compute
+        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == TESTNET12_PARAMS.block_mass_limits().after().compute
     );
     consensus.shutdown(wait_handles);
 }

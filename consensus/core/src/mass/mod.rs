@@ -526,7 +526,7 @@ mod tests {
         for net in NetworkType::iter() {
             let params: Params = net.into();
             let max_spk_len = (params.max_script_public_key_len as u64)
-                .min(params.block_mass_limits.compute.div_ceil(params.mass_per_script_pub_key_byte));
+                .min(params.block_mass_limits().after().compute.div_ceil(params.mass_per_script_pub_key_byte));
             let max_plurality = (UTXO_CONST_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
             // verify C·P^2 can never overflow

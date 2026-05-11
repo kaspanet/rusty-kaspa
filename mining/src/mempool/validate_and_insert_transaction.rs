@@ -27,7 +27,7 @@ impl Mempool {
         // Populate mass and estimated_size in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_non_contextual_masses = Some(consensus.calculate_transaction_non_contextual_masses(&transaction.tx)?);
         self.validate_transaction_in_isolation(&transaction)?;
-        let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
+        let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy, consensus.get_virtual_daa_score())?;
         self.populate_mempool_entries(&mut transaction);
         Ok(TransactionPreValidation { transaction, feerate_threshold })
     }
@@ -60,8 +60,9 @@ impl Mempool {
                 if orphan == Orphan::Forbidden {
                     return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
-                let _ = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
-                self.orphan_pool.try_add_orphan(consensus.get_virtual_daa_score(), transaction, priority)?;
+                let virtual_daa_score = consensus.get_virtual_daa_score();
+                let _ = self.get_replace_by_fee_constraint(&transaction, rbf_policy, virtual_daa_score)?;
+                self.orphan_pool.try_add_orphan(virtual_daa_score, transaction, priority)?;
                 return Ok(TransactionPostValidation::default());
             }
             Err(err) => {
@@ -73,7 +74,8 @@ impl Mempool {
         self.validate_transaction_in_context(&transaction)?;
 
         // Check double spends and try to remove them if the RBF policy requires it
-        let removed_transaction = self.execute_replace_by_fee(&transaction, rbf_policy)?;
+        let virtual_daa_score = consensus.get_virtual_daa_score();
+        let removed_transaction = self.execute_replace_by_fee(&transaction, rbf_policy, virtual_daa_score)?;
 
         //
         // Note: there exists a case below where `limit_transaction_count` returns an error signaling that
@@ -85,7 +87,7 @@ impl Mempool {
 
         // Before adding the transaction, check if there is room in the pool
         let transaction_size = transaction.mempool_estimated_bytes();
-        let txs_to_remove = self.transaction_pool.limit_transaction_count(&transaction, transaction_size)?;
+        let txs_to_remove = self.transaction_pool.limit_transaction_count(&transaction, transaction_size, virtual_daa_score)?;
         if !txs_to_remove.is_empty() {
             let transaction_pool_len_before = self.transaction_pool.len();
             for x in txs_to_remove.iter() {
@@ -120,12 +122,8 @@ impl Mempool {
         );
 
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
-        let accepted_transaction = self
-            .transaction_pool
-            .add_transaction(transaction, consensus.get_virtual_daa_score(), priority, transaction_size)?
-            .mtx
-            .tx
-            .clone();
+        let accepted_transaction =
+            self.transaction_pool.add_transaction(transaction, virtual_daa_score, priority, transaction_size)?.mtx.tx.clone();
         Ok(TransactionPostValidation { removed: removed_transaction, accepted: Some(accepted_transaction) })
     }
 
@@ -231,7 +229,7 @@ impl Mempool {
         let rbf_policy = Self::get_orphan_transaction_rbf_policy(transaction.priority);
 
         self.validate_transaction_unacceptance(&transaction.mtx)?;
-        let _ = self.get_replace_by_fee_constraint(&transaction.mtx, rbf_policy)?;
+        let _ = self.get_replace_by_fee_constraint(&transaction.mtx, rbf_policy, transaction.added_at_daa_score)?;
         Ok(transaction)
     }
 

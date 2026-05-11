@@ -287,8 +287,12 @@ mod tests {
         for test in tests.iter() {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config =
-                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
+                let mut config = Config::build_default(
+                    params.target_time_per_block(),
+                    false,
+                    params.mempool_block_mass_limits(),
+                    params.block_lane_limits,
+                );
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -373,8 +377,12 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config =
-                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
+                let mut config = Config::build_default(
+                    params.target_time_per_block(),
+                    false,
+                    params.mempool_block_mass_limits(),
+                    params.block_lane_limits,
+                );
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -570,8 +578,12 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let config =
-                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
+                let config = Config::build_default(
+                    params.target_time_per_block(),
+                    false,
+                    params.mempool_block_mass_limits(),
+                    params.block_lane_limits,
+                );
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
 
