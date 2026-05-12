@@ -5,7 +5,7 @@ use crate::mempool::{
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
-    mass,
+    mass::{self, NonContextualMasses},
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
 use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
@@ -161,14 +161,16 @@ impl Mempool {
                     }
                 }
             }
+        }
 
-            // TODO: For now, until wallets adapt, we only require minimum fee as function of compute mass (but the fee/mass ratio will
-            // use the max over all masses and will affect tx selection to block template)
-            let minimum_fee =
-                self.minimum_required_transaction_relay_fee(transaction.calculated_non_contextual_masses.unwrap().compute_mass);
-            if transaction.calculated_fee.unwrap() < minimum_fee {
-                return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
-            }
+        // Minimum relay fee applies to non-contextual mass so block-space usage has a minimum cost,
+        // including transient mass. This is especially important after increasing the transient mass limit.
+        // Storage mass does not require an additional relay-fee floor here since storage growth is
+        // sufficiently protected even under worst-case block-limit usage.
+        let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
+        let minimum_fee = self.minimum_required_transaction_relay_fee(compute_mass.max(transient_mass));
+        if transaction.calculated_fee.unwrap() < minimum_fee {
+            return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
         }
 
         Ok(())
@@ -209,7 +211,7 @@ mod tests {
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
-        tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+        tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
     };
     use kaspa_txscript::{
         opcodes::codes::{OpReturn, OpTrue},
@@ -540,6 +542,92 @@ mod tests {
                     );
                 }
                 assert_eq!(res.is_ok(), test.is_standard, "failed for test '{}': {:?}", test.name, res);
+            }
+        }
+    }
+
+    #[test]
+    fn test_check_transaction_standard_in_context() {
+        let addr = Address::new(Prefix::Testnet, Version::PubKey, &[1u8; 32]);
+        let standard_script_public_key = kaspa_txscript::pay_to_address_script(&addr);
+        let non_standard_script_public_key =
+            ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION, ScriptBuilder::new().add_op(OpTrue).unwrap().script().into());
+
+        enum Expected {
+            Standard,
+            RejectInputScriptClass,
+            RejectInsufficientFee { fee: u64, minimum_fee: u64 },
+        }
+
+        struct Test {
+            name: &'static str,
+            mtx: MutableTransaction,
+            expected: Expected,
+        }
+
+        fn new_mtx(script_public_key: ScriptPublicKey, masses: NonContextualMasses, fee: u64) -> MutableTransaction {
+            let prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+            let input = TransactionInput::new(prev_out, vec![], MAX_TX_IN_SEQUENCE_NUM, 1);
+            let tx = Transaction::new(
+                TX_VERSION,
+                vec![input],
+                vec![TransactionOutput::new(SOMPI_PER_KASPA, script_public_key.clone())],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            let mut mtx = MutableTransaction::with_entries(
+                tx.into(),
+                vec![UtxoEntry::new(2 * SOMPI_PER_KASPA, script_public_key, 0, false, None)],
+            );
+            mtx.calculated_non_contextual_masses = Some(masses);
+            mtx.calculated_fee = Some(fee);
+            mtx
+        }
+
+        let tests = vec![
+            Test {
+                name: "standard input with sufficient fee",
+                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(1_000, 500), 1_000),
+                expected: Expected::Standard,
+            },
+            Test {
+                name: "non-standard input script class",
+                mtx: new_mtx(non_standard_script_public_key, NonContextualMasses::new(1_000, 1_000), 1_000),
+                expected: Expected::RejectInputScriptClass,
+            },
+            Test {
+                name: "compute mass triggers insufficient relay fee",
+                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(10_000, 1), 9_999),
+                expected: Expected::RejectInsufficientFee { fee: 9_999, minimum_fee: 10_000 },
+            },
+            Test {
+                name: "transient mass triggers insufficient relay fee",
+                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(1, 10_000), 9_999),
+                expected: Expected::RejectInsufficientFee { fee: 9_999, minimum_fee: 10_000 },
+            },
+        ];
+
+        let params: Params = NetworkType::Simnet.into();
+        let config =
+            Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
+        let counters = Arc::new(MiningCounters::default());
+        let mempool = Mempool::new(Arc::new(config), counters);
+
+        for test in tests {
+            let res = mempool.check_transaction_standard_in_context(&test.mtx);
+            match test.expected {
+                Expected::Standard => assert_eq!(res, Ok(()), "failed for test '{}'", test.name),
+                Expected::RejectInputScriptClass => {
+                    assert_eq!(res, Err(NonStandardError::RejectInputScriptClass(test.mtx.id(), 0)), "failed for test '{}'", test.name)
+                }
+                Expected::RejectInsufficientFee { fee, minimum_fee } => assert_eq!(
+                    res,
+                    Err(NonStandardError::RejectInsufficientFee(test.mtx.id(), fee, minimum_fee)),
+                    "failed for test '{}'",
+                    test.name
+                ),
             }
         }
     }
