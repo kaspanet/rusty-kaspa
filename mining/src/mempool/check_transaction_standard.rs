@@ -12,7 +12,13 @@ use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class:
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
-const MAX_STANDARD_P2SH_SIG_OPS: u16 = 1000; // TODO(covpp-mainnet)
+///
+/// The upper-bound execution limit comes from compute mass: some zk opcodes already cost the equivalent
+/// of roughly 140-250 signature operations. However, for classic Schnorr/ECDSA signature operations, this
+/// standardness limit encourages parallelism across inputs rather than concentrating work in one input.
+/// It is also at least as permissive as the previous standard compute-mass limit of 100k,
+/// which allowed at most 100 sigops since each sigop costs 1000 grams.
+const MAX_STANDARD_P2SH_SIG_OPS: u16 = 100;
 
 /// MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE is the maximum size allowed for a
 /// transaction input signature script to be considered standard. This
@@ -151,7 +157,11 @@ impl Mempool {
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
                 ScriptClass::ScriptHash => {
-                    // todo relax due to on fly calculation
+                    // TODO: relax due to on the fly sigop calculation
+                    // Possible options:
+                    //      1. remove all together and rely on compute mass limits
+                    //      2. extract an upper bound on the committed value from input.mass and min
+                    //         with the static count (relying on validation to fail if the commitment is wrong)
                     let num_sig_ops = get_sig_op_count_upper_bound::<PopulatedTransaction, SigHashReusedValuesUnsync>(
                         &input.signature_script,
                         &entry.script_public_key,
