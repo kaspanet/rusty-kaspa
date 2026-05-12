@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     mass::{self, NonContextualMasses},
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
-use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
+use kaspa_txscript::{get_sig_op_count_upper_bound, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
@@ -52,11 +52,6 @@ impl Mempool {
     ///
     /// It is exposed by [MiningManager] for use by transaction generators and wallets.
     pub(crate) fn is_transaction_output_dust(&self, transaction_output: &TransactionOutput) -> bool {
-        // Unspendable outputs are considered dust.
-        if is_unspendable::<PopulatedTransaction, SigHashReusedValuesUnsync>(transaction_output.script_public_key.script()) {
-            return true;
-        }
-
         // The total serialized size consists of the output and the associated
         // input script to redeem it. Since there is no input script
         // to redeem it yet, use the minimum size of a typical input script.
@@ -264,8 +259,6 @@ mod tests {
                 0xd9, 0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
             ],
         );
-        let invalid_script_public_key = ScriptPublicKey::new(0, smallvec![0x01]);
-
         struct Test {
             name: &'static str,
             tx_out: TransactionOutput,
@@ -314,13 +307,6 @@ mod tests {
                 tx_out: TransactionOutput::new(u64::MAX, script_public_key),
                 minimum_relay_transaction_fee: u64::MAX,
                 is_dust: false,
-            },
-            // Unspendable script_public_key due to an invalid public key script.
-            Test {
-                name: "unspendable script_public_key",
-                tx_out: TransactionOutput::new(5000, invalid_script_public_key),
-                minimum_relay_transaction_fee: 0,
-                is_dust: true,
             },
         ];
         for test in tests {
