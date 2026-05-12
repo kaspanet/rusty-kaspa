@@ -41,6 +41,18 @@ pub enum RuleError {
     #[error("transaction {0} is not standard: {1}")]
     RejectNonStandard(TransactionId, String),
 
+    #[error("transaction compute mass of {1} is larger than max allowed size of {2}")]
+    RejectComputeMass(TransactionId, u64, u64),
+
+    #[error("transaction transient (storage) mass of {1} is larger than max allowed size of {2}")]
+    RejectTransientMass(TransactionId, u64, u64),
+
+    #[error("transaction storage mass of {1} is larger than max allowed size of {2}")]
+    RejectStorageMass(TransactionId, u64, u64),
+
+    #[error("transaction gas of {1} is larger than max allowed per-lane gas of {2}")]
+    RejectGas(TransactionId, u64, u64),
+
     #[error("one of the transaction inputs spends an immature UTXO: {0}")]
     RejectImmatureSpend(TxRuleError),
 

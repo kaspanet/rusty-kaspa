@@ -37,6 +37,7 @@ pub struct Config {
     pub maximum_orphan_transaction_normalized_mass: u64,
     pub maximum_orphan_transaction_count: u64,
     pub accept_non_standard: bool,
+    pub mempool_block_mass_limits: ForkedParam<BlockMassLimits>,
     pub mempool_mass_cofactors: ForkedParam<MassCofactors>,
     pub block_lane_limits: BlockLaneLimits,
     pub minimum_relay_transaction_fee: u64,
@@ -60,12 +61,13 @@ impl Config {
         maximum_orphan_transaction_normalized_mass: u64,
         maximum_orphan_transaction_count: u64,
         accept_non_standard: bool,
-        mempool_mass_cofactors: impl Into<ForkedParam<MassCofactors>>,
+        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
         block_lane_limits: BlockLaneLimits,
         minimum_relay_transaction_fee: u64,
         network_blocks_per_second: u64,
     ) -> Self {
-        let mempool_mass_cofactors = mempool_mass_cofactors.into();
+        let mempool_block_mass_limits = mempool_block_mass_limits.into();
+        let mempool_mass_cofactors = mempool_block_mass_limits.map(|limits| limits.cofactors());
         Self {
             maximum_transaction_count,
             mempool_size_limit,
@@ -81,6 +83,7 @@ impl Config {
             maximum_orphan_transaction_normalized_mass,
             maximum_orphan_transaction_count,
             accept_non_standard,
+            mempool_block_mass_limits,
             mempool_mass_cofactors,
             block_lane_limits,
             minimum_relay_transaction_fee,
@@ -116,6 +119,7 @@ impl Config {
             maximum_orphan_transaction_normalized_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_NORMALIZED_MASS,
             maximum_orphan_transaction_count: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT,
             accept_non_standard: relay_non_std_transactions,
+            mempool_block_mass_limits,
             mempool_mass_cofactors,
             block_lane_limits,
             minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,

@@ -1,8 +1,10 @@
 use crate::{
     MiningCounters,
+    errors::MiningManagerError,
     manager::MiningManager,
     mempool::{
         config::Config,
+        errors::RuleError,
         tx::{Orphan, Priority, RbfPolicy},
     },
 };
@@ -280,6 +282,52 @@ fn rbf_lower_fee_replacement_is_accepted_at_delayed_mempool_activation_boundary(
     );
 }
 
+#[test]
+fn template_limits_reject_transient_tx_until_delayed_mempool_activation() {
+    let params = transient_activation_params();
+    let delay_daa_score = mempool_delay_daa_score(&params);
+    let boundary_daa_score = ACTIVATION_DAA_SCORE + delay_daa_score;
+    let consensus = Arc::new(MassPolicyTestConsensus::new(&params));
+    let mining_manager = mining_manager(&params);
+    let tx = test_transaction(0, 750_000, 10_000);
+
+    consensus.set_virtual_daa_score(boundary_daa_score - 1);
+    let err = match insert_transaction(&mining_manager, consensus.as_ref(), tx.clone(), RbfPolicy::Forbidden) {
+        Ok(_) => panic!("transient-heavy tx should exceed the pre-delay template mass limit"),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(err, MiningManagerError::MempoolError(RuleError::RejectTransientMass(tx_id, 750_000, PRIOR_TRANSIENT_LIMIT)) if tx_id == tx.id()),
+        "expected transient-heavy tx to exceed pre-delay template mass limit, got {err:?}"
+    );
+
+    consensus.set_virtual_daa_score(boundary_daa_score);
+    insert_transaction(&mining_manager, consensus.as_ref(), tx.clone(), RbfPolicy::Forbidden)
+        .expect("same tx should fit once the delayed mempool transient limit activates");
+    assert!(mining_manager.has_transaction(&tx.id(), crate::model::tx_query::TransactionQuery::All));
+}
+
+#[test]
+fn template_limits_reject_gas_even_when_non_standard_transactions_are_allowed() {
+    let params = transient_activation_params();
+    let consensus = Arc::new(MassPolicyTestConsensus::new(&params));
+    let mining_manager = mining_manager(&params);
+    let tx = test_transaction_with_gas(0, 10_000, 10_000, DEFAULT_GAS_PER_LANE_LIMIT + 1);
+
+    let err = match insert_transaction(&mining_manager, consensus.as_ref(), tx.clone(), RbfPolicy::Forbidden) {
+        Ok(_) => panic!("gas-heavy tx should exceed the block-template gas limit"),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(
+            err,
+            MiningManagerError::MempoolError(RuleError::RejectGas(tx_id, gas, DEFAULT_GAS_PER_LANE_LIMIT))
+                if tx_id == tx.id() && gas == DEFAULT_GAS_PER_LANE_LIMIT + 1
+        ),
+        "expected tx to exceed block-template gas limit, got {err:?}"
+    );
+}
+
 fn transient_activation_params() -> Params {
     let mut params = SIMNET_PARAMS.clone();
     params.prior_block_mass_limits = BlockMassLimits::with_shared_limit(PRIOR_TRANSIENT_LIMIT);
@@ -298,20 +346,30 @@ fn mining_manager(params: &Params) -> MiningManager {
 }
 
 fn test_transaction(n: u64, transient_mass: u64, fee: u64) -> MutableTransaction {
-    transaction_spending_outpoint(n, outpoint(n), transient_mass, fee)
+    test_transaction_with_gas(n, transient_mass, fee, 0)
+}
+
+fn test_transaction_with_gas(n: u64, transient_mass: u64, fee: u64, gas: u64) -> MutableTransaction {
+    transaction_spending_outpoint(n, outpoint(n), transient_mass, fee, gas)
 }
 
 fn double_spend_transaction(n: u64, owner: &MutableTransaction, transient_mass: u64, fee: u64) -> MutableTransaction {
-    transaction_spending_outpoint(n, owner.tx.inputs[0].previous_outpoint, transient_mass, fee)
+    transaction_spending_outpoint(n, owner.tx.inputs[0].previous_outpoint, transient_mass, fee, 0)
 }
 
-fn transaction_spending_outpoint(n: u64, outpoint: TransactionOutpoint, transient_mass: u64, fee: u64) -> MutableTransaction {
+fn transaction_spending_outpoint(
+    n: u64,
+    outpoint: TransactionOutpoint,
+    transient_mass: u64,
+    fee: u64,
+    gas: u64,
+) -> MutableTransaction {
     let script_public_key = ScriptPublicKey::new(0, scriptvec![0x51]);
     let input_amount = 10 * SOMPI_PER_KASPA;
     let input = TransactionInput::new(outpoint, vec![], MAX_TX_IN_SEQUENCE_NUM, 0);
     let output = TransactionOutput::new(input_amount - fee, script_public_key.clone());
     let tx =
-        Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![n as u8; transient_mass as usize]);
+        Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, gas, vec![n as u8; transient_mass as usize]);
     let entry = UtxoEntry::new(input_amount, script_public_key, 0, false, None);
     MutableTransaction::with_entries(tx.into(), vec![entry])
 }

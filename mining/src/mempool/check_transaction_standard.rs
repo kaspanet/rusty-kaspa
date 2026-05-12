@@ -2,12 +2,12 @@ use crate::mempool::{
     Mempool,
     errors::{NonStandardError, NonStandardResult},
 };
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
-use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, mass::NonContextualMasses};
 use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
@@ -33,33 +33,9 @@ const MAX_STANDARD_P2SH_SIG_OPS: u16 = 1000; // TODO(covpp-mainnet)
 /// (1 + 15*74 + 3) + (15*34 + 3) + 23 = 1650
 const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 300_000; // TODO(covpp-mainnet)
 
-/// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
-/// are considered standard and will therefore be relayed and considered for mining.
-const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 500_000; // TODO(covpp-mainnet)
-const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 1_000_000; // TODO(covpp-mainnet)
-
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-
-        // Since extremely large transactions with a lot of inputs can cost
-        // almost as much to process as the sender fees, limit the maximum
-        // size of a transaction. This also helps mitigate CPU exhaustion
-        // attacks.
-        let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
-        if compute_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectComputeMass(transaction_id, compute_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
-        }
-        if transient_mass > MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS {
-            return Err(NonStandardError::RejectTransientMass(
-                transaction_id,
-                transient_mass,
-                MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS,
-            ));
-        }
-        if transaction.tx.gas > self.config.block_lane_limits.gas_per_lane {
-            return Err(NonStandardError::RejectGas(transaction_id, transaction.tx.gas, self.config.block_lane_limits.gas_per_lane));
-        }
 
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             // Each transaction input signature script must not exceed the
@@ -163,10 +139,6 @@ impl Mempool {
     /// into the mempool and relay.
     pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-        let contextual_mass = transaction.tx.mass();
-        if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectStorageMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
-        }
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             // It is safe to elide existence and index checks here since
             // they have already been checked prior to calling this
@@ -232,13 +204,12 @@ mod tests {
     };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
-        config::constants::consensus::DEFAULT_GAS_PER_LANE_LIMIT,
         config::params::Params,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
-        tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+        tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use kaspa_txscript::{
         opcodes::codes::{OpReturn, OpTrue},
@@ -246,6 +217,8 @@ mod tests {
     };
     use smallvec::smallvec;
     use std::sync::Arc;
+
+    const RELAY_FEE_TEST_MASS: u64 = 500_000;
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
@@ -272,10 +245,10 @@ mod tests {
                 want: 100,
             },
             Test {
-                name: "max standard tx size with default minimum relay fee",
-                size: MAXIMUM_STANDARD_TRANSACTION_MASS,
+                name: "large relay fee test mass with default minimum relay fee",
+                size: RELAY_FEE_TEST_MASS,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-                want: MAXIMUM_STANDARD_TRANSACTION_MASS,
+                want: RELAY_FEE_TEST_MASS,
             },
             Test { name: "1500 bytes with 5000 relay fee", size: 1500, minimum_relay_transaction_fee: 5000, want: 7500 },
             Test { name: "1500 bytes with 3000 relay fee", size: 1500, minimum_relay_transaction_fee: 3000, want: 4500 },
@@ -453,44 +426,6 @@ mod tests {
                     1000,
                 ),
                 is_standard: true, // check_transaction_standard_in_isolation does not check version
-            },
-            Test {
-                name: "Transaction gas exceeds the per-lane limit",
-                mtx: new_mtx(
-                    Transaction::new(
-                        TX_VERSION,
-                        vec![dummy_tx_input.clone()],
-                        vec![dummy_tx_out.clone()],
-                        0,
-                        SUBNETWORK_ID_NATIVE,
-                        DEFAULT_GAS_PER_LANE_LIMIT + 1,
-                        vec![],
-                    ),
-                    1000,
-                ),
-                is_standard: false,
-            },
-            Test {
-                name: "Transaction size is too large",
-                mtx: new_mtx(
-                    Transaction::new(
-                        TX_VERSION,
-                        vec![dummy_tx_input.clone()],
-                        vec![TransactionOutput::new(
-                            0u64,
-                            ScriptPublicKey::new(
-                                MAX_SCRIPT_PUBLIC_KEY_VERSION,
-                                ScriptVec::from_vec(vec![0u8; MAXIMUM_STANDARD_TRANSACTION_MASS as usize + 1]),
-                            ),
-                        )],
-                        0,
-                        SUBNETWORK_ID_NATIVE,
-                        0,
-                        vec![],
-                    ),
-                    1000,
-                ),
-                is_standard: false,
             },
             Test {
                 name: "Signature script size is too large",

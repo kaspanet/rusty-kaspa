@@ -12,6 +12,7 @@ use crate::mempool::{
 use kaspa_consensus_core::{
     api::ConsensusApi,
     constants::UNACCEPTED_DAA_SCORE,
+    mass::NonContextualMasses,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
@@ -70,11 +71,13 @@ impl Mempool {
             }
         }
 
+        let virtual_daa_score = consensus.get_virtual_daa_score();
+        self.validate_transaction_template_limits(&transaction, virtual_daa_score)?;
+
         // Perform mempool in-context validations prior to possible RBF replacements
         self.validate_transaction_in_context(&transaction)?;
 
         // Check double spends and try to remove them if the RBF policy requires it
-        let virtual_daa_score = consensus.get_virtual_daa_score();
         let removed_transaction = self.execute_replace_by_fee(&transaction, rbf_policy, virtual_daa_score)?;
 
         //
@@ -153,6 +156,38 @@ impl Mempool {
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_context(transaction)?;
         }
+        Ok(())
+    }
+
+    /// Validates that the transaction can fit in a block template under the current mempool limits.
+    ///
+    /// This is intentionally separate from standardness: even when non-standard transactions are accepted,
+    /// the mempool must not admit a transaction which selectors can never include in a block. The transaction
+    /// is expected to be populated by consensus validation before this call, including non-contextual masses
+    /// and contextual storage mass.
+    fn validate_transaction_template_limits(&self, transaction: &MutableTransaction, virtual_daa_score: u64) -> RuleResult<()> {
+        if transaction.tx.gas > self.config.block_lane_limits.gas_per_lane {
+            return Err(RuleError::RejectGas(transaction.id(), transaction.tx.gas, self.config.block_lane_limits.gas_per_lane));
+        }
+
+        // Reject transactions that cannot fit in a block template under the
+        // current mempool resource policy. This is separate from standardness:
+        // non-standard transactions may be allowed by policy, but a transaction
+        // exceeding template limits would otherwise remain in the mempool forever.
+        let limits = self.config.mempool_block_mass_limits.get(virtual_daa_score);
+        let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
+        if compute_mass > limits.compute {
+            return Err(RuleError::RejectComputeMass(transaction.id(), compute_mass, limits.compute));
+        }
+        if transient_mass > limits.transient {
+            return Err(RuleError::RejectTransientMass(transaction.id(), transient_mass, limits.transient));
+        }
+
+        let storage_mass = transaction.tx.mass();
+        if storage_mass > limits.storage {
+            return Err(RuleError::RejectStorageMass(transaction.id(), storage_mass, limits.storage));
+        }
+
         Ok(())
     }
 
