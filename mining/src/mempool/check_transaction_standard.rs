@@ -127,8 +127,8 @@ mod tests {
     };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
-        config::params::Params,
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        config::params::{ForkActivation, Params},
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
@@ -141,6 +141,9 @@ mod tests {
     use std::sync::Arc;
 
     const RELAY_FEE_TEST_MASS: u64 = 500_000;
+    const fn default_minimum_relay_fee_for_mass(mass: u64) -> u64 {
+        mass * DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE / 1000
+    }
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
@@ -164,13 +167,13 @@ mod tests {
                 name: "100 bytes with default minimum relay fee",
                 size: 100,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-                want: 100,
+                want: default_minimum_relay_fee_for_mass(100),
             },
             Test {
                 name: "large relay fee test mass with default minimum relay fee",
                 size: RELAY_FEE_TEST_MASS,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-                want: RELAY_FEE_TEST_MASS,
+                want: default_minimum_relay_fee_for_mass(RELAY_FEE_TEST_MASS),
             },
             Test { name: "1500 bytes with 5000 relay fee", size: 1500, minimum_relay_transaction_fee: 5000, want: 7500 },
             Test { name: "1500 bytes with 3000 relay fee", size: 1500, minimum_relay_transaction_fee: 3000, want: 4500 },
@@ -379,36 +382,58 @@ mod tests {
             mtx
         }
 
+        // Use simnet params so prior and post-activation transient limits differ while the fork is active;
+        // this verifies that relay-fee pricing uses stable post-activation cofactors.
+        let params: Params = NetworkType::Simnet.into();
+        assert_ne!(params.toccata_activation, ForkActivation::never(), "this test requires post-activation cofactors");
+        let cofactors = params.mempool_block_mass_cofactors().after();
+        let transient = |bytes| bytes * TRANSIENT_BYTE_TO_MASS_FACTOR;
+        let normalized_transient = |bytes| NonContextualMasses::new(0, transient(bytes)).normalized_transient(&cofactors);
+
+        let bytes = 5_000;
+        let compute = normalized_transient(bytes);
+        let boundary_fee = default_minimum_relay_fee_for_mass(compute);
+        let insufficient_fee = boundary_fee - 1;
+
         let tests = vec![
             Test {
-                name: "standard input with sufficient fee",
-                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(1_000, 500), 1_000),
+                name: "standard input with exactly sufficient relay fee",
+                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(compute, transient(bytes)), boundary_fee),
                 expected: Expected::Standard,
             },
             Test {
                 name: "non-standard input script class",
-                mtx: new_mtx(non_standard_script_public_key, NonContextualMasses::new(1_000, 1_000), 1_000),
+                mtx: new_mtx(
+                    non_standard_script_public_key,
+                    NonContextualMasses::new(1_000, 1_000),
+                    DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+                ),
                 expected: Expected::RejectInputScriptClass,
             },
             Test {
                 name: "compute mass triggers insufficient relay fee",
-                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(10_000, 1), 9_999),
-                expected: Expected::RejectInsufficientComputeFee { fee: 9_999, minimum_fee: 10_000, compute_mass: 10_000 },
+                mtx: new_mtx(
+                    standard_script_public_key.clone(),
+                    NonContextualMasses::new(compute, transient(bytes - 1)),
+                    insufficient_fee,
+                ),
+                expected: Expected::RejectInsufficientComputeFee {
+                    fee: insufficient_fee,
+                    minimum_fee: boundary_fee,
+                    compute_mass: compute,
+                },
             },
             Test {
                 name: "transient mass triggers insufficient relay fee",
-                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(1, 20_000), 9_999),
+                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(compute - 1, transient(bytes)), insufficient_fee),
                 expected: Expected::RejectInsufficientTransientFee {
-                    fee: 9_999,
-                    minimum_fee: 10_000,
-                    normalized_transient_mass: 10_000,
+                    fee: insufficient_fee,
+                    minimum_fee: boundary_fee,
+                    normalized_transient_mass: compute,
                 },
             },
         ];
 
-        // Use simnet params so prior and post-activation transient limits differ while the fork is active;
-        // this verifies that relay-fee pricing uses stable post-activation cofactors.
-        let params: Params = NetworkType::Simnet.into();
         let config =
             Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
         let counters = Arc::new(MiningCounters::default());
