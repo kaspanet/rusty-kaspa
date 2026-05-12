@@ -49,7 +49,8 @@ impl TransactionValidator {
         block_daa_score: u64,
     ) -> TxResult<()> {
         self.check_tx_is_finalized(tx, lock_time_arg)?;
-        self.check_transaction_version(tx, block_daa_score)
+        self.check_transaction_version(tx, block_daa_score)?;
+        self.check_transaction_signature_scripts_in_header_context(tx, block_daa_score)
     }
 
     pub(crate) fn get_lock_time_type(tx: &Transaction) -> LockTimeType {
@@ -102,6 +103,15 @@ impl TransactionValidator {
 
         if tx.version != TX_VERSION {
             return Err(TxRuleError::UnknownTxVersion(tx.version));
+        }
+
+        Ok(())
+    }
+
+    fn check_transaction_signature_scripts_in_header_context(&self, tx: &Transaction, block_daa_score: u64) -> TxResult<()> {
+        let max_signature_script_len = self.max_signature_script_len.get(block_daa_score);
+        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > max_signature_script_len) {
+            return Err(TxRuleError::TooBigSignatureScript(i, max_signature_script_len));
         }
 
         Ok(())

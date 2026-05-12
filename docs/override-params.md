@@ -73,7 +73,8 @@ because they have logical relations and should be modified as a unit.
 | max_coinbase_payload_len                    | Maximum coinbase payload length |
 | max_tx_inputs                               | Max transaction inputs |
 | max_tx_outputs                              | Max transaction outputs |
-| max_signature_script_len                    | Max signature script length |
+| prior_max_signature_script_len              | Pre-Toccata max signature script length |
+| new_max_signature_script_len                | Post-Toccata max signature script length |
 | max_script_public_key_len                   | Max script public key length |
 | mass_per_tx_byte                            | Mass per transaction byte     |
 | mass_per_script_pub_key_byte                | Mass per script public key byte |

@@ -20,45 +20,9 @@ use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class:
 /// which allowed at most 100 sigops since each sigop costs 1000 grams.
 const MAX_STANDARD_P2SH_SIG_OPS: u16 = 100;
 
-/// MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE is the maximum size allowed for a
-/// transaction input signature script to be considered standard. This
-/// value allows for a 15-of-15 CHECKMULTISIG pay-to-script-hash with
-/// compressed keys.
-///
-/// The form of the overall script is: OP_0 <15 signatures> OP_PUSHDATA2
-/// <2 bytes len> [OP_15 <15 pubkeys> OP_15 OP_CHECKMULTISIG]
-///
-/// For the p2sh script portion, each of the 15 compressed pubkeys are
-/// 33 bytes (plus one for the OP_DATA_33 opcode), and the thus it totals
-/// to (15*34)+3 = 513 bytes. Next, each of the 15 signatures is a max
-/// of 73 bytes (plus one for the OP_DATA_73 opcode). Also, there is one
-/// extra byte for the initial extra OP_0 push and 3 bytes for the
-/// OP_PUSHDATA2 needed to specify the 513 bytes for the script push.
-/// That brings the total to 1+(15*74)+3+513 = 1627. This value also
-/// adds a few extra bytes to provide a little buffer.
-/// (1 + 15*74 + 3) + (15*34 + 3) + 23 = 1650
-const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 300_000; // TODO(covpp-mainnet)
-
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-
-        for (i, input) in transaction.tx.inputs.iter().enumerate() {
-            // Each transaction input signature script must not exceed the
-            // maximum size allowed for a standard transaction.
-            //
-            // See the comment on MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE for
-            // more details.
-            let signature_script_len = input.signature_script.len() as u64;
-            if signature_script_len > MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE {
-                return Err(NonStandardError::RejectSignatureScriptSize(
-                    transaction_id,
-                    i,
-                    signature_script_len,
-                    MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE,
-                ));
-            }
-        }
 
         // None of the output public key scripts can be a non-standard script or be "dust".
         for (i, output) in transaction.tx.outputs.iter().enumerate() {
@@ -438,27 +402,6 @@ mod tests {
                     1000,
                 ),
                 is_standard: true, // check_transaction_standard_in_isolation does not check version
-            },
-            Test {
-                name: "Signature script size is too large",
-                mtx: new_mtx(
-                    Transaction::new(
-                        TX_VERSION + 1,
-                        vec![TransactionInput::new(
-                            dummy_prev_out,
-                            vec![0u8; MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE as usize + 1],
-                            MAX_TX_IN_SEQUENCE_NUM,
-                            1,
-                        )],
-                        vec![dummy_tx_out.clone()],
-                        0,
-                        SUBNETWORK_ID_NATIVE,
-                        0,
-                        vec![],
-                    ),
-                    1000,
-                ),
-                is_standard: false,
             },
             Test {
                 name: "Valid but non standard public key script",

@@ -18,6 +18,13 @@ use std::{
 };
 
 const MEMPOOL_BLOCK_MASS_ACTIVATION_DELAY_SECONDS: u64 = 24 * 60 * 60;
+const PRIOR_MAX_SIGNATURE_SCRIPT_LEN: usize = 10_000;
+// Increased for stark proofs. This value is effectively covered by the post-Toccata
+// transient block mass limit: 1_000_000 transient mass / 4 grams-per-byte = 250_000
+// bytes for the entire block, so a larger signature script cannot be accepted anyway.
+// TODO(post-toccata): check whether this early signature-script length guard can be
+// removed entirely, or whether it remains useful as cheap early protection.
+const NEW_MAX_SIGNATURE_SCRIPT_LEN: usize = 250_000;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForkActivation(u64);
@@ -215,7 +222,8 @@ pub struct OverrideParams {
 
     pub max_tx_inputs: Option<usize>,
     pub max_tx_outputs: Option<usize>,
-    pub max_signature_script_len: Option<usize>,
+    pub prior_max_signature_script_len: Option<usize>,
+    pub new_max_signature_script_len: Option<usize>,
     pub max_script_public_key_len: Option<usize>,
     pub mass_per_tx_byte: Option<u64>,
     pub mass_per_script_pub_key_byte: Option<u64>,
@@ -259,7 +267,8 @@ impl From<Params> for OverrideParams {
             max_coinbase_payload_len: Some(p.max_coinbase_payload_len),
             max_tx_inputs: Some(p.max_tx_inputs),
             max_tx_outputs: Some(p.max_tx_outputs),
-            max_signature_script_len: Some(p.max_signature_script_len),
+            prior_max_signature_script_len: Some(p.prior_max_signature_script_len),
+            new_max_signature_script_len: Some(p.new_max_signature_script_len),
             max_script_public_key_len: Some(p.max_script_public_key_len),
             mass_per_tx_byte: Some(p.mass_per_tx_byte),
             mass_per_script_pub_key_byte: Some(p.mass_per_script_pub_key_byte),
@@ -312,7 +321,8 @@ pub struct Params {
 
     pub max_tx_inputs: usize,
     pub max_tx_outputs: usize,
-    pub max_signature_script_len: usize,
+    pub prior_max_signature_script_len: usize,
+    pub new_max_signature_script_len: usize,
     pub max_script_public_key_len: usize,
 
     pub mass_per_tx_byte: u64,
@@ -436,6 +446,13 @@ impl Params {
         self.mempool_block_mass_limits().map(|limits| limits.cofactors())
     }
 
+    /// Returns the forked maximum signature script length.
+    #[inline]
+    #[must_use]
+    pub fn max_signature_script_len(&self) -> ForkedParam<usize> {
+        ForkedParam::new(self.prior_max_signature_script_len, self.new_max_signature_script_len, self.covenants_activation)
+    }
+
     pub fn ghostdag_k(&self) -> KType {
         self.blockrate.ghostdag_k
     }
@@ -533,7 +550,8 @@ impl Params {
 
             max_tx_inputs: overrides.max_tx_inputs.unwrap_or(self.max_tx_inputs),
             max_tx_outputs: overrides.max_tx_outputs.unwrap_or(self.max_tx_outputs),
-            max_signature_script_len: overrides.max_signature_script_len.unwrap_or(self.max_signature_script_len),
+            prior_max_signature_script_len: overrides.prior_max_signature_script_len.unwrap_or(self.prior_max_signature_script_len),
+            new_max_signature_script_len: overrides.new_max_signature_script_len.unwrap_or(self.new_max_signature_script_len),
             max_script_public_key_len: overrides.max_script_public_key_len.unwrap_or(self.max_script_public_key_len),
             mass_per_tx_byte: overrides.mass_per_tx_byte.unwrap_or(self.mass_per_tx_byte),
             mass_per_script_pub_key_byte: overrides.mass_per_script_pub_key_byte.unwrap_or(self.mass_per_script_pub_key_byte),
@@ -645,7 +663,8 @@ pub const MAINNET_PARAMS: Params = Params {
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
     // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
-    max_signature_script_len: 10_000,
+    prior_max_signature_script_len: PRIOR_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
     // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
@@ -704,7 +723,8 @@ pub const TESTNET_PARAMS: Params = Params {
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
     // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
-    max_signature_script_len: 10_000,
+    prior_max_signature_script_len: PRIOR_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
     // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
@@ -754,8 +774,8 @@ pub const TESTNET12_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 12),
     genesis: TESTNET12_GENESIS,
 
-    // Increased for stark proofs
-    max_signature_script_len: 300_000,
+    prior_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
 
     // Transient mass is increased for stark proofs
     prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
@@ -788,8 +808,8 @@ pub const SIMNET_PARAMS: Params = Params {
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Increased for stark proofs
-    max_signature_script_len: 300_000,
+    prior_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
@@ -830,8 +850,8 @@ pub const DEVNET_PARAMS: Params = Params {
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Increased for stark proofs
-    max_signature_script_len: 300_000,
+    prior_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
