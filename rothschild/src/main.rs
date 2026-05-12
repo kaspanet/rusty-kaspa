@@ -4,8 +4,8 @@ use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
-    config::params::{TESTNET_PARAMS, TESTNET12_PARAMS},
-    constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_TOCCATA},
+    config::params::{DEVNET_PARAMS, Params, TESTNET_PARAMS, TESTNET12_PARAMS},
+    constants::{SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION, TX_VERSION_TOCCATA},
     hashing::covenant_id::covenant_id,
     network::NetworkType,
     sign::sign,
@@ -30,7 +30,7 @@ use secp256k1::{
 use tokio::time::{Instant, MissedTickBehavior, interval};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
-const FEE_RATE: u64 = 10;
+const FEE_RATE: u64 = 101;
 const MILLIS_PER_TICK: u64 = 10;
 const ADDRESS_VERSION: Version = Version::PubKey;
 
@@ -197,6 +197,7 @@ struct TxConfig {
     payload_size: usize,
     with_covenant_id: bool,
     randomize_tx_version: bool,
+    normalized_transient_mass_per_byte: f64,
 }
 
 #[tokio::main]
@@ -248,14 +249,6 @@ async fn main() {
 
     (args.payload_size <= 20000).then_some(()).expect("payload-size can be max 20000");
 
-    let tx_config = TxConfig {
-        priority_fee: args.priority_fee,
-        randomize_fee: args.randomize_fee,
-        payload_size: args.payload_size,
-        with_covenant_id: args.enable_covenant_id,
-        randomize_tx_version: args.randomize_tx_version,
-    };
-
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
     let mut log_message = format!(
@@ -273,21 +266,37 @@ async fn main() {
     if args.priority_fee != 0 {
         log_message.push_str(&format!(
             "\n\tpriority fee: {} SOMPS {}",
-            tx_config.priority_fee,
-            if tx_config.randomize_fee { "[randomize]" } else { "" }
+            args.priority_fee,
+            if args.randomize_fee { "[randomize]" } else { "" }
         ));
     }
     if args.payload_size != 0 {
-        log_message.push_str(&format!("\n\tpayload size: {} random bytes", tx_config.payload_size,));
+        log_message.push_str(&format!("\n\tpayload size: {} random bytes", args.payload_size,));
     }
     info!("{}", log_message);
 
     let info = rpc_client.get_block_dag_info().await.expect("Failed to get block dag info.");
 
-    let coinbase_maturity = match info.network.suffix {
-        Some(11) => panic!("TN11 is not supported on this version"),
-        Some(12) => TESTNET12_PARAMS.coinbase_maturity(),
-        None | Some(_) => TESTNET_PARAMS.coinbase_maturity(),
+    let consensus_params: Params = match args.network {
+        NetworkType::Testnet => match info.network.suffix {
+            Some(11) => panic!("TN11 is not supported on this version"),
+            Some(12) => TESTNET12_PARAMS,
+            None | Some(_) => TESTNET_PARAMS,
+        },
+        NetworkType::Devnet => DEVNET_PARAMS,
+        _ => unreachable!("CLI only accepts testnet and devnet"),
+    };
+    let coinbase_maturity = consensus_params.coinbase_maturity();
+    let normalized_transient_mass_per_byte =
+        TRANSIENT_BYTE_TO_MASS_FACTOR as f64 * consensus_params.mempool_block_mass_cofactors().after().transient;
+
+    let tx_config = TxConfig {
+        priority_fee: args.priority_fee,
+        randomize_fee: args.randomize_fee,
+        payload_size: args.payload_size,
+        with_covenant_id: args.enable_covenant_id,
+        randomize_tx_version: args.randomize_tx_version,
+        normalized_transient_mass_per_byte,
     };
     info!(
         "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {},
@@ -577,12 +586,27 @@ fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, Instan
     pending.retain(|_, &mut time| now.duration_since(time) <= Duration::from_secs(3600));
 }
 
-fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
-    FEE_RATE * estimated_mass(num_utxos, num_outs)
+fn required_fee(num_utxos: usize, num_outs: u64, payload_size: usize, normalized_transient_mass_per_byte: f64) -> u64 {
+    FEE_RATE
+        * estimated_compute_mass(num_utxos, num_outs).max(estimated_normalized_transient_mass(
+            num_utxos,
+            num_outs,
+            payload_size,
+            normalized_transient_mass_per_byte,
+        ))
 }
 
-fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
+fn estimated_compute_mass(num_utxos: usize, num_outs: u64) -> u64 {
     200 + 34 * num_outs + 1000 * (num_utxos as u64)
+}
+
+fn estimated_normalized_transient_mass(
+    num_utxos: usize,
+    num_outs: u64,
+    payload_size: usize,
+    normalized_transient_mass_per_byte: f64,
+) -> u64 {
+    ((200 + 34 * num_outs + 1000 * (num_utxos as u64) + payload_size as u64) as f64 * normalized_transient_mass_per_byte).ceil() as u64
 }
 
 fn apply_random_covenant_binding_from_inputs(tx: &mut MutableTransaction<Transaction>, with_covenant_id: bool) {
@@ -679,7 +703,7 @@ fn select_utxos(
         selected_amount += entry.amount;
         selected.push((outpoint, entry));
 
-        let fee = required_fee(selected.len(), num_outs);
+        let fee = required_fee(selected.len(), num_outs, tx_config.payload_size, tx_config.normalized_transient_mass_per_byte);
         let priority_fee = if tx_config.randomize_fee && tx_config.priority_fee > 0 {
             rng.gen_range(0..tx_config.priority_fee)
         } else {

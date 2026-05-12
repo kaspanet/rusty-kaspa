@@ -2,7 +2,7 @@ use super::client::ListeningClient;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    constants::{TX_VERSION, TX_VERSION_TOCCATA},
+    constants::{TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION, TX_VERSION_TOCCATA},
     header::Header,
     mass::SigopCount,
     sign::sign,
@@ -34,13 +34,23 @@ use tokio::time::timeout;
 pub(crate) const EXPAND_FACTOR: u64 = 2;
 pub(crate) const CONTRACT_FACTOR: u64 = 2;
 
-const fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
+const fn estimated_compute_mass(num_inputs: usize, num_outputs: u64) -> u64 {
     200 + 34 * num_outputs + 1000 * (num_inputs as u64)
 }
 
+const fn estimated_transient_mass(num_inputs: usize, num_outputs: u64, extra_serialized_bytes: u64) -> u64 {
+    (200 + 34 * num_outputs + 1000 * (num_inputs as u64) + extra_serialized_bytes) * TRANSIENT_BYTE_TO_MASS_FACTOR
+}
+
 pub const fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
-    const FEE_RATE: u64 = 10;
-    FEE_RATE * estimated_mass(num_inputs, num_outputs)
+    required_fee_with_extra_serialized_bytes(num_inputs, num_outputs, 0)
+}
+
+pub const fn required_fee_with_extra_serialized_bytes(num_inputs: usize, num_outputs: u64, extra_serialized_bytes: u64) -> u64 {
+    const FEE_RATE: u64 = 101;
+    let compute_mass = estimated_compute_mass(num_inputs, num_outputs);
+    let transient_mass = estimated_transient_mass(num_inputs, num_outputs, extra_serialized_bytes);
+    FEE_RATE * if compute_mass > transient_mass { compute_mass } else { transient_mass }
 }
 
 /// Builds a TX DAG based on the initial UTXO set and on constant params

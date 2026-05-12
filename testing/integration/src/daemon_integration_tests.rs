@@ -2,7 +2,7 @@ use crate::common::{
     client::ListeningClient,
     client_notify::ChannelNotify,
     daemon::Daemon,
-    utils::{fetch_spendable_utxos, mine_block, required_fee, wait_for},
+    utils::{fetch_spendable_utxos, mine_block, required_fee, required_fee_with_extra_serialized_bytes, wait_for},
 };
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
@@ -908,9 +908,9 @@ async fn daemon_pruning_seqcommit_sync_test() {
     // still within the finality depth of the spending block.
     let outpoint = TransactionOutpoint::new(seqcommit_tx.id(), 0);
     let pay_spk = pay_to_address_script(&miner_address);
-    let spend_fee = required_fee(1, 1);
-    let spend_value = total_in - fee - spend_fee;
     let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("canonical signature script");
+    let spend_fee = required_fee_with_extra_serialized_bytes(1, 1, signature_script.len() as u64);
+    let spend_value = total_in - fee - spend_fee;
     let spend_tx = Transaction::new(
         TX_VERSION,
         vec![TransactionInput::new(outpoint, signature_script, 0, 1)],
