@@ -31,7 +31,7 @@ use kaspa_consensus_core::{
     config::params::ForkedParam,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     mass::{BlockLaneLimits, BlockMassLimits},
-    tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
+    tx::{MutableTransaction, Transaction, TransactionId},
 };
 use kaspa_consensusmanager::{ConsensusProxy, spawn_blocking};
 use kaspa_core::{debug, error, info, time::Stopwatch, warn};
@@ -824,17 +824,6 @@ impl MiningManager {
                 }
             }
         }
-    }
-
-    /// is_transaction_output_dust returns whether or not the passed transaction output
-    /// amount is considered dust or not based on the configured minimum transaction
-    /// relay fee.
-    ///
-    /// Dust is defined in terms of the minimum transaction relay fee. In particular,
-    /// if the cost to the network to spend coins is more than 1/3 of the minimum
-    /// transaction relay fee, it is considered dust.
-    pub fn is_transaction_output_dust(&self, transaction_output: &TransactionOutput) -> bool {
-        self.mempool.read().is_transaction_output_dust(transaction_output)
     }
 
     pub fn has_accepted_transaction(&self, transaction_id: &TransactionId) -> bool {

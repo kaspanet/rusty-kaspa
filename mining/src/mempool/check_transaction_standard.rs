@@ -5,8 +5,8 @@ use crate::mempool::{
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
-    mass::{self, NonContextualMasses},
-    tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
+    mass::NonContextualMasses,
+    tx::{MutableTransaction, PopulatedTransaction},
 };
 use kaspa_txscript::{get_sig_op_count_upper_bound, script_class::ScriptClass};
 
@@ -24,7 +24,7 @@ impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
 
-        // None of the output public key scripts can be a non-standard script or be "dust".
+        // None of the output public key scripts can be a non-standard script.
         for (i, output) in transaction.tx.outputs.iter().enumerate() {
             if output.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                 return Err(NonStandardError::RejectScriptPublicKeyVersion(transaction_id, i));
@@ -33,66 +33,9 @@ impl Mempool {
             if ScriptClass::from_script(&output.script_public_key) == ScriptClass::NonStandard {
                 return Err(NonStandardError::RejectOutputScriptClass(transaction_id, i));
             }
-
-            if self.is_transaction_output_dust(output) {
-                return Err(NonStandardError::RejectDust(transaction_id, i, output.value));
-            }
         }
 
         Ok(())
-    }
-
-    /// is_transaction_output_dust returns whether or not the passed transaction output
-    /// amount is considered dust or not based on the configured minimum transaction
-    /// relay fee.
-    ///
-    /// Dust is defined in terms of the minimum transaction relay fee. In particular,
-    /// if the cost to the network to spend coins is more than 1/3 of the minimum
-    /// transaction relay fee, it is considered dust.
-    ///
-    /// It is exposed by [MiningManager] for use by transaction generators and wallets.
-    pub(crate) fn is_transaction_output_dust(&self, transaction_output: &TransactionOutput) -> bool {
-        // The total serialized size consists of the output and the associated
-        // input script to redeem it. Since there is no input script
-        // to redeem it yet, use the minimum size of a typical input script.
-        //
-        // Pay-to-pubkey bytes breakdown:
-        //
-        //  Output to pubkey (43 bytes):
-        //   8 value, 1 script len, 34 script [1 OP_DATA_32,
-        //   32 pubkey, 1 OP_CHECKSIG]
-        //
-        //  Input (105 bytes):
-        //   36 prev outpoint, 1 script len, 64 script [1 OP_DATA_64,
-        //   64 sig], 4 sequence
-        //
-        // The most common scripts are pay-to-pubkey, and as per the above
-        // breakdown, the minimum size of a p2pk input script is 148 bytes. So
-        // that figure is used.
-        let total_serialized_size = mass::transaction_output_estimated_serialized_size(transaction_output) + 148;
-
-        // The output is considered dust if the cost to the network to spend the
-        // coins is more than 1/3 of the minimum free transaction relay fee.
-        // mp.config.MinimumRelayTransactionFee is in sompi/KB, so multiply
-        // by 1000 to convert to bytes.
-        //
-        // Using the typical values for a pay-to-pubkey transaction from
-        // the breakdown above and the default minimum free transaction relay
-        // fee of 1000, this equates to values less than 546 sompi being
-        // considered dust.
-        //
-        // The following is equivalent to (value/total_serialized_size) * (1/3) * 1000
-        // without needing to do floating point math.
-        //
-        // Since the multiplication may overflow a u64, 2 separate calculation paths
-        // are considered to avoid overflowing.
-        match transaction_output.value.checked_mul(1000) {
-            Some(value_1000) => value_1000 / (3 * total_serialized_size) < self.config.minimum_relay_transaction_fee,
-            None => {
-                (transaction_output.value as u128 * 1000 / (3 * total_serialized_size as u128))
-                    < self.config.minimum_relay_transaction_fee as u128
-            }
-        }
     }
 
     /// check_transaction_standard_in_context performs a series of checks on a transaction's
@@ -186,7 +129,6 @@ mod tests {
         opcodes::codes::{OpReturn, OpTrue},
         script_builder::ScriptBuilder,
     };
-    use smallvec::smallvec;
     use std::sync::Arc;
 
     const RELAY_FEE_TEST_MASS: u64 = 500_000;
@@ -246,88 +188,6 @@ mod tests {
                     println!("test_calc_min_required_tx_relay_fee test '{}' failed: got {}, want {}", test.name, got, test.want);
                 }
                 assert_eq!(test.want, got);
-            }
-        }
-    }
-
-    #[test]
-    fn test_is_transaction_output_dust() {
-        let script_public_key = ScriptPublicKey::new(
-            0,
-            smallvec![
-                0x76, 0xa9, 0x21, 0x03, 0x2f, 0x7e, 0x43, 0x0a, 0xa4, 0xc9, 0xd1, 0x59, 0x43, 0x7e, 0x84, 0xb9, 0x75, 0xdc, 0x76,
-                0xd9, 0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
-            ],
-        );
-        struct Test {
-            name: &'static str,
-            tx_out: TransactionOutput,
-            minimum_relay_transaction_fee: u64,
-            is_dust: bool,
-        }
-
-        let tests = vec![
-            // Any value is allowed with a zero relay fee.
-            Test {
-                name: "zero value with zero relay fee",
-                tx_out: TransactionOutput::new(0, script_public_key.clone()),
-                minimum_relay_transaction_fee: 0,
-                is_dust: false,
-            },
-            // Zero value is dust with any relay fee"
-            Test {
-                name: "zero value with very small tx fee",
-                tx_out: TransactionOutput::new(0, script_public_key.clone()),
-                minimum_relay_transaction_fee: 1,
-                is_dust: true,
-            },
-            Test {
-                name: "36 byte public key script with value 605",
-                tx_out: TransactionOutput::new(605, script_public_key.clone()),
-                minimum_relay_transaction_fee: 1000,
-                is_dust: true,
-            },
-            Test {
-                name: "36 byte public key script with value 606",
-                tx_out: TransactionOutput::new(606, script_public_key.clone()),
-                minimum_relay_transaction_fee: 1000,
-                is_dust: false,
-            },
-            // Maximum allowed value is never dust.
-            Test {
-                name: "max sompi amount is never dust",
-                tx_out: TransactionOutput::new(MAX_SOMPI, script_public_key.clone()),
-                minimum_relay_transaction_fee: 1000,
-                is_dust: false,
-            },
-            // Maximum uint64 value causes NO overflow.
-            // Rust rewrite: caution, this differs from the golang version
-            Test {
-                name: "maximum uint64 value",
-                tx_out: TransactionOutput::new(u64::MAX, script_public_key),
-                minimum_relay_transaction_fee: u64::MAX,
-                is_dust: false,
-            },
-        ];
-        for test in tests {
-            for net in NetworkType::iter() {
-                let params: Params = net.into();
-                let mut config = Config::build_default(
-                    params.target_time_per_block(),
-                    false,
-                    params.mempool_block_mass_limits(),
-                    params.block_lane_limits,
-                );
-                config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-                let counters = Arc::new(MiningCounters::default());
-                let mempool = Mempool::new(Arc::new(config), counters);
-
-                println!("test_is_transaction_output_dust test '{}' ", test.name);
-                let res = mempool.is_transaction_output_dust(&test.tx_out);
-                if res != test.is_dust {
-                    println!("test_is_transaction_output_dust test '{}' failed: got {}, want {}", test.name, res, test.is_dust);
-                }
-                assert_eq!(test.is_dust, res);
             }
         }
     }
@@ -402,22 +262,6 @@ mod tests {
                                 ScriptBuilder::new().add_op(OpTrue).unwrap().script().into(),
                             ),
                         )],
-                        0,
-                        SUBNETWORK_ID_NATIVE,
-                        0,
-                        vec![],
-                    ),
-                    1000,
-                ),
-                is_standard: false,
-            },
-            Test {
-                name: "Dust output",
-                mtx: new_mtx(
-                    Transaction::new(
-                        TX_VERSION,
-                        vec![dummy_tx_input.clone()],
-                        vec![TransactionOutput::new(0, dummy_tx_out.script_public_key)],
                         0,
                         SUBNETWORK_ID_NATIVE,
                         0,

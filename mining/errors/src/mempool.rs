@@ -136,9 +136,6 @@ pub enum NonStandardError {
     #[error("transaction output #{1}: non-standard script form")]
     RejectOutputScriptClass(TransactionId, usize),
 
-    #[error("transaction output #{1}: payment of {2} is dust")]
-    RejectDust(TransactionId, usize, u64),
-
     #[error("transaction input {1}: non-standard script form")]
     RejectInputScriptClass(TransactionId, usize),
 
@@ -160,7 +157,6 @@ impl NonStandardError {
             NonStandardError::RejectSignatureScriptSize(id, _, _, _) => id,
             NonStandardError::RejectScriptPublicKeyVersion(id, _) => id,
             NonStandardError::RejectOutputScriptClass(id, _) => id,
-            NonStandardError::RejectDust(id, _, _) => id,
             NonStandardError::RejectInputScriptClass(id, _) => id,
             NonStandardError::RejectInsufficientFee(id, _, _) => id,
             NonStandardError::RejectSignatureCount(id, _, _, _) => id,
