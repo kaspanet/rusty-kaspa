@@ -178,8 +178,13 @@ impl NonContextualMasses {
     pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
         // Compute mass is already in the reference scale (compute limit).
         let c = self.compute_mass;
-        let t = (self.transient_mass as f64 * cofactors.transient).ceil() as u64;
+        let t = self.normalized_transient(cofactors);
         c.max(t)
+    }
+
+    /// Returns transient mass normalized to the compute-mass scale.
+    pub fn normalized_transient(&self, cofactors: &MassCofactors) -> u64 {
+        (self.transient_mass as f64 * cofactors.transient).ceil() as u64
     }
 }
 

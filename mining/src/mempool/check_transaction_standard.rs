@@ -5,7 +5,6 @@ use crate::mempool::{
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
-    mass::NonContextualMasses,
     tx::{MutableTransaction, PopulatedTransaction},
 };
 use kaspa_txscript::{get_sig_op_count_upper_bound, script_class::ScriptClass};
@@ -75,14 +74,24 @@ impl Mempool {
             }
         }
 
-        // Minimum relay fee applies to non-contextual mass so block-space usage has a minimum cost,
-        // including transient mass. This is especially important after increasing the transient mass limit.
+        // Minimum relay fee applies to normalized non-contextual mass so block-space usage has a
+        // minimum cost, whether dominated by compute or by transient byte footprint.
         // Storage mass does not require an additional relay-fee floor here since storage growth is
         // sufficiently protected even under worst-case block-limit usage.
-        let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
-        let minimum_fee = self.minimum_required_transaction_relay_fee(compute_mass.max(transient_mass));
-        if transaction.calculated_fee.unwrap() < minimum_fee {
-            return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
+        // Use the post-activation cofactors for fee pricing even before activation: activation policy
+        // should only change which transient limit is allowed, not reprice the same transaction.
+        let masses = transaction.calculated_non_contextual_masses.unwrap();
+        let cofactors = self.config.mempool_mass_cofactors.after();
+        let normalized_transient_mass = masses.normalized_transient(&cofactors);
+        let fee_mass = masses.compute_mass.max(normalized_transient_mass);
+        let minimum_fee = self.minimum_required_transaction_relay_fee(fee_mass);
+        let fee = transaction.calculated_fee.unwrap();
+        if fee < minimum_fee {
+            return if masses.compute_mass >= normalized_transient_mass {
+                Err(NonStandardError::RejectInsufficientComputeFee(transaction_id, fee, minimum_fee, masses.compute_mass))
+            } else {
+                Err(NonStandardError::RejectInsufficientTransientFee(transaction_id, fee, minimum_fee, normalized_transient_mass))
+            };
         }
 
         Ok(())
@@ -339,7 +348,8 @@ mod tests {
         enum Expected {
             Standard,
             RejectInputScriptClass,
-            RejectInsufficientFee { fee: u64, minimum_fee: u64 },
+            RejectInsufficientComputeFee { fee: u64, minimum_fee: u64, compute_mass: u64 },
+            RejectInsufficientTransientFee { fee: u64, minimum_fee: u64, normalized_transient_mass: u64 },
         }
 
         struct Test {
@@ -383,15 +393,21 @@ mod tests {
             Test {
                 name: "compute mass triggers insufficient relay fee",
                 mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(10_000, 1), 9_999),
-                expected: Expected::RejectInsufficientFee { fee: 9_999, minimum_fee: 10_000 },
+                expected: Expected::RejectInsufficientComputeFee { fee: 9_999, minimum_fee: 10_000, compute_mass: 10_000 },
             },
             Test {
                 name: "transient mass triggers insufficient relay fee",
-                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(1, 10_000), 9_999),
-                expected: Expected::RejectInsufficientFee { fee: 9_999, minimum_fee: 10_000 },
+                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(1, 20_000), 9_999),
+                expected: Expected::RejectInsufficientTransientFee {
+                    fee: 9_999,
+                    minimum_fee: 10_000,
+                    normalized_transient_mass: 10_000,
+                },
             },
         ];
 
+        // Use simnet params so prior and post-activation transient limits differ while the fork is active;
+        // this verifies that relay-fee pricing uses stable post-activation cofactors.
         let params: Params = NetworkType::Simnet.into();
         let config =
             Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
@@ -405,9 +421,15 @@ mod tests {
                 Expected::RejectInputScriptClass => {
                     assert_eq!(res, Err(NonStandardError::RejectInputScriptClass(test.mtx.id(), 0)), "failed for test '{}'", test.name)
                 }
-                Expected::RejectInsufficientFee { fee, minimum_fee } => assert_eq!(
+                Expected::RejectInsufficientComputeFee { fee, minimum_fee, compute_mass } => assert_eq!(
                     res,
-                    Err(NonStandardError::RejectInsufficientFee(test.mtx.id(), fee, minimum_fee)),
+                    Err(NonStandardError::RejectInsufficientComputeFee(test.mtx.id(), fee, minimum_fee, compute_mass)),
+                    "failed for test '{}'",
+                    test.name
+                ),
+                Expected::RejectInsufficientTransientFee { fee, minimum_fee, normalized_transient_mass } => assert_eq!(
+                    res,
+                    Err(NonStandardError::RejectInsufficientTransientFee(test.mtx.id(), fee, minimum_fee, normalized_transient_mass)),
                     "failed for test '{}'",
                     test.name
                 ),

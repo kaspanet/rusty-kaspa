@@ -139,8 +139,13 @@ pub enum NonStandardError {
     #[error("transaction input {1}: non-standard script form")]
     RejectInputScriptClass(TransactionId, usize),
 
-    #[error("transaction has {1} fees which is under the required amount of {2}")]
-    RejectInsufficientFee(TransactionId, u64, u64),
+    #[error("transaction has {1} fees which is under the required amount of {2} for compute mass {3}")]
+    RejectInsufficientComputeFee(TransactionId, u64, u64, u64),
+
+    #[error(
+        "transaction has {1} fees which is under the required amount of {2} for normalized transient mass {3} (proportional to transaction byte size)"
+    )]
+    RejectInsufficientTransientFee(TransactionId, u64, u64, u64),
 
     #[error("transaction input #{1} has {2} signature operations which is more than the allowed max amount of {3}")]
     RejectSignatureCount(TransactionId, usize, u64, u16),
@@ -158,7 +163,8 @@ impl NonStandardError {
             NonStandardError::RejectScriptPublicKeyVersion(id, _) => id,
             NonStandardError::RejectOutputScriptClass(id, _) => id,
             NonStandardError::RejectInputScriptClass(id, _) => id,
-            NonStandardError::RejectInsufficientFee(id, _, _) => id,
+            NonStandardError::RejectInsufficientComputeFee(id, _, _, _) => id,
+            NonStandardError::RejectInsufficientTransientFee(id, _, _, _) => id,
             NonStandardError::RejectSignatureCount(id, _, _, _) => id,
         }
     }

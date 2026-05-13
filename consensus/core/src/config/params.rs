@@ -816,7 +816,7 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     // Transient mass is increased for stark proofs
-    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
     new_transient_mass_limit: 1_000_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
@@ -859,7 +859,7 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
 
     // Transient mass is increased for stark proofs
-    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
     new_transient_mass_limit: 1_000_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
