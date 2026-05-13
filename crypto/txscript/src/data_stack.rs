@@ -1,4 +1,4 @@
-use crate::{MAX_SCRIPT_ELEMENT_SIZE, TxScriptError};
+use crate::{MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, TxScriptError};
 use core::fmt::Debug;
 use core::iter;
 use kaspa_hashes::Hash;
@@ -325,7 +325,11 @@ impl Stack {
     }
 
     fn max_element_size(&self) -> usize {
-        if self.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE } else { usize::MAX }
+        // Pre-toccata the element size limit was only enforced for OP_PUSHDATA opcodes, but
+        // since Pre-Toccata is missing OP_CAT, it was impossible to create elements larger
+        // than 520 bytes. Therefore it's safe to compare against usize::MAX without
+        // breaking consensus.
+        if self.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA } else { usize::MAX }
     }
 
     #[inline]

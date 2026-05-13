@@ -40,6 +40,7 @@ impl Default for ScriptBuilder {
     }
 }
 
+// TODO: Add `ScriptBuilder::with_flags` method that allows setting script engine flags for the builder.
 #[wasm_bindgen]
 impl ScriptBuilder {
     #[wasm_bindgen(constructor)]
@@ -83,11 +84,11 @@ impl ScriptBuilder {
     /// chooses canonical opcodes depending on the length of the data.
     ///
     /// A zero length buffer will lead to a push of empty data onto the stack (Op0 = OpFalse)
-    /// and any push of data greater than [`MAX_SCRIPT_ELEMENT_SIZE`](kaspa_txscript::MAX_SCRIPT_ELEMENT_SIZE) will not modify
+    /// and any push of data greater than the maximum script element size will not modify
     /// the script since that is not allowed by the script engine.
     ///
     /// Also, the script will not be modified if pushing the data would cause the script to
-    /// exceed the maximum allowed script engine size [`MAX_SCRIPTS_SIZE`](kaspa_txscript::MAX_SCRIPTS_SIZE).
+    /// exceed the maximum allowed script engine size.
     #[wasm_bindgen(js_name = "addData")]
     pub fn add_data(&self, data: BinaryT) -> Result<ScriptBuilder> {
         let data = data.try_as_vec_u8()?;

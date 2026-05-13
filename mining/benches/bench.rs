@@ -229,8 +229,8 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
             })
         });
 
-        if n > 0 {
-            println!("---------------------- \n  Avg collisions: {}", collisions / n);
+        if let Some(avg_collisions) = collisions.checked_div(n) {
+            println!("---------------------- \n  Avg collisions: {avg_collisions}");
         }
 
         if frontier.total_mass() <= 500_000 {
@@ -290,8 +290,8 @@ pub fn bench_inplace_sampling_worst_case(c: &mut Criterion) {
             })
         });
 
-        if n > 0 {
-            println!("---------------------- \n  Avg collisions: {}", collisions / n);
+        if let Some(avg_collisions) = collisions.checked_div(n) {
+            println!("---------------------- \n  Avg collisions: {avg_collisions}");
         }
     }
 
