@@ -26,7 +26,7 @@ use kaspa_consensus_core::{
         tx::{TxResult, TxRuleError},
     },
     header::{CompressedParents, Header},
-    mass::{BlockLaneLimits, BlockMassLimits, ContextualMasses, Mass, MassCofactors, NonContextualMasses},
+    mass::{BlockLaneLimits, BlockMassLimits, ContextualMasses, Mass, MassCalculator, MassCofactors, NonContextualMasses},
     merkle::calc_hash_merkle_root,
     subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
     tx::{
@@ -46,7 +46,7 @@ use std::{
 };
 
 const ACTIVATION_DAA_SCORE: u64 = 10_000;
-const PRIOR_TRANSIENT_LIMIT: u64 = 500_000;
+const PRIOR_BLOCK_MASS_LIMIT: u64 = 500_000;
 const NEW_TRANSIENT_LIMIT: u64 = 1_000_000;
 const TARGET_TIME_PER_BLOCK: u64 = 100;
 const BLOCK_LANE_LIMITS: BlockLaneLimits =
@@ -54,6 +54,7 @@ const BLOCK_LANE_LIMITS: BlockLaneLimits =
 
 struct MassPolicyTestConsensus {
     virtual_daa_score: AtomicU64,
+    mass_calculator: MassCalculator,
     mempool_mass_cofactors: ForkedParam<MassCofactors>,
     validation_attempts: AtomicU64,
     non_contextual_mass_overrides: RwLock<HashMap<TransactionId, NonContextualMasses>>,
@@ -64,6 +65,7 @@ impl MassPolicyTestConsensus {
     fn new(params: &Params) -> Self {
         Self {
             virtual_daa_score: AtomicU64::new(0),
+            mass_calculator: MassCalculator::new_with_consensus_params(params),
             mempool_mass_cofactors: params.mempool_block_mass_cofactors(),
             validation_attempts: AtomicU64::new(0),
             non_contextual_mass_overrides: Default::default(),
@@ -134,9 +136,7 @@ impl ConsensusApi for MassPolicyTestConsensus {
         if !mutable_tx.is_verifiable() {
             return Err(TxRuleError::MissingTxOutpoints);
         }
-
-        let non_contextual_masses = self.calculate_transaction_non_contextual_masses(&mutable_tx.tx)?;
-        mutable_tx.calculated_non_contextual_masses = Some(non_contextual_masses);
+        let non_contextual_masses = mutable_tx.calculated_non_contextual_masses.expect("populated by mempool");
         let contextual_masses = self.calculate_transaction_contextual_masses(mutable_tx).ok_or(TxRuleError::MassIncomputable)?;
         mutable_tx.tx.set_mass(contextual_masses.storage_mass);
 
@@ -178,8 +178,8 @@ impl ConsensusApi for MassPolicyTestConsensus {
             .unwrap_or_else(|| NonContextualMasses::new(1, transaction.payload.len() as u64)))
     }
 
-    fn calculate_transaction_contextual_masses(&self, _transaction: &MutableTransaction) -> Option<ContextualMasses> {
-        Some(ContextualMasses::new(0))
+    fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
+        self.mass_calculator.calc_contextual_masses(&transaction.as_verifiable())
     }
 
     fn get_virtual_daa_score(&self) -> u64 {
@@ -204,9 +204,9 @@ fn mined_templates_respect_consensus_transient_mass_across_mempool_delay() {
     let params = transient_activation_params();
     let delay_daa_score = mempool_delay_daa_score(&params);
     let cases = [
-        ("pre activation", ACTIVATION_DAA_SCORE - 1, 2usize, PRIOR_TRANSIENT_LIMIT),
-        ("at activation", ACTIVATION_DAA_SCORE, 2, PRIOR_TRANSIENT_LIMIT),
-        ("before delayed mempool activation", ACTIVATION_DAA_SCORE + delay_daa_score - 1, 2, PRIOR_TRANSIENT_LIMIT),
+        ("pre activation", ACTIVATION_DAA_SCORE - 1, 2usize, PRIOR_BLOCK_MASS_LIMIT),
+        ("at activation", ACTIVATION_DAA_SCORE, 2, PRIOR_BLOCK_MASS_LIMIT),
+        ("before delayed mempool activation", ACTIVATION_DAA_SCORE + delay_daa_score - 1, 2, PRIOR_BLOCK_MASS_LIMIT),
         ("at delayed mempool activation", ACTIVATION_DAA_SCORE + delay_daa_score, 4, NEW_TRANSIENT_LIMIT),
         ("after delayed mempool activation", ACTIVATION_DAA_SCORE + delay_daa_score + 1, 4, NEW_TRANSIENT_LIMIT),
     ];
@@ -315,7 +315,7 @@ fn template_limits_reject_transient_tx_until_delayed_mempool_activation() {
         Err(err) => err,
     };
     assert!(
-        matches!(err, MiningManagerError::MempoolError(RuleError::RejectTransientMass(tx_id, 750_000, PRIOR_TRANSIENT_LIMIT)) if tx_id == tx.id()),
+        matches!(err, MiningManagerError::MempoolError(RuleError::RejectTransientMass(tx_id, 750_000, PRIOR_BLOCK_MASS_LIMIT)) if tx_id == tx.id()),
         "expected transient-heavy tx to exceed pre-delay template mass limit, got {err:?}"
     );
     assert_eq!(consensus.validation_attempts(), 0, "transient limit rejection should happen before consensus in-context validation");
@@ -332,18 +332,37 @@ fn template_limits_reject_compute_tx_before_consensus_validation() {
     let consensus = Arc::new(MassPolicyTestConsensus::new(&params));
     let mining_manager = mining_manager(&params);
     let tx = test_transaction(0, 1, 10_000);
-    consensus.set_non_contextual_masses(tx.id(), NonContextualMasses::new(PRIOR_TRANSIENT_LIMIT + 1, 1));
+    consensus.set_non_contextual_masses(tx.id(), NonContextualMasses::new(PRIOR_BLOCK_MASS_LIMIT + 1, 1));
 
     let err = match insert_transaction(&mining_manager, consensus.as_ref(), tx.clone(), RbfPolicy::Forbidden) {
         Ok(_) => panic!("compute-heavy tx should exceed the block-template compute limit"),
         Err(err) => err,
     };
     assert!(
-        matches!(err, MiningManagerError::MempoolError(RuleError::RejectComputeMass(tx_id, compute, PRIOR_TRANSIENT_LIMIT))
-            if tx_id == tx.id() && compute == PRIOR_TRANSIENT_LIMIT + 1),
+        matches!(err, MiningManagerError::MempoolError(RuleError::RejectComputeMass(tx_id, compute, PRIOR_BLOCK_MASS_LIMIT))
+            if tx_id == tx.id() && compute == PRIOR_BLOCK_MASS_LIMIT + 1),
         "expected tx to exceed block-template compute limit, got {err:?}"
     );
     assert_eq!(consensus.validation_attempts(), 0, "compute limit rejection should happen before consensus in-context validation");
+}
+
+#[test]
+fn template_limits_reject_storage_tx_after_consensus_validation() {
+    let params = transient_activation_params();
+    let consensus = Arc::new(MassPolicyTestConsensus::new(&params));
+    let mining_manager = mining_manager(&params);
+    let tx = test_transaction_with_input_amount(0, 1, 1, 2);
+
+    let err = match insert_transaction(&mining_manager, consensus.as_ref(), tx.clone(), RbfPolicy::Forbidden) {
+        Ok(_) => panic!("tiny-output tx should exceed the block-template storage mass limit"),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(err, MiningManagerError::MempoolError(RuleError::RejectStorageMass(tx_id, storage, PRIOR_BLOCK_MASS_LIMIT))
+            if tx_id == tx.id() && storage > PRIOR_BLOCK_MASS_LIMIT),
+        "expected tx to exceed block-template storage mass limit, got {err:?}"
+    );
+    assert_eq!(consensus.validation_attempts(), 1, "storage limit rejection should happen after consensus in-context validation");
 }
 
 #[test]
@@ -370,7 +389,7 @@ fn template_limits_reject_gas_even_when_non_standard_transactions_are_allowed() 
 
 fn transient_activation_params() -> Params {
     let mut params = SIMNET_PARAMS.clone();
-    params.prior_block_mass_limits = BlockMassLimits::with_shared_limit(PRIOR_TRANSIENT_LIMIT);
+    params.prior_block_mass_limits = BlockMassLimits::with_shared_limit(PRIOR_BLOCK_MASS_LIMIT);
     params.new_transient_mass_limit = NEW_TRANSIENT_LIMIT;
     params.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE);
     params
@@ -389,12 +408,16 @@ fn test_transaction(n: u64, transient_mass: u64, fee: u64) -> MutableTransaction
     test_transaction_with_gas(n, transient_mass, fee, 0)
 }
 
+fn test_transaction_with_input_amount(n: u64, transient_mass: u64, fee: u64, input_amount: u64) -> MutableTransaction {
+    transaction_spending_outpoint(n, outpoint(n), transient_mass, fee, input_amount, 0)
+}
+
 fn test_transaction_with_gas(n: u64, transient_mass: u64, fee: u64, gas: u64) -> MutableTransaction {
-    transaction_spending_outpoint(n, outpoint(n), transient_mass, fee, gas)
+    transaction_spending_outpoint(n, outpoint(n), transient_mass, fee, 10 * SOMPI_PER_KASPA, gas)
 }
 
 fn double_spend_transaction(n: u64, owner: &MutableTransaction, transient_mass: u64, fee: u64) -> MutableTransaction {
-    transaction_spending_outpoint(n, owner.tx.inputs[0].previous_outpoint, transient_mass, fee, 0)
+    transaction_spending_outpoint(n, owner.tx.inputs[0].previous_outpoint, transient_mass, fee, 10 * SOMPI_PER_KASPA, 0)
 }
 
 fn transaction_spending_outpoint(
@@ -402,10 +425,10 @@ fn transaction_spending_outpoint(
     outpoint: TransactionOutpoint,
     transient_mass: u64,
     fee: u64,
+    input_amount: u64,
     gas: u64,
 ) -> MutableTransaction {
     let script_public_key = ScriptPublicKey::new(0, scriptvec![0x51]);
-    let input_amount = 10 * SOMPI_PER_KASPA;
     let input = TransactionInput::new(outpoint, vec![], MAX_TX_IN_SEQUENCE_NUM, 0);
     let output = TransactionOutput::new(input_amount - fee, script_public_key.clone());
     let tx =
