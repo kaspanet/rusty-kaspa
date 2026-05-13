@@ -24,12 +24,14 @@ impl Mempool {
         mut transaction: MutableTransaction,
         rbf_policy: RbfPolicy,
     ) -> RuleResult<TransactionPreValidation> {
-        self.validate_transaction_unacceptance(&transaction)?;
-        // Populate mass and estimated_size in the beginning, it will be used in multiple places throughout the validation and insertion.
+        let transaction_id = transaction.id();
+        self.validate_transaction_unacceptance(transaction_id)?;
+        self.validate_transaction_not_duplicate(transaction_id)?;
+        // Populate non-contextual masses up front, they will be used in multiple places throughout validation and insertion.
         transaction.calculated_non_contextual_masses = Some(consensus.calculate_transaction_non_contextual_masses(&transaction.tx)?);
         let virtual_daa_score = consensus.get_virtual_daa_score();
         self.validate_transaction_limits_in_isolation(&transaction, virtual_daa_score)?;
-        self.validate_transaction_in_isolation(&transaction)?;
+        self.validate_transaction_std_in_isolation(&transaction)?;
         let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy, virtual_daa_score)?;
         self.populate_mempool_entries(&mut transaction);
         Ok(TransactionPreValidation { transaction, feerate_threshold })
@@ -46,16 +48,12 @@ impl Mempool {
     ) -> RuleResult<TransactionPostValidation> {
         let transaction_id = transaction.id();
 
-        // First check if the transaction was not already added to the mempool.
+        // Check if the transaction was accepted or already added to the mempool.
         // The case may arise since the execution of the manager public functions is no
-        // longer atomic and different code paths may lead to inserting the same transaction
+        // longer atomic and different code paths may accept or insert the same transaction
         // concurrently.
-        if self.transaction_pool.has(&transaction_id) {
-            debug!("Transaction {0} is not post validated since already in the mempool", transaction_id);
-            return Err(RuleError::RejectDuplicate(transaction_id));
-        }
-
-        self.validate_transaction_unacceptance(&transaction)?;
+        self.validate_transaction_unacceptance(transaction_id)?;
+        self.validate_transaction_not_duplicate(transaction_id)?;
 
         match validation_result {
             Ok(_) => {}
@@ -74,10 +72,10 @@ impl Mempool {
         }
 
         let virtual_daa_score = consensus.get_virtual_daa_score();
-        self.validate_transaction_limits_in_context(&transaction, virtual_daa_score)?;
 
         // Perform mempool in-context validations prior to possible RBF replacements
-        self.validate_transaction_in_context(&transaction)?;
+        self.validate_transaction_limits_in_context(&transaction, virtual_daa_score)?;
+        self.validate_transaction_std_in_context(&transaction)?;
 
         // Check double spends and try to remove them if the RBF policy requires it
         let removed_transaction = self.execute_replace_by_fee(&transaction, rbf_policy, virtual_daa_score)?;
@@ -133,28 +131,30 @@ impl Mempool {
     }
 
     /// Validates that the transaction wasn't already accepted into the DAG
-    fn validate_transaction_unacceptance(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+    fn validate_transaction_unacceptance(&self, transaction_id: TransactionId) -> RuleResult<()> {
         // Reject if the transaction is registered as an accepted transaction
-        let transaction_id = transaction.id();
         match self.accepted_transactions.has(&transaction_id) {
             true => Err(RuleError::RejectAlreadyAccepted(transaction_id)),
             false => Ok(()),
         }
     }
 
-    fn validate_transaction_in_isolation(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        let transaction_id = transaction.id();
+    fn validate_transaction_not_duplicate(&self, transaction_id: TransactionId) -> RuleResult<()> {
         if self.transaction_pool.has(&transaction_id) {
             return Err(RuleError::RejectDuplicate(transaction_id));
         }
 
+        Ok(())
+    }
+
+    fn validate_transaction_std_in_isolation(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_isolation(transaction)?;
         }
         Ok(())
     }
 
-    fn validate_transaction_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+    fn validate_transaction_std_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_context(transaction)?;
         }
@@ -271,7 +271,7 @@ impl Mempool {
         let transaction = transactions.pop().unwrap();
         let rbf_policy = Self::get_orphan_transaction_rbf_policy(transaction.priority);
 
-        self.validate_transaction_unacceptance(&transaction.mtx)?;
+        self.validate_transaction_unacceptance(transaction.mtx.id())?;
         let _ = self.get_replace_by_fee_constraint(&transaction.mtx, rbf_policy, transaction.added_at_daa_score)?;
         Ok(transaction)
     }
