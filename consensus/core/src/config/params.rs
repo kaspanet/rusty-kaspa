@@ -443,7 +443,13 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn mempool_block_mass_cofactors(&self) -> ForkedParam<MassCofactors> {
-        self.mempool_block_mass_limits().map(|limits| limits.cofactors())
+        let cofactors = self.mempool_block_mass_limits().map(|limits| limits.cofactors());
+        assert_eq!(
+            cofactors.before().reference,
+            cofactors.after().reference,
+            "mempool mass normalization assumes the reference mass is stable across activation"
+        );
+        cofactors
     }
 
     /// Returns the forked maximum signature script length.

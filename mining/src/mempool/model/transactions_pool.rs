@@ -210,6 +210,7 @@ impl TransactionsPool {
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
         self.ready_transactions
+            // Params::mempool_block_mass_cofactors asserts that the reference mass is stable across activation.
             .build_selector(&Policy::new(self.config.mempool_mass_cofactors.after().reference, self.config.block_lane_limits))
     }
 
