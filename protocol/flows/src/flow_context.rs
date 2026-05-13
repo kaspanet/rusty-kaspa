@@ -774,13 +774,29 @@ impl ConnectionInitializer for FlowContext {
             peer_version.protocol_version
         };
 
-        // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_protocol_version {
-            v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
-            9 => (v8::register(self.clone(), router.clone(), 9), 9),
-            8 => (v8::register(self.clone(), router.clone(), 8), 8),
-            7 => (v7::register(self.clone(), router.clone()), 7),
-            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+        // One day before activation, upgraded nodes start disconnecting outdated peers from the P2P network.
+        const ONE_DAY_SECONDS: u64 = 24 * 60 * 60;
+        let daa_threshold = ONE_DAY_SECONDS * self.config.bps();
+        let virtual_daa_score = self.consensus().unguarded_session().get_virtual_daa_score();
+        let connect_only_new_versions = self.config.covenants_activation.is_active(virtual_daa_score.saturating_add(daa_threshold));
+
+        // Until the one-day pre-activation threshold is reached, older protocol versions remain accepted.
+        // Once it is reached, peers must advertise protocol 10 (TN12 launch peers were normalized above).
+        let (flows, applied_protocol_version) = if connect_only_new_versions {
+            // Register all flows according to version
+            match peer_protocol_version {
+                v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
+        } else {
+            // Register all flows according to version
+            match peer_protocol_version {
+                v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+                9 => (v8::register(self.clone(), router.clone(), 9), 9),
+                8 => (v8::register(self.clone(), router.clone(), 8), 8),
+                7 => (v7::register(self.clone(), router.clone()), 7),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
         };
 
         // Build and register the peer properties
