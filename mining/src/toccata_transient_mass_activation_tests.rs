@@ -38,7 +38,7 @@ use kaspa_core::time::unix_now;
 use kaspa_hashes::{Hash, ZERO_HASH};
 use parking_lot::RwLock;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -55,6 +55,8 @@ const BLOCK_LANE_LIMITS: BlockLaneLimits =
 struct MassPolicyTestConsensus {
     virtual_daa_score: AtomicU64,
     mempool_mass_cofactors: ForkedParam<MassCofactors>,
+    validation_attempts: AtomicU64,
+    non_contextual_mass_overrides: RwLock<HashMap<TransactionId, NonContextualMasses>>,
     validated_thresholds: RwLock<Vec<(TransactionId, u64, f64)>>,
 }
 
@@ -63,6 +65,8 @@ impl MassPolicyTestConsensus {
         Self {
             virtual_daa_score: AtomicU64::new(0),
             mempool_mass_cofactors: params.mempool_block_mass_cofactors(),
+            validation_attempts: AtomicU64::new(0),
+            non_contextual_mass_overrides: Default::default(),
             validated_thresholds: Default::default(),
         }
     }
@@ -73,6 +77,14 @@ impl MassPolicyTestConsensus {
 
     fn validated_thresholds(&self) -> Vec<(TransactionId, u64, f64)> {
         self.validated_thresholds.read().clone()
+    }
+
+    fn validation_attempts(&self) -> u64 {
+        self.validation_attempts.load(Ordering::Relaxed)
+    }
+
+    fn set_non_contextual_masses(&self, transaction_id: TransactionId, masses: NonContextualMasses) {
+        self.non_contextual_mass_overrides.write().insert(transaction_id, masses);
     }
 }
 
@@ -118,6 +130,7 @@ impl ConsensusApi for MassPolicyTestConsensus {
     }
 
     fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction, args: &TransactionValidationArgs) -> TxResult<()> {
+        self.validation_attempts.fetch_add(1, Ordering::Relaxed);
         if !mutable_tx.is_verifiable() {
             return Err(TxRuleError::MissingTxOutpoints);
         }
@@ -157,7 +170,12 @@ impl ConsensusApi for MassPolicyTestConsensus {
     }
 
     fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
-        Ok(NonContextualMasses::new(1, transaction.payload.len() as u64))
+        Ok(self
+            .non_contextual_mass_overrides
+            .read()
+            .get(&transaction.id())
+            .copied()
+            .unwrap_or_else(|| NonContextualMasses::new(1, transaction.payload.len() as u64)))
     }
 
     fn calculate_transaction_contextual_masses(&self, _transaction: &MutableTransaction) -> Option<ContextualMasses> {
@@ -300,11 +318,32 @@ fn template_limits_reject_transient_tx_until_delayed_mempool_activation() {
         matches!(err, MiningManagerError::MempoolError(RuleError::RejectTransientMass(tx_id, 750_000, PRIOR_TRANSIENT_LIMIT)) if tx_id == tx.id()),
         "expected transient-heavy tx to exceed pre-delay template mass limit, got {err:?}"
     );
+    assert_eq!(consensus.validation_attempts(), 0, "transient limit rejection should happen before consensus in-context validation");
 
     consensus.set_virtual_daa_score(boundary_daa_score);
     insert_transaction(&mining_manager, consensus.as_ref(), tx.clone(), RbfPolicy::Forbidden)
         .expect("same tx should fit once the delayed mempool transient limit activates");
     assert!(mining_manager.has_transaction(&tx.id(), crate::model::tx_query::TransactionQuery::All));
+}
+
+#[test]
+fn template_limits_reject_compute_tx_before_consensus_validation() {
+    let params = transient_activation_params();
+    let consensus = Arc::new(MassPolicyTestConsensus::new(&params));
+    let mining_manager = mining_manager(&params);
+    let tx = test_transaction(0, 1, 10_000);
+    consensus.set_non_contextual_masses(tx.id(), NonContextualMasses::new(PRIOR_TRANSIENT_LIMIT + 1, 1));
+
+    let err = match insert_transaction(&mining_manager, consensus.as_ref(), tx.clone(), RbfPolicy::Forbidden) {
+        Ok(_) => panic!("compute-heavy tx should exceed the block-template compute limit"),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(err, MiningManagerError::MempoolError(RuleError::RejectComputeMass(tx_id, compute, PRIOR_TRANSIENT_LIMIT))
+            if tx_id == tx.id() && compute == PRIOR_TRANSIENT_LIMIT + 1),
+        "expected tx to exceed block-template compute limit, got {err:?}"
+    );
+    assert_eq!(consensus.validation_attempts(), 0, "compute limit rejection should happen before consensus in-context validation");
 }
 
 #[test]
@@ -326,6 +365,7 @@ fn template_limits_reject_gas_even_when_non_standard_transactions_are_allowed() 
         ),
         "expected tx to exceed block-template gas limit, got {err:?}"
     );
+    assert_eq!(consensus.validation_attempts(), 0, "gas limit rejection should happen before consensus in-context validation");
 }
 
 fn transient_activation_params() -> Params {

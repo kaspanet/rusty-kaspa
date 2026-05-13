@@ -27,8 +27,10 @@ impl Mempool {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass and estimated_size in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_non_contextual_masses = Some(consensus.calculate_transaction_non_contextual_masses(&transaction.tx)?);
+        let virtual_daa_score = consensus.get_virtual_daa_score();
+        self.validate_transaction_limits_in_isolation(&transaction, virtual_daa_score)?;
         self.validate_transaction_in_isolation(&transaction)?;
-        let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy, consensus.get_virtual_daa_score())?;
+        let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy, virtual_daa_score)?;
         self.populate_mempool_entries(&mut transaction);
         Ok(TransactionPreValidation { transaction, feerate_threshold })
     }
@@ -72,7 +74,7 @@ impl Mempool {
         }
 
         let virtual_daa_score = consensus.get_virtual_daa_score();
-        self.validate_transaction_template_limits(&transaction, virtual_daa_score)?;
+        self.validate_transaction_limits_in_context(&transaction, virtual_daa_score)?;
 
         // Perform mempool in-context validations prior to possible RBF replacements
         self.validate_transaction_in_context(&transaction)?;
@@ -159,21 +161,17 @@ impl Mempool {
         Ok(())
     }
 
-    /// Validates that the transaction can fit in a block template under the current mempool limits.
+    /// Validates non-contextual transaction dimensions against the current mempool template limits.
     ///
     /// This is intentionally separate from standardness: even when non-standard transactions are accepted,
     /// the mempool must not admit a transaction which selectors can never include in a block. The transaction
-    /// is expected to be populated by consensus validation before this call, including non-contextual masses
-    /// and contextual storage mass.
-    fn validate_transaction_template_limits(&self, transaction: &MutableTransaction, virtual_daa_score: u64) -> RuleResult<()> {
+    /// is expected to have its non-contextual masses populated before this call. These checks run before
+    /// consensus in-context validation so transactions above compute/transient limits do not reach script execution.
+    fn validate_transaction_limits_in_isolation(&self, transaction: &MutableTransaction, virtual_daa_score: u64) -> RuleResult<()> {
         if transaction.tx.gas > self.config.block_lane_limits.gas_per_lane {
             return Err(RuleError::RejectGas(transaction.id(), transaction.tx.gas, self.config.block_lane_limits.gas_per_lane));
         }
 
-        // Reject transactions that cannot fit in a block template under the
-        // current mempool resource policy. This is separate from standardness:
-        // non-standard transactions may be allowed by policy, but a transaction
-        // exceeding template limits would otherwise remain in the mempool forever.
         let limits = self.config.mempool_block_mass_limits.get(virtual_daa_score);
         let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
         if compute_mass > limits.compute {
@@ -183,6 +181,16 @@ impl Mempool {
             return Err(RuleError::RejectTransientMass(transaction.id(), transient_mass, limits.transient));
         }
 
+        Ok(())
+    }
+
+    /// Validates contextual transaction dimensions against the current mempool template limits.
+    ///
+    /// This is intentionally separate from standardness: even when non-standard transactions are accepted,
+    /// the mempool must not admit a transaction which selectors can never include in a block. The transaction
+    /// is expected to have contextual storage mass populated by consensus validation before this call.
+    fn validate_transaction_limits_in_context(&self, transaction: &MutableTransaction, virtual_daa_score: u64) -> RuleResult<()> {
+        let limits = self.config.mempool_block_mass_limits.get(virtual_daa_score);
         let storage_mass = transaction.tx.mass();
         if storage_mass > limits.storage {
             return Err(RuleError::RejectStorageMass(transaction.id(), storage_mass, limits.storage));
