@@ -4,7 +4,7 @@ use crate::flowcontext::{
     transactions::TransactionsSpread,
 };
 use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
-use crate::{v7, v8, v9};
+use crate::{v7, v8, v10};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -13,6 +13,7 @@ use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
+use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
@@ -60,7 +61,11 @@ use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 9;
+const PROTOCOL_VERSION: u32 = 10;
+
+/// Testnet 12 was launched with the Toccata flow set under protocol version 9.
+const TN12_LAUNCH_PROTOCOL_VERSION: u32 = 9;
+const TN12_NETWORK: NetworkId = NetworkId::with_suffix(NetworkType::Testnet, 12);
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -760,9 +765,19 @@ impl ConnectionInitializer for FlowContext {
 
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
+        // TN12 launched Toccata flows under protocol 9. Normalize those peers to the current
+        // protocol locally while preserving the originally advertised version in peer properties.
+        let peer_protocol_version = if self.config.net == TN12_NETWORK && peer_version.protocol_version == TN12_LAUNCH_PROTOCOL_VERSION
+        {
+            PROTOCOL_VERSION
+        } else {
+            peer_version.protocol_version
+        };
+
         // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v9::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+        let (flows, applied_protocol_version) = match peer_protocol_version {
+            v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+            9 => (v8::register(self.clone(), router.clone(), 9), 9),
             8 => (v8::register(self.clone(), router.clone(), 8), 8),
             7 => (v7::register(self.clone(), router.clone()), 7),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
