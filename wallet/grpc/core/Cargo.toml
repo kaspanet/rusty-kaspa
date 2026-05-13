@@ -16,10 +16,11 @@ kaspa-bip32.workspace = true
 thiserror.workspace = true
 
 tonic.workspace = true
+tonic-prost.workspace = true
 prost.workspace = true
 
 [lints]
 workspace = true
 
 [build-dependencies]
-tonic-build = { workspace = true, features = ["prost"] }
+tonic-prost-build = { workspace = true }

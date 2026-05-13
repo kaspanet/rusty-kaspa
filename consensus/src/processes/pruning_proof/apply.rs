@@ -75,7 +75,7 @@ impl PruningProofManager {
         }
         // topologically sort every level in the proof
         expanded_proof.iter_mut().for_each(|level_proof| {
-            level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
+            level_proof.sort_by_key(|a| a.blue_work);
         });
 
         self.populate_reachability_and_headers(&expanded_proof);

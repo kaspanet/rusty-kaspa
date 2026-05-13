@@ -1,5 +1,6 @@
 use crate::jsonrpc_event::JsonRpcEvent;
 use crate::log_colors::LogColors;
+use crate::net_utils::bind_addr_from_port;
 use crate::stratum_context::StratumContext;
 use hex;
 use std::collections::HashMap;
@@ -7,6 +8,7 @@ use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
 /// Event handler function type
@@ -62,17 +64,24 @@ impl StratumListener {
 
     /// Start listening for connections
     pub async fn listen(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.listen_impl(None).await
+    }
+
+    pub async fn listen_with_shutdown(
+        &self,
+        shutdown_rx: watch::Receiver<bool>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.listen_impl(Some(shutdown_rx)).await
+    }
+
+    async fn listen_impl(
+        &self,
+        mut shutdown_rx: Option<watch::Receiver<bool>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.shutting_down.store(false, std::sync::atomic::Ordering::Release);
 
-        // Parse port - ensure we bind to IPv4 (0.0.0.0) to accept IPv4 connections
-        // If it starts with ':', prepend "0.0.0.0", otherwise format as "0.0.0.0:PORT"
-        let addr_str = if self.config.port.starts_with(':') {
-            format!("0.0.0.0{}", self.config.port)
-        } else if self.config.port.chars().all(|c| c.is_ascii_digit()) {
-            format!("0.0.0.0:{}", self.config.port)
-        } else {
-            self.config.port.clone()
-        };
+        // Ensure we bind to IPv4 (0.0.0.0) when given a bare port like ":5555" / "5555".
+        let addr_str = bind_addr_from_port(&self.config.port);
 
         let listener =
             TcpListener::bind(&addr_str).await.map_err(|e| format!("failed listening to socket {}: {}", self.config.port, e))?;
@@ -84,22 +93,50 @@ impl StratumListener {
         let on_disconnect = Arc::clone(&self.config.on_disconnect);
         let stats = self.stats.clone();
 
-        // Spawn disconnect handler
+        let mut disconnect_shutdown_rx = shutdown_rx.clone();
         tokio::spawn(async move {
-            while let Some(ctx) = disconnect_rx.recv().await {
-                info!("[CONNECTION] client disconnecting - {}", ctx.remote_addr);
-                info!("[CONNECTION] Disconnect event for {}:{}", ctx.remote_addr, ctx.remote_port);
-                stats.lock().disconnects += 1;
-                on_disconnect(ctx);
+            loop {
+                if let Some(ref mut rx) = disconnect_shutdown_rx {
+                    tokio::select! {
+                        _ = rx.changed() => {
+                            if *rx.borrow() {
+                                break;
+                            }
+                        }
+                        maybe_ctx = disconnect_rx.recv() => {
+                            let Some(ctx) = maybe_ctx else {
+                                break;
+                            };
+                            info!("[CONNECTION] client disconnecting - {}", ctx.remote_addr);
+                            info!("[CONNECTION] Disconnect event for {}:{}", ctx.remote_addr, ctx.remote_port);
+                            stats.lock().disconnects += 1;
+                            on_disconnect(ctx);
+                        }
+                    }
+                } else {
+                    let Some(ctx) = disconnect_rx.recv().await else {
+                        break;
+                    };
+                    info!("[CONNECTION] client disconnecting - {}", ctx.remote_addr);
+                    info!("[CONNECTION] Disconnect event for {}:{}", ctx.remote_addr, ctx.remote_port);
+                    stats.lock().disconnects += 1;
+                    on_disconnect(ctx);
+                }
             }
         });
 
-        // Accept connections
         loop {
-            tokio::select! {
-                result = listener.accept() => {
-                    match result {
-                        Ok((stream, addr)) => {
+            if let Some(ref mut rx) = shutdown_rx {
+                tokio::select! {
+                    _ = rx.changed() => {
+                        if *rx.borrow() {
+                            self.shutting_down.store(true, std::sync::atomic::Ordering::Release);
+                            break;
+                        }
+                    }
+                    result = listener.accept() => {
+                        match result {
+                            Ok((stream, addr)) => {
                             let remote_addr = addr.ip().to_string();
                             let remote_port = addr.port();
 
@@ -143,7 +180,7 @@ impl StratumListener {
                             });
                             debug!("[CONNECTION] ===== CONNECTION SETUP COMPLETE FOR {}:{} =====", remote_addr_for_log, remote_port_for_log);
                         }
-                        Err(e) => {
+                            Err(e) => {
                             if self.shutting_down.load(std::sync::atomic::Ordering::Acquire) {
                                 info!("stopping listening due to server shutdown");
                                 break;
@@ -152,7 +189,61 @@ impl StratumListener {
                             error!("[CONNECTION] Error: {}", e);
                             error!("[CONNECTION] Error kind: {:?}", e.kind());
                             error!("[CONNECTION] Failed to accept connection: {} (kind: {:?})", e, e.kind());
+                            }
                         }
+                    }
+                }
+            } else {
+                match listener.accept().await {
+                    Ok((stream, addr)) => {
+                        let remote_addr = addr.ip().to_string();
+                        let remote_port = addr.port();
+
+                        debug!("[CONNECTION] new client connecting - {}:{}", remote_addr, remote_port);
+                        debug!("[CONNECTION] ===== TCP CONNECTION ESTABLISHED =====");
+                        debug!("[CONNECTION] Remote address: {}:{}", remote_addr, remote_port);
+                        debug!("[CONNECTION] Local address: {:?}", stream.local_addr());
+                        debug!("[CONNECTION] Connection accepted successfully");
+
+                        use crate::mining_state::MiningState;
+                        let state = Arc::new(MiningState::new());
+
+                        let remote_addr_for_log = remote_addr.clone();
+                        let remote_port_for_log = remote_port;
+
+                        debug!("[CONNECTION] Creating StratumContext for {}:{}", remote_addr_for_log, remote_port_for_log);
+                        let ctx = StratumContext::new(remote_addr, remote_port, stream, state, disconnect_tx_clone.clone());
+                        debug!("[CONNECTION] StratumContext created successfully");
+
+                        debug!("[CONNECTION] Calling on_connect handler");
+                        (self.config.on_connect)(ctx.clone());
+                        debug!("[CONNECTION] on_connect handler completed");
+
+                        debug!("[CONNECTION] Spawning client listener task for {}:{}", remote_addr_for_log, remote_port_for_log);
+                        let ctx_clone = ctx.clone();
+                        let handler_map = self.config.handler_map.clone();
+                        tokio::spawn(async move {
+                            debug!(
+                                "[CONNECTION] Client listener task started for {}:{}",
+                                ctx_clone.remote_addr, ctx_clone.remote_port
+                            );
+                            Self::spawn_client_listener(ctx_clone, &handler_map).await;
+                            debug!("[CONNECTION] Client listener task ended");
+                        });
+                        debug!(
+                            "[CONNECTION] ===== CONNECTION SETUP COMPLETE FOR {}:{} =====",
+                            remote_addr_for_log, remote_port_for_log
+                        );
+                    }
+                    Err(e) => {
+                        if self.shutting_down.load(std::sync::atomic::Ordering::Acquire) {
+                            info!("stopping listening due to server shutdown");
+                            break;
+                        }
+                        error!("[CONNECTION] ===== FAILED TO ACCEPT INCOMING CONNECTION =====");
+                        error!("[CONNECTION] Error: {}", e);
+                        error!("[CONNECTION] Error kind: {:?}", e.kind());
+                        error!("[CONNECTION] Failed to accept connection: {} (kind: {:?})", e, e.kind());
                     }
                 }
             }

@@ -24,7 +24,7 @@ pub use crate::wallet::*;
 pub use crate::{storage, utils};
 
 pub use ahash::{AHashMap, AHashSet};
-pub use async_std::sync::{
+pub use async_lock::{
     Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard, RwLock as AsyncRwLock, RwLockReadGuard as AsyncRwLockReadGuard,
 };
 pub use async_trait::async_trait;

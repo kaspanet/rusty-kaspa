@@ -1,5 +1,5 @@
+use downcast::AnySync;
 use futures_util::future::BoxFuture;
-use intertrait::CastFromSync;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -13,7 +13,7 @@ pub type AsyncServiceResult<T> = std::result::Result<T, AsyncServiceError>;
 
 pub type AsyncServiceFuture = BoxFuture<'static, AsyncServiceResult<()>>;
 
-pub trait AsyncService: CastFromSync {
+pub trait AsyncService: AnySync {
     fn ident(self: Arc<Self>) -> &'static str;
     fn start(self: Arc<Self>) -> AsyncServiceFuture;
     fn signal_exit(self: Arc<Self>);

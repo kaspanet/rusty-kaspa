@@ -1,0 +1,79 @@
+name: Build musl toolchain
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'musl-toolchain/preset.sh'
+    branches:
+      - master
+
+jobs:
+  build-toolchain:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set preset
+        run: source musl-toolchain/preset.sh && echo "CTNG_PRESET=$CTNG_PRESET" >> $GITHUB_ENV
+
+      - name: Calculate preset hash
+        run: |
+          HASH=$(sha256sum musl-toolchain/preset.sh | awk '{print $1}')
+          echo "PRESET_HASH=$HASH" >> $GITHUB_ENV
+          echo "Preset hash: $HASH"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3-dev gperf bison flex texinfo gawk libncurses5-dev zstd
+
+      - name: Build crosstool-ng
+        run: |
+          cd musl-toolchain
+          git clone https://github.com/crosstool-ng/crosstool-ng
+          cd crosstool-ng
+          git checkout crosstool-ng-1.26.0
+          ./bootstrap
+          ./configure --prefix=$HOME/ctng
+          make
+          make install
+
+      - name: Build musl toolchain
+        run: |
+          export PATH=$HOME/ctng/bin:$PATH
+          cd musl-toolchain
+          ct-ng ${{ env.CTNG_PRESET }}
+          ct-ng build > build.log 2>&1
+          status=$?
+          if [ $status -eq 0 ]; then
+            echo "Build succeeded"
+            echo "${{ env.PRESET_HASH }}" > "$HOME/x-tools/preset_hash"
+            ls -la $HOME/x-tools
+          else
+            echo "Build failed:"
+            cat .config
+            cat build.log
+            exit 1
+          fi
+
+      - name: Package toolchain
+        run: |
+          tar --use-compress-program=zstd -cf x-tools.tar.zst -C "$HOME" x-tools
+          ls -lh x-tools.tar.zst
+
+      - name: Upload toolchain release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="musl-toolchain-v1"
+          # Delete existing release if it exists
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          # Create new release with the toolchain archive
+          gh release create "$TAG" x-tools.tar.zst \
+            --title "musl cross-compilation toolchain" \
+            --notes "Pre-built x86_64-multilib-linux-musl toolchain (crosstool-ng 1.26.0). Preset hash: ${{ env.PRESET_HASH }}" \
+            --latest=false
