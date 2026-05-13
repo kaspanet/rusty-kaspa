@@ -61,7 +61,7 @@ use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 10;
+pub(crate) const PROTOCOL_VERSION: u32 = 10;
 
 /// Testnet 12 was launched with the Toccata flow set under protocol version 9.
 const TN12_LAUNCH_PROTOCOL_VERSION: u32 = 9;
@@ -782,6 +782,9 @@ impl ConnectionInitializer for FlowContext {
 
         // Until the one-day pre-activation threshold is reached, older protocol versions remain accepted.
         // Once it is reached, peers must advertise protocol 10 (TN12 launch peers were normalized above).
+        //
+        // Note: post-activation fresh nodes with virtual DAA score near genesis are not covered here and
+        // are guarded later during IBD by `validate_pruning_point_freshness_for_toccata`.
         let (flows, applied_protocol_version) = if connect_only_new_versions {
             // Register all flows according to version
             match peer_protocol_version {
