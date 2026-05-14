@@ -12,7 +12,6 @@ use crate::mempool::{
 use kaspa_consensus_core::{
     api::ConsensusApi,
     constants::UNACCEPTED_DAA_SCORE,
-    mass::NonContextualMasses,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
@@ -158,44 +157,6 @@ impl Mempool {
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_context(transaction)?;
         }
-        Ok(())
-    }
-
-    /// Validates non-contextual transaction dimensions against the current mempool template limits.
-    ///
-    /// This is intentionally separate from standardness: even when non-standard transactions are accepted,
-    /// the mempool must not admit a transaction which selectors can never include in a block. The transaction
-    /// is expected to have its non-contextual masses populated before this call. These checks run before
-    /// consensus in-context validation so transactions above compute/transient limits do not reach script execution.
-    fn validate_transaction_limits_in_isolation(&self, transaction: &MutableTransaction, virtual_daa_score: u64) -> RuleResult<()> {
-        if transaction.tx.gas > self.config.block_lane_limits.gas_per_lane {
-            return Err(RuleError::RejectGas(transaction.id(), transaction.tx.gas, self.config.block_lane_limits.gas_per_lane));
-        }
-
-        let limits = self.config.mempool_block_mass_limits.get(virtual_daa_score);
-        let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
-        if compute_mass > limits.compute {
-            return Err(RuleError::RejectComputeMass(transaction.id(), compute_mass, limits.compute));
-        }
-        if transient_mass > limits.transient {
-            return Err(RuleError::RejectTransientMass(transaction.id(), transient_mass, limits.transient));
-        }
-
-        Ok(())
-    }
-
-    /// Validates contextual transaction dimensions against the current mempool template limits.
-    ///
-    /// This is intentionally separate from standardness: even when non-standard transactions are accepted,
-    /// the mempool must not admit a transaction which selectors can never include in a block. The transaction
-    /// is expected to have contextual storage mass populated by consensus validation before this call.
-    fn validate_transaction_limits_in_context(&self, transaction: &MutableTransaction, virtual_daa_score: u64) -> RuleResult<()> {
-        let limits = self.config.mempool_block_mass_limits.get(virtual_daa_score);
-        let storage_mass = transaction.tx.mass();
-        if storage_mass > limits.storage {
-            return Err(RuleError::RejectStorageMass(transaction.id(), storage_mass, limits.storage));
-        }
-
         Ok(())
     }
 

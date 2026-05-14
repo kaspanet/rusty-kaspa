@@ -1,3 +1,24 @@
+//! TODO(post-toccata): Once the transient-mass activation window is behind us, reduce this module
+//! to the durable mempool pipeline checks and move/rename it away from Toccata-specific activation
+//! coverage.
+//!
+//! Remove with the activation plumbing:
+//! - mined_templates_respect_consensus_transient_mass_across_mempool_delay
+//! - mined_template_handles_transactions_added_on_both_sides_of_mempool_delay
+//! - rbf_lower_fee_replacement_is_rejected_at_delayed_mempool_activation_boundary
+//! - template_limits_reject_transient_tx_until_delayed_mempool_activation
+//!
+//! Keep as durable pipeline checks:
+//! - template_limits_reject_compute_tx_before_consensus_validation
+//! - template_limits_reject_storage_tx_after_consensus_validation
+//! - template_limits_reject_gas_even_when_non_standard_transactions_are_allowed
+//!
+//! The durable checks prove that block-limit admission is not standardness: gas and compute
+//! rejections happen before consensus in-context validation and script work, while storage
+//! rejection happens only after consensus populates contextual mass. They protect the selector
+//! invariant that every tx admitted to the pool can fit in a block under the active consensus
+//! block limits.
+
 use crate::{
     MiningCounters,
     errors::MiningManagerError,
