@@ -5,7 +5,7 @@ pub use super::{
 };
 use crate::{
     BlockLevel, KType,
-    constants::STORAGE_MASS_PARAMETER,
+    constants::{BLOCK_VERSION, STORAGE_MASS_PARAMETER, TOCCATA_BLOCK_VERSION},
     mass::{BlockLaneLimits, BlockMassLimits, MassCofactors},
     network::{NetworkId, NetworkType},
 };
@@ -515,6 +515,15 @@ impl Params {
         // the two to avoid a situation where a block can be pruned and
         // not finalized.
         min(self.blockrate.pruning_depth, anticone_finalization_depth)
+    }
+
+    pub fn block_version(&self) -> ForkedParam<u16> {
+        if self.net == TESTNET12_PARAMS.net {
+            // The testnet12 hardfork was activated without a block version bump, so we return a constant value of 1 for compatibility with the existing testnet12 chain.
+            ForkedParam::new_const(BLOCK_VERSION)
+        } else {
+            ForkedParam::new(BLOCK_VERSION, TOCCATA_BLOCK_VERSION, self.covenants_activation)
+        }
     }
 
     pub fn network_name(&self) -> String {
