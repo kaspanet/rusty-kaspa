@@ -430,7 +430,5 @@ mod tests {
         // Avoid compiler warnings on the last clone
         drop(inputs);
         drop(outputs);
-
-        // TODO(pre-covpp) add more tests for v1 hashes
     }
 }

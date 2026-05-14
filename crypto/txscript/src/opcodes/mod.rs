@@ -1497,7 +1497,6 @@ opcode_list! {
         }
     }
 
-    // Undefined opcodes TODO(pre-covpp): Change the location of this comment
     opcode OpInputCovenantId<0xcf, 1>(self, vm){
         if vm.flags.covenants_enabled {
             match vm.script_source {
