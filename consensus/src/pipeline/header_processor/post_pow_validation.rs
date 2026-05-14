@@ -2,12 +2,15 @@ use super::{HeaderProcessingContext, HeaderProcessor};
 use crate::errors::{BlockProcessResult, RuleError, TwoDimVecDisplay};
 use crate::model::services::reachability::ReachabilityService;
 use crate::processes::window::WindowManager;
+use kaspa_consensus_core::config::params::TESTNET12_GENESIS;
+use kaspa_consensus_core::constants;
 use kaspa_consensus_core::header::Header;
 use kaspa_hashes::Hash;
 use std::collections::HashSet;
 
 impl HeaderProcessor {
     pub fn post_pow_validation(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+        self.check_header_version_in_context(header)?;
         self.check_blue_score(ctx, header)?;
         self.check_blue_work(ctx, header)?;
         self.check_median_timestamp(ctx, header)?;
@@ -97,6 +100,20 @@ impl HeaderProcessor {
 
         ctx.merge_depth_root = Some(merge_depth_root);
         ctx.finality_point = Some(finality_point);
+        Ok(())
+    }
+
+    // TODO(post-toccata): Remove this and restore the context-free check_header_version.
+    fn check_header_version_in_context(&self, header: &Header) -> BlockProcessResult<()> {
+        if self.genesis.hash == TESTNET12_GENESIS.hash {
+            if header.version != constants::BLOCK_VERSION {
+                return Err(RuleError::WrongBlockVersion(header.version));
+            }
+        } else {
+            if header.version != self.block_version.get(header.daa_score) {
+                return Err(RuleError::WrongBlockVersion(header.version));
+            }
+        }
         Ok(())
     }
 }
