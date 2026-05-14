@@ -374,7 +374,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             // This worst case usage only considers block space. It does not account for usage of
             // other stores (reachability, block status, mempool, etc.)
             let worst_case_usage = ((total_blocks + finality_depth)
-                * (config.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR)) as f64
+                * (config.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR))
+                as f64
                 / ONE_GIGABYTE;
 
             info!(
@@ -628,7 +629,7 @@ Do you confirm? (y/n)";
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block(),
         false,
-        config.block_mass_limits,
+        config.mempool_block_mass_limits(),
         config.block_lane_limits,
         config.ram_scale,
         config.block_template_cache_lifetime,

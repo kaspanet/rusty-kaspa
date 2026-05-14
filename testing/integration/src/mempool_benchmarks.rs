@@ -630,7 +630,7 @@ fn generate_stark_tx_dag(
     let num_outputs = expand_factor;
     let signature_script = Arc::new(signature_script);
     let mass_calculator = MassCalculator::new_with_consensus_params(params);
-    let mass_cofactors = params.block_mass_limits.cofactors();
+    let mass_cofactors = params.block_mass_limits().after().cofactors();
 
     let mut txs = Vec::with_capacity(target_levels * target_width);
     let mut logged_first_provisional_tx = false;

@@ -6,7 +6,7 @@ pub use super::{
 use crate::{
     BlockLevel, KType,
     constants::STORAGE_MASS_PARAMETER,
-    mass::{BlockLaneLimits, BlockMassLimits},
+    mass::{BlockLaneLimits, BlockMassLimits, MassCofactors},
     network::{NetworkId, NetworkType},
 };
 use kaspa_addresses::Prefix;
@@ -16,6 +16,15 @@ use std::{
     cmp::min,
     ops::{Deref, DerefMut},
 };
+
+const MEMPOOL_BLOCK_MASS_ACTIVATION_DELAY_SECONDS: u64 = 24 * 60 * 60;
+const PRIOR_MAX_SIGNATURE_SCRIPT_LEN: usize = 10_000;
+// Increased for stark proofs. This value is effectively covered by the post-Toccata
+// transient block mass limit: 1_000_000 transient mass / 4 grams-per-byte = 250_000
+// bytes for the entire block, so a larger signature script cannot be accepted anyway.
+// TODO(post-toccata): check whether this early signature-script length guard can be
+// removed entirely, or whether it remains useful as cheap early protection.
+const NEW_MAX_SIGNATURE_SCRIPT_LEN: usize = 250_000;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForkActivation(u64);
@@ -45,6 +54,13 @@ impl ForkActivation {
 
     pub fn is_active(self, current_daa_score: u64) -> bool {
         current_daa_score >= self.0
+    }
+
+    pub fn delayed_by(self, delay_daa_score: u64) -> Self {
+        match self.0 {
+            Self::ALWAYS | Self::NEVER => self,
+            daa_score => Self(daa_score.saturating_add(delay_daa_score)),
+        }
     }
 
     /// Checks if the fork was "recently" activated, i.e., in the time frame of the provided range.
@@ -85,6 +101,10 @@ impl<T: Copy> ForkedParam<T> {
         if self.activation.is_active(daa_score) { self.post } else { self.pre }
     }
 
+    pub fn with_delayed_activation(&self, delay_daa_score: u64) -> Self {
+        Self::new(self.pre, self.post, self.activation.delayed_by(delay_daa_score))
+    }
+
     /// Returns the value before activation (=pre unless activation = always)
     pub fn before(&self) -> T {
         match self.activation.0 {
@@ -104,6 +124,12 @@ impl<T: Copy> ForkedParam<T> {
     /// Maps the ForkedParam<T> to a new ForkedParam<U> by applying a map function on both pre and post
     pub fn map<U: Copy, F: Fn(T) -> U>(&self, f: F) -> ForkedParam<U> {
         ForkedParam::new(f(self.pre), f(self.post), self.activation)
+    }
+}
+
+impl<T: Copy> From<T> for ForkedParam<T> {
+    fn from(value: T) -> Self {
+        Self::new_const(value)
     }
 }
 
@@ -196,12 +222,14 @@ pub struct OverrideParams {
 
     pub max_tx_inputs: Option<usize>,
     pub max_tx_outputs: Option<usize>,
-    pub max_signature_script_len: Option<usize>,
+    pub prior_max_signature_script_len: Option<usize>,
+    pub new_max_signature_script_len: Option<usize>,
     pub max_script_public_key_len: Option<usize>,
     pub mass_per_tx_byte: Option<u64>,
     pub mass_per_script_pub_key_byte: Option<u64>,
     pub mass_per_sig_op: Option<u64>,
-    pub block_mass_limits: Option<BlockMassLimits>,
+    pub prior_block_mass_limits: Option<BlockMassLimits>,
+    pub new_transient_mass_limit: Option<u64>,
     pub block_lane_limits: Option<BlockLaneLimits>,
 
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
@@ -239,12 +267,14 @@ impl From<Params> for OverrideParams {
             max_coinbase_payload_len: Some(p.max_coinbase_payload_len),
             max_tx_inputs: Some(p.max_tx_inputs),
             max_tx_outputs: Some(p.max_tx_outputs),
-            max_signature_script_len: Some(p.max_signature_script_len),
+            prior_max_signature_script_len: Some(p.prior_max_signature_script_len),
+            new_max_signature_script_len: Some(p.new_max_signature_script_len),
             max_script_public_key_len: Some(p.max_script_public_key_len),
             mass_per_tx_byte: Some(p.mass_per_tx_byte),
             mass_per_script_pub_key_byte: Some(p.mass_per_script_pub_key_byte),
             mass_per_sig_op: Some(p.mass_per_sig_op),
-            block_mass_limits: Some(p.block_mass_limits),
+            prior_block_mass_limits: Some(p.prior_block_mass_limits),
+            new_transient_mass_limit: Some(p.new_transient_mass_limit),
             block_lane_limits: Some(p.block_lane_limits),
             storage_mass_parameter: Some(p.storage_mass_parameter),
             deflationary_phase_daa_score: Some(p.deflationary_phase_daa_score),
@@ -291,13 +321,15 @@ pub struct Params {
 
     pub max_tx_inputs: usize,
     pub max_tx_outputs: usize,
-    pub max_signature_script_len: usize,
+    pub prior_max_signature_script_len: usize,
+    pub new_max_signature_script_len: usize,
     pub max_script_public_key_len: usize,
 
     pub mass_per_tx_byte: u64,
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
-    pub block_mass_limits: BlockMassLimits,
+    pub prior_block_mass_limits: BlockMassLimits,
+    pub new_transient_mass_limit: u64,
     pub block_lane_limits: BlockLaneLimits,
 
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
@@ -363,6 +395,68 @@ impl Params {
             1000 / self.blockrate.target_time_per_block,
             self.crescendo_activation,
         )
+    }
+
+    /// Returns the forked per-dimension block mass limits.
+    #[inline]
+    #[must_use]
+    pub fn block_mass_limits(&self) -> ForkedParam<BlockMassLimits> {
+        let mut new_block_mass_limits = self.prior_block_mass_limits;
+        new_block_mass_limits.transient = self.new_transient_mass_limit;
+        ForkedParam::new(self.prior_block_mass_limits, new_block_mass_limits, self.covenants_activation)
+    }
+
+    /// Returns the forked cofactors for normalizing block mass dimensions.
+    #[inline]
+    #[must_use]
+    pub fn block_mass_cofactors(&self) -> ForkedParam<MassCofactors> {
+        self.block_mass_limits().map(|limits| limits.cofactors())
+    }
+
+    /// Returns the block mass limits used for mempool policy.
+    ///
+    /// Mempool policy lags the consensus transient mass relaxation, so transactions
+    /// near activation are normalized by the stricter pre-activation limits.
+    #[inline]
+    #[must_use]
+    pub fn mempool_block_mass_limits(&self) -> ForkedParam<BlockMassLimits> {
+        let block_mass_limits = self.block_mass_limits();
+        let prior_limits = block_mass_limits.before();
+        let new_limits = block_mass_limits.after();
+        assert_eq!(
+            new_limits.compute, prior_limits.compute,
+            "delaying mempool mass activation assumes the compute mass limit does not change"
+        );
+        assert_eq!(
+            new_limits.storage, prior_limits.storage,
+            "delaying mempool mass activation assumes the storage mass limit does not change"
+        );
+        assert!(
+            new_limits.transient >= prior_limits.transient,
+            "delaying mempool mass activation is only safe when the post-activation transient limit is not stricter"
+        );
+
+        block_mass_limits.with_delayed_activation(MEMPOOL_BLOCK_MASS_ACTIVATION_DELAY_SECONDS.saturating_mul(self.bps()))
+    }
+
+    /// Returns the mempool policy cofactors for normalizing block mass dimensions.
+    #[inline]
+    #[must_use]
+    pub fn mempool_block_mass_cofactors(&self) -> ForkedParam<MassCofactors> {
+        let cofactors = self.mempool_block_mass_limits().map(|limits| limits.cofactors());
+        assert_eq!(
+            cofactors.before().reference,
+            cofactors.after().reference,
+            "mempool mass normalization assumes the reference mass is stable across activation"
+        );
+        cofactors
+    }
+
+    /// Returns the forked maximum signature script length.
+    #[inline]
+    #[must_use]
+    pub fn max_signature_script_len(&self) -> ForkedParam<usize> {
+        ForkedParam::new(self.prior_max_signature_script_len, self.new_max_signature_script_len, self.covenants_activation)
     }
 
     pub fn ghostdag_k(&self) -> KType {
@@ -462,12 +556,14 @@ impl Params {
 
             max_tx_inputs: overrides.max_tx_inputs.unwrap_or(self.max_tx_inputs),
             max_tx_outputs: overrides.max_tx_outputs.unwrap_or(self.max_tx_outputs),
-            max_signature_script_len: overrides.max_signature_script_len.unwrap_or(self.max_signature_script_len),
+            prior_max_signature_script_len: overrides.prior_max_signature_script_len.unwrap_or(self.prior_max_signature_script_len),
+            new_max_signature_script_len: overrides.new_max_signature_script_len.unwrap_or(self.new_max_signature_script_len),
             max_script_public_key_len: overrides.max_script_public_key_len.unwrap_or(self.max_script_public_key_len),
             mass_per_tx_byte: overrides.mass_per_tx_byte.unwrap_or(self.mass_per_tx_byte),
             mass_per_script_pub_key_byte: overrides.mass_per_script_pub_key_byte.unwrap_or(self.mass_per_script_pub_key_byte),
             mass_per_sig_op: overrides.mass_per_sig_op.unwrap_or(self.mass_per_sig_op),
-            block_mass_limits: overrides.block_mass_limits.unwrap_or(self.block_mass_limits),
+            prior_block_mass_limits: overrides.prior_block_mass_limits.unwrap_or(self.prior_block_mass_limits),
+            new_transient_mass_limit: overrides.new_transient_mass_limit.unwrap_or(self.new_transient_mass_limit),
             block_lane_limits: overrides.block_lane_limits.unwrap_or(self.block_lane_limits),
 
             storage_mass_parameter: overrides.storage_mass_parameter.unwrap_or(self.storage_mass_parameter),
@@ -573,7 +669,8 @@ pub const MAINNET_PARAMS: Params = Params {
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
     // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
-    max_signature_script_len: 10_000,
+    prior_max_signature_script_len: PRIOR_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
     // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
@@ -581,7 +678,8 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
+    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
+    new_transient_mass_limit: 1_000_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -631,7 +729,8 @@ pub const TESTNET_PARAMS: Params = Params {
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
     // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
-    max_signature_script_len: 10_000,
+    prior_max_signature_script_len: PRIOR_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
     // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
@@ -639,7 +738,8 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
+    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
+    new_transient_mass_limit: 1_000_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -680,11 +780,12 @@ pub const TESTNET12_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 12),
     genesis: TESTNET12_GENESIS,
 
-    // Increased for stark proofs
-    max_signature_script_len: 300_000,
+    prior_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
 
     // Transient mass is increased for stark proofs
-    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    new_transient_mass_limit: 1_000_000,
 
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
@@ -713,15 +814,16 @@ pub const SIMNET_PARAMS: Params = Params {
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Increased for stark proofs
-    max_signature_script_len: 300_000,
+    prior_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     // Transient mass is increased for stark proofs
-    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
+    new_transient_mass_limit: 1_000_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -754,8 +856,8 @@ pub const DEVNET_PARAMS: Params = Params {
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Increased for stark proofs
-    max_signature_script_len: 300_000,
+    prior_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
+    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
@@ -763,7 +865,8 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
 
     // Transient mass is increased for stark proofs
-    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
+    new_transient_mass_limit: 1_000_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
