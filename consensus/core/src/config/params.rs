@@ -403,7 +403,7 @@ impl Params {
     pub fn block_mass_limits(&self) -> ForkedParam<BlockMassLimits> {
         let mut new_block_mass_limits = self.prior_block_mass_limits;
         new_block_mass_limits.transient = self.new_transient_mass_limit;
-        ForkedParam::new(self.prior_block_mass_limits, new_block_mass_limits, self.covenants_activation)
+        ForkedParam::new(self.prior_block_mass_limits, new_block_mass_limits, self.toccata_activation)
     }
 
     /// Returns the forked cofactors for normalizing block mass dimensions.
@@ -456,7 +456,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn max_signature_script_len(&self) -> ForkedParam<usize> {
-        ForkedParam::new(self.prior_max_signature_script_len, self.new_max_signature_script_len, self.covenants_activation)
+        ForkedParam::new(self.prior_max_signature_script_len, self.new_max_signature_script_len, self.toccata_activation)
     }
 
     pub fn ghostdag_k(&self) -> KType {
@@ -522,7 +522,7 @@ impl Params {
             // The testnet12 hardfork was activated without a block version bump, so we return a constant value of 1 for compatibility with the existing testnet12 chain.
             ForkedParam::new_const(BLOCK_VERSION)
         } else {
-            ForkedParam::new(BLOCK_VERSION, TOCCATA_BLOCK_VERSION, self.covenants_activation)
+            ForkedParam::new(BLOCK_VERSION, TOCCATA_BLOCK_VERSION, self.toccata_activation)
         }
     }
 

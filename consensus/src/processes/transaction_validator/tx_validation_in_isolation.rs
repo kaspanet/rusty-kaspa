@@ -354,7 +354,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
 
         let mut forked_params = params.clone();
-        forked_params.covenants_activation = ForkActivation::new(100);
+        forked_params.toccata_activation = ForkActivation::new(100);
         let forked_tv = TransactionValidator::new_for_tests(
             forked_params.max_tx_inputs,
             forked_params.max_tx_outputs,

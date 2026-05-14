@@ -1070,18 +1070,18 @@ fn validate_pruning_point_freshness_for_toccata(
     now: u64,
 ) -> Result<(), ProtocolError> {
     // No activation is expected.
-    if params.covenants_activation == ForkActivation::never() {
+    if params.toccata_activation == ForkActivation::never() {
         return Ok(());
     }
 
     // If the pruning point is post-activation, its header is validated as part of the pruning proof.
-    if params.covenants_activation.is_active(pp_daa_score) {
+    if params.toccata_activation.is_active(pp_daa_score) {
         return Ok(());
     }
 
     // Otherwise, protect fresh nodes from outdated syncers with stale pre-activation pruning points.
 
-    let activation_daa_score = params.covenants_activation.daa_score();
+    let activation_daa_score = params.toccata_activation.daa_score();
 
     // Reject if:
     // 1. the syncer's pruning point is still pre-activation;
@@ -1117,13 +1117,13 @@ mod tests {
 
     fn params_with_toccata_activation(activation_daa_score: u64) -> Params {
         let mut params = MAINNET_PARAMS.clone();
-        params.covenants_activation = ForkActivation::new(activation_daa_score);
+        params.toccata_activation = ForkActivation::new(activation_daa_score);
         params
     }
 
     fn params_without_toccata_activation() -> Params {
         let mut params = MAINNET_PARAMS.clone();
-        params.covenants_activation = ForkActivation::never();
+        params.toccata_activation = ForkActivation::never();
         params
     }
 

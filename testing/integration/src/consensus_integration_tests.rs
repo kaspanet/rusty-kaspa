@@ -510,7 +510,7 @@ async fn header_version_is_enforced_by_activation() {
     let activation = MAINNET_PARAMS.genesis.daa_score + 10;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
-        .edit_consensus_params(|p| p.covenants_activation = ForkActivation::new(activation))
+        .edit_consensus_params(|p| p.toccata_activation = ForkActivation::new(activation))
         .build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();

@@ -719,7 +719,7 @@ impl ConnectionInitializer for FlowContext {
 
         // Networks with a scheduled Toccata activation advertise protocol 10. Other networks
         // still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
-        let advertise_toccata_p2p = self.config.covenants_activation != ForkActivation::never();
+        let advertise_toccata_p2p = self.config.toccata_activation != ForkActivation::never();
         let advertised_protocol_version = if advertise_toccata_p2p { PROTOCOL_VERSION } else { 9 };
 
         // Build the local version message
@@ -784,7 +784,7 @@ impl ConnectionInitializer for FlowContext {
         const ONE_DAY_SECONDS: u64 = 24 * 60 * 60;
         let daa_threshold = ONE_DAY_SECONDS * self.config.bps();
         let virtual_daa_score = self.consensus().unguarded_session().get_virtual_daa_score();
-        let connect_only_new_versions = self.config.covenants_activation.is_active(virtual_daa_score.saturating_add(daa_threshold));
+        let connect_only_new_versions = self.config.toccata_activation.is_active(virtual_daa_score.saturating_add(daa_threshold));
 
         // Until the one-day pre-activation threshold is reached, older protocol versions remain accepted.
         // Once it is reached, peers must advertise protocol 10 (TN12 launch peers were normalized above).
