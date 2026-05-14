@@ -1115,9 +1115,15 @@ mod tests {
     use super::*;
     use kaspa_consensus_core::config::params::MAINNET_PARAMS;
 
-    fn params_with_covenants_activation(activation_daa_score: u64) -> Params {
+    fn params_with_toccata_activation(activation_daa_score: u64) -> Params {
         let mut params = MAINNET_PARAMS.clone();
         params.covenants_activation = ForkActivation::new(activation_daa_score);
+        params
+    }
+
+    fn params_without_toccata_activation() -> Params {
+        let mut params = MAINNET_PARAMS.clone();
+        params.covenants_activation = ForkActivation::never();
         params
     }
 
@@ -1128,9 +1134,9 @@ mod tests {
     #[test]
     fn test_toccata_pruning_point_staleness_guard() {
         const ONE_DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
-        let blocks_per_day = ONE_DAY_MILLIS / MAINNET_PARAMS.target_time_per_block();
         let activation_daa_score = 10_000_000;
-        let params = params_with_covenants_activation(activation_daa_score);
+        let params = params_with_toccata_activation(activation_daa_score);
+        let blocks_per_day = ONE_DAY_MILLIS / params.target_time_per_block();
         let pp_hash = Hash::from_u64_word(1);
         let pp_daa_score = activation_daa_score - 10;
         let pp_timestamp = 1_000_000_000_000;
@@ -1141,8 +1147,14 @@ mod tests {
         // No activation is configured:
         // PP(pre-activation by score) ---- estimated activation ---- pruning period + margin ---- now
         assert!(
-            validate_pruning_point_freshness_for_toccata(&MAINNET_PARAMS, pp_hash, pp_timestamp, pp_daa_score, stale_after + 1)
-                .is_ok()
+            validate_pruning_point_freshness_for_toccata(
+                &params_without_toccata_activation(),
+                pp_hash,
+                pp_timestamp,
+                pp_daa_score,
+                stale_after + 1
+            )
+            .is_ok()
         );
 
         // Normal pre-activation IBD: activation is still ten days away.
