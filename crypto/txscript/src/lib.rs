@@ -932,7 +932,7 @@ mod tests {
 
     use crate::opcodes::codes::{
         OpBlake2b, OpBlake2bWithKey, OpBlake3, OpBlake3WithKey, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigFromStack,
-        OpCheckSigFromStackECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDrop, OpDup, OpEndIf, OpEqual, OpFalse, OpIf,
+        OpCheckSigFromStackECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDrop, OpDup, OpEndIf, OpEqual, OpFalse, OpIf, OpNop,
         OpPushData1, OpSHA256, OpTrue, OpVerify,
     };
 
@@ -1114,6 +1114,51 @@ mod tests {
         assert!(vm.execute().is_ok());
         assert_eq!(vm.used_script_units(), 0.into());
         assert_eq!(vm.total_pushed_bytes(), 0);
+    }
+
+    #[test]
+    fn test_direct_push_above_post_toccata_element_limit_is_rejected() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let element_size = MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA + 1;
+        let data = vec![0u8; element_size];
+        let oversized_push = ScriptBuilder::new().add_data_unchecked(&data).drain();
+        let non_executed_branch_script = {
+            let mut builder = ScriptBuilder::new();
+            builder.add_op(OpFalse).unwrap().add_op(OpIf).unwrap();
+            builder.script_mut().extend_from_slice(&oversized_push);
+            builder.script_mut().push(OpEndIf);
+            builder.script_mut().push(OpTrue);
+            builder.drain()
+        };
+        let too_many_ops_script = vec![OpNop; MAX_OPS_PER_SCRIPT_POST_TOCCATA as usize + 1];
+        let non_executed_too_many_ops_script = {
+            let mut builder = ScriptBuilder::new();
+            builder.add_op(OpFalse).unwrap().add_op(OpIf).unwrap();
+            builder.script_mut().extend(std::iter::repeat_n(OpNop, MAX_OPS_PER_SCRIPT_POST_TOCCATA as usize + 1));
+            builder.script_mut().push(OpEndIf);
+            builder.script_mut().push(OpTrue);
+            builder.drain()
+        };
+        let oversized_script = vec![OpTrue; MAX_SCRIPTS_SIZE_POST_TOCCATA + 1];
+
+        for script in
+            [oversized_push, non_executed_branch_script, too_many_ops_script, non_executed_too_many_ops_script, oversized_script]
+        {
+            let mut vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
+                &script,
+                &reused_values,
+                &sig_cache,
+                EngineFlags { covenants_enabled: true, ..Default::default() },
+            );
+
+            // Since the post-Toccata script size and element size limits are both 1M, a direct
+            // push above the element limit necessarily exceeds the script size limit as well.
+            // Similarly, MAX_OPS_PER_SCRIPT_POST_TOCCATA + 1 one-byte opcodes exceed the
+            // script size limit. We cannot reach these execution checks directly here, but
+            // we still want to verify that such scripts are rejected by the engine.
+            assert_eq!(vm.execute(), Err(TxScriptError::ScriptSize(script.len(), MAX_SCRIPTS_SIZE_POST_TOCCATA)));
+        }
     }
 
     #[test]
