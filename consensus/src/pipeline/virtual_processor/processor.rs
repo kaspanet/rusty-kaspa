@@ -581,13 +581,12 @@ impl VirtualStateProcessor {
         // Update the accumulated diff
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
-        let toccata_active: bool = self.toccata_activation.is_active(virtual_daa_window.daa_score);
-        if toccata_active {
+        if self.toccata_activation.is_within_range_from_activation(virtual_daa_window.daa_score, 10_000) {
             self.toccata_logger.report_activation();
         }
 
         // Compute accepted_id_digests
-        let accepted_id_digests = if toccata_active {
+        let accepted_id_digests = if self.toccata_activation.is_active(virtual_daa_window.daa_score) {
             let commit = self.compute_seq_commit(&ctx, &virtual_ghostdag_data, virtual_daa_window.daa_score);
             // Post-KIP21: single-element vec containing the seq_commit.
             // The virtual's SmtBuild is ephemeral — only chain blocks persist SMT state.

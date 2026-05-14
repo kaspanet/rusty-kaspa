@@ -299,7 +299,7 @@ impl HeaderProcessor {
         let mut ctx = self.build_processing_context(header, block_level);
         self.ghostdag(&mut ctx);
         self.pre_pow_validation(&mut ctx, header)?;
-        if self.toccata_activation.is_active(header.daa_score) {
+        if self.toccata_activation.is_within_range_from_activation(header.daa_score, 10_000) {
             self.toccata_logger.report_activation();
         }
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
