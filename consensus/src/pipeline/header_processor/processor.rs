@@ -33,7 +33,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel,
     blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::genesis::GenesisBlock,
+    config::{genesis::GenesisBlock, params::ForkedParam},
     header::Header,
 };
 use kaspa_consensusmanager::SessionLock;
@@ -108,6 +108,7 @@ pub struct HeaderProcessor {
     pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
+    pub(super) block_version: ForkedParam<u16>,
 
     // DB
     db: Arc<DB>,
@@ -194,6 +195,7 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit(),
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
+            block_version: params.block_version(),
         }
     }
 
