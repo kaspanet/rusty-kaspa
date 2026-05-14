@@ -166,6 +166,7 @@ impl<T: Copy + Ord> ForkedParam<T> {
 /// in order to easily support **future BPS acceleration hardforks** (by simply adding
 /// a forked instance of blockrate params to the main [`Params`]).
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockrateParams {
     pub target_time_per_block: u64, // (milliseconds)
     pub ghostdag_k: KType,
@@ -204,6 +205,7 @@ impl BlockrateParams {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OverrideParams {
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: Option<u64>,
@@ -893,3 +895,63 @@ pub const DEVNET_PARAMS: Params = Params {
     crescendo_activation: ForkActivation::always(),
     toccata_activation: ForkActivation::never(),
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn override_params_deserializes_toccata_activation() {
+        let override_params: OverrideParams = serde_json::from_str(r#"{"toccata_activation":42}"#).unwrap();
+
+        assert_eq!(override_params.toccata_activation, Some(ForkActivation::new(42)));
+    }
+
+    #[test]
+    fn override_params_rejects_unknown_top_level_fields() {
+        let err = serde_json::from_str::<OverrideParams>(r#"{"unexpected":42}"#).unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `unexpected`"), "{err}");
+    }
+
+    #[test]
+    fn override_params_rejects_unknown_nested_blockrate_fields() {
+        let err = serde_json::from_str::<OverrideParams>(
+            r#"{
+                "blockrate": {
+                    "target_time_per_block": 100,
+                    "ghostdag_k": 124,
+                    "past_median_time_sample_rate": 10,
+                    "difficulty_sample_rate": 2,
+                    "max_block_parents": 16,
+                    "mergeset_size_limit": 248,
+                    "merge_depth": 36000,
+                    "finality_depth": 432000,
+                    "pruning_depth": 1080000,
+                    "coinbase_maturity": 200,
+                    "unexpected": 1
+                }
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `unexpected`"), "{err}");
+    }
+
+    #[test]
+    fn override_params_rejects_unknown_nested_mass_limit_fields() {
+        let err = serde_json::from_str::<OverrideParams>(
+            r#"{
+                "prior_block_mass_limits": {
+                    "storage": 500000,
+                    "compute": 500000,
+                    "transient": 500000,
+                    "unexpected": 1
+                }
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `unexpected`"), "{err}");
+    }
+}
