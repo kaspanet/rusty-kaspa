@@ -211,7 +211,8 @@ where
     }
 
     let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
-    let calculated_fees = calc.calc_minimum_transaction_fee_from_mass(calculated_mass);
+    // Minimum standard relay fee requires only compute mass.
+    let calculated_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass + additional_mass);
 
     if storage_mass != 0 {
         println!("PT outputs: {}", tx.outputs.len());
@@ -560,7 +561,9 @@ fn test_generator_compound_100k_random_transactions() -> Result<()> {
     let mut rng = StdRng::seed_from_u64(0);
     let inputs: Vec<f64> = (0..100_000).map(|_| rng.gen_range(0.001..10.0)).collect();
     let total = inputs.iter().sum::<f64>();
-    let outputs = [(output_address, Kaspa(total - 10.0))];
+    // The generated tree uses roughly 225 block-equivalents, so 150 KAS leaves
+    // enough room at the 0.5 KAS/block relay floor.
+    let outputs = [(output_address, Kaspa(total - 150.0))];
     generator(test_network_id(), &inputs, &[], None, Fees::sender(Kaspa(5.0)), outputs.as_slice())
         .unwrap()
         .harness()
@@ -657,7 +660,7 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
         .fetch(&Expected {
             is_final: true,
             input_count: 2,
-            aggregate_input_value: Sompi(999_99886576),
+            aggregate_input_value: Sompi(999_88657600),
             output_count: 2,
             // priority_fees: FeesExpected::sender(Kaspa(5.0)),
             priority_fees: FeesExpected::sender(Kaspa(0.0)),
@@ -697,7 +700,7 @@ fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
     .fetch(&Expected {
         is_final: true,
         input_count: 2,
-        aggregate_input_value: Sompi(99_99886576),
+        aggregate_input_value: Sompi(99_88657600),
         output_count: 1,
         priority_fees: FeesExpected::receiver(Kaspa(5.0)),
     })
@@ -748,7 +751,7 @@ fn test_generator_inputs_1k_outputs_2_fees_exclude() -> Result<()> {
         .fetch(&Expected {
             is_final: true,
             input_count: 11,
-            aggregate_input_value: Sompi(9009_98981896),
+            aggregate_input_value: Sompi(9008_98189600),
             output_count: 2,
             priority_fees: FeesExpected::receiver(Kaspa(5.0)),
         })
@@ -766,7 +769,7 @@ fn test_generator_inputs_32k_outputs_2_fees_exclude() -> Result<()> {
         &[],
         None,
         Fees::sender(Kaspa(10_000.0)),
-        [(output_address, Kaspa(f * 32_747.0 - 10_001.0))].as_slice(),
+        [(output_address, Kaspa(f * 32_747.0 - 10_050.0))].as_slice(),
     )
     .unwrap()
     .harness()

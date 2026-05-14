@@ -17,7 +17,8 @@ pub const SIGNATURE_SIZE: u64 = 1 + 64 + 1; //1 byte for OP_DATA_65 + 64 (length
 
 /// MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
 /// the mempool and relayed. It is specified in sompi per 1kg (or 1000 grams) of transaction mass.
-pub(crate) const MINIMUM_RELAY_TRANSACTION_FEE: u64 = 1000;
+/// The default is 100 sompi per gram.
+pub(crate) const MINIMUM_RELAY_TRANSACTION_FEE: u64 = 100_000;
 
 /// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
 /// are considered standard and will therefore be relayed and considered for mining.
@@ -47,15 +48,9 @@ pub fn calc_minimum_required_transaction_relay_fee(mass: u64) -> u64 {
 /// amount is considered dust or not based on the configured minimum transaction
 /// relay fee.
 ///
-/// Dust is defined in terms of the minimum transaction relay fee. In particular,
-/// if the cost to the network to spend coins is more than 1/3 of the minimum
-/// transaction relay fee, it is considered dust.
-///
-/// It is exposed by `MiningManager` for use by transaction generators and wallets.
+/// Mempool does not reject dust outputs by threshold, but the wallet still uses this
+/// heuristic to avoid creating change outputs that cost more to preserve than they are worth.
 pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> bool {
-    // TODO(post-toccata): review this wallet-side dust helper against the updated mempool
-    // standardness policy. Mempool no longer rejects dust by threshold, but wallet generation
-    // may still want a local small-output/change-disposal heuristic.
     // TODO: call script engine when available
     // if txscript.is_unspendable(transaction_output.script_public_key.script()) {
     //     return true
@@ -86,8 +81,6 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
 
     // The output is considered dust if the cost to the network to spend the
     // coins is more than 1/3 of the minimum free transaction relay fee.
-    // mp.config.MinimumRelayTransactionFee is in sompi/KB, so multiply
-    // by 1000 to convert to bytes.
     //
     // Using the typical values for a pay-to-pubkey transaction from
     // the breakdown above and the default minimum free transaction relay
@@ -291,7 +284,7 @@ impl MassCalculator {
     // provisional
     #[inline(always)]
     pub fn calc_fee_for_mass(&self, mass: u64) -> u64 {
-        mass
+        self.calc_minimum_transaction_fee_from_mass(mass)
     }
 
     pub fn combine_mass(&self, compute_mass: u64, storage_mass: u64) -> u64 {
