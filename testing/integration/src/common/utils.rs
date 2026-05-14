@@ -273,8 +273,11 @@ pub fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_
 }
 
 pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[ListeningClient]) {
-    // Discard all unreceived block added notifications in each listening client
-    listening_clients.iter().for_each(|x| x.block_added_listener().unwrap().drain());
+    // Discard notifications from previous blocks so this helper waits only for the block it submits.
+    listening_clients.iter().for_each(|x| {
+        x.block_added_listener().unwrap().drain();
+        x.virtual_daa_score_changed_listener().unwrap().drain();
+    });
 
     // Mine a block
     let template = submitting_client.get_block_template(pay_address.clone(), vec![]).await.unwrap();

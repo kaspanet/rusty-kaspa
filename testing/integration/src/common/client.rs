@@ -1,10 +1,11 @@
 use super::{daemon::Daemon, listener::Listener};
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{events::EventType, scope::Scope, subscription::Command};
-use kaspa_rpc_core::RpcResult;
+use kaspa_notify::{events::EventType, notification::Notification as _, scope::Scope, subscription::Command};
+use kaspa_rpc_core::{Notification, RpcResult};
 use std::{
     collections::{HashMap, hash_map::Entry},
     ops::Deref,
+    time::Duration,
 };
 
 /// A multi-listener gRPC client with event type dedicated listeners
@@ -43,6 +44,24 @@ impl ListeningClient {
 
     pub fn listener(&self, event: EventType) -> Option<Listener> {
         self.listeners.get(&event).cloned()
+    }
+
+    pub async fn wait_for_notification(
+        &self,
+        event: EventType,
+        timeout_per_notification: Duration,
+        predicate: impl Fn(&Notification) -> bool,
+    ) -> Notification {
+        loop {
+            let notification = tokio::time::timeout(timeout_per_notification, self.listener(event).unwrap().receiver.recv())
+                .await
+                .unwrap_or_else(|_| panic!("timed out waiting for {event:?} notification"))
+                .unwrap();
+            assert_eq!(notification.event_type(), event);
+            if predicate(&notification) {
+                return notification;
+            }
+        }
     }
 
     pub fn block_added_listener(&self) -> Option<Listener> {
