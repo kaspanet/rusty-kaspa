@@ -22,11 +22,11 @@ use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, Stor
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::api::args::TransactionValidationArgs;
 use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
-use kaspa_consensus_core::block::Block;
+use kaspa_consensus_core::block::{Block, MutableBlock};
 use kaspa_consensus_core::blockhash::{self, new_unique};
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TOCCATA_BLOCK_VERSION, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing;
@@ -493,6 +493,58 @@ async fn header_in_isolation_validation_test() {
             }
         }
     }
+
+    consensus.shutdown(wait_handles);
+}
+
+#[tokio::test]
+async fn header_version_is_enforced_by_activation() {
+    fn set_block_version(mut block: MutableBlock, version: u16) -> MutableBlock {
+        block.header.version = version;
+        block.header.finalize();
+        block
+    }
+
+    init_allocator_with_default_settings();
+    let activation = MAINNET_PARAMS.genesis.daa_score + 10;
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| p.covenants_activation = ForkActivation::new(activation))
+        .build();
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let mut parent = config.genesis.hash;
+    let mut next_hash = 2u64;
+    let active_block = loop {
+        let block = consensus.build_header_only_block_with_parents(next_hash.into(), vec![parent]);
+        next_hash += 1;
+        if block.header.daa_score >= activation {
+            break block;
+        }
+
+        assert_eq!(block.header.version, BLOCK_VERSION);
+        let wrong_version_block = set_block_version(block.clone(), TOCCATA_BLOCK_VERSION);
+        assert_match!(
+            consensus.validate_and_insert_block(wrong_version_block.to_immutable()).block_task.await,
+            Err(RuleError::WrongBlockVersion(TOCCATA_BLOCK_VERSION))
+        );
+
+        parent = block.header.hash;
+        assert_match!(consensus.validate_and_insert_block(block.to_immutable()).block_task.await, Ok(BlockStatus::StatusHeaderOnly));
+    };
+
+    let wrong_post_activation_block = set_block_version(active_block.clone(), BLOCK_VERSION);
+    assert_match!(
+        consensus.validate_and_insert_block(wrong_post_activation_block.to_immutable()).block_task.await,
+        Err(RuleError::WrongBlockVersion(BLOCK_VERSION))
+    );
+
+    let active_block = set_block_version(active_block, TOCCATA_BLOCK_VERSION);
+    assert_match!(
+        consensus.validate_and_insert_block(active_block.to_immutable()).block_task.await,
+        Ok(BlockStatus::StatusHeaderOnly)
+    );
 
     consensus.shutdown(wait_handles);
 }
