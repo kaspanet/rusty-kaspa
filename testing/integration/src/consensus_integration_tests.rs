@@ -510,7 +510,7 @@ async fn header_version_is_enforced_by_activation() {
     let activation = MAINNET_PARAMS.genesis.daa_score + 10;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
-        .edit_consensus_params(|p| p.covenants_activation = ForkActivation::new(activation))
+        .edit_consensus_params(|p| p.toccata_activation = ForkActivation::new(activation))
         .build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -1624,7 +1624,7 @@ async fn kip10_test() {
             p.genesis.hash = genesis_header.hash;
 
             p.crescendo_activation = ForkActivation::always();
-            p.covenants_activation = ForkActivation::never();
+            p.toccata_activation = ForkActivation::never();
         })
         .build();
 
@@ -1662,17 +1662,17 @@ async fn kip10_test() {
     // Verify the transaction with KIP-10 opcodes is accepted
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // covenants not enabled yet, so accepted_id_digests contains txid
+    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // Toccata is not active yet, so accepted_id_digests contains txid
 }
 
 #[tokio::test]
-async fn covenants_activation_test() {
+async fn toccata_activation_test() {
     const ACTIVATION_DAA_SCORE: u64 = 3;
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
-            p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
+            p.toccata_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
         })
         .build();
 
@@ -1683,7 +1683,7 @@ async fn covenants_activation_test() {
     let mut next_id: u64 = 1;
     let mut tip = config.genesis.hash;
 
-    // Redeem script that uses OpCat (disabled before covenants activation, enabled after)
+    // Redeem script that uses OpCat (disabled before Toccata activation, enabled after)
     let redeem_script = ScriptBuilder::new()
         .add_data(&[0xaa])
         .unwrap()
@@ -1800,7 +1800,7 @@ async fn push_limit_activation_test() {
             p.new_transient_mass_limit = mass_limit;
             p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA;
             p.storage_mass_parameter = 1;
-            p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
+            p.toccata_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
         })
         .build();
 
@@ -2039,7 +2039,7 @@ async fn payload_for_native_tx_test() {
             let genesis_header: Header = (&p.genesis).into();
             p.genesis.hash = genesis_header.hash;
 
-            p.covenants_activation = ForkActivation::never();
+            p.toccata_activation = ForkActivation::never();
         })
         .build();
 
@@ -2077,7 +2077,7 @@ async fn payload_for_native_tx_test() {
     let status = consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![tx.tx.unwrap_or_clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // covenants not enabled yet, so accepted_id_digests contains txid
+    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // Toccata is not active yet, so accepted_id_digests contains txid
 }
 
 fn build_p2pk_block(
@@ -2119,7 +2119,7 @@ fn build_p2pk_block(
             p.mass_per_sig_op = mass_per_sig_op;
             p.prior_block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
             p.new_transient_mass_limit = u64::MAX;
-            p.covenants_activation = ForkActivation::always();
+            p.toccata_activation = ForkActivation::always();
         })
         .build();
 

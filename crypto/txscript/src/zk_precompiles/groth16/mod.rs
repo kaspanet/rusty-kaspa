@@ -16,7 +16,7 @@ impl ZkPrecompile for Groth16Precompile {
     type Error = Groth16Error;
     /// Verifies the integrity of a Groth16 proof.
     ///
-    /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(covpp-mainnet)
+    /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(pre-covpp)
     fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error> {
         // Retrieve the uncompressed VK
         let [unprepared_compressed_key] = dstack.pop_raw()?;

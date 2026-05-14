@@ -277,11 +277,11 @@ impl IbdFlow {
 
                 let is_utxo_stable = consensus.async_is_pruning_utxoset_stable().await;
                 let is_pp_anticone_synced = consensus.async_is_pruning_point_anticone_fully_synced().await;
-                // The SMT stable flag is only meaningful once covenants are active at the current
+                // The SMT stable flag is only meaningful once Toccata is active at the current
                 // pruning point. Before activation, `sync_new_smt_state` is a no-op and the flag
                 // is never set, so we treat it as stable to preserve pre-activation IBD behavior.
                 let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-                let is_smt_stable = if self.ctx.config.covenants_activation.is_active(pp_header.daa_score) {
+                let is_smt_stable = if self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
                     consensus.async_is_pruning_smt_stable().await
                 } else {
                     true
@@ -684,7 +684,7 @@ impl IbdFlow {
         use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 
         let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-        if !self.ctx.config.covenants_activation.is_active(pp_header.daa_score) {
+        if !self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
             return Ok(());
         }
 
@@ -1070,18 +1070,18 @@ fn validate_pruning_point_freshness_for_toccata(
     now: u64,
 ) -> Result<(), ProtocolError> {
     // No activation is expected.
-    if params.covenants_activation == ForkActivation::never() {
+    if params.toccata_activation == ForkActivation::never() {
         return Ok(());
     }
 
     // If the pruning point is post-activation, its header is validated as part of the pruning proof.
-    if params.covenants_activation.is_active(pp_daa_score) {
+    if params.toccata_activation.is_active(pp_daa_score) {
         return Ok(());
     }
 
     // Otherwise, protect fresh nodes from outdated syncers with stale pre-activation pruning points.
 
-    let activation_daa_score = params.covenants_activation.daa_score();
+    let activation_daa_score = params.toccata_activation.daa_score();
 
     // Reject if:
     // 1. the syncer's pruning point is still pre-activation;
@@ -1117,13 +1117,13 @@ mod tests {
 
     fn params_with_toccata_activation(activation_daa_score: u64) -> Params {
         let mut params = MAINNET_PARAMS.clone();
-        params.covenants_activation = ForkActivation::new(activation_daa_score);
+        params.toccata_activation = ForkActivation::new(activation_daa_score);
         params
     }
 
     fn params_without_toccata_activation() -> Params {
         let mut params = MAINNET_PARAMS.clone();
-        params.covenants_activation = ForkActivation::never();
+        params.toccata_activation = ForkActivation::never();
         params
     }
 

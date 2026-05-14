@@ -168,14 +168,14 @@ impl TransactionValidator {
         seq_commit_accessor: Option<&dyn SeqCommitAccessor>,
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
-        let covenants_enabled = self.covenants_activation.is_active(block_daa_score);
+        let covenants_enabled = self.toccata_activation.is_active(block_daa_score);
         let flags: EngineFlags = EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).into() };
 
         check_scripts(tx, ctx, flags)
     }
 
     fn check_covenant_info(&self, tx: &impl VerifiableTransaction, block_daa_score: u64) -> TxResult<CovenantsContext> {
-        if !self.covenants_activation.is_active(block_daa_score) {
+        if !self.toccata_activation.is_active(block_daa_score) {
             return Ok(Default::default());
         }
 

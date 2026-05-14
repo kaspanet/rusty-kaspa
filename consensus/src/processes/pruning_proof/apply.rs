@@ -289,7 +289,7 @@ impl PruningProofManager {
 
     /// Verify and build a map from pruning-point chain blocks to their selected parent for reachability seeding.
     ///
-    /// The map is populated only for covenants-activated pruning points and only within the seqcommit
+    /// The map is populated only for Toccata-activated pruning points and only within the seqcommit
     /// threshold range; it relies on the chain-qualification rule (first direct parent is the selected parent).
     fn verify_and_build_chain_segment_map(
         &self,
@@ -299,7 +299,7 @@ impl PruningProofManager {
     ) -> PruningImportResult<BlockHashMap<Hash>> {
         let mut chain_segment_map: BlockHashMap<Hash> = BlockHashMap::new();
 
-        if self.covenants_activation.is_active(pruning_point_header.daa_score) {
+        if self.toccata_activation.is_active(pruning_point_header.daa_score) {
             let pruning_point_blue_score = pruning_point_header.blue_score;
             let threshold = self.finality_depth;
             let mut current = pruning_point;
@@ -311,15 +311,15 @@ impl PruningProofManager {
                     break;
                 }
 
-                if !self.covenants_activation.is_active(current_header.daa_score) {
-                    // We cannot demand chain-qualification for blocks below the covenants activation
+                if !self.toccata_activation.is_active(current_header.daa_score) {
+                    // We cannot demand chain-qualification for blocks below the Toccata activation
                     // See the chain-qualification check in the utxo validation code for details as well as
                     // code in SeqCommitAccessor
                     break;
                 }
 
                 // Walk the selected-parent chain until we cross the threshold or hit genesis.
-                // Relies on the covenants-activated chain-qualification rule: the first direct parent is the selected parent.
+                // Relies on the Toccata-activated chain-qualification rule: the first direct parent is the selected parent.
                 match current_header.direct_parents().first().copied() {
                     Some(selected_parent) => {
                         chain_segment_map.insert(current, selected_parent);

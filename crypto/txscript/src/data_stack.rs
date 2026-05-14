@@ -100,7 +100,6 @@ impl Index<usize> for Stack {
 #[cfg(test)]
 impl From<Vec<StackEntry>> for Stack {
     fn from(inner: Vec<StackEntry>) -> Self {
-        // TODO(covpp-mainnet): should have fork logic
         Self { inner, covenants_enabled: true, pushed_bytes: 0 }
     }
 }

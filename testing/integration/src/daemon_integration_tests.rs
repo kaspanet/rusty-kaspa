@@ -29,7 +29,7 @@ use kaspa_txscript::{
     opcodes::codes, pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script,
     script_builder::ScriptBuilder,
 };
-use kaspad_lib::args::Args;
+use kaspad_lib::{args::Args, daemon::Runtime as KaspadRuntime};
 use rand::thread_rng;
 use serde_json;
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
@@ -62,6 +62,72 @@ async fn is_ancestor_in_selected_parent_chain(client: &GrpcClient, mut descendan
         };
         descendant = *parent;
     }
+}
+
+// Ignored since it might fail to initialize the logger if another test already initialized it. Run it specifically with `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_toccata_activation_log_file_test --ignored`
+#[ignore]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_toccata_activation_log_file_test() {
+    init_allocator_with_default_settings();
+
+    let test_dir = tempfile::tempdir().unwrap();
+    let log_dir = test_dir.path().join("logs");
+    let params_path = test_dir.path().join("params.json");
+    fs::create_dir_all(&log_dir).unwrap();
+    fs::write(&params_path, r#"{"skip_proof_of_work":true,"toccata_activation":1}"#).unwrap();
+
+    let args = Args {
+        simnet: true,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        disable_upnp: true,
+        disable_dns_seeding: true,
+        outbound_target: 0,
+        logdir: Some(log_dir.to_string_lossy().to_string()),
+        override_params_file: Some(params_path.to_string_lossy().to_string()),
+        ..Default::default()
+    };
+
+    let _runtime = KaspadRuntime::from_args(&args);
+    let mut kaspad = Daemon::new_random_with_args(args, 10);
+    let rpc_client = kaspad.start().await;
+    let log_path = log_dir.join("rusty-kaspa.log");
+
+    let initial_log = fs::read_to_string(&log_path).unwrap_or_default();
+    assert!(!initial_log.contains("[Toccata] Activated for"), "Toccata activation logs were emitted before activation");
+
+    let miner_address = Address::new(kaspad.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
+    for target_daa_score in 1..=2 {
+        let template = rpc_client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client.submit_block(template.block, false).await.unwrap();
+
+        let activation_check_client = rpc_client.clone();
+        wait_for(
+            50,
+            100,
+            move || {
+                let client = activation_check_client.clone();
+                Box::pin(async move { client.get_server_info().await.unwrap().virtual_daa_score >= target_daa_score })
+            },
+            "daemon did not reach Toccata activation",
+        )
+        .await;
+    }
+
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+
+    let log = fs::read_to_string(&log_path).unwrap();
+    let header_log_count = log.matches("[Toccata] Activated for header in context validation").count();
+    assert_eq!(header_log_count, 1, "Toccata activation log for header in context validation should be emitted exactly once");
+    let virtual_state_log_count = log.matches("[Toccata] Activated for virtual state processing rules").count();
+    assert_eq!(virtual_state_log_count, 1, "Toccata activation log for virtual state processing rules should be emitted exactly once");
+    assert_eq!(
+        log.matches("TOCCATA").count(),
+        virtual_state_log_count,
+        "Toccata ASCII art should only be emitted by the virtual state logger"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

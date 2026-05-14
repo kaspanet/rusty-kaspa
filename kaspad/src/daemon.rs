@@ -276,6 +276,15 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
 ///
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
+
+    // TODO(pre-covpp): Remove this log when Toccata activation DAA score is finalized on mainnet.
+    if network.is_mainnet() {
+        get_user_approval_or_exit(
+            "This version of kaspad does not officially support mainnet. Use with caution and report to developers if you encounter any issues. Do you want to continue? (y/n)",
+            args.yes,
+        );
+    }
+
     let mut fd_remaining = fd_total_budget;
     let utxo_files_limit = if args.utxoindex {
         let utxo_files_limit = fd_remaining / 10;

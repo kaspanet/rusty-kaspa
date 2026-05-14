@@ -16,7 +16,7 @@ pub struct SeqCommitAccessor<'a> {
     pub sp: Hash,
     pub reachability_service: &'a MTReachabilityService<DbReachabilityStore>,
     pub headers_store: &'a DbHeadersStore,
-    pub covenants_activation: ForkActivation,
+    pub toccata_activation: ForkActivation,
 }
 
 impl<'a> SeqCommitAccessor<'a> {
@@ -24,10 +24,10 @@ impl<'a> SeqCommitAccessor<'a> {
         sp: Hash,
         reachability_service: &'a MTReachabilityService<DbReachabilityStore>,
         headers_store: &'a DbHeadersStore,
-        covenants_activation: ForkActivation,
+        toccata_activation: ForkActivation,
         threshold: u64,
     ) -> Self {
-        Self { threshold, sp, reachability_service, headers_store, covenants_activation }
+        Self { threshold, sp, reachability_service, headers_store, toccata_activation }
     }
 }
 
@@ -38,7 +38,7 @@ impl<'a> kaspa_txscript::SeqCommitAccessor for SeqCommitAccessor<'a> {
 
     fn seq_commitment_within_depth(&self, block_hash: Hash) -> Option<Hash> {
         let header = self.headers_store.get_header(block_hash).optional().unwrap()?;
-        if !self.covenants_activation.is_active(header.daa_score) {
+        if !self.toccata_activation.is_active(header.daa_score) {
             return None;
         }
         let sp_blue_score = self.headers_store.get_blue_score(self.sp).unwrap();

@@ -76,7 +76,7 @@ impl ZkPrecompile for R0SuccinctPrecompile {
     type Error = R0Error;
     /// Verifies the integrity of a RISC0 succinct proof receipt.
     ///
-    /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(covpp-mainnet)
+    /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(pre-covpp)
     ///
     /// Expects the following items on the stack (from top to bottom):
     /// - hash function id (bytes, u8)

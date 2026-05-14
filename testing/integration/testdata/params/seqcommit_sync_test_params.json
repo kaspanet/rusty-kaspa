@@ -15,5 +15,5 @@
         "pruning_depth": 200,
         "coinbase_maturity": 10
     },
-    "covenants_activation": 0
+    "toccata_activation": 0
 }

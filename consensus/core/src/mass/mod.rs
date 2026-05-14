@@ -196,6 +196,7 @@ impl std::fmt::Display for NonContextualMasses {
 
 /// Per-dimension block mass limits grouped into a single struct for convenience.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockMassLimits {
     pub storage: u64,
     pub compute: u64,
@@ -203,6 +204,7 @@ pub struct BlockMassLimits {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockLaneLimits {
     pub lanes_per_block: usize,
     pub gas_per_lane: u64,
