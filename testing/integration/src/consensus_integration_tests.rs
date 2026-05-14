@@ -1926,6 +1926,7 @@ async fn payload_test() {
     };
 
     consensus.validate_and_insert_block(funding_block.to_immutable()).virtual_state_task.await.unwrap();
+    let transient_limit = config.params.block_mass_limits().before().transient;
     let mut txx = Transaction::new(
         0,
         vec![TransactionInput::new(TransactionOutpoint { transaction_id: cb_id, index: 0 }, vec![], 0, 0)],
@@ -1933,11 +1934,11 @@ async fn payload_test() {
         0,
         SubnetworkId::default(),
         0,
-        vec![0; (config.params.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
+        vec![0; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
     );
 
     // Create a tx with transient mass over the block limit
-    txx.payload = vec![0; (config.params.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR + 100) as usize];
+    txx.payload = vec![0; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR + 100) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
@@ -1945,7 +1946,7 @@ async fn payload_test() {
     assert_match!(consensus_res, Err(RuleError::ExceedsTransientMassLimit(_, _)));
 
     // Fix the payload to be below the limit
-    txx.payload = vec![0; (config.params.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    txx.payload = vec![0; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
@@ -1996,7 +1997,8 @@ async fn payload_for_native_tx_test() {
     consensus.init();
 
     // Create transaction with large payload
-    let large_payload = vec![0u8; (config.params.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    let transient_limit = config.params.block_mass_limits().before().transient;
+    let large_payload = vec![0u8; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx_with_payload = Transaction::new(
         0,
         vec![TransactionInput::new(
