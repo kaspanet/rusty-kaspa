@@ -399,7 +399,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.mergeset_size_limit = 32 * 2;
         params.pruning_depth = 100 * 2 * 2 + 50;
 
-        params.covenants_activation = ForkActivation::always();
+        params.toccata_activation = ForkActivation::always();
 
         info!("Setting pruning depth to {:?}", params.pruning_depth());
     }

@@ -166,7 +166,7 @@ fn apply_pruning_repro_params(params: &mut Params) {
     params.mergeset_size_limit = 32 * 2;
     params.pruning_depth = PRUNING_DEPTH;
 
-    params.covenants_activation = ForkActivation::always();
+    params.toccata_activation = ForkActivation::always();
     params.storage_mass_parameter = 10_000;
 }
 

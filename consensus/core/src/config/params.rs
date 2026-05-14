@@ -252,7 +252,7 @@ pub struct OverrideParams {
     /// Crescendo activation DAA score
     pub crescendo_activation: Option<ForkActivation>,
 
-    pub covenants_activation: Option<ForkActivation>,
+    pub toccata_activation: Option<ForkActivation>,
 }
 
 impl From<Params> for OverrideParams {
@@ -284,7 +284,7 @@ impl From<Params> for OverrideParams {
             pruning_proof_m: Some(p.pruning_proof_m),
             blockrate: Some(p.blockrate),
             crescendo_activation: Some(p.crescendo_activation),
-            covenants_activation: Some(p.covenants_activation),
+            toccata_activation: Some(p.toccata_activation),
         }
     }
 }
@@ -353,7 +353,7 @@ pub struct Params {
     /// Crescendo activation DAA score
     pub crescendo_activation: ForkActivation,
 
-    pub covenants_activation: ForkActivation,
+    pub toccata_activation: ForkActivation,
 }
 
 impl Params {
@@ -596,7 +596,7 @@ impl Params {
                 .unwrap_or(self.pre_crescendo_target_time_per_block),
 
             crescendo_activation: overrides.crescendo_activation.unwrap_or(self.crescendo_activation),
-            covenants_activation: overrides.covenants_activation.unwrap_or(self.covenants_activation),
+            toccata_activation: overrides.toccata_activation.unwrap_or(self.toccata_activation),
         }
     }
 }
@@ -711,7 +711,7 @@ pub const MAINNET_PARAMS: Params = Params {
 
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
-    covenants_activation: ForkActivation::never(),
+    toccata_activation: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -772,7 +772,7 @@ pub const TESTNET_PARAMS: Params = Params {
     crescendo_activation: ForkActivation::new(88_657_000),
 
     // TODO(pre-covpp): Before setting the activation DAA score, resolve all comments of the form TODO(pre-covpp)
-    covenants_activation: ForkActivation::never(),
+    toccata_activation: ForkActivation::never(),
 };
 
 pub const TESTNET12_PARAMS: Params = Params {
@@ -801,7 +801,7 @@ pub const TESTNET12_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
-    covenants_activation: ForkActivation::always(),
+    toccata_activation: ForkActivation::always(),
     ..TESTNET_PARAMS
 };
 
@@ -847,7 +847,7 @@ pub const SIMNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
-    covenants_activation: ForkActivation::always(),
+    toccata_activation: ForkActivation::always(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -891,5 +891,5 @@ pub const DEVNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
-    covenants_activation: ForkActivation::never(),
+    toccata_activation: ForkActivation::never(),
 };

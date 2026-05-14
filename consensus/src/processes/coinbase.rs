@@ -32,7 +32,7 @@ pub struct CoinbaseManager {
     deflationary_phase_daa_score: u64,
     pre_deflationary_phase_base_subsidy: u64,
     bps_history: ForkedParam<u64>,
-    covenants_activation: ForkActivation,
+    toccata_activation: ForkActivation,
 
     /// Precomputed subsidy by month tables (for before and after the Crescendo hardfork)
     subsidy_by_month_table_before: SubsidyByMonthTable,
@@ -69,7 +69,7 @@ impl CoinbaseManager {
         deflationary_phase_daa_score: u64,
         pre_deflationary_phase_base_subsidy: u64,
         bps_history: ForkedParam<u64>,
-        covenants_activation: ForkActivation,
+        toccata_activation: ForkActivation,
     ) -> Self {
         // Precomputed subsidy by month table for the actual block per second rate
         // Here values are rounded up so that we keep the same number of rewarding months as in the original 1 BPS table.
@@ -84,7 +84,7 @@ impl CoinbaseManager {
             deflationary_phase_daa_score,
             pre_deflationary_phase_base_subsidy,
             bps_history,
-            covenants_activation,
+            toccata_activation,
             subsidy_by_month_table_before,
             subsidy_by_month_table_after,
             crescendo_activation_daa_score: bps_history.activation().daa_score(),
@@ -139,7 +139,7 @@ impl CoinbaseManager {
         let payload = self.serialize_coinbase_payload(&CoinbaseData { blue_score: ghostdag_data.blue_score, subsidy, miner_data })?;
 
         let tx_version =
-            if self.covenants_activation.is_active(daa_score) { constants::TX_VERSION_TOCCATA } else { constants::TX_VERSION };
+            if self.toccata_activation.is_active(daa_score) { constants::TX_VERSION_TOCCATA } else { constants::TX_VERSION };
 
         Ok(CoinbaseTransactionTemplate {
             tx: Transaction::new(tx_version, vec![], outputs, 0, subnets::SUBNETWORK_ID_COINBASE, 0, payload),
@@ -596,9 +596,9 @@ mod tests {
     }
 
     #[test]
-    fn expected_coinbase_transaction_selects_version_by_covenants_activation() {
+    fn expected_coinbase_transaction_selects_version_by_toccata_activation() {
         let mut params = MAINNET_PARAMS.clone();
-        params.covenants_activation = ForkActivation::new(100);
+        params.toccata_activation = ForkActivation::new(100);
         let cbm = create_manager(&params);
         let miner_data = MinerData::new(ScriptPublicKey::new(0, scriptvec![1, 2, 3]), vec![4, 5, 6]);
         let ghostdag_data = GhostdagData::default();
@@ -621,7 +621,7 @@ mod tests {
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
             params.bps_history(),
-            params.covenants_activation,
+            params.toccata_activation,
         )
     }
 

@@ -119,7 +119,7 @@ pub struct PruningProofManager {
     finality_depth: u64,
     ghostdag_k: KType,
     skip_proof_of_work: bool,
-    covenants_activation: ForkActivation,
+    toccata_activation: ForkActivation,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -141,7 +141,7 @@ impl PruningProofManager {
         finality_depth: u64,
         ghostdag_k: KType,
         skip_proof_of_work: bool,
-        covenants_activation: ForkActivation,
+        toccata_activation: ForkActivation,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -177,7 +177,7 @@ impl PruningProofManager {
             finality_depth,
             ghostdag_k,
             skip_proof_of_work,
-            covenants_activation,
+            toccata_activation,
 
             is_consensus_exiting,
         }
@@ -339,7 +339,7 @@ impl PruningProofManager {
             }
         }
 
-        if self.covenants_activation.is_active(self.headers_store.get_daa_score(pruning_point).unwrap()) {
+        if self.toccata_activation.is_active(self.headers_store.get_daa_score(pruning_point).unwrap()) {
             let pruning_point_header = self.headers_store.get_header(pruning_point).unwrap();
             let pruning_point_blue_score = pruning_point_header.blue_score;
 
@@ -358,7 +358,7 @@ impl PruningProofManager {
                     break;
                 }
 
-                if !self.covenants_activation.is_active(current_header.daa_score) {
+                if !self.toccata_activation.is_active(current_header.daa_score) {
                     // We are not demanded to provide the chain segment for blocks below the covenants activation
                     // See the chain-qualification check in the utxo validation code for details as well as
                     // code in SeqCommitAccessor

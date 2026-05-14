@@ -281,7 +281,7 @@ impl IbdFlow {
                 // pruning point. Before activation, `sync_new_smt_state` is a no-op and the flag
                 // is never set, so we treat it as stable to preserve pre-activation IBD behavior.
                 let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-                let is_smt_stable = if self.ctx.config.covenants_activation.is_active(pp_header.daa_score) {
+                let is_smt_stable = if self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
                     consensus.async_is_pruning_smt_stable().await
                 } else {
                     true
@@ -684,7 +684,7 @@ impl IbdFlow {
         use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 
         let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-        if !self.ctx.config.covenants_activation.is_active(pp_header.daa_score) {
+        if !self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
             return Ok(());
         }
 

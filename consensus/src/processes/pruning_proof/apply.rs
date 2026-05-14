@@ -299,7 +299,7 @@ impl PruningProofManager {
     ) -> PruningImportResult<BlockHashMap<Hash>> {
         let mut chain_segment_map: BlockHashMap<Hash> = BlockHashMap::new();
 
-        if self.covenants_activation.is_active(pruning_point_header.daa_score) {
+        if self.toccata_activation.is_active(pruning_point_header.daa_score) {
             let pruning_point_blue_score = pruning_point_header.blue_score;
             let threshold = self.finality_depth;
             let mut current = pruning_point;
@@ -311,7 +311,7 @@ impl PruningProofManager {
                     break;
                 }
 
-                if !self.covenants_activation.is_active(current_header.daa_score) {
+                if !self.toccata_activation.is_active(current_header.daa_score) {
                     // We cannot demand chain-qualification for blocks below the covenants activation
                     // See the chain-qualification check in the utxo validation code for details as well as
                     // code in SeqCommitAccessor

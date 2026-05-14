@@ -1624,7 +1624,7 @@ async fn kip10_test() {
             p.genesis.hash = genesis_header.hash;
 
             p.crescendo_activation = ForkActivation::always();
-            p.covenants_activation = ForkActivation::never();
+            p.toccata_activation = ForkActivation::never();
         })
         .build();
 
@@ -1666,13 +1666,13 @@ async fn kip10_test() {
 }
 
 #[tokio::test]
-async fn covenants_activation_test() {
+async fn toccata_activation_test() {
     const ACTIVATION_DAA_SCORE: u64 = 3;
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
-            p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
+            p.toccata_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
         })
         .build();
 
@@ -1800,7 +1800,7 @@ async fn push_limit_activation_test() {
             p.new_transient_mass_limit = mass_limit;
             p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA;
             p.storage_mass_parameter = 1;
-            p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
+            p.toccata_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
         })
         .build();
 
@@ -2039,7 +2039,7 @@ async fn payload_for_native_tx_test() {
             let genesis_header: Header = (&p.genesis).into();
             p.genesis.hash = genesis_header.hash;
 
-            p.covenants_activation = ForkActivation::never();
+            p.toccata_activation = ForkActivation::never();
         })
         .build();
 
@@ -2119,7 +2119,7 @@ fn build_p2pk_block(
             p.mass_per_sig_op = mass_per_sig_op;
             p.prior_block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
             p.new_transient_mass_limit = u64::MAX;
-            p.covenants_activation = ForkActivation::always();
+            p.toccata_activation = ForkActivation::always();
         })
         .build();
 
