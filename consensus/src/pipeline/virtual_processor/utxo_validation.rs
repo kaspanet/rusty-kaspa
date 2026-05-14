@@ -63,36 +63,6 @@ pub(super) struct ResolvedLaneUpdate {
     pub is_new: bool,
 }
 
-pub(crate) mod crescendo {
-    use kaspa_core::{info, log::CRESCENDO_KEYWORD};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering},
-    };
-
-    #[derive(Clone)]
-    pub(crate) struct _CrescendoLogger {
-        steps: Arc<AtomicU8>,
-    }
-
-    impl _CrescendoLogger {
-        pub fn _new() -> Self {
-            Self { steps: Arc::new(AtomicU8::new(Self::_ACTIVATE)) }
-        }
-
-        const _ACTIVATE: u8 = 0;
-
-        pub fn _report_activation(&self) -> bool {
-            if self.steps.compare_exchange(Self::_ACTIVATE, Self::_ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-                info!(target: CRESCENDO_KEYWORD, "[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
-                true
-            } else {
-                false
-            }
-        }
-    }
-}
-
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
 pub(super) struct UtxoProcessingContext<'a> {
