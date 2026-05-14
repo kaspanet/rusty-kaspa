@@ -61,8 +61,8 @@ impl Mempool {
                 if orphan == Orphan::Forbidden {
                     return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
+                self.validate_replace_by_fee_policy_constraints(&transaction, rbf_policy)?;
                 let virtual_daa_score = consensus.get_virtual_daa_score();
-                let _ = self.get_replace_by_fee_constraint(&transaction, rbf_policy, virtual_daa_score)?;
                 self.orphan_pool.try_add_orphan(virtual_daa_score, transaction, priority)?;
                 return Ok(TransactionPostValidation::default());
             }
@@ -272,7 +272,7 @@ impl Mempool {
         let rbf_policy = Self::get_orphan_transaction_rbf_policy(transaction.priority);
 
         self.validate_transaction_unacceptance(transaction.mtx.id())?;
-        let _ = self.get_replace_by_fee_constraint(&transaction.mtx, rbf_policy, transaction.added_at_daa_score)?;
+        self.validate_replace_by_fee_policy_constraints(&transaction.mtx, rbf_policy)?;
         Ok(transaction)
     }
 

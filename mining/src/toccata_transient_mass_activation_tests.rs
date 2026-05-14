@@ -267,7 +267,7 @@ fn mined_template_handles_transactions_added_on_both_sides_of_mempool_delay() {
 }
 
 #[test]
-fn rbf_lower_fee_replacement_is_accepted_at_delayed_mempool_activation_boundary() {
+fn rbf_lower_fee_replacement_is_rejected_at_delayed_mempool_activation_boundary() {
     let params = transient_activation_params();
     let delay_daa_score = mempool_delay_daa_score(&params);
     let boundary_daa_score = ACTIVATION_DAA_SCORE + delay_daa_score;
@@ -286,18 +286,18 @@ fn rbf_lower_fee_replacement_is_accepted_at_delayed_mempool_activation_boundary(
 
     consensus.set_virtual_daa_score(boundary_daa_score);
     let replacement = double_spend_transaction(2, &owner, 500_000, 900);
-    let result = insert_transaction(&mining_manager, consensus.as_ref(), replacement.clone(), RbfPolicy::Allowed)
-        .expect("lower-fee RBF should pass once the replacement transient mass is normalized by the relaxed mempool policy");
-
-    assert_eq!(result.removed.unwrap().id(), owner.id());
-    assert!(mining_manager.has_transaction(&replacement.id(), crate::model::tx_query::TransactionQuery::All));
-    assert!(!mining_manager.has_transaction(&owner.id(), crate::model::tx_query::TransactionQuery::All));
+    assert!(
+        insert_transaction(&mining_manager, consensus.as_ref(), replacement.clone(), RbfPolicy::Allowed).is_err(),
+        "lower-fee RBF must still fail once both transactions are compared under the same relaxed mempool policy"
+    );
 
     let threshold_checks = consensus.validated_thresholds();
     assert!(
         threshold_checks.iter().any(|(tx_id, normalized_mass, _)| *tx_id == replacement.id() && *normalized_mass == 250_000),
         "replacement should have been checked against the post-delay normalized transient mass"
     );
+    assert!(mining_manager.has_transaction(&owner.id(), crate::model::tx_query::TransactionQuery::All));
+    assert!(!mining_manager.has_transaction(&replacement.id(), crate::model::tx_query::TransactionQuery::All));
 }
 
 #[test]
