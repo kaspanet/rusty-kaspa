@@ -1,5 +1,5 @@
 use crate::{
-    flow_context::{FlowContext, PROTOCOL_VERSION},
+    flow_context::FlowContext,
     flow_trait::Flow,
     ibd::{HeadersChunkStream, TrustedEntryStream, negotiate::ChainNegotiationOutput},
 };
@@ -393,6 +393,21 @@ impl IbdFlow {
     }
 
     async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy, relay_block: &Block) -> Result<Hash, ProtocolError> {
+        // [Toccata] Guard IBD from outdated nodes. P2P flow registration does not protect
+        // fresh IBD peers, and the relay block is usually the syncer sink, so reject an unexpected
+        // block version before requesting the pruning proof. The pruning point itself is
+        // checked below by `validate_pruning_point_freshness_for_toccata`.
+        let expected_relay_block_version = self.ctx.config.block_version().get(relay_block.header.daa_score);
+        if relay_block.header.version != expected_relay_block_version {
+            return Err(ProtocolError::OtherOwned(format!(
+                "peer relayed block {} header version mismatch: got {}, expected {} at DAA score {} (Toccata guard)",
+                relay_block.hash(),
+                relay_block.header.version,
+                expected_relay_block_version,
+                relay_block.header.daa_score
+            )));
+        }
+
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -428,7 +443,6 @@ impl IbdFlow {
         // [Toccata] Reject IBD from outdated peers
         validate_pruning_point_freshness_for_toccata(
             self.ctx.config.as_ref(),
-            self.router.properties().protocol_version,
             proof_pruning_point_header.hash,
             proof_pruning_point_header.timestamp,
             proof_pruning_point_header.daa_score,
@@ -1046,9 +1060,10 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
 
 /// [Toccata] Fresh nodes cannot easily identify outdated peers after activation, so we guard
 /// against syncers advertising pruning points that are clearly stale.
+///
+/// TODO(post-toccata): remove or adjust this stale pruning-point guard once Toccata is cleaned up.
 fn validate_pruning_point_freshness_for_toccata(
     params: &Params,
-    applied_protocol_version: u32,
     pp_hash: Hash,
     pp_timestamp: u64,
     pp_daa_score: u64,
@@ -1059,15 +1074,8 @@ fn validate_pruning_point_freshness_for_toccata(
         return Ok(());
     }
 
-    // If the pruning point is post-activation, the peer must already be using the Toccata protocol version.
-    // Peers declaring that version but still violating Toccata rules will be caught during normal IBD validation.
+    // If the pruning point is post-activation, its header is validated as part of the pruning proof.
     if params.covenants_activation.is_active(pp_daa_score) {
-        if applied_protocol_version < PROTOCOL_VERSION {
-            return Err(ProtocolError::OtherOwned(format!(
-                "syncer pruning point {} is post-Toccata activation, but peer protocol version {} is below required version {}",
-                pp_hash, applied_protocol_version, PROTOCOL_VERSION
-            )));
-        }
         return Ok(());
     }
 
@@ -1119,7 +1127,6 @@ mod tests {
 
     #[test]
     fn test_toccata_pruning_point_staleness_guard() {
-        const V: u32 = PROTOCOL_VERSION;
         const ONE_DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
         let blocks_per_day = ONE_DAY_MILLIS / MAINNET_PARAMS.target_time_per_block();
         let activation_daa_score = 10_000_000;
@@ -1134,7 +1141,7 @@ mod tests {
         // No activation is configured:
         // PP(pre-activation by score) ---- estimated activation ---- pruning period + margin ---- now
         assert!(
-            validate_pruning_point_freshness_for_toccata(&MAINNET_PARAMS, V, pp_hash, pp_timestamp, pp_daa_score, stale_after + 1)
+            validate_pruning_point_freshness_for_toccata(&MAINNET_PARAMS, pp_hash, pp_timestamp, pp_daa_score, stale_after + 1)
                 .is_ok()
         );
 
@@ -1142,33 +1149,24 @@ mod tests {
         // PP/now -------- 10d -------- activation
         let pp_ten_days_before_activation = activation_daa_score - 10 * blocks_per_day;
         assert!(
-            validate_pruning_point_freshness_for_toccata(
-                &params,
-                V - 1,
-                pp_hash,
-                pp_timestamp,
-                pp_ten_days_before_activation,
-                pp_timestamp
-            )
-            .is_ok()
+            validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_ten_days_before_activation, pp_timestamp)
+                .is_ok()
         );
 
-        // The syncer's pruning point is already post-activation, so ordinary IBD validation takes over:
+        // The syncer's pruning point is already post-activation, so the staleness guard is done:
         // PP(post-activation by score) ----------------------------------------------- now
         assert!(
-            validate_pruning_point_freshness_for_toccata(&params, V, pp_hash, pp_timestamp, activation_daa_score, stale_after + 1)
+            validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, activation_daa_score, stale_after + 1)
                 .is_ok()
         );
 
         // Last tolerated instant for a pre-activation pruning point:
         // PP ---- estimated activation ---- pruning period + margin == now
-        assert!(validate_pruning_point_freshness_for_toccata(&params, V, pp_hash, pp_timestamp, pp_daa_score, stale_after).is_ok());
+        assert!(validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_daa_score, stale_after).is_ok());
 
         // One millisecond later, the same pre-activation pruning point is stale:
         // PP ---- estimated activation ---- pruning period + margin < now
-        assert!(
-            validate_pruning_point_freshness_for_toccata(&params, V, pp_hash, pp_timestamp, pp_daa_score, stale_after + 1).is_err()
-        );
+        assert!(validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_daa_score, stale_after + 1).is_err());
 
         // Stale IBD: the syncer's pruning point is three days before activation, and now is
         // six days after that pruning point. Activation should have happened long enough ago
@@ -1179,7 +1177,6 @@ mod tests {
         assert!(
             validate_pruning_point_freshness_for_toccata(
                 &params,
-                V,
                 pp_hash,
                 pp_timestamp,
                 pp_three_days_before_activation,
@@ -1197,7 +1194,6 @@ mod tests {
         assert!(
             validate_pruning_point_freshness_for_toccata(
                 &params,
-                V,
                 pp_hash,
                 pp_just_before_activation_timestamp,
                 pp_just_before_activation,
