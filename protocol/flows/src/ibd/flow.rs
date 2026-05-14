@@ -277,7 +277,7 @@ impl IbdFlow {
 
                 let is_utxo_stable = consensus.async_is_pruning_utxoset_stable().await;
                 let is_pp_anticone_synced = consensus.async_is_pruning_point_anticone_fully_synced().await;
-                // The SMT stable flag is only meaningful once covenants are active at the current
+                // The SMT stable flag is only meaningful once Toccata is active at the current
                 // pruning point. Before activation, `sync_new_smt_state` is a no-op and the flag
                 // is never set, so we treat it as stable to preserve pre-activation IBD behavior.
                 let pp_header = consensus.async_get_header(pruning_point).await.unwrap();

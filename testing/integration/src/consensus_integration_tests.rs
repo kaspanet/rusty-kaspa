@@ -1662,7 +1662,7 @@ async fn kip10_test() {
     // Verify the transaction with KIP-10 opcodes is accepted
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // covenants not enabled yet, so accepted_id_digests contains txid
+    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // Toccata is not active yet, so accepted_id_digests contains txid
 }
 
 #[tokio::test]
@@ -1683,7 +1683,7 @@ async fn toccata_activation_test() {
     let mut next_id: u64 = 1;
     let mut tip = config.genesis.hash;
 
-    // Redeem script that uses OpCat (disabled before covenants activation, enabled after)
+    // Redeem script that uses OpCat (disabled before Toccata activation, enabled after)
     let redeem_script = ScriptBuilder::new()
         .add_data(&[0xaa])
         .unwrap()
@@ -2077,7 +2077,7 @@ async fn payload_for_native_tx_test() {
     let status = consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![tx.tx.unwrap_or_clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // covenants not enabled yet, so accepted_id_digests contains txid
+    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // Toccata is not active yet, so accepted_id_digests contains txid
 }
 
 fn build_p2pk_block(

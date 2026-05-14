@@ -359,7 +359,7 @@ impl PruningProofManager {
                 }
 
                 if !self.toccata_activation.is_active(current_header.daa_score) {
-                    // We are not demanded to provide the chain segment for blocks below the covenants activation
+                    // We are not demanded to provide the chain segment for blocks below the Toccata activation
                     // See the chain-qualification check in the utxo validation code for details as well as
                     // code in SeqCommitAccessor
                     break;

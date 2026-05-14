@@ -171,7 +171,7 @@ pub struct VirtualStateProcessor {
     // Counters
     pub(super) counters: Arc<ProcessingCounters>,
 
-    // Covenants activation
+    // Toccata activation
     pub(crate) toccata_activation: ForkActivation,
 
     // SMT stores

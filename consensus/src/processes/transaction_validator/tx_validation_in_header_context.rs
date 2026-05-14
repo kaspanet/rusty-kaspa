@@ -92,7 +92,7 @@ impl TransactionValidator {
         Ok(())
     }
 
-    // TODO (COVPP): Remove the contextual check and only leave the isolated one after the HF
+    // TODO(post-toccata): Remove the contextual check and only leave the isolated one after the HF
     fn check_transaction_version(&self, tx: &Transaction, block_daa_score: u64) -> TxResult<()> {
         if self.toccata_activation.is_active(block_daa_score) {
             if tx.version > TX_VERSION_TOCCATA {
