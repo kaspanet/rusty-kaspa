@@ -89,10 +89,8 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_signature_scripts(&self, tx: &Transaction) -> TxResult<()> {
-        // TODO(post-toccata): once the signature script length fork is buried, this can be
-        // checked only against the active limit. Until then, isolation can only enforce
-        // the activation-independent upper bound; the exact forked limit is checked in
-        // header context using the containing block DAA score.
+        // TODO(post-toccata): restore this to the const post-activation limit and remove
+        // check_transaction_signature_scripts_in_header_context.
         let max_signature_script_len = self.max_signature_script_len.upper_bound();
         if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > max_signature_script_len) {
             return Err(TxRuleError::TooBigSignatureScript(i, max_signature_script_len));

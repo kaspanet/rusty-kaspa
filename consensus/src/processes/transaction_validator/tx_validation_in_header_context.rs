@@ -108,6 +108,7 @@ impl TransactionValidator {
         Ok(())
     }
 
+    // TODO(post-toccata): Remove this and restore the context-free check_transaction_signature_scripts.
     fn check_transaction_signature_scripts_in_header_context(&self, tx: &Transaction, block_daa_score: u64) -> TxResult<()> {
         let max_signature_script_len = self.max_signature_script_len.get(block_daa_score);
         if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > max_signature_script_len) {
