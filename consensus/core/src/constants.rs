@@ -1,8 +1,10 @@
 /// BLOCK_VERSION represents the current block version
+// TODO(post-toccata): Change this to 2 and remove TOCCATA_BLOCK_VERSION.
 pub const BLOCK_VERSION: u16 = 1;
 
 /// The block version activated by the Toccata hardfork. This change denotes the use of
 /// the new sequencing commit described in KIP-21.
+// TOOD(post-toccata): Remove this and change BLOCK_VERSION to 2.
 pub const TOCCATA_BLOCK_VERSION: u16 = 2;
 
 /// TX_VERSION is the current latest supported transaction version.

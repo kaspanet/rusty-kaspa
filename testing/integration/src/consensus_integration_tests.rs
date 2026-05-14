@@ -438,8 +438,9 @@ async fn header_in_isolation_validation_test() {
         let block_version = BLOCK_VERSION - 1;
         block.header.version = block_version;
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
-            Err(RuleError::WrongBlockVersion(wrong_version)) => {
-                assert_eq!(wrong_version, block_version)
+            Err(RuleError::WrongBlockVersion(wrong_version, expected_version)) => {
+                assert_eq!(wrong_version, block_version);
+                assert_eq!(expected_version, BLOCK_VERSION);
             }
             res => {
                 panic!("Unexpected result: {res:?}")
@@ -527,7 +528,7 @@ async fn header_version_is_enforced_by_activation() {
         let wrong_version_block = set_block_version(block.clone(), TOCCATA_BLOCK_VERSION);
         assert_match!(
             consensus.validate_and_insert_block(wrong_version_block.to_immutable()).block_task.await,
-            Err(RuleError::WrongBlockVersion(TOCCATA_BLOCK_VERSION))
+            Err(RuleError::WrongBlockVersion(TOCCATA_BLOCK_VERSION, BLOCK_VERSION))
         );
 
         parent = block.header.hash;
@@ -537,7 +538,7 @@ async fn header_version_is_enforced_by_activation() {
     let wrong_post_activation_block = set_block_version(active_block.clone(), BLOCK_VERSION);
     assert_match!(
         consensus.validate_and_insert_block(wrong_post_activation_block.to_immutable()).block_task.await,
-        Err(RuleError::WrongBlockVersion(BLOCK_VERSION))
+        Err(RuleError::WrongBlockVersion(BLOCK_VERSION, TOCCATA_BLOCK_VERSION))
     );
 
     let active_block = set_block_version(active_block, TOCCATA_BLOCK_VERSION);
