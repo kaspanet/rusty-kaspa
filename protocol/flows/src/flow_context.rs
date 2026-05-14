@@ -4,15 +4,16 @@ use crate::flowcontext::{
     transactions::TransactionsSpread,
 };
 use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
-use crate::{v7, v8, v9};
+use crate::{v7, v8, v10};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::config::{Config, params::ForkActivation};
 use kaspa_consensus_core::errors::block::RuleError;
+use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
@@ -60,7 +61,11 @@ use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 9;
+const PROTOCOL_VERSION: u32 = 10;
+
+/// Testnet 12 was launched with the Toccata flow set under protocol version 9.
+const TN12_LAUNCH_PROTOCOL_VERSION: u32 = 9;
+const TN12_NETWORK: NetworkId = NetworkId::with_suffix(NetworkType::Testnet, 12);
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -712,9 +717,15 @@ impl ConnectionInitializer for FlowContext {
 
         let local_address = self.address_manager.lock().best_local_address();
 
+        // Networks with a scheduled Toccata activation advertise protocol 10. Other networks
+        // still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
+        let advertise_toccata_p2p = self.config.covenants_activation != ForkActivation::never();
+        let advertised_protocol_version = if advertise_toccata_p2p { PROTOCOL_VERSION } else { 9 };
+
         // Build the local version message
         // Subnets are not currently supported
-        let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
+        let mut self_version_message =
+            Version::new(local_address, self.node_id, network_name.clone(), None, advertised_protocol_version);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: disable_relay_tx from config/cmd
 
@@ -760,12 +771,41 @@ impl ConnectionInitializer for FlowContext {
 
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
-        // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v9::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
-            8 => (v8::register(self.clone(), router.clone(), 8), 8),
-            7 => (v7::register(self.clone(), router.clone()), 7),
-            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+        // TN12 launched Toccata flows under protocol 9. Normalize those peers to the current
+        // protocol locally while preserving the originally advertised version in peer properties.
+        let peer_protocol_version = if self.config.net == TN12_NETWORK && peer_version.protocol_version == TN12_LAUNCH_PROTOCOL_VERSION
+        {
+            PROTOCOL_VERSION
+        } else {
+            peer_version.protocol_version
+        };
+
+        // One day before activation, upgraded nodes start disconnecting outdated peers from the P2P network.
+        const ONE_DAY_SECONDS: u64 = 24 * 60 * 60;
+        let daa_threshold = ONE_DAY_SECONDS * self.config.bps();
+        let virtual_daa_score = self.consensus().unguarded_session().get_virtual_daa_score();
+        let connect_only_new_versions = self.config.covenants_activation.is_active(virtual_daa_score.saturating_add(daa_threshold));
+
+        // Until the one-day pre-activation threshold is reached, older protocol versions remain accepted.
+        // Once it is reached, peers must advertise protocol 10 (TN12 launch peers were normalized above).
+        //
+        // Note: post-activation fresh nodes with virtual DAA score near genesis are not covered here and
+        // are guarded later during IBD by `validate_pruning_point_freshness_for_toccata`.
+        let (flows, applied_protocol_version) = if connect_only_new_versions {
+            // Register all flows according to version
+            match peer_protocol_version {
+                v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
+        } else {
+            // Register all flows according to version
+            match peer_protocol_version {
+                v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+                9 => (v8::register(self.clone(), router.clone(), 9), 9),
+                8 => (v8::register(self.clone(), router.clone(), 8), 8),
+                7 => (v7::register(self.clone(), router.clone()), 7),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
         };
 
         // Build and register the peer properties
