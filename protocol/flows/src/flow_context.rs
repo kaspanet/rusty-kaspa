@@ -11,7 +11,7 @@ use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::config::{Config, params::ForkActivation};
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
@@ -61,7 +61,7 @@ use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-pub(crate) const PROTOCOL_VERSION: u32 = 10;
+const PROTOCOL_VERSION: u32 = 10;
 
 /// Testnet 12 was launched with the Toccata flow set under protocol version 9.
 const TN12_LAUNCH_PROTOCOL_VERSION: u32 = 9;
@@ -717,9 +717,15 @@ impl ConnectionInitializer for FlowContext {
 
         let local_address = self.address_manager.lock().best_local_address();
 
+        // Networks with a scheduled Toccata activation advertise protocol 10. Other networks
+        // still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
+        let advertise_toccata_p2p = self.config.covenants_activation != ForkActivation::never();
+        let advertised_protocol_version = if advertise_toccata_p2p { PROTOCOL_VERSION } else { 9 };
+
         // Build the local version message
         // Subnets are not currently supported
-        let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
+        let mut self_version_message =
+            Version::new(local_address, self.node_id, network_name.clone(), None, advertised_protocol_version);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: disable_relay_tx from config/cmd
 
