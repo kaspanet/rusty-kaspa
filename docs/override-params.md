@@ -34,7 +34,12 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
   "mass_per_tx_byte": 1,
   "mass_per_script_pub_key_byte": 10,
   "mass_per_sig_op": 1000,
-  "max_block_mass": 500000,
+  "prior_block_mass_limits": {
+    "storage": 500000,
+    "compute": 500000,
+    "transient": 500000
+  },
+  "new_transient_mass_limit": 1000000,
   "storage_mass_parameter": 10000,
   "deflationary_phase_daa_score": 15519600,
   "pre_deflationary_phase_base_subsidy": 50000000000,
@@ -73,12 +78,14 @@ because they have logical relations and should be modified as a unit.
 | max_coinbase_payload_len                    | Maximum coinbase payload length |
 | max_tx_inputs                               | Max transaction inputs |
 | max_tx_outputs                              | Max transaction outputs |
-| max_signature_script_len                    | Max signature script length |
+| prior_max_signature_script_len              | Pre-Toccata max signature script length |
+| new_max_signature_script_len                | Post-Toccata max signature script length |
 | max_script_public_key_len                   | Max script public key length |
 | mass_per_tx_byte                            | Mass per transaction byte     |
 | mass_per_script_pub_key_byte                | Mass per script public key byte |
 | mass_per_sig_op                             | Mass per signature operation  |
-| max_block_mass                              | Maximum block mass            |
+| prior_block_mass_limits                     | Pre-Toccata block mass limits |
+| new_transient_mass_limit                    | Post-Toccata transient mass limit |
 | storage_mass_parameter                      | Storage mass parameter        |
 | deflationary_phase_daa_score                | Deflationary phase DAA score  |
 | pre_deflationary_phase_base_subsidy         | Pre-deflationary phase base subsidy |

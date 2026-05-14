@@ -73,7 +73,7 @@ mod tests {
     }
 
     fn cost_block_capacity(tag: ZkTag) -> u64 {
-        let compute_mass_limit = MAINNET_PARAMS.block_mass_limits.compute;
+        let compute_mass_limit = MAINNET_PARAMS.block_mass_limits().after().compute;
         let cost_in_compute_mass = u64::from(tag.cost()) / SCRIPT_UNITS_PER_GRAM;
         compute_mass_limit / cost_in_compute_mass
     }

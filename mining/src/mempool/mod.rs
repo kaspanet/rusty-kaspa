@@ -19,6 +19,7 @@ use kaspa_consensus_core::{
 use kaspa_core::time::Stopwatch;
 use std::sync::Arc;
 
+pub(crate) mod check_transaction_limits;
 pub(crate) mod check_transaction_standard;
 pub mod config;
 pub mod errors;

@@ -9,13 +9,17 @@ use kaspa_txscript::{
     caches::{Cache, TxScriptCacheCounters},
 };
 
-use kaspa_consensus_core::{KType, config::params::ForkActivation, mass::MassCalculator};
+use kaspa_consensus_core::{
+    KType,
+    config::params::{ForkActivation, ForkedParam},
+    mass::MassCalculator,
+};
 
 #[derive(Clone)]
 pub struct TransactionValidator {
     max_tx_inputs: usize,
     max_tx_outputs: usize,
-    max_signature_script_len: usize,
+    max_signature_script_len: ForkedParam<usize>,
     max_script_public_key_len: usize,
     coinbase_payload_script_public_key_max_len: u8,
     coinbase_maturity: u64,
@@ -32,7 +36,7 @@ impl TransactionValidator {
     pub fn new(
         max_tx_inputs: usize,
         max_tx_outputs: usize,
-        max_signature_script_len: usize,
+        max_signature_script_len: impl Into<ForkedParam<usize>>,
         max_script_public_key_len: usize,
         coinbase_payload_script_public_key_max_len: u8,
         coinbase_maturity: u64,
@@ -45,7 +49,7 @@ impl TransactionValidator {
         Self {
             max_tx_inputs,
             max_tx_outputs,
-            max_signature_script_len,
+            max_signature_script_len: max_signature_script_len.into(),
             max_script_public_key_len,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,
@@ -60,7 +64,7 @@ impl TransactionValidator {
     pub fn new_for_tests(
         max_tx_inputs: usize,
         max_tx_outputs: usize,
-        max_signature_script_len: usize,
+        max_signature_script_len: impl Into<ForkedParam<usize>>,
         max_script_public_key_len: usize,
         coinbase_payload_script_public_key_max_len: u8,
         coinbase_maturity: u64,
@@ -70,7 +74,7 @@ impl TransactionValidator {
         Self {
             max_tx_inputs,
             max_tx_outputs,
-            max_signature_script_len,
+            max_signature_script_len: max_signature_script_len.into(),
             max_script_public_key_len,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,

@@ -1,4 +1,7 @@
-use kaspa_consensus_core::mass::{BlockLaneLimits, BlockMassLimits, MassCofactors};
+use kaspa_consensus_core::{
+    config::params::ForkedParam,
+    mass::{BlockLaneLimits, BlockMassLimits, MassCofactors},
+};
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
 pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 1_000_000_000;
@@ -34,7 +37,8 @@ pub struct Config {
     pub maximum_orphan_transaction_normalized_mass: u64,
     pub maximum_orphan_transaction_count: u64,
     pub accept_non_standard: bool,
-    pub block_mass_cofactors: MassCofactors,
+    pub mempool_block_mass_limits: ForkedParam<BlockMassLimits>,
+    pub mempool_mass_cofactors: ForkedParam<MassCofactors>,
     pub block_lane_limits: BlockLaneLimits,
     pub minimum_relay_transaction_fee: u64,
     pub network_blocks_per_second: u64,
@@ -57,11 +61,13 @@ impl Config {
         maximum_orphan_transaction_normalized_mass: u64,
         maximum_orphan_transaction_count: u64,
         accept_non_standard: bool,
-        block_mass_cofactors: MassCofactors,
+        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
         block_lane_limits: BlockLaneLimits,
         minimum_relay_transaction_fee: u64,
         network_blocks_per_second: u64,
     ) -> Self {
+        let mempool_block_mass_limits = mempool_block_mass_limits.into();
+        let mempool_mass_cofactors = mempool_block_mass_limits.map(|limits| limits.cofactors());
         Self {
             maximum_transaction_count,
             mempool_size_limit,
@@ -77,7 +83,8 @@ impl Config {
             maximum_orphan_transaction_normalized_mass,
             maximum_orphan_transaction_count,
             accept_non_standard,
-            block_mass_cofactors,
+            mempool_block_mass_limits,
+            mempool_mass_cofactors,
             block_lane_limits,
             minimum_relay_transaction_fee,
             network_blocks_per_second,
@@ -85,14 +92,15 @@ impl Config {
     }
 
     /// Build a default config.
-    /// The arguments should be obtained from the current consensus [`kaspa_consensus_core::config::params::Params`] instance.
+    /// The mass limits should be obtained from [`kaspa_consensus_core::config::params::Params::mempool_block_mass_limits`].
     pub fn build_default(
         target_milliseconds_per_block: u64,
         relay_non_std_transactions: bool,
-        block_mass_limits: BlockMassLimits,
+        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
         block_lane_limits: BlockLaneLimits,
     ) -> Self {
-        let block_mass_cofactors = block_mass_limits.cofactors();
+        let mempool_block_mass_limits = mempool_block_mass_limits.into();
+        let mempool_mass_cofactors = mempool_block_mass_limits.map(|limits| limits.cofactors());
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
             mempool_size_limit: DEFAULT_MEMPOOL_SIZE_LIMIT,
@@ -111,7 +119,8 @@ impl Config {
             maximum_orphan_transaction_normalized_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_NORMALIZED_MASS,
             maximum_orphan_transaction_count: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT,
             accept_non_standard: relay_non_std_transactions,
-            block_mass_cofactors,
+            mempool_block_mass_limits,
+            mempool_mass_cofactors,
             block_lane_limits,
             minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
             network_blocks_per_second: 1000 / target_milliseconds_per_block,

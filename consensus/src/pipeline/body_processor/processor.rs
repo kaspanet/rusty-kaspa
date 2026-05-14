@@ -27,7 +27,10 @@ use kaspa_consensus_core::{
     KType,
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::{genesis::GenesisBlock, params::Params},
+    config::{
+        genesis::GenesisBlock,
+        params::{ForkedParam, Params},
+    },
     mass::{BlockLaneLimits, BlockMassLimits, Mass, MassCalculator},
     tx::Transaction,
 };
@@ -55,7 +58,7 @@ pub struct BlockBodyProcessor {
     db: Arc<DB>,
 
     // Config
-    pub(super) block_mass_limits: BlockMassLimits,
+    pub(super) block_mass_limits: ForkedParam<BlockMassLimits>,
     pub(super) block_lane_limits: BlockLaneLimits,
     pub(super) genesis: GenesisBlock,
     pub(super) _ghostdag_k: KType,
@@ -108,7 +111,7 @@ impl BlockBodyProcessor {
             thread_pool,
             db,
 
-            block_mass_limits: params.block_mass_limits,
+            block_mass_limits: params.block_mass_limits(),
             block_lane_limits: params.block_lane_limits,
             genesis: params.genesis.clone(),
             _ghostdag_k: params.ghostdag_k(),

@@ -65,6 +65,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_mass(self: &Arc<Self>, block: &Block) -> BlockProcessResult<Mass> {
+        let block_mass_limits = self.block_mass_limits.get(block.header.daa_score);
         let mut total_compute_mass: u64 = 0;
         let mut total_transient_mass: u64 = 0;
         let mut total_storage_mass: u64 = 0;
@@ -84,14 +85,14 @@ impl BlockBodyProcessor {
             total_storage_mass = total_storage_mass.saturating_add(storage_mass_commitment);
 
             // Verify each dimension against its own limit
-            if total_compute_mass > self.block_mass_limits.compute {
-                return Err(RuleError::ExceedsComputeMassLimit(total_compute_mass, self.block_mass_limits.compute));
+            if total_compute_mass > block_mass_limits.compute {
+                return Err(RuleError::ExceedsComputeMassLimit(total_compute_mass, block_mass_limits.compute));
             }
-            if total_transient_mass > self.block_mass_limits.transient {
-                return Err(RuleError::ExceedsTransientMassLimit(total_transient_mass, self.block_mass_limits.transient));
+            if total_transient_mass > block_mass_limits.transient {
+                return Err(RuleError::ExceedsTransientMassLimit(total_transient_mass, block_mass_limits.transient));
             }
-            if total_storage_mass > self.block_mass_limits.storage {
-                return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, self.block_mass_limits.storage));
+            if total_storage_mass > block_mass_limits.storage {
+                return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, block_mass_limits.storage));
             }
 
             // Pre-Toccata valid blocks contain only native non-coinbase txs with zero gas,

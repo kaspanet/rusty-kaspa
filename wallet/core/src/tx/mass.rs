@@ -53,8 +53,9 @@ pub fn calc_minimum_required_transaction_relay_fee(mass: u64) -> u64 {
 ///
 /// It is exposed by `MiningManager` for use by transaction generators and wallets.
 pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> bool {
-    // Unspendable outputs are considered dust.
-    //
+    // TODO(post-toccata): review this wallet-side dust helper against the updated mempool
+    // standardness policy. Mempool no longer rejects dust by threshold, but wallet generation
+    // may still want a local small-output/change-disposal heuristic.
     // TODO: call script engine when available
     // if txscript.is_unspendable(transaction_output.script_public_key.script()) {
     //     return true
@@ -81,7 +82,6 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     // The most common scripts are pay-to-pubkey, and as per the above
     // breakdown, the minimum size of a p2pk input script is 148 bytes. So
     // that figure is used.
-    // let output = transaction_output.clone().try_into().unwrap();
     let total_serialized_size = transaction_output_serialized_byte_size(transaction_output) + 148;
 
     // The output is considered dust if the cost to the network to spend the
