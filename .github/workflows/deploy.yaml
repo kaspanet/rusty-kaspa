@@ -51,14 +51,19 @@ jobs:
           # Go back to the workspace
           cd $GITHUB_WORKSPACE
           
-          # Build for musl
-          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet-daemon --bin kaspa-cli --release --target x86_64-unknown-linux-musl
+          # Build non-bridge binaries first
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          # Build bridge with allow-multiple-definition to resolve mimalloc/libstdc++ symbol collisions.
+          # musl-toolchain/build.sh sets RUSTFLAGS directly, so we append this flag here explicitly.
+          export RUSTFLAGS="$RUSTFLAGS -C link-arg=-Wl,--allow-multiple-definition"
+          cargo --verbose build --bin stratum-bridge --release --target x86_64-unknown-linux-musl
           mkdir bin || true
           cp target/x86_64-unknown-linux-musl/release/kaspad bin/
           cp target/x86_64-unknown-linux-musl/release/rothschild bin/
           cp target/x86_64-unknown-linux-musl/release/kaspa-wallet-daemon bin/
           cp target/x86_64-unknown-linux-musl/release/kaspa-cli bin/
           cp target/x86_64-unknown-linux-musl/release/kaspa-cli bin/kaspa-wallet
+          cp target/x86_64-unknown-linux-musl/release/stratum-bridge bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
@@ -70,11 +75,13 @@ jobs:
           cargo build --bin kaspad --release
           cargo build --bin rothschild --release
           cargo build --bin kaspa-wallet-daemon --release
+          cargo build --bin stratum-bridge --release
           cargo build --bin kaspa-cli --release
           mkdir bin || true
           cp target/release/kaspad.exe bin/
           cp target/release/rothschild.exe bin/
           cp target/release/kaspa-wallet-daemon.exe bin/
+          cp target/release/stratum-bridge.exe bin/
           cp target/release/kaspa-cli.exe bin/
           cp target/release/kaspa-cli.exe bin/kaspa-wallet.exe
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
@@ -87,11 +94,13 @@ jobs:
           cargo build --bin kaspad --release
           cargo build --bin rothschild --release
           cargo build --bin kaspa-wallet-daemon --release
+          cargo build --bin stratum-bridge --release
           cargo build --bin kaspa-cli --release
           mkdir bin || true
           cp target/release/kaspad bin/
           cp target/release/rothschild bin/
           cp target/release/kaspa-wallet-daemon bin/
+          cp target/release/stratum-bridge bin/
           cp target/release/kaspa-cli bin/
           cp target/release/kaspa-cli bin/kaspa-wallet
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
