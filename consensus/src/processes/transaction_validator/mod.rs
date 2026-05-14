@@ -25,7 +25,7 @@ pub struct TransactionValidator {
     coinbase_maturity: u64,
     ghostdag_k: KType,
     sig_cache: Cache<SigCacheKey, bool>,
-    covenants_activation: ForkActivation,
+    toccata_activation: ForkActivation,
     mass_per_sig_op: u64,
 
     pub(crate) mass_calculator: MassCalculator,
@@ -43,7 +43,7 @@ impl TransactionValidator {
         ghostdag_k: KType,
         counters: Arc<TxScriptCacheCounters>,
         mass_calculator: MassCalculator,
-        covenants_activation: ForkActivation,
+        toccata_activation: ForkActivation,
         mass_per_sig_op: u64,
     ) -> Self {
         Self {
@@ -56,7 +56,7 @@ impl TransactionValidator {
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator,
-            covenants_activation,
+            toccata_activation,
             mass_per_sig_op,
         }
     }
@@ -81,7 +81,7 @@ impl TransactionValidator {
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator: MassCalculator::new(0, 0, 0),
-            covenants_activation: ForkActivation::never(),
+            toccata_activation: ForkActivation::never(),
             mass_per_sig_op: 0,
         }
     }

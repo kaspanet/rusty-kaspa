@@ -181,7 +181,7 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
     // - `[namespace (4 bytes), 0×16]`: user lane. Any first byte is allowed.
     //   Since the 19-suffix case is handled above, at least one of
     //   `bytes[1..4]` is non-zero, so the namespace is never all-zero here.
-    //   Gated behind the covenants HF.
+    //   Gated behind the Toccata HF.
     // - Any other shape: rejected.
     match tx.subnetwork_id.as_bytes() {
         // Native and coinbase (reserved) subnetwork IDs are always allowed
@@ -354,7 +354,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
 
         let mut forked_params = params.clone();
-        forked_params.covenants_activation = ForkActivation::new(100);
+        forked_params.toccata_activation = ForkActivation::new(100);
         let forked_tv = TransactionValidator::new_for_tests(
             forked_params.max_tx_inputs,
             forked_params.max_tx_outputs,
@@ -409,7 +409,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_)));
 
         // Test prev version upper bound in header context
-        // TODO (covpp): turn back into pure in-isolation test
+        // TODO(post-toccata): turn back into pure in-isolation test
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;
         assert_match!(tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 0), Err(TxRuleError::UnknownTxVersion(_)));

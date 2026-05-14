@@ -166,6 +166,7 @@ impl<T: Copy + Ord> ForkedParam<T> {
 /// in order to easily support **future BPS acceleration hardforks** (by simply adding
 /// a forked instance of blockrate params to the main [`Params`]).
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockrateParams {
     pub target_time_per_block: u64, // (milliseconds)
     pub ghostdag_k: KType,
@@ -204,6 +205,7 @@ impl BlockrateParams {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OverrideParams {
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: Option<u64>,
@@ -252,7 +254,7 @@ pub struct OverrideParams {
     /// Crescendo activation DAA score
     pub crescendo_activation: Option<ForkActivation>,
 
-    pub covenants_activation: Option<ForkActivation>,
+    pub toccata_activation: Option<ForkActivation>,
 }
 
 impl From<Params> for OverrideParams {
@@ -284,7 +286,7 @@ impl From<Params> for OverrideParams {
             pruning_proof_m: Some(p.pruning_proof_m),
             blockrate: Some(p.blockrate),
             crescendo_activation: Some(p.crescendo_activation),
-            covenants_activation: Some(p.covenants_activation),
+            toccata_activation: Some(p.toccata_activation),
         }
     }
 }
@@ -353,7 +355,7 @@ pub struct Params {
     /// Crescendo activation DAA score
     pub crescendo_activation: ForkActivation,
 
-    pub covenants_activation: ForkActivation,
+    pub toccata_activation: ForkActivation,
 }
 
 impl Params {
@@ -403,7 +405,7 @@ impl Params {
     pub fn block_mass_limits(&self) -> ForkedParam<BlockMassLimits> {
         let mut new_block_mass_limits = self.prior_block_mass_limits;
         new_block_mass_limits.transient = self.new_transient_mass_limit;
-        ForkedParam::new(self.prior_block_mass_limits, new_block_mass_limits, self.covenants_activation)
+        ForkedParam::new(self.prior_block_mass_limits, new_block_mass_limits, self.toccata_activation)
     }
 
     /// Returns the forked cofactors for normalizing block mass dimensions.
@@ -456,7 +458,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn max_signature_script_len(&self) -> ForkedParam<usize> {
-        ForkedParam::new(self.prior_max_signature_script_len, self.new_max_signature_script_len, self.covenants_activation)
+        ForkedParam::new(self.prior_max_signature_script_len, self.new_max_signature_script_len, self.toccata_activation)
     }
 
     pub fn ghostdag_k(&self) -> KType {
@@ -522,7 +524,7 @@ impl Params {
             // The testnet12 hardfork was activated without a block version bump, so we return a constant value of 1 for compatibility with the existing testnet12 chain.
             ForkedParam::new_const(BLOCK_VERSION)
         } else {
-            ForkedParam::new(BLOCK_VERSION, TOCCATA_BLOCK_VERSION, self.covenants_activation)
+            ForkedParam::new(BLOCK_VERSION, TOCCATA_BLOCK_VERSION, self.toccata_activation)
         }
     }
 
@@ -596,7 +598,7 @@ impl Params {
                 .unwrap_or(self.pre_crescendo_target_time_per_block),
 
             crescendo_activation: overrides.crescendo_activation.unwrap_or(self.crescendo_activation),
-            covenants_activation: overrides.covenants_activation.unwrap_or(self.covenants_activation),
+            toccata_activation: overrides.toccata_activation.unwrap_or(self.toccata_activation),
         }
     }
 }
@@ -711,7 +713,7 @@ pub const MAINNET_PARAMS: Params = Params {
 
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
-    covenants_activation: ForkActivation::never(),
+    toccata_activation: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -772,7 +774,7 @@ pub const TESTNET_PARAMS: Params = Params {
     crescendo_activation: ForkActivation::new(88_657_000),
 
     // TODO(pre-covpp): Before setting the activation DAA score, resolve all comments of the form TODO(pre-covpp)
-    covenants_activation: ForkActivation::never(),
+    toccata_activation: ForkActivation::never(),
 };
 
 pub const TESTNET12_PARAMS: Params = Params {
@@ -801,7 +803,7 @@ pub const TESTNET12_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
-    covenants_activation: ForkActivation::always(),
+    toccata_activation: ForkActivation::always(),
     ..TESTNET_PARAMS
 };
 
@@ -847,7 +849,7 @@ pub const SIMNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
-    covenants_activation: ForkActivation::always(),
+    toccata_activation: ForkActivation::always(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -891,5 +893,65 @@ pub const DEVNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
-    covenants_activation: ForkActivation::never(),
+    toccata_activation: ForkActivation::never(),
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn override_params_deserializes_toccata_activation() {
+        let override_params: OverrideParams = serde_json::from_str(r#"{"toccata_activation":42}"#).unwrap();
+
+        assert_eq!(override_params.toccata_activation, Some(ForkActivation::new(42)));
+    }
+
+    #[test]
+    fn override_params_rejects_unknown_top_level_fields() {
+        let err = serde_json::from_str::<OverrideParams>(r#"{"unexpected":42}"#).unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `unexpected`"), "{err}");
+    }
+
+    #[test]
+    fn override_params_rejects_unknown_nested_blockrate_fields() {
+        let err = serde_json::from_str::<OverrideParams>(
+            r#"{
+                "blockrate": {
+                    "target_time_per_block": 100,
+                    "ghostdag_k": 124,
+                    "past_median_time_sample_rate": 10,
+                    "difficulty_sample_rate": 2,
+                    "max_block_parents": 16,
+                    "mergeset_size_limit": 248,
+                    "merge_depth": 36000,
+                    "finality_depth": 432000,
+                    "pruning_depth": 1080000,
+                    "coinbase_maturity": 200,
+                    "unexpected": 1
+                }
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `unexpected`"), "{err}");
+    }
+
+    #[test]
+    fn override_params_rejects_unknown_nested_mass_limit_fields() {
+        let err = serde_json::from_str::<OverrideParams>(
+            r#"{
+                "prior_block_mass_limits": {
+                    "storage": 500000,
+                    "compute": 500000,
+                    "transient": 500000,
+                    "unexpected": 1
+                }
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `unexpected`"), "{err}");
+    }
+}

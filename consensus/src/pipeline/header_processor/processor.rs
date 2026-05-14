@@ -24,7 +24,10 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
+    pipeline::{
+        deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
+        virtual_processor::fork_logger::ForkLogger,
+    },
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
 };
 use crossbeam_channel::{Receiver, Sender};
@@ -33,7 +36,10 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel,
     blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::{genesis::GenesisBlock, params::ForkedParam},
+    config::{
+        genesis::GenesisBlock,
+        params::{ForkActivation, ForkedParam},
+    },
     header::Header,
 };
 use kaspa_consensusmanager::SessionLock;
@@ -108,6 +114,8 @@ pub struct HeaderProcessor {
     pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
+    pub(crate) toccata_activation: ForkActivation,
+    pub(crate) toccata_logger: ForkLogger,
     pub(super) block_version: ForkedParam<u16>,
 
     // DB
@@ -195,6 +203,8 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit(),
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
+            toccata_activation: params.toccata_activation,
+            toccata_logger: ForkLogger::new("header in context validation", false),
             block_version: params.block_version(),
         }
     }
@@ -289,10 +299,16 @@ impl HeaderProcessor {
         let mut ctx = self.build_processing_context(header, block_level);
         self.ghostdag(&mut ctx);
         self.pre_pow_validation(&mut ctx, header)?;
+
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
             return Err(e);
         }
+
+        if self.toccata_activation.is_within_range_from_activation(header.daa_score, 10_000) {
+            self.toccata_logger.report_activation();
+        }
+
         Ok(ctx)
     }
 

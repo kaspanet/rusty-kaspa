@@ -63,36 +63,6 @@ pub(super) struct ResolvedLaneUpdate {
     pub is_new: bool,
 }
 
-pub(crate) mod crescendo {
-    use kaspa_core::{info, log::CRESCENDO_KEYWORD};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering},
-    };
-
-    #[derive(Clone)]
-    pub(crate) struct _CrescendoLogger {
-        steps: Arc<AtomicU8>,
-    }
-
-    impl _CrescendoLogger {
-        pub fn _new() -> Self {
-            Self { steps: Arc::new(AtomicU8::new(Self::_ACTIVATE)) }
-        }
-
-        const _ACTIVATE: u8 = 0;
-
-        pub fn _report_activation(&self) -> bool {
-            if self.steps.compare_exchange(Self::_ACTIVATE, Self::_ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-                info!(target: CRESCENDO_KEYWORD, "[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
-                true
-            } else {
-                false
-            }
-        }
-    }
-}
-
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
 pub(super) struct UtxoProcessingContext<'a> {
@@ -222,7 +192,7 @@ impl VirtualStateProcessor {
         }
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
-        let (expected_accepted_id_merkle_root, smt_build) = if self.covenants_activation.is_active(header.daa_score) {
+        let (expected_accepted_id_merkle_root, smt_build) = if self.toccata_activation.is_active(header.daa_score) {
             // KIP-21: compute seq_commit from SMT lane processing
             let (hash, build) = self.recompute_seq_commit(ctx, header)?;
             (hash, Some(build))
@@ -261,7 +231,7 @@ impl VirtualStateProcessor {
         // header-validity. This maintains compatibility with protocols like DAGKNIGHT,
         // which may not compute selected parents for every block, while still securing
         // the pruning point (which is a qualified chain block by definition).
-        if self.covenants_activation.is_active(header.daa_score) {
+        if self.toccata_activation.is_active(header.daa_score) {
             let selected_parent = ctx.ghostdag_data.selected_parent;
             let first_parent = header.direct_parents()[0];
             if first_parent != selected_parent {
@@ -394,12 +364,12 @@ impl VirtualStateProcessor {
 
         let populated_tx = PopulatedTransaction::new(transaction, entries);
 
-        let seq_commit_accessor = if self.covenants_activation.is_active(pov_daa_score) {
+        let seq_commit_accessor = if self.toccata_activation.is_active(pov_daa_score) {
             Some(SeqCommitAccessor::new(
                 sp,
                 &self.reachability_service,
                 &self.headers_store,
-                self.covenants_activation,
+                self.toccata_activation,
                 self.finality_depth,
             ))
         } else {
@@ -475,12 +445,12 @@ impl VirtualStateProcessor {
             (mass.normalized_max(&self.mempool_mass_cofactors.get(pov_daa_score)), threshold)
         });
 
-        let seq_commit_accessor = if self.covenants_activation.is_active(pov_daa_score) {
+        let seq_commit_accessor = if self.toccata_activation.is_active(pov_daa_score) {
             Some(SeqCommitAccessor::new(
                 sp,
                 &self.reachability_service,
                 &self.headers_store,
-                self.covenants_activation,
+                self.toccata_activation,
                 self.finality_depth,
             ))
         } else {

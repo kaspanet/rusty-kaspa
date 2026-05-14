@@ -578,12 +578,12 @@ impl PruningProcessor {
             self.assert_data_rebuilding(data, new_pruning_point);
         }
 
+        let pp_header = self.headers_store.get_compact_header_data(new_pruning_point).unwrap();
         // Prune SMT lane/branch version stores and score index.
         // The inclusive cutoff is `pp.blue_score − finality_depth − 1`: the
         // score `pp.blue_score − finality_depth` is still inside the active
         // window at the pruning point and must be preserved.
-        {
-            let pp_header = self.headers_store.get_header(new_pruning_point).unwrap();
+        if self.config.toccata_activation.is_active(pp_header.daa_score) {
             let smt_cutoff = crate::pipeline::virtual_processor::bounds::SeqCommitBounds::inclusive_prune_cutoff(
                 pp_header.blue_score,
                 self.config.params.finality_depth(),

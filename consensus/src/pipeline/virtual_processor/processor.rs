@@ -37,8 +37,10 @@ use crate::{
     },
     params::Params,
     pipeline::{
-        ProcessingCounters, deps_manager::VirtualStateProcessingMessage, pruning_processor::processor::PruningProcessingMessage,
-        virtual_processor::utxo_validation::UtxoProcessingContext,
+        ProcessingCounters,
+        deps_manager::VirtualStateProcessingMessage,
+        pruning_processor::processor::PruningProcessingMessage,
+        virtual_processor::{fork_logger::ForkLogger, utxo_validation::UtxoProcessingContext},
     },
     processes::{
         coinbase::CoinbaseManager,
@@ -171,8 +173,9 @@ pub struct VirtualStateProcessor {
     // Counters
     pub(super) counters: Arc<ProcessingCounters>,
 
-    // Covenants activation
-    pub(crate) covenants_activation: ForkActivation,
+    // Toccata activation
+    pub(crate) toccata_activation: ForkActivation,
+    pub(crate) toccata_logger: ForkLogger,
 
     // SMT stores
     pub(super) smt_stores: Arc<kaspa_smt_store::processor::SmtStores>,
@@ -246,7 +249,8 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
-            covenants_activation: params.covenants_activation,
+            toccata_activation: params.toccata_activation,
+            toccata_logger: ForkLogger::new("virtual state processing rules", true),
             smt_stores: storage.smt_stores.clone(),
             smt_metadata_store: storage.smt_metadata_store.clone(),
             _mining_rules: mining_rules,
@@ -577,10 +581,12 @@ impl VirtualStateProcessor {
         // Update the accumulated diff
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
-        let covenants_active = self.covenants_activation.is_active(virtual_daa_window.daa_score);
+        if self.toccata_activation.is_within_range_from_activation(virtual_daa_window.daa_score, 10_000) {
+            self.toccata_logger.report_activation();
+        }
 
         // Compute accepted_id_digests
-        let accepted_id_digests = if covenants_active {
+        let accepted_id_digests = if self.toccata_activation.is_active(virtual_daa_window.daa_score) {
             let commit = self.compute_seq_commit(&ctx, &virtual_ghostdag_data, virtual_daa_window.daa_score);
             // Post-KIP21: single-element vec containing the seq_commit.
             // The virtual's SmtBuild is ephemeral — only chain blocks persist SMT state.
@@ -652,7 +658,7 @@ impl VirtualStateProcessor {
     /// Post-KIP21: single-element vec with the genesis `seq_commit`.
     pub(super) fn compute_genesis_accepted_id_digests(&self, ghostdag_data: &GhostdagData) -> Vec<Hash> {
         let txs = self.genesis.build_genesis_transactions();
-        if !self.covenants_activation.is_active(self.genesis.daa_score) {
+        if !self.toccata_activation.is_active(self.genesis.daa_score) {
             return txs.iter().map(|tx| tx.id()).collect();
         }
 
@@ -1322,7 +1328,7 @@ impl VirtualStateProcessor {
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
 
-        let accepted_id_merkle_root = if self.covenants_activation.is_active(virtual_state.daa_score) {
+        let accepted_id_merkle_root = if self.toccata_activation.is_active(virtual_state.daa_score) {
             // Post-KIP21: accepted_id_digests[0] = seq_commit
             virtual_state.accepted_id_digests[0]
         } else {

@@ -58,13 +58,18 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
     "pruning_depth": 1080000,
     "coinbase_maturity": 200
   },
-  "crescendo_activation": 0
+  "block_lane_limits": {
+    "lanes_per_block": 16,
+    "gas_per_lane": 500000
+  },
+  "crescendo_activation": 0,
+  "toccata_activation": 0
 }
 ```
 
 All high level (non-nested) fields are optional, and if omitted, their default values in the respective network will be used. 
-The `blockrate` field must either be absent or provided in full with all subfields (missing subfields will default to zero and not to default network params). This is
-because they have logical relations and should be modified as a unit.  
+Unknown field names are rejected, so misspelled or obsolete keys make startup fail instead of being ignored.
+The `blockrate` field must either be absent or provided in full with all subfields. This is because they have logical relations and should be modified as a unit.
 
 ## Available parameters
 | Field                                       | Description                |
@@ -86,6 +91,7 @@ because they have logical relations and should be modified as a unit.
 | mass_per_sig_op                             | Mass per signature operation  |
 | prior_block_mass_limits                     | Pre-Toccata block mass limits |
 | new_transient_mass_limit                    | Post-Toccata transient mass limit |
+| block_lane_limits                           | Block lane limits |
 | storage_mass_parameter                      | Storage mass parameter        |
 | deflationary_phase_daa_score                | Deflationary phase DAA score  |
 | pre_deflationary_phase_base_subsidy         | Pre-deflationary phase base subsidy |
@@ -94,6 +100,7 @@ because they have logical relations and should be modified as a unit.
 | pruning_proof_m                             | Pruning proof M parameter                        |
 | blockrate                                   | Blockrate-related parameters            |
 | crescendo_activation                        | Crescendo DAA score                        |
+| toccata_activation                          | Toccata DAA score                        |
 
 **blockrate sub-fields:**
 
@@ -109,6 +116,13 @@ because they have logical relations and should be modified as a unit.
 | finality_depth                      | Finality depth                      |
 | pruning_depth                       | Pruning depth                       |
 | coinbase_maturity                   | Coinbase maturity                   |
+
+**block_lane_limits sub-fields:**
+
+| Field                              | Description                |
+|-------------------------------------|----------------------------|
+| lanes_per_block                     | Maximum lanes per block    |
+| gas_per_lane                        | Maximum gas per lane       |
 
 Refer to the source definition in
 `consensus/core/src/config/params.rs` for the full list of available fields and

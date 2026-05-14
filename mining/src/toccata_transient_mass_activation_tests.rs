@@ -412,7 +412,7 @@ fn transient_activation_params() -> Params {
     let mut params = SIMNET_PARAMS.clone();
     params.prior_block_mass_limits = BlockMassLimits::with_shared_limit(PRIOR_BLOCK_MASS_LIMIT);
     params.new_transient_mass_limit = NEW_TRANSIENT_LIMIT;
-    params.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE);
+    params.toccata_activation = ForkActivation::new(ACTIVATION_DAA_SCORE);
     params
 }
 
