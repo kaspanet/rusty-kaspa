@@ -64,6 +64,8 @@ async fn is_ancestor_in_selected_parent_chain(client: &GrpcClient, mut descendan
     }
 }
 
+// Ignored since it might fail to initialize the logger if another test already initialized it. Run it specifically with `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_toccata_activation_log_file_test`
+#[ignore]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_toccata_activation_log_file_test() {
     init_allocator_with_default_settings();
