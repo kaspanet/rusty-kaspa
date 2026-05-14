@@ -3609,11 +3609,11 @@
     "OpSubstr errors for out-of-bounds ranges"
   ],
   [
-    "'short' 0 600",
+    "'short' 0 1000001",
     "SUBSTR",
     "",
-    "UNKNOWN_ERROR",
-    "OpSubstr errors when requested length exceeds MAX_SCRIPT_ELEMENT_SIZE. TODO(pre-covpp): Change UNKNOWN_ERROR to PUSH_SIZE, and fix to correct MAX_SCRIPT_ELEMENT_SIZE"
+    "PUSH_SIZE",
+    "OpSubstr errors when requested length exceeds MAX_SCRIPT_ELEMENT_SIZE."
   ],
   [
     "'abc' 2 0",
