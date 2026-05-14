@@ -371,7 +371,7 @@ impl Params {
         self.blockrate.difficulty_sample_rate
     }
 
-    /// Returns the target time per block
+    /// Returns the target time per block (milliseconds)
     #[inline]
     #[must_use]
     pub fn target_time_per_block(&self) -> u64 {
