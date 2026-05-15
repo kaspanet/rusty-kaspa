@@ -880,7 +880,6 @@ impl Generator {
 
                 data.aggregate_mass = calc.combine_mass(compute_mass, storage_mass);
 
-                transaction_fees += change_output_value;
                 data.transaction_fees = transaction_fees;
                 stage.aggregate_fees += transaction_fees;
                 context.aggregate_fees += transaction_fees;
