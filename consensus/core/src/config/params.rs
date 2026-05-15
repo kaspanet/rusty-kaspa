@@ -121,6 +121,11 @@ impl<T: Copy> ForkedParam<T> {
         }
     }
 
+    /// Returns the configured post-fork value regardless of whether activation is scheduled.
+    pub fn raw_post(&self) -> T {
+        self.post
+    }
+
     /// Maps the ForkedParam<T> to a new ForkedParam<U> by applying a map function on both pre and post
     pub fn map<U: Copy, F: Fn(T) -> U>(&self, f: F) -> ForkedParam<U> {
         ForkedParam::new(f(self.pre), f(self.post), self.activation)

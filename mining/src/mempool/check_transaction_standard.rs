@@ -53,10 +53,10 @@ impl Mempool {
         // minimum cost, whether dominated by compute or by transient byte footprint.
         // Storage mass does not require an additional relay-fee floor here since storage growth is
         // sufficiently protected even under worst-case block-limit usage.
-        // Use the post-activation cofactors for fee pricing even before activation: activation policy
-        // should only change which transient limit is allowed, not reprice the same transaction.
+        // Use raw_post so all networks, including non-scheduled ones, use the same standardness
+        // pricing value and do not fluctuate with activation status.
         let masses = transaction.calculated_non_contextual_masses.unwrap();
-        let cofactors = self.config.mempool_mass_cofactors.after();
+        let cofactors = self.config.mempool_mass_cofactors.raw_post();
         let normalized_transient_mass = masses.normalized_transient(&cofactors);
         let fee_mass = masses.compute_mass.max(normalized_transient_mass);
         let minimum_fee = self.minimum_required_transaction_relay_fee(fee_mass);
