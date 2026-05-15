@@ -480,6 +480,21 @@ fn test_bind_addr_from_port_empty() {
     assert_eq!(bind_addr_from_port("   "), "");
 }
 
+#[cfg(test)]
+#[test]
+fn test_bind_dashboard_addr_from_port_defaults_localhost() {
+    use kaspa_stratum_bridge::net_utils::bind_dashboard_addr_from_port;
+    // Bare ports default to localhost (issue #973)
+    assert_eq!(bind_dashboard_addr_from_port(":3030"), "127.0.0.1:3030");
+    assert_eq!(bind_dashboard_addr_from_port("3030"), "127.0.0.1:3030");
+    // Explicit addresses are preserved
+    assert_eq!(bind_dashboard_addr_from_port("0.0.0.0:3030"), "0.0.0.0:3030");
+    assert_eq!(bind_dashboard_addr_from_port("192.168.1.1:5555"), "192.168.1.1:5555");
+    // Empty stays empty
+    assert_eq!(bind_dashboard_addr_from_port(""), "");
+    assert_eq!(bind_dashboard_addr_from_port("   "), "");
+}
+
 // JSON-RPC event tests
 #[cfg(test)]
 #[test]

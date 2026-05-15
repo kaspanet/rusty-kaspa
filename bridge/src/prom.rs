@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use crate::app_config::BridgeConfig;
-use crate::net_utils::bind_addr_from_port;
+use crate::net_utils::{bind_addr_from_port, bind_dashboard_addr_from_port};
 use std::path::PathBuf;
 
 /// Worker labels for Prometheus metrics
@@ -284,8 +284,11 @@ pub fn record_internal_cpu_recent_block(hash: String, nonce: u64, bluescore: u64
 
 #[derive(Clone, Debug)]
 enum HttpMode {
+    /// Aggregated web dashboard: serves /metrics, /api/status, /api/stats, /api/config, and static files.
     Aggregated { web_bind: String },
-    Instance { instance_id: String, web_bind: String },
+    /// Metrics-only mode: only /metrics is served; all other endpoints return 404.
+    /// Used by per-instance Prometheus ports so they don't expose config endpoints (issue #973).
+    MetricsOnly { instance_id: String },
 }
 
 fn content_type_for_path(path: &str) -> &'static str {
@@ -362,7 +365,7 @@ async fn handle_http_request(
         let encoder = prometheus::TextEncoder::new();
         let metric_families = match mode {
             HttpMode::Aggregated { .. } => prometheus::gather(),
-            HttpMode::Instance { instance_id, .. } => filter_metric_families_for_instance(prometheus::gather(), instance_id),
+            HttpMode::MetricsOnly { instance_id } => filter_metric_families_for_instance(prometheus::gather(), instance_id),
         };
         let mut buf = Vec::new();
         encoder.encode(&metric_families, &mut buf)?;
@@ -376,13 +379,17 @@ async fn handle_http_request(
         return Ok(());
     }
 
+    // MetricsOnly mode: reject all non-metrics endpoints to prevent config exposure (issue #973)
+    if matches!(mode, HttpMode::MetricsOnly { .. }) {
+        stream.write_all("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes()).await?;
+        return Ok(());
+    }
+
     if request.starts_with("GET /api/status") {
         let kaspad_version = crate::kaspaapi::NODE_STATUS.lock().server_version.clone().unwrap_or_else(|| "-".to_string());
         let status_cfg = get_web_status_config();
-        let web_bind = match mode {
-            HttpMode::Aggregated { web_bind } => web_bind.clone(),
-            HttpMode::Instance { web_bind, .. } => web_bind.clone(),
-        };
+        let HttpMode::Aggregated { web_bind } = mode else { unreachable!() };
+        let web_bind = web_bind.clone();
 
         let status =
             WebStatusResponse { kaspad_address: status_cfg.kaspad_address, kaspad_version, instances: status_cfg.instances, web_bind };
@@ -397,10 +404,7 @@ async fn handle_http_request(
     }
 
     if request.starts_with("GET /api/stats") {
-        let stats = match mode {
-            HttpMode::Aggregated { .. } => get_stats_json_all().await,
-            HttpMode::Instance { instance_id, .. } => get_stats_json(instance_id).await,
-        };
+        let stats = get_stats_json_all().await;
         let json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
@@ -411,7 +415,7 @@ async fn handle_http_request(
         return Ok(());
     }
 
-    if matches!(mode, HttpMode::Instance { .. }) && request.starts_with("GET /api/config") {
+    if matches!(mode, HttpMode::Aggregated { .. }) && request.starts_with("GET /api/config") {
         let config_json = get_config_json().await;
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
@@ -422,7 +426,7 @@ async fn handle_http_request(
         return Ok(());
     }
 
-    if matches!(mode, HttpMode::Instance { .. }) && request.starts_with("POST /api/config") {
+    if matches!(mode, HttpMode::Aggregated { .. }) && request.starts_with("POST /api/config") {
         if !config_write_allowed() {
             let json_response =
                 r#"{"success": false, "message": "Config write disabled. Set RKSTRATUM_ALLOW_CONFIG_WRITE=1 to enable."}"#;
@@ -487,12 +491,12 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
 
     init_metrics();
 
-    let addr_str = bind_addr_from_port(port);
+    let addr_str = bind_dashboard_addr_from_port(port);
     let addr: SocketAddr = addr_str.parse()?;
     let listener = TcpListener::bind(addr).await?;
     let web_bind_for_status = addr_str.clone();
 
-    tracing::debug!("Hosting aggregated web stats on {}/", addr);
+    tracing::info!("Hosting aggregated web dashboard on {} (localhost by default; use 0.0.0.0:<port> to expose)", addr);
     serve_http_loop(listener, HttpMode::Aggregated { web_bind: web_bind_for_status }).await
 }
 
@@ -1324,10 +1328,6 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     stats
 }
 
-async fn get_stats_json(instance_id: &str) -> StatsResponse {
-    get_stats_json_filtered(Some(instance_id)).await
-}
-
 async fn get_stats_json_all() -> StatsResponse {
     get_stats_json_filtered(None).await
 }
@@ -1476,7 +1476,7 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
     let listener = TcpListener::bind(addr).await?;
 
     tracing::debug!("Hosting prom stats on {}/metrics", addr);
-    serve_http_loop(listener, HttpMode::Instance { instance_id, web_bind: addr_str }).await
+    serve_http_loop(listener, HttpMode::MetricsOnly { instance_id }).await
 }
 
 #[cfg(test)]
@@ -1523,7 +1523,7 @@ min_share_diff: 8192
 
         set_web_status_config("127.0.0.1:16110".to_string(), 2);
 
-        let mode = HttpMode::Instance { instance_id: "0".to_string(), web_bind: "127.0.0.1:0".to_string() };
+        let mode = HttpMode::Aggregated { web_bind: "127.0.0.1:0".to_string() };
 
         let status_resp = send_request(mode.clone(), "GET /api/status HTTP/1.1\r\n\r\n").await;
         assert!(status_resp.contains("200 OK"));
@@ -1550,5 +1550,67 @@ min_share_diff: 8192
         let saved = std::fs::read_to_string(&config_path).unwrap();
         assert!(!saved.contains("global:"));
         assert!(saved.contains("instances:"));
+    }
+
+    /// Per-instance Prometheus ports must NOT expose config/status/dashboard endpoints (issue #973).
+    #[tokio::test]
+    async fn test_metrics_only_rejects_non_metrics() {
+        let mode = HttpMode::MetricsOnly { instance_id: "0".to_string() };
+
+        // /metrics should still work
+        let metrics_resp = send_request(mode.clone(), "GET /metrics HTTP/1.1\r\n\r\n").await;
+        assert!(metrics_resp.contains("200 OK"));
+
+        // All non-metrics endpoints must return 404
+        let config_resp = send_request(mode.clone(), "GET /api/config HTTP/1.1\r\n\r\n").await;
+        assert!(config_resp.contains("404 Not Found"));
+
+        let status_resp = send_request(mode.clone(), "GET /api/status HTTP/1.1\r\n\r\n").await;
+        assert!(status_resp.contains("404 Not Found"));
+
+        let stats_resp = send_request(mode.clone(), "GET /api/stats HTTP/1.1\r\n\r\n").await;
+        assert!(stats_resp.contains("404 Not Found"));
+
+        let post_resp = send_request(mode.clone(), "POST /api/config HTTP/1.1\r\n\r\n").await;
+        assert!(post_resp.contains("404 Not Found"));
+
+        let root_resp = send_request(mode.clone(), "GET / HTTP/1.1\r\n\r\n").await;
+        assert!(root_resp.contains("404 Not Found"));
+    }
+
+    /// Static dashboard files should be served in Aggregated mode but blocked in MetricsOnly mode.
+    #[tokio::test]
+    async fn test_static_files_aggregated_mode() {
+        let mode = HttpMode::Aggregated { web_bind: "127.0.0.1:0".to_string() };
+
+        // Root path serves index.html
+        let root_resp = send_request(mode.clone(), "GET / HTTP/1.1\r\n\r\n").await;
+        assert!(root_resp.contains("200 OK"));
+        assert!(root_resp.contains("text/html"));
+
+        // /index.html also works
+        let index_resp = send_request(mode.clone(), "GET /index.html HTTP/1.1\r\n\r\n").await;
+        assert!(index_resp.contains("200 OK"));
+        assert!(index_resp.contains("text/html"));
+
+        // /raw.html works
+        let raw_resp = send_request(mode.clone(), "GET /raw.html HTTP/1.1\r\n\r\n").await;
+        assert!(raw_resp.contains("200 OK"));
+        assert!(raw_resp.contains("text/html"));
+
+        // Non-existent static file returns 404
+        let missing_resp = send_request(mode.clone(), "GET /nonexistent.html HTTP/1.1\r\n\r\n").await;
+        assert!(missing_resp.contains("404 Not Found"));
+    }
+
+    #[tokio::test]
+    async fn test_static_files_blocked_in_metrics_only_mode() {
+        let mode = HttpMode::MetricsOnly { instance_id: "0".to_string() };
+
+        // All static paths should return 404 in MetricsOnly mode
+        for path in &["GET / HTTP/1.1\r\n\r\n", "GET /index.html HTTP/1.1\r\n\r\n", "GET /raw.html HTTP/1.1\r\n\r\n"] {
+            let resp = send_request(mode.clone(), path).await;
+            assert!(resp.contains("404 Not Found"), "Expected 404 for {} in MetricsOnly mode", path.trim());
+        }
     }
 }
