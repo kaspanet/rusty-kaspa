@@ -121,16 +121,17 @@ impl<T, TLegacy> CachedDbItem<T, TLegacy> {
         // No live row. Fall through to the legacy probe if version-aware,
         // else this is just KeyNotFound on the single physical key.
         if let Some(legacy_key) = self.legacy_key.as_deref()
-            && let Some(slice) = self.db.get_pinned(legacy_key)? {
-                let legacy_value: TLegacy = bincode::deserialize(&slice)?;
-                let item: T = legacy_value.into();
-                // Migrate: write under the live key and clear the legacy row.
-                let bin_data = bincode::serialize(&item)?;
-                self.db.put(&self.live_key, bin_data)?;
-                self.db.delete(legacy_key)?;
-                *self.cached_item.write() = Some(item.clone());
-                return Ok(item);
-            }
+            && let Some(slice) = self.db.get_pinned(legacy_key)?
+        {
+            let legacy_value: TLegacy = bincode::deserialize(&slice)?;
+            let item: T = legacy_value.into();
+            // Migrate: write under the live key and clear the legacy row.
+            let bin_data = bincode::serialize(&item)?;
+            self.db.put(&self.live_key, bin_data)?;
+            self.db.delete(legacy_key)?;
+            *self.cached_item.write() = Some(item.clone());
+            return Ok(item);
+        }
         Err(StoreError::KeyNotFound(DbKey::prefix_only(&self.live_key)))
     }
 
