@@ -2,22 +2,11 @@ use crate::mempool::{
     Mempool,
     errors::{NonStandardError, NonStandardResult},
 };
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
-    tx::{MutableTransaction, PopulatedTransaction},
+    tx::MutableTransaction,
 };
-use kaspa_txscript::{get_sig_op_count_upper_bound, script_class::ScriptClass};
-
-/// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
-/// that are considered standard in a pay-to-script-hash script.
-///
-/// The upper-bound execution limit comes from compute mass: some zk opcodes already cost the equivalent
-/// of roughly 140-250 signature operations. However, for classic Schnorr/ECDSA signature operations, this
-/// standardness limit encourages parallelism across inputs rather than concentrating work in one input.
-/// It is also at least as permissive as the previous standard compute-mass limit of 100k,
-/// which allowed at most 100 sigops since each sigop costs 1000 grams.
-const MAX_STANDARD_P2SH_SIG_OPS: u16 = 100;
+use kaspa_txscript::script_class::ScriptClass;
 
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
@@ -40,13 +29,12 @@ impl Mempool {
     /// check_transaction_standard_in_context performs a series of checks on a transaction's
     /// inputs to ensure they are "standard". A standard transaction input within the
     /// context of this function is one whose referenced public key script is of a
-    /// standard form and, for pay-to-script-hash, does not have more than
-    /// maxStandardP2SHSigOps signature operations.
+    /// standard form.
     /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
     /// into the mempool and relay.
     pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-        for (i, input) in transaction.tx.inputs.iter().enumerate() {
+        for i in 0..transaction.tx.inputs.len() {
             // It is safe to elide existence and index checks here since
             // they have already been checked prior to calling this
             // function.
@@ -57,20 +45,7 @@ impl Mempool {
                 }
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
-                ScriptClass::ScriptHash => {
-                    // TODO: relax due to on the fly sigop calculation
-                    // Possible options:
-                    //      1. remove all together and rely on compute mass limits
-                    //      2. extract an upper bound on the committed value from input.mass and min
-                    //         with the static count (relying on validation to fail if the commitment is wrong)
-                    let num_sig_ops = get_sig_op_count_upper_bound::<PopulatedTransaction, SigHashReusedValuesUnsync>(
-                        &input.signature_script,
-                        &entry.script_public_key,
-                    );
-                    if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
-                        return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
-                    }
-                }
+                ScriptClass::ScriptHash => {}
             }
         }
 
@@ -78,10 +53,10 @@ impl Mempool {
         // minimum cost, whether dominated by compute or by transient byte footprint.
         // Storage mass does not require an additional relay-fee floor here since storage growth is
         // sufficiently protected even under worst-case block-limit usage.
-        // Use the post-activation cofactors for fee pricing even before activation: activation policy
-        // should only change which transient limit is allowed, not reprice the same transaction.
+        // Use raw_post so all networks, including non-scheduled ones, use the same standardness
+        // pricing value and do not fluctuate with activation status.
         let masses = transaction.calculated_non_contextual_masses.unwrap();
-        let cofactors = self.config.mempool_mass_cofactors.after();
+        let cofactors = self.config.mempool_mass_cofactors.raw_post();
         let normalized_transient_mass = masses.normalized_transient(&cofactors);
         let fee_mass = masses.compute_mass.max(normalized_transient_mass);
         let minimum_fee = self.minimum_required_transaction_relay_fee(fee_mass);
@@ -127,8 +102,8 @@ mod tests {
     };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
-        config::params::Params,
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        config::params::{ForkActivation, Params},
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
@@ -141,6 +116,9 @@ mod tests {
     use std::sync::Arc;
 
     const RELAY_FEE_TEST_MASS: u64 = 500_000;
+    const fn default_minimum_relay_fee_for_mass(mass: u64) -> u64 {
+        mass * DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE / 1000
+    }
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
@@ -164,13 +142,13 @@ mod tests {
                 name: "100 bytes with default minimum relay fee",
                 size: 100,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-                want: 100,
+                want: default_minimum_relay_fee_for_mass(100),
             },
             Test {
                 name: "large relay fee test mass with default minimum relay fee",
                 size: RELAY_FEE_TEST_MASS,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-                want: RELAY_FEE_TEST_MASS,
+                want: default_minimum_relay_fee_for_mass(RELAY_FEE_TEST_MASS),
             },
             Test { name: "1500 bytes with 5000 relay fee", size: 1500, minimum_relay_transaction_fee: 5000, want: 7500 },
             Test { name: "1500 bytes with 3000 relay fee", size: 1500, minimum_relay_transaction_fee: 3000, want: 4500 },
@@ -379,36 +357,58 @@ mod tests {
             mtx
         }
 
+        // Use simnet params so prior and post-activation transient limits differ while the fork is active;
+        // this verifies that relay-fee pricing uses stable post-activation cofactors.
+        let params: Params = NetworkType::Simnet.into();
+        assert_ne!(params.toccata_activation, ForkActivation::never(), "this test requires post-activation cofactors");
+        let cofactors = params.mempool_block_mass_cofactors().after();
+        let transient = |bytes| bytes * TRANSIENT_BYTE_TO_MASS_FACTOR;
+        let normalized_transient = |bytes| NonContextualMasses::new(0, transient(bytes)).normalized_transient(&cofactors);
+
+        let bytes = 5_000;
+        let compute = normalized_transient(bytes);
+        let boundary_fee = default_minimum_relay_fee_for_mass(compute);
+        let insufficient_fee = boundary_fee - 1;
+
         let tests = vec![
             Test {
-                name: "standard input with sufficient fee",
-                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(1_000, 500), 1_000),
+                name: "standard input with exactly sufficient relay fee",
+                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(compute, transient(bytes)), boundary_fee),
                 expected: Expected::Standard,
             },
             Test {
                 name: "non-standard input script class",
-                mtx: new_mtx(non_standard_script_public_key, NonContextualMasses::new(1_000, 1_000), 1_000),
+                mtx: new_mtx(
+                    non_standard_script_public_key,
+                    NonContextualMasses::new(1_000, 1_000),
+                    DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+                ),
                 expected: Expected::RejectInputScriptClass,
             },
             Test {
                 name: "compute mass triggers insufficient relay fee",
-                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(10_000, 1), 9_999),
-                expected: Expected::RejectInsufficientComputeFee { fee: 9_999, minimum_fee: 10_000, compute_mass: 10_000 },
+                mtx: new_mtx(
+                    standard_script_public_key.clone(),
+                    NonContextualMasses::new(compute, transient(bytes - 1)),
+                    insufficient_fee,
+                ),
+                expected: Expected::RejectInsufficientComputeFee {
+                    fee: insufficient_fee,
+                    minimum_fee: boundary_fee,
+                    compute_mass: compute,
+                },
             },
             Test {
                 name: "transient mass triggers insufficient relay fee",
-                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(1, 20_000), 9_999),
+                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(compute - 1, transient(bytes)), insufficient_fee),
                 expected: Expected::RejectInsufficientTransientFee {
-                    fee: 9_999,
-                    minimum_fee: 10_000,
-                    normalized_transient_mass: 10_000,
+                    fee: insufficient_fee,
+                    minimum_fee: boundary_fee,
+                    normalized_transient_mass: compute,
                 },
             },
         ];
 
-        // Use simnet params so prior and post-activation transient limits differ while the fork is active;
-        // this verifies that relay-fee pricing uses stable post-activation cofactors.
-        let params: Params = NetworkType::Simnet.into();
         let config =
             Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
         let counters = Arc::new(MiningCounters::default());

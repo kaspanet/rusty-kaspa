@@ -117,6 +117,10 @@ impl FeerateEstimator {
     /// Returns the feerate value for which the integral area is `frac` of the total area between `lower` and `upper`.
     fn quantile(&self, lower: f64, upper: f64, frac: f64) -> f64 {
         assert!((0f64..=1f64).contains(&frac));
+        if lower == upper {
+            // A collapsed interval has only one quantile; avoid formula roundoff.
+            return lower;
+        }
         assert!(0.0 < lower && lower <= upper, "{lower}, {upper}");
         let (c1, c2) = (self.inclusion_interval, self.total_weight);
         if c1 == 0.0 || c2 == 0.0 {
