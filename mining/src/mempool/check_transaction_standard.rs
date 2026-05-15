@@ -2,22 +2,11 @@ use crate::mempool::{
     Mempool,
     errors::{NonStandardError, NonStandardResult},
 };
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
-    tx::{MutableTransaction, PopulatedTransaction},
+    tx::MutableTransaction,
 };
-use kaspa_txscript::{get_sig_op_count_upper_bound, script_class::ScriptClass};
-
-/// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
-/// that are considered standard in a pay-to-script-hash script.
-///
-/// The upper-bound execution limit comes from compute mass: some zk opcodes already cost the equivalent
-/// of roughly 140-250 signature operations. However, for classic Schnorr/ECDSA signature operations, this
-/// standardness limit encourages parallelism across inputs rather than concentrating work in one input.
-/// It is also at least as permissive as the previous standard compute-mass limit of 100k,
-/// which allowed at most 100 sigops since each sigop costs 1000 grams.
-const MAX_STANDARD_P2SH_SIG_OPS: u16 = 100;
+use kaspa_txscript::script_class::ScriptClass;
 
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
@@ -40,13 +29,12 @@ impl Mempool {
     /// check_transaction_standard_in_context performs a series of checks on a transaction's
     /// inputs to ensure they are "standard". A standard transaction input within the
     /// context of this function is one whose referenced public key script is of a
-    /// standard form and, for pay-to-script-hash, does not have more than
-    /// maxStandardP2SHSigOps signature operations.
+    /// standard form.
     /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
     /// into the mempool and relay.
     pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-        for (i, input) in transaction.tx.inputs.iter().enumerate() {
+        for i in 0..transaction.tx.inputs.len() {
             // It is safe to elide existence and index checks here since
             // they have already been checked prior to calling this
             // function.
@@ -57,20 +45,7 @@ impl Mempool {
                 }
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
-                ScriptClass::ScriptHash => {
-                    // TODO: relax due to on the fly sigop calculation
-                    // Possible options:
-                    //      1. remove all together and rely on compute mass limits
-                    //      2. extract an upper bound on the committed value from input.mass and min
-                    //         with the static count (relying on validation to fail if the commitment is wrong)
-                    let num_sig_ops = get_sig_op_count_upper_bound::<PopulatedTransaction, SigHashReusedValuesUnsync>(
-                        &input.signature_script,
-                        &entry.script_public_key,
-                    );
-                    if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
-                        return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
-                    }
-                }
+                ScriptClass::ScriptHash => {}
             }
         }
 
