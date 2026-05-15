@@ -4,7 +4,7 @@ use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
-    config::params::{DEVNET_PARAMS, Params, TESTNET_PARAMS, TESTNET12_PARAMS},
+    config::params::{TESTNET_PARAMS, TESTNET12_PARAMS},
     constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_TOCCATA},
     hashing::covenant_id::covenant_id,
     network::NetworkType,
@@ -253,6 +253,14 @@ async fn main() {
 
     (args.payload_size <= 20000).then_some(()).expect("payload-size can be max 20000");
 
+    let tx_config = TxConfig {
+        priority_fee: args.priority_fee,
+        randomize_fee: args.randomize_fee,
+        payload_size: args.payload_size,
+        with_covenant_id: args.enable_covenant_id,
+        randomize_tx_version: args.randomize_tx_version,
+    };
+
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
     let mut log_message = format!(
@@ -270,34 +278,21 @@ async fn main() {
     if args.priority_fee != 0 {
         log_message.push_str(&format!(
             "\n\tpriority fee: {} SOMPS {}",
-            args.priority_fee,
-            if args.randomize_fee { "[randomize]" } else { "" }
+            tx_config.priority_fee,
+            if tx_config.randomize_fee { "[randomize]" } else { "" }
         ));
     }
     if args.payload_size != 0 {
-        log_message.push_str(&format!("\n\tpayload size: {} random bytes", args.payload_size,));
+        log_message.push_str(&format!("\n\tpayload size: {} random bytes", tx_config.payload_size,));
     }
     info!("{}", log_message);
 
     let info = rpc_client.get_block_dag_info().await.expect("Failed to get block dag info.");
 
-    let consensus_params: Params = match args.network {
-        NetworkType::Testnet => match info.network.suffix {
-            Some(11) => panic!("TN11 is not supported on this version"),
-            Some(12) => TESTNET12_PARAMS,
-            None | Some(_) => TESTNET_PARAMS,
-        },
-        NetworkType::Devnet => DEVNET_PARAMS,
-        _ => unreachable!("CLI only accepts testnet and devnet"),
-    };
-    let coinbase_maturity = consensus_params.coinbase_maturity();
-
-    let tx_config = TxConfig {
-        priority_fee: args.priority_fee,
-        randomize_fee: args.randomize_fee,
-        payload_size: args.payload_size,
-        with_covenant_id: args.enable_covenant_id,
-        randomize_tx_version: args.randomize_tx_version,
+    let coinbase_maturity = match info.network.suffix {
+        Some(11) => panic!("TN11 is not supported on this version"),
+        Some(12) => TESTNET12_PARAMS.coinbase_maturity(),
+        None | Some(_) => TESTNET_PARAMS.coinbase_maturity(),
     };
     info!(
         "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {},
