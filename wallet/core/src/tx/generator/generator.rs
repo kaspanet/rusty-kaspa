@@ -633,8 +633,12 @@ impl Generator {
     }
 
     /// Calculates the required transaction fee from the mass dimensions.
-    /// - Mempool minimum relay policy only prices compute mass.
+    /// - Mempool minimum relay policy prices compute mass.
     /// - User-provided fee rate follows mempool prioritization by pricing full transaction mass including storage mass.
+    ///
+    /// Note: `compute_mass` is the wallet's minimum-relay mass proxy. It is mostly
+    /// compute mass, but its payload component is hardened to account for normalized
+    /// transient byte mass.
     fn calc_transaction_fees(&self, compute_mass: u64, transaction_mass: u64) -> u64 {
         self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(compute_mass).max(self.calc_fee_rate(transaction_mass))
     }

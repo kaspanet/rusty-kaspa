@@ -242,7 +242,16 @@ impl MassCalculator {
     }
 
     pub(crate) fn calc_compute_mass_for_payload(&self, payload_byte_size: usize) -> u64 {
-        payload_byte_size as u64 * self.mass_per_tx_byte
+        // Inputs and outputs also increase transaction bytes, but their wallet
+        // compute mass includes script/sigop costs which dominate the normalized
+        // transient byte cost for standard transactions. Payload adds raw bytes
+        // without such a matching compute cost, so we harden only the payload term.
+        //
+        // TODO: model the full tx-wide max(compute, normalized transient) instead.
+        // This local compromise can slightly overprice payload bytes because it
+        // does not credit them with compute slack contributed by inputs/outputs.
+        const NORMALIZED_TRANSIENT_BYTE_FACTOR: u64 = 2;
+        payload_byte_size as u64 * self.mass_per_tx_byte.max(NORMALIZED_TRANSIENT_BYTE_FACTOR)
     }
 
     pub(crate) fn calc_compute_mass_for_client_transaction_outputs(&self, outputs: &[TransactionOutput]) -> u64 {

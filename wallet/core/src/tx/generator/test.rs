@@ -7,7 +7,7 @@ use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
-use kaspa_consensus_core::mass::UtxoCell;
+use kaspa_consensus_core::mass::{UtxoCell, transaction_estimated_serialized_size};
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::Transaction;
 use rand::prelude::*;
@@ -419,6 +419,22 @@ pub(crate) fn make_generator<F>(
 where
     F: FnOnce(NetworkType) -> Address,
 {
+    make_generator_with_payload(network_id, head, tail, fee_rate, fees, change_address, final_transaction_destination, None)
+}
+
+pub(crate) fn make_generator_with_payload<F>(
+    network_id: NetworkId,
+    head: &[f64],
+    tail: &[f64],
+    fee_rate: Option<f64>,
+    fees: Fees,
+    change_address: F,
+    final_transaction_destination: PaymentDestination,
+    final_transaction_payload: Option<Vec<u8>>,
+) -> Result<Generator>
+where
+    F: FnOnce(NetworkType) -> Address,
+{
     let mut values = head.to_vec();
     values.extend(tail);
 
@@ -431,7 +447,6 @@ where
     let source_utxo_context = None;
     let destination_utxo_context = None;
     let final_priority_fee = fees;
-    let final_transaction_payload = None;
     let change_address = change_address(network_id.into());
 
     let settings = GeneratorSettings {
@@ -517,6 +532,43 @@ fn test_generator_sweep_two_utxos_with_priority_fees_rejection() -> Result<()> {
         Err(Error::GeneratorFeesInSweepTransaction) => {}
         _ => panic!("merge 2 UTXOs with fees must fail generator creation"),
     }
+    Ok(())
+}
+
+#[test]
+fn test_generator_large_payload_min_relay_fee() -> Result<()> {
+    let network_id = test_network_id();
+    let harness = make_generator_with_payload(
+        network_id,
+        &[1.0; 19],
+        &[],
+        None,
+        Fees::sender(Kaspa(0.0)),
+        change_address,
+        PaymentOutputs::from([(output_address(network_id.into()), kaspa_to_sompi(18.0))].as_slice()).into(),
+        Some(vec![0; 20_000]),
+    )
+    .unwrap()
+    .harness()
+    .fetch(&Expected {
+        is_final: true,
+        input_count: 19,
+        aggregate_input_value: Kaspa(19.0),
+        output_count: 2,
+        priority_fees: FeesExpected::sender(Kaspa(0.0)),
+    });
+
+    const NORMALIZED_TRANSIENT_BYTE_FACTOR: u64 = 2;
+
+    let pt = harness.accumulator.borrow().list[0].clone();
+    let tx = pt.transaction();
+    let calc = MassCalculator::new(&network_id.into());
+    let mempool_minimum_fee =
+        calc.calc_minimum_transaction_fee_from_mass(transaction_estimated_serialized_size(&tx) * NORMALIZED_TRANSIENT_BYTE_FACTOR);
+    assert!(pt.fees() >= mempool_minimum_fee, "large payloads must cover the mempool transient fee floor");
+
+    harness.finalize();
+
     Ok(())
 }
 
