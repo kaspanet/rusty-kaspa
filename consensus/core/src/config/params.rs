@@ -779,7 +779,8 @@ pub const TESTNET_PARAMS: Params = Params {
     crescendo_activation: ForkActivation::new(88_657_000),
 
     // TODO(pre-covpp): Before setting the activation DAA score, resolve all comments of the form TODO(pre-covpp)
-    toccata_activation: ForkActivation::never(),
+    // ~16:00 UTC, May 18, 2026
+    toccata_activation: ForkActivation::new(467_579_632),
 };
 
 pub const TESTNET12_PARAMS: Params = Params {
