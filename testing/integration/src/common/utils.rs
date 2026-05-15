@@ -1,8 +1,8 @@
-use super::client::ListeningClient;
+use super::{client::ListeningClient, fee};
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    constants::{TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION, TX_VERSION_TOCCATA},
+    constants::{TX_VERSION, TX_VERSION_TOCCATA},
     header::Header,
     mass::SigopCount,
     sign::sign,
@@ -33,25 +33,6 @@ use tokio::time::timeout;
 
 pub(crate) const EXPAND_FACTOR: u64 = 2;
 pub(crate) const CONTRACT_FACTOR: u64 = 2;
-
-const fn estimated_compute_mass(num_inputs: usize, num_outputs: u64) -> u64 {
-    200 + 34 * num_outputs + 1000 * (num_inputs as u64)
-}
-
-const fn estimated_transient_mass(num_inputs: usize, num_outputs: u64, extra_serialized_bytes: u64) -> u64 {
-    (200 + 34 * num_outputs + 1000 * (num_inputs as u64) + extra_serialized_bytes) * TRANSIENT_BYTE_TO_MASS_FACTOR
-}
-
-pub const fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
-    required_fee_with_extra_serialized_bytes(num_inputs, num_outputs, 0)
-}
-
-pub const fn required_fee_with_extra_serialized_bytes(num_inputs: usize, num_outputs: u64, extra_serialized_bytes: u64) -> u64 {
-    const FEE_RATE: u64 = 101;
-    let compute_mass = estimated_compute_mass(num_inputs, num_outputs);
-    let transient_mass = estimated_transient_mass(num_inputs, num_outputs, extra_serialized_bytes);
-    FEE_RATE * if compute_mass > transient_mass { compute_mass } else { transient_mass }
-}
 
 /// Builds a TX DAG based on the initial UTXO set and on constant params
 pub fn generate_tx_dag(
@@ -89,7 +70,7 @@ pub fn generate_tx_dag(
             .into_par_iter()
             .map(|(inputs, entries)| {
                 let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
-                let total_out = total_in - required_fee(num_inputs, num_outputs);
+                let total_out = total_in - fee::calc_for_plain_standard_tx(num_inputs, num_outputs);
                 let outputs = (0..num_outputs)
                     .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
                     .collect_vec();
@@ -172,7 +153,7 @@ pub fn generate_tx_dag_with_lanes(
             .map(|(j, (inputs, entries))| {
                 let subnetwork = level_lane_assignments[j];
                 let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
-                let total_out = total_in - required_fee(num_inputs, num_outputs);
+                let total_out = total_in - fee::calc_for_plain_standard_tx(num_inputs, num_outputs);
                 let outputs = (0..num_outputs)
                     .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
                     .collect_vec();
@@ -242,7 +223,7 @@ pub fn generate_tx(
     address: &Address,
 ) -> Transaction {
     let total_in = utxos.iter().map(|x| x.1.amount).sum::<u64>();
-    assert!(amount <= total_in - required_fee(utxos.len(), num_outputs));
+    assert!(amount <= total_in - fee::calc_for_plain_standard_tx(utxos.len(), num_outputs));
     let script_public_key = pay_to_address_script(address);
     let inputs = utxos
         .iter()

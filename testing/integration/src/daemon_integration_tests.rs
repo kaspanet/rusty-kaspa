@@ -2,7 +2,8 @@ use crate::common::{
     client::ListeningClient,
     client_notify::ChannelNotify,
     daemon::Daemon,
-    utils::{fetch_spendable_utxos, mine_block, required_fee, required_fee_with_extra_serialized_bytes, wait_for},
+    fee,
+    utils::{fetch_spendable_utxos, mine_block, wait_for},
 };
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
@@ -643,33 +644,48 @@ async fn daemon_compute_budget_relay_test() {
     let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), coinbase_maturity).await;
     const NUMBER_INPUTS: u64 = 2;
     const NUMBER_OUTPUTS: u64 = 2;
+    const PER_INPUT_COMPUTE_BUDGET: u16 = 30;
     const EXTRA_FEE: u64 = 10_000;
     let oldest_utxos_start = utxos.len() - NUMBER_INPUTS as usize;
     let selected_utxos = &utxos[oldest_utxos_start..];
     let total_in = selected_utxos.iter().map(|x| x.1.amount).sum::<u64>();
-    let tx_fee = required_fee(selected_utxos.len(), NUMBER_OUTPUTS).saturating_add(EXTRA_FEE);
-    let tx_amount = total_in.checked_sub(tx_fee).expect("expected enough input value for test transaction fee");
     let script_public_key = pay_to_address_script(&user_address);
-    let inputs = selected_utxos
-        .iter()
-        .map(|(op, _)| TransactionInput {
-            previous_outpoint: *op,
-            signature_script: vec![],
-            sequence: 0,
-            mass: ComputeBudget(0).into(),
-        })
-        .collect();
-    let outputs = (0..NUMBER_OUTPUTS)
-        .map(|_| TransactionOutput { value: tx_amount / NUMBER_OUTPUTS, script_public_key: script_public_key.clone(), covenant: None })
-        .collect();
-    let unsigned_tx = Transaction::new(TX_VERSION_TOCCATA, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
-    let signed_tx = sign_with_multiple_v2(
-        MutableTransaction::with_entries(unsigned_tx, selected_utxos.iter().map(|(_, entry)| entry.clone()).collect()),
-        &[miner_sk.secret_bytes()],
-    )
-    .unwrap();
-    let mut transaction = signed_tx.tx;
-    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(30).into());
+    let build_transaction = |tx_output_amount: u64| {
+        let inputs = selected_utxos
+            .iter()
+            .map(|(op, _)| TransactionInput {
+                previous_outpoint: *op,
+                signature_script: vec![],
+                sequence: 0,
+                mass: ComputeBudget(0).into(),
+            })
+            .collect();
+        let outputs = (0..NUMBER_OUTPUTS)
+            .map(|_| TransactionOutput {
+                value: tx_output_amount / NUMBER_OUTPUTS,
+                script_public_key: script_public_key.clone(),
+                covenant: None,
+            })
+            .collect();
+        let unsigned_tx = Transaction::new(TX_VERSION_TOCCATA, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        sign_with_multiple_v2(
+            MutableTransaction::with_entries(unsigned_tx, selected_utxos.iter().map(|(_, entry)| entry.clone()).collect()),
+            &[miner_sk.secret_bytes()],
+        )
+        .unwrap()
+        .tx
+    };
+
+    let tx_fee = fee::calc_from_probe(|| {
+        let mut tx = build_transaction(total_in);
+        tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(PER_INPUT_COMPUTE_BUDGET).into());
+        tx
+    })
+    .saturating_add(EXTRA_FEE);
+    let tx_amount = total_in.checked_sub(tx_fee).expect("expected enough input value for test transaction fee");
+
+    let mut transaction = build_transaction(tx_amount);
+    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(PER_INPUT_COMPUTE_BUDGET).into());
     assert!(
         transaction.inputs.iter().any(|input| input.mass.compute_budget().unwrap() > 0),
         "expected non-zero compute_budget commitment for v1 transaction"
@@ -771,7 +787,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     assert!(utxos.len() >= 2, "expected enough spendable UTXOs for malformed transaction tests");
 
     let build_single_input_tx = |version: u16, selected_utxo: &(TransactionOutpoint, UtxoEntry)| {
-        let fee = required_fee(1, 1);
+        let fee = fee::calc_for_plain_standard_tx(1, 1);
         let output_value = selected_utxo.1.amount.checked_sub(fee).expect("expected enough input value for test fee");
         let mass = ComputeBudget(0).into(); // set correctly by sign below
         let tx = Transaction::new(
@@ -879,7 +895,7 @@ async fn daemon_pruning_seqcommit_sync_test() {
     let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), 10).await;
     let input_utxos = &utxos[0..1];
     let total_in = input_utxos.iter().map(|x| x.1.amount).sum::<u64>();
-    let fee = required_fee(input_utxos.len(), 1);
+    let fee = fee::calc_for_plain_standard_tx(input_utxos.len(), 1);
     let outputs = vec![TransactionOutput { value: total_in - fee, script_public_key: seqcommit_spk.clone(), covenant: None }];
     let inputs = input_utxos.iter().map(|(op, _)| TransactionInput::new(*op, vec![], 0, 1)).collect();
     let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
@@ -909,7 +925,7 @@ async fn daemon_pruning_seqcommit_sync_test() {
     let outpoint = TransactionOutpoint::new(seqcommit_tx.id(), 0);
     let pay_spk = pay_to_address_script(&miner_address);
     let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("canonical signature script");
-    let spend_fee = required_fee_with_extra_serialized_bytes(1, 1, signature_script.len() as u64);
+    let spend_fee = fee::calc_for_plain_standard_tx_with_extra_serialized_bytes(1, 1, signature_script.len() as u64);
     let spend_value = total_in - fee - spend_fee;
     let spend_tx = Transaction::new(
         TX_VERSION,
@@ -1087,7 +1103,7 @@ async fn daemon_ibd_smt_state_sync_test() {
         subnet_bytes[3] = (i as u8) + 1;
         let lane_subnet = SubnetworkId::from_bytes(subnet_bytes);
 
-        let fee = required_fee(1, 1);
+        let fee = fee::calc_for_plain_standard_tx(1, 1);
         assert!(entry.amount > fee, "coinbase utxo is too small to cover a tx fee");
         let out_value = entry.amount - fee;
         let unsigned_tx = Transaction::new(
