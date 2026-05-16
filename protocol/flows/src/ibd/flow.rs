@@ -148,6 +148,10 @@ impl IbdFlow {
                         pruning_point, self.router
                     );
                     self.sync_new_smt_state(&session, pruning_point).await?;
+                } else {
+                    // TODO(post-toccata): In pre-Toccata nodes there are some edge cases where the SMT stable flag is wrongly set to false at this point.
+                    // Therefore, the below line can be removed post-Toccata.
+                    session.async_set_pruning_smt_stable().await;
                 }
 
                 if !is_utxo_stable
