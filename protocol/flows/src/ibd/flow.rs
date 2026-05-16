@@ -150,6 +150,10 @@ impl IbdFlow {
                     self.sync_new_smt_state(&session, pruning_point).await?;
                 }
 
+                // TODO(post-toccata): In pre-Toccata nodes there are some edge cases where the SMT stable flag is wrongly set to false at this point.
+                // Therefore, the below line can be removed post-Toccata.
+                session.async_set_pruning_smt_stable().await;
+
                 if !is_utxo_stable
                 // Utxo might not be available even if the pruning point block data is.
                 // Utxo must be synced before all so the node could function
