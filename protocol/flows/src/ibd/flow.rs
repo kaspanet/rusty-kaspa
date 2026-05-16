@@ -685,6 +685,7 @@ impl IbdFlow {
 
         let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
         if !self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
+            consensus.async_set_pruning_smt_stable().await;
             return Ok(());
         }
 
