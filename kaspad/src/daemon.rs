@@ -512,6 +512,10 @@ Do you confirm? (y/n)";
                 }
             }
         }
+        // no manual migration needed, but internal schema changes
+        if version <= 6 {
+            mcms.set_version(7).unwrap();
+        }
         // if we reached here, db should be upgraded fully and we should exit the loop next
         assert_eq!(mcms.version().unwrap(), LATEST_DB_VERSION);
     }
