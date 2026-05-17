@@ -1,6 +1,6 @@
 use duct::cmd;
 use std::env;
-use std::path::*;
+use std::path::{Path, PathBuf};
 
 struct GitHead {
     head_path: String,
@@ -30,13 +30,25 @@ fn main() {
     }
 }
 
+fn find_repo_root(start: &Path) -> Option<PathBuf> {
+    let mut current = Some(start);
+    while let Some(dir) = current {
+        if dir.join(".git").is_dir() {
+            return Some(dir.to_path_buf());
+        }
+        current = dir.parent();
+    }
+    None
+}
+
 fn try_git_head() -> Option<GitHead> {
     let cargo_manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let path = cargo_manifest_dir.as_path().parent()?;
+    let path = find_repo_root(&cargo_manifest_dir)?;
 
-    let full_hash = cmd!("git", "rev-parse", "HEAD").dir(path).read().ok().map(|full_hash| full_hash.trim().to_string());
+    let full_hash = cmd!("git", "rev-parse", "HEAD").dir(&path).read().ok().map(|full_hash| full_hash.trim().to_string());
 
-    let short_hash = cmd!("git", "rev-parse", "--short", "HEAD").dir(path).read().ok().map(|short_hash| short_hash.trim().to_string());
+    let short_hash =
+        cmd!("git", "rev-parse", "--short", "HEAD").dir(&path).read().ok().map(|short_hash| short_hash.trim().to_string());
 
     let git_folder = path.join(".git");
     if git_folder.is_dir() {

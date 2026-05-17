@@ -66,9 +66,9 @@ use kaspa_rpc_core::{
     model::*,
     notify::connection::ChannelConnection,
 };
+use kaspa_system_info::SystemInfo;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
-use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;

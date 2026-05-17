@@ -61,6 +61,8 @@ members = [
     "testing/integration",
     "utils",
     "utils/tower",
+    "system-info",
+    "build-info",
     "rothschild",
     "metrics/core",
     "metrics/perf_monitor",
@@ -129,6 +131,8 @@ kaspa-txscript = { version = "1.2.0-toc.2", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "1.2.0-toc.2", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "1.2.0-toc.2", path = "utils", default-features = false }
 kaspa-utils-tower = { version = "1.2.0-toc.2", path = "utils/tower" }
+kaspa-system-info = { version = "1.2.0-toc.2", path = "system-info" }
+kaspa-build-info = { version = "1.2.0-toc.2", path = "build-info" }
 kaspa-utxoindex = { version = "1.2.0-toc.2", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "1.2.0-toc.2", path = "wallet/native" }
 kaspa-wallet-cli-wasm = { version = "1.2.0-toc.2", path = "wallet/wasm" }
