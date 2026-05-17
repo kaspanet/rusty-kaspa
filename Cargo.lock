@@ -2840,6 +2840,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-build-info"
+version = "1.2.0-toc.2"
+dependencies = [
+ "duct",
+ "faster-hex 0.9.0",
+]
+
+[[package]]
 name = "kaspa-cli"
 version = "1.2.0-toc.2"
 dependencies = [
@@ -3647,6 +3655,7 @@ dependencies = [
  "kaspa-p2p-mining",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
+ "kaspa-system-info",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",
@@ -3744,6 +3753,17 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "kaspa-system-info"
+version = "1.2.0-toc.2"
+dependencies = [
+ "kaspa-utils",
+ "mac_address",
+ "num_cpus",
+ "sha2",
+ "sysinfo",
 ]
 
 [[package]]
@@ -3877,15 +3897,12 @@ dependencies = [
  "borsh",
  "cfg-if 1.0.0",
  "criterion",
- "duct",
  "event-listener 2.5.3",
  "faster-hex 0.9.0",
  "futures-util",
  "ipnet",
  "itertools 0.13.0",
  "log",
- "mac_address",
- "num_cpus",
  "once_cell",
  "parking_lot",
  "rand 0.8.6",
@@ -3894,7 +3911,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "smallvec",
- "sysinfo",
  "thiserror 2.0.18",
  "tokio",
  "triggered",
@@ -3997,6 +4013,7 @@ dependencies = [
  "js-sys",
  "kaspa-addresses",
  "kaspa-bip32",
+ "kaspa-build-info",
  "kaspa-consensus-client",
  "kaspa-consensus-core",
  "kaspa-consensus-wasm",
@@ -4323,6 +4340,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-addressmanager",
  "kaspa-alloc",
+ "kaspa-build-info",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -4340,6 +4358,7 @@ dependencies = [
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-system-info",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",

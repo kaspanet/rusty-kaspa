@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
+use kaspa_build_info::git;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
@@ -19,10 +20,9 @@ use kaspa_notify::{address::tracker::Tracker, subscription::context::Subscriptio
 use kaspa_p2p_lib::Hub;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_system_info::SystemInfo;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
-use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
@@ -617,7 +617,7 @@ Do you confirm? (y/n)";
         Arc::new(perf_monitor_builder.build())
     };
 
-    let system_info = SystemInfo::default();
+    let system_info = SystemInfo::new(git::hash(), git::short_hash(), git::version());
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {

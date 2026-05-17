@@ -1,16 +1,10 @@
-use crate::{fd_budget, git, hex::ToHex};
+use kaspa_utils::{fd_budget, hex::ToHex};
 use sha2::{Digest, Sha256};
-// use std::fs::read_to_string;
 use std::{
     fs::{File, read_to_string},
     io::Read,
     path::PathBuf,
-    string::String,
-    string::ToString,
-    sync::OnceLock,
-    vec::Vec,
 };
-static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
 
 #[derive(Clone)]
 pub struct SystemInfo {
@@ -48,36 +42,25 @@ impl std::fmt::Debug for SystemInfo {
     }
 }
 
-impl Default for SystemInfo {
-    fn default() -> Self {
-        let system_info = SYSTEM_INFO.get_or_init(|| {
-            let mut system = sysinfo::System::new();
-            system.refresh_memory();
-            let cpu_physical_cores = num_cpus::get() as u16;
-            let total_memory = system.total_memory();
-            let fd_limit = fd_budget::limit() as u32;
-            let system_id = Self::try_system_id();
-            let git_hash = git::hash();
-            let git_short_hash = git::short_hash();
-            let version = git::version();
-            let proxy_socket_limit_per_cpu_core = Self::try_proxy_socket_limit_per_cpu_core();
-
-            SystemInfo {
-                system_id,
-                git_hash,
-                git_short_hash,
-                version,
-                cpu_physical_cores,
-                total_memory,
-                fd_limit,
-                proxy_socket_limit_per_cpu_core,
-            }
-        });
-        (*system_info).clone()
-    }
-}
-
 impl SystemInfo {
+    /// Construct a fully populated `SystemInfo`. The caller is required to
+    /// supply the build-time fields (`git_hash`, `git_short_hash`, `version`);
+    /// runtime fields are collected from the OS.
+    pub fn new(git_hash: Option<Vec<u8>>, git_short_hash: Option<Vec<u8>>, version: String) -> Self {
+        let mut system = sysinfo::System::new();
+        system.refresh_memory();
+        Self {
+            system_id: Self::try_system_id(),
+            git_hash,
+            git_short_hash,
+            version,
+            cpu_physical_cores: num_cpus::get() as u16,
+            total_memory: system.total_memory(),
+            fd_limit: fd_budget::limit() as u32,
+            proxy_socket_limit_per_cpu_core: Self::try_proxy_socket_limit_per_cpu_core(),
+        }
+    }
+
     /// Obtain a unique system (machine) identifier.
     fn try_system_id() -> Option<Vec<u8>> {
         let some_id = if let Ok(mut file) = File::open("/etc/machine-id") {
@@ -89,7 +72,6 @@ impl SystemInfo {
             // fallback on the mac address
             mac.to_string().trim().to_string()
         } else {
-            // 🤷
             return None;
         };
         let mut sha256 = Sha256::default();
@@ -116,14 +98,3 @@ impl AsRef<SystemInfo> for SystemInfo {
         self
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn test_system_info() {
-//         let system_info = SystemInfo::default();
-//         println!("{:#?}", system_info);
-//     }
-// }

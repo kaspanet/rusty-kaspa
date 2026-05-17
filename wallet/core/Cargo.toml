@@ -57,6 +57,7 @@ itertools.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-bip32.workspace = true
+kaspa-build-info.workspace = true
 kaspa-consensus-client.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-wasm.workspace = true
