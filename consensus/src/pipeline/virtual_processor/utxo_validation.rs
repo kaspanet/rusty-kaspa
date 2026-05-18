@@ -128,8 +128,14 @@ impl VirtualStateProcessor {
             // The first block in the mergeset is always the selected parent
             let is_selected_parent = i == 0;
 
-            // No need to fully validate selected parent transactions since selected parent txs were already validated
-            // as part of selected parent UTXO state verification with the exact same UTXO context.
+            // No need to fully validate selected parent transactions: they were already fully validated when
+            // the selected parent passed verify_expected_utxo_state, using its own DAA score for both POV and
+            // block DAA score, and its selected parent as the seqcommit context.
+            //
+            // Here we only replay them while building the child's UTXO state. The child's POV DAA score is
+            // safe for non-script checks because maturity and sequence-lock checks are monotonic. Seqcommit
+            // context is not monotonic (the threshold can be crossed), but it is only used by script checks,
+            // which we skip for selected-parent transactions.
             let validation_flags = if is_selected_parent { TxValidationFlags::SkipScriptChecks } else { TxValidationFlags::Full };
             let (validated_transactions, inner_multiset) = self.validate_transactions_with_muhash_in_parallel(
                 &txs,
@@ -239,7 +245,12 @@ impl VirtualStateProcessor {
             }
         }
 
-        // Verify all transactions are valid in context
+        // Final chain qualification condition: verify all transactions are valid in context.
+        //
+        // We verify this chain block's transactions in the same way they were built and checked by
+        // build_block_template -> validate_block_template_transaction: use the block DAA score as the
+        // POV DAA score, and use the selected parent as the seqcommit context. Later, calculate_utxo_state
+        // relies on this check when replaying this block as a selected parent.
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
         let validated_transactions = self.validate_transactions_in_parallel(
             &txs,

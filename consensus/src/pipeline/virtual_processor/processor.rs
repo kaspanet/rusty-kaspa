@@ -1194,6 +1194,12 @@ impl VirtualStateProcessor {
             virtual_state.daa_score,
             virtual_state.past_median_time,
         )?;
+        // Template transaction validation uses virtual's DAA score. This score is carried into the block as its
+        // DAA score, and it must also serve as the POV DAA score because this is the only available POV at template time.
+        //
+        // For seqcommit, the template itself cannot be used as context: its hash is not available yet, and transactions
+        // cannot meaningfully depend on the seqcommit context of the block that is still being built. We therefore use
+        // the selected parent as the seqcommit context.
         let ValidatedTransaction { calculated_fee, .. } = self.validate_transaction_in_utxo_context(
             tx,
             utxo_view,
