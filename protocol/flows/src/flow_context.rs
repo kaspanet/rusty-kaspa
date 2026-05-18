@@ -227,7 +227,14 @@ impl BlockEventLogger {
                         toccata_countdown_suffix(toccata_activation, summary.relay_rep_daa_score())
                     ),
                     (n, m) => {
-                        info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, summary.submit(), m, n)
+                        info!(
+                            "Accepted {} blocks ...{}, {} via relay and {} via submit block{}",
+                            n + m,
+                            summary.submit(),
+                            m,
+                            n,
+                            toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                        )
                     }
                 }
 
