@@ -120,6 +120,7 @@ pub struct PruningProofManager {
     ghostdag_k: KType,
     skip_proof_of_work: bool,
     toccata_activation: ForkActivation,
+    is_mainnet: bool,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -142,6 +143,7 @@ impl PruningProofManager {
         ghostdag_k: KType,
         skip_proof_of_work: bool,
         toccata_activation: ForkActivation,
+        is_mainnet: bool,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -178,6 +180,7 @@ impl PruningProofManager {
             ghostdag_k,
             skip_proof_of_work,
             toccata_activation,
+            is_mainnet,
 
             is_consensus_exiting,
         }
@@ -341,7 +344,11 @@ impl PruningProofManager {
 
         if self.toccata_activation.is_active(self.headers_store.get_daa_score(pruning_point).unwrap()) {
             let pruning_point_header = self.headers_store.get_header(pruning_point).unwrap();
-            let pruning_point_blue_score = pruning_point_header.blue_score;
+            // Post-Toccata chain qualification enforces first parent = selected parent.
+            let pruning_point_sp = pruning_point_header.direct_parents().first().copied().expect("never called for genesis");
+            // Pruning point txs use this selected parent as seqcommit context, so the syncer must provide
+            // the selected-parent chain segment that can be queried from that context.
+            let context_blue_score = self.headers_store.get_blue_score(pruning_point_sp).unwrap();
 
             // We rely on the fact that finality depth is the interval between pruning points, so this chain segment
             // is always accessible and valid (this function is called before pruning above the prev pruning point)
@@ -354,7 +361,7 @@ impl PruningProofManager {
                 }
 
                 let current_header = self.headers_store.get_compact_header_data(current).unwrap();
-                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
+                if !seq_commit_within_threshold(context_blue_score, current_header.blue_score, threshold) {
                     break;
                 }
 

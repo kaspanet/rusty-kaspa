@@ -1452,8 +1452,11 @@ impl VirtualStateProcessor {
         }
 
         let virtual_read = self.virtual_stores.upgradable_read();
-        let sp = virtual_read.state.get().unwrap().ghostdag_data.selected_parent;
-        // Validate transactions of the pruning point itself
+        // Seqcommit validation uses the pruning point's selected parent as context. Post-Toccata chain
+        // qualification enforces first parent = selected parent; for genesis imports, use genesis itself.
+        let sp = new_pruning_point_header.direct_parents().first().copied().unwrap_or(new_pruning_point);
+        // Validate transactions of the pruning point itself.
+        // Mirrors the same contextual info used by validate_block_template_transaction and verify_expected_utxo_state.
         let new_pruning_point_transactions = self.block_transactions_store.get(new_pruning_point).unwrap();
         let validated_transactions = self.validate_transactions_in_parallel(
             &new_pruning_point_transactions,
@@ -1464,7 +1467,13 @@ impl VirtualStateProcessor {
             sp,
         );
         if validated_transactions.len() < new_pruning_point_transactions.len() - 1 {
-            // Some non-coinbase transactions are invalid
+            // TODO: handle this failure together with pruning point body merkle validation, not as a
+            // plain UTXO-set validation failure. No alternate UTXO set can satisfy this pruning point
+            // commitment, so the node likely needs a DB reset.
+            warn!(
+                "Imported pruning point {} has transactions invalid under its imported UTXO set; node likely needs a DB reset",
+                new_pruning_point
+            );
             return Err(PruningImportError::NewPruningPointTxErrors);
         }
 
