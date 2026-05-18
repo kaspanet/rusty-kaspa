@@ -80,9 +80,9 @@ const REQUEST_SCOPE_WAIT_TIME: Duration = Duration::from_secs(1);
 #[derive(Debug, PartialEq)]
 pub enum BlockLogEvent {
     /// Accepted block via *relay*
-    Relay(Hash),
+    Relay(Hash, u64),
     /// Accepted block via *submit block*
-    Submit(Hash),
+    Submit(Hash, u64),
     /// Orphaned block with x missing roots
     Orphaned(Hash, usize),
     /// Unorphaned x blocks with hash being a representative
@@ -91,14 +91,15 @@ pub enum BlockLogEvent {
 
 pub struct BlockEventLogger {
     bps: usize,
+    toccata_activation: ForkActivation,
     sender: UnboundedSender<BlockLogEvent>,
     receiver: Mutex<Option<UnboundedReceiver<BlockLogEvent>>>,
 }
 
 impl BlockEventLogger {
-    pub fn new(bps: usize) -> Self {
+    pub fn new(bps: usize, toccata_activation: ForkActivation) -> Self {
         let (sender, receiver) = unbounded_channel();
-        Self { bps, sender, receiver: Mutex::new(Some(receiver)) }
+        Self { bps, toccata_activation, sender, receiver: Mutex::new(Some(receiver)) }
     }
 
     pub fn log(&self, event: BlockLogEvent) {
@@ -109,6 +110,7 @@ impl BlockEventLogger {
     fn start(&self) {
         let chunk_limit = self.bps * 10; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
         let receiver = self.receiver.lock().take().expect("expected to be called once");
+        let toccata_activation = self.toccata_activation;
         tokio::spawn(async move {
             let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
             tokio::pin!(chunk_stream);
@@ -116,8 +118,8 @@ impl BlockEventLogger {
                 #[derive(Default)]
                 struct LogSummary {
                     // Representatives
-                    relay_rep: Option<Hash>,
-                    submit_rep: Option<Hash>,
+                    relay_rep: Option<(Hash, u64)>,
+                    submit_rep: Option<(Hash, u64)>,
                     orphan_rep: Option<Hash>,
                     unorphan_rep: Option<Hash>,
                     // Counts
@@ -144,13 +146,28 @@ impl BlockEventLogger {
                     }
                 }
 
+                fn toccata_countdown_suffix(toccata_activation: ForkActivation, daa_score: Option<u64>) -> String {
+                    daa_score
+                        .and_then(|daa_score| toccata_activation.is_within_range_before_activation(daa_score, 36_000))
+                        .map(|dist| format!(" \t [Toccata countdown: -{}]", dist))
+                        .unwrap_or_default()
+                }
+
                 impl LogSummary {
                     fn relay(&self) -> LogHash {
-                        self.relay_rep.into()
+                        self.relay_rep.map(|(hash, _)| hash).into()
                     }
 
                     fn submit(&self) -> LogHash {
-                        self.submit_rep.into()
+                        self.submit_rep.map(|(hash, _)| hash).into()
+                    }
+
+                    fn relay_rep_daa_score(&self) -> Option<u64> {
+                        self.relay_rep.map(|(_, daa_score)| daa_score)
+                    }
+
+                    fn submit_rep_daa_score(&self) -> Option<u64> {
+                        self.submit_rep.map(|(_, daa_score)| daa_score)
                     }
 
                     fn orphan(&self) -> LogHash {
@@ -164,13 +181,13 @@ impl BlockEventLogger {
 
                 let summary = chunk.into_iter().fold(LogSummary::default(), |mut summary, ev| {
                     match ev {
-                        BlockLogEvent::Relay(hash) => {
+                        BlockLogEvent::Relay(hash, daa_score) => {
                             summary.relay_count += 1;
-                            summary.relay_rep = Some(hash)
+                            summary.relay_rep = Some((hash, daa_score));
                         }
-                        BlockLogEvent::Submit(hash) => {
+                        BlockLogEvent::Submit(hash, daa_score) => {
                             summary.submit_count += 1;
-                            summary.submit_rep = Some(hash)
+                            summary.submit_rep = Some((hash, daa_score));
                         }
                         BlockLogEvent::Orphaned(hash, roots_count) => {
                             summary.orphan_roots_count += roots_count;
@@ -187,10 +204,28 @@ impl BlockEventLogger {
 
                 match (summary.submit_count, summary.relay_count) {
                     (0, 0) => {}
-                    (1, 0) => info!("Accepted block {} via submit block", summary.submit()),
-                    (n, 0) => info!("Accepted {} blocks ...{} via submit block", n, summary.submit()),
-                    (0, 1) => info!("Accepted block {} via relay", summary.relay()),
-                    (0, m) => info!("Accepted {} blocks ...{} via relay", m, summary.relay()),
+                    (1, 0) => info!(
+                        "Accepted block {} via submit block{}",
+                        summary.submit(),
+                        toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                    ),
+                    (n, 0) => info!(
+                        "Accepted {} blocks ...{} via submit block{}",
+                        n,
+                        summary.submit(),
+                        toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                    ),
+                    (0, 1) => info!(
+                        "Accepted block {} via relay{}",
+                        summary.relay(),
+                        toccata_countdown_suffix(toccata_activation, summary.relay_rep_daa_score())
+                    ),
+                    (0, m) => info!(
+                        "Accepted {} blocks ...{} via relay{}",
+                        m,
+                        summary.relay(),
+                        toccata_countdown_suffix(toccata_activation, summary.relay_rep_daa_score())
+                    ),
                     (n, m) => {
                         info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, summary.submit(), m, n)
                     }
@@ -339,7 +374,7 @@ impl FlowContext {
                 tick_service,
                 notification_root,
                 user_agent_rules,
-                block_event_logger: Some(BlockEventLogger::new(bps)),
+                block_event_logger: Some(BlockEventLogger::new(bps, config.toccata_activation)),
                 bps,
                 orphan_resolution_range,
                 max_orphans,
@@ -501,8 +536,9 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) }), None).await;
 
+        let daa_score = block.header.daa_score;
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
-        self.log_block_event(BlockLogEvent::Submit(hash));
+        self.log_block_event(BlockLogEvent::Submit(hash, daa_score));
 
         Ok(())
     }
@@ -512,8 +548,8 @@ impl FlowContext {
             logger.log(event)
         } else {
             match event {
-                BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
-                BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
+                BlockLogEvent::Relay(hash, _) => info!("Accepted block {} via relay", hash),
+                BlockLogEvent::Submit(hash, _) => info!("Accepted block {} via submit block", hash),
                 BlockLogEvent::Orphaned(orphan, roots_count) => {
                     info!("Received a block with {} missing ancestors, adding to orphan pool: {}", roots_count, orphan)
                 }
