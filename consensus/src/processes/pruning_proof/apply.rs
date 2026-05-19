@@ -300,14 +300,28 @@ impl PruningProofManager {
         let mut chain_segment_map: BlockHashMap<Hash> = BlockHashMap::new();
 
         if self.toccata_activation.is_active(pruning_point_header.daa_score) {
-            let pruning_point_blue_score = pruning_point_header.blue_score;
+            // Pruning point txs are validated with the pruning point selected parent as seqcommit context.
+            // Conceptually, this is the context from which the threshold should be measured on all networks.
+            //
+            // On non-mainnet networks, relax this and measure against the pruning point blue score, since
+            // deployed peers may already provide chain segments using the pruning point as context.
+            //
+            // Mainnet has no release prior to this fix, so measure against the correct context: the selected
+            // parent's blue score.
+            let context_blue_score = if self.is_mainnet {
+                let sp = pruning_point_header.direct_parents().first().copied().unwrap_or(pruning_point); // In case of genesis, we fall back to genesis itself
+                trusted_header_map.get(&sp).ok_or(PruningImportError::MissingPruningPointChainSegment(sp))?.blue_score
+            } else {
+                pruning_point_header.blue_score
+            };
+
             let threshold = self.finality_depth;
             let mut current = pruning_point;
             loop {
                 let current_header =
                     trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
 
-                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
+                if !seq_commit_within_threshold(context_blue_score, current_header.blue_score, threshold) {
                     break;
                 }
 

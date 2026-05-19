@@ -183,6 +183,7 @@ impl ConsensusServices {
             params.ghostdag_k(),
             params.skip_proof_of_work,
             params.toccata_activation,
+            params.net.is_mainnet(),
             is_consensus_exiting,
         ));
 
