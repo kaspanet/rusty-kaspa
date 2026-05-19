@@ -7,6 +7,7 @@ use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
+use kaspa_consensus::model::services::seq_commit_accessor::seq_commit_within_threshold;
 use kaspa_consensus::model::stores::block_transactions::{
     BlockTransactionsStore, BlockTransactionsStoreReader, DbBlockTransactionsStore,
 };
@@ -79,7 +80,7 @@ use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_txscript::opcodes::codes::{Op0, OpCat, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
+use kaspa_txscript::opcodes::codes::{Op0, OpCat, OpChainblockSeqCommit, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
 use kaspa_txscript::{
     EngineCtx, EngineFlags, TxScriptEngine,
@@ -1530,6 +1531,124 @@ fn assert_tx_not_in_chain_seq_commit(consensus: &TestConsensus, accepting_block:
     let activity = chain_seq_commit_lane_activity_for_tx(consensus, accepting_block, tx);
     assert!(!activity.contains_tx, "tx {} unexpectedly appears in chain seq-commit activity input", tx.id());
     assert_chain_seq_commit_lane(consensus, accepting_block, &activity);
+}
+
+#[tokio::test]
+async fn seqcommit_sp_context_threshold_edge_test() {
+    init_allocator_with_default_settings();
+
+    // This test covers the selected-parent seqcommit context boundary documented in the comments around
+    // validate_block_template_transaction, verify_expected_utxo_state, and calculate_utxo_state.
+    //
+    // Three-block chain:
+    // target <- spend block with OpChainblockSeqCommit(target) <- child.
+    //
+    // The spend tx is valid when the spend block is built and chain-qualified, because both BBT and
+    // verify_expected_utxo_state validate scripts using the spend block's selected parent as seqcommit
+    // context. However, the spend block itself crosses the seqcommit threshold for the same target.
+    // Therefore, when the child later replays the spend block as its selected parent, the spend tx must
+    // remain accepted without re-running scripts in the child's UTXO-state calculation.
+    //
+    // If selected-parent transactions are replayed with full script checks, this test fails because the
+    // spend tx is filtered out of the child's acceptance data.
+    let target_hash: Hash = 1.into();
+    let spend_block_hash: Hash = 2.into();
+    let child_hash: Hash = 3.into();
+    let redeem_script = ScriptBuilder::new()
+        .add_data(&target_hash.as_bytes())
+        .unwrap()
+        .add_op(OpChainblockSeqCommit)
+        .unwrap()
+        .add_op(OpDrop)
+        .unwrap()
+        .add_op(OpTrue)
+        .unwrap()
+        .drain();
+    let seqcommit_spk = pay_to_script_hash_script(&redeem_script);
+    let initial_utxo = (
+        TransactionOutpoint::new(100.into(), 0),
+        UtxoEntry {
+            amount: SOMPI_PER_KASPA,
+            script_public_key: seqcommit_spk.clone(),
+            block_daa_score: 0,
+            is_coinbase: false,
+            covenant_id: None,
+        },
+    );
+    let initial_utxo_collection = [initial_utxo.clone()];
+
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            let mut genesis_multiset = MuHash::new();
+            initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
+                genesis_multiset.add_utxo(outpoint, utxo);
+            });
+            p.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&p.genesis).into();
+            p.genesis.hash = genesis_header.hash;
+
+            // Keep the threshold minimal so the selected-parent edge is reached by the next block.
+            p.finality_depth = 1;
+            p.toccata_activation = ForkActivation::always();
+        })
+        .build();
+
+    let consensus = TestConsensus::new(&config);
+    let mut genesis_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
+    let wait_handles = consensus.init();
+
+    let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
+
+    // Mine the target block first so the seqcommit opcode can refer to a real chain ancestor.
+    let status = consensus.add_utxo_valid_block_with_parents(target_hash, vec![config.genesis.hash], vec![]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {:?}", status);
+
+    let mut tx = Transaction::new(
+        0,
+        vec![TransactionInput::new(
+            initial_utxo.0,
+            pay_to_script_hash_signature_script(redeem_script, vec![]).expect("canonical signature script"),
+            0,
+            0,
+        )],
+        vec![TransactionOutput::new(initial_utxo.1.amount - 5000, ScriptPublicKey::from_vec(0, vec![OpTrue]))],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    tx.finalize();
+    let tx_id = tx.id();
+    let mut tx = MutableTransaction::from_tx(tx);
+    consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
+    let tx = tx.tx.unwrap_or_clone();
+
+    let target_blue_score = consensus.get_header(target_hash).unwrap().blue_score;
+    let threshold = config.finality_depth();
+    assert!(seq_commit_within_threshold(target_blue_score, target_blue_score, threshold));
+
+    // Build through the test BBT path. Since the spend block's selected parent is the target,
+    // the seqcommit target is still within threshold during template validation.
+    let spend_block = consensus.build_utxo_valid_block_with_parents(spend_block_hash, vec![target_hash], miner_data.clone(), vec![tx]);
+    let spend_block_blue_score = spend_block.header.blue_score;
+    assert_eq!(spend_block_blue_score, target_blue_score + threshold);
+    assert!(!seq_commit_within_threshold(spend_block_blue_score, target_blue_score, threshold));
+
+    let status = consensus.validate_and_insert_block(spend_block.to_immutable()).virtual_state_task.await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {:?}", status);
+
+    // The child accepts the spend block only if selected-parent tx replay skips script checks.
+    let status = consensus.add_utxo_valid_block_with_parents(child_hash, vec![spend_block_hash], vec![]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {:?}", status);
+    let child_acceptance = consensus.get_block_acceptance_data(child_hash).unwrap();
+    let spend_block_acceptance =
+        child_acceptance.iter().find(|data| data.block_hash == spend_block_hash).expect("missing spend block acceptance data");
+    assert!(spend_block_acceptance.accepted_transactions.iter().any(|accepted| accepted.transaction_id == tx_id));
+
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]

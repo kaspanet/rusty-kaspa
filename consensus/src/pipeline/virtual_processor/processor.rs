@@ -1083,7 +1083,7 @@ impl VirtualStateProcessor {
         virtual_daa_score: u64,
         virtual_past_median_time: u64,
         args: &TransactionValidationArgs,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> TxResult<()> {
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
         self.transaction_validator.validate_tx_in_header_context_with_args(
@@ -1091,7 +1091,7 @@ impl VirtualStateProcessor {
             virtual_daa_score,
             virtual_past_median_time,
         )?;
-        self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score, args, sp)?;
+        self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score, args, selected_parent)?;
         Ok(())
     }
 
@@ -1194,6 +1194,12 @@ impl VirtualStateProcessor {
             virtual_state.daa_score,
             virtual_state.past_median_time,
         )?;
+        // Template transaction validation uses virtual's DAA score. This score is carried into the block as its
+        // DAA score, and it must also serve as the POV DAA score because this is the only available POV at template time.
+        //
+        // For seqcommit, the template itself cannot be used as context: its hash is not available yet, and transactions
+        // cannot meaningfully depend on the seqcommit context of the block that is still being built. We therefore use
+        // the selected parent as the seqcommit context.
         let ValidatedTransaction { calculated_fee, .. } = self.validate_transaction_in_utxo_context(
             tx,
             utxo_view,
@@ -1446,8 +1452,11 @@ impl VirtualStateProcessor {
         }
 
         let virtual_read = self.virtual_stores.upgradable_read();
-        let sp = virtual_read.state.get().unwrap().ghostdag_data.selected_parent;
-        // Validate transactions of the pruning point itself
+        // Seqcommit validation uses the pruning point's selected parent as context. Post-Toccata chain
+        // qualification enforces first parent = selected parent; for genesis imports, use genesis itself.
+        let sp = new_pruning_point_header.direct_parents().first().copied().unwrap_or(new_pruning_point);
+        // Validate transactions of the pruning point itself.
+        // Mirrors the same contextual info used by validate_block_template_transaction and verify_expected_utxo_state.
         let new_pruning_point_transactions = self.block_transactions_store.get(new_pruning_point).unwrap();
         let validated_transactions = self.validate_transactions_in_parallel(
             &new_pruning_point_transactions,
@@ -1458,7 +1467,13 @@ impl VirtualStateProcessor {
             sp,
         );
         if validated_transactions.len() < new_pruning_point_transactions.len() - 1 {
-            // Some non-coinbase transactions are invalid
+            // TODO: handle this failure together with pruning point body merkle validation, not as a
+            // plain UTXO-set validation failure. No alternate UTXO set can satisfy this pruning point
+            // commitment, so the node likely needs a DB reset.
+            warn!(
+                "Imported pruning point {} has transactions invalid under its imported UTXO set; node likely needs a DB reset",
+                new_pruning_point
+            );
             return Err(PruningImportError::NewPruningPointTxErrors);
         }
 
