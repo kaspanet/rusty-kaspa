@@ -308,19 +308,18 @@ impl PruningProofManager {
             //
             // Mainnet has no release prior to this fix, so measure against the correct context: the selected
             // parent's blue score.
-            let mut context_blue_score = pruning_point_header.blue_score;
-            let mut switch_to_pruning_point_sp_context = self.is_mainnet;
+            let context_blue_score = if self.is_mainnet {
+                let sp = pruning_point_header.direct_parents().first().copied().unwrap_or(pruning_point); // In case of genesis, we fall back to genesis itself
+                trusted_header_map.get(&sp).ok_or(PruningImportError::MissingPruningPointChainSegment(sp))?.blue_score
+            } else {
+                pruning_point_header.blue_score
+            };
+
             let threshold = self.finality_depth;
             let mut current = pruning_point;
             loop {
                 let current_header =
                     trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
-
-                // This is reached only once, for the pruning point's selected parent.
-                if switch_to_pruning_point_sp_context && current != pruning_point {
-                    context_blue_score = current_header.blue_score;
-                    switch_to_pruning_point_sp_context = false;
-                }
 
                 if !seq_commit_within_threshold(context_blue_score, current_header.blue_score, threshold) {
                     break;
