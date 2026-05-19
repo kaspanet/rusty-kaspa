@@ -6,6 +6,8 @@ pub enum Groth16Error {
     ArkR1CS(#[from] ark_relations::gr1cs::SynthesisError),
     #[error("Groth16 verification failed")]
     VerificationFailed,
+    #[error("Groth16 verifying key has empty gamma_abc_g1")]
+    EmptyGammaAbc,
     #[error("Kaspa txscript error: {0}")]
     FromTxScript(#[from] kaspa_txscript_errors::TxScriptError),
     #[error("ARK serialization error: {0}")]
