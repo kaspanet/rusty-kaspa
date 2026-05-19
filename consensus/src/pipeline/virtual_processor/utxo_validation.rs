@@ -307,7 +307,7 @@ impl VirtualStateProcessor {
         pov_daa_score: u64,
         block_daa_score: u64,
         flags: TxValidationFlags,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> Vec<(ValidatedTransaction<'a>, u32)> {
         self.thread_pool.install(|| {
             txs
@@ -315,7 +315,7 @@ impl VirtualStateProcessor {
                             // that all txs within each block are independent
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score,block_daa_score, flags, sp).ok().map(|vtx| (vtx, i as u32)))
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score,block_daa_score, flags, selected_parent).ok().map(|vtx| (vtx, i as u32)))
                 .collect()
         })
     }
@@ -329,7 +329,7 @@ impl VirtualStateProcessor {
         pov_daa_score: u64,
         block_daa_score: u64,
         flags: TxValidationFlags,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> (SmallVec<[(ValidatedTransaction<'a>, u32); 2]>, MuHash) {
         self.thread_pool.install(|| {
             txs
@@ -337,7 +337,7 @@ impl VirtualStateProcessor {
                             // that all txs within each block are independent
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, block_daa_score, flags, sp).ok().map(|vtx| {
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, block_daa_score, flags, selected_parent).ok().map(|vtx| {
                     let mh = MuHash::from_transaction(&vtx, pov_daa_score);
                     (smallvec![(vtx, i as u32)], mh)
                 }
@@ -361,7 +361,7 @@ impl VirtualStateProcessor {
         pov_daa_score: u64,
         block_daa_score: u64,
         flags: TxValidationFlags,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> TxResult<ValidatedTransaction<'a>> {
         let mut entries = Vec::with_capacity(transaction.inputs.len());
         for input in transaction.inputs.iter() {
@@ -377,7 +377,7 @@ impl VirtualStateProcessor {
 
         let seq_commit_accessor = if self.toccata_activation.is_active(pov_daa_score) {
             Some(SeqCommitAccessor::new(
-                sp,
+                selected_parent,
                 &self.reachability_service,
                 &self.headers_store,
                 self.toccata_activation,
@@ -436,7 +436,7 @@ impl VirtualStateProcessor {
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
         args: &TransactionValidationArgs,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> TxResult<()> {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
@@ -458,7 +458,7 @@ impl VirtualStateProcessor {
 
         let seq_commit_accessor = if self.toccata_activation.is_active(pov_daa_score) {
             Some(SeqCommitAccessor::new(
-                sp,
+                selected_parent,
                 &self.reachability_service,
                 &self.headers_store,
                 self.toccata_activation,
