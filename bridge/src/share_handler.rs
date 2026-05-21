@@ -257,10 +257,7 @@ impl ShareHandler {
     pub fn get_create_stats(&self, ctx: &StratumContext) -> WorkStats {
         let mut stats_map = self.stats.lock();
 
-        let worker_id = {
-            let worker_name = ctx.worker_name.lock();
-            if !worker_name.is_empty() { worker_name.clone() } else { ctx.remote_addr().to_string() }
-        };
+        let worker_id = ctx.effective_worker_name();
 
         if let Some(stats) = stats_map.get(&worker_id) {
             return stats.clone();
@@ -276,16 +273,8 @@ impl ShareHandler {
         stats_map.insert(worker_id.clone(), stats.clone());
         drop(stats_map);
 
-        // Initialize worker counters
-        let wallet_addr = ctx.wallet_addr.lock().clone();
-        let worker_name = stats.worker_name.lock().clone();
-        init_worker_counters(&crate::prom::WorkerContext {
-            instance_id: self.instance_id.clone(),
-            worker_name: worker_name.clone(),
-            miner: String::new(),
-            wallet: wallet_addr.clone(),
-            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-        });
+        // Initialize worker counters (same worker label as share/block metrics).
+        init_worker_counters(&crate::prom::worker_context(&self.instance_id, ctx, ""));
 
         stats
     }
@@ -454,10 +443,7 @@ impl ShareHandler {
         debug!("[SUBMIT] Parsed nonce value (u64): {}", nonce_val);
         debug!("[SUBMIT] Nonce hex: {:016x}", nonce_val);
 
-        let worker_id = {
-            let worker_name = ctx.worker_name.lock();
-            if !worker_name.is_empty() { worker_name.clone() } else { format!("{}:{}", ctx.remote_addr(), ctx.remote_port()) }
-        };
+        let worker_id = ctx.effective_worker_name();
         let submit_key = format!("{}|{}|{}", worker_id, job_id, final_nonce_str);
 
         let duplicate_outcome = {
@@ -650,7 +636,7 @@ impl ShareHandler {
             // This ensures we use the correct target for each job, as different jobs may have different header.bits
             if meets_network_target {
                 let wallet_addr = ctx.wallet_addr.lock().clone();
-                let worker_name = ctx.worker_name.lock().clone();
+                let worker_name = ctx.effective_worker_name();
                 let prefix = self.log_prefix();
 
                 info!(
@@ -817,13 +803,7 @@ impl ShareHandler {
                         let stats = self.get_create_stats(&ctx);
                         let overall = self.overall.clone();
                         let instance_id = self.instance_id.clone();
-                        let prom_worker = crate::prom::WorkerContext {
-                            instance_id: self.instance_id.clone(),
-                            worker_name: worker_name.clone(),
-                            miner: String::new(),
-                            wallet: wallet_addr.clone(),
-                            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                        };
+                        let prom_worker = crate::prom::worker_context(&self.instance_id, &ctx, "");
 
                         record_block_accepted_by_node(&prom_worker);
 
@@ -906,13 +886,7 @@ impl ShareHandler {
                             *stats.stale_shares.lock() += 1;
                             *self.overall.stale_shares.lock() += 1;
 
-                            record_stale_share(&crate::prom::WorkerContext {
-                                instance_id: self.instance_id.clone(),
-                                worker_name: worker_name.clone(),
-                                miner: String::new(),
-                                wallet: wallet_addr.clone(),
-                                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                            });
+                            record_stale_share(&crate::prom::worker_context(&self.instance_id, &ctx, ""));
                             ctx.reply_stale_share(event.id.clone()).await?;
                             return Ok(());
                         } else {
@@ -936,13 +910,7 @@ impl ShareHandler {
                             *stats.invalid_shares.lock() += 1;
                             *self.overall.invalid_shares.lock() += 1;
 
-                            record_invalid_share(&crate::prom::WorkerContext {
-                                instance_id: self.instance_id.clone(),
-                                worker_name: worker_name.clone(),
-                                miner: String::new(),
-                                wallet: wallet_addr.clone(),
-                                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                            });
+                            record_invalid_share(&crate::prom::worker_context(&self.instance_id, &ctx, ""));
 
                             {
                                 let now = Instant::now();
@@ -1058,15 +1026,7 @@ impl ShareHandler {
             *stats.invalid_shares.lock() += 1;
             *self.overall.invalid_shares.lock() += 1;
 
-            let wallet_addr = ctx.wallet_addr.lock().clone();
-            let worker_name = ctx.worker_name.lock().clone();
-            record_weak_share(&crate::prom::WorkerContext {
-                instance_id: self.instance_id.clone(),
-                worker_name: worker_name.clone(),
-                miner: String::new(),
-                wallet: wallet_addr.clone(),
-                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-            });
+            record_weak_share(&crate::prom::worker_context(&self.instance_id, &ctx, ""));
 
             if let Some(id) = &event.id {
                 let _ = ctx.reply_low_diff_share(id).await;
@@ -1099,18 +1059,7 @@ impl ShareHandler {
         *stats.last_share.lock() = Instant::now();
         *self.overall.shares_found.lock() += 1;
 
-        let wallet_addr = ctx.wallet_addr.lock().clone();
-        let worker_name = ctx.worker_name.lock().clone();
-        record_share_found(
-            &crate::prom::WorkerContext {
-                instance_id: self.instance_id.clone(),
-                worker_name: worker_name.clone(),
-                miner: String::new(),
-                wallet: wallet_addr.clone(),
-                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-            },
-            hash_value,
-        );
+        record_share_found(&crate::prom::worker_context(&self.instance_id, &ctx, ""), hash_value);
 
         {
             let now = Instant::now();

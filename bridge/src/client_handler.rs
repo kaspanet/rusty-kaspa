@@ -73,7 +73,7 @@ impl ClientHandler {
         let ctx_clone = Arc::clone(&ctx);
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            if !ctx_clone.worker_name.lock().is_empty() {
+            if !ctx_clone.wallet_addr.lock().is_empty() {
                 share_handler.get_create_stats(&ctx_clone);
             }
         });
@@ -140,18 +140,10 @@ impl ClientHandler {
             debug!("removed client {}", id);
         }
         let wallet_addr = ctx.wallet_addr.lock().clone();
-        let worker_name = ctx.worker_name.lock().clone();
         let remote_app = ctx.remote_app.lock().clone();
 
-        let is_unauthed = wallet_addr.is_empty() && worker_name.is_empty();
-        if !is_unauthed {
-            record_disconnect(&crate::prom::WorkerContext {
-                instance_id: self.instance_id.clone(),
-                worker_name: worker_name.clone(),
-                miner: remote_app,
-                wallet: wallet_addr.clone(),
-                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-            });
+        if !wallet_addr.is_empty() {
+            record_disconnect(&worker_context(&self.instance_id, ctx, remote_app));
         }
     }
 
@@ -309,18 +301,7 @@ impl ClientHandler {
                 state.set_stratum_diff(stratum_diff);
 
                 // Update worker difficulty metric
-                let wallet_addr = client_clone.wallet_addr.lock().clone();
-                let worker_name = client_clone.worker_name.lock().clone();
-                update_worker_difficulty(
-                    &WorkerContext {
-                        instance_id: instance_id.clone(),
-                        worker_name: worker_name.clone(),
-                        miner: remote_app_clone.clone(),
-                        wallet: wallet_addr.clone(),
-                        ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                    },
-                    min_diff,
-                );
+                update_worker_difficulty(&worker_context(&instance_id, &client_clone, remote_app_clone.clone()), min_diff);
 
                 let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                 let target_bytes = target.to_bytes_be();
@@ -340,19 +321,8 @@ impl ClientHandler {
 
             // Update metric to ensure displayed difficulty matches what we're sending
             // (This handles the case where state was already initialized but metric wasn't updated)
-            let wallet_addr = client_clone.wallet_addr.lock().clone();
-            let worker_name = client_clone.worker_name.lock().clone();
             let remote_app = client_clone.remote_app.lock().clone();
-            update_worker_difficulty(
-                &WorkerContext {
-                    instance_id: instance_id.clone(),
-                    worker_name: worker_name.clone(),
-                    miner: remote_app.clone(),
-                    wallet: wallet_addr.clone(),
-                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                },
-                current_diff,
-            );
+            update_worker_difficulty(&worker_context(&instance_id, &client_clone, remote_app.clone()), current_diff);
 
             debug!("[DIFFICULTY] ===== SENDING DIFFICULTY TO {} =====", client_clone.remote_addr);
             debug!("[DIFFICULTY] Difficulty value: {} (from state: {})", current_diff, state.stratum_diff().is_some());
@@ -473,15 +443,7 @@ impl ClientHandler {
                 }
                 debug!("[JOB] ===== JOB SEND FAILED FOR {} =====", client_clone.remote_addr);
             } else {
-                let wallet_addr_str = wallet_addr.clone();
-                let worker_name = client_clone.worker_name.lock().clone();
-                record_new_job(&crate::prom::WorkerContext {
-                    instance_id: instance_id.clone(),
-                    worker_name: worker_name.clone(),
-                    miner: String::new(),
-                    wallet: wallet_addr_str.clone(),
-                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                });
+                record_new_job(&worker_context(&instance_id, &client_clone, ""));
                 debug!("[JOB] Successfully sent job ID {} to client {}", job_id, client_clone.remote_addr);
                 debug!("[JOB] ===== JOB SENT SUCCESSFULLY TO {} =====", client_clone.remote_addr);
             }
@@ -643,18 +605,7 @@ impl ClientHandler {
                     state.set_stratum_diff(stratum_diff);
 
                     // Update worker difficulty metric
-                    let wallet_addr = client_clone.wallet_addr.lock().clone();
-                    let worker_name = client_clone.worker_name.lock().clone();
-                    update_worker_difficulty(
-                        &WorkerContext {
-                            instance_id: instance_id.clone(),
-                            worker_name: worker_name.clone(),
-                            miner: remote_app.clone(),
-                            wallet: wallet_addr.clone(),
-                            ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                        },
-                        min_diff,
-                    );
+                    update_worker_difficulty(&worker_context(&instance_id, &client_clone, remote_app.clone()), min_diff);
 
                     let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                     let target_bytes = target.to_bytes_be();
@@ -689,18 +640,7 @@ impl ClientHandler {
                             state.set_stratum_diff(stratum_diff);
 
                             // Update worker difficulty metric
-                            let wallet_addr = client_clone.wallet_addr.lock().clone();
-                            let worker_name = client_clone.worker_name.lock().clone();
-                            update_worker_difficulty(
-                                &WorkerContext {
-                                    instance_id: instance_id.clone(),
-                                    worker_name: worker_name.clone(),
-                                    miner: remote_app.clone(),
-                                    wallet: wallet_addr.clone(),
-                                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                                },
-                                var_diff,
-                            );
+                            update_worker_difficulty(&worker_context(&instance_id, &client_clone, remote_app.clone()), var_diff);
 
                             send_client_diff(&instance_id, &client_clone, &state, var_diff);
                             share_handler.start_client_vardiff(&client_clone);
@@ -802,15 +742,7 @@ impl ClientHandler {
                         error!("new_block_available: failed to send job {} to client {}: {}", job_id, client_clone.remote_addr, e);
                     }
                 } else {
-                    let wallet_addr_str = wallet_addr.clone();
-                    let worker_name = client_clone.worker_name.lock().clone();
-                    record_new_job(&crate::prom::WorkerContext {
-                        instance_id: instance_id.clone(),
-                        worker_name: worker_name.clone(),
-                        miner: String::new(),
-                        wallet: wallet_addr_str.clone(),
-                        ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                    });
+                    record_new_job(&worker_context(&instance_id, &client_clone, ""));
                     debug!("new_block_available: successfully sent job ID {} to client {}", job_id, client_clone.remote_addr);
                 }
             });

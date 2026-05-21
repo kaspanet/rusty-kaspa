@@ -286,6 +286,10 @@ function filterBlocksByDays(blocks, days) {
 function displayWorkerName(worker) {
   const w = String(worker ?? '').trim();
   if (w === 'InternalCPU') return 'RKStratum CPU Miner';
+  // Legacy Prometheus rows keyed by miner IP (pre-default-name fix).
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(w) || /^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(w)) {
+    return 'unnamed-asic';
+  }
   return w || '-';
 }
 

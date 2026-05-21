@@ -2839,6 +2839,20 @@ mod comprehensive_tests {
     }
 
     #[test]
+    fn test_default_worker_name_when_miner_omits_dot_worker() {
+        let ctx = create_test_context_sync();
+        ctx.set_id(9);
+        assert!(ctx.worker_name.lock().is_empty());
+
+        ctx.ensure_default_worker_name();
+        assert_eq!(ctx.effective_worker_name(), "asic-9");
+        assert!(!ctx.effective_worker_name().contains("127.0.0.1"));
+
+        *ctx.worker_name.lock() = "rig-a".to_string();
+        assert_eq!(ctx.effective_worker_name(), "rig-a");
+    }
+
+    #[test]
     fn test_stratum_context_summary() {
         // Test: Context summary generation
         let ctx = create_test_context_sync();
