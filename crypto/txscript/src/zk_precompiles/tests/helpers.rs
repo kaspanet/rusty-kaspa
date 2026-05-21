@@ -89,7 +89,31 @@ pub fn build_stark_script(break_control_id: bool) -> Vec<u8> {
 }
 
 pub fn build_groth_script() -> Vec<u8> {
+    let (unprepared_compressed_vk, groth16_proof_bytes, inputs) = load_groth_fields();
+    build_groth_script_from_fields(&unprepared_compressed_vk, &groth16_proof_bytes, &inputs)
+}
+
+pub fn build_groth_script_from_fields(unprepared_compressed_vk: &[u8], groth16_proof_bytes: &[u8], inputs: &[Vec<u8>]) -> Vec<u8> {
     let groth16_tag = ZkTag::Groth16 as u8;
+    let mut builder = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() });
+    for input in inputs.iter().rev() {
+        builder.add_data(input).unwrap();
+    }
+    builder
+        .add_i64(inputs.len() as i64)
+        .unwrap()
+        .add_data(groth16_proof_bytes)
+        .unwrap()
+        .add_data(unprepared_compressed_vk)
+        .unwrap()
+        .add_data(&[groth16_tag])
+        .unwrap()
+        .add_op(OpZkPrecompile)
+        .unwrap()
+        .drain()
+}
+
+pub fn load_groth_fields() -> (Vec<u8>, Vec<u8>, Vec<Vec<u8>>) {
     let unprepared_compressed_vk = hex::decode("e2f26dbea299f5223b646cb1fb33eadb059d9407559d7441dfd902e3a79a4d2dabb73dc17fbc13021e2471e0c08bd67d8401f52b73d6d07483794cad4778180e0c06f33bbc4c79a9cadef253a68084d382f17788f885c9afd176f7cb2f036789edf692d95cbdde46ddda5ef7d422436779445c5e66006a42761e1f12efde0018c212f3aeb785e49712e7a9353349aaf1255dfb31b7bf60723a480d9293938e1933033e7fea1f40604eaacf699d4be9aacc577054a0db22d9129a1728ff85a01a1c3af829b62bf4914c0bcf2c81a4bd577190eff5f194ee9bac95faefd53cb0030600000000000000e43bdc655d0f9d730535554d9caa611ddd152c081a06a932a8e1d5dc259aac123f42a188f683d869873ccc4c119442e57b056e03e2fa92f2028c97bc20b9078747c30f85444697fdf436e348711c011115963f855197243e4b39e6cbe236ca8ba7f2042e11f9255afbb6c6e2c3accb88e401f2aac21c097c92b3fbdb99f98a9b0dcd6c075ada6ed0ddfece1d4a2d005f61a7d5df0b75c18a5b2374d64e495fab93d4c4b1200394d5253cce2f25a59b862ee8e4cd43686603faa09d5d0d3c1c8f").unwrap();
     let groth16_proof_bytes = hex::decode("570253c0c483a1b16460118e63c155f3684e784ae7d97e8fc3f544128b37fe15075eab5ac31150c8a44253d8525971241bbd7227fcefbae2db4ae71675c56a2e0eb9235136b15ab72f16e707832f3d6ae5b0ba7cca53ae17cb52b3201919eb9d908c16297abd90aa7e00267bc21a9a78116e717d4d76edd44e21cca17e3d592d").unwrap();
     let input0 = hex::decode("a54dc85ac99f851c92d7c96d7318af4100000000000000000000000000000000").unwrap();
@@ -98,26 +122,5 @@ pub fn build_groth_script() -> Vec<u8> {
     let input3 = hex::decode("d223ffcb21c6ffcb7c8f60392ca49dde00000000000000000000000000000000").unwrap();
     let input4 = hex::decode("c07a65145c3cb48b6101962ea607a4dd93c753bb26975cb47feb00d3666e4404").unwrap();
 
-    ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
-        .add_data(&input4)
-        .unwrap()
-        .add_data(&input3)
-        .unwrap()
-        .add_data(&input2)
-        .unwrap()
-        .add_data(&input1)
-        .unwrap()
-        .add_data(&input0)
-        .unwrap()
-        .add_i64(5)
-        .unwrap()
-        .add_data(&groth16_proof_bytes)
-        .unwrap()
-        .add_data(&unprepared_compressed_vk)
-        .unwrap()
-        .add_data(&[groth16_tag])
-        .unwrap()
-        .add_op(OpZkPrecompile)
-        .unwrap()
-        .drain()
+    (unprepared_compressed_vk, groth16_proof_bytes, vec![input0, input1, input2, input3, input4])
 }

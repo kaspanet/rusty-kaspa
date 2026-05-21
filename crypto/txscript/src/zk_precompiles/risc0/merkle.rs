@@ -40,20 +40,27 @@ pub struct MerkleProof {
 impl MerkleProof {
     /// Verify the Merkle inclusion proof against the given leaf and root.
     pub fn verify(&self, leaf: &Digest, root: &Digest, hashfn: &dyn HashFn<BabyBear>) -> Result<(), R0Error> {
-        if self.root(leaf, hashfn) == *root {
+        if self.root(leaf, hashfn)? == *root {
             return Ok(());
         }
         Err(R0Error::Merkle)
     }
 
     /// Calculate the root of this branch by iteratively hashing, starting from the leaf.
-    pub fn root(&self, leaf: &Digest, hashfn: &dyn HashFn<BabyBear>) -> Digest {
+    pub fn root(&self, leaf: &Digest, hashfn: &dyn HashFn<BabyBear>) -> Result<Digest, R0Error> {
+        if !hashfn.is_digest_valid(leaf) {
+            return Err(R0Error::Merkle);
+        }
+
         let mut cur = *leaf;
         let mut cur_index = self.index;
         for sibling in &self.digests {
+            if !hashfn.is_digest_valid(sibling) {
+                return Err(R0Error::Merkle);
+            }
             cur = if cur_index & 1 == 0 { *hashfn.hash_pair(&cur, sibling) } else { *hashfn.hash_pair(sibling, &cur) };
             cur_index >>= 1;
         }
-        cur
+        Ok(cur)
     }
 }
