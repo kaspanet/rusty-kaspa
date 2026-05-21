@@ -154,15 +154,6 @@ kaspa-alloc = { version = "1.2.0-toc.2", path = "utils/alloc" }
 aes = "0.8.3"
 ahash = "0.8.6"
 arc-swap = "1.6.0"
-# Consensus verifier dependencies: do not bump casually. Ark verifier fixes can
-# change accepted Groth16 proofs, so any bump requires explicit compatibility
-# tests and consensus review.
-ark-bn254 = "=0.6.0"
-ark-snark = "=0.6.0"
-ark-groth16 = "=0.6.0"
-ark-ec = "=0.6.0"
-ark-serialize = "=0.6.0"
-ark-relations = "=0.6.0"
 argon2 = "0.5.2"
 async-channel = { version = "2.0.0", default-features = false }
 async-lock = { version = "3.4.2" }
@@ -245,13 +236,6 @@ rand_core = { version = "0.6.4", features = ["std"] }
 rand_distr = "0.4.3"
 rayon = "1.8.0"
 regex = "1.10.2"
-# Consensus verifier dependencies: keep RISC0 versions exact. Upstream hardening
-# can change receipt acceptance/rejection, so any bump requires malformed-receipt
-# vectors and consensus review.
-risc0-circuit-recursion = { version = "=4.0.4", default-features = false }
-risc0-zkp = "=3.0.4"
-risc0-core = "=3.0.1"
-risc0-binfmt = "=3.0.4"
 ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"
 rocksdb = "0.24.0"
@@ -306,6 +290,21 @@ tower-http = { version = "0.5.2", features = [
 tower = "0.5.1"
 chrono = "0.4.31"
 indexed_db_futures = "0.5.0"
+
+# ZK consensus verifier dependencies: do not bump casually.
+# Upstream verifier fixes can change proof/receipt acceptance, so any bump
+# requires malformed-input vectors and consensus review.
+ark-bn254 = "=0.6.0"
+ark-ec = "=0.6.0"
+ark-groth16 = "=0.6.0"
+ark-relations = "=0.6.0"
+ark-serialize = "=0.6.0"
+ark-snark = "=0.6.0"
+risc0-binfmt = "=3.0.4"
+risc0-circuit-recursion = { version = "=4.0.4", default-features = false }
+risc0-core = "=3.0.1"
+risc0-zkp = "=3.0.4"
+
 # workflow dependencies that are not a part of core libraries
 
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
