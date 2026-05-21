@@ -38,6 +38,9 @@ impl ZkPrecompile for Groth16Precompile {
         }
         // Deserialize verifying key
         let vk = VerifyingKey::deserialize_compressed(&*unprepared_compressed_key)?;
+        if vk.gamma_abc_g1.is_empty() {
+            return Err(Groth16Error::EmptyGammaAbc);
+        }
         // Prepare verifying key
         let pvk = ark_groth16::prepare_verifying_key(&vk);
 

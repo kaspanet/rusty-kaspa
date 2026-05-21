@@ -16,6 +16,23 @@ pub mod zk_precompiles;
 
 pub mod runtime_resource_meter;
 
+/// Consensus-pinned ZK verifier dependencies used by txscript.
+///
+/// Client applications can import these re-exports to use the same verifier
+/// versions and consensus-compatible behavior as the txscript engine.
+pub mod zk_deps {
+    pub use ark_bn254;
+    pub use ark_ec;
+    pub use ark_groth16;
+    pub use ark_relations;
+    pub use ark_serialize;
+    pub use ark_snark;
+    pub use risc0_binfmt;
+    pub use risc0_circuit_recursion;
+    pub use risc0_core;
+    pub use risc0_zkp;
+}
+
 use std::io::Write;
 
 use std::ops::Deref;
