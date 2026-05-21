@@ -103,9 +103,9 @@ impl RuntimeScriptUnitMeter {
                 Ok(())
             }
             None => {
-                let overflow = units - self.remaining_script_units;
-                let used_units = self.script_units_limit + overflow;
-                Err(TxScriptError::ExceededCommittedScriptUnits { used: used_units.0, limit: self.script_units_limit.0 })
+                let overflow = units.0 - self.remaining_script_units.0;
+                let used_units = self.script_units_limit.0.saturating_add(overflow);
+                Err(TxScriptError::ExceededCommittedScriptUnits { used: used_units, limit: self.script_units_limit.0 })
             }
         }
     }
@@ -207,6 +207,29 @@ mod tests {
         assert_eq!(meter.consume_sig_op_cost(1), Err(TxScriptError::ExceededCommittedScriptUnits { used: 300, limit: 250 }));
         assert_eq!(meter.used_sig_ops(), 2);
         assert_eq!(meter.used_script_units(), ScriptUnits(200));
+    }
+
+    #[test]
+    fn script_units_meter_saturates_exceeded_used_units() {
+        let mut meter = RuntimeScriptUnitMeter::new(ScriptUnits(0), ScriptUnits(100));
+
+        assert_eq!(meter.consume_script_units(ScriptUnits(60)), Ok(()));
+        assert_eq!(
+            meter.consume_script_units(ScriptUnits(u64::MAX)),
+            Err(TxScriptError::ExceededCommittedScriptUnits { used: u64::MAX, limit: 100 })
+        );
+        assert_eq!(meter.used_script_units(), ScriptUnits(60));
+    }
+
+    #[test]
+    fn script_units_meter_rejects_u64_max_charge_without_panicking() {
+        let mut meter = RuntimeScriptUnitMeter::new(ScriptUnits(0), ScriptUnits(100));
+
+        assert_eq!(
+            meter.consume_script_units(ScriptUnits(u64::MAX)),
+            Err(TxScriptError::ExceededCommittedScriptUnits { used: u64::MAX, limit: 100 })
+        );
+        assert_eq!(meter.used_script_units(), ScriptUnits(0));
     }
 
     #[test]

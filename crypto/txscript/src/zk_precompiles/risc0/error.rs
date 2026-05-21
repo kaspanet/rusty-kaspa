@@ -2,6 +2,8 @@ use kaspa_txscript_errors::TxScriptError;
 use risc0_zkp::verify::VerificationError;
 use thiserror::Error;
 
+use crate::zk_precompiles::risc0::rcpt::HashFnId;
+
 #[derive(Debug, Error)]
 pub enum R0Error {
     #[error("Std io error: {0}")]
@@ -22,6 +24,8 @@ pub enum R0Error {
     InvalidHashFnEncoding(usize),
     #[error("Invalid hash function id: {0}")]
     InvalidHashFnId(u8),
+    #[error("Unsupported hash function: {0:?}")]
+    UnsupportedHashFn(HashFnId),
     #[error("Verification failed")]
     VerificationFailed,
     #[error("Merkle proof verification failed")]

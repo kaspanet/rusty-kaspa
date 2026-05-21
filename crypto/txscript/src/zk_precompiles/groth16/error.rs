@@ -8,6 +8,8 @@ pub enum Groth16Error {
     VerificationFailed,
     #[error("Groth16 verifying key has empty gamma_abc_g1")]
     EmptyGammaAbc,
+    #[error("Groth16 verifying key bytes are too short to read gamma_abc_g1 length")]
+    MalformedVerifyingKey,
     #[error("Kaspa txscript error: {0}")]
     FromTxScript(#[from] kaspa_txscript_errors::TxScriptError),
     #[error("ARK serialization error: {0}")]

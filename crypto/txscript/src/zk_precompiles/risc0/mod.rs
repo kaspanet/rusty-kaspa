@@ -1,5 +1,6 @@
 use crate::{
     data_stack::Stack,
+    runtime_resource_meter::RuntimeResourceMeter,
     zk_precompiles::{
         ZkPrecompile,
         risc0::{
@@ -9,7 +10,6 @@ use crate::{
         },
     },
 };
-use kaspa_txscript_errors::TxScriptError;
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;
 mod error;
@@ -80,13 +80,19 @@ impl ZkPrecompile for R0SuccinctPrecompile {
     /// - control inclusion proof digests (bytes)
     /// - control index (bytes, u32 le)
     /// - claim (bytes)
-    fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error> {
+    fn verify_zk(dstack: &mut Stack, _meter: &mut RuntimeResourceMeter) -> Result<(), Self::Error> {
         let [claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn] = dstack.pop_raw()?;
 
         let control_id = parse_digest(control_id)?;
         let seal = parse_seal(seal)?;
         let claim = parse_digest(claim)?;
         let hashfn = parse_hashfn(hashfn)?;
+
+        // For now we only support the poseidon2 hashfn
+        if hashfn != HashFnId::Poseidon2 {
+            return Err(R0Error::UnsupportedHashFn(hashfn));
+        }
+
         let control_index = parse_merkle_index(control_index)?;
         let control_digests = parse_digest_list(control_digests)?;
         let control_inclusion_proof = MerkleProof { index: control_index, digests: control_digests };
@@ -109,7 +115,7 @@ impl ZkPrecompile for R0SuccinctPrecompile {
         // If we were to bypass the compute_assert_claim step, then an attacker could modify the claim in the receipt
         // to match whatever they want and just providing some arbitrary proof. This is why this step is crucial.
         // As this step binds that the provided image id and journal are indeed the ones that were used to generate the proof.
-        compute_assert_claim(rcpt.claim(), image_id, journal).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
+        compute_assert_claim(rcpt.claim(), image_id, journal)?;
 
         Ok(())
     }

@@ -54,6 +54,15 @@ mod fast_zk_tests {
         }
     }
 
+    fn expect_groth16_arity_mismatch(result: Result<(), TxScriptError>, case: &str) {
+        let expected = Groth16Error::ArkR1CS(ark_relations::gr1cs::SynthesisError::ArityMismatch).to_string();
+        match result {
+            Err(TxScriptError::ZkIntegrity(e)) if e == expected => {}
+            Err(e) => panic!("{case}: expected Groth16 arity mismatch, got {e:?}"),
+            Ok(_) => panic!("{case}: expected Groth16 arity mismatch, got success"),
+        }
+    }
+
     #[test]
     fn test_groth16_fast() {
         let script = build_groth_script();
@@ -86,29 +95,25 @@ mod fast_zk_tests {
     }
 
     #[test]
-    fn verify_groth16_missing_public_input_fails_verification() {
+    fn verify_groth16_missing_public_input_rejected() {
         let (vk, proof, mut inputs) = load_groth_fields();
         inputs.pop();
         let script = build_groth_script_from_fields(&vk, &proof, &inputs);
         let cache = Cache::new(0);
         let reused_values = SigHashReusedValuesUnsync::new();
 
-        match execute_zk_script(&script, &cache, &reused_values) {
-            Err(TxScriptError::ZkIntegrity(e)) if e == Groth16Error::VerificationFailed.to_string() => {}
-            Err(e) => panic!("expected Groth16 verification failure, got {e:?}"),
-            Ok(_) => panic!("missing public input should fail verification"),
-        }
+        expect_groth16_arity_mismatch(execute_zk_script(&script, &cache, &reused_values), "missing public input");
     }
 
     #[test]
-    fn verify_groth16_extra_public_input_currently_accepted() {
+    fn verify_groth16_extra_public_input_rejected() {
         let (vk, proof, mut inputs) = load_groth_fields();
         inputs.push(inputs[0].clone());
         let script = build_groth_script_from_fields(&vk, &proof, &inputs);
         let cache = Cache::new(0);
         let reused_values = SigHashReusedValuesUnsync::new();
 
-        execute_zk_script(&script, &cache, &reused_values).unwrap();
+        expect_groth16_arity_mismatch(execute_zk_script(&script, &cache, &reused_values), "extra public input");
     }
 
     #[test]
