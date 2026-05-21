@@ -1,7 +1,7 @@
 mod error;
-use ark_bn254::Bn254;
+use ark_bn254::{Bn254, G1Affine, G2Affine};
 use ark_groth16::{Groth16, Proof, VerifyingKey};
-use ark_serialize::CanonicalDeserialize;
+use ark_serialize::{CanonicalDeserialize, Compress, Valid, Validate};
 use kaspa_consensus_core::mass::ScriptUnits;
 
 pub use error::Groth16Error;
@@ -13,16 +13,50 @@ use crate::{
     zk_precompiles::{ZkPrecompile, fields::Fr},
 };
 
-/// Byte offset of the gamma_abc_g1 length prefix inside a compressed BN254
-/// It consists of: alpha_g1 (32 bytes) + beta_g2 (64 bytes) + gamma_g2 (64 bytes) + delta_g2 (64 bytes)
-const VK_FIXED_PREFIX_LEN: usize = 32 + 64 * 3;
-
-/// Width of ark-serialize's Vec length prefix
-const GAMMA_ABC_G1_LEN_PREFIX_BYTES: usize = 8;
-
 /// Empirically determined script unit cost per gamma_abc_g1 element in the VK
 /// such that the total verification cost is within 10ms.
 pub const GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS: u64 = 60_000;
+
+fn deserialize_verifying_key_with_metering(
+    bytes: &[u8],
+    public_input_count: usize,
+    meter: &mut RuntimeResourceMeter,
+) -> Result<VerifyingKey<Bn254>, Groth16Error> {
+    let mut reader = bytes;
+
+    // Mirror ark-groth16's VerifyingKey serialization order, but stop after
+    // gamma_abc_g1 length so we can check arity and charge before reading it.
+    let alpha_g1 = G1Affine::deserialize_with_mode(&mut reader, Compress::Yes, Validate::Yes)?;
+    let beta_g2 = G2Affine::deserialize_with_mode(&mut reader, Compress::Yes, Validate::Yes)?;
+    let gamma_g2 = G2Affine::deserialize_with_mode(&mut reader, Compress::Yes, Validate::Yes)?;
+    let delta_g2 = G2Affine::deserialize_with_mode(&mut reader, Compress::Yes, Validate::Yes)?;
+
+    let gamma_abc_element_count = u64::deserialize_with_mode(&mut reader, Compress::Yes, Validate::Yes)?;
+
+    // Covered by the following count check but kept for clearer error
+    if gamma_abc_element_count == 0 {
+        return Err(Groth16Error::EmptyGammaAbc);
+    }
+
+    // Public inputs are stack-depth bounded, so +1 cannot overflow.
+    if public_input_count as u64 + 1 != gamma_abc_element_count {
+        return Err(ark_relations::gr1cs::SynthesisError::ArityMismatch.into());
+    }
+
+    let gamma_abc_cost = ScriptUnits(gamma_abc_element_count.saturating_mul(GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS));
+
+    // Try consuming the vk cost and err if we are over the limit
+    meter.consume_script_units(gamma_abc_cost)?;
+
+    let gamma_abc_len = public_input_count + 1;
+    let gamma_abc_g1 = (0..gamma_abc_len)
+        .map(|_| G1Affine::deserialize_with_mode(&mut reader, Compress::Yes, Validate::No))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    <G1Affine as Valid>::batch_check(gamma_abc_g1.iter())?;
+
+    Ok(VerifyingKey { alpha_g1, beta_g2, gamma_g2, delta_g2, gamma_abc_g1 })
+}
 
 pub struct Groth16Precompile;
 impl ZkPrecompile for Groth16Precompile {
@@ -31,7 +65,7 @@ impl ZkPrecompile for Groth16Precompile {
     ///
     /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(pre-covpp)
     fn verify_zk(dstack: &mut Stack, meter: &mut RuntimeResourceMeter) -> Result<(), Self::Error> {
-        // Retrieve the uncompressed VK
+        // Retrieve the compressed VK
         let [unprepared_compressed_key] = dstack.pop_raw()?;
 
         // Retrieve compressed proof
@@ -52,36 +86,8 @@ impl ZkPrecompile for Groth16Precompile {
             unprepared_public_inputs.push(fr);
         }
 
-        // Charge per gamma_abc_g1 element before deserialization.
-        let len_bytes: [u8; GAMMA_ABC_G1_LEN_PREFIX_BYTES] = unprepared_compressed_key
-            .get(VK_FIXED_PREFIX_LEN..VK_FIXED_PREFIX_LEN + GAMMA_ABC_G1_LEN_PREFIX_BYTES)
-            .and_then(|s| s.try_into().ok())
-            .ok_or(Groth16Error::MalformedVerifyingKey)?;
-
-        let gamma_abc_element_count = u64::from_le_bytes(len_bytes);
-
-        // Covered by the following count check but kept for clearer error
-        if gamma_abc_element_count == 0 {
-            return Err(Groth16Error::EmptyGammaAbc);
-        }
-
-        // Public inputs are stack-depth bounded, so +1 cannot overflow.
-        if unprepared_public_inputs.len() as u64 + 1 != gamma_abc_element_count {
-            return Err(ark_relations::gr1cs::SynthesisError::ArityMismatch.into());
-        }
-
-        let gamma_abc_cost = ScriptUnits(gamma_abc_element_count.saturating_mul(GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS));
-
-        // Try consuming the vk cost and err if we are over the limit
-        meter.consume_script_units(gamma_abc_cost)?;
-
         // Deserialize verifying key
-        let vk = VerifyingKey::deserialize_compressed(&*unprepared_compressed_key)?;
-
-        // Over-defensive double check that the deserialized vk has the expected gamma_abc_g1 count.
-        if gamma_abc_element_count != vk.gamma_abc_g1.len() as u64 {
-            return Err(ark_relations::gr1cs::SynthesisError::ArityMismatch.into());
-        }
+        let vk = deserialize_verifying_key_with_metering(&unprepared_compressed_key, unprepared_public_inputs.len(), meter)?;
 
         // Prepare verifying key
         let pvk = ark_groth16::prepare_verifying_key(&vk);
@@ -104,7 +110,7 @@ impl ZkPrecompile for Groth16Precompile {
 
 #[cfg(test)]
 mod tests {
-    use super::{GAMMA_ABC_G1_LEN_PREFIX_BYTES, GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS, Groth16Error, VK_FIXED_PREFIX_LEN};
+    use super::{GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS, Groth16Error};
     use crate::{
         data_stack::Stack,
         hex,
@@ -152,6 +158,24 @@ mod tests {
     }
 
     #[test]
+    fn custom_vk_deserialize_matches_ark() {
+        for &gamma_abc_count in &[1usize, 2, 6, 42] {
+            let vk_bytes = vk_with_gamma_abc_count(gamma_abc_count);
+            let ark_vk = VerifyingKey::<Bn254>::deserialize_compressed(&*vk_bytes).expect("Ark should deserialize VK");
+
+            let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
+            let custom_vk = super::deserialize_verifying_key_with_metering(&vk_bytes, gamma_abc_count - 1, &mut meter)
+                .expect("custom VK deserializer should match Ark");
+
+            assert_eq!(
+                meter.used_script_units(),
+                ScriptUnits((gamma_abc_count as u64).saturating_mul(GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS))
+            );
+            assert_eq!(custom_vk, ark_vk);
+        }
+    }
+
+    #[test]
     fn verify_zk_rejects_arity_mismatch_before_meter_charge() {
         let vk_bytes = vk_with_gamma_abc_count(5);
 
@@ -196,41 +220,6 @@ mod tests {
             }
             other => panic!("expected ExceededCommittedScriptUnits for gamma_abc_g1 element count = {COUNT}, got: {other:?}"),
         }
-    }
-
-    /// validate that abc g1 length is at the offset we expect it is
-    #[test]
-    fn gamma_abc_g1_length_prefix_lives_at_expected_offset() {
-        for &count in &[0usize, 1, 5, 6, 42] {
-            let bytes = vk_with_gamma_abc_count(count);
-            assert!(bytes.len() >= VK_FIXED_PREFIX_LEN + GAMMA_ABC_G1_LEN_PREFIX_BYTES);
-            let len_slice: [u8; GAMMA_ABC_G1_LEN_PREFIX_BYTES] =
-                bytes[VK_FIXED_PREFIX_LEN..VK_FIXED_PREFIX_LEN + GAMMA_ABC_G1_LEN_PREFIX_BYTES].try_into().unwrap();
-            assert_eq!(u64::from_le_bytes(len_slice), count as u64, "mismatch for expected gamma_abc_g1 element count = {count}");
-        }
-    }
-
-    #[test]
-    fn ark_vk_deserialize_reads_gamma_abc_g1_len_from_expected_offset() {
-        // The precompile meters large VKs by reading the Ark-serialized
-        // gamma_abc_g1 Vec length before deserializing the VK. This locks that
-        // our offset is the same length prefix Ark later uses for deserialization.
-        let mut two_elem_bytes = vk_with_gamma_abc_count(5);
-        let two_elem_len =
-            VK_FIXED_PREFIX_LEN + GAMMA_ABC_G1_LEN_PREFIX_BYTES + 2 * G1Affine::default().serialized_size(Compress::Yes);
-        two_elem_bytes[VK_FIXED_PREFIX_LEN..VK_FIXED_PREFIX_LEN + GAMMA_ABC_G1_LEN_PREFIX_BYTES].copy_from_slice(&2u64.to_le_bytes());
-        two_elem_bytes.truncate(two_elem_len);
-
-        let vk =
-            VerifyingKey::<Bn254>::deserialize_compressed(&*two_elem_bytes).expect("Ark should deserialize two gamma_abc_g1 elements");
-
-        assert_eq!(vk.gamma_abc_g1.len(), 2);
-
-        let mut five_elem_prefix_with_two_elems = two_elem_bytes;
-        five_elem_prefix_with_two_elems[VK_FIXED_PREFIX_LEN..VK_FIXED_PREFIX_LEN + GAMMA_ABC_G1_LEN_PREFIX_BYTES]
-            .copy_from_slice(&5u64.to_le_bytes());
-        VerifyingKey::<Bn254>::deserialize_compressed(&*five_elem_prefix_with_two_elems)
-            .expect_err("Ark should reject when the prefix asks for five gamma_abc_g1 elements but only two are present");
     }
 
     #[test]
