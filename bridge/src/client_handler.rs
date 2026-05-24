@@ -612,7 +612,6 @@ impl ClientHandler {
                     stratum_diff.set_diff_value_for_miner(min_diff, &remote_app);
                     state.set_stratum_diff(stratum_diff);
 
-                    // Update worker difficulty metric
                     update_worker_difficulty(&WorkerContext::from_stratum(&instance_id, &client_clone, &remote_app), min_diff);
 
                     let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
