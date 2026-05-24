@@ -70,7 +70,7 @@ type TxBuilder = fn(u32) -> (Transaction, Vec<UtxoEntry>);
 type RoundTxBuilder = fn(u32, usize) -> (Transaction, Vec<UtxoEntry>);
 
 fn pricing_flags(covenants_enabled: bool) -> EngineFlags {
-    EngineFlags { covenants_enabled, sigop_script_units: Gram(1000).into() }
+    EngineFlags { covenants_enabled, zk_hardening_enabled: covenants_enabled, sigop_script_units: Gram(1000).into() }
 }
 
 fn new_script_builder() -> ScriptBuilder {

@@ -24,12 +24,22 @@ pub fn execute_zk_script(
     sig_cache: &Cache<SigCacheKey, bool>,
     reused_values: &SigHashReusedValuesUnsync,
 ) -> Result<(), TxScriptError> {
-    let mut vm = TxScriptEngine::<PopulatedTransaction, SigHashReusedValuesUnsync>::from_script(
+    execute_zk_script_with_flags(
         script,
-        reused_values,
         sig_cache,
-        EngineFlags { covenants_enabled: true, ..Default::default() },
-    );
+        reused_values,
+        EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, ..Default::default() },
+    )
+}
+
+pub fn execute_zk_script_with_flags(
+    script: &[u8],
+    sig_cache: &Cache<SigCacheKey, bool>,
+    reused_values: &SigHashReusedValuesUnsync,
+    flags: EngineFlags,
+) -> Result<(), TxScriptError> {
+    let mut vm =
+        TxScriptEngine::<PopulatedTransaction, SigHashReusedValuesUnsync>::from_script(script, reused_values, sig_cache, flags);
     vm.execute()
 }
 

@@ -3,10 +3,11 @@ pub mod helpers;
 #[cfg(test)]
 mod fast_zk_tests {
     use super::helpers::{
-        build_groth_script, build_groth_script_from_fields, build_stark_script, build_zk_script, execute_zk_script, load_groth_fields,
-        load_stark_fields,
+        build_groth_script, build_groth_script_from_fields, build_stark_script, build_zk_script, execute_zk_script,
+        execute_zk_script_with_flags, load_groth_fields, load_stark_fields,
     };
     use crate::{
+        EngineFlags,
         caches::Cache,
         get_zk_script_units_upper_bound,
         zk_precompiles::{groth16::Groth16Error, tags::ZkTag},
@@ -252,5 +253,63 @@ mod fast_zk_tests {
         let reused_values = SigHashReusedValuesUnsync::new();
 
         expect_r0_receipt_format_err(execute_zk_script(&script, &cache, &reused_values), "invalid seal Merkle digest");
+    }
+
+    fn legacy_flags() -> EngineFlags {
+        EngineFlags { covenants_enabled: true, zk_hardening_enabled: false, ..Default::default() }
+    }
+
+    fn hardened_flags() -> EngineFlags {
+        EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, ..Default::default() }
+    }
+
+    #[test]
+    fn groth16_extra_public_input_silently_accepted_pre_activation_rejected_post() {
+        let (vk, proof, mut inputs) = load_groth_fields();
+        inputs.push(inputs[0].clone()); // extra public input that ark will silently drop
+
+        let script = build_groth_script_from_fields(&vk, &proof, &inputs);
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        execute_zk_script_with_flags(&script, &cache, &reused_values, legacy_flags())
+            .expect("legacy path silently accepts the extra public input (the bug)");
+
+        expect_groth16_arity_mismatch(
+            execute_zk_script_with_flags(&script, &cache, &reused_values, hardened_flags()),
+            "hardened arity",
+        );
+    }
+
+    #[test]
+    fn groth16_missing_public_input_gated_error_kind() {
+        let (vk, proof, mut inputs) = load_groth_fields();
+        inputs.pop();
+
+        let script = build_groth_script_from_fields(&vk, &proof, &inputs);
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        match execute_zk_script_with_flags(&script, &cache, &reused_values, legacy_flags()) {
+            Err(TxScriptError::ZkIntegrity(msg)) => {
+                let arity = Groth16Error::ArkR1CS(ark_relations::gr1cs::SynthesisError::ArityMismatch).to_string();
+                assert_ne!(msg, arity, "legacy path must not surface ArityMismatch (no upfront check)");
+            }
+            other => panic!("legacy: expected ZkIntegrity error from verify failure, got {other:?}"),
+        }
+
+        expect_groth16_arity_mismatch(
+            execute_zk_script_with_flags(&script, &cache, &reused_values, hardened_flags()),
+            "hardened missing input",
+        );
+    }
+
+    #[test]
+    fn groth16_canonical_proof_verifies_under_legacy_flags() {
+        let script = build_groth_script();
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        execute_zk_script_with_flags(&script, &cache, &reused_values, legacy_flags())
+            .expect("legacy Groth16 path must accept canonical proof");
     }
 }
