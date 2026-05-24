@@ -57,6 +57,9 @@ fn deserialize_verifying_key_with_metering(
         .map(|_| G1Affine::deserialize_with_mode(&mut reader, Compress::Yes, Validate::No))
         .collect::<Result<Vec<_>, _>>()?;
 
+    if !reader.is_empty() {
+        return Err(Groth16Error::TrailingVerifyingKeyBytes);
+    }
     <G1Affine as Valid>::batch_check(gamma_abc_g1.iter())?;
 
     Ok(VerifyingKey { alpha_g1, beta_g2, gamma_g2, delta_g2, gamma_abc_g1 })
@@ -118,13 +121,17 @@ impl ZkPrecompile for Groth16Precompile {
         let pvk = ark_groth16::prepare_verifying_key(&vk);
 
         // Deserialize proof
-        let proof: &Proof<ark_ec::bn::Bn<ark_bn254::Config>> = &Proof::deserialize_compressed(&*proof_bytes)?;
+        let mut proof_reader = proof_bytes.as_slice();
+        let proof = Proof::<Bn254>::deserialize_compressed(&mut proof_reader)?;
+        if flags.zk_hardening_enabled && !proof_reader.is_empty() {
+            return Err(Groth16Error::TrailingProofBytes);
+        }
 
         // Prepare public inputs with the prepared verifying key
         let prepared_inputs = Groth16::<Bn254>::prepare_inputs(&pvk, &unprepared_public_inputs)?;
 
         // Verify the proof with the prepared inputs
-        if Groth16::<Bn254>::verify_proof_with_prepared_inputs(&pvk, proof, &prepared_inputs)? {
+        if Groth16::<Bn254>::verify_proof_with_prepared_inputs(&pvk, &proof, &prepared_inputs)? {
             Ok(())
         } else {
             Err(Groth16Error::VerificationFailed)
@@ -266,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn try_verify_stack() {
+    fn hardened_verify_path_accepts_canonical_proof() {
         let (vk, proof, inputs) = load_groth_fields();
         let mut stack = stack_with_groth_fields(vk, proof, inputs);
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
@@ -295,6 +302,17 @@ mod tests {
     }
 
     #[test]
+    fn legacy_verify_path_tolerates_trailing_vk_and_proof_bytes() {
+        let (mut vk, mut proof, inputs) = load_groth_fields();
+        vk.push(0xAB);
+        proof.push(0xCD);
+        let mut stack = stack_with_groth_fields(vk, proof, inputs);
+
+        let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
+        Groth16Precompile::verify_zk(&mut stack, &mut meter, legacy_flags()).expect("legacy path must accept trailing VK/proof bytes");
+    }
+
+    #[test]
     fn hardened_verify_path_rejects_oversized_fr_push() {
         let vk_bytes = vk_with_gamma_abc_count(6); // 5 pub inputs + 1
         let oversized_input = vec![0u8; 64];
@@ -314,6 +332,36 @@ mod tests {
         match err {
             Groth16Error::FromTxScript(TxScriptError::ZkIntegrity(msg)) if msg.contains("Invalid Fr length") => {}
             other => panic!("expected Invalid Fr length error, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hardened_verify_path_rejects_trailing_vk_bytes() {
+        let (mut vk, proof, inputs) = load_groth_fields();
+        vk.push(0xAB);
+        let mut stack = stack_with_groth_fields(vk, proof, inputs);
+
+        let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, hardened_flags())
+            .expect_err("hardened path must reject trailing VK bytes");
+        match err {
+            Groth16Error::TrailingVerifyingKeyBytes => {}
+            other => panic!("expected trailing VK error, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hardened_verify_path_rejects_trailing_proof_bytes() {
+        let (vk, mut proof, inputs) = load_groth_fields();
+        proof.push(0xCD);
+        let mut stack = stack_with_groth_fields(vk, proof, inputs);
+
+        let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, hardened_flags())
+            .expect_err("hardened path must reject trailing proof bytes");
+        match err {
+            Groth16Error::TrailingProofBytes => {}
+            other => panic!("expected trailing proof error, got: {other:?}"),
         }
     }
 }
