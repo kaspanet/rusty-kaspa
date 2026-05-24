@@ -1,9 +1,11 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use ark_bn254::Bn254;
-use ark_groth16::VerifyingKey;
+use ark_bn254::{Bn254, Fr};
+use ark_groth16::{Groth16, VerifyingKey};
+use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_snark::SNARK;
 use criterion::{BenchmarkId, Criterion, SamplingMode, black_box, criterion_group, criterion_main};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::config::params::MAINNET_PARAMS;
@@ -28,6 +30,7 @@ use kaspa_txscript::{
     },
 };
 use kaspa_txscript_errors::TxScriptError;
+use rand::{SeedableRng, rngs::StdRng};
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 use secp256k1::{Keypair, Message, Secp256k1, SecretKey};
@@ -48,9 +51,42 @@ const LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR: usize = 1 << LARGE_PUSH_DUP_CAT_CAT_C
 const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = max_script_element_size(true) / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
 const LARGE_PUSH_DUP_CAT_DUP_COUNT: usize = MAX_STACK_SIZE - 1;
 const GROTH16_LARGE_VK_PADDING_CAT_COUNT: usize = 19;
+const GROTH16_2X_COUNT: usize = 2;
+const GROTH16_3X_COUNT: usize = 3;
 const OP_DUP_BASE_DUP_COUNT: usize = 243;
 const OP_DUP_FREE_BUDGET_DUP_COUNT: usize = 1107;
 const OP_DUP_ONE_TX_PAIR_SEARCH_STEP: usize = 20;
+
+struct Groth16PublicInputCircuit {
+    public_input_count: usize,
+    public_input: Fr,
+}
+
+impl ConstraintSynthesizer<Fr> for Groth16PublicInputCircuit {
+    fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
+        let public_input = self.public_input;
+        let mut running_sum = Fr::from(0u64);
+        let mut sum_var = cs.new_witness_variable(|| Ok(Fr::from(0u64)))?;
+        for _ in 0..self.public_input_count {
+            let input = cs.new_input_variable(|| Ok(public_input))?;
+            running_sum += public_input;
+            let new_sum_var = cs.new_witness_variable(|| Ok(running_sum))?;
+            cs.enforce_r1cs_constraint(
+                || ark_relations::lc!() + sum_var + input,
+                || ark_relations::lc!() + ark_relations::gr1cs::Variable::One,
+                || ark_relations::lc!() + new_sum_var,
+            )?;
+            sum_var = new_sum_var;
+        }
+        Ok(())
+    }
+}
+
+struct Groth16SerializedFixture {
+    vk_bytes: Vec<u8>,
+    proof_bytes: Vec<u8>,
+    public_input_bytes: Vec<u8>,
+}
 
 struct BenchTx {
     tx: MutableTransaction<Transaction>,
@@ -591,6 +627,31 @@ fn try_build_budgeted_single_input_tx_allowing_zk_failure(
     })
 }
 
+fn build_single_input_tx_with_compute_budget(
+    nonce: u32,
+    input_spk: ScriptPublicKey,
+    signature_script: Vec<u8>,
+    compute_budget: ComputeBudget,
+) -> (Transaction, Vec<UtxoEntry>) {
+    let outpoint = input_outpoint(0, nonce);
+    let utxos = vec![UtxoEntry::new(20_000, input_spk, 0, false, None)];
+    let tx = Transaction::new(
+        1,
+        vec![TransactionInput {
+            previous_outpoint: outpoint,
+            signature_script,
+            sequence: 0,
+            mass: TxInputMass::ComputeBudget(compute_budget),
+        }],
+        vec![],
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    (tx, utxos)
+}
+
 fn build_budgeted_single_input_tx(nonce: u32, input_spk: ScriptPublicKey, signature_script: Vec<u8>) -> (Transaction, Vec<UtxoEntry>) {
     try_build_budgeted_single_input_tx(nonce, input_spk, signature_script).unwrap_or_else(|err| panic!("{err}"))
 }
@@ -750,13 +811,13 @@ fn build_single_stark_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     build_budgeted_single_input_tx(nonce, ScriptPublicKey::new(0, build_stark_script(false).into()), vec![])
 }
 
-fn build_groth16_script_with_tags(tag_count: usize) -> Vec<u8> {
-    assert!(tag_count > 0, "groth16 script should contain at least one tag");
+fn build_groth16_repeated_script(call_count: usize) -> Vec<u8> {
+    assert!(call_count > 0, "groth16 script should contain at least one call");
 
     let groth16_script = build_groth_script();
-    let mut script = Vec::with_capacity(groth16_script.len() * tag_count + tag_count.saturating_sub(1));
-    for tag_idx in 0..tag_count {
-        if tag_idx > 0 {
+    let mut script = Vec::with_capacity(groth16_script.len() * call_count + call_count.saturating_sub(1));
+    for call_idx in 0..call_count {
+        if call_idx > 0 {
             script.push(OpDrop);
         }
         script.extend_from_slice(&groth16_script);
@@ -764,16 +825,27 @@ fn build_groth16_script_with_tags(tag_count: usize) -> Vec<u8> {
     script
 }
 
-fn build_groth16_tx_with_tags(nonce: u32, tag_count: usize) -> (Transaction, Vec<UtxoEntry>) {
-    build_budgeted_single_input_tx(nonce, ScriptPublicKey::new(0, build_groth16_script_with_tags(tag_count).into()), vec![])
+fn build_groth16_repeated_tx(nonce: u32, call_count: usize) -> (Transaction, Vec<UtxoEntry>) {
+    build_budgeted_single_input_tx(nonce, ScriptPublicKey::new(0, build_groth16_repeated_script(call_count).into()), vec![])
 }
 
 fn build_groth16_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
-    build_groth16_tx_with_tags(nonce, 1)
+    build_groth16_repeated_tx(nonce, 1)
 }
 
-fn build_groth16_3tags_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
-    build_groth16_tx_with_tags(nonce, 3)
+fn build_groth16_3x_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    static SCRIPT: OnceLock<Vec<u8>> = OnceLock::new();
+    let script = SCRIPT
+        .get_or_init(|| {
+            let public_input_count = groth16_3x_pub_input_count();
+            build_groth16_repeated_valid_script(public_input_count, GROTH16_3X_COUNT)
+                .expect("cached groth16 3x public input count should be valid")
+        })
+        .clone();
+    let candidate = try_build_budgeted_single_input_tx(nonce, ScriptPublicKey::new(0, script.into()), vec![])
+        .expect("cached groth16 3x script should be valid");
+    assert!(fits_block_mass(&candidate.0), "cached groth16 3x public input count should stay within block mass limits");
+    candidate
 }
 
 // Duplicates one public input and extends gamma_abc_g1 to stress Groth16 input preparation,
@@ -789,6 +861,17 @@ fn build_groth16_prepare_inputs_script(public_input_count: usize, vk_gamma_abc_c
     let input = inputs.first().ok_or_else(|| "groth16 fixture should contain at least one public input".to_string())?;
     let (extended_vk_bytes, _) = groth16_extended_vk_bytes(vk_bytes.as_slice(), vk_gamma_abc_count)?;
 
+    build_groth16_repeated_input_script(public_input_count, &extended_vk_bytes, &proof_bytes, input)
+}
+
+fn build_groth16_repeated_input_script(
+    public_input_count: usize,
+    vk_bytes: &[u8],
+    proof_bytes: &[u8],
+    input: &[u8],
+) -> Result<Vec<u8>, String> {
+    assert!(public_input_count > 0, "groth16 repeated-input script should contain public inputs");
+
     let mut builder = new_script_builder();
     builder.add_data(input).map_err(|err| format!("failed to add groth16 public input: {err}"))?;
     for _ in 1..public_input_count {
@@ -797,9 +880,9 @@ fn build_groth16_prepare_inputs_script(public_input_count: usize, vk_gamma_abc_c
     builder
         .add_i64(public_input_count as i64)
         .map_err(|err| format!("failed to add groth16 public input count: {err}"))?
-        .add_data(&proof_bytes)
+        .add_data(proof_bytes)
         .map_err(|err| format!("failed to add groth16 proof: {err}"))?
-        .add_data(&extended_vk_bytes)
+        .add_data(vk_bytes)
         .map_err(|err| format!("failed to add groth16 verifying key: {err}"))?
         .add_data(&[ZkTag::Groth16 as u8])
         .map_err(|err| format!("failed to add groth16 tag: {err}"))?
@@ -807,6 +890,57 @@ fn build_groth16_prepare_inputs_script(public_input_count: usize, vk_gamma_abc_c
         .map_err(|err| format!("failed to add groth16 opcode: {err}"))?;
 
     Ok(builder.drain())
+}
+
+fn build_repeated_groth16_script(groth16_script: &[u8], count: usize) -> Vec<u8> {
+    assert!(count > 0, "repeated groth16 script should contain at least one call");
+
+    let mut script = Vec::with_capacity(groth16_script.len() * count + count.saturating_sub(1));
+    for call_idx in 0..count {
+        if call_idx > 0 {
+            script.push(OpDrop);
+        }
+        script.extend_from_slice(groth16_script);
+    }
+    script
+}
+
+fn build_groth16_prepare_inputs_repeated_script(public_input_count: usize, call_count: usize) -> Result<Vec<u8>, String> {
+    let groth16_script = build_groth16_prepare_inputs_script(public_input_count, public_input_count + 1)?;
+    Ok(build_repeated_groth16_script(&groth16_script, call_count))
+}
+
+fn build_groth16_valid_fixture(public_input_count: usize) -> Result<Groth16SerializedFixture, String> {
+    let (_, _, inputs) = load_groth_fields();
+    let public_input_bytes = inputs.first().ok_or_else(|| "groth16 fixture should contain at least one public input".to_string())?;
+    let public_input = Fr::deserialize_uncompressed(public_input_bytes.as_slice())
+        .map_err(|err| format!("failed to deserialize groth16 public input fixture: {err}"))?;
+
+    let mut rng = StdRng::seed_from_u64(public_input_count as u64);
+    let circuit = Groth16PublicInputCircuit { public_input_count, public_input };
+    let (pk, vk) = Groth16::<Bn254>::circuit_specific_setup(circuit, &mut rng)
+        .map_err(|err| format!("failed to setup groth16 public-input fixture: {err}"))?;
+
+    let circuit = Groth16PublicInputCircuit { public_input_count, public_input };
+    let proof = Groth16::<Bn254>::prove(&pk, circuit, &mut rng)
+        .map_err(|err| format!("failed to prove groth16 public-input fixture: {err}"))?;
+
+    let mut vk_bytes = Vec::new();
+    vk.serialize_compressed(&mut vk_bytes).map_err(|err| format!("failed to serialize groth16 public-input fixture vk: {err}"))?;
+
+    let mut proof_bytes = Vec::new();
+    proof
+        .serialize_compressed(&mut proof_bytes)
+        .map_err(|err| format!("failed to serialize groth16 public-input fixture proof: {err}"))?;
+
+    Ok(Groth16SerializedFixture { vk_bytes, proof_bytes, public_input_bytes: public_input_bytes.clone() })
+}
+
+fn build_groth16_repeated_valid_script(public_input_count: usize, call_count: usize) -> Result<Vec<u8>, String> {
+    let fixture = build_groth16_valid_fixture(public_input_count)?;
+    let groth16_script =
+        build_groth16_repeated_input_script(public_input_count, &fixture.vk_bytes, &fixture.proof_bytes, &fixture.public_input_bytes)?;
+    Ok(build_repeated_groth16_script(&groth16_script, call_count))
 }
 
 fn groth16_extended_vk_bytes(vk_bytes: &[u8], vk_gamma_abc_count: usize) -> Result<(Vec<u8>, Vec<u8>), String> {
@@ -1003,11 +1137,102 @@ fn groth16_max_pub_input_count() -> usize {
     })
 }
 
-fn build_groth16_max_pub_inputs_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+fn build_groth16_1x_max_inputs_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let public_input_count = groth16_max_pub_input_count();
     let candidate = try_build_groth16_prepare_inputs_tx_with_input_count(nonce, public_input_count)
         .expect("cached groth16 public input count should be valid");
     assert!(fits_block_mass(&candidate.0), "cached groth16 public input count should stay within block mass limits");
+    candidate
+}
+
+fn estimate_groth16_repeated_tx_with_input_count(
+    nonce: u32,
+    public_input_count: usize,
+    call_count: usize,
+) -> Option<(Transaction, Vec<UtxoEntry>)> {
+    let single_candidate = try_build_groth16_prepare_inputs_tx_with_input_count(nonce, public_input_count).ok()?;
+    let TxInputMass::ComputeBudget(single_budget) = single_candidate.0.inputs.first()?.mass else {
+        return None;
+    };
+    let repeated_budget = single_budget.value().checked_mul(u16::try_from(call_count).ok()?)?.checked_add(1).map(ComputeBudget)?;
+    let script = build_groth16_prepare_inputs_repeated_script(public_input_count, call_count).ok()?;
+    Some(build_single_input_tx_with_compute_budget(nonce, ScriptPublicKey::new(0, script.into()), vec![], repeated_budget))
+}
+
+fn groth16_repeated_pub_input_count(call_count: usize) -> usize {
+    fn search(call_count: usize) -> usize {
+        fn valid_input_count_with_call_count(call_count: usize, public_input_count: usize) -> bool {
+            let Some(candidate) = estimate_groth16_repeated_tx_with_input_count(0, public_input_count, call_count) else {
+                return false;
+            };
+            fits_block_mass(&candidate.0)
+        }
+
+        let mut low_input_count = 1usize;
+        let mut high_input_count = 2usize;
+        assert!(
+            valid_input_count_with_call_count(call_count, low_input_count),
+            "single groth16 repeated public input should be valid"
+        );
+
+        loop {
+            if !valid_input_count_with_call_count(call_count, high_input_count) {
+                break;
+            }
+            low_input_count = high_input_count;
+            let next_high_input_count = high_input_count.saturating_mul(2);
+            if next_high_input_count == high_input_count {
+                break;
+            }
+            high_input_count = next_high_input_count;
+        }
+
+        high_input_count = high_input_count.min(groth16_max_pub_input_count().saturating_add(1));
+        while low_input_count + 1 < high_input_count {
+            let mid_input_count = low_input_count + (high_input_count - low_input_count) / 2;
+            if valid_input_count_with_call_count(call_count, mid_input_count) {
+                low_input_count = mid_input_count;
+            } else {
+                high_input_count = mid_input_count;
+            }
+        }
+
+        low_input_count
+    }
+
+    match call_count {
+        GROTH16_2X_COUNT => {
+            static INPUT_COUNT: OnceLock<usize> = OnceLock::new();
+            *INPUT_COUNT.get_or_init(|| search(call_count))
+        }
+        GROTH16_3X_COUNT => {
+            static INPUT_COUNT: OnceLock<usize> = OnceLock::new();
+            *INPUT_COUNT.get_or_init(|| search(call_count))
+        }
+        _ => search(call_count),
+    }
+}
+
+fn groth16_2x_pub_input_count() -> usize {
+    groth16_repeated_pub_input_count(GROTH16_2X_COUNT)
+}
+
+fn groth16_3x_pub_input_count() -> usize {
+    groth16_repeated_pub_input_count(GROTH16_3X_COUNT)
+}
+
+fn build_groth16_2x_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    static SCRIPT: OnceLock<Vec<u8>> = OnceLock::new();
+    let script = SCRIPT
+        .get_or_init(|| {
+            let public_input_count = groth16_2x_pub_input_count();
+            build_groth16_repeated_valid_script(public_input_count, GROTH16_2X_COUNT)
+                .expect("cached groth16 2x public input count should be valid")
+        })
+        .clone();
+    let candidate = try_build_budgeted_single_input_tx(nonce, ScriptPublicKey::new(0, script.into()), vec![])
+        .expect("cached groth16 2x script should be valid");
+    assert!(fits_block_mass(&candidate.0), "cached groth16 2x public input count should stay within block mass limits");
     candidate
 }
 
@@ -1427,13 +1652,17 @@ fn build_groth16_3tx_block() -> BenchBlock {
     fixed_txs_block("groth16_3tx", vec![build_groth16_tx(0), build_groth16_tx(1), build_groth16_tx(2)])
 }
 
-fn build_groth16_3tags_single_tx_block() -> BenchBlock {
-    let (tx, entries) = build_groth16_3tags_tx(0);
-    single_tx_block("groth16_3tags_single_tx", tx, entries)
+fn build_groth16_3x_block() -> BenchBlock {
+    let (tx, entries) = build_groth16_3x_tx(0);
+    single_tx_block("groth16_3x", tx, entries)
 }
 
-fn build_groth16_max_pub_inputs_block() -> BenchBlock {
-    pack_repeated_txs_with_zk_failure("groth16_max_pub_inputs", build_groth16_max_pub_inputs_tx, true)
+fn build_groth16_1x_max_inputs_block() -> BenchBlock {
+    pack_repeated_txs_with_zk_failure("groth16_1x_max_inputs", build_groth16_1x_max_inputs_tx, true)
+}
+
+fn build_groth16_2x_block() -> BenchBlock {
+    pack_repeated_txs("groth16_2x", build_groth16_2x_tx)
 }
 
 fn build_groth16_large_vk_block() -> BenchBlock {
@@ -1473,8 +1702,9 @@ fn bench_blocks() -> &'static [BenchBlock] {
             build_max_opcodes_block(),
             build_single_stark_block(),
             build_groth16_3tx_block(),
-            build_groth16_3tags_single_tx_block(),
-            build_groth16_max_pub_inputs_block(),
+            build_groth16_3x_block(),
+            build_groth16_2x_block(),
+            build_groth16_1x_max_inputs_block(),
             build_groth16_large_vk_block(),
         ];
 
