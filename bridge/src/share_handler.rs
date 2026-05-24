@@ -272,7 +272,7 @@ impl ShareHandler {
     }
 
     pub fn get_create_stats(&self, ctx: &StratumContext) -> WorkStats {
-        let worker_id = crate::prom::prom_worker_id(ctx);
+        let worker_id = ctx.effective_worker_name();
 
         let stats = {
             let mut stats_map = self.stats.lock();
@@ -460,10 +460,7 @@ impl ShareHandler {
         debug!("[SUBMIT] Parsed nonce value (u64): {}", nonce_val);
         debug!("[SUBMIT] Nonce hex: {:016x}", nonce_val);
 
-        let worker_id = {
-            let worker_name = ctx.worker_name.lock();
-            if !worker_name.is_empty() { worker_name.clone() } else { format!("{}:{}", ctx.remote_addr(), ctx.remote_port()) }
-        };
+        let worker_id = ctx.effective_worker_name();
         let submit_key = format!("{}|{}|{}", worker_id, job_id, final_nonce_str);
 
         let duplicate_outcome = {
@@ -656,7 +653,7 @@ impl ShareHandler {
             // This ensures we use the correct target for each job, as different jobs may have different header.bits
             if meets_network_target {
                 let wallet_addr = ctx.wallet_addr.lock().clone();
-                let worker_name = ctx.worker_name.lock().clone();
+                let worker_name = ctx.effective_worker_name();
                 let prefix = self.log_prefix();
 
                 info!(

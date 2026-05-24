@@ -496,10 +496,9 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
     serve_http_loop(listener, HttpMode::Aggregated { web_bind: web_bind_for_status }).await
 }
 
-/// Worker label used for stats/metrics: explicit worker name, otherwise client IP.
+/// Worker label used for stats/metrics: explicit name or stable default (`asic-{id}`).
 pub fn prom_worker_id(ctx: &crate::stratum_context::StratumContext) -> String {
-    let worker_name = ctx.worker_name.lock();
-    if !worker_name.is_empty() { worker_name.clone() } else { ctx.remote_addr().to_string() }
+    ctx.effective_worker_name()
 }
 
 /// Worker context for metrics
@@ -535,6 +534,17 @@ impl WorkerContext {
             wallet: ctx.wallet_addr.lock().clone(),
             ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
         }
+    }
+}
+
+/// Build Prometheus worker labels from a Stratum session (stable name, no empty `worker` label).
+pub fn worker_context(instance_id: &str, ctx: &crate::stratum_context::StratumContext, miner: impl Into<String>) -> WorkerContext {
+    WorkerContext {
+        instance_id: instance_id.to_string(),
+        worker_name: ctx.effective_worker_name(),
+        miner: miner.into(),
+        wallet: ctx.wallet_addr.lock().clone(),
+        ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
     }
 }
 
@@ -796,6 +806,7 @@ fn init_worker_counter_series(worker: &WorkerContext) {
             metric.set(0.0);
         }
     }
+    update_worker_activity(worker);
 }
 
 /// Ensure Prometheus worker metrics exist for the current `(instance, worker, wallet)` labels.
