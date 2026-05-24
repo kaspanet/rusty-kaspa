@@ -496,10 +496,9 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
     serve_http_loop(listener, HttpMode::Aggregated { web_bind: web_bind_for_status }).await
 }
 
-/// Worker label used for stats/metrics: explicit worker name, otherwise client IP.
+/// Worker label used for stats/metrics: explicit name or stable default (`asic-{id}`).
 pub fn prom_worker_id(ctx: &crate::stratum_context::StratumContext) -> String {
-    let worker_name = ctx.worker_name.lock();
-    if !worker_name.is_empty() { worker_name.clone() } else { ctx.remote_addr().to_string() }
+    ctx.effective_worker_name()
 }
 
 /// Worker context for metrics
