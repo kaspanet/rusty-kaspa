@@ -19,7 +19,7 @@ use crate::{
 
 /// Empirically determined script unit cost per gamma_abc_g1 element in the VK
 /// such that the total verification cost is within ~10ms.
-pub const GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS: u64 = 100_000;
+pub const GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS: u64 = 250_000;
 
 fn deserialize_verifying_key_with_metering(
     bytes: &[u8],

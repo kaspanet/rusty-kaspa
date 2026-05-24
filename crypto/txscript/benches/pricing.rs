@@ -848,8 +848,9 @@ fn build_groth16_3x_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     candidate
 }
 
-// Duplicates one public input and extends gamma_abc_g1 to stress Groth16 input preparation,
-// while allowing the final proof verification to fail after the prepared-input work.
+// Duplicates a high-Hamming public input and extends gamma_abc_g1 to stress
+// Ark's Groth16 prepare_inputs path. The proof may fail after the prepared-input
+// work; this bench is pricing the input-preparation cost.
 fn build_groth16_prepare_inputs_script(public_input_count: usize, vk_gamma_abc_count: usize) -> Result<Vec<u8>, String> {
     assert!(public_input_count > 0, "groth16 prepare-inputs script should contain public inputs");
     assert!(
@@ -857,11 +858,14 @@ fn build_groth16_prepare_inputs_script(public_input_count: usize, vk_gamma_abc_c
         "groth16 verifying key should contain one gamma_abc_g1 base point plus all public inputs"
     );
 
-    let (vk_bytes, proof_bytes, inputs) = load_groth_fields();
-    let input = inputs.first().ok_or_else(|| "groth16 fixture should contain at least one public input".to_string())?;
+    let (vk_bytes, proof_bytes, _) = load_groth_fields();
+    let mut input = Vec::new();
+    groth16_high_hamming_public_input()
+        .serialize_uncompressed(&mut input)
+        .map_err(|err| format!("failed to serialize groth16 public input: {err}"))?;
     let (extended_vk_bytes, _) = groth16_extended_vk_bytes(vk_bytes.as_slice(), vk_gamma_abc_count)?;
 
-    build_groth16_repeated_input_script(public_input_count, &extended_vk_bytes, &proof_bytes, input)
+    build_groth16_repeated_input_script(public_input_count, &extended_vk_bytes, &proof_bytes, &input)
 }
 
 fn build_groth16_repeated_input_script(
@@ -910,11 +914,17 @@ fn build_groth16_prepare_inputs_repeated_script(public_input_count: usize, call_
     Ok(build_repeated_groth16_script(&groth16_script, call_count))
 }
 
+fn groth16_high_hamming_public_input() -> Fr {
+    // Ark Groth16 prepares each public input with affine scalar multiplication.
+    // Its current BN254 path uses double-and-add, so the scalar bit length and
+    // Hamming weight affect the cost. Use 2^253 - 1 to cover the worst case of that path.
+    let mut bytes = [0xffu8; 32];
+    bytes[31] = 0x1f;
+    Fr::deserialize_uncompressed(bytes.as_slice()).expect("2^253 - 1 should fit in BN254 Fr")
+}
+
 fn build_groth16_valid_fixture(public_input_count: usize) -> Result<Groth16SerializedFixture, String> {
-    let (_, _, inputs) = load_groth_fields();
-    let public_input_bytes = inputs.first().ok_or_else(|| "groth16 fixture should contain at least one public input".to_string())?;
-    let public_input = Fr::deserialize_uncompressed(public_input_bytes.as_slice())
-        .map_err(|err| format!("failed to deserialize groth16 public input fixture: {err}"))?;
+    let public_input = groth16_high_hamming_public_input();
 
     let mut rng = StdRng::seed_from_u64(public_input_count as u64);
     let circuit = Groth16PublicInputCircuit { public_input_count, public_input };
@@ -933,7 +943,12 @@ fn build_groth16_valid_fixture(public_input_count: usize) -> Result<Groth16Seria
         .serialize_compressed(&mut proof_bytes)
         .map_err(|err| format!("failed to serialize groth16 public-input fixture proof: {err}"))?;
 
-    Ok(Groth16SerializedFixture { vk_bytes, proof_bytes, public_input_bytes: public_input_bytes.clone() })
+    let mut public_input_bytes = Vec::new();
+    public_input
+        .serialize_uncompressed(&mut public_input_bytes)
+        .map_err(|err| format!("failed to serialize groth16 public input: {err}"))?;
+
+    Ok(Groth16SerializedFixture { vk_bytes, proof_bytes, public_input_bytes })
 }
 
 fn build_groth16_repeated_valid_script(public_input_count: usize, call_count: usize) -> Result<Vec<u8>, String> {
@@ -1137,7 +1152,7 @@ fn groth16_max_pub_input_count() -> usize {
     })
 }
 
-fn build_groth16_1x_max_inputs_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+fn build_groth16_1x_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let public_input_count = groth16_max_pub_input_count();
     let candidate = try_build_groth16_prepare_inputs_tx_with_input_count(nonce, public_input_count)
         .expect("cached groth16 public input count should be valid");
@@ -1657,8 +1672,8 @@ fn build_groth16_3x_block() -> BenchBlock {
     single_tx_block("groth16_3x", tx, entries)
 }
 
-fn build_groth16_1x_max_inputs_block() -> BenchBlock {
-    pack_repeated_txs_with_zk_failure("groth16_1x_max_inputs", build_groth16_1x_max_inputs_tx, true)
+fn build_groth16_1x_block() -> BenchBlock {
+    pack_repeated_txs_with_zk_failure("groth16_1x", build_groth16_1x_tx, true)
 }
 
 fn build_groth16_2x_block() -> BenchBlock {
@@ -1704,7 +1719,7 @@ fn bench_blocks() -> &'static [BenchBlock] {
             build_groth16_3tx_block(),
             build_groth16_3x_block(),
             build_groth16_2x_block(),
-            build_groth16_1x_max_inputs_block(),
+            build_groth16_1x_block(),
             build_groth16_large_vk_block(),
         ];
 
