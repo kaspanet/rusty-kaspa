@@ -226,6 +226,10 @@ pub async fn handle_authorize(
     *ctx.wallet_addr.lock() = address.clone();
     *ctx.worker_name.lock() = worker_name.clone();
 
+    if let Some(ref client_handler) = client_handler {
+        client_handler.sync_worker_prom_metrics(&ctx);
+    }
+
     let remote_app = ctx.remote_app.lock().clone();
     tracing::info!("[HANDSHAKE] authorized {}:{} worker='{}' app='{}'", ctx.remote_addr, ctx.remote_port, worker_name, remote_app);
 
