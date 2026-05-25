@@ -4,11 +4,13 @@ extern crate core;
 pub mod caches;
 mod data_stack;
 pub mod error;
+pub mod multi_sig;
 pub mod opcodes;
 pub mod result;
 pub mod script_builder;
 pub mod script_class;
 pub mod standard;
+pub mod viewer;
 #[cfg(feature = "wasm32-sdk")]
 pub mod wasm;
 
