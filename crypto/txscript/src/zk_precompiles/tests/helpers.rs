@@ -1,14 +1,22 @@
-use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, tx::PopulatedTransaction};
+use kaspa_consensus_core::{
+    hashing::sighash::SigHashReusedValuesUnsync,
+    tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry},
+};
 use kaspa_txscript_errors::TxScriptError;
 
 use crate::{
-    EngineFlags, SigCacheKey, TxScriptEngine,
+    EngineCtx, EngineFlags, SigCacheKey, TxScriptEngine,
     caches::Cache,
     hex,
     opcodes::codes::OpZkPrecompile,
+    pay_to_script_hash_script, pay_to_script_hash_signature_script_with_flags,
     script_builder::{ScriptBuilder, ScriptBuilderResult},
     zk_precompiles::tags::ZkTag,
 };
+
+pub fn zk_test_flags() -> EngineFlags {
+    EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, ..Default::default() }
+}
 
 pub fn build_zk_script(elements: &[&[u8]]) -> ScriptBuilderResult<Vec<u8>> {
     let mut builder = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() });
@@ -40,6 +48,29 @@ pub fn execute_zk_script_with_flags(
 ) -> Result<(), TxScriptError> {
     let mut vm =
         TxScriptEngine::<PopulatedTransaction, SigHashReusedValuesUnsync>::from_script(script, reused_values, sig_cache, flags);
+    vm.execute()
+}
+
+pub fn execute_p2sh_script(
+    signature_script: Vec<u8>,
+    redeem_script: &[u8],
+    sig_cache: &Cache<SigCacheKey, bool>,
+    reused_values: &SigHashReusedValuesUnsync,
+) -> Result<(), TxScriptError> {
+    let outpoint = TransactionOutpoint::new(TransactionId::default(), 0);
+    let input = TransactionInput::new_with_compute_budget(outpoint, signature_script, 0, 0);
+    let utxo = UtxoEntry::new(20_000, pay_to_script_hash_script(redeem_script), 0, false, None);
+    let tx = Transaction::new(1, vec![input], vec![], 0, Default::default(), 0, vec![]);
+    let populated_tx = PopulatedTransaction::new(&tx, vec![utxo.clone()]);
+    let mut vm = TxScriptEngine::from_transaction_input(
+        &populated_tx,
+        &populated_tx.tx.inputs[0],
+        0,
+        &utxo,
+        EngineCtx::new(sig_cache).with_reused(reused_values),
+        zk_test_flags(),
+    );
+
     vm.execute()
 }
 
@@ -75,27 +106,85 @@ pub fn load_stark_fields() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<
     )
 }
 
-pub fn build_stark_script(break_control_id: bool) -> Vec<u8> {
-    let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
-    let stark_tag = ZkTag::R0Succinct as u8;
-    if break_control_id {
-        let mut broken_control_id = control_id.clone();
-        broken_control_id[0] ^= 0xFF;
-        return build_zk_script(&[
-            &claim,
-            &control_index,
-            &control_digests,
-            &seal,
-            &journal,
-            &image_id,
-            &broken_control_id,
-            &hashfn,
-            &[stark_tag],
-        ])
-        .unwrap();
+#[derive(Clone, Debug)]
+pub struct R0Fields {
+    pub claim: Vec<u8>,
+    pub control_index: Vec<u8>,
+    pub control_digests: Vec<u8>,
+    pub seal: Vec<u8>,
+    pub journal: Vec<u8>,
+    pub image_id: Vec<u8>,
+    pub control_id: Vec<u8>,
+    pub hashfn: Vec<u8>,
+}
+
+impl R0Fields {
+    pub fn from_fixture() -> Self {
+        let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
+        Self { claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn }
     }
-    build_zk_script(&[&claim, &control_index, &control_digests, &seal, &journal, &image_id, &control_id, &hashfn, &[stark_tag]])
+
+    pub fn script(&self) -> Vec<u8> {
+        build_zk_script(&[
+            &self.claim,
+            &self.control_index,
+            &self.control_digests,
+            &self.seal,
+            &self.journal,
+            &self.image_id,
+            &self.control_id,
+            &self.hashfn,
+            &[ZkTag::R0Succinct as u8],
+        ])
         .unwrap()
+    }
+
+    pub fn p2sh_redeem_script(&self) -> Vec<u8> {
+        let mut builder = ScriptBuilder::with_flags(zk_test_flags());
+        builder
+            .add_data(&self.image_id)
+            .unwrap()
+            .add_data(&self.control_id)
+            .unwrap()
+            .add_data(&self.hashfn)
+            .unwrap()
+            .add_data(&[ZkTag::R0Succinct as u8])
+            .unwrap()
+            .add_op(OpZkPrecompile)
+            .unwrap()
+            .drain()
+    }
+
+    pub fn p2sh_signature_script(&self, redeem_script: Vec<u8>) -> Vec<u8> {
+        let mut signature = ScriptBuilder::with_flags(zk_test_flags());
+        signature
+            .add_data(&self.claim)
+            .unwrap()
+            .add_data(&self.control_index)
+            .unwrap()
+            .add_data(&self.control_digests)
+            .unwrap()
+            .add_data(&self.seal)
+            .unwrap()
+            .add_data(&self.journal)
+            .unwrap();
+
+        pay_to_script_hash_signature_script_with_flags(redeem_script, signature.drain(), zk_test_flags()).unwrap()
+    }
+
+    pub fn p2sh_scripts(&self) -> (Vec<u8>, Vec<u8>) {
+        let redeem_script = self.p2sh_redeem_script();
+        let signature_script = self.p2sh_signature_script(redeem_script.clone());
+        (signature_script, redeem_script)
+    }
+}
+
+pub fn build_stark_script(break_control_id: bool) -> Vec<u8> {
+    let mut fields = R0Fields::from_fixture();
+    if break_control_id {
+        fields.control_id[0] ^= 0xFF;
+    }
+    fields.script()
 }
 
 pub fn build_groth_script() -> Vec<u8> {
