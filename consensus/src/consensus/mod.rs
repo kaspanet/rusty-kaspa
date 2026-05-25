@@ -70,6 +70,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
+    receipts::TxReceipt,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{
         ComputeCommit, MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint,
@@ -1731,5 +1732,20 @@ impl ConsensusApi for Consensus {
     fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
         let (_pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
         (0..=pruning_index).rev().take(n).map(|ind| self.past_pruning_points_store.get(ind).unwrap()).collect_vec()
+    }
+
+    fn generate_tx_receipt(
+        &self,
+        tx_id: Hash,
+        accepting_block: Option<Hash>,
+        tx_timestamp: Option<u64>,
+    ) -> ConsensusResult<TxReceipt> {
+        unimplemented!()
+    }
+    fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
+        unimplemented!()
+    }
+    fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
+        unimplemented!()
     }
 }

@@ -20,6 +20,7 @@ use crate::{
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
+    receipts::TxReceipt,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{
         MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
@@ -564,6 +565,23 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Returns the n most recent pruning points (including the current pruning point)
     fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
+        unimplemented!()
+    }
+
+    fn generate_tx_receipt(
+        &self,
+        tx_id: Hash,
+        accepting_block: Option<Hash>,
+        tx_timestamp: Option<u64>,
+    ) -> ConsensusResult<TxReceipt> {
+        unimplemented!()
+    }
+
+    fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
+        unimplemented!()
+    }
+
+    fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
         unimplemented!()
     }
 }
