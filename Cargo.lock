@@ -3582,6 +3582,7 @@ name = "kaspa-merkle"
 version = "2.0.1"
 dependencies = [
  "kaspa-hashes",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
