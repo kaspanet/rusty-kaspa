@@ -1,6 +1,7 @@
 // ============================================================================
 // TEST SUITE FOR RKSTRATUM BRIDGE
 // ============================================================================
+// This module is compiled from `main.rs` under `#[cfg(test)]` (stratum-bridge binary).
 // This file contains comprehensive tests for the RKStratum Bridge.
 // Tests are organized into several categories:
 //
@@ -950,7 +951,6 @@ fn test_unmarshal_event_with_very_long_string() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_with_all_fields() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,diff=8192,prom=:9090,wait=1000,extranonce=4,log=true,var_diff=true,shares_per_min=30,var_diff_stats=true,pow2_clamp=false";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_ok());
@@ -968,7 +968,6 @@ fn test_parse_instance_spec_with_all_fields() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_with_whitespace() {
-    use crate::cli::parse_instance_spec;
     let spec = "  port = :5555 , diff = 8192  ";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_ok());
@@ -980,7 +979,6 @@ fn test_parse_instance_spec_with_whitespace() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_invalid_diff() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,diff=not_a_number";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_err());
@@ -989,7 +987,6 @@ fn test_parse_instance_spec_invalid_diff() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_invalid_wait() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,diff=8192,wait=invalid";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_err());
@@ -998,7 +995,6 @@ fn test_parse_instance_spec_invalid_wait() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_unknown_key() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,diff=8192,unknown_key=value";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_err());
@@ -1007,7 +1003,6 @@ fn test_parse_instance_spec_unknown_key() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_multiple_ports() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,port=:5556,diff=8192";
     let result = parse_instance_spec(spec, None);
     // Last port should win, or it should error
@@ -1186,16 +1181,6 @@ mod integration {
 // ============================================================================
 // COMPREHENSIVE TEST SUITE FOR BRIDGE FUNCTIONALITY
 // ============================================================================
-// These tests demonstrate how the bridge works and help developers understand
-// the codebase. They cover:
-// 1. Stratum protocol flow (subscribe, authorize, submit)
-// 2. Share validation and PoW checking
-// 3. Miner compatibility (IceRiver, Bitmain, BzMiner)
-// 4. Extranonce assignment and detection
-// 5. Job management and stale job handling
-// 6. Difficulty calculations
-// 7. VarDiff logic
-// ============================================================================
 
 #[cfg(test)]
 mod comprehensive_tests {
@@ -1210,6 +1195,7 @@ mod comprehensive_tests {
         hasher::KaspaDiff,
         jsonrpc_event::JsonRpcEvent,
         mining_state::{GetMiningState, Job, MiningState},
+        prom::{WorkerContext, init_metrics, record_share_found},
         share_handler::ShareHandler,
         stratum_context::StratumContext,
     };
@@ -1718,7 +1704,6 @@ mod comprehensive_tests {
 
     #[test]
     fn test_worker_prom_session_syncs_start_time_for_current_wallet() {
-        use crate::prom::{WorkerContext, init_metrics, record_share_found};
         use prometheus::gather;
 
         init_metrics();
@@ -1765,6 +1750,9 @@ mod comprehensive_tests {
         // Test: VarDiff difficulty management
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "worker1".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:test".to_string();
+        handler.get_create_stats(&ctx);
 
         // Set initial difficulty
         let prev = handler.set_client_vardiff(&ctx, 8192.0);
@@ -1816,6 +1804,9 @@ mod comprehensive_tests {
         // This test verifies the ShareHandler can manage VarDiff
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "worker1".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:test".to_string();
+        handler.get_create_stats(&ctx);
 
         // Set initial difficulty
         handler.set_client_vardiff(&ctx, 8192.0);
@@ -2640,6 +2631,9 @@ mod comprehensive_tests {
         // Note: set_client_vardiff stores the value as-is; clamping happens during VarDiff computation
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "worker1".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:test".to_string();
+        handler.get_create_stats(&ctx);
 
         // Test minimum difficulty (1.0)
         handler.set_client_vardiff(&ctx, 1.0);
@@ -2663,6 +2657,9 @@ mod comprehensive_tests {
         // Test: Scenarios where VarDiff should not change
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "worker1".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:test".to_string();
+        handler.get_create_stats(&ctx);
 
         // Set initial difficulty
         handler.set_client_vardiff(&ctx, 8192.0);

@@ -806,7 +806,6 @@ fn init_worker_counter_series(worker: &WorkerContext) {
             metric.set(0.0);
         }
     }
-    update_worker_activity(worker);
 }
 
 /// Ensure Prometheus worker metrics exist for the current `(instance, worker, wallet)` labels.
@@ -835,10 +834,10 @@ pub fn init_worker_counters(worker: &WorkerContext) {
     ensure_worker_session_metrics(worker, start_time);
 }
 
-/// Update the current mining difficulty for a worker
+/// Update the current mining difficulty for a worker.
+/// Does not refresh dashboard activity — jobs alone must not keep 0-share workers "online".
 pub fn update_worker_difficulty(worker: &WorkerContext, difficulty: f64) {
-    let start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
-    ensure_worker_session_metrics(worker, start_time);
+    init_worker_counter_series(worker);
 
     if let Some(gauge) = WORKER_CURRENT_DIFFICULTY.get() {
         gauge.with_label_values(&worker.labels()).set(difficulty);
@@ -1377,7 +1376,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     });
 
     // Sort workers by blocks (most blocks first)
-    stats.workers.sort_by(|a, b| b.blocks.cmp(&a.blocks));
+    stats.workers.sort_by_key(|w| std::cmp::Reverse(w.blocks));
 
     // Calculate bridge uptime
     if let Some(&start_time) = BRIDGE_START_TIME.get() {
