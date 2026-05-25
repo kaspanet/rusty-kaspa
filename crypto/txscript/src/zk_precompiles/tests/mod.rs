@@ -58,6 +58,8 @@ mod fast_zk_tests {
         StartsWith(&'static str),
     }
 
+    type R0FailureCase = (&'static str, fn(&mut R0Fields), ExpectedZkError);
+
     fn expect_zk_err(result: Result<(), TxScriptError>, case: &str, expected: ExpectedZkError) {
         match (result, expected) {
             (Err(TxScriptError::ZkIntegrity(e)), ExpectedZkError::Exact(expected)) if e == expected => {}
@@ -179,7 +181,7 @@ mod fast_zk_tests {
     fn verify_r0_succinct_direct_failure_matrix() {
         let cache = Cache::new(0);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let cases: &[(&str, fn(&mut R0Fields), ExpectedZkError)] = &[
+        let cases: &[R0FailureCase] = &[
             (
                 "claim length",
                 |fields| {
@@ -386,7 +388,7 @@ mod fast_zk_tests {
     fn verify_r0_succinct_p2sh_binding_matrix() {
         let cache = Cache::new(0);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let cases: &[(&str, fn(&mut R0Fields), ExpectedZkError)] = &[
+        let cases: &[R0FailureCase] = &[
             (
                 "claim binding",
                 |fields| {
