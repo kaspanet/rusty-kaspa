@@ -26,7 +26,7 @@ use kaspa_txscript::{
     pay_to_script_hash_signature_script_with_flags,
     zk_precompiles::{
         tags::ZkTag,
-        tests::helpers::{build_groth_script, build_stark_script, load_groth_fields},
+        tests::helpers::{build_groth_script, load_groth_fields, load_stark_fields},
     },
 };
 use kaspa_txscript_errors::TxScriptError;
@@ -808,7 +808,45 @@ fn build_hash_storm_single_tx(nonce: u32, builder: RoundTxBuilder) -> (Transacti
 }
 
 fn build_single_stark_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
-    build_budgeted_single_input_tx(nonce, ScriptPublicKey::new(0, build_stark_script(false).into()), vec![])
+    let redeem_script = build_stark_p2sh_redeem_script();
+    let script_public_key = pay_to_script_hash_script(&redeem_script);
+    let signature_script = build_stark_p2sh_signature_script(redeem_script);
+    build_budgeted_single_input_tx(nonce, script_public_key, signature_script)
+}
+
+fn build_stark_p2sh_signature_script(redeem_script: Vec<u8>) -> Vec<u8> {
+    let (_, seal, claim, _, control_index, control_digests, journal, _) = load_stark_fields();
+    let mut signature_prefix = new_script_builder();
+    signature_prefix
+        .add_data(&claim)
+        .unwrap()
+        .add_data(&control_index)
+        .unwrap()
+        .add_data(&control_digests)
+        .unwrap()
+        .add_data(&seal)
+        .unwrap()
+        .add_data(&journal)
+        .unwrap();
+    new_p2sh_signature_script(redeem_script, signature_prefix.drain())
+}
+
+fn build_stark_p2sh_redeem_script() -> Vec<u8> {
+    let (control_id, _, _, hashfn, _, _, _, image_id) = load_stark_fields();
+    let stark_tag = ZkTag::R0Succinct as u8;
+    let mut builder = new_script_builder();
+    builder
+        .add_data(&image_id)
+        .unwrap()
+        .add_data(&control_id)
+        .unwrap()
+        .add_data(&hashfn)
+        .unwrap()
+        .add_data(&[stark_tag])
+        .unwrap()
+        .add_op(codes::OpZkPrecompile)
+        .unwrap();
+    builder.drain()
 }
 
 fn build_groth16_repeated_script(call_count: usize) -> Vec<u8> {
