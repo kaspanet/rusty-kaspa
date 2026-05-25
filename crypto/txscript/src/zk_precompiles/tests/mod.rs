@@ -3,8 +3,8 @@ pub mod helpers;
 #[cfg(test)]
 mod fast_zk_tests {
     use super::helpers::{
-        R0Fields, build_groth_script, build_groth_script_from_fields, build_stark_script, execute_p2sh_script, execute_zk_script,
-        execute_zk_script_with_flags, load_groth_fields, load_stark_fields,
+        Groth16Fields, R0Fields, build_groth_script, build_groth_script_from_fields, build_stark_script, execute_p2sh_script,
+        execute_zk_script, execute_zk_script_with_flags, load_groth_fields, load_stark_fields,
     };
     use crate::{
         EngineFlags,
@@ -12,7 +12,8 @@ mod fast_zk_tests {
         get_zk_script_units_upper_bound,
         zk_precompiles::{groth16::Groth16Error, tags::ZkTag},
     };
-    use ark_groth16::VerifyingKey;
+    use ark_bn254::{Bn254, G1Affine};
+    use ark_groth16::{Proof, VerifyingKey};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use kaspa_consensus_core::{
         hashing::sighash::SigHashReusedValuesUnsync,
@@ -56,18 +57,23 @@ mod fast_zk_tests {
     enum ExpectedZkError {
         Exact(&'static str),
         StartsWith(&'static str),
+        Groth16ArityMismatch,
     }
 
     type R0FailureCase = (&'static str, fn(&mut R0Fields), ExpectedZkError);
+    type Groth16FailureCase = (&'static str, fn(&mut Groth16Fields), ExpectedZkError);
 
     fn expect_zk_err(result: Result<(), TxScriptError>, case: &str, expected: ExpectedZkError) {
         match (result, expected) {
             (Err(TxScriptError::ZkIntegrity(e)), ExpectedZkError::Exact(expected)) if e == expected => {}
             (Err(TxScriptError::ZkIntegrity(e)), ExpectedZkError::StartsWith(expected)) if e.starts_with(expected) => {}
+            (Err(TxScriptError::ZkIntegrity(e)), ExpectedZkError::Groth16ArityMismatch)
+                if e == Groth16Error::ArkR1CS(ark_relations::gr1cs::SynthesisError::ArityMismatch).to_string() => {}
             (Err(e), ExpectedZkError::Exact(expected)) => panic!("{case}: expected ZkIntegrity({expected:?}), got {e:?}"),
             (Err(e), ExpectedZkError::StartsWith(expected)) => {
                 panic!("{case}: expected ZkIntegrity prefix {expected:?}, got {e:?}")
             }
+            (Err(e), ExpectedZkError::Groth16ArityMismatch) => panic!("{case}: expected Groth16 arity mismatch, got {e:?}"),
             (Ok(()), _) => panic!("{case}: expected ZkIntegrity error, got success"),
         }
     }
@@ -88,6 +94,36 @@ mod fast_zk_tests {
             Err(e) => panic!("{case}: expected Groth16 arity mismatch, got {e:?}"),
             Ok(_) => panic!("{case}: expected Groth16 arity mismatch, got success"),
         }
+    }
+
+    fn serialize_vk(vk: &VerifyingKey<Bn254>) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        vk.serialize_compressed(&mut bytes).expect("serialize VK");
+        bytes
+    }
+
+    fn serialize_proof(proof: &Proof<Bn254>) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        proof.serialize_compressed(&mut bytes).expect("serialize proof");
+        bytes
+    }
+
+    fn set_empty_gamma_abc(fields: &mut Groth16Fields) {
+        let mut vk = VerifyingKey::<Bn254>::deserialize_compressed(&*fields.vk).expect("fixture VK must deserialize");
+        vk.gamma_abc_g1.clear();
+        fields.vk = serialize_vk(&vk);
+    }
+
+    fn set_parseable_wrong_vk(fields: &mut Groth16Fields) {
+        let mut vk = VerifyingKey::<Bn254>::deserialize_compressed(&*fields.vk).expect("fixture VK must deserialize");
+        vk.alpha_g1 = G1Affine::default();
+        fields.vk = serialize_vk(&vk);
+    }
+
+    fn set_parseable_wrong_proof(fields: &mut Groth16Fields) {
+        let mut proof = Proof::<Bn254>::deserialize_compressed(&*fields.proof).expect("fixture proof must deserialize");
+        proof.a = G1Affine::default();
+        fields.proof = serialize_proof(&proof);
     }
 
     #[test]
@@ -141,6 +177,130 @@ mod fast_zk_tests {
         let reused_values = SigHashReusedValuesUnsync::new();
 
         expect_groth16_arity_mismatch(execute_zk_script(&script, &cache, &reused_values), "extra public input");
+    }
+
+    #[test]
+    fn verify_groth16_failure_matrix() {
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let cases: &[Groth16FailureCase] = &[
+            (
+                "missing public input",
+                |fields| {
+                    fields.inputs.pop();
+                },
+                ExpectedZkError::Groth16ArityMismatch,
+            ),
+            (
+                "extra public input",
+                |fields| {
+                    fields.inputs.push(fields.inputs[0].clone());
+                },
+                ExpectedZkError::Groth16ArityMismatch,
+            ),
+            (
+                "short public input",
+                |fields| {
+                    fields.inputs[0].pop();
+                },
+                ExpectedZkError::StartsWith("Kaspa txscript error: ZK Integrity: Invalid Fr length:"),
+            ),
+            (
+                "long public input",
+                |fields| {
+                    fields.inputs[0].push(0);
+                },
+                ExpectedZkError::StartsWith("Kaspa txscript error: ZK Integrity: Invalid Fr length:"),
+            ),
+            (
+                "out of field public input",
+                |fields| {
+                    fields.inputs[0] = vec![0xff; 32];
+                },
+                ExpectedZkError::StartsWith("Kaspa txscript error: ZK Integrity: ARK serialization error:"),
+            ),
+            (
+                "truncated vk",
+                |fields| {
+                    fields.vk.pop();
+                },
+                ExpectedZkError::StartsWith("ARK serialization error:"),
+            ),
+            (
+                "trailing vk bytes",
+                |fields| {
+                    fields.vk.push(0);
+                },
+                ExpectedZkError::Exact("Groth16 verifying key has trailing bytes"),
+            ),
+            ("empty gamma_abc_g1", set_empty_gamma_abc, ExpectedZkError::Exact("Groth16 verifying key has empty gamma_abc_g1")),
+            ("wrong vk", set_parseable_wrong_vk, ExpectedZkError::Exact("Groth16 verification failed")),
+            (
+                "truncated proof",
+                |fields| {
+                    fields.proof.pop();
+                },
+                ExpectedZkError::StartsWith("ARK serialization error:"),
+            ),
+            (
+                "trailing proof bytes",
+                |fields| {
+                    fields.proof.push(0);
+                },
+                ExpectedZkError::Exact("Groth16 proof has trailing bytes"),
+            ),
+            ("wrong proof", set_parseable_wrong_proof, ExpectedZkError::Exact("Groth16 verification failed")),
+            (
+                "public input binding",
+                |fields| {
+                    fields.inputs[0][0] ^= 0x01;
+                },
+                ExpectedZkError::Exact("Groth16 verification failed"),
+            ),
+        ];
+
+        let fixture = Groth16Fields::from_fixture();
+        for (case, mutate, expected) in cases {
+            let mut fields = fixture.clone();
+            mutate(&mut fields);
+            expect_zk_err(execute_zk_script(&fields.script(), &cache, &reused_values), case, *expected);
+        }
+    }
+
+    #[test]
+    fn verify_groth16_p2sh_vk_in_redeem_script_verifies() {
+        let fields = Groth16Fields::from_fixture();
+        let (signature_script, redeem_script) = fields.p2sh_scripts();
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        execute_p2sh_script(signature_script, &redeem_script, &cache, &reused_values)
+            .expect("P2SH Groth16 proof should verify with VK in redeem script");
+    }
+
+    #[test]
+    fn verify_groth16_p2sh_binding_matrix() {
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let cases: &[Groth16FailureCase] = &[
+            ("vk binding", set_parseable_wrong_vk, ExpectedZkError::Exact("Groth16 verification failed")),
+            ("proof binding", set_parseable_wrong_proof, ExpectedZkError::Exact("Groth16 verification failed")),
+            (
+                "public input binding",
+                |fields| {
+                    fields.inputs[0][0] ^= 0x01;
+                },
+                ExpectedZkError::Exact("Groth16 verification failed"),
+            ),
+        ];
+
+        let fixture = Groth16Fields::from_fixture();
+        for (case, mutate, expected) in cases {
+            let mut fields = fixture.clone();
+            mutate(&mut fields);
+            let (signature_script, redeem_script) = fields.p2sh_scripts();
+            expect_zk_err(execute_p2sh_script(signature_script, &redeem_script, &cache, &reused_values), case, *expected);
+        }
     }
 
     #[test]

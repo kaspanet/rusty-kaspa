@@ -192,6 +192,51 @@ pub fn build_groth_script() -> Vec<u8> {
     build_groth_script_from_fields(&unprepared_compressed_vk, &groth16_proof_bytes, &inputs)
 }
 
+#[derive(Clone, Debug)]
+pub struct Groth16Fields {
+    pub vk: Vec<u8>,
+    pub proof: Vec<u8>,
+    pub inputs: Vec<Vec<u8>>,
+}
+
+impl Groth16Fields {
+    pub fn from_fixture() -> Self {
+        let (vk, proof, inputs) = load_groth_fields();
+        Self { vk, proof, inputs }
+    }
+
+    pub fn script(&self) -> Vec<u8> {
+        build_groth_script_from_fields(&self.vk, &self.proof, &self.inputs)
+    }
+
+    pub fn p2sh_redeem_script(&self) -> Vec<u8> {
+        ScriptBuilder::with_flags(zk_test_flags())
+            .add_data(&self.vk)
+            .unwrap()
+            .add_data(&[ZkTag::Groth16 as u8])
+            .unwrap()
+            .add_op(OpZkPrecompile)
+            .unwrap()
+            .drain()
+    }
+
+    pub fn p2sh_signature_script(&self, redeem_script: Vec<u8>) -> Vec<u8> {
+        let mut signature = ScriptBuilder::with_flags(zk_test_flags());
+        for input in self.inputs.iter().rev() {
+            signature.add_data(input).unwrap();
+        }
+        signature.add_i64(self.inputs.len() as i64).unwrap().add_data(&self.proof).unwrap();
+
+        pay_to_script_hash_signature_script_with_flags(redeem_script, signature.drain(), zk_test_flags()).unwrap()
+    }
+
+    pub fn p2sh_scripts(&self) -> (Vec<u8>, Vec<u8>) {
+        let redeem_script = self.p2sh_redeem_script();
+        let signature_script = self.p2sh_signature_script(redeem_script.clone());
+        (signature_script, redeem_script)
+    }
+}
+
 pub fn build_groth_script_from_fields(unprepared_compressed_vk: &[u8], groth16_proof_bytes: &[u8], inputs: &[Vec<u8>]) -> Vec<u8> {
     let groth16_tag = ZkTag::Groth16 as u8;
     let mut builder = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() });
