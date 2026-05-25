@@ -5,5 +5,6 @@ pub mod monitor;
 pub mod pruning_processor;
 pub mod virtual_processor;
 pub mod receipts_errors;
+pub mod receipts_manager;
 /// Re-export from consensus core
 pub use kaspa_consensus_core::api::counters::{ProcessingCounters, ProcessingCountersSnapshot};
