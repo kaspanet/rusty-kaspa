@@ -100,11 +100,12 @@ struct BenchBlock {
     input_count: usize,
     compute_mass: u64,
     transient_mass: u64,
-    allow_zk_failure: bool,
+    expect_zk_failure: bool,
 }
 
 type TxBuilder = fn(u32) -> (Transaction, Vec<UtxoEntry>);
 type RoundTxBuilder = fn(u32, usize) -> (Transaction, Vec<UtxoEntry>);
+type ResultCheck = fn(Result<(), TxScriptError>) -> Result<(), String>;
 
 fn pricing_flags(covenants_enabled: bool) -> EngineFlags {
     EngineFlags { covenants_enabled, zk_hardening_enabled: covenants_enabled, sigop_script_units: Gram(1000).into() }
@@ -565,18 +566,15 @@ fn try_build_budgeted_single_input_tx(
     input_spk: ScriptPublicKey,
     signature_script: Vec<u8>,
 ) -> Result<(Transaction, Vec<UtxoEntry>), String> {
-    try_build_budgeted_single_input_tx_with_error_filter(nonce, input_spk, signature_script, |_| false)
+    try_build_budgeted_single_input_tx_with_result_check(nonce, input_spk, signature_script, expect_success)
 }
 
-fn try_build_budgeted_single_input_tx_with_error_filter<F>(
+fn try_build_budgeted_single_input_tx_with_result_check(
     nonce: u32,
     input_spk: ScriptPublicKey,
     signature_script: Vec<u8>,
-    accept_error: F,
-) -> Result<(Transaction, Vec<UtxoEntry>), String>
-where
-    F: Fn(&TxScriptError) -> bool,
-{
+    result_check: ResultCheck,
+) -> Result<(Transaction, Vec<UtxoEntry>), String> {
     let outpoint = input_outpoint(0, nonce);
     let utxos = vec![UtxoEntry::new(20_000, input_spk, 0, false, None)];
     let mut tx = Transaction::new(
@@ -606,11 +604,7 @@ where
         pricing_flags(true),
         ScriptUnits(u64::MAX),
     );
-    match vm.execute() {
-        Ok(()) => {}
-        Err(err) if accept_error(&err) => {}
-        Err(err) => return Err(format!("failed to measure input #0: {err}")),
-    }
+    result_check(vm.execute())?;
     let compute_budget = ComputeBudget::checked_covering_script_units(vm.used_script_units())
         .ok_or_else(|| "required compute budget does not fit for input #0".to_string())?;
     tx.inputs[0].mass = compute_budget.into();
@@ -618,14 +612,24 @@ where
     Ok((tx, utxos))
 }
 
-fn try_build_budgeted_single_input_tx_allowing_zk_failure(
+fn expect_success(result: Result<(), TxScriptError>) -> Result<(), String> {
+    result.map_err(|err| format!("failed to measure input #0: {err}"))
+}
+
+fn expect_zk_failure(result: Result<(), TxScriptError>) -> Result<(), String> {
+    match result {
+        Ok(()) => Err("expected ZK integrity failure while measuring input #0".to_string()),
+        Err(TxScriptError::ZkIntegrity(_)) => Ok(()),
+        Err(err) => Err(format!("failed to measure input #0: {err}")),
+    }
+}
+
+fn try_build_budgeted_single_input_tx_expecting_zk_failure(
     nonce: u32,
     input_spk: ScriptPublicKey,
     signature_script: Vec<u8>,
 ) -> Result<(Transaction, Vec<UtxoEntry>), String> {
-    try_build_budgeted_single_input_tx_with_error_filter(nonce, input_spk, signature_script, |err| {
-        matches!(err, TxScriptError::ZkIntegrity(_))
-    })
+    try_build_budgeted_single_input_tx_with_result_check(nonce, input_spk, signature_script, expect_zk_failure)
 }
 
 fn build_single_input_tx_with_compute_budget(
@@ -862,7 +866,7 @@ fn build_stark_trailing_seal_tx_with_target_len(nonce: u32, target_seal_len: usi
     let redeem_script = build_stark_trailing_seal_p2sh_redeem_script(target_seal_len);
     let script_public_key = pay_to_script_hash_script(&redeem_script);
     let signature_script = build_stark_trailing_seal_p2sh_signature_script(redeem_script);
-    try_build_budgeted_single_input_tx_allowing_zk_failure(nonce, script_public_key, signature_script)
+    try_build_budgeted_single_input_tx_expecting_zk_failure(nonce, script_public_key, signature_script)
         .expect("stark trailing-seal script should build")
 }
 
@@ -885,7 +889,7 @@ fn build_stark_long_control_proof_tx_with_seed_count(nonce: u32, seed_digest_cou
     let redeem_script = build_stark_long_control_proof_p2sh_redeem_script();
     let script_public_key = pay_to_script_hash_script(&redeem_script);
     let signature_script = build_stark_long_control_proof_p2sh_signature_script(redeem_script, seed_digest_count);
-    try_build_budgeted_single_input_tx_allowing_zk_failure(nonce, script_public_key, signature_script)
+    try_build_budgeted_single_input_tx_expecting_zk_failure(nonce, script_public_key, signature_script)
         .expect("stark long-control-proof script should build")
 }
 
@@ -964,7 +968,7 @@ fn try_build_stark_trailing_seal_tx_with_target_len(
     let redeem_script = build_stark_trailing_seal_p2sh_redeem_script(target_seal_len);
     let script_public_key = pay_to_script_hash_script(&redeem_script);
     let signature_script = build_stark_trailing_seal_p2sh_signature_script(redeem_script);
-    try_build_budgeted_single_input_tx_allowing_zk_failure(nonce, script_public_key, signature_script)
+    try_build_budgeted_single_input_tx_expecting_zk_failure(nonce, script_public_key, signature_script)
 }
 
 fn append_seal_prefix(builder: &mut ScriptBuilder, chunk_len: usize) {
@@ -1335,7 +1339,7 @@ fn try_build_groth16_prepare_inputs_tx_with_input_count(
     public_input_count: usize,
 ) -> Result<(Transaction, Vec<UtxoEntry>), String> {
     let script = build_groth16_prepare_inputs_script(public_input_count, public_input_count + 1)?;
-    try_build_budgeted_single_input_tx_allowing_zk_failure(nonce, ScriptPublicKey::new(0, script.into()), vec![])
+    try_build_budgeted_single_input_tx_expecting_zk_failure(nonce, ScriptPublicKey::new(0, script.into()), vec![])
 }
 
 fn try_build_groth16_prepare_inputs_large_vk_tx_with_gamma_count(
@@ -1354,7 +1358,7 @@ fn try_build_groth16_large_vk_tx_with_params(
     let redeem_script = build_groth16_prepare_inputs_large_vk_script(vk_gamma_abc_count, padding_chunks, padding_bytes)?;
     let signature_script = pay_to_script_hash_signature_script_with_flags(redeem_script.clone(), vec![], pricing_flags(true))
         .map_err(|err| format!("failed to build groth16 large-vk p2sh signature script: {err}"))?;
-    try_build_budgeted_single_input_tx_allowing_zk_failure(nonce, pay_to_script_hash_script(&redeem_script), signature_script)
+    try_build_budgeted_single_input_tx_expecting_zk_failure(nonce, pay_to_script_hash_script(&redeem_script), signature_script)
 }
 
 fn groth16_max_pub_input_count() -> usize {
@@ -1748,10 +1752,10 @@ fn build_budgeted_charged_tx(label: &str, tx: &Transaction, entries: &[UtxoEntry
 }
 
 fn pack_repeated_txs(name: &'static str, builder: TxBuilder) -> BenchBlock {
-    pack_repeated_txs_with_zk_failure(name, builder, false)
+    pack_repeated_txs_with_expected_zk_failure(name, builder, false)
 }
 
-fn pack_repeated_txs_with_zk_failure(name: &'static str, builder: TxBuilder, allow_zk_failure: bool) -> BenchBlock {
+fn pack_repeated_txs_with_expected_zk_failure(name: &'static str, builder: TxBuilder, expect_zk_failure: bool) -> BenchBlock {
     let mut txs = Vec::new();
     let mut total_mass = 0u64;
     let mut total_transient_mass = 0u64;
@@ -1778,20 +1782,20 @@ fn pack_repeated_txs_with_zk_failure(name: &'static str, builder: TxBuilder, all
         input_count: total_inputs,
         compute_mass: total_mass,
         transient_mass: total_transient_mass,
-        allow_zk_failure,
+        expect_zk_failure,
         txs,
     }
 }
 
 fn single_tx_block(name: &'static str, tx: Transaction, entries: Vec<UtxoEntry>) -> BenchBlock {
-    single_tx_block_with_zk_failure(name, tx, entries, false)
+    single_tx_block_with_expected_zk_failure(name, tx, entries, false)
 }
 
-fn single_tx_block_with_zk_failure(
+fn single_tx_block_with_expected_zk_failure(
     name: &'static str,
     tx: Transaction,
     entries: Vec<UtxoEntry>,
-    allow_zk_failure: bool,
+    expect_zk_failure: bool,
 ) -> BenchBlock {
     BenchBlock {
         name,
@@ -1799,7 +1803,7 @@ fn single_tx_block_with_zk_failure(
         input_count: tx.inputs.len(),
         compute_mass: compute_mass(&tx),
         transient_mass: transient_mass(&tx),
-        allow_zk_failure,
+        expect_zk_failure,
         txs: vec![prepare_bench_tx(tx, entries)],
     }
 }
@@ -1811,7 +1815,7 @@ fn fixed_txs_block(name: &'static str, tx_entries: Vec<(Transaction, Vec<UtxoEnt
     let transient_mass = tx_entries.iter().map(|(tx, _)| transient_mass(tx)).sum();
     let txs = tx_entries.into_iter().map(|(tx, entries)| prepare_bench_tx(tx, entries)).collect();
 
-    BenchBlock { name, txs, tx_count, input_count, compute_mass, transient_mass, allow_zk_failure: false }
+    BenchBlock { name, txs, tx_count, input_count, compute_mass, transient_mass, expect_zk_failure: false }
 }
 
 fn build_schnorr_block() -> BenchBlock {
@@ -1909,12 +1913,12 @@ fn build_stark_single_block() -> BenchBlock {
 
 fn build_stark_long_control_proof_block() -> BenchBlock {
     let (tx, entries) = build_stark_long_control_proof_tx(0);
-    single_tx_block_with_zk_failure("stark_long_control_proof", tx, entries, true)
+    single_tx_block_with_expected_zk_failure("stark_long_control_proof", tx, entries, true)
 }
 
 fn build_stark_max_trailing_seal_block() -> BenchBlock {
     let (tx, entries) = build_stark_max_trailing_seal_tx(0);
-    single_tx_block_with_zk_failure("stark_max_trailing_seal", tx, entries, true)
+    single_tx_block_with_expected_zk_failure("stark_max_trailing_seal", tx, entries, true)
 }
 
 fn build_groth16_3tx_block() -> BenchBlock {
@@ -1927,7 +1931,7 @@ fn build_groth16_3x_block() -> BenchBlock {
 }
 
 fn build_groth16_1x_block() -> BenchBlock {
-    pack_repeated_txs_with_zk_failure("groth16_1x", build_groth16_1x_tx, true)
+    pack_repeated_txs_with_expected_zk_failure("groth16_1x", build_groth16_1x_tx, true)
 }
 
 fn build_groth16_2x_block() -> BenchBlock {
@@ -1935,7 +1939,7 @@ fn build_groth16_2x_block() -> BenchBlock {
 }
 
 fn build_groth16_large_vk_block() -> BenchBlock {
-    pack_repeated_txs_with_zk_failure("groth16_large_vk", build_groth16_large_vk_tx, true)
+    pack_repeated_txs_with_expected_zk_failure("groth16_large_vk", build_groth16_large_vk_tx, true)
 }
 
 fn bench_blocks() -> &'static [BenchBlock] {
@@ -1994,11 +1998,11 @@ fn bench_blocks() -> &'static [BenchBlock] {
     })
 }
 
-fn accept_validation_result(result: Result<(), TxScriptError>, allow_zk_failure: bool) -> Result<(), TxScriptError> {
-    match result {
-        Ok(()) => Ok(()),
-        Err(TxScriptError::ZkIntegrity(_)) if allow_zk_failure => Ok(()),
-        Err(err) => Err(err),
+fn check_validation_result(result: Result<(), TxScriptError>, expect_zk_failure: bool) -> Result<(), TxScriptError> {
+    match (result, expect_zk_failure) {
+        (Ok(()), true) => panic!("expected ZK integrity failure, validation succeeded"),
+        (Ok(()), false) | (Err(TxScriptError::ZkIntegrity(_)), true) => Ok(()),
+        (Err(err), _) => Err(err),
     }
 }
 
@@ -2022,7 +2026,7 @@ fn validate_block_sequential(block: &BenchBlock) {
                 flags,
                 script_units_limit,
             );
-            accept_validation_result(vm.execute(), block.allow_zk_failure).unwrap();
+            check_validation_result(vm.execute(), block.expect_zk_failure).unwrap();
         }
     }
 }
@@ -2049,7 +2053,7 @@ fn validate_block_parallel(block: &BenchBlock, pool: &rayon::ThreadPool) {
                     flags,
                     script_units_limit,
                 );
-                accept_validation_result(vm.execute(), block.allow_zk_failure)
+                check_validation_result(vm.execute(), block.expect_zk_failure)
             })
         })
     })
