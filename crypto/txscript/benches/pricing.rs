@@ -854,6 +854,33 @@ fn build_stark_long_control_proof_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>
     build_stark_long_control_proof_tx_with_seed_count(nonce, stark_long_control_proof_seed_digest_count())
 }
 
+fn build_stark_max_trailing_seal_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_stark_trailing_seal_tx_with_target_len(nonce, stark_max_trailing_seal_len())
+}
+
+fn build_stark_trailing_seal_tx_with_target_len(nonce: u32, target_seal_len: usize) -> (Transaction, Vec<UtxoEntry>) {
+    let redeem_script = build_stark_trailing_seal_p2sh_redeem_script(target_seal_len);
+    let script_public_key = pay_to_script_hash_script(&redeem_script);
+    let signature_script = build_stark_trailing_seal_p2sh_signature_script(redeem_script);
+    try_build_budgeted_single_input_tx_allowing_zk_failure(nonce, script_public_key, signature_script)
+        .expect("stark trailing-seal script should build")
+}
+
+fn build_stark_trailing_seal_p2sh_signature_script(redeem_script: Vec<u8>) -> Vec<u8> {
+    let (_, seal, claim, _, control_index, control_digests, _, _) = load_stark_fields();
+    let mut signature_prefix = new_script_builder();
+    signature_prefix
+        .add_data(&claim)
+        .unwrap()
+        .add_data(&control_index)
+        .unwrap()
+        .add_data(&control_digests)
+        .unwrap()
+        .add_data(&seal)
+        .unwrap();
+    new_p2sh_signature_script(redeem_script, signature_prefix.drain())
+}
+
 fn build_stark_long_control_proof_tx_with_seed_count(nonce: u32, seed_digest_count: usize) -> (Transaction, Vec<UtxoEntry>) {
     let redeem_script = build_stark_long_control_proof_p2sh_redeem_script();
     let script_public_key = pay_to_script_hash_script(&redeem_script);
@@ -892,6 +919,100 @@ fn stark_long_control_proof_seed_digest_count() -> usize {
         }
         best.expect("at least one long-control-proof seed should fit in block mass")
     })
+}
+
+fn stark_max_trailing_seal_len() -> usize {
+    static LEN: OnceLock<usize> = OnceLock::new();
+    *LEN.get_or_init(|| {
+        let (_, seal, _, _, _, _, _, _) = load_stark_fields();
+        assert_eq!(seal.len() % 4, 0, "seal length should be word-aligned");
+
+        let max_len = max_script_element_size(true);
+        if let Ok(candidate) = try_build_stark_trailing_seal_tx_with_target_len(0, max_len)
+            && fits_block_mass(&candidate.0)
+        {
+            return max_len;
+        }
+
+        let mut low_words = seal.len() / 4;
+        let mut high_words = max_len / 4 + 1;
+        let mut best = seal.len();
+
+        while low_words + 1 < high_words {
+            let mid_words = low_words + (high_words - low_words) / 2;
+            let candidate_len = mid_words * 4;
+            let Ok(candidate) = try_build_stark_trailing_seal_tx_with_target_len(0, candidate_len) else {
+                high_words = mid_words;
+                continue;
+            };
+            if fits_block_mass(&candidate.0) {
+                low_words = mid_words;
+                best = candidate_len;
+            } else {
+                high_words = mid_words;
+            }
+        }
+
+        best
+    })
+}
+
+fn try_build_stark_trailing_seal_tx_with_target_len(
+    nonce: u32,
+    target_seal_len: usize,
+) -> Result<(Transaction, Vec<UtxoEntry>), String> {
+    let redeem_script = build_stark_trailing_seal_p2sh_redeem_script(target_seal_len);
+    let script_public_key = pay_to_script_hash_script(&redeem_script);
+    let signature_script = build_stark_trailing_seal_p2sh_signature_script(redeem_script);
+    try_build_budgeted_single_input_tx_allowing_zk_failure(nonce, script_public_key, signature_script)
+}
+
+fn append_seal_prefix(builder: &mut ScriptBuilder, chunk_len: usize) {
+    builder
+        .add_op(OpDup)
+        .unwrap()
+        .add_i64(0)
+        .unwrap()
+        .add_i64(chunk_len as i64)
+        .unwrap()
+        .add_op(codes::OpSubstr)
+        .unwrap()
+        .add_op(codes::OpCat)
+        .unwrap();
+}
+
+fn build_stark_trailing_seal_p2sh_redeem_script(target_seal_len: usize) -> Vec<u8> {
+    let (control_id, seal, _, hashfn, _, _, journal, image_id) = load_stark_fields();
+    let stark_tag = ZkTag::R0Succinct as u8;
+    assert!(target_seal_len >= seal.len(), "target seal length should not shrink the fixture seal");
+    assert_eq!(target_seal_len % 4, 0, "target seal length should stay word-aligned");
+    assert!(target_seal_len <= max_script_element_size(true), "target seal length should stay within the script element size limit");
+
+    let mut builder = new_script_builder();
+    // Keep the valid proof prefix and append seal slices so verification fails at the trailing-data check.
+    let mut remaining = target_seal_len - seal.len();
+    while remaining >= seal.len() {
+        append_seal_prefix(&mut builder, seal.len());
+        remaining -= seal.len();
+    }
+    if remaining > 0 {
+        append_seal_prefix(&mut builder, remaining);
+    }
+
+    builder
+        .add_data(&journal)
+        .unwrap()
+        .add_data(&image_id)
+        .unwrap()
+        .add_data(&control_id)
+        .unwrap()
+        .add_data(&hashfn)
+        .unwrap()
+        .add_data(&[stark_tag])
+        .unwrap()
+        .add_op(codes::OpZkPrecompile)
+        .unwrap();
+    builder.drain()
 }
 
 fn build_stark_long_control_proof_p2sh_redeem_script() -> Vec<u8> {
@@ -1791,6 +1912,11 @@ fn build_stark_long_control_proof_block() -> BenchBlock {
     single_tx_block_with_zk_failure("stark_long_control_proof", tx, entries, true)
 }
 
+fn build_stark_max_trailing_seal_block() -> BenchBlock {
+    let (tx, entries) = build_stark_max_trailing_seal_tx(0);
+    single_tx_block_with_zk_failure("stark_max_trailing_seal", tx, entries, true)
+}
+
 fn build_groth16_3tx_block() -> BenchBlock {
     fixed_txs_block("groth16_3tx", vec![build_groth16_tx(0), build_groth16_tx(1), build_groth16_tx(2)])
 }
@@ -1845,6 +1971,7 @@ fn bench_blocks() -> &'static [BenchBlock] {
             build_max_opcodes_block(),
             build_stark_single_block(),
             build_stark_long_control_proof_block(),
+            build_stark_max_trailing_seal_block(),
             build_groth16_3tx_block(),
             build_groth16_3x_block(),
             build_groth16_2x_block(),
