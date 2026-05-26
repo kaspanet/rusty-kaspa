@@ -50,6 +50,7 @@ const LARGE_PUSH_DUP_CAT_CAT_COUNT: usize = 3;
 const LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR: usize = 1 << LARGE_PUSH_DUP_CAT_CAT_COUNT;
 const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = max_script_element_size(true) / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
 const LARGE_PUSH_DUP_CAT_DUP_COUNT: usize = MAX_STACK_SIZE - 1;
+const STARK_LONG_CONTROL_PROOF_DOUBLINGS: usize = 11;
 const GROTH16_LARGE_VK_PADDING_CAT_COUNT: usize = 19;
 const GROTH16_2X_COUNT: usize = 2;
 const GROTH16_3X_COUNT: usize = 3;
@@ -807,7 +808,7 @@ fn build_hash_storm_single_tx(nonce: u32, builder: RoundTxBuilder) -> (Transacti
     best
 }
 
-fn build_single_stark_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+fn build_stark_single_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let redeem_script = build_stark_p2sh_redeem_script();
     let script_public_key = pay_to_script_hash_script(&redeem_script);
     let signature_script = build_stark_p2sh_signature_script(redeem_script);
@@ -847,6 +848,90 @@ fn build_stark_p2sh_redeem_script() -> Vec<u8> {
         .add_op(codes::OpZkPrecompile)
         .unwrap();
     builder.drain()
+}
+
+fn build_stark_long_control_proof_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
+    build_stark_long_control_proof_tx_with_seed_count(nonce, stark_long_control_proof_seed_digest_count())
+}
+
+fn build_stark_long_control_proof_tx_with_seed_count(nonce: u32, seed_digest_count: usize) -> (Transaction, Vec<UtxoEntry>) {
+    let redeem_script = build_stark_long_control_proof_p2sh_redeem_script();
+    let script_public_key = pay_to_script_hash_script(&redeem_script);
+    let signature_script = build_stark_long_control_proof_p2sh_signature_script(redeem_script, seed_digest_count);
+    try_build_budgeted_single_input_tx_allowing_zk_failure(nonce, script_public_key, signature_script)
+        .expect("stark long-control-proof script should build")
+}
+
+fn build_stark_long_control_proof_p2sh_signature_script(redeem_script: Vec<u8>, seed_digest_count: usize) -> Vec<u8> {
+    let (_, _, claim, _, control_index, control_digests, _, _) = load_stark_fields();
+    let control_digest_seed = repeated_control_digest_seed(&control_digests, seed_digest_count);
+    let final_control_digest_len = control_digest_seed.len() << STARK_LONG_CONTROL_PROOF_DOUBLINGS;
+
+    assert!(
+        final_control_digest_len <= max_script_element_size(true),
+        "long control proof should stay within the script element size limit"
+    );
+
+    let mut signature_prefix = new_script_builder();
+    signature_prefix.add_data(&claim).unwrap().add_data(&control_index).unwrap().add_data(&control_digest_seed).unwrap();
+    new_p2sh_signature_script(redeem_script, signature_prefix.drain())
+}
+
+fn stark_long_control_proof_seed_digest_count() -> usize {
+    static COUNT: OnceLock<usize> = OnceLock::new();
+    *COUNT.get_or_init(|| {
+        let max_seed_digest_count = max_script_element_size(true) / (32 << STARK_LONG_CONTROL_PROOF_DOUBLINGS);
+        let mut best = None;
+        for seed_digest_count in 1..=max_seed_digest_count {
+            let candidate = build_stark_long_control_proof_tx_with_seed_count(0, seed_digest_count);
+            if fits_block_mass(&candidate.0) {
+                best = Some(seed_digest_count);
+            } else {
+                break;
+            }
+        }
+        best.expect("at least one long-control-proof seed should fit in block mass")
+    })
+}
+
+fn build_stark_long_control_proof_p2sh_redeem_script() -> Vec<u8> {
+    let (control_id, seal, _, hashfn, _, _, journal, image_id) = load_stark_fields();
+    let stark_tag = ZkTag::R0Succinct as u8;
+    let mut builder = new_script_builder();
+
+    for _ in 0..STARK_LONG_CONTROL_PROOF_DOUBLINGS {
+        builder.add_op(OpDup).unwrap().add_op(codes::OpCat).unwrap();
+    }
+
+    builder
+        .add_data(&seal)
+        .unwrap()
+        .add_data(&journal)
+        .unwrap()
+        .add_data(&image_id)
+        .unwrap()
+        .add_data(&control_id)
+        .unwrap()
+        .add_data(&hashfn)
+        .unwrap()
+        .add_data(&[stark_tag])
+        .unwrap()
+        .add_op(codes::OpZkPrecompile)
+        .unwrap();
+    builder.drain()
+}
+
+fn repeated_control_digest_seed(control_digests: &[u8], digest_count: usize) -> Vec<u8> {
+    assert_eq!(control_digests.len() % 32, 0, "control digests should be digest-aligned");
+    let source_digest_count = control_digests.len() / 32;
+    assert!(source_digest_count > 0, "control digests should not be empty");
+
+    let mut seed = Vec::with_capacity(digest_count * 32);
+    for digest_idx in 0..digest_count {
+        let source_idx = (digest_idx % source_digest_count) * 32;
+        seed.extend_from_slice(&control_digests[source_idx..source_idx + 32]);
+    }
+    seed
 }
 
 fn build_groth16_repeated_script(call_count: usize) -> Vec<u8> {
@@ -1696,9 +1781,14 @@ fn build_max_opcodes_block() -> BenchBlock {
     single_tx_block("max_opcodes", tx, entries)
 }
 
-fn build_single_stark_block() -> BenchBlock {
-    let (tx, entries) = build_single_stark_tx(0);
-    single_tx_block("single_stark", tx, entries)
+fn build_stark_single_block() -> BenchBlock {
+    let (tx, entries) = build_stark_single_tx(0);
+    single_tx_block("stark_single", tx, entries)
+}
+
+fn build_stark_long_control_proof_block() -> BenchBlock {
+    let (tx, entries) = build_stark_long_control_proof_tx(0);
+    single_tx_block_with_zk_failure("stark_long_control_proof", tx, entries, true)
 }
 
 fn build_groth16_3tx_block() -> BenchBlock {
@@ -1753,7 +1843,8 @@ fn bench_blocks() -> &'static [BenchBlock] {
             build_op_dup_p2sh_block(),
             build_op_dup_one_tx_block(),
             build_max_opcodes_block(),
-            build_single_stark_block(),
+            build_stark_single_block(),
+            build_stark_long_control_proof_block(),
             build_groth16_3tx_block(),
             build_groth16_3x_block(),
             build_groth16_2x_block(),
