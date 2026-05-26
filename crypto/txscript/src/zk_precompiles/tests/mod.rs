@@ -473,7 +473,7 @@ mod fast_zk_tests {
                 |fields| {
                     fields.control_digests.extend_from_slice(&[0; risc0_zkp::core::digest::DIGEST_BYTES]);
                 },
-                ExpectedZkError::StartsWith("R0: control_id mismatch:"),
+                ExpectedZkError::Exact("Control inclusion proof length 9 exceeds maximum 8"),
             ),
             (
                 "empty seal",
@@ -691,6 +691,26 @@ mod fast_zk_tests {
         let reused_values = SigHashReusedValuesUnsync::new();
 
         expect_r0_receipt_format_err(execute_zk_script(&script, &cache, &reused_values), "invalid seal Merkle digest");
+    }
+
+    #[test]
+    fn verify_r0_succinct_long_control_proof_gated() {
+        let mut fields = R0Fields::from_fixture();
+        fields.control_digests.extend_from_slice(&[0; risc0_zkp::core::digest::DIGEST_BYTES]);
+        let script = fields.script();
+        let cache = Cache::new(0);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        expect_zk_err(
+            execute_zk_script_with_flags(&script, &cache, &reused_values, legacy_flags()),
+            "legacy long control proof",
+            ExpectedZkError::StartsWith("R0: control_id mismatch:"),
+        );
+        expect_zk_err(
+            execute_zk_script_with_flags(&script, &cache, &reused_values, hardened_flags()),
+            "hardened long control proof",
+            ExpectedZkError::Exact("Control inclusion proof length 9 exceeds maximum 8"),
+        );
     }
 
     fn legacy_flags() -> EngineFlags {

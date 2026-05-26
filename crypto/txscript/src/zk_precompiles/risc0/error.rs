@@ -18,6 +18,8 @@ pub enum R0Error {
     InvalidSealLength(usize),
     #[error("Invalid digest list length: {0}")]
     InvalidDigestListLength(usize),
+    #[error("Control inclusion proof length {actual} exceeds maximum {max}")]
+    ControlInclusionProofTooLong { actual: usize, max: usize },
     #[error("Invalid merkle index length: {0}")]
     InvalidMerkleIndexLength(usize),
     #[error("Invalid hash function encoding length: {0}")]
