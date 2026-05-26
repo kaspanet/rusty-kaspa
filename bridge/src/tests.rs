@@ -1717,6 +1717,50 @@ mod comprehensive_tests {
     }
 
     #[test]
+    fn test_worker_prom_session_syncs_start_time_for_current_wallet() {
+        use crate::prom::{WorkerContext, init_metrics, record_share_found};
+        use prometheus::gather;
+
+        init_metrics();
+
+        let handler = ShareHandler::new("Instance 1".to_string());
+        let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "ks0".to_string();
+
+        // Stats entry created before wallet is known (no prom session yet).
+        let stats_before_wallet = handler.get_create_stats(&ctx);
+        assert_eq!(*stats_before_wallet.worker_name.lock(), "ks0");
+
+        let wallet = "kaspa:qr8example123456789012345678901234567890123456789012345678901234567890".to_string();
+        *ctx.wallet_addr.lock() = wallet.clone();
+
+        // Reusing the same in-memory stats entry must still sync prom start time for the wallet.
+        let stats_after_wallet = handler.get_create_stats(&ctx);
+        assert!(Arc::ptr_eq(&stats_before_wallet.worker_name, &stats_after_wallet.worker_name));
+
+        record_share_found(&WorkerContext::from_stratum("Instance 1", &ctx, ""), 8192.0);
+
+        let mut found_start_time = false;
+        for family in gather() {
+            if family.name() != "ks_worker_start_time" {
+                continue;
+            }
+            for metric in family.get_metric() {
+                let labels: std::collections::HashMap<&str, &str> = metric.get_label().iter().map(|l| (l.name(), l.value())).collect();
+                if labels.get("instance") == Some(&"Instance 1")
+                    && labels.get("worker") == Some(&"ks0")
+                    && labels.get("wallet") == Some(&wallet.as_str())
+                    && metric.get_gauge().value() > 0.0
+                {
+                    found_start_time = true;
+                }
+            }
+        }
+
+        assert!(found_start_time, "ks_worker_start_time must exist for the authorized wallet label set");
+    }
+
+    #[test]
     fn test_share_handler_vardiff_management() {
         // Test: VarDiff difficulty management
         let handler = ShareHandler::new("test-instance".to_string());
@@ -2836,6 +2880,20 @@ mod comprehensive_tests {
         // Set ID to 0 (should return None)
         ctx.set_id(0);
         assert!(ctx.id().is_none(), "ID 0 should return None");
+    }
+
+    #[test]
+    fn test_default_worker_name_when_miner_omits_dot_worker() {
+        let ctx = create_test_context_sync();
+        ctx.set_id(9);
+        assert!(ctx.worker_name.lock().is_empty());
+
+        ctx.ensure_default_worker_name();
+        assert_eq!(ctx.effective_worker_name(), "asic-9");
+        assert!(!ctx.effective_worker_name().contains("127.0.0.1"));
+
+        *ctx.worker_name.lock() = "rig-a".to_string();
+        assert_eq!(ctx.effective_worker_name(), "rig-a");
     }
 
     #[test]

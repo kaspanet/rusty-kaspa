@@ -496,6 +496,11 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
     serve_http_loop(listener, HttpMode::Aggregated { web_bind: web_bind_for_status }).await
 }
 
+/// Worker label used for stats/metrics: explicit name or stable default (`asic-{id}`).
+pub fn prom_worker_id(ctx: &crate::stratum_context::StratumContext) -> String {
+    ctx.effective_worker_name()
+}
+
 /// Worker context for metrics
 pub struct WorkerContext {
     pub instance_id: String,
@@ -508,6 +513,38 @@ pub struct WorkerContext {
 impl WorkerContext {
     pub fn labels(&self) -> Vec<&str> {
         vec![&self.instance_id, &self.worker_name, &self.miner, &self.wallet, &self.ip]
+    }
+
+    /// Build Prometheus worker labels from a live Stratum connection.
+    pub fn from_stratum(instance_id: &str, ctx: &crate::stratum_context::StratumContext, miner: &str) -> Self {
+        Self::from_stratum_parts(instance_id, &prom_worker_id(ctx), ctx, miner)
+    }
+
+    /// Build Prometheus worker labels when the stats key is already known.
+    pub fn from_stratum_parts(
+        instance_id: &str,
+        worker_name: &str,
+        ctx: &crate::stratum_context::StratumContext,
+        miner: &str,
+    ) -> Self {
+        Self {
+            instance_id: instance_id.to_string(),
+            worker_name: worker_name.to_string(),
+            miner: miner.to_string(),
+            wallet: ctx.wallet_addr.lock().clone(),
+            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
+        }
+    }
+}
+
+/// Build Prometheus worker labels from a Stratum session (stable name, no empty `worker` label).
+pub fn worker_context(instance_id: &str, ctx: &crate::stratum_context::StratumContext, miner: impl Into<String>) -> WorkerContext {
+    WorkerContext {
+        instance_id: instance_id.to_string(),
+        worker_name: ctx.effective_worker_name(),
+        miner: miner.into(),
+        wallet: ctx.wallet_addr.lock().clone(),
+        ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
     }
 }
 
@@ -708,7 +745,7 @@ pub fn record_balances(instance_id: &str, balances: &[(String, u64)]) {
 }
 
 fn metric_matches_instance(metric: &prometheus::proto::Metric, instance_id: &str) -> bool {
-    metric.get_label().iter().any(|label| label.get_name() == "instance" && label.get_value() == instance_id)
+    metric.get_label().iter().any(|label| label.name() == "instance" && label.value() == instance_id)
 }
 
 fn filter_metric_families_for_instance(metric_families: Vec<MetricFamily>, instance_id: &str) -> Vec<MetricFamily> {
@@ -716,7 +753,7 @@ fn filter_metric_families_for_instance(metric_families: Vec<MetricFamily>, insta
 
     for family in metric_families {
         let has_instance_label =
-            family.get_metric().iter().any(|metric| metric.get_label().iter().any(|label| label.get_name() == "instance"));
+            family.get_metric().iter().any(|metric| metric.get_label().iter().any(|label| label.name() == "instance"));
 
         if !has_instance_label {
             out.push(family);
@@ -733,8 +770,8 @@ fn filter_metric_families_for_instance(metric_families: Vec<MetricFamily>, insta
     out
 }
 
-/// Initialize worker counters (set to 0 to create the metric)
-pub fn init_worker_counters(worker: &WorkerContext) {
+/// Register counter/gauge time series for a worker (idempotent).
+fn init_worker_counter_series(worker: &WorkerContext) {
     if let Some(counter) = SHARE_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc_by(0.0);
     }
@@ -763,19 +800,46 @@ pub fn init_worker_counters(worker: &WorkerContext) {
     if let Some(counter) = JOB_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc_by(0.0);
     }
-    // Set worker start time (Unix timestamp in seconds)
-    if let Some(gauge) = WORKER_START_TIME.get() {
-        let start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
-        gauge.with_label_values(&worker.labels()).set(start_time);
-    }
-    // Initialize worker difficulty to 0 (will be updated when difficulty is set)
     if let Some(gauge) = WORKER_CURRENT_DIFFICULTY.get() {
-        gauge.with_label_values(&worker.labels()).set(0.0);
+        let metric = gauge.with_label_values(&worker.labels());
+        if metric.get() <= 0.0 {
+            metric.set(0.0);
+        }
     }
+    update_worker_activity(worker);
+}
+
+/// Ensure Prometheus worker metrics exist for the current `(instance, worker, wallet)` labels.
+/// `session_start_unix` should be aligned with in-memory `WorkStats.start_time` when available so
+/// dashboard hashrate/uptime match the terminal table.
+pub fn ensure_worker_session_metrics(worker: &WorkerContext, session_start_unix: f64) {
+    if worker.wallet.is_empty() {
+        return;
+    }
+
+    init_worker_counter_series(worker);
+
+    if let Some(gauge) = WORKER_START_TIME.get() {
+        let metric = gauge.with_label_values(&worker.labels());
+        if metric.get() <= 0.0 {
+            metric.set(session_start_unix);
+        }
+    }
+
+    update_worker_activity(worker);
+}
+
+/// Initialize worker counters (set to 0 to create the metric)
+pub fn init_worker_counters(worker: &WorkerContext) {
+    let start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
+    ensure_worker_session_metrics(worker, start_time);
 }
 
 /// Update the current mining difficulty for a worker
 pub fn update_worker_difficulty(worker: &WorkerContext, difficulty: f64) {
+    let start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
+    ensure_worker_session_metrics(worker, start_time);
+
     if let Some(gauge) = WORKER_CURRENT_DIFFICULTY.get() {
         gauge.with_label_values(&worker.labels()).set(difficulty);
     }
@@ -847,10 +911,10 @@ fn parse_worker_labels(labels: &[prometheus::proto::LabelPair]) -> (String, Stri
     let mut wallet = String::new();
 
     for label in labels {
-        match label.get_name() {
-            "instance" => instance = label.get_value().to_string(),
-            "worker" => worker = label.get_value().to_string(),
-            "wallet" => wallet = label.get_value().to_string(),
+        match label.name() {
+            "instance" => instance = label.value().to_string(),
+            "worker" => worker = label.value().to_string(),
+            "wallet" => wallet = label.value().to_string(),
             _ => {}
         }
     }
@@ -914,18 +978,18 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     let mut internal_cpu_blocks_accepted: Option<u64> = None;
 
     for family in all_families.iter() {
-        let name = family.get_name();
+        let name = family.name();
 
         if name == "ks_estimated_network_hashrate_gauge"
             && let Some(metric) = family.get_metric().first()
         {
-            stats.networkHashrate = metric.get_gauge().get_value() as u64;
+            stats.networkHashrate = metric.get_gauge().value() as u64;
         }
 
         if name == "ks_network_difficulty_gauge"
             && let Some(metric) = family.get_metric().first()
         {
-            stats.networkDifficulty = metric.get_gauge().get_value();
+            stats.networkDifficulty = metric.get_gauge().value();
         }
 
         // Network height / block count gauge. Historical name is "ks_network_block_count".
@@ -933,7 +997,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         if (name == "ks_network_block_count" || name == "ks_network_block_count_gauge")
             && let Some(metric) = family.get_metric().first()
         {
-            stats.networkBlockCount = metric.get_gauge().get_value() as u64;
+            stats.networkBlockCount = metric.get_gauge().value() as u64;
         }
 
         // Internal CPU miner metrics (exported when the bridge is built with `rkstratum_cpu_miner`
@@ -941,22 +1005,22 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         if name == "ks_internal_cpu_hashrate_ghs"
             && let Some(metric) = family.get_metric().first()
         {
-            internal_cpu_hashrate_ghs = Some(metric.get_gauge().get_value());
+            internal_cpu_hashrate_ghs = Some(metric.get_gauge().value());
         }
         if name == "ks_internal_cpu_hashes_tried_total"
             && let Some(metric) = family.get_metric().first()
         {
-            internal_cpu_hashes_tried = Some(metric.get_counter().get_value().max(0.0) as u64);
+            internal_cpu_hashes_tried = Some(metric.get_counter().value().max(0.0) as u64);
         }
         if name == "ks_internal_cpu_blocks_submitted_total"
             && let Some(metric) = family.get_metric().first()
         {
-            internal_cpu_blocks_submitted = Some(metric.get_counter().get_value().max(0.0) as u64);
+            internal_cpu_blocks_submitted = Some(metric.get_counter().value().max(0.0) as u64);
         }
         if name == "ks_internal_cpu_blocks_accepted_total"
             && let Some(metric) = family.get_metric().first()
         {
-            internal_cpu_blocks_accepted = Some(metric.get_counter().get_value().max(0.0) as u64);
+            internal_cpu_blocks_accepted = Some(metric.get_counter().value().max(0.0) as u64);
         }
     }
 
@@ -994,12 +1058,12 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     }
 
     for family in families_for_workers_and_blocks {
-        let name = family.get_name();
+        let name = family.name();
 
         // Parse block gauge
         if name == "ks_mined_blocks_gauge" {
             for metric in family.get_metric() {
-                if metric.get_gauge().get_value() > 0.0 {
+                if metric.get_gauge().value() > 0.0 {
                     let labels = metric.get_label();
                     let mut instance = String::new();
                     let mut worker = String::new();
@@ -1010,14 +1074,14 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                     let mut bluescore = String::new();
 
                     for label in labels {
-                        match label.get_name() {
-                            "instance" => instance = label.get_value().to_string(),
-                            "worker" => worker = label.get_value().to_string(),
-                            "wallet" => wallet = label.get_value().to_string(),
-                            "timestamp" => timestamp = label.get_value().to_string(),
-                            "hash" => hash = label.get_value().to_string(),
-                            "nonce" => nonce = label.get_value().to_string(),
-                            "bluescore" => bluescore = label.get_value().to_string(),
+                        match label.name() {
+                            "instance" => instance = label.value().to_string(),
+                            "worker" => worker = label.value().to_string(),
+                            "wallet" => wallet = label.value().to_string(),
+                            "timestamp" => timestamp = label.value().to_string(),
+                            "hash" => hash = label.value().to_string(),
+                            "nonce" => nonce = label.value().to_string(),
+                            "bluescore" => bluescore = label.value().to_string(),
                             _ => {}
                         }
                     }
@@ -1046,7 +1110,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
-                    let count = metric.get_counter().get_value() as u64;
+                    let count = metric.get_counter().value() as u64;
                     let entry = worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
                     // Aggregate across multiple time series for the same (instance,worker,wallet)
                     entry.blocks = entry.blocks.saturating_add(count);
@@ -1061,7 +1125,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
-                    let total_hash_value = metric.get_counter().get_value();
+                    let total_hash_value = metric.get_counter().value();
                     // Store hash value for hashrate calculation (aggregate across label variants)
                     *worker_hash_values.entry(key.clone()).or_insert(0.0) += total_hash_value;
                     // Ensure worker exists in stats
@@ -1077,7 +1141,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
-                    let count = metric.get_counter().get_value() as u64;
+                    let count = metric.get_counter().value() as u64;
                     let entry = worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
                     entry.shares = entry.shares.saturating_add(count);
                     stats.totalShares = stats.totalShares.saturating_add(count);
@@ -1093,14 +1157,14 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                 let labels = metric.get_label();
                 let (instance, worker_key, wallet) = parse_worker_labels(labels);
                 for label in labels {
-                    if label.get_name() == "type" {
-                        share_type = label.get_value().to_string();
+                    if label.name() == "type" {
+                        share_type = label.value().to_string();
                     }
                 }
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
-                    let count = metric.get_counter().get_value() as u64;
+                    let count = metric.get_counter().value() as u64;
                     let worker = worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
 
                     if share_type == "stale" {
@@ -1116,7 +1180,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         if name == "ks_estimated_network_hashrate"
             && let Some(metric) = family.get_metric().first()
         {
-            stats.networkHashrate = metric.get_gauge().get_value() as u64;
+            stats.networkHashrate = metric.get_gauge().value() as u64;
         }
 
         // Parse worker start time
@@ -1126,7 +1190,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
-                    let start_time_secs = metric.get_gauge().get_value();
+                    let start_time_secs = metric.get_gauge().value();
                     // Use earliest start time across multiple label variants
                     worker_start_times
                         .entry(key.clone())
@@ -1149,7 +1213,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
-                    let difficulty = metric.get_gauge().get_value();
+                    let difficulty = metric.get_gauge().value();
                     // Use the most recent difficulty value (if multiple label variants exist)
                     if difficulty > 0.0 {
                         worker_difficulties.insert(key.clone(), difficulty);
