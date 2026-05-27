@@ -4,7 +4,7 @@ use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
-    config::params::{TESTNET_PARAMS, TESTNET12_PARAMS},
+    config::params::TESTNET_PARAMS,
     constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_TOCCATA},
     hashing::covenant_id::covenant_id,
     network::NetworkType,
@@ -289,11 +289,7 @@ async fn main() {
 
     let info = rpc_client.get_block_dag_info().await.expect("Failed to get block dag info.");
 
-    let coinbase_maturity = match info.network.suffix {
-        Some(11) => panic!("TN11 is not supported on this version"),
-        Some(12) => TESTNET12_PARAMS.coinbase_maturity(),
-        None | Some(_) => TESTNET_PARAMS.coinbase_maturity(),
-    };
+    let coinbase_maturity = TESTNET_PARAMS.coinbase_maturity();
     info!(
         "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {},
 \tMedian time: {}, \n\tDAA score: {}, \n\tPruning point: {}, \n\tTips: {}, \n\t{} virtual parents: ...{}, \n\tCoinbase maturity: {}",
