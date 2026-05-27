@@ -1,5 +1,7 @@
 use crate::{
+    EngineFlags,
     data_stack::Stack,
+    runtime_resource_meter::RuntimeResourceMeter,
     zk_precompiles::{
         ZkPrecompile,
         risc0::{
@@ -9,7 +11,6 @@ use crate::{
         },
     },
 };
-use kaspa_txscript_errors::TxScriptError;
 use risc0_zkp::core::digest::DIGEST_BYTES;
 pub use risc0_zkp::core::digest::Digest;
 mod error;
@@ -19,6 +20,17 @@ pub mod receipt_claim;
 
 pub struct R0SuccinctPrecompile;
 pub use error::R0Error;
+
+// Matches risc0-zkvm's ALLOWED_CODE_MERKLE_DEPTH for the Poseidon2 control root.
+const POSEIDON2_CONTROL_MERKLE_DEPTH: usize = 8;
+
+/// Returns the control Merkle tree depth for the supported RISC0 hash function.
+fn control_merkle_depth_for(hashfn: HashFnId) -> usize {
+    match hashfn {
+        HashFnId::Poseidon2 => POSEIDON2_CONTROL_MERKLE_DEPTH,
+        HashFnId::Blake2b | HashFnId::Sha256 => unreachable!("unsupported hashfn was checked above"),
+    }
+}
 
 fn parse_digest(bytes: impl AsRef<[u8]>) -> Result<Digest, R0Error> {
     let bytes = bytes.as_ref();
@@ -80,15 +92,28 @@ impl ZkPrecompile for R0SuccinctPrecompile {
     /// - control inclusion proof digests (bytes)
     /// - control index (bytes, u32 le)
     /// - claim (bytes)
-    fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error> {
+    fn verify_zk(dstack: &mut Stack, _meter: &mut RuntimeResourceMeter, flags: EngineFlags) -> Result<(), Self::Error> {
         let [claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn] = dstack.pop_raw()?;
 
         let control_id = parse_digest(control_id)?;
         let seal = parse_seal(seal)?;
         let claim = parse_digest(claim)?;
         let hashfn = parse_hashfn(hashfn)?;
+
+        // For now we only support the poseidon2 hashfn.
+        // See usage of poseidon2's ALLOWED_CONTROL_ROOT within verify_integrity::check_code
+        if hashfn != HashFnId::Poseidon2 {
+            return Err(R0Error::UnsupportedHashFn(hashfn));
+        }
+
         let control_index = parse_merkle_index(control_index)?;
         let control_digests = parse_digest_list(control_digests)?;
+
+        let max_control_proof_len = control_merkle_depth_for(hashfn);
+        if flags.zk_hardening_enabled && control_digests.len() > max_control_proof_len {
+            return Err(R0Error::ControlInclusionProofTooLong { actual: control_digests.len(), max: max_control_proof_len });
+        }
+
         let control_inclusion_proof = MerkleProof { index: control_index, digests: control_digests };
         let rcpt = SuccinctReceipt::new(seal, control_id, claim, hashfn, control_inclusion_proof);
 
@@ -109,7 +134,7 @@ impl ZkPrecompile for R0SuccinctPrecompile {
         // If we were to bypass the compute_assert_claim step, then an attacker could modify the claim in the receipt
         // to match whatever they want and just providing some arbitrary proof. This is why this step is crucial.
         // As this step binds that the provided image id and journal are indeed the ones that were used to generate the proof.
-        compute_assert_claim(rcpt.claim(), image_id, journal).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
+        compute_assert_claim(rcpt.claim(), image_id, journal)?;
 
         Ok(())
     }
