@@ -86,15 +86,34 @@ pub enum BlockLogEvent {
 
 pub struct BlockEventLogger {
     bps: usize,
-    toccata_activation: ForkActivation,
+    countdown_activation: CountdownActivation,
     sender: UnboundedSender<BlockLogEvent>,
     receiver: Mutex<Option<UnboundedReceiver<BlockLogEvent>>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CountdownActivation {
+    name: &'static str,
+    activation: ForkActivation,
+}
+
+impl CountdownActivation {
+    fn latest(toccata_activation: ForkActivation, zk_hardening_activation: ForkActivation) -> Self {
+        [
+            Self { name: "Toccata", activation: toccata_activation },
+            Self { name: "Toccata ZK hardening", activation: zk_hardening_activation },
+        ]
+        .into_iter()
+        .filter(|candidate| candidate.activation != ForkActivation::never())
+        .max_by_key(|candidate| candidate.activation.daa_score())
+        .unwrap_or(Self { name: "Toccata", activation: ForkActivation::never() })
+    }
+}
+
 impl BlockEventLogger {
-    pub fn new(bps: usize, toccata_activation: ForkActivation) -> Self {
+    fn new(bps: usize, countdown_activation: CountdownActivation) -> Self {
         let (sender, receiver) = unbounded_channel();
-        Self { bps, toccata_activation, sender, receiver: Mutex::new(Some(receiver)) }
+        Self { bps, countdown_activation, sender, receiver: Mutex::new(Some(receiver)) }
     }
 
     pub fn log(&self, event: BlockLogEvent) {
@@ -105,7 +124,7 @@ impl BlockEventLogger {
     fn start(&self) {
         let chunk_limit = self.bps * 10; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
         let receiver = self.receiver.lock().take().expect("expected to be called once");
-        let toccata_activation = self.toccata_activation;
+        let countdown_activation = self.countdown_activation;
         tokio::spawn(async move {
             let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
             tokio::pin!(chunk_stream);
@@ -141,10 +160,10 @@ impl BlockEventLogger {
                     }
                 }
 
-                fn toccata_countdown_suffix(toccata_activation: ForkActivation, daa_score: Option<u64>) -> String {
+                fn activation_countdown_suffix(countdown: CountdownActivation, daa_score: Option<u64>) -> String {
                     daa_score
-                        .and_then(|daa_score| toccata_activation.is_within_range_before_activation(daa_score, 36_000))
-                        .map(|dist| format!(" \t [Toccata countdown: -{}]", dist))
+                        .and_then(|daa_score| countdown.activation.is_within_range_before_activation(daa_score, 36_000))
+                        .map(|dist| format!(" \t [{} countdown: -{}]", countdown.name, dist))
                         .unwrap_or_default()
                 }
 
@@ -202,24 +221,24 @@ impl BlockEventLogger {
                     (1, 0) => info!(
                         "Accepted block {} via submit block{}",
                         summary.submit(),
-                        toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                        activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
                     ),
                     (n, 0) => info!(
                         "Accepted {} blocks ...{} via submit block{}",
                         n,
                         summary.submit(),
-                        toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                        activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
                     ),
                     (0, 1) => info!(
                         "Accepted block {} via relay{}",
                         summary.relay(),
-                        toccata_countdown_suffix(toccata_activation, summary.relay_rep_daa_score())
+                        activation_countdown_suffix(countdown_activation, summary.relay_rep_daa_score())
                     ),
                     (0, m) => info!(
                         "Accepted {} blocks ...{} via relay{}",
                         m,
                         summary.relay(),
-                        toccata_countdown_suffix(toccata_activation, summary.relay_rep_daa_score())
+                        activation_countdown_suffix(countdown_activation, summary.relay_rep_daa_score())
                     ),
                     (n, m) => {
                         info!(
@@ -228,7 +247,7 @@ impl BlockEventLogger {
                             summary.submit(),
                             m,
                             n,
-                            toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                            activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
                         )
                     }
                 }
@@ -376,7 +395,10 @@ impl FlowContext {
                 tick_service,
                 notification_root,
                 user_agent_rules,
-                block_event_logger: Some(BlockEventLogger::new(bps, config.toccata_activation)),
+                block_event_logger: Some(BlockEventLogger::new(
+                    bps,
+                    CountdownActivation::latest(config.toccata_activation, config.zk_hardening_activation),
+                )),
                 bps,
                 orphan_resolution_range,
                 max_orphans,

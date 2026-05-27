@@ -179,6 +179,7 @@ pub struct VirtualStateProcessor {
 
     // KIP-21 finality-anchor activation: gates inactivity_shortcut inclusion in mergeset_context_hash.
     pub(crate) zk_hardening_activation: ForkActivation,
+    pub(crate) zk_hardening_logger: ForkLogger,
 
     // SMT stores
     pub(super) smt_stores: Arc<kaspa_smt_store::processor::SmtStores>,
@@ -255,6 +256,12 @@ impl VirtualStateProcessor {
             toccata_activation: params.toccata_activation,
             toccata_logger: ForkLogger::new("virtual state processing rules", true),
             zk_hardening_activation: params.zk_hardening_activation,
+            zk_hardening_logger: ForkLogger::new_with_fork(
+                "Toccata ZK hardening",
+                "TOCCATA ZK HARDENING",
+                "virtual state processing rules",
+                true,
+            ),
             smt_stores: storage.smt_stores.clone(),
             smt_metadata_store: storage.smt_metadata_store.clone(),
             _mining_rules: mining_rules,
@@ -588,6 +595,9 @@ impl VirtualStateProcessor {
 
         if self.toccata_activation.is_within_range_from_activation(virtual_daa_window.daa_score, 10_000) {
             self.toccata_logger.report_activation();
+        }
+        if self.zk_hardening_activation.is_within_range_from_activation(virtual_daa_window.daa_score, 10_000) {
+            self.zk_hardening_logger.report_activation();
         }
 
         // Compute accepted_id_digests

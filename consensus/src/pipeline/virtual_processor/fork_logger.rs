@@ -7,13 +7,24 @@ use std::sync::{
 #[derive(Clone)]
 pub(crate) struct ForkLogger {
     steps: Arc<AtomicU8>,
+    fork_name: &'static str,
+    banner_label: &'static str,
     module_name: &'static str,
     show_ascii_art: bool,
 }
 
 impl ForkLogger {
     pub fn new(module_name: &'static str, show_ascii_art: bool) -> Self {
-        Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)), module_name, show_ascii_art }
+        Self::new_with_fork("Toccata", "TOCCATA", module_name, show_ascii_art)
+    }
+
+    pub fn new_with_fork(
+        fork_name: &'static str,
+        banner_label: &'static str,
+        module_name: &'static str,
+        show_ascii_art: bool,
+    ) -> Self {
+        Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)), fork_name, banner_label, module_name, show_ascii_art }
     }
 
     const ACTIVATE: u8 = 0;
@@ -28,11 +39,12 @@ impl ForkLogger {
   | |/ _ \ / __/ __/ _` | __/ _` |
   | | (_) | (_| (_| (_| | || (_| |
   |_|\___/ \___\___\__,_|\__\__,_|
-                    TOCCATA
-"#
+                    {}
+"#,
+                    self.banner_label
                 );
             }
-            info!(target: FORK_KEYWORD, "[Toccata] Activated for {}", self.module_name);
+            info!(target: FORK_KEYWORD, "[{}] Activated for {}", self.fork_name, self.module_name);
             true
         } else {
             false
