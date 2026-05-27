@@ -13,7 +13,6 @@ use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::{Config, params::ForkActivation};
 use kaspa_consensus_core::errors::block::RuleError;
-use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
@@ -62,10 +61,6 @@ use uuid::Uuid;
 
 /// The P2P protocol version.
 const PROTOCOL_VERSION: u32 = 10;
-
-/// Testnet 12 was launched with the Toccata flow set under protocol version 9.
-const TN12_LAUNCH_PROTOCOL_VERSION: u32 = 9;
-const TN12_NETWORK: NetworkId = NetworkId::with_suffix(NetworkType::Testnet, 12);
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -814,14 +809,7 @@ impl ConnectionInitializer for FlowContext {
 
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
-        // TN12 launched Toccata flows under protocol 9. Normalize those peers to the current
-        // protocol locally while preserving the originally advertised version in peer properties.
-        let peer_protocol_version = if self.config.net == TN12_NETWORK && peer_version.protocol_version == TN12_LAUNCH_PROTOCOL_VERSION
-        {
-            PROTOCOL_VERSION
-        } else {
-            peer_version.protocol_version
-        };
+        let peer_protocol_version = peer_version.protocol_version;
 
         // One day before activation, upgraded nodes start disconnecting outdated peers from the P2P network.
         const ONE_DAY_SECONDS: u64 = 24 * 60 * 60;

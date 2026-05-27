@@ -577,8 +577,7 @@ async fn daemon_compute_budget_relay_test() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
 
     let args = Args {
-        testnet: true,
-        testnet_suffix: 12,
+        simnet: true,
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true,
@@ -814,8 +813,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     let compute_budget_relay_test_params =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
     let args = Args {
-        testnet: true,
-        testnet_suffix: 12,
+        simnet: true,
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true,

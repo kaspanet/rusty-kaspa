@@ -16,7 +16,7 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, TESTNET12_PARAMS};
+use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, TESTNET_PARAMS};
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
@@ -2280,7 +2280,7 @@ fn build_p2pk_block(
     (consensus, wait_handles, transactions, block.to_immutable())
 }
 
-fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
+fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
     let redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
     let stark_spk = pay_to_script_hash_script(&redeem_script);
     let output_spk = ScriptPublicKey::from_vec(0, vec![OpTrue]);
@@ -2351,7 +2351,12 @@ fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle
         })
         .collect::<Vec<_>>();
 
-    let config = ConfigBuilder::new(TESTNET12_PARAMS)
+    let mut params = TESTNET_PARAMS;
+    params.crescendo_activation = ForkActivation::always();
+    params.toccata_activation = ForkActivation::always();
+    params.zk_hardening_activation = ForkActivation::always();
+
+    let config = ConfigBuilder::new(params)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             let mut genesis_multiset = MuHash::new();
@@ -2430,10 +2435,10 @@ async fn mass_per_sig_op_does_not_change_block_capacity() {
 }
 
 #[tokio::test]
-async fn testnet12_accepts_one_valid_stark_proof_but_rejects_two() {
+async fn toccata_accepts_one_valid_stark_proof_but_rejects_two() {
     init_allocator_with_default_settings();
 
-    let (consensus, wait_handles, genesis_hash, transactions) = init_testnet12_stark_fixture();
+    let (consensus, wait_handles, genesis_hash, transactions) = init_toccata_stark_fixture();
     let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
     let one_stark_block = consensus
         .build_utxo_valid_block_with_parents(new_unique(), vec![genesis_hash], miner_data.clone(), vec![transactions[0].clone()])
@@ -2450,7 +2455,7 @@ async fn testnet12_accepts_one_valid_stark_proof_but_rejects_two() {
         .to_immutable();
     assert_match!(
         consensus.validate_and_insert_block(two_stark_block).virtual_state_task.await,
-        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == TESTNET12_PARAMS.block_mass_limits().after().compute
+        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == consensus.params().block_mass_limits().after().compute
     );
     consensus.shutdown(wait_handles);
 }
