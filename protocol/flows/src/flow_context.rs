@@ -760,8 +760,8 @@ impl ConnectionInitializer for FlowContext {
 
         let local_address = self.address_manager.lock().best_local_address();
 
-        // Networks with a scheduled Toccata activation advertise protocol 10. Other networks
-        // still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
+        // Networks with a scheduled Toccata activation advertise the current protocol version.
+        // Other networks still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
         let advertise_toccata_p2p = self.config.toccata_activation != ForkActivation::never();
         let advertised_protocol_version = if advertise_toccata_p2p { PROTOCOL_VERSION } else { 9 };
 

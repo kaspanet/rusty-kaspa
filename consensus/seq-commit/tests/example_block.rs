@@ -153,9 +153,10 @@ fn example_seq_commit_for_block() {
         .collect();
     let payload_root = miner_payload_root(payload_leaves.into_iter());
 
-    // --- State root and final commitment ---
+    // --- State root and final commitment (post-hardening: wrap lanes_root into activity_root). ---
     let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&ctx, &payload_root);
-    let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &pd });
+    let activity_root = kaspa_seq_commit::hashing::activity_root_hash(&kaspa_hashes::ZERO_HASH, &lanes_root);
+    let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
     let commitment = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
 
     // Recomputing with the same inputs yields the same result

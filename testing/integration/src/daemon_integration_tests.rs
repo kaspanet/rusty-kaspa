@@ -131,6 +131,63 @@ async fn daemon_toccata_activation_log_file_test() {
     );
 }
 
+/// KIP-21 zk_hardening_activation crossing: pre-activation blocks commit
+/// `seq_commit` with `inactivity_shortcut: None` (omitted from the mergeset
+/// context hash); post-activation blocks fold the shortcut in. Both layouts
+/// of `SmtBlockMetadata` (always-stored shortcut block) must roundtrip and
+/// the chain must continue to advance across the boundary.
+///
+/// If the activation gate were wired wrong on either side, `build_seq_commit`
+/// and `recompute_seq_commit` would diverge and the daemon would disqualify
+/// its own mined blocks; the assert on virtual_daa_score is the smoke test.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_zk_hardening_activation_test() {
+    init_allocator_with_default_settings();
+
+    let test_dir = tempfile::tempdir().unwrap();
+    let params_path = test_dir.path().join("params.json");
+    // Activate at DAA score 3; mine across it.
+    fs::write(&params_path, r#"{"skip_proof_of_work":true,"zk_hardening_activation":3}"#).unwrap();
+
+    let args = Args {
+        simnet: true,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        disable_upnp: true,
+        disable_dns_seeding: true,
+        outbound_target: 0,
+        override_params_file: Some(params_path.to_string_lossy().to_string()),
+        ..Default::default()
+    };
+
+    let _runtime = KaspadRuntime::from_args(&args);
+    let mut kaspad = Daemon::new_random_with_args(args, 10);
+    let rpc_client = kaspad.start().await;
+
+    let miner_address = Address::new(kaspad.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
+    let target_daa_score: u64 = 6;
+    for _ in 1..=target_daa_score {
+        let template = rpc_client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client.submit_block(template.block, false).await.unwrap();
+    }
+
+    let check_client = rpc_client.clone();
+    wait_for(
+        50,
+        100,
+        move || {
+            let client = check_client.clone();
+            Box::pin(async move { client.get_server_info().await.unwrap().virtual_daa_score >= target_daa_score })
+        },
+        "daemon did not cross zk_hardening_activation boundary",
+    )
+    .await;
+
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_sanity_test() {
     init_allocator_with_default_settings();
@@ -856,7 +913,8 @@ async fn daemon_pruning_seqcommit_sync_test() {
 
     // Step 1: advance the chain to ~1.5 * finality depth from genesis.
     // We will create a seqcommit transaction at that height, referencing a block
-    // almost a full finality depth below the tip.
+    // almost a full finality_depth below the tip (KIP-21 seqcommit look-back is
+    // bounded by `finality_depth`).
     let finality_depth = params.finality_depth();
     let initial_blocks = finality_depth.saturating_mul(3).saturating_div(2) as usize;
     for _ in 0..initial_blocks {
@@ -876,7 +934,7 @@ async fn daemon_pruning_seqcommit_sync_test() {
     )
     .await;
 
-    // Choose a target almost a full finality depth below the current tip, leaving
+    // Choose a target almost a full finality_depth below the current tip, leaving
     // a small buffer for the confirmation and spend blocks.
     let dag_info = rpc_client1.get_block_dag_info().await.unwrap();
     let remaining = finality_depth.saturating_sub(3);
@@ -943,9 +1001,13 @@ async fn daemon_pruning_seqcommit_sync_test() {
 
     // Step 2: advance the pruning point so it moves off genesis and ends up above the
     // target block that the seqcommit script references.
+    //
+    // KIP-21: the seqcommit look-back is `finality_depth`, so the target sits at
+    // depth ≈ F below the initial tip. Pruning samples space by F in blue_score, so
+    // PP may need to advance to climb past the target.
     let mut dag_info = rpc_client1.get_block_dag_info().await.unwrap();
     let mut extra_blocks = 0usize;
-    let extra_blocks_limit = params.pruning_depth().saturating_add(30) as usize;
+    let extra_blocks_limit = params.pruning_depth().saturating_add(params.finality_depth()).saturating_add(30) as usize;
     while (dag_info.pruning_point_hash == SIMNET_GENESIS.hash
         || !is_ancestor_in_selected_parent_chain(&rpc_client1, dag_info.pruning_point_hash, target_block).await)
         && extra_blocks < extra_blocks_limit
@@ -1198,6 +1260,36 @@ async fn daemon_ibd_smt_state_sync_test() {
             })
         },
         "syncee did not complete SMT-era IBD within timeout (suspected sync_new_smt_state stall)",
+    )
+    .await;
+
+    // Phase 6: mine finality_depth + buffer blocks on the syncer and assert
+    // the syncee catches up. Verifies syncer/syncee shortcut agreement for live
+    // blocks whose target_bs lands in the IBD-imported lane range.
+    let finality_depth = params.finality_depth() as usize;
+    let post_ibd_blocks = finality_depth + 30;
+    for _ in 0..post_ibd_blocks {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+
+    let post_ibd_target_score = rpc_client1.get_server_info().await.unwrap().virtual_daa_score;
+    let post_ibd_target_pp = rpc_client1.get_block_dag_info().await.unwrap().pruning_point_hash;
+    let post_ibd_check = rpc_client2.clone();
+    wait_for(
+        100,
+        600,
+        move || {
+            let client = post_ibd_check.clone();
+            Box::pin(async move {
+                let server_info = client.get_server_info().await.unwrap();
+                if server_info.virtual_daa_score < post_ibd_target_score {
+                    return false;
+                }
+                client.get_block_dag_info().await.unwrap().pruning_point_hash == post_ibd_target_pp
+            })
+        },
+        "syncee did not accept post-IBD blocks",
     )
     .await;
 

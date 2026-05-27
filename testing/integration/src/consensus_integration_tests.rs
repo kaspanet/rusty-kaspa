@@ -48,9 +48,7 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_rpc_core::RpcHeader;
-use kaspa_seq_commit::hashing::{
-    activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, seq_commit_timestamp, smt_leaf_hash,
-};
+use kaspa_seq_commit::hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, smt_leaf_hash};
 use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
 use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, pay_to_script_hash_script};
@@ -1481,7 +1479,7 @@ fn chain_seq_commit_context_hash(consensus: &TestConsensus, accepting_block: Has
     let header = consensus.get_header(accepting_block).unwrap();
     let parent_header = consensus.get_header(header.direct_parents()[0]).unwrap();
     mergeset_context_hash(&MergesetContext {
-        timestamp: seq_commit_timestamp(parent_header.timestamp),
+        timestamp: parent_header.timestamp,
         daa_score: header.daa_score,
         blue_score: header.blue_score,
     })
@@ -1495,6 +1493,7 @@ fn assert_chain_seq_commit_lane(consensus: &TestConsensus, accepting_block: Hash
             payload_and_ctx_digest: &proof.payload_and_ctx_digest,
             parent_seq_commit: &proof.parent_seq_commit,
         },
+        proof.inactivity_shortcut,
         proof.expected_seq_commit,
         proof.parent_seq_commit,
     )
@@ -1589,6 +1588,8 @@ async fn seqcommit_sp_context_threshold_edge_test() {
             p.genesis.hash = genesis_header.hash;
 
             // Keep the threshold minimal so the selected-parent edge is reached by the next block.
+            // KIP-21: the seqcommit look-back equals `finality_depth`; set it to 1 so a
+            // single follow-up block is still within the threshold during template validation.
             p.finality_depth = 1;
             p.toccata_activation = ForkActivation::always();
         })

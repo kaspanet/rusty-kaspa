@@ -1153,13 +1153,23 @@ impl ConsensusApi for Consensus {
     fn import_pruning_point_smt(
         &self,
         new_pruning_point: Hash,
-        lanes_root: Hash,
-        payload_and_ctx_digest: Hash,
-        expected_lane_count: u64,
+        metadata: kaspa_consensus_core::api::SmtExportMetadata,
+        inactivity_shortcut_block: Option<Hash>,
         lane_batches: ImportLaneBatchIterator<'_>,
     ) -> PruningImportResult<()> {
+        use crate::model::stores::smt_metadata::{SmtBlockMetadata, ToccataV0};
         use kaspa_hashes::ZERO_HASH;
         use kaspa_smt_store::streaming_import::streaming_import;
+
+        let kaspa_consensus_core::api::SmtExportMetadata { lanes_root, payload_and_ctx_digest, active_lanes_count, .. } = metadata;
+        let expected_lane_count = active_lanes_count;
+
+        // `inactivity_shortcut_block` was already resolved by the caller during metadata
+        // verification: `Some` post-hardening, `None` pre-hardening. V1/V0 dispatch follows.
+        let row = match inactivity_shortcut_block {
+            Some(block) => SmtBlockMetadata::new(payload_and_ctx_digest, block, active_lanes_count),
+            None => SmtBlockMetadata::ToccataV0(ToccataV0 { payload_and_ctx_digest, active_lanes_count }),
+        };
 
         let result = self.virtual_processor.install(|| {
             streaming_import(
@@ -1187,12 +1197,9 @@ impl ConsensusApi for Consensus {
             )));
         }
 
+        // The wire's metadata was already authenticated by the caller via `verify_smt_metadata`.
         let mut batch = rocksdb::WriteBatch::default();
-        use crate::model::stores::smt_metadata::SmtBlockMetadata;
-        self.storage
-            .smt_metadata_store
-            .insert_batch(&mut batch, new_pruning_point, SmtBlockMetadata::new(payload_and_ctx_digest, actual_count))
-            .unwrap();
+        self.storage.smt_metadata_store.insert_batch(&mut batch, new_pruning_point, row).unwrap();
         self.db.write(batch).unwrap();
 
         info!("Imported SMT state for pruning point {}: {} lanes, root {}", new_pruning_point, actual_count, lanes_root);
@@ -1206,6 +1213,10 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.get_pruning_point_smt_metadata(expected_pruning_point)
     }
 
+    fn inactivity_shortcut_block_for_pov(&self, pov_block: Hash) -> ConsensusResult<Hash> {
+        self.virtual_processor.inactivity_shortcut_block_for_pov(pov_block)
+    }
+
     fn open_pruning_point_smt_lane_stream(
         &self,
         expected_pruning_point: Hash,
@@ -1217,6 +1228,7 @@ impl ConsensusApi for Consensus {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
         let max_score = self.storage.headers_store.get_blue_score(pp).unwrap();
+        // KIP-21: IBD streams only the active-lanes window `[pp - finality_depth, pp]`.
         let min_score = max_score.saturating_sub(self.config.params.finality_depth());
 
         let smt_stores = self.storage.smt_stores.clone();
