@@ -752,6 +752,10 @@ impl VirtualStateProcessor {
         if pp != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
+        // Genesis has no SMT metadata row and no parent to index.
+        if pp == self.genesis.hash {
+            return Err(ConsensusError::GeneralOwned("cannot export SMT metadata: pruning point is genesis".to_string()));
+        }
 
         let meta = self
             .smt_metadata_store
