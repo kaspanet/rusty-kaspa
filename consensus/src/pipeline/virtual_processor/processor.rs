@@ -805,10 +805,13 @@ impl VirtualStateProcessor {
 
         let target_bs = ghostdag_data.blue_score - self.finality_depth - 1;
 
-        let coinbase_lk = kaspa_seq_commit::hashing::lane_key(&kaspa_consensus_core::subnets::SUBNETWORK_ID_COINBASE.into_bytes());
         let bounds = SmtReadBounds::new(target_bs, 0);
 
-        match self.smt_stores.get_lane(coinbase_lk, bounds, |bh| self.is_smt_canonical(bh, selected_parent)).map(|l| l.block_hash()) {
+        match self
+            .smt_stores
+            .get_lane(kaspa_seq_commit::hashing::COINBASE_LANE_KEY, bounds, |bh| self.is_smt_canonical(bh, selected_parent))
+            .map(|l| l.block_hash())
+        {
             // Live: the latest canonical coinbase touch already pins the highest
             // chain block at `bs <= target_bs` since every chain block touches the
             // coinbase lane. Return it directly.

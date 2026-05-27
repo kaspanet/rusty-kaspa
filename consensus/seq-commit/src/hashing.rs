@@ -39,6 +39,12 @@ pub fn lane_key(lane_id: &LaneId) -> Hash {
     hasher.finalize()
 }
 
+/// Precomputed `lane_key(SUBNETWORK_ID_COINBASE)`.
+pub const COINBASE_LANE_KEY: Hash = Hash::from_bytes([
+    0x8a, 0xa7, 0x80, 0x27, 0xdb, 0x66, 0xa1, 0x6c, 0xb6, 0x96, 0x92, 0xee, 0x0a, 0xf5, 0xcb, 0x76, 0x73, 0x8e, 0xf8, 0x0a, 0xd1,
+    0x4c, 0x9d, 0x13, 0x92, 0x0d, 0x7f, 0xa3, 0xcc, 0x40, 0xb9, 0xe4,
+]);
+
 /// Compute an activity leaf: `H_activity_leaf(tx_id || le_u16(version) || le_u32(merge_idx))`.
 #[inline]
 pub fn activity_leaf(tx_id: &Hash, version: u16, merge_idx: u32) -> Hash {
@@ -174,7 +180,7 @@ pub fn seq_commit(input: &SeqCommitInput<'_>) -> Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_consensus_core::BlueWorkType;
+    use kaspa_consensus_core::{BlueWorkType, subnets::SUBNETWORK_ID_COINBASE};
     use kaspa_hashes::ZERO_HASH;
 
     fn h(b: u8) -> Hash {
@@ -195,6 +201,11 @@ mod tests {
     #[test]
     fn test_lane_key_different_ids() {
         assert_ne!(lane_key(&[0x01; 20]), lane_key(&[0x02; 20]));
+    }
+
+    #[test]
+    fn test_coinbase_lane_key_constant() {
+        assert_eq!(COINBASE_LANE_KEY, lane_key(&SUBNETWORK_ID_COINBASE.into_bytes()));
     }
 
     #[test]
