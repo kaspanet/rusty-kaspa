@@ -303,12 +303,18 @@ impl PruningProofManager {
             // Pruning point txs are validated with the pruning point selected parent as seqcommit context.
             // Conceptually, this is the context from which the threshold should be measured on all networks.
             //
-            // On non-mainnet networks, relax this and measure against the pruning point blue score, since
-            // deployed peers may already provide chain segments using the pruning point as context.
+            // We must use pp.sp.bs whenever pp is post zk_hardening: the `inactivity_shortcut` anchor lives
+            // at `bs <= pp.bs - F - 1`. With pp.sp.bs as context, the threshold predicate continues down to
+            // `pp.bs - F - 1` and covers the anchor; with pp.bs as context it stops one block higher and
+            // misses it. Post-hardening syncers always send the segment from pp.sp, so this is safe.
             //
-            // Mainnet has no release prior to this fix, so measure against the correct context: the selected
-            // parent's blue score.
-            let context_blue_score = if self.is_mainnet {
+            // Pre zk_hardening on non-mainnet stays on pp.bs to keep compatibility with already-deployed
+            // peers that emit segments using pp.bs. Mainnet had no pre-fix release.
+            //
+            // TODO(post-zk-hardening): once all networks are past the hardening activation, use pp.sp.bs
+            // unconditionally and drop the is_mainnet/zk_hardening_activation branching.
+            let use_sp_context = self.is_mainnet || self.zk_hardening_activation.is_active(pruning_point_header.daa_score);
+            let context_blue_score = if use_sp_context {
                 let sp = pruning_point_header.direct_parents().first().copied().unwrap_or(pruning_point); // In case of genesis, we fall back to genesis itself
                 trusted_header_map.get(&sp).ok_or(PruningImportError::MissingPruningPointChainSegment(sp))?.blue_score
             } else {
@@ -321,14 +327,11 @@ impl PruningProofManager {
                 let current_header =
                     trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
 
-                // This cutoff also covers the inactivity-shortcut anchor (mainnet path).
-                // Chain qualification gives pp.bs >= pp.sp.bs + 1, so a block failing the check
-                // satisfies `current.bs + F <= pp.sp.bs <= pp.bs - 1`, i.e. `current.bs <= pp.bs - F - 1`.
-                // pp.inactivity_shortcut is by definition the highest chain block with
-                // `bs <= pp.bs - F - 1` (see `compute_inactivity_shortcut_block`), so its bs is at
-                // least the break block's bs and it is reached by the iteration before (or at)
-                // the break. The non-mainnet branch uses pp.bs as context, which is strictly more
-                // permissive, so the shortcut remains covered.
+                // pp.sp.bs context: a block failing the check satisfies `current.bs + F <= pp.sp.bs`,
+                // and chain qualification gives pp.sp.bs = pp.bs - 1, so `current.bs <= pp.bs - F - 1`.
+                // `pp.inactivity_shortcut` is defined as the highest chain block with that property
+                // (see `compute_inactivity_shortcut_block`), so its bs is at least the break block's bs
+                // and is reached by the iteration before (or at) the break.
                 if !seq_commit_within_threshold(context_blue_score, current_header.blue_score, threshold) {
                     break;
                 }
