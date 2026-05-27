@@ -514,19 +514,12 @@ impl ConsensusSessionOwned {
     pub fn import_pruning_point_smt(
         &self,
         new_pruning_point: Hash,
-        lanes_root: Hash,
-        payload_and_ctx_digest: Hash,
-        expected_lane_count: u64,
+        metadata: kaspa_consensus_core::api::SmtExportMetadata,
+        inactivity_shortcut_block: Option<Hash>,
         mut rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
     ) -> PruningImportResult<()> {
         let lane_batches: ImportLaneBatchIterator = &mut std::iter::from_fn(move || rx.blocking_recv());
-        self.consensus.import_pruning_point_smt(
-            new_pruning_point,
-            lanes_root,
-            payload_and_ctx_digest,
-            expected_lane_count,
-            lane_batches,
-        )
+        self.consensus.import_pruning_point_smt(new_pruning_point, metadata, inactivity_shortcut_block, lane_batches)
     }
     pub async fn async_is_pruning_smt_stable(&self) -> bool {
         self.clone().spawn_blocking(move |c| c.is_pruning_smt_stable()).await
@@ -536,6 +529,10 @@ impl ConsensusSessionOwned {
         expected_pp: Hash,
     ) -> ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
         self.clone().spawn_blocking(move |c| c.get_pruning_point_smt_metadata(expected_pp)).await
+    }
+
+    pub async fn async_inactivity_shortcut_block_for_pov(&self, pov_block: Hash) -> ConsensusResult<Hash> {
+        self.clone().spawn_blocking(move |c| c.inactivity_shortcut_block_for_pov(pov_block)).await
     }
 
     /// Synchronous passthrough to [`ConsensusApi::open_pruning_point_smt_lane_stream`].

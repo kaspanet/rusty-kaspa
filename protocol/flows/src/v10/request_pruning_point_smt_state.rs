@@ -3,7 +3,10 @@ use crate::{
     flow_trait::Flow,
     ibd::{SMT_CHUNK_SIZE, SMT_FLOW_CONTROL_WINDOW},
 };
-use kaspa_consensus_core::{api::ImportLane, errors::consensus::ConsensusError};
+use kaspa_consensus_core::{
+    api::{ImportLane, SmtExportMetadata},
+    errors::consensus::ConsensusError,
+};
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
@@ -56,10 +59,12 @@ impl RequestPruningPointSmtStateFlow {
 
         let expected_count = metadata.active_lanes_count;
 
+        // Wire: 96 bytes = lanes_root || payload_and_ctx_digest || parent_seq_commit.
+        let SmtExportMetadata { lanes_root, payload_and_ctx_digest, parent_seq_commit, .. } = metadata;
         let mut md_bytes = Vec::with_capacity(96);
-        md_bytes.extend_from_slice(&metadata.lanes_root.as_bytes());
-        md_bytes.extend_from_slice(&metadata.payload_and_ctx_digest.as_bytes());
-        md_bytes.extend_from_slice(&metadata.parent_seq_commit.as_bytes());
+        md_bytes.extend_from_slice(&lanes_root.as_bytes());
+        md_bytes.extend_from_slice(&payload_and_ctx_digest.as_bytes());
+        md_bytes.extend_from_slice(&parent_seq_commit.as_bytes());
         self.router
             .enqueue(make_message!(Payload::SmtMetadata, SmtMetadataMessage { data: md_bytes, active_lanes_count: expected_count }))
             .await?;
@@ -85,8 +90,7 @@ impl RequestPruningPointSmtStateFlow {
                 if batch.len() == SMT_CHUNK_SIZE {
                     count += batch.len() as u64;
                     if tx.blocking_send(std::mem::take(&mut batch)).is_err() {
-                        // Receiver went away — let the async side surface the error.
-                        return Ok(count);
+                        return Err(ConsensusError::General("receiver went away"));
                     }
                     batch.reserve(SMT_CHUNK_SIZE);
                 }

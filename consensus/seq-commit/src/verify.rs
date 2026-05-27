@@ -1,9 +1,9 @@
-//! IBD SMT verification — metadata check.
+//! IBD SMT verification: metadata check.
 //!
 //! Proof verification with branch caching uses [`SmtProof::compute_root_with_visitor`]
 //! from `kaspa-smt` with `&mut ProofBranchCache` as the visitor.
 
-use crate::hashing::seq_state_root;
+use crate::hashing::{activity_root_hash, seq_state_root};
 use crate::types::SeqState;
 use kaspa_hashes::{Hash, HasherBase, SeqCommitMerkleBranch};
 
@@ -35,8 +35,12 @@ pub enum SmtVerifyError {
 }
 
 /// Verify that the metadata is consistent with the header's `accepted_id_merkle_root` (= seq_commit).
+///
+/// `inactivity_shortcut`: `None` for pre-hardening (identity at the activity-root level);
+/// `Some(s)` for post-hardening, wrapping `lanes_root` into `activity_root_hash(s, lanes_root)`.
 pub fn verify_smt_metadata(
     metadata: &SmtMetadata<'_>,
+    inactivity_shortcut: Option<Hash>,
     expected_seq_commit: Hash,
     expected_parent_seq_commit: Hash,
 ) -> Result<(), SmtVerifyError> {
@@ -47,15 +51,17 @@ pub fn verify_smt_metadata(
         });
     }
 
+    let activity_root = match inactivity_shortcut {
+        Some(s) => activity_root_hash(&s, metadata.lanes_root),
+        None => *metadata.lanes_root,
+    };
     let state_root =
-        seq_state_root(&SeqState { lanes_root: metadata.lanes_root, payload_and_ctx_digest: metadata.payload_and_ctx_digest });
-
+        seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: metadata.payload_and_ctx_digest });
     let computed = {
         let mut h = SeqCommitMerkleBranch::new();
         h.update(metadata.parent_seq_commit).update(state_root);
         h.finalize()
     };
-
     if computed != expected_seq_commit {
         return Err(SmtVerifyError::SeqCommitMismatch { expected: expected_seq_commit, computed });
     }
@@ -67,7 +73,7 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use crate::hashing::{lane_key, payload_and_context_digest, smt_leaf_hash};
+    use crate::hashing::{activity_root_hash, lane_key, smt_leaf_hash};
     use crate::types::{LaneId, SmtLeafInput};
     use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
     use kaspa_smt::proof::ProofBranchCache;
@@ -99,33 +105,52 @@ mod tests {
         (tree.root(), tree)
     }
 
+    fn sample_shortcut() -> Hash {
+        Hash::from_bytes([7; 32])
+    }
+
+    fn build_expected_seq_commit(lr: &Hash, pd: &Hash, ps: &Hash, shortcut: Option<Hash>) -> Hash {
+        let ar = match shortcut {
+            Some(s) => activity_root_hash(&s, lr),
+            None => *lr,
+        };
+        let sr = seq_state_root(&SeqState { activity_root: &ar, payload_and_ctx_digest: pd });
+        let mut h = SeqCommitMerkleBranch::new();
+        h.update(ps).update(sr);
+        h.finalize()
+    }
+
     #[test]
-    fn metadata_correct() {
+    fn metadata_correct_post_hardening() {
         let lr = Hash::from_bytes([1; 32]);
-        let ch = Hash::from_bytes([2; 32]);
-        let pr = Hash::from_bytes([3; 32]);
+        let pd = Hash::from_bytes([3; 32]);
+        let ps = Hash::from_bytes([4; 32]);
+        let shortcut = sample_shortcut();
+
+        let sc = build_expected_seq_commit(&lr, &pd, &ps, Some(shortcut));
+        let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
+        assert!(verify_smt_metadata(&md, Some(shortcut), sc, ps).is_ok());
+    }
+
+    #[test]
+    fn metadata_correct_pre_hardening() {
+        let lr = Hash::from_bytes([1; 32]);
+        let pd = Hash::from_bytes([3; 32]);
         let ps = Hash::from_bytes([4; 32]);
 
-        let pd = payload_and_context_digest(&ch, &pr);
-        let sr = seq_state_root(&SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd });
-        let sc = {
-            let mut h = SeqCommitMerkleBranch::new();
-            h.update(ps).update(sr);
-            h.finalize()
-        };
-
+        let sc = build_expected_seq_commit(&lr, &pd, &ps, None);
         let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
-        assert!(verify_smt_metadata(&md, sc, ps).is_ok());
+        assert!(verify_smt_metadata(&md, None, sc, ps).is_ok());
     }
 
     #[test]
     fn metadata_wrong_parent() {
         let lr = Hash::from_bytes([1; 32]);
-        let pd = Hash::from_bytes([2; 32]);
+        let pd = Hash::from_bytes([3; 32]);
         let ps = Hash::from_bytes([4; 32]);
         let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
         assert!(matches!(
-            verify_smt_metadata(&md, ZERO_HASH, Hash::from_bytes([99; 32])),
+            verify_smt_metadata(&md, Some(sample_shortcut()), ZERO_HASH, Hash::from_bytes([99; 32])),
             Err(SmtVerifyError::ParentSeqCommitMismatch { .. })
         ));
     }
@@ -133,10 +158,42 @@ mod tests {
     #[test]
     fn metadata_wrong_commit() {
         let lr = Hash::from_bytes([1; 32]);
-        let pd = Hash::from_bytes([2; 32]);
+        let pd = Hash::from_bytes([3; 32]);
         let ps = Hash::from_bytes([4; 32]);
         let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
-        assert!(matches!(verify_smt_metadata(&md, Hash::from_bytes([99; 32]), ps), Err(SmtVerifyError::SeqCommitMismatch { .. })));
+        assert!(matches!(
+            verify_smt_metadata(&md, Some(sample_shortcut()), Hash::from_bytes([99; 32]), ps),
+            Err(SmtVerifyError::SeqCommitMismatch { .. })
+        ));
+    }
+
+    // Pre/post divergence: a verifier called with `None` on a post-hardening commit
+    // (or vice versa) must reject as a seq_commit mismatch.
+    #[test]
+    fn metadata_pre_post_mismatch_rejected() {
+        let lr = Hash::from_bytes([1; 32]);
+        let pd = Hash::from_bytes([3; 32]);
+        let ps = Hash::from_bytes([4; 32]);
+        let shortcut = sample_shortcut();
+
+        let sc_post = build_expected_seq_commit(&lr, &pd, &ps, Some(shortcut));
+        let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
+        // Wire was post-hardening but verifier was told pre-hardening: must mismatch.
+        assert!(matches!(verify_smt_metadata(&md, None, sc_post, ps), Err(SmtVerifyError::SeqCommitMismatch { .. })));
+    }
+
+    // A perturbed shortcut flows into `activity_root` and then `seq_state_root`,
+    // so the failure surfaces as `SeqCommitMismatch`.
+    #[test]
+    fn metadata_wrong_inactivity_shortcut_detected_via_seq_commit() {
+        let lr = Hash::from_bytes([1; 32]);
+        let pd = Hash::from_bytes([3; 32]);
+        let ps = Hash::from_bytes([4; 32]);
+        let shortcut = sample_shortcut();
+        let sc = build_expected_seq_commit(&lr, &pd, &ps, Some(shortcut));
+        let bad_shortcut = Hash::from_bytes([0xAB; 32]);
+        let md = SmtMetadata { lanes_root: &lr, payload_and_ctx_digest: &pd, parent_seq_commit: &ps };
+        assert!(matches!(verify_smt_metadata(&md, Some(bad_shortcut), sc, ps), Err(SmtVerifyError::SeqCommitMismatch { .. })));
     }
 
     #[test]

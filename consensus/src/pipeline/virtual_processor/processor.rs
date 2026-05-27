@@ -177,6 +177,9 @@ pub struct VirtualStateProcessor {
     pub(crate) toccata_activation: ForkActivation,
     pub(crate) toccata_logger: ForkLogger,
 
+    // KIP-21 finality-anchor activation: gates inactivity_shortcut inclusion in mergeset_context_hash.
+    pub(crate) zk_hardening_activation: ForkActivation,
+
     // SMT stores
     pub(super) smt_stores: Arc<kaspa_smt_store::processor::SmtStores>,
     pub(super) smt_metadata_store: Arc<crate::model::stores::smt_metadata::DbSmtMetadataStore>,
@@ -251,6 +254,7 @@ impl VirtualStateProcessor {
             counters,
             toccata_activation: params.toccata_activation,
             toccata_logger: ForkLogger::new("virtual state processing rules", true),
+            zk_hardening_activation: params.zk_hardening_activation,
             smt_stores: storage.smt_stores.clone(),
             smt_metadata_store: storage.smt_metadata_store.clone(),
             _mining_rules: mining_rules,
@@ -529,9 +533,10 @@ impl VirtualStateProcessor {
         if let Some(build) = smt_build {
             let pd = build.payload_and_ctx_digest;
             let alc = build.active_lanes_count;
+            let shortcut_block = build.inactivity_shortcut_block;
             build.flush(&self.smt_stores, &mut batch, blue_score, current).unwrap();
             use crate::model::stores::smt_metadata::SmtBlockMetadata;
-            self.smt_metadata_store.insert_batch(&mut batch, current, SmtBlockMetadata::new(pd, alc)).unwrap();
+            self.smt_metadata_store.insert_batch(&mut batch, current, SmtBlockMetadata::new(pd, shortcut_block, alc)).unwrap();
         }
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
@@ -589,7 +594,7 @@ impl VirtualStateProcessor {
         let accepted_id_digests = if self.toccata_activation.is_active(virtual_daa_window.daa_score) {
             let commit = self.compute_seq_commit(&ctx, &virtual_ghostdag_data, virtual_daa_window.daa_score);
             // Post-KIP21: single-element vec containing the seq_commit.
-            // The virtual's SmtBuild is ephemeral — only chain blocks persist SMT state.
+            // The virtual's SmtBuild is ephemeral - only chain blocks persist SMT state.
             vec![commit]
         } else {
             ctx.accepted_tx_ids.clone()
@@ -613,18 +618,18 @@ impl VirtualStateProcessor {
 
     /// KIP-21: Compute the sequencing commitment for the virtual block.
     fn compute_seq_commit(&self, ctx: &UtxoProcessingContext, virtual_ghostdag_data: &GhostdagData, daa_score: u64) -> Hash {
-        use kaspa_seq_commit::hashing::{mergeset_context_hash, seq_commit_timestamp};
+        use kaspa_seq_commit::hashing::mergeset_context_hash;
         use kaspa_seq_commit::types::MergesetContext;
 
         let selected_parent = ctx.selected_parent();
         let parent_header = self.headers_store.get_header(selected_parent).unwrap();
         let current_blue_score = virtual_ghostdag_data.blue_score;
 
-        let context_hash = mergeset_context_hash(&MergesetContext {
-            timestamp: seq_commit_timestamp(parent_header.timestamp),
-            daa_score,
-            blue_score: current_blue_score,
-        });
+        let inactivity_shortcut_block = self.compute_inactivity_shortcut_block(virtual_ghostdag_data);
+        let context_hash =
+            mergeset_context_hash(&MergesetContext { timestamp: parent_header.timestamp, daa_score, blue_score: current_blue_score });
+        let inactivity_shortcut =
+            self.zk_hardening_activation.is_active(daa_score).then(|| self.inactivity_shortcut(inactivity_shortcut_block));
 
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let data = self.collect_mergeset_seq_data(ctx);
@@ -636,18 +641,23 @@ impl VirtualStateProcessor {
             selected_parent,
             parent_seq_commit,
         );
-        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent, parent_header.blue_score);
+        let (parent_lanes_root, parent_active_lanes) = self.get_parent_lanes_root_and_count(selected_parent, parent_header.blue_score);
+        let parent_state = crate::pipeline::virtual_processor::utxo_validation::ParentBlockSeqState {
+            seq_commit: parent_seq_commit,
+            blue_score: parent_header.blue_score,
+            lanes_root: parent_lanes_root,
+            active_lanes_count: parent_active_lanes,
+        };
 
         let (commit, _build) = self.build_seq_commit(
-            parent_seq_commit,
+            &parent_state,
             context_hash,
             current_blue_score,
-            parent_header.blue_score,
-            parent_lanes_root,
-            parent_active_lanes,
             &lane_updates,
             data.miner_payload_leaves,
             selected_parent,
+            inactivity_shortcut_block,
+            inactivity_shortcut,
         );
         commit
     }
@@ -665,15 +675,15 @@ impl VirtualStateProcessor {
         use kaspa_consensus_core::BlueWorkType;
         use kaspa_hashes::SeqCommitActiveNode;
         use kaspa_seq_commit::hashing::{
-            activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, miner_payload_leaf,
-            miner_payload_root, payload_and_context_digest, seq_commit, seq_commit_timestamp, seq_state_root, smt_leaf_hash,
+            activity_digest_lane, activity_leaf, activity_root_hash, lane_key, lane_tip_next, mergeset_context_hash,
+            miner_payload_leaf, miner_payload_root, payload_and_context_digest, seq_commit, seq_state_root, smt_leaf_hash,
         };
         use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, MinerPayloadLeafInput, SeqCommitInput, SeqState, SmtLeafInput};
         use kaspa_smt::SmtHasher;
 
         let blue_score = ghostdag_data.blue_score;
         let context_hash = mergeset_context_hash(&MergesetContext {
-            timestamp: seq_commit_timestamp(self.genesis.timestamp),
+            timestamp: self.genesis.timestamp,
             daa_score: self.genesis.daa_score,
             blue_score,
         });
@@ -692,7 +702,7 @@ impl VirtualStateProcessor {
         });
         let payload_root = miner_payload_root(std::iter::once(mpl));
 
-        // Build SMT over an in-memory store — new lanes anchor at ZERO_HASH.
+        // Build SMT over an in-memory store - new lanes anchor at ZERO_HASH.
         let parent_seq_commit = ZERO_HASH;
         let leaf_updates = kaspa_smt::store::SortedLeafUpdates::from_unsorted(lane_activities.iter().map(|(lane_id, leaves)| {
             let lk = lane_key(lane_id);
@@ -713,13 +723,24 @@ impl VirtualStateProcessor {
         )
         .unwrap();
 
+        // Pre-hardening: identity. Post-hardening (typically only simnet with activation=0):
+        // wrap with ZERO_HASH shortcut since no real shortcut block exists yet at genesis.
+        let activity_root = if self.zk_hardening_activation.is_active(self.genesis.daa_score) {
+            activity_root_hash(&ZERO_HASH, &lanes_root)
+        } else {
+            lanes_root
+        };
         let pd = payload_and_context_digest(&context_hash, &payload_root);
-        let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &pd });
+        let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
         let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
         vec![commit]
     }
 
     /// Read stored SMT metadata for the pruning point.
+    ///
+    /// Both V0 and V1 rows carry `payload_and_ctx_digest` directly. The receiver
+    /// derives `inactivity_shortcut_block` from chain headers when needed, so the
+    /// wire shape is identical pre- and post-hardening.
     pub fn get_pruning_point_smt_metadata(
         &self,
         expected_pruning_point: Hash,
@@ -738,25 +759,26 @@ impl VirtualStateProcessor {
             .map_err(|_| ConsensusError::GeneralOwned(format!("SMT metadata not found for pruning point {pp}")))?;
 
         let pp_header = self.headers_store.get_header(pp).unwrap();
-        let parent_seq_commit = self.headers_store.get_header(pp_header.direct_parents()[0]).unwrap().accepted_id_merkle_root;
-
+        let parent = pp_header.direct_parents()[0];
+        let parent_header = self.headers_store.get_header(parent).unwrap();
+        let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let lanes_root = self
             .smt_stores
             .get_lanes_root(SmtReadBounds::for_pov(pp_header.blue_score, self.finality_depth), |bh| self.is_smt_canonical(bh, pp));
 
         Ok(SmtExportMetadata {
             lanes_root,
-            payload_and_ctx_digest: meta.payload_and_ctx_digest,
+            payload_and_ctx_digest: meta.payload_and_ctx_digest(),
             parent_seq_commit,
-            active_lanes_count: meta.active_lanes_count,
+            active_lanes_count: meta.active_lanes_count(),
         })
     }
 
     /// Check if `block_hash` is canonical for SMT lookups.
-    /// ZERO_HASH is treated as always canonical — it marks IBD-imported entries.
+    /// ZERO_HASH is treated as always canonical - it marks IBD-imported entries.
     ///
     /// After reachability pruning, blocks that were on the selected chain before
-    /// a reorg may have their reachability data deleted — their SMT lane entries
+    /// a reorg may have their reachability data deleted - their SMT lane entries
     /// remain but they are no longer canonical. `Err(KeyNotFound)` from
     /// `try_is_chain_ancestor_of` means the block's reachability was pruned,
     /// so it is definitively outside `future(retention_root)` and non-canonical.
@@ -764,10 +786,142 @@ impl VirtualStateProcessor {
         block_hash == ZERO_HASH || matches!(self.reachability_service.try_is_chain_ancestor_of(block_hash, selected_parent), Ok(true))
     }
 
-    /// Get the parent's lanes_root and active_lanes_count.
-    /// lanes_root comes from the branch version store; active_lanes_count from metadata.
-    pub(super) fn get_parent_smt_metadata(&self, selected_parent: Hash, parent_blue_score: u64) -> (Hash, u64) {
-        let active_lanes_count = self.smt_metadata_store.get(selected_parent).map(|meta| meta.active_lanes_count).unwrap_or(0);
+    /// KIP-21: block hash of the highest chain block at
+    /// `bs <= ghostdag_data.blue_score - finality_depth - 1`. The committed
+    /// `inactivity_shortcut` value is this block's seq_commit (see
+    /// [`Self::inactivity_shortcut`]).
+    ///
+    /// Never returns `ZERO_HASH`. Before a real shortcut block is reachable
+    /// (early chain, or within finality depth of hardening activation), a
+    /// pre-hardening stand-in is returned. Such stand-ins are valid for
+    /// context-hash recomputation but must not be exposed to provers or RPC
+    /// consumers as real shortcut targets.
+    pub(super) fn compute_inactivity_shortcut_block(&self, ghostdag_data: &GhostdagData) -> Hash {
+        let selected_parent = ghostdag_data.selected_parent;
+
+        if ghostdag_data.blue_score < self.finality_depth + 1 {
+            return self.genesis.hash;
+        }
+
+        let target_bs = ghostdag_data.blue_score - self.finality_depth - 1;
+
+        let coinbase_lk = kaspa_seq_commit::hashing::lane_key(&kaspa_consensus_core::subnets::SUBNETWORK_ID_COINBASE.into_bytes());
+        let bounds = SmtReadBounds::new(target_bs, 0);
+
+        match self.smt_stores.get_lane(coinbase_lk, bounds, |bh| self.is_smt_canonical(bh, selected_parent)).map(|l| l.block_hash()) {
+            // Live: the latest canonical coinbase touch already pins the highest
+            // chain block at `bs <= target_bs` since every chain block touches the
+            // coinbase lane. Return it directly.
+            Some(v) if v != ZERO_HASH => return v,
+            // Post-IBD boundary, "exact at pp": target_bs == pp.bs
+            Some(_zero) => {}
+            // Post-IBD boundary, "below pp": target_bs < pp.bs and no coinbase
+            // entry exists at that depth in our SMT. Fall through to seed the
+            // forward walk from the selected parent's recorded shortcut.
+            None => {}
+        };
+
+        // Reaching this point implies `target_bs <= pp.bs`. The coinbase lane is touched by every
+        // chain block, so for any `target_bs > pp.bs` we would have returned in the `Some(v) if
+        // v != ZERO_HASH` arm above. That gives us `current.bs <= pp.bs + finality_depth + 1`:
+        // we are in the narrow post-IBD window of at most `finality_depth + 1` blocks past pp.
+        //
+        // Inside that window, `selected_parent` is necessarily either pp itself or a post-IBD
+        // local descendant of pp, and both carry a V1 row with a real `inactivity_shortcut_block`:
+        //   - pp: inserted by `Consensus::import_pruning_point_smt` via `SmtBlockMetadata::new(...)`.
+        //   - local descendant: committed by `commit_virtual_state` via `SmtBlockMetadata::new(...)`.
+        // The other shapes are excluded:
+        //   - sp == genesis: excluded by the early-return clamp at the top of this function.
+        //   - sp pre-toccata: `compute_inactivity_shortcut_block` is only called from
+        //     `compute_seq_commit`/`recompute_seq_commit`, both gated on
+        //     `toccata_activation.is_active(current.daa_score)`. `sync_new_smt_state` is also a
+        //     no-op for pre-toccata pps (see `ibd/flow.rs`), so a pre-toccata sp cannot coexist
+        //     with the post-IBD-window precondition.
+        //   - sp's row being legacy ToccataV0 (pre-anchor tn10 data): the V0 row is a residue of
+        //     pre-anchor live processing, so it lives deep in the chain — but the post-IBD-window
+        //     precondition forces sp to be fresh (pp or its post-IBD descendant), which is always
+        //     written as V1 by this binary. Pre-anchor IBD did not exist (introduced by this PR),
+        //     so an upgrading tn10 node can only enter the narrow window via a post-upgrade IBD
+        //     whose pp is committed as V1, or by building locally past its existing chain (in
+        //     which case branch A above fires because the live coinbase lane is fully populated).
+        //
+        // The `.unwrap_or(selected_parent)` tail is therefore dead under correct operation. It is
+        // a defense-in-depth default: even if reached, the returned block hash only affects
+        // consensus when `zk_hardening_activation.is_active(current.daa_score)` (see
+        // `compute_seq_commit`'s gating of the `inactivity_shortcut` field), and the cases that
+        // would reach the tail (missing row, pre-anchor V0 row, pre-toccata sp) are all
+        // pre-hardening contexts where `inactivity_shortcut()` folds the result to `ZERO_HASH`
+        // regardless of which pre-hardening block is named.
+        let search_from = self
+            .smt_metadata_store
+            .get(selected_parent)
+            .optional()
+            .unwrap()
+            .and_then(|md| md.inactivity_shortcut_block())
+            .unwrap_or(selected_parent);
+
+        let mut current = search_from;
+        for chain_block in self.reachability_service.forward_chain_iterator(current, selected_parent, true).skip(1) {
+            if self.headers_store.get_blue_score(chain_block).unwrap() > target_bs {
+                break;
+            }
+            current = chain_block;
+        }
+        current
+    }
+
+    /// Derive the `inactivity_shortcut` value folded into `activity_root` from
+    /// its block hash. Folds to `ZERO_HASH` for pre-hardening blocks (whose
+    /// seq_commit does not encode a shortcut); genesis falls into this branch
+    /// naturally since its `accepted_id_merkle_root` is `ZERO_HASH`. Otherwise
+    /// returns the block's seq_commit.
+    ///
+    /// Panics on `ZERO_HASH` input — callers must pass a real block hash.
+    pub fn inactivity_shortcut(&self, inactivity_shortcut_block: Hash) -> Hash {
+        assert_ne!(inactivity_shortcut_block, ZERO_HASH, "inactivity_shortcut block must be a real block hash");
+        let header = self.headers_store.get_header(inactivity_shortcut_block).unwrap();
+        if !self.zk_hardening_activation.is_active(header.daa_score) {
+            return ZERO_HASH;
+        }
+        header.accepted_id_merkle_root
+    }
+
+    /// Resolve the `inactivity_shortcut_block` from the POV of an arbitrary chain
+    /// block, using only headers + reachability (no SMT). Used by the IBD receiver
+    /// at the PP boundary before the SMT is imported, and by `import_pruning_point_smt`
+    /// to populate the V1 metadata row.
+    ///
+    /// Algorithm: walks `pov_block`'s selected-chain ancestors backward by blue_score
+    /// until `bs <= pov.bs - finality_depth - 1`. Folds to genesis on shallow chains,
+    /// matching [`Self::compute_inactivity_shortcut_block`]'s shallow-chain rule.
+    pub fn inactivity_shortcut_block_for_pov(
+        &self,
+        pov_block: Hash,
+    ) -> kaspa_consensus_core::errors::consensus::ConsensusResult<Hash> {
+        use kaspa_consensus_core::errors::consensus::ConsensusError;
+
+        let pov_header = self
+            .headers_store
+            .get_header(pov_block)
+            .map_err(|_| ConsensusError::GeneralOwned(format!("header not found for {pov_block}")))?;
+
+        if pov_header.blue_score < self.finality_depth + 1 {
+            return Ok(self.genesis.hash);
+        }
+        let target_bs = pov_header.blue_score - self.finality_depth - 1;
+        Ok(self
+            .reachability_service
+            .default_backward_chain_iterator(pov_block)
+            .find(|&h| h == self.genesis.hash || self.headers_store.get_blue_score(h).unwrap() <= target_bs)
+            .unwrap_or(self.genesis.hash))
+    }
+
+    /// Get the parent's lanes_root, active_lanes_count.
+    /// lanes_root comes from the branch version store; the other two from metadata.
+    /// When the parent has no stored metadata (e.g. pre-toccata or origin predecessor),
+    /// returns `(empty_root, 0)`.
+    pub(super) fn get_parent_lanes_root_and_count(&self, selected_parent: Hash, parent_blue_score: u64) -> (Hash, u64) {
+        let active_lanes_count = self.smt_metadata_store.get(selected_parent).map(|meta| meta.active_lanes_count()).unwrap_or(0);
         let lanes_root = self.smt_stores.get_lanes_root(SmtReadBounds::for_pov(parent_blue_score, self.finality_depth), |bh| {
             self.is_smt_canonical(bh, selected_parent)
         });
@@ -1403,7 +1557,7 @@ impl VirtualStateProcessor {
         self.db.write(batch).unwrap();
         drop(selected_chain_write);
 
-        // Init virtual state — pre-compute accepted_id_digests here so
+        // Init virtual state - pre-compute accepted_id_digests here so
         // VirtualState::from_genesis stays a plain data constructor.
         let ghostdag_data = self.ghostdag_manager.ghostdag(&[self.genesis.hash]);
         let accepted_id_digests = self.compute_genesis_accepted_id_digests(&ghostdag_data);

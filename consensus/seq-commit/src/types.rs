@@ -6,6 +6,8 @@ use kaspa_hashes::Hash;
 pub type LaneId = [u8; 20];
 
 /// Mergeset context fields hashed into the sequencing commitment.
+///
+/// Preimage is exactly `le_u64(timestamp) || le_u64(daa_score) || le_u64(blue_score)`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MergesetContext {
     pub timestamp: u64,
@@ -43,9 +45,12 @@ pub struct SmtLeafInput<'a> {
 }
 
 /// Components of the sequencing state root.
+///
+/// `activity_root`: pre-hardening identity = `lanes_root`; post-hardening
+/// = `H_activity_root(inactivity_shortcut, lanes_root)`.
 #[derive(Clone, Copy, Debug)]
 pub struct SeqState<'a> {
-    pub lanes_root: &'a Hash,
+    pub activity_root: &'a Hash,
     pub payload_and_ctx_digest: &'a Hash,
 }
 

@@ -321,6 +321,14 @@ impl PruningProofManager {
                 let current_header =
                     trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
 
+                // This cutoff also covers the inactivity-shortcut anchor (mainnet path).
+                // Chain qualification gives pp.bs >= pp.sp.bs + 1, so a block failing the check
+                // satisfies `current.bs + F <= pp.sp.bs <= pp.bs - 1`, i.e. `current.bs <= pp.bs - F - 1`.
+                // pp.inactivity_shortcut is by definition the highest chain block with
+                // `bs <= pp.bs - F - 1` (see `compute_inactivity_shortcut_block`), so its bs is at
+                // least the break block's bs and it is reached by the iteration before (or at)
+                // the break. The non-mainnet branch uses pp.bs as context, which is strictly more
+                // permissive, so the shortcut remains covered.
                 if !seq_commit_within_threshold(context_blue_score, current_header.blue_score, threshold) {
                     break;
                 }

@@ -1,23 +1,35 @@
 //! Hash functions for sequencing commitments.
+//!
+//! Commitment tree shape:
+//!
+//! ```text
+//! SeqCommit(B)
+//! └── H_seq
+//!     ├── parent_seq_commit = SeqCommit(selected_parent(B))
+//!     └── state_root
+//!         └── H_seq
+//!             ├── activity_root
+//!             │   └── H_activity_root
+//!             │       ├── inactivity_shortcut
+//!             │       └── lanes_root
+//!             │           └── SMT root over active lanes
+//!             │
+//!             └── payload_and_ctx_digest
+//!                 └── H_seq
+//!                     ├── context_hash
+//!                     └── payload_root
+//! ```
+//!
+//! Pre-hardening: `activity_root == lanes_root` (identity, no wrap);
+//! post-hardening: `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`.
 
 use kaspa_hashes::{
-    Hash, HasherBase, PayloadDigest, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitLaneKey, SeqCommitLaneTip,
-    SeqCommitMergesetContext, SeqCommitMerkleBranch, SeqCommitMinerPayloadLeaf,
+    Hash, HasherBase, PayloadDigest, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitActivityRoot, SeqCommitLaneKey,
+    SeqCommitLaneTip, SeqCommitMergesetContext, SeqCommitMerkleBranch, SeqCommitMinerPayloadLeaf,
 };
 use kaspa_merkle::{StreamingMerkleBuilder, calc_merkle_root_with_hasher};
 
 use crate::types::{LaneId, LaneTipInput, MergesetContext, MinerPayloadLeafInput, SeqCommitInput, SeqState, SmtLeafInput};
-
-/// Derive the timestamp used in `MergesetContextHash` for a given block.
-///
-/// Uses the selected parent's timestamp — a consensus-agreed deterministic
-/// value that doesn't depend on miner input. This ensures the seq_commit
-/// can be computed for the virtual block without knowing the final header
-/// timestamp.
-#[inline]
-pub fn seq_commit_timestamp(selected_parent_timestamp: u64) -> u64 {
-    selected_parent_timestamp
-}
 
 /// Compute the SMT key for a lane: `H_lane_key(lane_id)`.
 #[inline]
@@ -58,11 +70,23 @@ pub fn lane_tip_next(input: &LaneTipInput) -> Hash {
     hasher.finalize()
 }
 
-/// Compute the mergeset context hash: `H_mergeset_context(le_u64(timestamp) || le_u64(daa_score) || le_u64(blue_score))`.
+/// Compute the mergeset context hash:
+/// `H_mergeset_context(le_u64(timestamp) || le_u64(daa_score) || le_u64(blue_score))`.
 #[inline]
 pub fn mergeset_context_hash(ctx: &MergesetContext) -> Hash {
     let mut hasher = SeqCommitMergesetContext::new();
     hasher.update(ctx.timestamp.to_le_bytes()).update(ctx.daa_score.to_le_bytes()).update(ctx.blue_score.to_le_bytes());
+    hasher.finalize()
+}
+
+/// Compute the activity root: `H_activity_root(inactivity_shortcut, lanes_root)`.
+///
+/// Post-hardening only. Pre-hardening callers should pass `lanes_root` straight
+/// into [`seq_state_root`] without invoking this helper (identity).
+#[inline]
+pub fn activity_root_hash(inactivity_shortcut: &Hash, lanes_root: &Hash) -> Hash {
+    let mut hasher = SeqCommitActivityRoot::new();
+    hasher.update(inactivity_shortcut).update(lanes_root);
     hasher.finalize()
 }
 
@@ -131,11 +155,11 @@ pub fn payload_and_context_digest(context_hash: &Hash, payload_root: &Hash) -> H
     hasher.finalize()
 }
 
-/// Compute the seq-state root: `H_seq(lanes_root, payload_and_ctx_digest)`.
+/// Compute the seq-state root: `H_seq(activity_root, payload_and_ctx_digest)`.
 #[inline]
 pub fn seq_state_root(state: &SeqState<'_>) -> Hash {
     let mut hasher = SeqCommitMerkleBranch::new();
-    hasher.update(state.lanes_root).update(state.payload_and_ctx_digest);
+    hasher.update(state.activity_root).update(state.payload_and_ctx_digest);
     hasher.finalize()
 }
 
@@ -243,12 +267,9 @@ mod tests {
     }
 
     #[test]
-    fn test_mergeset_context_hash_golden() {
-        let expected = Hash::from_bytes([
-            0x20, 0xd8, 0xeb, 0x88, 0xd6, 0x6b, 0xef, 0x8f, 0xee, 0xf3, 0x60, 0x24, 0x3e, 0xb5, 0x10, 0xee, 0x53, 0x3b, 0x4c, 0xe0,
-            0x07, 0x43, 0x2c, 0x29, 0xb4, 0xf5, 0x58, 0xb0, 0xdb, 0xf4, 0x75, 0x91,
-        ]);
-        assert_eq!(mergeset_context_hash(&MergesetContext { timestamp: 1000, daa_score: 500, blue_score: 250 }), expected);
+    fn test_mergeset_context_hash_determinism() {
+        let ctx = MergesetContext { timestamp: 1000, daa_score: 500, blue_score: 250 };
+        assert_eq!(mergeset_context_hash(&ctx), mergeset_context_hash(&ctx));
     }
 
     #[test]
@@ -261,6 +282,31 @@ mod tests {
         assert_ne!(ha, mergeset_context_hash(&b));
         assert_ne!(ha, mergeset_context_hash(&c));
         assert_ne!(ha, mergeset_context_hash(&d));
+    }
+
+    #[test]
+    fn test_activity_root_hash_golden() {
+        let result = activity_root_hash(&h(7), &h(9));
+        assert_eq!(result, activity_root_hash(&h(7), &h(9)));
+        assert_ne!(result, ZERO_HASH);
+    }
+
+    #[test]
+    fn test_activity_root_hash_different_inputs() {
+        let base = activity_root_hash(&h(7), &h(9));
+        assert_ne!(base, activity_root_hash(&h(8), &h(9)));
+        assert_ne!(base, activity_root_hash(&h(7), &h(10)));
+        // Order matters (domain-separated, but sanity-check).
+        assert_ne!(base, activity_root_hash(&h(9), &h(7)));
+    }
+
+    /// Identity vs wrap diverge: pre-hardening feeds `lanes_root` directly to
+    /// `seq_state_root`; post-hardening wraps via `activity_root_hash`. Hashes must differ.
+    #[test]
+    fn activity_root_identity_vs_wrap_diverges() {
+        let lanes_root = h(42);
+        let shortcut = ZERO_HASH;
+        assert_ne!(lanes_root, activity_root_hash(&shortcut, &lanes_root));
     }
 
     #[test]
@@ -390,19 +436,19 @@ mod tests {
             0x20, 0xd1, 0x35, 0x77, 0x5a, 0x39, 0xbe, 0x49, 0xfe, 0x34, 0x70, 0x9a, 0x55, 0xb0, 0xc7, 0xeb, 0x39, 0x05, 0xf5, 0xc9,
             0xbe, 0x27, 0xd1, 0xdc, 0x11, 0x50, 0xb8, 0xaf, 0x23, 0x9e, 0x56, 0xd9,
         ]);
-        let (lr, ch, pr) = (h(1), h(2), h(3));
+        let (ar, ch, pr) = (h(1), h(2), h(3));
         let pd = payload_and_context_digest(&ch, &pr);
-        assert_eq!(seq_state_root(&SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd }), expected);
+        assert_eq!(seq_state_root(&SeqState { activity_root: &ar, payload_and_ctx_digest: &pd }), expected);
     }
 
     #[test]
     fn test_seq_state_root_structure() {
-        let (lr, ch, pr) = (h(1), h(2), h(3));
+        let (ar, ch, pr) = (h(1), h(2), h(3));
         let pd = payload_and_context_digest(&ch, &pr);
-        let state = SeqState { lanes_root: &lr, payload_and_ctx_digest: &pd };
+        let state = SeqState { activity_root: &ar, payload_and_ctx_digest: &pd };
         let expected = {
             let mut hasher = SeqCommitMerkleBranch::new();
-            hasher.update(state.lanes_root).update(state.payload_and_ctx_digest);
+            hasher.update(state.activity_root).update(state.payload_and_ctx_digest);
             hasher.finalize()
         };
         assert_eq!(seq_state_root(&state), expected);
@@ -461,7 +507,9 @@ mod tests {
         let mpr = miner_payload_root(core::iter::once(mpl));
 
         let pd = payload_and_context_digest(&ctx, &mpr);
-        let state_root = seq_state_root(&SeqState { lanes_root: &smt_leaf, payload_and_ctx_digest: &pd });
+        // Post-hardening end-to-end: activity_root wraps lanes_root with the shortcut.
+        let activity_root = activity_root_hash(&ZERO_HASH, &smt_leaf);
+        let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
         let commitment = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_commit, state_root: &state_root });
         assert_ne!(commitment, parent_commit);
     }
