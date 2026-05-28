@@ -57,7 +57,7 @@ pub struct Config {
     /// If undefined, sets it to 0.0.0.0
     pub p2p_listen_address: ContextualNetAddress,
 
-    pub externalip: Option<NetAddress>,
+    pub externalip: Option<Vec<NetAddress>>,
 
     pub block_template_cache_lifetime: Option<u64>,
 
