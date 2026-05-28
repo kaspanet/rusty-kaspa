@@ -67,6 +67,10 @@ harness = false
 name = "check_scripts"
 harness = false
 
+[[bench]]
+name = "dagknight_benches"
+harness = false
+
 [features]
 html_reports = []
 devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]
