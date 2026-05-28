@@ -133,6 +133,55 @@ impl<
 
         (blue_set, chain_blocks)
     }
+
+    /// Computes the k'-chain conditioned on the virtual block agreeing with a specific subgroup.
+    ///
+    /// This is a **committed** (non-free-search) k-colouring: the virtual block's selected
+    /// parent is forced to be the max blue-work block from `group_tips`, committing the
+    /// colouring to that group's side of the conflict. During zone population, each block
+    /// only considers "agreeing" parents (those sharing a chain ancestor above conflict_genesis).
+    ///
+    /// Returns the chain backbone from virtual towards conflict_genesis (inclusive).
+    pub fn compute_conditioned_chain(
+        &self,
+        conflict_genesis: Hash,
+        group_tips: &[Hash],
+        all_tips: &[Hash],
+        k_prime: KType,
+    ) -> Vec<Hash> {
+        let reachability_service = self.reachability_service.clone();
+        let relations_store = self.relations_store.read();
+        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
+
+        // Committed (non-free-search) manager
+        let conflict_zone_manager = ConflictZoneManager::with_free_search(
+            k_prime,
+            conflict_genesis,
+            self.dagknight_store.clone(),
+            self.headers_store.clone(),
+            relations_service,
+            reachability_service.clone(),
+            false, // free_search = false (committed)
+        );
+
+        conflict_zone_manager.fill_zone_data(all_tips);
+
+        // Condition virtual on the group: force selected parent from group_tips
+        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips.iter().copied());
+        let virtual_gd: GhostdagData = conflict_zone_manager.k_colouring(all_tips, k_prime, Some(subgroup_virtual_sp));
+
+        // Walk the chain from virtual's selected parent back to conflict_genesis
+        let mut chain_blocks: Vec<Hash> = Vec::new();
+        let mut curr_sp = virtual_gd.selected_parent;
+        while curr_sp != conflict_genesis {
+            chain_blocks.push(curr_sp);
+            let gd = conflict_zone_manager.get_data(curr_sp).unwrap();
+            curr_sp = gd.selected_parent;
+        }
+        chain_blocks.push(conflict_genesis);
+
+        chain_blocks
+    }
 }
 
 impl<
@@ -179,91 +228,154 @@ mod tests {
         processes::reachability::tests::{DagBlock, DagBuilder},
     };
 
-    /// Verifies that `compute_free_coloring` overrides the reachability store's chain
-    /// parents and instead follows the max blue work path.
-    ///
-    /// Uses the exact same DAG structure as `test_free_search_considers_non_agreeing_parents`
-    /// from `manager.rs`.
+    /// Shared test DAG used by all tie_breaking tests.
     ///
     /// ```text
     ///        A (conflict genesis)
-    ///       /  \
-    ///      B    Z
-    ///      |    |
-    ///      C    Y
+    ///       / \
+    ///      B   Z
+    ///      |   |
+    ///      C   Y
     ///      | \ /
-    ///      D  X  (tips: [X, C])
+    ///      D  X
     /// ```
     ///
-    /// Reachability chain parents: X→Y, Y→Z, Z→A (low-work side)
-    /// Blue work: A=0, B=1, C=3, Z=1, Y=2, X=6
+    /// Reachability chain parents: X→Y, Y→Z, Z→A | D→C, C→B, B→A
+    /// Blue work: A=0, B=1, C=3, D=4, Z=1, Y=2, X=6
     ///
-    /// Free search picks X (max blue_work=6) as virtual's selected parent.
-    /// X's parents are [Y, C] — free search picks C (bw=3) over Y (bw=2).
-    /// C's parents are [B] — picks B.
-    /// Expected chain (towards genesis): X → C → B → A
+    /// The low-work side (X→Y→Z→A) has chain parents wired to Z, while the high-work
+    /// side (D→C→B→A) has chain parents wired through B. Free search will override
+    /// chain parents and follow max blue work (X→C→B→A).
+    struct TestDag {
+        pub hash_a: Hash,
+        pub hash_b: Hash,
+        pub hash_c: Hash,
+        pub hash_d: Hash,
+        pub hash_z: Hash,
+        pub hash_y: Hash,
+        pub hash_x: Hash,
+        pub tie_breaker: DagknightTieBreaker<
+            MemoryDagknightStore,
+            MemoryHeaderStore,
+            MemoryRelationsStore,
+            MemoryReachabilityStore,
+        >,
+    }
+
+    impl TestDag {
+        fn new() -> Self {
+            let hash_a: Hash = 1_u64.into();
+            let hash_b: Hash = 2_u64.into();
+            let hash_c: Hash = 3_u64.into();
+            let hash_d: Hash = 4_u64.into();
+            let hash_z: Hash = 5_u64.into();
+            let hash_y: Hash = 6_u64.into();
+            let hash_x: Hash = 7_u64.into();
+
+            let dk_map = RefCell::new(HashMap::new());
+            let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+            let headers_store = Arc::new(MemoryHeaderStore::new());
+            let mut reachability = MemoryReachabilityStore::new();
+            let mut relations_store = MemoryRelationsStore::new();
+
+            {
+                let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+                builder.init();
+                builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
+                builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_c, vec![hash_b]), hash_b);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_d, vec![hash_c]), hash_c);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_z, vec![hash_a]), hash_a);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y, hash_c]), hash_y);
+
+                let insert =
+                    |h: Hash, p: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, bw: BlueWorkType| {
+                        let mut header = Header::from_precomputed_hash(h, p);
+                        header.bits = bits;
+                        header.blue_work = bw;
+                        store.insert(Arc::new(header));
+                    };
+
+                insert(hash_a, vec![], 0x207fffff, &headers_store, 0.into());
+                insert(hash_b, vec![hash_a], 0x204fffff, &headers_store, 1.into());
+                insert(hash_c, vec![hash_b], 0x207fffff, &headers_store, 3.into());
+                insert(hash_d, vec![hash_c], 0x207fffff, &headers_store, 4.into());
+                insert(hash_z, vec![hash_a], 0x207fffff, &headers_store, 1.into());
+                insert(hash_y, vec![hash_z], 0x207fffff, &headers_store, 2.into());
+                insert(hash_x, vec![hash_c, hash_y], 0x207fffff, &headers_store, 6.into());
+            }
+
+            let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+            let tie_breaker = DagknightTieBreaker::new(
+                dagknight_store,
+                headers_store,
+                Arc::new(RwLock::new(relations_store)),
+                reachability_service,
+            );
+
+            Self { hash_a, hash_b, hash_c, hash_d, hash_z, hash_y, hash_x, tie_breaker }
+        }
+    }
+
+    /// Verifies that `compute_conditioned_chain` follows the reachability store's chain
+    /// parents (committed mode).
+    ///
+    /// Conditioned on [X]: chain follows reachability chain X → Y → Z → A
+    /// Conditioned on [D]: chain follows reachability chain D → C → B → A
+    #[test]
+    fn test_conditioned_chain() {
+        let dag = TestDag::new();
+        let all_tips = vec![dag.hash_x, dag.hash_d];
+
+        // Conditioned on [X]: must follow reachability chain X → Y → Z → A
+        let chain_x = dag.tie_breaker.compute_conditioned_chain(dag.hash_a, &[dag.hash_x], &all_tips, 2);
+        assert_eq!(chain_x.len(), 4, "X conditioned chain should have 4 blocks: X, Y, Z, A");
+        assert_eq!(chain_x[0], dag.hash_x, "virtual selected parent is X");
+        assert_eq!(chain_x[1], dag.hash_y, "X's committed parent must be Y");
+        assert_eq!(chain_x[2], dag.hash_z, "Y's committed parent must be Z");
+        assert_eq!(chain_x[3], dag.hash_a, "Z's committed parent is genesis A");
+
+        // Conditioned on [D]: must follow reachability chain D → C → B → A
+        let chain_d = dag.tie_breaker.compute_conditioned_chain(dag.hash_a, &[dag.hash_d], &all_tips, 2);
+        assert_eq!(chain_d.len(), 4, "D conditioned chain should have 4 blocks: D, C, B, A");
+        assert_eq!(chain_d[0], dag.hash_d, "virtual selected parent is D");
+        assert_eq!(chain_d[1], dag.hash_c, "D's committed parent must be C");
+        assert_eq!(chain_d[2], dag.hash_b, "C's committed parent must be B");
+        assert_eq!(chain_d[3], dag.hash_a, "B's committed parent is genesis A");
+
+        // The two chains diverge: X-side goes through Y/Z, D-side goes through C/B
+        assert!(!chain_d.contains(&dag.hash_y), "D's chain must NOT contain Y (different side of conflict)");
+        assert!(!chain_d.contains(&dag.hash_z), "D's chain must NOT contain Z (different side of conflict)");
+        assert!(!chain_x.contains(&dag.hash_b), "X's chain must NOT contain B (different side of conflict)");
+        assert!(!chain_x.contains(&dag.hash_c), "X's chain must NOT contain C (different side of conflict)");
+    }
+
+    /// Verifies that `compute_free_coloring` overrides the reachability store's chain
+    /// parents and follows the max blue work path.
+    ///
+    /// Reachability chain from X: X → Y → Z → A (low-work side)
+    /// Free search chain from X: X → C → B → A (max blue work side)
     #[test]
     fn test_free_coloring() {
-        let hash_a: Hash = 1_u64.into(); // conflict genesis
-        let hash_b: Hash = 2_u64.into();
-        let hash_c: Hash = 3_u64.into();
-        let hash_d: Hash = 4_u64.into();
-        let hash_z: Hash = 5_u64.into();
-        let hash_y: Hash = 6_u64.into();
-        let hash_x: Hash = 7_u64.into();
+        let dag = TestDag::new();
+        let all_tips = vec![dag.hash_x];
 
-        let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
-        let headers_store = Arc::new(MemoryHeaderStore::new());
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations_store = MemoryRelationsStore::new();
-
-        {
-            let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
-            builder.init();
-            builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
-            // Committed selected parent chain from X is: A <- Z <- Y <- X
-            builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_c, vec![hash_b]), hash_b);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_d, vec![hash_c]), hash_c);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_z, vec![hash_a]), hash_a);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y, hash_c]), hash_y);
-
-            let insert_header = |h: Hash, p: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, bw: BlueWorkType| {
-                let mut header = Header::from_precomputed_hash(h, p);
-                header.bits = bits;
-                header.blue_work = bw;
-                store.insert(Arc::new(header));
-            };
-
-            insert_header(hash_a, vec![], 0x207fffff, &headers_store, 0.into());
-            insert_header(hash_b, vec![hash_a], 0x204fffff, &headers_store, 1.into());
-            insert_header(hash_c, vec![hash_b], 0x207fffff, &headers_store, 3.into());
-            insert_header(hash_d, vec![hash_c], 0x207fffff, &headers_store, 4.into());
-            insert_header(hash_z, vec![hash_a], 0x207fffff, &headers_store, 1.into());
-            insert_header(hash_y, vec![hash_z], 0x207fffff, &headers_store, 2.into());
-            insert_header(hash_x, vec![hash_c, hash_y], 0x207fffff, &headers_store, 6.into());
-        }
-
-        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
-        let tie_breaker =
-            DagknightTieBreaker::new(dagknight_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
-
-        let all_tips = vec![hash_x];
-        let (blue_cluster, chain_blocks) = tie_breaker.compute_free_coloring(hash_a, &all_tips, 2);
+        let (blue_cluster, chain_blocks) =
+            dag.tie_breaker.compute_free_coloring(dag.hash_a, &all_tips, 2);
 
         // Verify the exact free search chain: X → C → B → A
         assert_eq!(chain_blocks.len(), 4, "chain should have exactly 4 blocks: X, C, B, A");
-        assert_eq!(chain_blocks[0], hash_x, "virtual selected parent must be X (max blue_work)");
-        assert_eq!(chain_blocks[1], hash_c, "X's free-selected parent must be C (bw=3 > Y's bw=2)");
-        assert_eq!(chain_blocks[2], hash_b, "C's free-selected parent must be B");
-        assert_eq!(chain_blocks[3], hash_a, "B's parent is genesis A");
+        assert_eq!(chain_blocks[0], dag.hash_x, "virtual selected parent must be X (max blue_work)");
+        assert_eq!(chain_blocks[1], dag.hash_c, "X's free-selected parent must be C (bw=3 > Y's bw=2)");
+        assert_eq!(chain_blocks[2], dag.hash_b, "C's free-selected parent must be B");
+        assert_eq!(chain_blocks[3], dag.hash_a, "B's parent is genesis A");
 
-        // All 6 blocks in the zone should be blue within k=2
-        assert_eq!(blue_cluster.len(), 6, "all 6 zone blocks should be blue (k=2 is sufficient)");
-        for &h in &[hash_a, hash_b, hash_c, hash_z, hash_y, hash_x] {
-            assert!(blue_cluster.contains(&h), "block {} must be in blue cluster", h);
+        // All 6 discovered blocks should be blue within k=2 (D is dead-end, not discovered)
+        assert_eq!(blue_cluster.len(), 6, "6 zone blocks should be blue (k=2 is sufficient)");
+        for &h in &[dag.hash_a, dag.hash_b, dag.hash_c, dag.hash_z, dag.hash_y, dag.hash_x] {
+            assert!(blue_cluster.contains(&h), "block must be in blue cluster");
         }
+        assert!(!blue_cluster.contains(&dag.hash_d), "D is not discovered by zone traversal (dead-end)");
     }
 }
