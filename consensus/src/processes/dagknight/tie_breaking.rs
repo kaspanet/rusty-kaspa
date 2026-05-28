@@ -204,16 +204,16 @@ impl<
         let mut witness_block_data: SortableBlock =
             SortableBlock { hash: conflict_genesis, blue_work: self.headers_store.get_header(conflict_genesis).unwrap().blue_work };
 
-        for k_prime in (k / 2)..=k {
-            let chain = self.compute_conditioned_chain(conflict_genesis, group_tips, all_tips, k_prime);
+        // TODO[DK]: Revisit - as it only checks k - 1 against the reference block
+        let k_prime = k.saturating_sub(1);
+        let chain = self.compute_conditioned_chain(conflict_genesis, group_tips, all_tips, k_prime);
 
-            for &b in f_cluster.iter() {
-                if self.count_anticone_with_chain(b, &chain) > k_prime {
-                    let curr_witness_data = SortableBlock { hash: b, blue_work: self.headers_store.get_header(b).unwrap().blue_work };
+        for &b in f_cluster.iter() {
+            if self.count_anticone_with_chain(b, &chain) > k_prime {
+                let curr_witness_data = SortableBlock { hash: b, blue_work: self.headers_store.get_header(b).unwrap().blue_work };
 
-                    if witness_block_data.cmp(&curr_witness_data) == std::cmp::Ordering::Less {
-                        witness_block_data = curr_witness_data;
-                    }
+                if witness_block_data.cmp(&curr_witness_data) == std::cmp::Ordering::Less {
+                    witness_block_data = curr_witness_data;
                 }
             }
         }
