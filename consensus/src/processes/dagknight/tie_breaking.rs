@@ -16,7 +16,9 @@ use crate::{
         },
     },
     processes::{
-        dagknight::manager::ConflictZoneManager, ghostdag::ordering::SortableBlock, reachability::relations::FutureIntersectRelations,
+        dagknight::{GroupMetadata, manager::ConflictZoneManager},
+        ghostdag::ordering::SortableBlock,
+        reachability::relations::FutureIntersectRelations,
     },
 };
 
@@ -27,26 +29,17 @@ pub struct TieBreakInput<'a> {
     /// All tips of the DAG (parents of the virtual block).
     pub all_tips: &'a [Hash],
     /// The tied subgroups — each subgroup is a slice of tip hashes that agree on a common chain ancestor above the conflict genesis.
-    pub subgroups: &'a [&'a [Hash]],
+    pub subgroups: &'a [GroupMetadata],
     /// The mutual rank `k` shared by all tied subgroups.
     pub k: KType,
-}
-
-/// Output of a tie-breaking call: the index of the winning subgroup and the subgroup hashes.
-pub struct TieBreakOutput {
-    /// Index of the winning subgroup within the input `subgroups` slice.
-    pub winning_index: usize,
-    /// The hashes belonging to the winning subgroup.
-    pub winning_subgroup: Vec<Hash>,
 }
 
 /// Trait for tie-breaking logic, isolating it from the DAGKnight executor for testability.
 pub trait TieBreaker {
     /// Performs tie-breaking among competing subgroups that share the same rank.
     ///
-    /// Returns the winning subgroup. Implementations must be deterministic: the same
-    /// input must always produce the same output.
-    fn tie_break(&self, input: &TieBreakInput<'_>) -> TieBreakOutput;
+    /// Returns the index of the winning subgroup
+    fn tie_break(&self, input: &TieBreakInput<'_>) -> usize;
 }
 
 /// DAGKnight tie-breaker backed by the consensus stores.
@@ -177,8 +170,7 @@ impl<
         let mut curr_sp = virtual_gd.selected_parent;
         while curr_sp != conflict_genesis {
             chain_blocks.push(curr_sp);
-            let gd = conflict_zone_manager.get_data(curr_sp).unwrap();
-            curr_sp = gd.selected_parent;
+            curr_sp = conflict_zone_manager.get_selected_parent(curr_sp).unwrap();
         }
         chain_blocks.push(conflict_genesis);
 
@@ -208,23 +200,25 @@ impl<
         all_tips: &[Hash],
         f_cluster: &BlockHashSet,
         k: KType,
-    ) -> BlockHashSet {
-        let mut high_rank_witnesses: BlockHashSet = BlockHashSet::default();
-
-        // The conflict genesis is always a witness — it anchors the conflict zone
-        high_rank_witnesses.insert(conflict_genesis);
+    ) -> SortableBlock {
+        let mut witness_block_data: SortableBlock =
+            SortableBlock { hash: conflict_genesis, blue_work: self.headers_store.get_header(conflict_genesis).unwrap().blue_work };
 
         for k_prime in (k / 2)..=k {
             let chain = self.compute_conditioned_chain(conflict_genesis, group_tips, all_tips, k_prime);
 
             for &b in f_cluster.iter() {
                 if self.count_anticone_with_chain(b, &chain) > k_prime {
-                    high_rank_witnesses.insert(b);
+                    let curr_witness_data = SortableBlock { hash: b, blue_work: self.headers_store.get_header(b).unwrap().blue_work };
+
+                    if witness_block_data.cmp(&curr_witness_data) == std::cmp::Ordering::Less {
+                        witness_block_data = curr_witness_data;
+                    }
                 }
             }
         }
 
-        high_rank_witnesses
+        witness_block_data
     }
 }
 
@@ -243,7 +237,7 @@ impl<
     ///
     /// If any C_i is empty (small conflict zone), falls back to SimpleTieBreaker
     /// logic (pick the subgroup with the highest selected_parent).
-    fn tie_break(&self, input: &TieBreakInput<'_>) -> TieBreakOutput {
+    fn tie_break(&self, input: &TieBreakInput<'_>) -> usize {
         let TieBreakInput { conflict_genesis, all_tips, subgroups, k } = input;
 
         // Step 1: Compute reference cluster F using free search with g(k) = floor(sqrt(k))
@@ -251,43 +245,29 @@ impl<
         let (f_cluster, _chain_blocks) = self.compute_free_coloring(*conflict_genesis, all_tips, g_k);
 
         // Step 2: For each group P_i, compute C_i (high-rank witnesses)
-        let mut group_scores: Vec<Option<(usize, SortableBlock)>> = Vec::with_capacity(subgroups.len());
+        let mut group_scores: Vec<Option<(usize, SortableBlock, Hash)>> = Vec::with_capacity(subgroups.len());
 
-        for (idx, group_tips) in subgroups.iter().enumerate() {
-            let c_i = self.compute_high_rank_witnesses(*conflict_genesis, group_tips, all_tips, &f_cluster, *k);
+        for (idx, group_metadata) in subgroups.iter().enumerate() {
+            let group_tips = group_metadata.subgroup.clone();
+            let max_c_i = self.compute_high_rank_witnesses(*conflict_genesis, &group_tips, all_tips, &f_cluster, *k);
 
-            if c_i.is_empty() {
-                // No witnesses found — fall back to simple tie-breaking
-                group_scores.push(None);
-                continue;
-            }
-
-            // max(C_i) = block in C_i with highest blue_work, ties broken by hash (min)
-            let max_c_i = c_i
-                .iter()
-                .map(|&hash| SortableBlock {
-                    hash: *group_tips.iter().max().unwrap(),
-                    blue_work: self.headers_store.get_header(hash).unwrap().blue_work,
-                })
-                .max()
-                .expect("C_i is non-empty");
-
-            group_scores.push(Some((idx, max_c_i)));
+            group_scores.push(Some((idx, max_c_i, group_metadata.selected_parent.hash)));
         }
 
         // Step 3: Select winner
-        let Some(winner_idx) = group_scores.iter().flatten().min_by_key(|(_, sortable)| sortable).map(|(idx, _)| *idx) else {
-            // All C_i were empty — fall back to SimpleTieBreaker: pick the subgroup
-            // with the highest selected_parent by passing through all groups.
-            // We use the first subgroup as a deterministic fallback.
-            return TieBreakOutput { winning_index: 0, winning_subgroup: subgroups[0].to_vec() };
-        };
+        let winner_idx = group_scores
+            .iter()
+            .flatten()
+            .min_by(|(_, a, ah), (_, b, bh)| a.cmp(b).then_with(|| ah.cmp(bh)))
+            .map(|(idx, _, _)| *idx)
+            .unwrap();
 
-        TieBreakOutput { winning_index: winner_idx, winning_subgroup: subgroups[winner_idx].to_vec() }
+        winner_idx
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::*;
     use kaspa_consensus_core::{BlueWorkType, blockhash::ORIGIN, header::Header};
@@ -562,24 +542,82 @@ mod tests {
         // Compute C_i for [D] side
         let c_d = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_d], &all_tips, &f_cluster, 4);
 
-        // Genesis A is always included as a baseline witness
-        assert!(c_x.contains(&dag.hash_a), "genesis should be in X's witnesses (baseline)");
-        assert!(c_d.contains(&dag.hash_a), "genesis should be in D's witnesses (baseline)");
-
         // All non-genesis blocks in C_i must be a subset of F
-        for &h in &c_x {
-            if h != dag.hash_a {
-                assert!(f_cluster.contains(&h), "X's witness must be in F");
-            }
-        }
-        for &h in &c_d {
-            if h != dag.hash_a {
-                assert!(f_cluster.contains(&h), "D's witness must be in F");
-            }
-        }
+        assert!(f_cluster.contains(&c_x.hash), "X's witness must be in F");
+        assert!(f_cluster.contains(&c_d.hash), "D's witness must be in F");
+    }
 
-        // Determinism: running twice produces the same result
-        let c_x_2 = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_x], &all_tips, &f_cluster, 4);
-        assert_eq!(c_x, c_x_2, "compute_high_rank_witnesses must be deterministic");
+    /// Verifies that `tie_break` is invariant to the order of subgroups in the
+    /// input — the winning *subgroup content* must be the same even if the index differs.
+    #[test]
+    fn test_tie_break_subgroup_ordering_invariance() {
+        let dag = TestDag::new();
+        let all_tips = vec![dag.hash_x, dag.hash_d];
+
+        let mutual_k = 4;
+
+        // Forward order: [X], [D]
+        let sg_x = Arc::new(vec![dag.hash_x]);
+        let sg_d = Arc::new(vec![dag.hash_d]);
+        let subgroups_forward = vec![
+            GroupMetadata {
+                conflict_genesis: dag.hash_z,
+                subgroup: sg_x,
+                k: mutual_k,
+                selected_parent: SortableBlock {
+                    hash: dag.hash_x,
+                    blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_x).unwrap().blue_work,
+                },
+            },
+            GroupMetadata {
+                conflict_genesis: dag.hash_b,
+                subgroup: sg_d,
+                k: mutual_k,
+                selected_parent: SortableBlock {
+                    hash: dag.hash_d,
+                    blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_d).unwrap().blue_work,
+                },
+            },
+        ];
+        let input_forward =
+            TieBreakInput { conflict_genesis: dag.hash_a, all_tips: &all_tips, subgroups: &subgroups_forward, k: mutual_k };
+
+        // Reversed order: [D], [X]
+        let sg_d2 = Arc::new(vec![dag.hash_d]);
+        let sg_x2 = Arc::new(vec![dag.hash_x]);
+        let subgroups_reversed = vec![
+            GroupMetadata {
+                conflict_genesis: dag.hash_b,
+                subgroup: sg_d2,
+                k: mutual_k,
+                selected_parent: SortableBlock {
+                    hash: dag.hash_d,
+                    blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_d).unwrap().blue_work,
+                },
+            },
+            GroupMetadata {
+                conflict_genesis: dag.hash_z,
+                subgroup: sg_x2,
+                k: mutual_k,
+                selected_parent: SortableBlock {
+                    hash: dag.hash_x,
+                    blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_x).unwrap().blue_work,
+                },
+            },
+        ];
+        let input_reversed =
+            TieBreakInput { conflict_genesis: dag.hash_a, all_tips: &all_tips, subgroups: &subgroups_reversed, k: mutual_k };
+
+        let output_forward = dag.tie_breaker.tie_break(&input_forward);
+        let output_reversed = dag.tie_breaker.tie_break(&input_reversed);
+
+        // The winning subgroup *content* must be the same
+        assert_eq!(
+            subgroups_forward[output_forward].subgroup, subgroups_reversed[output_reversed].subgroup,
+            "winning subgroup content must be invariant to input ordering"
+        );
+
+        // The winning_index must be flipped (forward index 0 == reversed index 1, etc.)
+        // But we only assert content equality since the tie-break could pick either side.
     }
 }

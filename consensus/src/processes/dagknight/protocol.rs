@@ -25,8 +25,15 @@ use crate::{
         },
     },
     processes::{
-        dagknight::manager::ConflictZoneManager, dagknight::rank_search::RankSearcher, difficulty::calc_work,
-        ghostdag::ordering::SortableBlock, reachability::relations::FutureIntersectRelations,
+        dagknight::{
+            GroupMetadata,
+            manager::ConflictZoneManager,
+            rank_search::RankSearcher,
+            tie_breaking::{DagknightTieBreaker, TieBreakInput, TieBreaker},
+        },
+        difficulty::calc_work,
+        ghostdag::ordering::SortableBlock,
+        reachability::relations::FutureIntersectRelations,
     },
 };
 
@@ -125,13 +132,6 @@ pub fn cleanup_conflict_locks() {
     }
 }
 
-struct GroupMetadata {
-    conflict_genesis: Hash,
-    subgroup: Arc<Vec<Hash>>,
-    k: KType,
-    selected_parent: SortableBlock,
-}
-
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 #[derive(Clone)]
 pub struct DagknightExecutor<
@@ -214,7 +214,7 @@ impl<
                 let best_groups = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
 
                 let final_winner = if best_groups.len() > 1 {
-                    self.tie_breaking(&best_groups)
+                    self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups)
                 } else {
                     let single_winner = best_groups.into_iter().next().expect("best_groups should be non-empty after filtering");
                     (single_winner.conflict_genesis, single_winner.subgroup)
@@ -328,12 +328,22 @@ impl<
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
-    /// TODO[DK]: This tie breaking rule only compares RankValue right now. Implement a proper one
-    /// according to the paper
-    fn tie_breaking(&self, subgroups: &[GroupMetadata]) -> (Hash, Arc<Vec<Hash>>) {
+    fn tie_breaking(&self, conflict_genesis: Hash, all_tips: &[Hash], subgroups: &[GroupMetadata]) -> (Hash, Arc<Vec<Hash>>) {
         debug!("Winning groups had rank k = {}", subgroups[0].k);
-        let winning_subgroup = subgroups.iter().max_by_key(|g| &g.selected_parent).expect("subgroups is non-empty");
-        (winning_subgroup.conflict_genesis, winning_subgroup.subgroup.clone())
+        let mutual_k = subgroups[0].k;
+
+        let winning_index = DagknightTieBreaker::new(
+            self.dagknight_store.clone(),
+            self.headers_store.clone(),
+            self.relations_store.clone(),
+            self.reachability_service.clone(),
+        )
+        .tie_break(&TieBreakInput { conflict_genesis, all_tips, subgroups, k: mutual_k });
+
+        let winning_conflict_genesis = subgroups[winning_index].conflict_genesis;
+        let winning_subgroup = subgroups[winning_index].subgroup.clone();
+
+        (winning_conflict_genesis, winning_subgroup)
     }
 
     /// Follows the Calculate-Rank algorithm in the DK paper

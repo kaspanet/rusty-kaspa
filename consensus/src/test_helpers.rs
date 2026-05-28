@@ -1,16 +1,27 @@
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
 
+use faster_hex::hex_string;
 use kaspa_consensus_core::{
-    BlockHashSet,
+    BlockHashSet, KType,
     block::Block,
+    blockhash::BlockHashExtensions,
     header::Header,
     subnets::SubnetworkId,
     tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };
 use kaspa_hashes::{HASH_SIZE, Hash};
+use kaspa_math::Uint192;
+use parking_lot::RwLock;
 use rand::{Rng, rngs::SmallRng, seq::SliceRandom};
+
+use crate::model::{
+    services::reachability::{MTReachabilityService, ReachabilityService},
+    stores::{headers::HeaderStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
+};
 
 pub fn header_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Header {
     Header::from_precomputed_hash(hash, parents)
@@ -262,4 +273,150 @@ pub fn generate_dot_with_chain(
 
     println!("Generated DOT file: {}", dot_filename);
     Ok(())
+}
+
+/// Dumps the conflict zone to JSON and DOT files for visualization.
+///
+/// The conflict zone is `future(conflict_genesis) ∩ past(all_tips)`. We traverse
+/// backwards from the tips through parents, collecting all blocks until we reach
+/// the conflict_genesis.
+///
+/// Red blocks that agree with `selected_parent` (i.e., the winning group's next chain
+/// ancestor above `conflict_genesis` is a chain ancestor of the red block) are rendered
+/// as gray; remaining reds render as red.
+pub fn dump_conflict_zone<O: HeaderStoreReader + 'static, D: RelationsStoreReader + Clone, R: ReachabilityStoreReader + Clone>(
+    conflict_genesis: Hash,
+    all_tips: &[Hash],
+    k: KType,
+    selected_parent: Hash,
+    reds: BlockHashSet,
+    chain_blocks: BlockHashSet,
+    headers_store: Arc<O>,
+    relations_store: Arc<RwLock<D>>,
+    reachability_service: MTReachabilityService<R>,
+) {
+    // BFS backwards from tips through parents
+    let mut queue = VecDeque::from(all_tips.to_vec());
+    let mut seen = HashSet::new();
+    seen.extend(all_tips.iter().copied());
+
+    // Maps: hash -> (parents, header_data)
+    let mut zone_blocks: HashMap<Hash, (Vec<Hash>, (Uint192, u32, u64, u64, Hash))> = HashMap::new();
+    let relations_store_guard = relations_store.read();
+
+    while let Some(hash) = queue.pop_front() {
+        if hash.is_origin() || (hash != conflict_genesis && reachability_service.is_dag_ancestor_of(hash, conflict_genesis)) {
+            continue;
+        }
+
+        // Get parents from relations store
+        let parents = relations_store_guard.get_parents(hash).unwrap_or_default();
+        let parents_vec: Vec<Hash> = parents
+            .iter()
+            .filter(|&&p| p == conflict_genesis || !reachability_service.is_dag_ancestor_of(p, conflict_genesis))
+            .copied()
+            .collect();
+
+        // Get header data
+        let header = headers_store.get_header(hash).unwrap();
+        let selected_parent = reachability_service.get_chain_parent(hash);
+        let meta = (header.blue_work, header.bits, header.blue_score, header.daa_score, selected_parent);
+
+        zone_blocks.insert(hash, (parents_vec.clone(), meta));
+
+        // Continue BFS through parents
+        for &parent in parents_vec.iter() {
+            if !seen.contains(&parent) {
+                seen.insert(parent);
+                queue.push_back(parent);
+            }
+        }
+    }
+    drop(relations_store_guard);
+
+    // Helper: short hash (first 6 hex chars, matching prefixed_hash format)
+    let short = |h: Hash| -> String {
+        let hex = hex_string(&h.as_bytes());
+        hex[..6].to_string()
+    };
+
+    let tips_short: Vec<String> = all_tips.iter().map(|h| short(*h)).collect();
+
+    let json_blocks: Vec<serde_json::Value> = zone_blocks
+        .iter()
+        .map(|(hash, (parents, (blue_work, bits, blue_score, daa_score, selected_parent)))| {
+            let mut obj = serde_json::Map::new();
+            obj.insert("id".to_string(), serde_json::json!(short(*hash)));
+            obj.insert("parents".to_string(), serde_json::json!(parents.iter().map(|p| short(*p)).collect::<Vec<_>>()));
+            obj.insert("blue_work".to_string(), serde_json::json!(blue_work.to_string()));
+            obj.insert("bits".to_string(), serde_json::json!(format!("{:08x}", bits)));
+            obj.insert("blue_score".to_string(), serde_json::json!(blue_score));
+            obj.insert("daa_score".to_string(), serde_json::json!(daa_score));
+            obj.insert("selected_parent".to_string(), serde_json::json!(short(*selected_parent)));
+            serde_json::Value::Object(obj)
+        })
+        .collect();
+
+    // Write JSON
+    let json_filename = format!("conflict_zone_k{}.json", k);
+    if let Ok(mut file) = File::create(&json_filename) {
+        let mut root = serde_json::Map::new();
+        root.insert("tips".to_string(), serde_json::json!(tips_short));
+        root.insert("blocks".to_string(), serde_json::json!(json_blocks));
+        let _ = serde_json::to_writer_pretty(&mut file, &serde_json::Value::Object(root));
+        println!("Conflict zone JSON written to: {}", json_filename);
+    }
+
+    // Write DOT
+    let dot_filename = format!("conflict_zone_k{}.dot", k);
+    if let Ok(mut file) = File::create(&dot_filename) {
+        writeln!(file, "digraph ConflictZone {{").unwrap();
+        writeln!(file, "    rankdir=TB;").unwrap();
+        writeln!(file, "    node [fontname=\"Arial\", fontsize=8];").unwrap();
+        writeln!(file).unwrap();
+
+        // Compute gray set: red blocks that agree with the winning group.
+        // A red block is "gray" if the winning group's next chain ancestor above
+        // conflict_genesis is a chain ancestor of the red block.
+        let next_chain_ancestor = reachability_service.get_next_chain_ancestor(selected_parent, conflict_genesis);
+        let gray_set: BlockHashSet =
+            reds.iter().filter(|&&h| reachability_service.is_chain_ancestor_of(next_chain_ancestor, h)).copied().collect();
+
+        // Node definitions
+        for (hash, _) in &zone_blocks {
+            let s = short(*hash);
+            if chain_blocks.contains(hash) {
+                // Chain blocks get double circles (overrides genesis/tips coloring)
+                writeln!(file, "    \"{}\" [shape=doublecircle, style=filled, fillcolor=steelblue, label=\"{}\"];", s, s).unwrap();
+            } else if *hash == conflict_genesis {
+                writeln!(file, "    \"{}\" [shape=doublecircle, style=filled, fillcolor=orange, label=\"{} (genesis)\"];", s, s)
+                    .unwrap();
+            } else if all_tips.contains(hash) {
+                writeln!(file, "    \"{}\" [shape=box, style=filled, fillcolor=lightgreen, label=\"{}\"];", s, s).unwrap();
+            } else if gray_set.contains(hash) {
+                writeln!(file, "    \"{}\" [shape=circle, style=filled, fillcolor=lightgray, label=\"{}\"];", s, s).unwrap();
+            } else if reds.contains(hash) {
+                writeln!(file, "    \"{}\" [shape=circle, style=filled, fillcolor=lightcoral, label=\"{}\"];", s, s).unwrap();
+            } else {
+                writeln!(file, "    \"{}\" [shape=circle, style=filled, fillcolor=lightskyblue, label=\"{}\"];", s, s).unwrap();
+            }
+        }
+        writeln!(file).unwrap();
+
+        // Edge definitions: chain-to-chain edges are blue/bold, rest are gray/dashed
+        for (hash, (parents, _)) in &zone_blocks {
+            let from = short(*hash);
+            for parent in parents {
+                let to = short(*parent);
+                if chain_blocks.contains(hash) && chain_blocks.contains(parent) {
+                    writeln!(file, "    \"{}\" -> \"{}\" [color=blue, penwidth=2, style=bold];", from, to).unwrap();
+                } else {
+                    writeln!(file, "    \"{}\" -> \"{}\" [color=gray, style=dashed];", from, to).unwrap();
+                }
+            }
+        }
+
+        writeln!(file, "}}").unwrap();
+        println!("Conflict zone DOT written to: {}", dot_filename);
+    }
 }
