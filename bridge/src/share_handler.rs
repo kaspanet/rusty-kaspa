@@ -271,6 +271,16 @@ impl ShareHandler {
         ensure_worker_session_metrics(&worker, Self::workstats_session_start_unix(stats));
     }
 
+    /// Return in-memory stats for a worker when already registered (authorize/submit lifecycle).
+    fn get_stats_if_exists(&self, ctx: &StratumContext) -> Option<WorkStats> {
+        let worker_id = ctx.effective_worker_name();
+        self.stats.lock().get(&worker_id).cloned()
+    }
+
+    fn current_stratum_diff(ctx: &StratumContext) -> f64 {
+        GetMiningState(ctx).stratum_diff().map(|d| d.diff_value).unwrap_or(0.0)
+    }
+
     pub fn get_create_stats(&self, ctx: &StratumContext) -> WorkStats {
         let worker_id = ctx.effective_worker_name();
 
@@ -1105,7 +1115,10 @@ impl ShareHandler {
     }
 
     pub fn set_client_vardiff(&self, ctx: &StratumContext, min_diff: f64) -> f64 {
-        let stats = self.get_create_stats(ctx);
+        let Some(stats) = self.get_stats_if_exists(ctx) else {
+            // Job/difficulty paths must not resurrect pruned 0-share workers in the terminal table.
+            return Self::current_stratum_diff(ctx);
+        };
         let previous = *stats.min_diff.lock();
         *stats.min_diff.lock() = min_diff;
         *stats.var_diff_start_time.lock() = Some(Instant::now());
@@ -1115,12 +1128,16 @@ impl ShareHandler {
     }
 
     pub fn get_client_vardiff(&self, ctx: &StratumContext) -> f64 {
-        let stats = self.get_create_stats(ctx);
-        *stats.min_diff.lock()
+        if let Some(stats) = self.get_stats_if_exists(ctx) {
+            return *stats.min_diff.lock();
+        }
+        Self::current_stratum_diff(ctx)
     }
 
     pub fn start_client_vardiff(&self, ctx: &StratumContext) {
-        let stats = self.get_create_stats(ctx);
+        let Some(stats) = self.get_stats_if_exists(ctx) else {
+            return;
+        };
         if stats.var_diff_start_time.lock().is_none() {
             *stats.var_diff_start_time.lock() = Some(Instant::now());
             *stats.var_diff_shares_found.lock() = 0;
@@ -1646,7 +1663,45 @@ pub trait KaspaApiTrait: Send + Sync {
     async fn get_current_block_color(&self, block_hash: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>>;
 }
 
-pub struct WorkerContext<'a> {
-    pub worker_name: &'a str,
-    pub wallet_addr: &'a str,
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+    use crate::mining_state::MiningState;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    fn test_ctx() -> Arc<StratumContext> {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let accept_handle = tokio::spawn(async move { listener.accept().await });
+            let _stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+            let (accepted_stream, _) = accept_handle.await.unwrap().unwrap();
+            let state = Arc::new(MiningState::new());
+            let (tx, _rx) = mpsc::unbounded_channel();
+            StratumContext::new("127.0.0.1".to_string(), 12345, accepted_stream, state, tx)
+        })
+    }
+
+    #[test]
+    fn set_client_vardiff_does_not_recreate_pruned_stats() {
+        let handler = ShareHandler::new("test-instance".to_string());
+        let ctx = test_ctx();
+        *ctx.worker_name.lock() = "ghost".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:ghost".to_string();
+
+        handler.get_create_stats(&ctx);
+        assert_eq!(handler.stats.lock().len(), 1);
+
+        handler.stats.lock().clear();
+        assert!(handler.stats.lock().is_empty());
+
+        let previous = handler.set_client_vardiff(&ctx, 512.0);
+        assert_eq!(previous, 0.0, "vardiff should fall back to mining-state diff when stats were pruned");
+        assert!(handler.stats.lock().is_empty(), "job/vardiff paths must not recreate pruned stats");
+
+        handler.get_create_stats(&ctx);
+        assert_eq!(handler.stats.lock().len(), 1, "authorize/submit lifecycle may recreate stats");
+    }
 }
