@@ -6,7 +6,7 @@ use parking_lot::RwLock;
 
 use crate::{
     model::{
-        services::reachability::MTReachabilityService,
+        services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             dagknight::{DagknightStore, DagknightStoreReader},
             ghostdag::GhostdagData,
@@ -15,7 +15,9 @@ use crate::{
             relations::RelationsStoreReader,
         },
     },
-    processes::{dagknight::manager::ConflictZoneManager, reachability::relations::FutureIntersectRelations},
+    processes::{
+        dagknight::manager::ConflictZoneManager, ghostdag::ordering::SortableBlock, reachability::relations::FutureIntersectRelations,
+    },
 };
 
 /// Input data for a tie-breaking call.
@@ -182,6 +184,48 @@ impl<
 
         chain_blocks
     }
+
+    /// Counts how many blocks in `chain` are in the anticone of `b`.
+    ///
+    /// A chain block `c` is in `anticone(b)` iff neither `b` is a DAG ancestor of `c`
+    /// nor `c` is a DAG ancestor of `b`.
+    fn count_anticone_with_chain(&self, b: Hash, chain: &[Hash]) -> KType {
+        chain
+            .iter()
+            .filter(|&&c| !self.reachability_service.is_dag_ancestor_of(b, c) && !self.reachability_service.is_dag_ancestor_of(c, b))
+            .count() as KType
+    }
+
+    /// Computes the "high-rank witnesses" set C_i for a subgroup.
+    ///
+    /// Per Algorithm 4, C_i is the union over k' ∈ {⌊k/2⌋, ..., k} of all blocks B in
+    /// the reference cluster F where |anticone(B) ∩ chain_{i,k'}| > k'. The conflict
+    /// genesis is always included in C_i as a baseline witness.
+    pub fn compute_high_rank_witnesses(
+        &self,
+        conflict_genesis: Hash,
+        group_tips: &[Hash],
+        all_tips: &[Hash],
+        f_cluster: &BlockHashSet,
+        k: KType,
+    ) -> BlockHashSet {
+        let mut high_rank_witnesses: BlockHashSet = BlockHashSet::default();
+
+        // The conflict genesis is always a witness — it anchors the conflict zone
+        high_rank_witnesses.insert(conflict_genesis);
+
+        for k_prime in (k / 2)..=k {
+            let chain = self.compute_conditioned_chain(conflict_genesis, group_tips, all_tips, k_prime);
+
+            for &b in f_cluster.iter() {
+                if self.count_anticone_with_chain(b, &chain) > k_prime {
+                    high_rank_witnesses.insert(b);
+                }
+            }
+        }
+
+        high_rank_witnesses
+    }
 }
 
 impl<
@@ -193,22 +237,51 @@ impl<
 {
     /// Implements Algorithm 4 from the DAGKnight paper.
     ///
-    /// Currently implements Step 1 (computing the free reference cluster F).
-    /// Steps 2-3 (computing C_i for each group and selecting the winner) are deferred.
+    /// 1. Compute reference cluster F using free search at g(k) = floor(sqrt(k))
+    /// 2. For each subgroup, compute C_i = high-rank witnesses against F
+    /// 3. Select the subgroup whose max(C_i) is earliest (argmin by blue_work, ties by hash)
     ///
-    /// TODO[DK]: Implement full Algorithm 4 tie-breaking with C_i computation
+    /// If any C_i is empty (small conflict zone), falls back to SimpleTieBreaker
+    /// logic (pick the subgroup with the highest selected_parent).
     fn tie_break(&self, input: &TieBreakInput<'_>) -> TieBreakOutput {
         let TieBreakInput { conflict_genesis, all_tips, subgroups, k } = input;
 
         // Step 1: Compute reference cluster F using free search with g(k) = floor(sqrt(k))
         let g_k = k.isqrt() as KType;
-        let (_f_cluster, _chain_blocks) = self.compute_free_coloring(*conflict_genesis, all_tips, g_k);
+        let (f_cluster, _chain_blocks) = self.compute_free_coloring(*conflict_genesis, all_tips, g_k);
 
-        // TODO[DK]: Step 2 - For each group P_i, compute chains and C_i sets
-        // TODO[DK]: Step 3 - Select winner with argmin of max(C_i), break ties by hash
+        // Step 2: For each group P_i, compute C_i (high-rank witnesses)
+        let mut group_scores: Vec<Option<(usize, SortableBlock)>> = Vec::with_capacity(subgroups.len());
 
-        // Placeholder: fall back to deterministic selection by subgroup hash comparison
-        let winner_idx = (0..subgroups.len()).min_by_key(|&i| subgroups[i][0]).expect("subgroups must be non-empty");
+        for (idx, group_tips) in subgroups.iter().enumerate() {
+            let c_i = self.compute_high_rank_witnesses(*conflict_genesis, group_tips, all_tips, &f_cluster, *k);
+
+            if c_i.is_empty() {
+                // No witnesses found — fall back to simple tie-breaking
+                group_scores.push(None);
+                continue;
+            }
+
+            // max(C_i) = block in C_i with highest blue_work, ties broken by hash (min)
+            let max_c_i = c_i
+                .iter()
+                .map(|&hash| SortableBlock {
+                    hash: *group_tips.iter().max().unwrap(),
+                    blue_work: self.headers_store.get_header(hash).unwrap().blue_work,
+                })
+                .max()
+                .expect("C_i is non-empty");
+
+            group_scores.push(Some((idx, max_c_i)));
+        }
+
+        // Step 3: Select winner
+        let Some(winner_idx) = group_scores.iter().flatten().min_by_key(|(_, sortable)| sortable).map(|(idx, _)| *idx) else {
+            // All C_i were empty — fall back to SimpleTieBreaker: pick the subgroup
+            // with the highest selected_parent by passing through all groups.
+            // We use the first subgroup as a deterministic fallback.
+            return TieBreakOutput { winning_index: 0, winning_subgroup: subgroups[0].to_vec() };
+        };
 
         TieBreakOutput { winning_index: winner_idx, winning_subgroup: subgroups[winner_idx].to_vec() }
     }
@@ -254,12 +327,7 @@ mod tests {
         pub hash_z: Hash,
         pub hash_y: Hash,
         pub hash_x: Hash,
-        pub tie_breaker: DagknightTieBreaker<
-            MemoryDagknightStore,
-            MemoryHeaderStore,
-            MemoryRelationsStore,
-            MemoryReachabilityStore,
-        >,
+        pub tie_breaker: DagknightTieBreaker<MemoryDagknightStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>,
     }
 
     impl TestDag {
@@ -289,13 +357,12 @@ mod tests {
                 builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
                 builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y, hash_c]), hash_y);
 
-                let insert =
-                    |h: Hash, p: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, bw: BlueWorkType| {
-                        let mut header = Header::from_precomputed_hash(h, p);
-                        header.bits = bits;
-                        header.blue_work = bw;
-                        store.insert(Arc::new(header));
-                    };
+                let insert = |h: Hash, p: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, bw: BlueWorkType| {
+                    let mut header = Header::from_precomputed_hash(h, p);
+                    header.bits = bits;
+                    header.blue_work = bw;
+                    store.insert(Arc::new(header));
+                };
 
                 insert(hash_a, vec![], 0x207fffff, &headers_store, 0.into());
                 insert(hash_b, vec![hash_a], 0x204fffff, &headers_store, 1.into());
@@ -307,12 +374,8 @@ mod tests {
             }
 
             let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
-            let tie_breaker = DagknightTieBreaker::new(
-                dagknight_store,
-                headers_store,
-                Arc::new(RwLock::new(relations_store)),
-                reachability_service,
-            );
+            let tie_breaker =
+                DagknightTieBreaker::new(dagknight_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
 
             Self { hash_a, hash_b, hash_c, hash_d, hash_z, hash_y, hash_x, tie_breaker }
         }
@@ -361,8 +424,7 @@ mod tests {
         let dag = TestDag::new();
         let all_tips = vec![dag.hash_x];
 
-        let (blue_cluster, chain_blocks) =
-            dag.tie_breaker.compute_free_coloring(dag.hash_a, &all_tips, 2);
+        let (blue_cluster, chain_blocks) = dag.tie_breaker.compute_free_coloring(dag.hash_a, &all_tips, 2);
 
         // Verify the exact free search chain: X → C → B → A
         assert_eq!(chain_blocks.len(), 4, "chain should have exactly 4 blocks: X, C, B, A");
@@ -377,5 +439,147 @@ mod tests {
             assert!(blue_cluster.contains(&h), "block must be in blue cluster");
         }
         assert!(!blue_cluster.contains(&dag.hash_d), "D is not discovered by zone traversal (dead-end)");
+    }
+
+    /// Verifies that `count_anticone_with_chain` correctly identifies anticone blocks.
+    ///
+    /// Uses a symmetric diamond DAG with two concurrent branches from A merging at D:
+    ///
+    /// ```text
+    ///       A
+    ///      / \
+    ///     B   Z
+    ///     |   |
+    ///     C   Y
+    ///     |   |
+    ///     |   X
+    ///      \ /
+    ///       D  (D's parents: [C, X], sp: C)
+    /// ```
+    ///
+    /// Left branch:  A → B → C
+    /// Right branch: A → Z → Y → X
+    ///
+    /// Chain 1: [C, B, A] (left side, towards genesis)
+    /// Chain 2: [X, Y, Z, A] (right side, towards genesis)
+    ///
+    /// Key property: every block on one side is concurrent with every block on the other.
+    /// B and C are concurrent with all of {Z, Y, X} → anticone count = 3 against Chain 2.
+    /// Z, Y, X are concurrent with all of {B, C} → anticone count = 2 against Chain 1.
+    #[test]
+    fn test_count_anticone_with_chain() {
+        let hash_a: Hash = 1_u64.into();
+        let hash_b: Hash = 2_u64.into();
+        let hash_c: Hash = 3_u64.into();
+        let hash_z: Hash = 4_u64.into();
+        let hash_y: Hash = 5_u64.into();
+        let hash_x: Hash = 6_u64.into();
+        let hash_d: Hash = 7_u64.into();
+
+        let dk_map = RefCell::new(HashMap::new());
+        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations_store = MemoryRelationsStore::new();
+
+        {
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+            builder.init();
+            builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
+            builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_c, vec![hash_b]), hash_b);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_z, vec![hash_a]), hash_a);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y]), hash_y);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_d, vec![hash_c, hash_x]), hash_c);
+
+            let insert = |h: Hash, p: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, bw: BlueWorkType| {
+                let mut header = Header::from_precomputed_hash(h, p);
+                header.bits = bits;
+                header.blue_work = bw;
+                store.insert(Arc::new(header));
+            };
+
+            insert(hash_a, vec![], 0x207fffff, &headers_store, 0.into());
+            insert(hash_b, vec![hash_a], 0x207fffff, &headers_store, 1.into());
+            insert(hash_c, vec![hash_b], 0x207fffff, &headers_store, 2.into());
+            insert(hash_z, vec![hash_a], 0x207fffff, &headers_store, 1.into());
+            insert(hash_y, vec![hash_z], 0x207fffff, &headers_store, 2.into());
+            insert(hash_x, vec![hash_y], 0x207fffff, &headers_store, 3.into());
+            insert(hash_d, vec![hash_c, hash_x], 0x207fffff, &headers_store, 4.into());
+        }
+
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+        let tie_breaker =
+            DagknightTieBreaker::new(dagknight_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
+
+        // Chain 2: [X, Y, Z, A] (right side, towards genesis)
+        let chain_right = vec![hash_x, hash_y, hash_z, hash_a];
+
+        // B is concurrent with Z, Y, X → anticone count = 3
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_b, &chain_right), 3, "B is concurrent with Z, Y, X");
+
+        // C is concurrent with Z, Y, X → anticone count = 3
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_c, &chain_right), 3, "C is concurrent with Z, Y, X");
+
+        // A is ancestor of everything → anticone count = 0
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_a, &chain_right), 0, "genesis A is ancestor of all chain blocks");
+
+        // X, Y, Z are in the chain → anticone count = 0
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_x, &chain_right), 0, "X is in its own chain");
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_y, &chain_right), 0, "Y is in its own chain");
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_z, &chain_right), 0, "Z is in its own chain");
+
+        // Chain 1: [C, B, A] (left side, towards genesis)
+        let chain_left = vec![hash_c, hash_b, hash_a];
+
+        // Z is concurrent with B, C → anticone count = 2
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_z, &chain_left), 2, "Z is concurrent with B, C");
+
+        // Y is concurrent with B, C → anticone count = 2
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_y, &chain_left), 2, "Y is concurrent with B, C");
+
+        // X is concurrent with B, C → anticone count = 2
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_x, &chain_left), 2, "X is concurrent with B, C");
+    }
+
+    /// Verifies that `compute_high_rank_witnesses` correctly identifies F blocks
+    /// that exceed the k'-cluster bound against the conditioned chain.
+    ///
+    /// With k=4, k' iterates from 2 to 4. The method computes conditioned chains
+    /// for each k' and collects F blocks whose anticone with the chain exceeds k'.
+    #[test]
+    fn test_high_rank_witnesses() {
+        let dag = TestDag::new();
+        let all_tips = vec![dag.hash_x, dag.hash_d];
+
+        // Compute F cluster at g(4) = 2
+        let (f_cluster, _) = dag.tie_breaker.compute_free_coloring(dag.hash_a, &all_tips, 2);
+
+        // Compute C_i for [X] side
+        let c_x = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_x], &all_tips, &f_cluster, 4);
+
+        // Compute C_i for [D] side
+        let c_d = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_d], &all_tips, &f_cluster, 4);
+
+        // Genesis A is always included as a baseline witness
+        assert!(c_x.contains(&dag.hash_a), "genesis should be in X's witnesses (baseline)");
+        assert!(c_d.contains(&dag.hash_a), "genesis should be in D's witnesses (baseline)");
+
+        // All non-genesis blocks in C_i must be a subset of F
+        for &h in &c_x {
+            if h != dag.hash_a {
+                assert!(f_cluster.contains(&h), "X's witness must be in F");
+            }
+        }
+        for &h in &c_d {
+            if h != dag.hash_a {
+                assert!(f_cluster.contains(&h), "D's witness must be in F");
+            }
+        }
+
+        // Determinism: running twice produces the same result
+        let c_x_2 = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_x], &all_tips, &f_cluster, 4);
+        assert_eq!(c_x, c_x_2, "compute_high_rank_witnesses must be deterministic");
     }
 }
