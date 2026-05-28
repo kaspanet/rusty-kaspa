@@ -715,7 +715,7 @@ mod tests {
         manager_committed.init_root();
 
         // Now fill zone data
-        let tips = vec![hash_x, hash_c];
+        let tips = vec![hash_x, hash_d];
         manager_committed.fill_zone_data(&tips);
         manager_free.fill_zone_data(&tips);
 
