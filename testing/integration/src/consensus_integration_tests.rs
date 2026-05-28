@@ -1653,7 +1653,7 @@ async fn seqcommit_sp_context_threshold_edge_test() {
 }
 
 #[tokio::test]
-async fn staging_consensus_test() {
+async fn staging_consensus_lifecycle_test() {
     init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).build();
 
@@ -1690,8 +1690,26 @@ async fn staging_consensus_test() {
     let joins = core.start();
 
     let staging = consensus_manager.new_staging_consensus();
-    staging.commit();
+    let staging_session = staging.session().await;
+    let genesis_hash = config.genesis.hash;
 
+    // A fresh staging consensus skips normal genesis processing, so genesis is
+    // absent from both the headers store and the status store before import.
+    assert!(staging_session.async_get_header(genesis_hash).await.is_err());
+    assert_eq!(staging_session.async_get_block_status(genesis_hash).await, None);
+
+    let mut genesis_header: Header = (&config.genesis).into();
+    genesis_header.hash = genesis_hash;
+    let genesis_header = Arc::new(genesis_header);
+    staging_session.clone().spawn_blocking(move |c| c.import_pruning_points(vec![genesis_header])).await.unwrap();
+
+    // Importing pruning points stores headers without assigning block statuses.
+    // Header access must keep working for headers-proof IBD in this state.
+    assert_eq!(staging_session.async_get_header(genesis_hash).await.unwrap().hash, genesis_hash);
+    assert_eq!(staging_session.async_get_block_status(genesis_hash).await, None);
+
+    drop(staging_session);
+    staging.commit();
     core.shutdown();
     core.join(joins);
 }
@@ -2354,7 +2372,6 @@ fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<(
     let mut params = TESTNET_PARAMS;
     params.crescendo_activation = ForkActivation::always();
     params.toccata_activation = ForkActivation::always();
-    params.zk_hardening_activation = ForkActivation::always();
 
     let config = ConfigBuilder::new(params)
         .skip_proof_of_work()

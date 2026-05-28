@@ -144,7 +144,6 @@ impl ConsensusServices {
             tx_script_cache_counters,
             mass_calculator.clone(),
             params.toccata_activation,
-            params.zk_hardening_activation,
             params.mass_per_sig_op,
         );
 
@@ -184,8 +183,6 @@ impl ConsensusServices {
             params.ghostdag_k(),
             params.skip_proof_of_work,
             params.toccata_activation,
-            params.zk_hardening_activation,
-            params.net.is_mainnet(),
             is_consensus_exiting,
         ));
 

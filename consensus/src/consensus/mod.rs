@@ -1154,22 +1154,18 @@ impl ConsensusApi for Consensus {
         &self,
         new_pruning_point: Hash,
         metadata: kaspa_consensus_core::api::SmtExportMetadata,
-        inactivity_shortcut_block: Option<Hash>,
+        inactivity_shortcut_block: Hash,
         lane_batches: ImportLaneBatchIterator<'_>,
     ) -> PruningImportResult<()> {
-        use crate::model::stores::smt_metadata::{SmtBlockMetadata, ToccataV0};
+        use crate::model::stores::smt_metadata::SmtBlockMetadata;
         use kaspa_hashes::ZERO_HASH;
         use kaspa_smt_store::streaming_import::streaming_import;
 
         let kaspa_consensus_core::api::SmtExportMetadata { lanes_root, payload_and_ctx_digest, active_lanes_count, .. } = metadata;
         let expected_lane_count = active_lanes_count;
 
-        // `inactivity_shortcut_block` was already resolved by the caller during metadata
-        // verification: `Some` post-hardening, `None` pre-hardening. V1/V0 dispatch follows.
-        let row = match inactivity_shortcut_block {
-            Some(block) => SmtBlockMetadata::new(payload_and_ctx_digest, block, active_lanes_count),
-            None => SmtBlockMetadata::ToccataV0(ToccataV0 { payload_and_ctx_digest, active_lanes_count }),
-        };
+        // `inactivity_shortcut_block` was already resolved by the caller during metadata verification.
+        let row = SmtBlockMetadata::new(payload_and_ctx_digest, inactivity_shortcut_block, active_lanes_count);
 
         let result = self.virtual_processor.install(|| {
             streaming_import(

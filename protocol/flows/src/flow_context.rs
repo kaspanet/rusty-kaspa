@@ -98,15 +98,8 @@ struct CountdownActivation {
 }
 
 impl CountdownActivation {
-    fn latest(toccata_activation: ForkActivation, zk_hardening_activation: ForkActivation) -> Self {
-        [
-            Self { name: "Toccata", activation: toccata_activation },
-            Self { name: "Toccata ZK hardening", activation: zk_hardening_activation },
-        ]
-        .into_iter()
-        .filter(|candidate| candidate.activation != ForkActivation::never())
-        .max_by_key(|candidate| candidate.activation.daa_score())
-        .unwrap_or(Self { name: "Toccata", activation: ForkActivation::never() })
+    fn toccata(toccata_activation: ForkActivation) -> Self {
+        Self { name: "Toccata", activation: toccata_activation }
     }
 }
 
@@ -395,10 +388,7 @@ impl FlowContext {
                 tick_service,
                 notification_root,
                 user_agent_rules,
-                block_event_logger: Some(BlockEventLogger::new(
-                    bps,
-                    CountdownActivation::latest(config.toccata_activation, config.zk_hardening_activation),
-                )),
+                block_event_logger: Some(BlockEventLogger::new(bps, CountdownActivation::toccata(config.toccata_activation))),
                 bps,
                 orphan_resolution_range,
                 max_orphans,
@@ -840,7 +830,7 @@ impl ConnectionInitializer for FlowContext {
         let connect_only_new_versions = self.config.toccata_activation.is_active(virtual_daa_score.saturating_add(daa_threshold));
 
         // Until the one-day pre-activation threshold is reached, older protocol versions remain accepted.
-        // Once it is reached, peers must advertise protocol 10 (TN12 launch peers were normalized above).
+        // Once it is reached, peers must advertise protocol 10.
         //
         // Note: post-activation fresh nodes with virtual DAA score near genesis are not covered here and
         // are guarded later during IBD by `validate_pruning_point_freshness_for_toccata`.

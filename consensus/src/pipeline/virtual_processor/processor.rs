@@ -177,10 +177,6 @@ pub struct VirtualStateProcessor {
     pub(crate) toccata_activation: ForkActivation,
     pub(crate) toccata_logger: ForkLogger,
 
-    // KIP-21 finality-anchor activation: gates inactivity_shortcut inclusion in mergeset_context_hash.
-    pub(crate) zk_hardening_activation: ForkActivation,
-    pub(crate) zk_hardening_logger: ForkLogger,
-
     // SMT stores
     pub(super) smt_stores: Arc<kaspa_smt_store::processor::SmtStores>,
     pub(super) smt_metadata_store: Arc<crate::model::stores::smt_metadata::DbSmtMetadataStore>,
@@ -255,13 +251,6 @@ impl VirtualStateProcessor {
             counters,
             toccata_activation: params.toccata_activation,
             toccata_logger: ForkLogger::new("virtual state processing rules", true),
-            zk_hardening_activation: params.zk_hardening_activation,
-            zk_hardening_logger: ForkLogger::new_with_fork(
-                "Toccata ZK hardening",
-                "TOCCATA ZK HARDENING",
-                "virtual state processing rules",
-                true,
-            ),
             smt_stores: storage.smt_stores.clone(),
             smt_metadata_store: storage.smt_metadata_store.clone(),
             _mining_rules: mining_rules,
@@ -596,9 +585,6 @@ impl VirtualStateProcessor {
         if self.toccata_activation.is_within_range_from_activation(virtual_daa_window.daa_score, 10_000) {
             self.toccata_logger.report_activation();
         }
-        if self.zk_hardening_activation.is_within_range_from_activation(virtual_daa_window.daa_score, 10_000) {
-            self.zk_hardening_logger.report_activation();
-        }
 
         // Compute accepted_id_digests
         let accepted_id_digests = if self.toccata_activation.is_active(virtual_daa_window.daa_score) {
@@ -638,8 +624,7 @@ impl VirtualStateProcessor {
         let inactivity_shortcut_block = self.compute_inactivity_shortcut_block(virtual_ghostdag_data);
         let context_hash =
             mergeset_context_hash(&MergesetContext { timestamp: parent_header.timestamp, daa_score, blue_score: current_blue_score });
-        let inactivity_shortcut =
-            self.zk_hardening_activation.is_active(daa_score).then(|| self.inactivity_shortcut(inactivity_shortcut_block));
+        let inactivity_shortcut = self.inactivity_shortcut(inactivity_shortcut_block);
 
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let data = self.collect_mergeset_seq_data(ctx);
@@ -733,13 +718,8 @@ impl VirtualStateProcessor {
         )
         .unwrap();
 
-        // Pre-hardening: identity. Post-hardening (typically only simnet with activation=0):
-        // wrap with ZERO_HASH shortcut since no real shortcut block exists yet at genesis.
-        let activity_root = if self.zk_hardening_activation.is_active(self.genesis.daa_score) {
-            activity_root_hash(&ZERO_HASH, &lanes_root)
-        } else {
-            lanes_root
-        };
+        // Genesis has no shortcut target, so Toccata commits ZERO_HASH at the activity-root level.
+        let activity_root = activity_root_hash(&ZERO_HASH, &lanes_root);
         let pd = payload_and_context_digest(&context_hash, &payload_root);
         let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
         let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
@@ -748,9 +728,8 @@ impl VirtualStateProcessor {
 
     /// Read stored SMT metadata for the pruning point.
     ///
-    /// Both V0 and V1 rows carry `payload_and_ctx_digest` directly. The receiver
-    /// derives `inactivity_shortcut_block` from chain headers when needed, so the
-    /// wire shape is identical pre- and post-hardening.
+    /// The receiver derives `inactivity_shortcut_block` from chain headers, so it
+    /// is not transmitted on the wire.
     pub fn get_pruning_point_smt_metadata(
         &self,
         expected_pruning_point: Hash,
@@ -805,11 +784,9 @@ impl VirtualStateProcessor {
     /// `inactivity_shortcut` value is this block's seq_commit (see
     /// [`Self::inactivity_shortcut`]).
     ///
-    /// Never returns `ZERO_HASH`. Before a real shortcut block is reachable
-    /// (early chain, or within finality depth of hardening activation), a
-    /// pre-hardening stand-in is returned. Such stand-ins are valid for
-    /// context-hash recomputation but must not be exposed to provers or RPC
-    /// consumers as real shortcut targets.
+    /// Never returns `ZERO_HASH`. Before a real seqcommit-bearing shortcut block
+    /// is reachable, the returned block can be genesis or another pre-Toccata
+    /// ancestor and [`Self::inactivity_shortcut`] folds it to `ZERO_HASH`.
     pub(super) fn compute_inactivity_shortcut_block(&self, ghostdag_data: &GhostdagData) -> Hash {
         let selected_parent = ghostdag_data.selected_parent;
 
@@ -843,38 +820,19 @@ impl VirtualStateProcessor {
         // v != ZERO_HASH` arm above. That gives us `current.bs <= pp.bs + finality_depth + 1`:
         // we are in the narrow post-IBD window of at most `finality_depth + 1` blocks past pp.
         //
-        // Inside that window, `selected_parent` is necessarily either pp itself or a post-IBD
-        // local descendant of pp, and both carry a V1 row with a real `inactivity_shortcut_block`:
+        // Inside that window, `selected_parent` is either pp itself, a post-IBD local
+        // descendant of pp, or a pre-Toccata selected parent right after activation:
         //   - pp: inserted by `Consensus::import_pruning_point_smt` via `SmtBlockMetadata::new(...)`.
         //   - local descendant: committed by `commit_virtual_state` via `SmtBlockMetadata::new(...)`.
-        // The other shapes are excluded:
-        //   - sp == genesis: excluded by the early-return clamp at the top of this function.
-        //   - sp pre-toccata: `compute_inactivity_shortcut_block` is only called from
-        //     `compute_seq_commit`/`recompute_seq_commit`, both gated on
-        //     `toccata_activation.is_active(current.daa_score)`. `sync_new_smt_state` is also a
-        //     no-op for pre-toccata pps (see `ibd/flow.rs`), so a pre-toccata sp cannot coexist
-        //     with the post-IBD-window precondition.
-        //   - sp's row being legacy ToccataV0 (pre-anchor tn10 data): the V0 row is a residue of
-        //     pre-anchor live processing, so it lives deep in the chain — but the post-IBD-window
-        //     precondition forces sp to be fresh (pp or its post-IBD descendant), which is always
-        //     written as V1 by this binary. Pre-anchor IBD did not exist (introduced by this PR),
-        //     so an upgrading tn10 node can only enter the narrow window via a post-upgrade IBD
-        //     whose pp is committed as V1, or by building locally past its existing chain (in
-        //     which case branch A above fires because the live coinbase lane is fully populated).
-        //
-        // The `.unwrap_or(selected_parent)` tail is therefore dead under correct operation. It is
-        // a defense-in-depth default: even if reached, the returned block hash only affects
-        // consensus when `zk_hardening_activation.is_active(current.daa_score)` (see
-        // `compute_seq_commit`'s gating of the `inactivity_shortcut` field), and the cases that
-        // would reach the tail (missing row, pre-anchor V0 row, pre-toccata sp) are all
-        // pre-hardening contexts where `inactivity_shortcut()` folds the result to `ZERO_HASH`
-        // regardless of which pre-hardening block is named.
+        //   - pre-Toccata sp: has no metadata row, so it is used directly and
+        //     folded to ZERO_HASH by `inactivity_shortcut` until a later chain
+        //     child is deep enough for the coinbase-lane fast path.
         let search_from = self
             .smt_metadata_store
             .get(selected_parent)
             .optional()
             .unwrap()
-            .and_then(|md| md.inactivity_shortcut_block())
+            .map(|md| md.inactivity_shortcut_block())
             .unwrap_or(selected_parent);
 
         let mut current = search_from;
@@ -888,16 +846,14 @@ impl VirtualStateProcessor {
     }
 
     /// Derive the `inactivity_shortcut` value folded into `activity_root` from
-    /// its block hash. Folds to `ZERO_HASH` for pre-hardening blocks (whose
-    /// seq_commit does not encode a shortcut); genesis falls into this branch
-    /// naturally since its `accepted_id_merkle_root` is `ZERO_HASH`. Otherwise
-    /// returns the block's seq_commit.
+    /// its block hash. Folds to `ZERO_HASH` for pre-Toccata blocks, whose
+    /// headers do not encode a seqcommit. Otherwise returns the block's seqcommit.
     ///
     /// Panics on `ZERO_HASH` input — callers must pass a real block hash.
     pub fn inactivity_shortcut(&self, inactivity_shortcut_block: Hash) -> Hash {
         assert_ne!(inactivity_shortcut_block, ZERO_HASH, "inactivity_shortcut block must be a real block hash");
         let header = self.headers_store.get_header(inactivity_shortcut_block).unwrap();
-        if !self.zk_hardening_activation.is_active(header.daa_score) {
+        if !self.toccata_activation.is_active(header.daa_score) {
             return ZERO_HASH;
         }
         header.accepted_id_merkle_root
@@ -906,7 +862,7 @@ impl VirtualStateProcessor {
     /// Resolve the `inactivity_shortcut_block` from the POV of an arbitrary chain
     /// block, using only headers + reachability (no SMT). Used by the IBD receiver
     /// at the PP boundary before the SMT is imported, and by `import_pruning_point_smt`
-    /// to populate the V1 metadata row.
+    /// to populate the pruning point metadata row.
     ///
     /// Algorithm: walks `pov_block`'s selected-chain ancestors backward by blue_score
     /// until `bs <= pov.bs - finality_depth - 1`. Folds to genesis on shallow chains,

@@ -131,63 +131,6 @@ async fn daemon_toccata_activation_log_file_test() {
     );
 }
 
-/// KIP-21 zk_hardening_activation crossing: pre-activation blocks commit
-/// `seq_commit` with `inactivity_shortcut: None` (omitted from the mergeset
-/// context hash); post-activation blocks fold the shortcut in. Both layouts
-/// of `SmtBlockMetadata` (always-stored shortcut block) must roundtrip and
-/// the chain must continue to advance across the boundary.
-///
-/// If the activation gate were wired wrong on either side, `build_seq_commit`
-/// and `recompute_seq_commit` would diverge and the daemon would disqualify
-/// its own mined blocks; the assert on virtual_daa_score is the smoke test.
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn daemon_zk_hardening_activation_test() {
-    init_allocator_with_default_settings();
-
-    let test_dir = tempfile::tempdir().unwrap();
-    let params_path = test_dir.path().join("params.json");
-    // Activate at DAA score 3; mine across it.
-    fs::write(&params_path, r#"{"skip_proof_of_work":true,"zk_hardening_activation":3}"#).unwrap();
-
-    let args = Args {
-        simnet: true,
-        unsafe_rpc: true,
-        enable_unsynced_mining: true,
-        disable_upnp: true,
-        disable_dns_seeding: true,
-        outbound_target: 0,
-        override_params_file: Some(params_path.to_string_lossy().to_string()),
-        ..Default::default()
-    };
-
-    let _runtime = KaspadRuntime::from_args(&args);
-    let mut kaspad = Daemon::new_random_with_args(args, 10);
-    let rpc_client = kaspad.start().await;
-
-    let miner_address = Address::new(kaspad.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
-    let target_daa_score: u64 = 6;
-    for _ in 1..=target_daa_score {
-        let template = rpc_client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
-        rpc_client.submit_block(template.block, false).await.unwrap();
-    }
-
-    let check_client = rpc_client.clone();
-    wait_for(
-        50,
-        100,
-        move || {
-            let client = check_client.clone();
-            Box::pin(async move { client.get_server_info().await.unwrap().virtual_daa_score >= target_daa_score })
-        },
-        "daemon did not cross zk_hardening_activation boundary",
-    )
-    .await;
-
-    rpc_client.disconnect().await.unwrap();
-    drop(rpc_client);
-    kaspad.shutdown();
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_sanity_test() {
     init_allocator_with_default_settings();

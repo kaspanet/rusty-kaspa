@@ -55,8 +55,7 @@ pub struct TestSeqCommitLaneProof {
     pub current_lane: Option<(Hash, u64)>,
     pub smt_proof: OwnedSmtProof,
     pub blue_score: u64,
-    /// Resolved shortcut Hash (None pre-hardening, Some(seq_commit-or-zero) post-hardening).
-    pub inactivity_shortcut: Option<Hash>,
+    pub inactivity_shortcut: Hash,
 }
 
 impl TestConsensus {
@@ -259,13 +258,8 @@ impl TestConsensus {
             .unwrap();
         let metadata = self.consensus.storage.smt_metadata_store.get(block_hash).unwrap();
 
-        let inactivity_shortcut = if self.params.zk_hardening_activation.is_active(header.daa_score) {
-            let shortcut_block =
-                metadata.inactivity_shortcut_block().expect("post-hardening row must carry inactivity_shortcut_block");
-            Some(self.consensus.virtual_processor.inactivity_shortcut(shortcut_block))
-        } else {
-            None
-        };
+        let shortcut_block = metadata.inactivity_shortcut_block();
+        let inactivity_shortcut = self.consensus.virtual_processor.inactivity_shortcut(shortcut_block);
 
         TestSeqCommitLaneProof {
             lanes_root,

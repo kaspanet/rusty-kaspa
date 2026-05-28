@@ -301,25 +301,11 @@ impl PruningProofManager {
 
         if self.toccata_activation.is_active(pruning_point_header.daa_score) {
             // Pruning point txs are validated with the pruning point selected parent as seqcommit context.
-            // Conceptually, this is the context from which the threshold should be measured on all networks.
-            //
-            // We must use pp.sp.bs whenever pp is post zk_hardening: the `inactivity_shortcut` anchor lives
-            // at `bs <= pp.bs - F - 1`. With pp.sp.bs as context, the threshold predicate continues down to
-            // `pp.bs - F - 1` and covers the anchor; with pp.bs as context it stops one block higher and
-            // misses it. Post-hardening syncers always send the segment from pp.sp, so this is safe.
-            //
-            // Pre zk_hardening on non-mainnet stays on pp.bs to keep compatibility with already-deployed
-            // peers that emit segments using pp.bs. Mainnet had no pre-fix release.
-            //
-            // TODO(post-zk-hardening): once all networks are past the hardening activation, use pp.sp.bs
-            // unconditionally and drop the is_mainnet/zk_hardening_activation branching.
-            let use_sp_context = self.is_mainnet || self.zk_hardening_activation.is_active(pruning_point_header.daa_score);
-            let context_blue_score = if use_sp_context {
-                let sp = pruning_point_header.direct_parents().first().copied().unwrap_or(pruning_point); // In case of genesis, we fall back to genesis itself
-                trusted_header_map.get(&sp).ok_or(PruningImportError::MissingPruningPointChainSegment(sp))?.blue_score
-            } else {
-                pruning_point_header.blue_score
-            };
+            // The selected-parent context carries the full threshold range needed for both
+            // seqcommit access and the inactivity shortcut anchor.
+            let sp = pruning_point_header.direct_parents().first().copied().unwrap_or(pruning_point); // In case of genesis, we fall back to genesis itself
+            let context_blue_score =
+                trusted_header_map.get(&sp).ok_or(PruningImportError::MissingPruningPointChainSegment(sp))?.blue_score;
 
             let threshold = self.finality_depth;
             let mut current = pruning_point;

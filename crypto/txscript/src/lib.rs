@@ -125,13 +125,12 @@ enum ScriptSource<'a, T: VerifiableTransaction> {
 #[derive(Copy, Clone)]
 pub struct EngineFlags {
     pub covenants_enabled: bool,
-    pub zk_hardening_enabled: bool,
     pub sigop_script_units: ScriptUnits,
 }
 
 impl Default for EngineFlags {
     fn default() -> Self {
-        Self { covenants_enabled: false, zk_hardening_enabled: false, sigop_script_units: Gram(1000).into() }
+        Self { covenants_enabled: false, sigop_script_units: Gram(1000).into() }
     }
 }
 
@@ -1183,7 +1182,7 @@ mod tests {
     fn test_used_script_units_can_drive_compute_budget_selection() {
         let sig_cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let flags = EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, sigop_script_units: 0.into() };
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
         let script = ScriptBuilder::with_flags(flags)
             .add_data(&vec![42u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize])
             .unwrap()
@@ -1340,7 +1339,7 @@ mod tests {
                 0,
                 &utxo_entry,
                 EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, sigop_script_units: 0.into() },
+                EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() },
             );
 
             assert_eq!(vm.execute(), Ok(()), "execution failed for SPK_LEN={expected_script_len}");
@@ -1460,7 +1459,7 @@ mod tests {
             0,
             verifiable_tx.utxo(0).unwrap(),
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
-            EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, sigop_script_units },
+            EngineFlags { covenants_enabled: true, sigop_script_units },
             budget_allows_one_sigop_only,
         );
         assert_match!(
@@ -1475,7 +1474,7 @@ mod tests {
             0,
             verifiable_tx.utxo(0).unwrap(),
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
-            EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, sigop_script_units },
+            EngineFlags { covenants_enabled: true, sigop_script_units },
             (budget_allows_one_sigop_only.0 * 2).into(),
         );
         assert_eq!(vm_with_doubled_budget.execute(), Ok(()), "expected tx to pass when budget is doubled");
@@ -2150,7 +2149,7 @@ mod tests {
             0,
             &utxo_entry,
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
-            EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, sigop_script_units: 0.into() },
+            EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() },
         )
         .execute();
         assert_eq!(result, Ok(()));
@@ -2216,7 +2215,7 @@ mod tests {
             0,
             &utxo_entry,
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
-            EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, sigop_script_units: 0.into() },
+            EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() },
         )
         .execute();
         assert_eq!(result, Ok(()));
