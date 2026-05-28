@@ -1,6 +1,7 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
 use clap::{Arg, ArgAction, Command};
+use gas::GasDistribution;
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
@@ -9,7 +10,7 @@ use kaspa_consensus_core::{
     hashing::covenant_id::covenant_id,
     network::NetworkType,
     sign::sign,
-    subnets::SUBNETWORK_ID_NATIVE,
+    subnets::{SUBNETWORK_ID_NATIVE, SUBNETWORK_ID_SIZE, SUBNETWORK_NAMESPACE_LEN, SubnetworkId},
     tx::{
         ComputeCommit, CovenantBinding, MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
         UtxoEntry,
@@ -28,6 +29,8 @@ use secp256k1::{
     rand::{Rng, thread_rng},
 };
 use tokio::time::{Instant, MissedTickBehavior, interval};
+
+mod gas;
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const MILLIS_PER_TICK: u64 = 10;
@@ -60,6 +63,8 @@ pub struct Args {
     pub enable_covenant_id: bool,
     pub randomize_tx_version: bool,
     pub network: NetworkType,
+    pub lps: u64,
+    pub subnet_pool_size: Option<u64>,
 }
 
 impl Args {
@@ -82,6 +87,8 @@ impl Args {
             payload_size: m.get_one::<usize>("payload-size").cloned().unwrap_or(0),
             enable_covenant_id: m.get_one::<bool>("enable-covenant-id").cloned().unwrap_or_default(),
             randomize_tx_version: m.get_one::<bool>("randomize-tx-version").cloned().unwrap_or_default(),
+            lps: m.get_one::<u64>("lps").cloned().unwrap_or(0),
+            subnet_pool_size: m.get_one::<u64>("subnet-pool-size").cloned(),
         }
     }
 }
@@ -170,6 +177,22 @@ pub fn cli() -> Command {
                 .default_value("false")
                 .help("Randomize transaction version between 0 and 1"),
         )
+        .arg(
+            Arg::new("lps")
+                .long("lps")
+                .value_name("lps")
+                .default_value("0")
+                .value_parser(clap::value_parser!(u64))
+                .help("Number of tx declaring a user-lane (user subnetworks) per second. 0 = all native subnetwork (default)"),
+        )
+        .arg(
+            Arg::new("subnet-pool-size")
+                .long("subnet-pool-size")
+                .value_name("subnet-pool-size")
+                .hide(true)
+                .value_parser(clap::value_parser!(u64))
+                .help("Number of selectable user-lane subnetworks. Defaults to tps."),
+        )
 }
 
 async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
@@ -197,11 +220,16 @@ struct ClientPoolArg {
 }
 
 struct TxConfig {
+    tps: u64,
     priority_fee: u64,
     randomize_fee: bool,
     payload_size: usize,
     with_covenant_id: bool,
     randomize_tx_version: bool,
+    lps: u64,
+    subnet_pool_size: u64,
+    user_subnetwork_pool: Vec<SubnetworkId>,
+    gas_distribution: GasDistribution,
 }
 
 #[tokio::main]
@@ -252,13 +280,22 @@ async fn main() {
     let kaspa_to_addr = args.addr.as_ref().map_or_else(|| kaspa_addr.clone(), |addr_str| Address::try_from(addr_str.clone()).unwrap());
 
     (args.payload_size <= 20000).then_some(()).expect("payload-size can be max 20000");
+    assert!(args.lps <= args.tps || args.lps == 0, "lps ({}) must be less than tps ({})", args.lps, args.tps);
+    let subnet_pool_size = args.subnet_pool_size.unwrap_or(args.tps);
+    assert!(args.lps == 0 || subnet_pool_size > 0, "subnet-pool-size must be positive when lps is positive");
+    let user_subnetwork_pool = random_user_subnetwork_pool(args.lps, subnet_pool_size);
 
     let tx_config = TxConfig {
+        tps: args.tps,
         priority_fee: args.priority_fee,
         randomize_fee: args.randomize_fee,
         payload_size: args.payload_size,
         with_covenant_id: args.enable_covenant_id,
         randomize_tx_version: args.randomize_tx_version,
+        lps: args.lps,
+        subnet_pool_size,
+        user_subnetwork_pool,
+        gas_distribution: GasDistribution::default(),
     };
 
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
@@ -284,6 +321,9 @@ async fn main() {
     }
     if args.payload_size != 0 {
         log_message.push_str(&format!("\n\tpayload size: {} random bytes", tx_config.payload_size,));
+    }
+    if args.lps > 0 {
+        log_message.push_str(&format!("\n\tlanes per second: {} (user-lane pool size: {})", args.lps, tx_config.subnet_pool_size));
     }
     info!("{}", log_message);
 
@@ -493,6 +533,29 @@ fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_matu
     entry.block_daa_score + needed_confs < virtual_daa_score
 }
 
+fn random_subnetwork_id<R: Rng + ?Sized>(rng: &mut R) -> SubnetworkId {
+    let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
+    loop {
+        rng.fill(&mut bytes[..SUBNETWORK_NAMESPACE_LEN]);
+        if bytes[1..].iter().any(|&b| b != 0) {
+            return SubnetworkId::from_bytes(bytes);
+        }
+    }
+}
+
+fn random_user_subnetwork_pool(lps: u64, subnet_pool_size: u64) -> Vec<SubnetworkId> {
+    if lps == 0 {
+        return vec![];
+    }
+
+    let mut rng = thread_rng();
+    (0..subnet_pool_size).map(|_| random_subnetwork_id(&mut rng)).collect()
+}
+
+fn should_use_user_lane<R: Rng + ?Sized>(rng: &mut R, tx_config: &TxConfig) -> bool {
+    tx_config.lps > 0 && rng.gen_range(0..tx_config.tps) < tx_config.lps
+}
+
 async fn maybe_send_tx(
     txs_to_send: u64,
     tx_sender: &async_channel::Sender<ClientPoolArg>,
@@ -538,16 +601,7 @@ async fn maybe_send_tx(
         .into_par_iter()
         .map(|utxo_option| {
             if let Some((selected_utxos, selected_amount)) = utxo_option {
-                let tx = generate_tx(
-                    schnorr_key,
-                    &selected_utxos,
-                    selected_amount,
-                    num_outs,
-                    &kaspa_addr,
-                    tx_config.payload_size,
-                    tx_config.with_covenant_id,
-                    tx_config.randomize_tx_version,
-                );
+                let tx = generate_tx(schnorr_key, &selected_utxos, selected_amount, num_outs, &kaspa_addr, tx_config);
 
                 return Some((tx, selected_utxos.len(), selected_utxos.into_iter().map(|(_, entry)| entry.amount).sum::<u64>()));
             }
@@ -636,10 +690,14 @@ fn generate_tx(
     send_amount: u64,
     num_outs: u64,
     kaspa_addr: &Address,
-    payload_size: usize,
-    with_covenant_id: bool,
-    randomize_tx_version: bool,
+    tx_config: &TxConfig,
 ) -> Transaction {
+    // set base version according to the usage of covenant or lanes
+    let mut tx_version = match tx_config.with_covenant_id || tx_config.lps > 0 {
+        true => TX_VERSION_TOCCATA,
+        false => TX_VERSION,
+    };
+
     let script_public_key = pay_to_address_script(kaspa_addr);
     let inputs = utxos
         .iter()
@@ -647,7 +705,7 @@ fn generate_tx(
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            compute_commit: if with_covenant_id {
+            compute_commit: if tx_version == TX_VERSION_TOCCATA {
                 ComputeCommit::ComputeBudget(10.into())
             } else {
                 ComputeCommit::SigopCount(1.into())
@@ -655,28 +713,29 @@ fn generate_tx(
         })
         .collect_vec();
 
-    // set base version according to the usage of covenant
-    let mut tx_version = match with_covenant_id {
-        true => TX_VERSION_TOCCATA,
-        false => TX_VERSION,
-    };
-
     // randomize version between 0 and 1 (pre/post HF)
-    if randomize_tx_version {
-        tx_version = thread_rng().gen_range(0..=1);
+    let mut rng = thread_rng();
+    if tx_config.randomize_tx_version {
+        tx_version = rng.gen_range(0..=1);
     }
 
     let outputs = (0..num_outs)
         .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone(), covenant: None })
         .collect_vec();
 
-    let mut data = vec![0u8; payload_size];
+    let mut data = vec![0u8; tx_config.payload_size];
     rand::thread_rng().fill_bytes(&mut data);
 
-    let unsigned_tx = Transaction::new_non_finalized(tx_version, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, data);
+    let subnetwork_id = if tx_version == TX_VERSION_TOCCATA && should_use_user_lane(&mut rng, tx_config) {
+        tx_config.user_subnetwork_pool[rng.gen_range(0..tx_config.user_subnetwork_pool.len())]
+    } else {
+        SUBNETWORK_ID_NATIVE
+    };
+    let gas = if subnetwork_id == SUBNETWORK_ID_NATIVE { 0 } else { tx_config.gas_distribution.sample(&mut rng) };
+    let unsigned_tx = Transaction::new_non_finalized(tx_version, inputs, outputs, 0, subnetwork_id, gas, data);
     let mut unsigned_tx = MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec());
     if tx_version == TX_VERSION_TOCCATA {
-        apply_random_covenant_binding_from_inputs(&mut unsigned_tx, with_covenant_id);
+        apply_random_covenant_binding_from_inputs(&mut unsigned_tx, tx_config.with_covenant_id);
     }
     let signed_tx = sign(unsigned_tx, schnorr_key);
     signed_tx.tx
