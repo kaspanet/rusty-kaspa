@@ -1135,6 +1135,10 @@ message GetSeqCommitLaneProofResponseMessage {
   bytes payloadAndCtxDigest = 4;
   // seq_commit of the selected parent (= parent header's accepted_id_merkle_root, 32 bytes).
   bytes parentSeqCommit = 5;
+  // KIP-21 activity_root anchor: the accepted_id_merkle_root of the
+  // inactivity-shortcut block (32 bytes). Folded as
+  // activity_root = H_activity_root(inactivityShortcut, lanes_root).
+  bytes inactivityShortcut = 6;
 
   RPCError error = 1000;
 }

@@ -892,6 +892,7 @@ async fn seq_commit_lane_proof_test() {
     assert_eq!(grpc_proof.lane_blue_score, wrpc_proof.lane_blue_score);
     assert_eq!(grpc_proof.payload_and_ctx_digest, wrpc_proof.payload_and_ctx_digest);
     assert_eq!(grpc_proof.parent_seq_commit, wrpc_proof.parent_seq_commit);
+    assert_eq!(grpc_proof.inactivity_shortcut, wrpc_proof.inactivity_shortcut);
 
     // Negative: unknown block hash. gRPC stringifies RpcError, so the typed
     // ConsensusError::HeaderNotFound becomes RpcError::General with the Display
@@ -980,6 +981,7 @@ fn verify_lane_proof_locally(header: &Header, lane_key: Hash, response: &GetSeqC
             payload_and_ctx_digest: &response.payload_and_ctx_digest,
             parent_seq_commit: &response.parent_seq_commit,
         },
+        response.inactivity_shortcut,
         header.accepted_id_merkle_root,
         response.parent_seq_commit,
     )

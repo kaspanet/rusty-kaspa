@@ -585,6 +585,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSeqCommitLaneProofResponse>, protowire
         lane_blue_score: item.lane_blue_score.unwrap_or(0),
         payload_and_ctx_digest: item.payload_and_ctx_digest.as_bytes().to_vec(),
         parent_seq_commit: item.parent_seq_commit.as_bytes().to_vec(),
+        inactivity_shortcut: item.inactivity_shortcut.as_bytes().to_vec(),
         error: None,
     }
 });
@@ -1116,6 +1117,7 @@ try_from!(item: &protowire::GetSeqCommitLaneProofResponseMessage, RpcResult<kasp
         lane_blue_score: if has_lane_tip { Some(item.lane_blue_score) } else { None },
         payload_and_ctx_digest: hash_from_bytes(&item.payload_and_ctx_digest)?,
         parent_seq_commit: hash_from_bytes(&item.parent_seq_commit)?,
+        inactivity_shortcut: hash_from_bytes(&item.inactivity_shortcut)?,
     }
 });
 

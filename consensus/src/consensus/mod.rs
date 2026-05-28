@@ -1519,6 +1519,13 @@ impl ConsensusApi for Consensus {
         }
 
         let header = self.headers_store.get_header(block_hash).unwrap();
+
+        // KIP-21 activity_root only exists post-Toccata. Drop the gate after all
+        // nets activate.
+        if !self.config.params.toccata_activation.is_active(header.daa_score) {
+            return Err(ConsensusError::GeneralOwned(format!("toccata is not active at block {block_hash}")));
+        }
+
         let selected_parent = header.direct_parents()[0];
         let parent_header = self.headers_store.get_header(selected_parent).unwrap();
 
@@ -1539,6 +1546,11 @@ impl ConsensusApi for Consensus {
         let metadata =
             self.storage.smt_metadata_store.get(block_hash).map_err(|e| ConsensusError::GeneralOwned(format!("smt_metadata: {e}")))?;
 
+        // Toccata is active (checked above), so the metadata carries a concrete
+        // shortcut block. Fold to seq_commit via the virtual processor.
+        let inactivity_shortcut_block = metadata.inactivity_shortcut_block();
+        let inactivity_shortcut = self.virtual_processor.inactivity_shortcut(inactivity_shortcut_block);
+
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
 
         // In debug builds, verify the proof is consistent with the stored lanes_root
@@ -1553,20 +1565,23 @@ impl ConsensusApi for Consensus {
             let lanes_root = self.storage.smt_stores.get_lanes_root(current_bounds, is_canonical);
             let leaf = lane_tip.zip(lane_blue_score).map(|(t, bs)| smt_leaf_hash(&SmtLeafInput { lane_tip: &t, blue_score: bs }));
             let computed_root = smt_proof.as_proof().compute_root::<SeqCommitActiveNode>(&lane_key, leaf).unwrap();
+            let payload_and_ctx_digest = metadata.payload_and_ctx_digest();
             let md = SmtMetadata {
                 lanes_root: &lanes_root,
-                payload_and_ctx_digest: &metadata.payload_and_ctx_digest,
+                payload_and_ctx_digest: &payload_and_ctx_digest,
                 parent_seq_commit: &parent_seq_commit,
             };
-            computed_root == lanes_root && verify_smt_metadata(&md, header.accepted_id_merkle_root, parent_seq_commit).is_ok()
+            computed_root == lanes_root
+                && verify_smt_metadata(&md, inactivity_shortcut, header.accepted_id_merkle_root, parent_seq_commit).is_ok()
         });
 
         Ok(SeqCommitLaneProof {
             smt_proof,
             lane_tip,
             lane_blue_score,
-            payload_and_ctx_digest: metadata.payload_and_ctx_digest,
+            payload_and_ctx_digest: metadata.payload_and_ctx_digest(),
             parent_seq_commit,
+            inactivity_shortcut,
         })
     }
 

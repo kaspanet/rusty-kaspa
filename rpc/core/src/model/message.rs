@@ -3631,6 +3631,10 @@ impl Deserializer for GetSeqCommitLaneProofRequest {
 /// When the lane has no entry in the active-lanes SMT at this block's POV,
 /// `lane_tip` and `lane_blue_score` are both `None` and `smt_proof` is a
 /// non-inclusion proof.
+///
+/// `inactivity_shortcut` (KIP-21): the `accepted_id_merkle_root` of the anchor
+/// block. Folded into `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`
+/// during seq_commit verification.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSeqCommitLaneProofResponse {
@@ -3639,6 +3643,7 @@ pub struct GetSeqCommitLaneProofResponse {
     pub lane_blue_score: Option<u64>,
     pub payload_and_ctx_digest: RpcHash,
     pub parent_seq_commit: RpcHash,
+    pub inactivity_shortcut: RpcHash,
 }
 
 impl Serializer for GetSeqCommitLaneProofResponse {
@@ -3649,6 +3654,7 @@ impl Serializer for GetSeqCommitLaneProofResponse {
         store!(Option<u64>, &self.lane_blue_score, writer)?;
         store!(RpcHash, &self.payload_and_ctx_digest, writer)?;
         store!(RpcHash, &self.parent_seq_commit, writer)?;
+        store!(RpcHash, &self.inactivity_shortcut, writer)?;
         Ok(())
     }
 }
@@ -3661,6 +3667,7 @@ impl Deserializer for GetSeqCommitLaneProofResponse {
         let lane_blue_score = load!(Option<u64>, reader)?;
         let payload_and_ctx_digest = load!(RpcHash, reader)?;
         let parent_seq_commit = load!(RpcHash, reader)?;
-        Ok(Self { smt_proof, lane_tip, lane_blue_score, payload_and_ctx_digest, parent_seq_commit })
+        let inactivity_shortcut = load!(RpcHash, reader)?;
+        Ok(Self { smt_proof, lane_tip, lane_blue_score, payload_and_ctx_digest, parent_seq_commit, inactivity_shortcut })
     }
 }

@@ -436,6 +436,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             lane_blue_score: proof.lane_blue_score,
             payload_and_ctx_digest: proof.payload_and_ctx_digest,
             parent_seq_commit: proof.parent_seq_commit,
+            inactivity_shortcut: proof.inactivity_shortcut,
         })
     }
 
