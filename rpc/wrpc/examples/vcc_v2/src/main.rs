@@ -1,10 +1,7 @@
 // Example of VCCv2 endpoint
 
 use kaspa_addresses::Address;
-use kaspa_consensus_core::{
-    Hash,
-    subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-};
+use kaspa_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
 use kaspa_rpc_core::{RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction, api::rpc::RpcApi};
 use kaspa_wrpc_client::{
     KaspaRpcClient, WrpcEncoding,
@@ -13,8 +10,8 @@ use kaspa_wrpc_client::{
     prelude::NetworkType,
     result::Result,
 };
+use std::time::Duration;
 use std::{collections::HashSet, process::ExitCode};
-use std::{str::FromStr, time::Duration};
 
 #[tokio::main]
 async fn main() -> ExitCode {
