@@ -481,6 +481,57 @@ fn test_bind_addr_from_port_empty() {
     assert_eq!(bind_addr_from_port("   "), "");
 }
 
+// Stratum line buffer tests (issue #1017 — cap incomplete lines to prevent memory exhaustion)
+#[cfg(test)]
+#[test]
+fn test_append_line_data_accepts_data_under_limit() {
+    use kaspa_stratum_bridge::append_line_data;
+    let mut buf = String::new();
+    assert!(append_line_data(&mut buf, "{\"jsonrpc\":\"2.0\"}\n"));
+    assert_eq!(buf, "{\"jsonrpc\":\"2.0\"}\n");
+}
+
+#[cfg(test)]
+#[test]
+fn test_append_line_data_accepts_incremental_chunks_under_limit() {
+    use kaspa_stratum_bridge::{MAX_STRATUM_LINE_BYTES, append_line_data};
+    let mut buf = String::new();
+    let chunk_size = 1024;
+    let chunks = MAX_STRATUM_LINE_BYTES / chunk_size;
+    for _ in 0..chunks {
+        assert!(append_line_data(&mut buf, &"x".repeat(chunk_size)));
+    }
+    assert_eq!(buf.len(), chunks * chunk_size);
+}
+
+#[cfg(test)]
+#[test]
+fn test_append_line_data_rejects_when_limit_exceeded() {
+    use kaspa_stratum_bridge::{MAX_STRATUM_LINE_BYTES, append_line_data};
+    let mut buf = "x".repeat(MAX_STRATUM_LINE_BYTES);
+    assert!(!append_line_data(&mut buf, "y"));
+    assert_eq!(buf.len(), MAX_STRATUM_LINE_BYTES);
+}
+
+#[cfg(test)]
+#[test]
+fn test_append_line_data_rejects_single_oversized_chunk() {
+    use kaspa_stratum_bridge::{MAX_STRATUM_LINE_BYTES, append_line_data};
+    let mut buf = String::new();
+    assert!(!append_line_data(&mut buf, &"x".repeat(MAX_STRATUM_LINE_BYTES + 1)));
+    assert!(buf.is_empty());
+}
+
+#[cfg(test)]
+#[test]
+fn test_append_line_data_accepts_exactly_at_limit() {
+    use kaspa_stratum_bridge::{MAX_STRATUM_LINE_BYTES, append_line_data};
+    let mut buf = String::new();
+    assert!(append_line_data(&mut buf, &"x".repeat(MAX_STRATUM_LINE_BYTES)));
+    assert_eq!(buf.len(), MAX_STRATUM_LINE_BYTES);
+    assert!(!append_line_data(&mut buf, "y"));
+}
+
 // JSON-RPC event tests
 #[cfg(test)]
 #[test]
