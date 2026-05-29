@@ -643,6 +643,7 @@ Do you confirm? (y/n)";
         config.target_time_per_block(),
         false,
         config.mempool_block_mass_limits(),
+        config.toccata_activation,
         config.block_lane_limits,
         config.ram_scale,
         config.block_template_cache_lifetime,

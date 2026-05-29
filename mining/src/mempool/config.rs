@@ -22,6 +22,11 @@ pub(crate) const DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT: u64 = 500;
 /// The default is 100 sompi per gram.
 pub(crate) const DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE: u64 = 100_000;
 
+/// LEGACY_MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
+/// the mempool and relayed prior toccata activates. It is specified in sompi per 1kg (or 1000 grams) of transaction mass.
+/// It was 1 sompi per gram.
+pub(crate) const LEGACY_MINIMUM_RELAY_TRANSACTION_FEE: u64 = 1_000;
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub maximum_transaction_count: usize,

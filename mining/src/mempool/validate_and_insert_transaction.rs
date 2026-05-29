@@ -74,7 +74,7 @@ impl Mempool {
 
         // Perform mempool in-context validations prior to possible RBF replacements
         self.validate_transaction_limits_in_context(&transaction, virtual_daa_score)?;
-        self.validate_transaction_std_in_context(&transaction)?;
+        self.validate_transaction_std_in_context(&transaction, priority, virtual_daa_score)?;
 
         // Check double spends and try to remove them if the RBF policy requires it
         let removed_transaction = self.execute_replace_by_fee(&transaction, rbf_policy, virtual_daa_score)?;
@@ -153,9 +153,14 @@ impl Mempool {
         Ok(())
     }
 
-    fn validate_transaction_std_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+    fn validate_transaction_std_in_context(
+        &self,
+        transaction: &MutableTransaction,
+        priority: Priority,
+        virtual_daa_score: u64,
+    ) -> RuleResult<()> {
         if !self.config.accept_non_standard {
-            self.check_transaction_standard_in_context(transaction)?;
+            self.check_transaction_standard_in_context(transaction, priority, virtual_daa_score)?;
         }
         Ok(())
     }

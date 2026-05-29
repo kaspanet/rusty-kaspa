@@ -14,6 +14,7 @@ use self::{
 };
 use kaspa_consensus_core::{
     block::TemplateTransactionSelector,
+    config::params::ForkActivation,
     tx::{MutableTransaction, TransactionId},
 };
 use kaspa_core::time::Stopwatch;
@@ -48,6 +49,8 @@ pub(crate) mod validate_and_insert_transaction;
 ///   60 seconds and are removed if not inserted in a block for mining.
 pub(crate) struct Mempool {
     config: Arc<Config>,
+    // TODO(post-toccata): remove this field, will be unused after post-toccata cleanups
+    toccata_activation: ForkActivation,
     transaction_pool: TransactionsPool,
     orphan_pool: OrphanPool,
     accepted_transactions: AcceptedTransactions,
@@ -55,11 +58,11 @@ pub(crate) struct Mempool {
 }
 
 impl Mempool {
-    pub(crate) fn new(config: Arc<Config>, counters: Arc<MiningCounters>) -> Self {
+    pub(crate) fn new(config: Arc<Config>, toccata_activation: ForkActivation, counters: Arc<MiningCounters>) -> Self {
         let transaction_pool = TransactionsPool::new(config.clone());
         let orphan_pool = OrphanPool::new(config.clone());
         let accepted_transactions = AcceptedTransactions::new(config.clone());
-        Self { config, transaction_pool, orphan_pool, accepted_transactions, counters }
+        Self { config, toccata_activation, transaction_pool, orphan_pool, accepted_transactions, counters }
     }
 
     pub(crate) fn get_transaction(&self, transaction_id: &TransactionId, query: TransactionQuery) -> Option<MutableTransaction> {
@@ -168,7 +171,9 @@ impl Mempool {
 pub mod tx {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Priority {
+        /// Provenance is P2P
         Low,
+        /// Provenance is RPC submit
         High,
     }
 
