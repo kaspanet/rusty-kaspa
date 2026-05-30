@@ -34,7 +34,8 @@ use secp256k1::{Keypair, Message, Secp256k1, SecretKey};
 use smallvec::SmallVec;
 
 const BLOCK_COMPUTE_MASS_LIMIT: u64 = 500_000;
-const BLOCK_TRANSIENT_MASS_LIMIT: u64 = 1_000_000;
+// Transient mass is charged 1:1 per byte, so this equals the block body byte cap.
+const BLOCK_TRANSIENT_MASS_LIMIT: u64 = 250_000;
 const ADVERSARIAL_SLICE_LEN: i64 = 64;
 const ADVERSARIAL_SIGSCRIPT_DATA_LEN: usize = 192;
 const ADVERSARIAL_OUTPUT_SPK_DATA_LEN: usize = 160;

@@ -27,7 +27,7 @@ use kaspa_consensus_core::block::{Block, MutableBlock};
 use kaspa_consensus_core::blockhash::{self, new_unique};
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TOCCATA_BLOCK_VERSION, TRANSIENT_BYTE_TO_MASS_FACTOR};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TOCCATA_BLOCK_VERSION};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing;
@@ -2106,11 +2106,11 @@ async fn payload_test() {
         0,
         SubnetworkId::default(),
         0,
-        vec![0; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
+        vec![0; (transient_limit / 2) as usize],
     );
 
     // Create a tx with transient mass over the block limit
-    txx.payload = vec![0; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR + 100) as usize];
+    txx.payload = vec![0; (transient_limit + 100) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
@@ -2118,7 +2118,7 @@ async fn payload_test() {
     assert_match!(consensus_res, Err(RuleError::ExceedsTransientMassLimit(_, _)));
 
     // Fix the payload to be below the limit
-    txx.payload = vec![0; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    txx.payload = vec![0; (transient_limit / 2) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
@@ -2170,7 +2170,7 @@ async fn payload_for_native_tx_test() {
 
     // Create transaction with large payload
     let transient_limit = config.params.block_mass_limits().before().transient;
-    let large_payload = vec![0u8; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    let large_payload = vec![0u8; (transient_limit / 2) as usize];
     let mut tx_with_payload = Transaction::new(
         0,
         vec![TransactionInput::new(
