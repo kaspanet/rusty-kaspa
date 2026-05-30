@@ -103,7 +103,7 @@ mod tests {
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
         config::params::{ForkActivation, Params},
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
@@ -362,8 +362,8 @@ mod tests {
         let params: Params = NetworkType::Simnet.into();
         assert_ne!(params.toccata_activation, ForkActivation::never(), "this test requires post-activation cofactors");
         let cofactors = params.mempool_block_mass_cofactors().after();
-        let transient = |bytes| bytes * TRANSIENT_BYTE_TO_MASS_FACTOR;
-        let normalized_transient = |bytes| NonContextualMasses::new(0, transient(bytes)).normalized_transient(&cofactors);
+        // Transient mass is charged 1:1 per byte, so the transient mass equals the byte size.
+        let normalized_transient = |bytes| NonContextualMasses::new(0, bytes).normalized_transient(&cofactors);
 
         let bytes = 5_000;
         let compute = normalized_transient(bytes);
@@ -373,7 +373,7 @@ mod tests {
         let tests = vec![
             Test {
                 name: "standard input with exactly sufficient relay fee",
-                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(compute, transient(bytes)), boundary_fee),
+                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(compute, bytes), boundary_fee),
                 expected: Expected::Standard,
             },
             Test {
@@ -387,11 +387,7 @@ mod tests {
             },
             Test {
                 name: "compute mass triggers insufficient relay fee",
-                mtx: new_mtx(
-                    standard_script_public_key.clone(),
-                    NonContextualMasses::new(compute, transient(bytes - 1)),
-                    insufficient_fee,
-                ),
+                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(compute, bytes - 1), insufficient_fee),
                 expected: Expected::RejectInsufficientComputeFee {
                     fee: insufficient_fee,
                     minimum_fee: boundary_fee,
@@ -400,7 +396,7 @@ mod tests {
             },
             Test {
                 name: "transient mass triggers insufficient relay fee",
-                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(compute - 1, transient(bytes)), insufficient_fee),
+                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(compute - 1, bytes), insufficient_fee),
                 expected: Expected::RejectInsufficientTransientFee {
                     fee: insufficient_fee,
                     minimum_fee: boundary_fee,

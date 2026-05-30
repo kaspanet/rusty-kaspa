@@ -7,7 +7,6 @@ pub use units::{
 
 use crate::{
     config::params::Params,
-    constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     mass::units::GRAMS_PER_SIGOP_COUNT_UNIT,
     subnets::SUBNETWORK_ID_SIZE,
     tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction},
@@ -362,7 +361,9 @@ impl MassCalculator {
         };
 
         let compute_mass = compute_mass_for_size + total_script_public_key_mass + script_mass;
-        let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
+        // Transient storage mass is charged 1:1 per serialized byte; the block transient mass limit
+        // therefore directly bounds the block body byte size (KIP-0013).
+        let transient_mass = size;
 
         NonContextualMasses::new(compute_mass, transient_mass)
     }
@@ -523,6 +524,15 @@ mod tests {
 
     const UTXO_CONST_STORAGE: u64 = 63;
     const UTXO_UNIT_SIZE: u64 = 100;
+
+    #[test]
+    fn transient_mass_equals_serialized_size() {
+        // Transient mass is charged 1:1 per serialized byte, so it must equal the estimated
+        // serialized size of a (non-coinbase) transaction.
+        let tx = generate_tx_from_amounts(&[100, 200, 300], &[300, 300]);
+        let masses = MassCalculator::new(1, 10, STORAGE_MASS_PARAMETER).calc_non_contextual_masses(&tx.tx);
+        assert_eq!(masses.transient_mass, transaction_estimated_serialized_size(&tx.tx));
+    }
 
     #[test]
     fn verify_utxo_plurality_limits() {

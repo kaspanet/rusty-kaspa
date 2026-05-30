@@ -20,8 +20,8 @@ use std::{
 const MEMPOOL_BLOCK_MASS_ACTIVATION_DELAY_SECONDS: u64 = 24 * 60 * 60;
 const PRIOR_MAX_SIGNATURE_SCRIPT_LEN: usize = 10_000;
 // Increased for stark proofs. This value is effectively covered by the post-Toccata
-// transient block mass limit: 1_000_000 transient mass / 4 grams-per-byte = 250_000
-// bytes for the entire block, so a larger signature script cannot be accepted anyway.
+// transient block mass limit of 250_000 (charged 1:1 per byte), which caps the entire
+// block body at 250_000 bytes, so a larger signature script cannot be accepted anyway.
 // TODO(post-toccata): check whether this early signature-script length guard can be
 // removed entirely, or whether it remains useful as cheap early protection.
 const NEW_MAX_SIGNATURE_SCRIPT_LEN: usize = 250_000;
@@ -694,8 +694,8 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
-    new_transient_mass_limit: 1_000_000,
+    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 125_000 },
+    new_transient_mass_limit: 250_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -754,8 +754,8 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
-    new_transient_mass_limit: 1_000_000,
+    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 125_000 },
+    new_transient_mass_limit: 250_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -801,8 +801,8 @@ pub const TESTNET12_PARAMS: Params = Params {
     new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
 
     // Transient mass is increased for stark proofs
-    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
-    new_transient_mass_limit: 1_000_000,
+    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
+    new_transient_mass_limit: 250_000,
 
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
@@ -839,8 +839,8 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     // Transient mass is increased for stark proofs
-    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
-    new_transient_mass_limit: 1_000_000,
+    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 125_000 },
+    new_transient_mass_limit: 250_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -882,8 +882,8 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
 
     // Transient mass is increased for stark proofs
-    prior_block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
-    new_transient_mass_limit: 1_000_000,
+    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 125_000 },
+    new_transient_mass_limit: 250_000,
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -905,6 +905,29 @@ pub const DEVNET_PARAMS: Params = Params {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transient_mass_limits_are_byte_caps_with_unit_factor() {
+        // Transient mass is charged 1:1 per serialized byte (TRANSIENT_BYTE_TO_MASS_FACTOR was
+        // removed), so each transient block mass limit equals the block body byte cap directly.
+        // Compute and storage limits must remain unchanged at 500_000.
+        const COMPUTE: u64 = 500_000;
+        const STORAGE: u64 = 500_000;
+        // (network params, label, pre-fork transient byte cap, post-fork transient byte cap)
+        let cases = [
+            (&MAINNET_PARAMS, "mainnet", 125_000, 250_000),
+            (&TESTNET_PARAMS, "testnet", 125_000, 250_000),
+            (&TESTNET12_PARAMS, "testnet12", 250_000, 250_000),
+            (&SIMNET_PARAMS, "simnet", 125_000, 250_000),
+            (&DEVNET_PARAMS, "devnet", 125_000, 250_000),
+        ];
+        for (params, label, prior_transient, new_transient) in cases {
+            assert_eq!(params.prior_block_mass_limits.transient, prior_transient, "{label}: pre-fork transient byte cap");
+            assert_eq!(params.new_transient_mass_limit, new_transient, "{label}: post-fork transient byte cap");
+            assert_eq!(params.prior_block_mass_limits.compute, COMPUTE, "{label}: compute limit must be unchanged");
+            assert_eq!(params.prior_block_mass_limits.storage, STORAGE, "{label}: storage limit must be unchanged");
+        }
+    }
 
     #[test]
     fn override_params_deserializes_toccata_activation() {
