@@ -1635,7 +1635,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [signature, msg_hash, pubkey] = vm.dstack.pop_raw()?;
             let msg_hash = Hash::try_from(msg_hash.as_slice()).map_err(|_| TxScriptError::InvalidState("message hash must be 32 bytes".to_string()))?;
-            let is_valid = vm.check_schnorr_signature_for_msg_hash(msg_hash, &pubkey, &signature, true)?;
+            let is_valid = vm.check_schnorr_signature_for_msg_hash(msg_hash, &pubkey, &signature)?;
             vm.dstack.push_item(is_valid)
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1646,7 +1646,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [signature, msg_hash, pubkey] = vm.dstack.pop_raw()?;
             let msg_hash = Hash::try_from(msg_hash.as_slice()).map_err(|_| TxScriptError::InvalidState("message hash must be 32 bytes".to_string()))?;
-            let is_valid = vm.check_ecdsa_signature_for_msg_hash(msg_hash, &pubkey, &signature, true)?;
+            let is_valid = vm.check_ecdsa_signature_for_msg_hash(msg_hash, &pubkey, &signature)?;
             vm.dstack.push_item(is_valid)
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))

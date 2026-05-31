@@ -50,6 +50,7 @@ use kaspa_consensus_core::hashing::sighash::{
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::mass::{Gram, ScriptUnits};
 use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
+use kaspa_hashes::Hash;
 use kaspa_txscript_errors::TxScriptError;
 use kaspa_utils::hex::ToHex;
 use log::trace;
@@ -828,66 +829,73 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
     #[inline]
     fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
-        self.consume_sig_op_cost(1)?;
         match self.script_source {
             ScriptSource::TxInput { tx, idx, .. } => {
-                let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
-                let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
                 let sig_hash = calc_schnorr_signature_hash(tx, idx, hash_type, self.reused_values);
-                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
-                let sig_cache_key =
-                    SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
-
-                match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => Ok(valid),
-                    None => {
-                        // TODO: Find a way to parallelize this part.
-                        match sig.verify(&msg, &pk) {
-                            Ok(()) => {
-                                self.sig_cache.insert(sig_cache_key, true);
-                                Ok(true)
-                            }
-                            Err(_) => {
-                                self.sig_cache.insert(sig_cache_key, false);
-                                Ok(false)
-                            }
-                        }
-                    }
-                }
+                self.check_schnorr_signature_for_msg_hash(sig_hash, key, sig)
             }
             _ => Err(TxScriptError::NotATransactionInput),
         }
     }
 
-    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+    fn check_schnorr_signature_for_msg_hash(&mut self, msg_hash: Hash, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         self.consume_sig_op_cost(1)?;
-        match self.script_source {
-            ScriptSource::TxInput { tx, idx, .. } => {
-                Self::check_pub_key_encoding_ecdsa(key)?;
-                let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
-                let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
-                let sig_hash = calc_ecdsa_signature_hash(tx, idx, hash_type, self.reused_values);
-                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
-                let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
+        let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
+        let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
+        let msg = secp256k1::Message::from_digest_slice(msg_hash.as_bytes().as_slice()).unwrap();
+        let sig_cache_key = SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
 
-                match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => Ok(valid),
-                    None => {
-                        // TODO: Find a way to parallelize this part.
-                        match sig.verify(&msg, &pk) {
-                            Ok(()) => {
-                                self.sig_cache.insert(sig_cache_key, true);
-                                Ok(true)
-                            }
-                            Err(_) => {
-                                self.sig_cache.insert(sig_cache_key, false);
-                                Ok(false)
-                            }
-                        }
+        match self.sig_cache.get(&sig_cache_key) {
+            Some(valid) => Ok(valid),
+            None => {
+                // TODO: Find a way to parallelize this part.
+                match sig.verify(&msg, &pk) {
+                    Ok(()) => {
+                        self.sig_cache.insert(sig_cache_key, true);
+                        Ok(true)
+                    }
+                    Err(_) => {
+                        self.sig_cache.insert(sig_cache_key, false);
+                        Ok(false)
                     }
                 }
             }
+        }
+    }
+
+    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+        match self.script_source {
+            ScriptSource::TxInput { tx, idx, .. } => {
+                let sig_hash = calc_ecdsa_signature_hash(tx, idx, hash_type, self.reused_values);
+                self.check_ecdsa_signature_for_msg_hash(sig_hash, key, sig)
+            }
             _ => Err(TxScriptError::NotATransactionInput),
+        }
+    }
+
+    fn check_ecdsa_signature_for_msg_hash(&mut self, msg_hash: Hash, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+        self.consume_sig_op_cost(1)?;
+        Self::check_pub_key_encoding_ecdsa(key)?;
+        let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
+        let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
+        let msg = secp256k1::Message::from_digest_slice(msg_hash.as_bytes().as_slice()).unwrap();
+        let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
+
+        match self.sig_cache.get(&sig_cache_key) {
+            Some(valid) => Ok(valid),
+            None => {
+                // TODO: Find a way to parallelize this part.
+                match sig.verify(&msg, &pk) {
+                    Ok(()) => {
+                        self.sig_cache.insert(sig_cache_key, true);
+                        Ok(true)
+                    }
+                    Err(_) => {
+                        self.sig_cache.insert(sig_cache_key, false);
+                        Ok(false)
+                    }
+                }
+            }
         }
     }
 }
