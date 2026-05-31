@@ -169,9 +169,7 @@ impl TransactionValidator {
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
         let covenants_enabled = self.toccata_activation.is_active(block_daa_score);
-        let zk_hardening_enabled = self.zk_hardening_activation.is_active(block_daa_score);
-        let flags: EngineFlags =
-            EngineFlags { covenants_enabled, zk_hardening_enabled, sigop_script_units: Gram(self.mass_per_sig_op).into() };
+        let flags: EngineFlags = EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).into() };
 
         check_scripts(tx, ctx, flags)
     }
@@ -361,7 +359,6 @@ mod tests {
             Default::default(),
             MassCalculator::new(0, 0, 0),
             ForkActivation::always(),
-            ForkActivation::always(),
             params.mass_per_sig_op,
         );
 
@@ -498,7 +495,7 @@ mod tests {
             check_scripts(
                 &verifiable_tx,
                 EngineCtx::new(&sig_cache),
-                EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, sigop_script_units: 5_000.into() }
+                EngineFlags { covenants_enabled: true, sigop_script_units: 5_000.into() }
             ),
             Ok(())
         );

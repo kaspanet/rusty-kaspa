@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub fn zk_test_flags() -> EngineFlags {
-    EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, ..Default::default() }
+    EngineFlags { covenants_enabled: true, ..Default::default() }
 }
 
 pub fn build_zk_script(elements: &[&[u8]]) -> ScriptBuilderResult<Vec<u8>> {
@@ -32,12 +32,7 @@ pub fn execute_zk_script(
     sig_cache: &Cache<SigCacheKey, bool>,
     reused_values: &SigHashReusedValuesUnsync,
 ) -> Result<(), TxScriptError> {
-    execute_zk_script_with_flags(
-        script,
-        sig_cache,
-        reused_values,
-        EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, ..Default::default() },
-    )
+    execute_zk_script_with_flags(script, sig_cache, reused_values, EngineFlags { covenants_enabled: true, ..Default::default() })
 }
 
 pub fn execute_zk_script_with_flags(

@@ -400,7 +400,6 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.pruning_depth = 100 * 2 * 2 + 50;
 
         params.toccata_activation = ForkActivation::new(1000);
-        params.zk_hardening_activation = ForkActivation::new(2000);
 
         info!("Setting pruning depth to {:?}", params.pruning_depth());
     }

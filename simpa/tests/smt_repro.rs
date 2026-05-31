@@ -47,44 +47,26 @@ static REPRO_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn pruning_point_smt_export_import_repro_seed_2() {
-    assert_pruning_point_smt_roundtrip(2, ForkActivation::always(), ForkActivation::always());
+    assert_pruning_point_smt_roundtrip(2);
 }
 
 #[test]
 fn pruning_point_smt_export_import_repro_seed_4() {
-    assert_pruning_point_smt_roundtrip(4, ForkActivation::always(), ForkActivation::always());
+    assert_pruning_point_smt_roundtrip(4);
 }
 
 #[test]
 fn pruning_point_smt_export_import_repro_seed_5() {
-    assert_pruning_point_smt_roundtrip(5, ForkActivation::always(), ForkActivation::always());
+    assert_pruning_point_smt_roundtrip(5);
 }
 
-/// Hardening activates mid-chain (DAA 400): chain crosses the hardening boundary
-/// while toccata stays always-active. Toccata cannot be gated here because the
-/// simulator's ChurningLaneProducer relies on toccata-era subnetwork txs from
-/// block 1; pre-toccata they would be rejected and panic OnetimeTxSelector.
-/// Pre-toccata crossing is covered by daemon_zk_hardening_activation_test.
-#[test]
-fn pruning_point_smt_export_import_repro_seed_2_hardening_mid_chain() {
-    assert_pruning_point_smt_roundtrip(2, ForkActivation::always(), ForkActivation::new(400));
-}
-
-/// Hardening at DAA 1: chain is post-hardening from block 1 onward.
-/// Sanity-checks the "hardening fires almost immediately" boundary case.
-#[test]
-fn pruning_point_smt_export_import_repro_seed_2_hardening_at_1() {
-    assert_pruning_point_smt_roundtrip(2, ForkActivation::always(), ForkActivation::new(1));
-}
-
-fn assert_pruning_point_smt_roundtrip(seed: u64, toccata_activation: ForkActivation, zk_hardening_activation: ForkActivation) {
+fn assert_pruning_point_smt_roundtrip(seed: u64) {
     let _guard = REPRO_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     kaspa_core::log::try_init_logger("warn");
 
     let mut params = DEVNET_PARAMS;
     apply_pruning_repro_params(&mut params);
-    params.toccata_activation = toccata_activation;
-    params.zk_hardening_activation = zk_hardening_activation;
+    params.toccata_activation = ForkActivation::always();
     let config = Arc::new(
         ConfigBuilder::new(params)
             .apply_args(|config| apply_perf_params(&mut config.perf))
@@ -186,8 +168,7 @@ fn apply_pruning_repro_params(params: &mut Params) {
     params.mergeset_size_limit = 32 * 2;
     params.pruning_depth = PRUNING_DEPTH;
 
-    // toccata + hardening activations are set by the caller.
-    // (see assert_pruning_point_smt_roundtrip).
+    // Toccata activation is set by the caller.
     params.storage_mass_parameter = 10_000;
 }
 

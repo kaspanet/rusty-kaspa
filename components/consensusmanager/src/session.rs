@@ -515,7 +515,7 @@ impl ConsensusSessionOwned {
         &self,
         new_pruning_point: Hash,
         metadata: kaspa_consensus_core::api::SmtExportMetadata,
-        inactivity_shortcut_block: Option<Hash>,
+        inactivity_shortcut_block: Hash,
         mut rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
     ) -> PruningImportResult<()> {
         let lane_batches: ImportLaneBatchIterator = &mut std::iter::from_fn(move || rx.blocking_recv());

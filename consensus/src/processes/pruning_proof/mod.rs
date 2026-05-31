@@ -120,8 +120,6 @@ pub struct PruningProofManager {
     ghostdag_k: KType,
     skip_proof_of_work: bool,
     toccata_activation: ForkActivation,
-    zk_hardening_activation: ForkActivation,
-    is_mainnet: bool,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -144,8 +142,6 @@ impl PruningProofManager {
         ghostdag_k: KType,
         skip_proof_of_work: bool,
         toccata_activation: ForkActivation,
-        zk_hardening_activation: ForkActivation,
-        is_mainnet: bool,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -182,8 +178,6 @@ impl PruningProofManager {
             ghostdag_k,
             skip_proof_of_work,
             toccata_activation,
-            zk_hardening_activation,
-            is_mainnet,
 
             is_consensus_exiting,
         }

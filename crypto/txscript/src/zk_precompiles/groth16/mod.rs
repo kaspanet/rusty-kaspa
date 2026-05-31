@@ -11,10 +11,7 @@ use crate::{
     data_stack::Stack,
     opcodes::i32s_to_usizes,
     runtime_resource_meter::RuntimeResourceMeter,
-    zk_precompiles::{
-        ZkPrecompile,
-        fields::{Fr, TruncFr},
-    },
+    zk_precompiles::{ZkPrecompile, fields::Fr},
 };
 
 /// Empirically determined script unit cost per gamma_abc_g1 element in the VK
@@ -72,7 +69,7 @@ impl ZkPrecompile for Groth16Precompile {
     ///
     /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(pre-covpp)
     ///
-    fn verify_zk(dstack: &mut Stack, meter: &mut RuntimeResourceMeter, flags: EngineFlags) -> Result<(), Self::Error> {
+    fn verify_zk(dstack: &mut Stack, meter: &mut RuntimeResourceMeter, _flags: EngineFlags) -> Result<(), Self::Error> {
         // Retrieve the compressed VK
         let [unprepared_compressed_key] = dstack.pop_raw()?;
 
@@ -92,30 +89,12 @@ impl ZkPrecompile for Groth16Precompile {
         //
         // Note: public input count is bounded by the script stack depth limit.
         for _ in 0..n_inputs {
-            // convert bytes to Fr according to whether we're in hardened mode or not
-            let fr = if flags.zk_hardening_enabled {
-                let [fr] = dstack.pop_items::<1, Fr>()?;
-                fr
-            } else {
-                let [trunc_fr] = dstack.pop_items::<1, TruncFr>()?;
-                Fr::from(trunc_fr)
-            };
+            let [fr] = dstack.pop_items::<1, Fr>()?;
             unprepared_public_inputs.push(fr.into_field());
         }
 
-        // Deserialize the verifying key. Post-activation: streamed deserialize
-        // that arity-checks and meters per gamma_abc_g1 element inline. Pre-
-        // activation: plain ark deserialize plus the historical empty-gamma_abc
-        // check, no per-element charge.
-        let vk = if flags.zk_hardening_enabled {
-            deserialize_verifying_key_with_metering(&unprepared_compressed_key, unprepared_public_inputs.len(), meter)?
-        } else {
-            let vk = VerifyingKey::deserialize_compressed(&*unprepared_compressed_key)?;
-            if vk.gamma_abc_g1.is_empty() {
-                return Err(Groth16Error::EmptyGammaAbc);
-            }
-            vk
-        };
+        // Deserialize the verifying key with arity checking and per-public-input pricing.
+        let vk = deserialize_verifying_key_with_metering(&unprepared_compressed_key, unprepared_public_inputs.len(), meter)?;
 
         // Prepare verifying key
         let pvk = ark_groth16::prepare_verifying_key(&vk);
@@ -123,7 +102,7 @@ impl ZkPrecompile for Groth16Precompile {
         // Deserialize proof
         let mut proof_reader = proof_bytes.as_slice();
         let proof = Proof::<Bn254>::deserialize_compressed(&mut proof_reader)?;
-        if flags.zk_hardening_enabled && !proof_reader.is_empty() {
+        if !proof_reader.is_empty() {
             return Err(Groth16Error::TrailingProofBytes);
         }
 
@@ -154,12 +133,8 @@ mod tests {
     use kaspa_consensus_core::mass::ScriptUnits;
     use kaspa_txscript_errors::TxScriptError;
 
-    fn hardened_flags() -> EngineFlags {
-        EngineFlags { covenants_enabled: true, zk_hardening_enabled: true, ..Default::default() }
-    }
-
-    fn legacy_flags() -> EngineFlags {
-        EngineFlags { covenants_enabled: true, zk_hardening_enabled: false, ..Default::default() }
+    fn test_flags() -> EngineFlags {
+        EngineFlags { covenants_enabled: true, ..Default::default() }
     }
 
     fn stack_with_groth_fields(vk: Vec<u8>, proof: Vec<u8>, inputs: Vec<Vec<u8>>) -> Stack {
@@ -235,7 +210,7 @@ mod tests {
         stack.push(vk_bytes.into()).unwrap();
 
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(0));
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, hardened_flags()).expect_err("arity mismatch must be rejected");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("arity mismatch must be rejected");
         match err {
             Groth16Error::ArkR1CS(ark_relations::gr1cs::SynthesisError::ArityMismatch) => {}
             other => panic!("expected ArityMismatch before meter charge, got: {other:?}"),
@@ -262,7 +237,7 @@ mod tests {
         let expected_charge = (COUNT as u64).saturating_mul(GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS);
         assert!(expected_charge > PER_INPUT_BUDGET.0, "gamma_abc charge {expected_charge} must exceed budget {}", PER_INPUT_BUDGET.0);
 
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, hardened_flags()).expect_err("over-budget VK must be rejected");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("over-budget VK must be rejected");
         match err {
             Groth16Error::FromTxScript(TxScriptError::ExceededCommittedScriptUnits { used, limit }) => {
                 assert_eq!(limit, PER_INPUT_BUDGET.0);
@@ -273,47 +248,15 @@ mod tests {
     }
 
     #[test]
-    fn hardened_verify_path_accepts_canonical_proof() {
+    fn verify_path_accepts_canonical_proof() {
         let (vk, proof, inputs) = load_groth_fields();
         let mut stack = stack_with_groth_fields(vk, proof, inputs);
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        Groth16Precompile::verify_zk(&mut stack, &mut meter, hardened_flags()).unwrap();
+        Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).unwrap();
     }
 
     #[test]
-    fn legacy_verify_path_accepts_canonical_proof_without_metering() {
-        let (vk, proof, inputs) = load_groth_fields();
-        let mut stack = stack_with_groth_fields(vk, proof, inputs);
-
-        let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(0));
-        Groth16Precompile::verify_zk(&mut stack, &mut meter, legacy_flags()).expect("legacy path must accept canonical proof");
-        assert_eq!(meter.used_script_units(), ScriptUnits(0), "legacy path must not consume meter units");
-    }
-
-    #[test]
-    fn legacy_verify_path_tolerates_oversized_fr_push() {
-        let (vk, proof, mut inputs) = load_groth_fields();
-        inputs[0].extend_from_slice(&[0xAB; 32]);
-        let mut stack = stack_with_groth_fields(vk, proof, inputs);
-
-        let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        Groth16Precompile::verify_zk(&mut stack, &mut meter, legacy_flags())
-            .expect("legacy path must accept 64-byte Fr push (silent truncation)");
-    }
-
-    #[test]
-    fn legacy_verify_path_tolerates_trailing_vk_and_proof_bytes() {
-        let (mut vk, mut proof, inputs) = load_groth_fields();
-        vk.push(0xAB);
-        proof.push(0xCD);
-        let mut stack = stack_with_groth_fields(vk, proof, inputs);
-
-        let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        Groth16Precompile::verify_zk(&mut stack, &mut meter, legacy_flags()).expect("legacy path must accept trailing VK/proof bytes");
-    }
-
-    #[test]
-    fn hardened_verify_path_rejects_oversized_fr_push() {
+    fn verify_path_rejects_oversized_fr_push() {
         let vk_bytes = vk_with_gamma_abc_count(6); // 5 pub inputs + 1
         let oversized_input = vec![0u8; 64];
 
@@ -327,8 +270,7 @@ mod tests {
         stack.push(vk_bytes.into()).unwrap();
 
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, hardened_flags())
-            .expect_err("hardened path must reject oversized Fr push");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("must reject oversized Fr push");
         match err {
             Groth16Error::FromTxScript(TxScriptError::ZkIntegrity(msg)) if msg.contains("Invalid Fr length") => {}
             other => panic!("expected Invalid Fr length error, got: {other:?}"),
@@ -336,14 +278,13 @@ mod tests {
     }
 
     #[test]
-    fn hardened_verify_path_rejects_trailing_vk_bytes() {
+    fn verify_path_rejects_trailing_vk_bytes() {
         let (mut vk, proof, inputs) = load_groth_fields();
         vk.push(0xAB);
         let mut stack = stack_with_groth_fields(vk, proof, inputs);
 
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, hardened_flags())
-            .expect_err("hardened path must reject trailing VK bytes");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("must reject trailing VK bytes");
         match err {
             Groth16Error::TrailingVerifyingKeyBytes => {}
             other => panic!("expected trailing VK error, got: {other:?}"),
@@ -351,14 +292,13 @@ mod tests {
     }
 
     #[test]
-    fn hardened_verify_path_rejects_trailing_proof_bytes() {
+    fn verify_path_rejects_trailing_proof_bytes() {
         let (vk, mut proof, inputs) = load_groth_fields();
         proof.push(0xCD);
         let mut stack = stack_with_groth_fields(vk, proof, inputs);
 
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, hardened_flags())
-            .expect_err("hardened path must reject trailing proof bytes");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("must reject trailing proof bytes");
         match err {
             Groth16Error::TrailingProofBytes => {}
             other => panic!("expected trailing proof error, got: {other:?}"),

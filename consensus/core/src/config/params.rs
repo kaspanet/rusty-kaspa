@@ -260,8 +260,6 @@ pub struct OverrideParams {
     pub crescendo_activation: Option<ForkActivation>,
 
     pub toccata_activation: Option<ForkActivation>,
-
-    pub zk_hardening_activation: Option<ForkActivation>,
 }
 
 impl From<Params> for OverrideParams {
@@ -294,7 +292,6 @@ impl From<Params> for OverrideParams {
             blockrate: Some(p.blockrate),
             crescendo_activation: Some(p.crescendo_activation),
             toccata_activation: Some(p.toccata_activation),
-            zk_hardening_activation: Some(p.zk_hardening_activation),
         }
     }
 }
@@ -364,8 +361,6 @@ pub struct Params {
     pub crescendo_activation: ForkActivation,
 
     pub toccata_activation: ForkActivation,
-
-    pub zk_hardening_activation: ForkActivation,
 }
 
 impl Params {
@@ -604,7 +599,6 @@ impl Params {
 
             crescendo_activation: overrides.crescendo_activation.unwrap_or(self.crescendo_activation),
             toccata_activation: overrides.toccata_activation.unwrap_or(self.toccata_activation),
-            zk_hardening_activation: overrides.zk_hardening_activation.unwrap_or(self.zk_hardening_activation),
         }
     }
 }
@@ -719,7 +713,6 @@ pub const MAINNET_PARAMS: Params = Params {
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
     toccata_activation: ForkActivation::never(),
-    zk_hardening_activation: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -782,8 +775,6 @@ pub const TESTNET_PARAMS: Params = Params {
     // TODO(pre-covpp): Before setting the activation DAA score, resolve all comments of the form TODO(pre-covpp)
     // ~16:00 UTC, May 18, 2026
     toccata_activation: ForkActivation::new(467_579_632),
-    // ~2026-05-28 16:00 UTC on TN10.
-    zk_hardening_activation: ForkActivation::new(476_232_000),
 };
 
 pub const SIMNET_PARAMS: Params = Params {
@@ -829,7 +820,6 @@ pub const SIMNET_PARAMS: Params = Params {
 
     crescendo_activation: ForkActivation::always(),
     toccata_activation: ForkActivation::always(),
-    zk_hardening_activation: ForkActivation::always(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -874,7 +864,6 @@ pub const DEVNET_PARAMS: Params = Params {
 
     crescendo_activation: ForkActivation::always(),
     toccata_activation: ForkActivation::never(),
-    zk_hardening_activation: ForkActivation::never(),
 };
 
 #[cfg(test)]

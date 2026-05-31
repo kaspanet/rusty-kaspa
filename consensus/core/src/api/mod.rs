@@ -72,8 +72,7 @@ pub type ImportLaneBatchIterator<'a> = &'a mut (dyn Iterator<Item = Vec<ImportLa
 /// SMT metadata for IBD sync, verified against the pruning point header.
 ///
 /// Wire: `lanes_root || payload_and_ctx_digest || parent_seq_commit` (96 bytes).
-/// `inactivity_shortcut_block` is derived by the receiver from chain headers
-/// when needed (post-hardening); not transmitted.
+/// `inactivity_shortcut_block` is derived by the receiver from chain headers; not transmitted.
 #[derive(Clone, Copy, Debug)]
 pub struct SmtExportMetadata {
     pub lanes_root: Hash,
@@ -306,14 +305,12 @@ pub trait ConsensusApi: Send + Sync {
     /// each element is up to `SMT_CHUNK_SIZE` lanes. The importer does not
     /// re-batch.
     ///
-    /// `inactivity_shortcut_block` is `Some(block)` post-hardening (already
-    /// resolved by the caller during metadata verification) and `None`
-    /// pre-hardening. The importer stores it as-is in the V1 metadata row.
+    /// `inactivity_shortcut_block` is resolved by the caller during metadata verification.
     fn import_pruning_point_smt(
         &self,
         _new_pruning_point: Hash,
         _metadata: SmtExportMetadata,
-        _inactivity_shortcut_block: Option<Hash>,
+        _inactivity_shortcut_block: Hash,
         _lane_batches: ImportLaneBatchIterator<'_>,
     ) -> PruningImportResult<()> {
         unimplemented!()

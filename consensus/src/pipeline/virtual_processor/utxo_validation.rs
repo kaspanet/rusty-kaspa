@@ -573,8 +573,7 @@ impl VirtualStateProcessor {
     /// Works with an immutable view of DB state. Returns the commit hash and an `SmtBuild`
     /// containing the diff (updated branches, lane versions, score index) for later persistence.
     ///
-    /// `inactivity_shortcut`: `Some(hash)` post-hardening (wraps `lanes_root` into
-    /// `activity_root` via `H_activity_root`); `None` pre-hardening (identity).
+    /// `inactivity_shortcut` is folded into `activity_root` next to the active-lanes root.
     pub(super) fn build_seq_commit(
         &self,
         parent: &ParentBlockSeqState,
@@ -584,7 +583,7 @@ impl VirtualStateProcessor {
         miner_payload_leaves: Vec<Hash>,
         selected_parent: Hash,
         inactivity_shortcut_block: Hash,
-        inactivity_shortcut: Option<Hash>,
+        inactivity_shortcut: Hash,
     ) -> (Hash, kaspa_smt_store::processor::SmtBuild) {
         use kaspa_seq_commit::hashing::{activity_root_hash, miner_payload_root, seq_commit, seq_state_root};
         use kaspa_seq_commit::types::{SeqCommitInput, SeqState};
@@ -615,13 +614,9 @@ impl VirtualStateProcessor {
         let mut build = proc.build(|bh| self.is_smt_canonical(bh, selected_parent)).unwrap();
 
         // 5. Compute final hash: activity_root -> state_root -> seq_commit.
-        // Pre-hardening: identity (activity_root = lanes_root). Post-hardening: wrap.
         let payload_root = miner_payload_root(miner_payload_leaves.into_iter());
         let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&context_hash, &payload_root);
-        let activity_root = match inactivity_shortcut {
-            Some(s) => activity_root_hash(&s, &build.root),
-            None => build.root,
-        };
+        let activity_root = activity_root_hash(&inactivity_shortcut, &build.root);
         let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
         let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent.seq_commit, state_root: &state_root });
 
@@ -654,8 +649,7 @@ impl VirtualStateProcessor {
             daa_score: header.daa_score,
             blue_score: current_blue_score,
         });
-        let inactivity_shortcut =
-            self.zk_hardening_activation.is_active(header.daa_score).then(|| self.inactivity_shortcut(inactivity_shortcut_block));
+        let inactivity_shortcut = self.inactivity_shortcut(inactivity_shortcut_block);
 
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let data = self.collect_mergeset_seq_data(ctx);

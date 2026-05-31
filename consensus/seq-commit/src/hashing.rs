@@ -20,8 +20,6 @@
 //!                     └── payload_root
 //! ```
 //!
-//! Pre-hardening: `activity_root == lanes_root` (identity, no wrap);
-//! post-hardening: `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`.
 
 use kaspa_hashes::{
     Hash, HasherBase, PayloadDigest, SeqCommitActiveLeaf, SeqCommitActivityLeaf, SeqCommitActivityRoot, SeqCommitLaneKey,
@@ -86,9 +84,6 @@ pub fn mergeset_context_hash(ctx: &MergesetContext) -> Hash {
 }
 
 /// Compute the activity root: `H_activity_root(inactivity_shortcut, lanes_root)`.
-///
-/// Post-hardening only. Pre-hardening callers should pass `lanes_root` straight
-/// into [`seq_state_root`] without invoking this helper (identity).
 #[inline]
 pub fn activity_root_hash(inactivity_shortcut: &Hash, lanes_root: &Hash) -> Hash {
     let mut hasher = SeqCommitActivityRoot::new();
@@ -311,8 +306,8 @@ mod tests {
         assert_ne!(base, activity_root_hash(&h(9), &h(7)));
     }
 
-    /// Identity vs wrap diverge: pre-hardening feeds `lanes_root` directly to
-    /// `seq_state_root`; post-hardening wraps via `activity_root_hash`. Hashes must differ.
+    /// The activity-root domain separates `(inactivity_shortcut, lanes_root)` from
+    /// the raw active-lanes SMT root.
     #[test]
     fn activity_root_identity_vs_wrap_diverges() {
         let lanes_root = h(42);
@@ -518,7 +513,6 @@ mod tests {
         let mpr = miner_payload_root(core::iter::once(mpl));
 
         let pd = payload_and_context_digest(&ctx, &mpr);
-        // Post-hardening end-to-end: activity_root wraps lanes_root with the shortcut.
         let activity_root = activity_root_hash(&ZERO_HASH, &smt_leaf);
         let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
         let commitment = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_commit, state_root: &state_root });

@@ -45,9 +45,6 @@ pub struct SmtLeafInput<'a> {
 }
 
 /// Components of the sequencing state root.
-///
-/// `activity_root`: pre-hardening identity = `lanes_root`; post-hardening
-/// = `H_activity_root(inactivity_shortcut, lanes_root)`.
 #[derive(Clone, Copy, Debug)]
 pub struct SeqState<'a> {
     pub activity_root: &'a Hash,
