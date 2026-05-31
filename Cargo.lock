@@ -3220,6 +3220,7 @@ dependencies = [
  "thiserror 1.0.64",
  "uuid",
  "wasm-bindgen",
+ "wasm-bindgen-test",
  "workflow-core",
  "workflow-serializer",
  "workflow-wasm",
