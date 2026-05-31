@@ -50,7 +50,6 @@ use kaspa_consensus_core::hashing::sighash::{
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::mass::{Gram, ScriptUnits};
 use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
-use kaspa_hashes::Hash;
 use kaspa_txscript_errors::TxScriptError;
 use kaspa_utils::hex::ToHex;
 use log::trace;
@@ -791,9 +790,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
                 // We don't pass 'enforce_nullfail=true' because we manually enforce it below
                 let check_signature_result = if ecdsa {
-                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature, false)
+                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature)
                 } else {
-                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature, false)
+                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature)
                 };
 
                 match check_signature_result {
@@ -829,7 +828,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
     #[inline]
     fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
-        self.runtime_sig_op_counter.consume_sig_op()?;
+        self.consume_sig_op_cost(1)?;
         match self.script_source {
             ScriptSource::TxInput { tx, idx, .. } => {
                 if sig.len() != 64 {
@@ -865,7 +864,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
-        self.runtime_sig_op_counter.consume_sig_op()?;
+        self.consume_sig_op_cost(1)?;
         match self.script_source {
             ScriptSource::TxInput { tx, idx, .. } => {
                 if sig.len() != 64 {

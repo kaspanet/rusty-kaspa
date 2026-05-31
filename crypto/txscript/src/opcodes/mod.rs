@@ -947,7 +947,7 @@ opcode_list! {
         match sig.pop() {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice(), false) {
+                match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(valid) => {
                         vm.dstack.push_item(valid)?;
                         Ok(())
@@ -970,7 +970,7 @@ opcode_list! {
         match sig.pop() {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice(), false) {
+                match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(valid) => {
                         vm.dstack.push_item(valid)?;
                         Ok(())
