@@ -525,6 +525,7 @@ message NotifyUtxosChangedResponseMessage {
 message UtxosChangedNotificationMessage {
   repeated RpcUtxosByAddressesEntry added = 1;
   repeated RpcUtxosByAddressesEntry removed = 2;
+  uint64 acceptingBlueScoreUpperBound = 3;
 }
 
 message RpcUtxosByAddressesEntry {

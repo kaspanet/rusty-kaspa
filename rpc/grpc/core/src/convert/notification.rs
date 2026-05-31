@@ -61,6 +61,7 @@ from!(item: &kaspa_rpc_core::UtxosChangedNotification, UtxosChangedNotificationM
     Self {
         added: item.added.iter().map(|x| x.into()).collect::<Vec<_>>(),
         removed: item.removed.iter().map(|x| x.into()).collect::<Vec<_>>(),
+        accepting_blue_score_upper_bound: item.accepting_blue_score_upper_bound,
     }
 });
 
@@ -158,6 +159,7 @@ try_from!(item: &UtxosChangedNotificationMessage, kaspa_rpc_core::UtxosChangedNo
     Self {
         added: Arc::new(item.added.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
         removed: Arc::new(item.removed.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
+        accepting_blue_score_upper_bound: item.accepting_blue_score_upper_bound,
     }
 });
 

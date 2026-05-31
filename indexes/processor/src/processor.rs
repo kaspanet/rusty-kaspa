@@ -94,8 +94,9 @@ impl Processor {
     ) -> IndexResult<UtxosChangedNotification> {
         trace!("[{IDENT}]: processing {:?}", notification);
         if let Some(utxoindex) = self.utxoindex.clone() {
-            let converted_notification: UtxosChangedNotification =
+            let mut converted_notification: UtxosChangedNotification =
                 utxoindex.update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents).await?.into();
+            converted_notification.accepting_blue_score_upper_bound = notification.accepting_blue_score_upper_bound;
             debug!(
                 "IDXPRC, Creating UtxosChanged notifications with {} added and {} removed utxos",
                 converted_notification.added.len(),
@@ -183,6 +184,7 @@ mod tests {
         let test_notification = consensus_notification::UtxosChangedNotification::new(
             Arc::new(UtxoDiff { add: to_add_collection, remove: to_remove_collection }),
             Arc::new(generate_random_hashes(rng, 2)),
+            1000,
         );
 
         pipeline.consensus_sender.send(ConsensusNotification::UtxosChanged(test_notification.clone())).await.expect("expected send");
@@ -222,6 +224,10 @@ mod tests {
                     }
                 }
                 assert_eq!(test_notification.accumulated_utxo_diff.remove.len(), notification_utxo_removed_count);
+                assert_eq!(
+                    utxo_changed_notification.accepting_blue_score_upper_bound, test_notification.accepting_blue_score_upper_bound,
+                    "accepting_blue_score_upper_bound must propagate through index processor"
+                );
             }
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }

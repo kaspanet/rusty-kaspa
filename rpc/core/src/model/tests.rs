@@ -1413,7 +1413,7 @@ mod mockery {
 
     impl Mock for UtxosChangedNotification {
         fn mock() -> Self {
-            UtxosChangedNotification { added: mock(), removed: mock() }
+            UtxosChangedNotification { added: mock(), removed: mock(), accepting_blue_score_upper_bound: mock() }
         }
     }
 
@@ -1559,5 +1559,44 @@ mod mockery {
     #[test]
     fn test_misalignment() {
         test::<Misalign>("Misalign");
+    }
+
+    /// Test that v2 deserializer can read v1 serialized data (without accepting_blue_score_upper_bound).
+    /// V1 data should deserialize with accepting_blue_score_upper_bound defaulting to 0.
+    #[test]
+    fn test_utxos_changed_notification_v1_backward_compat() {
+        let notification = UtxosChangedNotification { added: mock(), removed: mock(), accepting_blue_score_upper_bound: 42 };
+
+        // Serialize as v1 manually (version=1, no blue_score field)
+        let mut v1_buffer = Vec::new();
+        let writer = &mut v1_buffer;
+        store!(u16, &1u16, writer).unwrap();
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &notification.added, writer).unwrap();
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &notification.removed, writer).unwrap();
+
+        // Deserialize with current (v2) deserializer
+        let reader = &mut v1_buffer.as_slice();
+        let deserialized = UtxosChangedNotification::deserialize(reader).unwrap();
+
+        // V1 data should have accepting_blue_score_upper_bound == 0
+        assert_eq!(deserialized.accepting_blue_score_upper_bound, 0, "v1 backward compat: blue_score should default to 0");
+        assert_eq!(deserialized.added.len(), notification.added.len());
+        assert_eq!(deserialized.removed.len(), notification.removed.len());
+    }
+
+    /// Test that v2 round-trip preserves accepting_blue_score_upper_bound.
+    #[test]
+    fn test_utxos_changed_notification_v2_round_trip() {
+        let notification = UtxosChangedNotification { added: mock(), removed: mock(), accepting_blue_score_upper_bound: 123456789 };
+
+        let mut buffer = Vec::new();
+        notification.serialize(&mut buffer).unwrap();
+
+        let reader = &mut buffer.as_slice();
+        let deserialized = UtxosChangedNotification::deserialize(reader).unwrap();
+
+        assert_eq!(deserialized.accepting_blue_score_upper_bound, 123456789);
+        assert_eq!(deserialized.added.len(), notification.added.len());
+        assert_eq!(deserialized.removed.len(), notification.removed.len());
     }
 }

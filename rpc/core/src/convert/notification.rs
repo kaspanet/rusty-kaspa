@@ -82,9 +82,9 @@ impl From<&consensus_notify::FinalityConflictResolvedNotification> for FinalityC
 }
 
 impl From<&consensus_notify::UtxosChangedNotification> for UtxosChangedNotification {
-    fn from(_: &consensus_notify::UtxosChangedNotification) -> Self {
+    fn from(item: &consensus_notify::UtxosChangedNotification) -> Self {
         // TODO: investigate if this conversion is possible
-        UtxosChangedNotification::default()
+        Self { accepting_blue_score_upper_bound: item.accepting_blue_score_upper_bound, ..Default::default() }
     }
 }
 
@@ -141,6 +141,10 @@ impl From<&index_notify::UtxosChangedNotification> for UtxosChangedNotification 
     // This is not intended to be ever called because no address prefix is available.
     // Use kaspa_rpc_service::converter::index::IndexConverter instead.
     fn from(item: &index_notify::UtxosChangedNotification) -> Self {
-        Self { added: Arc::new(utxo_set_into_rpc(&item.added, None)), removed: Arc::new(utxo_set_into_rpc(&item.removed, None)) }
+        Self {
+            added: Arc::new(utxo_set_into_rpc(&item.added, None)),
+            removed: Arc::new(utxo_set_into_rpc(&item.removed, None)),
+            accepting_blue_score_upper_bound: item.accepting_blue_score_upper_bound,
+        }
     }
 }
