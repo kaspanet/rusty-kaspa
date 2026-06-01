@@ -225,7 +225,7 @@ impl Frontier {
     ///        sufficient probability (in constant time). Following each sampling collision we search for a consecutive range of
     ///        top elements which were already sampled and narrow the sampling space to exclude them all. We do this by computing
     ///        the prefix weight up to the top most item which wasn't sampled yet (inclusive) and then continue the sampling process
-    ///        over the narrowed space. This process is repeated until acquiring the desired mass.  
+    ///        over the narrowed space. This process is repeated until acquiring the desired mass.
     ///     4. Numerical stability. Naively, one would simply subtract `total_weight -= top.weight` in order to narrow the sampling
     ///        space. However, if `top.weight` is much larger than the remaining weight, the above f64 subtraction will yield a number
     ///        close or equal to zero. We fix this by implementing a `log(n)` prefix weight operation.
@@ -360,7 +360,7 @@ impl Frontier {
     ///
     /// The above thresholds were selected based on benchmarks. Overall, this dynamic selection provides
     /// full transaction selection in less than 150 µs even if the frontier has 1M entries (!!). See mining/benches
-    /// for more details.  
+    /// for more details.
     pub fn build_selector(&self, policy: &Policy) -> Box<dyn TemplateTransactionSelector> {
         if self.total_mass <= policy.max_block_mass {
             // TakeAll can still filter by LPB/gas, so feed it best-first.
