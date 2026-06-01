@@ -7,7 +7,6 @@ use kaspa_consensus_core::mass::ScriptUnits;
 pub use error::Groth16Error;
 
 use crate::{
-    EngineFlags,
     data_stack::Stack,
     opcodes::i32s_to_usizes,
     runtime_resource_meter::RuntimeResourceMeter,
@@ -67,9 +66,12 @@ impl ZkPrecompile for Groth16Precompile {
     type Error = Groth16Error;
     /// Verifies the integrity of a Groth16 proof.
     ///
-    /// *NOTE: Experimental code; not yet fully audited for mainnet use.* TODO(pre-covpp)
-    ///
-    fn verify_zk(dstack: &mut Stack, meter: &mut RuntimeResourceMeter, _flags: EngineFlags) -> Result<(), Self::Error> {
+    /// Expects the following items on the stack (from top to bottom):
+    /// - verifying key (bytes, compressed)
+    /// - proof (bytes, compressed)
+    /// - public input count (i32)
+    /// - public inputs (Fr bytes, count items)
+    fn verify_zk(dstack: &mut Stack, meter: &mut RuntimeResourceMeter) -> Result<(), Self::Error> {
         // Retrieve the compressed VK
         let [unprepared_compressed_key] = dstack.pop_raw()?;
 
@@ -122,7 +124,6 @@ impl ZkPrecompile for Groth16Precompile {
 mod tests {
     use super::{GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS, Groth16Error};
     use crate::{
-        EngineFlags,
         data_stack::Stack,
         runtime_resource_meter::RuntimeResourceMeter,
         zk_precompiles::{ZkPrecompile, groth16::Groth16Precompile, tests::helpers::load_groth_fields},
@@ -132,10 +133,6 @@ mod tests {
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress};
     use kaspa_consensus_core::mass::ScriptUnits;
     use kaspa_txscript_errors::TxScriptError;
-
-    fn test_flags() -> EngineFlags {
-        EngineFlags { covenants_enabled: true, ..Default::default() }
-    }
 
     fn stack_with_groth_fields(vk: Vec<u8>, proof: Vec<u8>, inputs: Vec<Vec<u8>>) -> Stack {
         let mut stack = Stack::new(Vec::new(), true);
@@ -210,7 +207,7 @@ mod tests {
         stack.push(vk_bytes.into()).unwrap();
 
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(0));
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("arity mismatch must be rejected");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter).expect_err("arity mismatch must be rejected");
         match err {
             Groth16Error::ArkR1CS(ark_relations::gr1cs::SynthesisError::ArityMismatch) => {}
             other => panic!("expected ArityMismatch before meter charge, got: {other:?}"),
@@ -237,7 +234,7 @@ mod tests {
         let expected_charge = (COUNT as u64).saturating_mul(GROTH16_GAMMA_ABC_G1_ELEMENT_SCRIPT_UNITS);
         assert!(expected_charge > PER_INPUT_BUDGET.0, "gamma_abc charge {expected_charge} must exceed budget {}", PER_INPUT_BUDGET.0);
 
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("over-budget VK must be rejected");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter).expect_err("over-budget VK must be rejected");
         match err {
             Groth16Error::FromTxScript(TxScriptError::ExceededCommittedScriptUnits { used, limit }) => {
                 assert_eq!(limit, PER_INPUT_BUDGET.0);
@@ -252,7 +249,7 @@ mod tests {
         let (vk, proof, inputs) = load_groth_fields();
         let mut stack = stack_with_groth_fields(vk, proof, inputs);
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).unwrap();
+        Groth16Precompile::verify_zk(&mut stack, &mut meter).unwrap();
     }
 
     #[test]
@@ -270,7 +267,7 @@ mod tests {
         stack.push(vk_bytes.into()).unwrap();
 
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("must reject oversized Fr push");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter).expect_err("must reject oversized Fr push");
         match err {
             Groth16Error::FromTxScript(TxScriptError::ZkIntegrity(msg)) if msg.contains("Invalid Fr length") => {}
             other => panic!("expected Invalid Fr length error, got: {other:?}"),
@@ -284,7 +281,7 @@ mod tests {
         let mut stack = stack_with_groth_fields(vk, proof, inputs);
 
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("must reject trailing VK bytes");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter).expect_err("must reject trailing VK bytes");
         match err {
             Groth16Error::TrailingVerifyingKeyBytes => {}
             other => panic!("expected trailing VK error, got: {other:?}"),
@@ -298,7 +295,7 @@ mod tests {
         let mut stack = stack_with_groth_fields(vk, proof, inputs);
 
         let mut meter = RuntimeResourceMeter::new_script_units(ScriptUnits(0), ScriptUnits(u64::MAX));
-        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter, test_flags()).expect_err("must reject trailing proof bytes");
+        let err = Groth16Precompile::verify_zk(&mut stack, &mut meter).expect_err("must reject trailing proof bytes");
         match err {
             Groth16Error::TrailingProofBytes => {}
             other => panic!("expected trailing proof error, got: {other:?}"),
