@@ -810,16 +810,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             }
         }
 
-        if self.flags.covenants_enabled {
-            if failed
-                && !signatures.iter().all(|sig| {
-                    // We check whether it's empty or the stripped sig is all zeros.
-                    sig.split_last().map(|(_, sig_without_type)| sig_without_type == ZERO_SIG).unwrap_or(true)
-                })
-            {
-                return Err(TxScriptError::NullFail);
-            }
-        } else if failed && signatures.iter().any(|sig| !sig.is_empty()) {
+        if failed && signatures.iter().any(|sig| !sig.is_empty()) {
             return Err(TxScriptError::NullFail);
         }
 
