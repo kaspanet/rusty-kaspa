@@ -520,8 +520,7 @@ async fn daemon_compute_budget_relay_test() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
 
     let args = Args {
-        testnet: true,
-        testnet_suffix: 12,
+        simnet: true,
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true,
@@ -757,8 +756,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     let compute_budget_relay_test_params =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
     let args = Args {
-        testnet: true,
-        testnet_suffix: 12,
+        simnet: true,
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true,
@@ -856,7 +854,8 @@ async fn daemon_pruning_seqcommit_sync_test() {
 
     // Step 1: advance the chain to ~1.5 * finality depth from genesis.
     // We will create a seqcommit transaction at that height, referencing a block
-    // almost a full finality depth below the tip.
+    // almost a full finality_depth below the tip (KIP-21 seqcommit look-back is
+    // bounded by `finality_depth`).
     let finality_depth = params.finality_depth();
     let initial_blocks = finality_depth.saturating_mul(3).saturating_div(2) as usize;
     for _ in 0..initial_blocks {
@@ -876,7 +875,7 @@ async fn daemon_pruning_seqcommit_sync_test() {
     )
     .await;
 
-    // Choose a target almost a full finality depth below the current tip, leaving
+    // Choose a target almost a full finality_depth below the current tip, leaving
     // a small buffer for the confirmation and spend blocks.
     let dag_info = rpc_client1.get_block_dag_info().await.unwrap();
     let remaining = finality_depth.saturating_sub(3);
@@ -943,9 +942,13 @@ async fn daemon_pruning_seqcommit_sync_test() {
 
     // Step 2: advance the pruning point so it moves off genesis and ends up above the
     // target block that the seqcommit script references.
+    //
+    // KIP-21: the seqcommit look-back is `finality_depth`, so the target sits at
+    // depth ≈ F below the initial tip. Pruning samples space by F in blue_score, so
+    // PP may need to advance to climb past the target.
     let mut dag_info = rpc_client1.get_block_dag_info().await.unwrap();
     let mut extra_blocks = 0usize;
-    let extra_blocks_limit = params.pruning_depth().saturating_add(30) as usize;
+    let extra_blocks_limit = params.pruning_depth().saturating_add(params.finality_depth()).saturating_add(30) as usize;
     while (dag_info.pruning_point_hash == SIMNET_GENESIS.hash
         || !is_ancestor_in_selected_parent_chain(&rpc_client1, dag_info.pruning_point_hash, target_block).await)
         && extra_blocks < extra_blocks_limit
@@ -1198,6 +1201,36 @@ async fn daemon_ibd_smt_state_sync_test() {
             })
         },
         "syncee did not complete SMT-era IBD within timeout (suspected sync_new_smt_state stall)",
+    )
+    .await;
+
+    // Phase 6: mine finality_depth + buffer blocks on the syncer and assert
+    // the syncee catches up. Verifies syncer/syncee shortcut agreement for live
+    // blocks whose target_bs lands in the IBD-imported lane range.
+    let finality_depth = params.finality_depth() as usize;
+    let post_ibd_blocks = finality_depth + 30;
+    for _ in 0..post_ibd_blocks {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+
+    let post_ibd_target_score = rpc_client1.get_server_info().await.unwrap().virtual_daa_score;
+    let post_ibd_target_pp = rpc_client1.get_block_dag_info().await.unwrap().pruning_point_hash;
+    let post_ibd_check = rpc_client2.clone();
+    wait_for(
+        100,
+        600,
+        move || {
+            let client = post_ibd_check.clone();
+            Box::pin(async move {
+                let server_info = client.get_server_info().await.unwrap();
+                if server_info.virtual_daa_score < post_ibd_target_score {
+                    return false;
+                }
+                client.get_block_dag_info().await.unwrap().pruning_point_hash == post_ibd_target_pp
+            })
+        },
+        "syncee did not accept post-IBD blocks",
     )
     .await;
 

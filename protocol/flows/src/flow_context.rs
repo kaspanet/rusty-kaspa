@@ -13,7 +13,6 @@ use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::{Config, params::ForkActivation};
 use kaspa_consensus_core::errors::block::RuleError;
-use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
@@ -63,10 +62,6 @@ use uuid::Uuid;
 /// The P2P protocol version.
 const PROTOCOL_VERSION: u32 = 10;
 
-/// Testnet 12 was launched with the Toccata flow set under protocol version 9.
-const TN12_LAUNCH_PROTOCOL_VERSION: u32 = 9;
-const TN12_NETWORK: NetworkId = NetworkId::with_suffix(NetworkType::Testnet, 12);
-
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
 
@@ -91,15 +86,27 @@ pub enum BlockLogEvent {
 
 pub struct BlockEventLogger {
     bps: usize,
-    toccata_activation: ForkActivation,
+    countdown_activation: CountdownActivation,
     sender: UnboundedSender<BlockLogEvent>,
     receiver: Mutex<Option<UnboundedReceiver<BlockLogEvent>>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CountdownActivation {
+    name: &'static str,
+    activation: ForkActivation,
+}
+
+impl CountdownActivation {
+    fn toccata(toccata_activation: ForkActivation) -> Self {
+        Self { name: "Toccata", activation: toccata_activation }
+    }
+}
+
 impl BlockEventLogger {
-    pub fn new(bps: usize, toccata_activation: ForkActivation) -> Self {
+    fn new(bps: usize, countdown_activation: CountdownActivation) -> Self {
         let (sender, receiver) = unbounded_channel();
-        Self { bps, toccata_activation, sender, receiver: Mutex::new(Some(receiver)) }
+        Self { bps, countdown_activation, sender, receiver: Mutex::new(Some(receiver)) }
     }
 
     pub fn log(&self, event: BlockLogEvent) {
@@ -110,7 +117,7 @@ impl BlockEventLogger {
     fn start(&self) {
         let chunk_limit = self.bps * 10; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
         let receiver = self.receiver.lock().take().expect("expected to be called once");
-        let toccata_activation = self.toccata_activation;
+        let countdown_activation = self.countdown_activation;
         tokio::spawn(async move {
             let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
             tokio::pin!(chunk_stream);
@@ -146,10 +153,10 @@ impl BlockEventLogger {
                     }
                 }
 
-                fn toccata_countdown_suffix(toccata_activation: ForkActivation, daa_score: Option<u64>) -> String {
+                fn activation_countdown_suffix(countdown: CountdownActivation, daa_score: Option<u64>) -> String {
                     daa_score
-                        .and_then(|daa_score| toccata_activation.is_within_range_before_activation(daa_score, 36_000))
-                        .map(|dist| format!(" \t [Toccata countdown: -{}]", dist))
+                        .and_then(|daa_score| countdown.activation.is_within_range_before_activation(daa_score, 36_000))
+                        .map(|dist| format!(" \t [{} countdown: -{}]", countdown.name, dist))
                         .unwrap_or_default()
                 }
 
@@ -207,24 +214,24 @@ impl BlockEventLogger {
                     (1, 0) => info!(
                         "Accepted block {} via submit block{}",
                         summary.submit(),
-                        toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                        activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
                     ),
                     (n, 0) => info!(
                         "Accepted {} blocks ...{} via submit block{}",
                         n,
                         summary.submit(),
-                        toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                        activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
                     ),
                     (0, 1) => info!(
                         "Accepted block {} via relay{}",
                         summary.relay(),
-                        toccata_countdown_suffix(toccata_activation, summary.relay_rep_daa_score())
+                        activation_countdown_suffix(countdown_activation, summary.relay_rep_daa_score())
                     ),
                     (0, m) => info!(
                         "Accepted {} blocks ...{} via relay{}",
                         m,
                         summary.relay(),
-                        toccata_countdown_suffix(toccata_activation, summary.relay_rep_daa_score())
+                        activation_countdown_suffix(countdown_activation, summary.relay_rep_daa_score())
                     ),
                     (n, m) => {
                         info!(
@@ -233,7 +240,7 @@ impl BlockEventLogger {
                             summary.submit(),
                             m,
                             n,
-                            toccata_countdown_suffix(toccata_activation, summary.submit_rep_daa_score())
+                            activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
                         )
                     }
                 }
@@ -381,7 +388,7 @@ impl FlowContext {
                 tick_service,
                 notification_root,
                 user_agent_rules,
-                block_event_logger: Some(BlockEventLogger::new(bps, config.toccata_activation)),
+                block_event_logger: Some(BlockEventLogger::new(bps, CountdownActivation::toccata(config.toccata_activation))),
                 bps,
                 orphan_resolution_range,
                 max_orphans,
@@ -760,8 +767,8 @@ impl ConnectionInitializer for FlowContext {
 
         let local_address = self.address_manager.lock().best_local_address();
 
-        // Networks with a scheduled Toccata activation advertise protocol 10. Other networks
-        // still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
+        // Networks with a scheduled Toccata activation advertise the current protocol version.
+        // Other networks still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
         let advertise_toccata_p2p = self.config.toccata_activation != ForkActivation::never();
         let advertised_protocol_version = if advertise_toccata_p2p { PROTOCOL_VERSION } else { 9 };
 
@@ -814,14 +821,7 @@ impl ConnectionInitializer for FlowContext {
 
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
-        // TN12 launched Toccata flows under protocol 9. Normalize those peers to the current
-        // protocol locally while preserving the originally advertised version in peer properties.
-        let peer_protocol_version = if self.config.net == TN12_NETWORK && peer_version.protocol_version == TN12_LAUNCH_PROTOCOL_VERSION
-        {
-            PROTOCOL_VERSION
-        } else {
-            peer_version.protocol_version
-        };
+        let peer_protocol_version = peer_version.protocol_version;
 
         // One day before activation, upgraded nodes start disconnecting outdated peers from the P2P network.
         const ONE_DAY_SECONDS: u64 = 24 * 60 * 60;
@@ -830,7 +830,7 @@ impl ConnectionInitializer for FlowContext {
         let connect_only_new_versions = self.config.toccata_activation.is_active(virtual_daa_score.saturating_add(daa_threshold));
 
         // Until the one-day pre-activation threshold is reached, older protocol versions remain accepted.
-        // Once it is reached, peers must advertise protocol 10 (TN12 launch peers were normalized above).
+        // Once it is reached, peers must advertise protocol 10.
         //
         // Note: post-activation fresh nodes with virtual DAA score near genesis are not covered here and
         // are guarded later during IBD by `validate_pruning_point_freshness_for_toccata`.

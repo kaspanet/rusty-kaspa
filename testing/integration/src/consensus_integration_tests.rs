@@ -16,7 +16,7 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, TESTNET12_PARAMS};
+use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, TESTNET_PARAMS};
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
@@ -48,9 +48,7 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::{Hash, SeqCommitActiveNode};
 use kaspa_rpc_core::RpcHeader;
-use kaspa_seq_commit::hashing::{
-    activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, seq_commit_timestamp, smt_leaf_hash,
-};
+use kaspa_seq_commit::hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, smt_leaf_hash};
 use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
 use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, pay_to_script_hash_script};
@@ -1481,7 +1479,7 @@ fn chain_seq_commit_context_hash(consensus: &TestConsensus, accepting_block: Has
     let header = consensus.get_header(accepting_block).unwrap();
     let parent_header = consensus.get_header(header.direct_parents()[0]).unwrap();
     mergeset_context_hash(&MergesetContext {
-        timestamp: seq_commit_timestamp(parent_header.timestamp),
+        timestamp: parent_header.timestamp,
         daa_score: header.daa_score,
         blue_score: header.blue_score,
     })
@@ -1495,6 +1493,7 @@ fn assert_chain_seq_commit_lane(consensus: &TestConsensus, accepting_block: Hash
             payload_and_ctx_digest: &proof.payload_and_ctx_digest,
             parent_seq_commit: &proof.parent_seq_commit,
         },
+        proof.inactivity_shortcut,
         proof.expected_seq_commit,
         proof.parent_seq_commit,
     )
@@ -1589,6 +1588,8 @@ async fn seqcommit_sp_context_threshold_edge_test() {
             p.genesis.hash = genesis_header.hash;
 
             // Keep the threshold minimal so the selected-parent edge is reached by the next block.
+            // KIP-21: the seqcommit look-back equals `finality_depth`; set it to 1 so a
+            // single follow-up block is still within the threshold during template validation.
             p.finality_depth = 1;
             p.toccata_activation = ForkActivation::always();
         })
@@ -1652,7 +1653,7 @@ async fn seqcommit_sp_context_threshold_edge_test() {
 }
 
 #[tokio::test]
-async fn staging_consensus_test() {
+async fn staging_consensus_lifecycle_test() {
     init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).build();
 
@@ -1689,8 +1690,26 @@ async fn staging_consensus_test() {
     let joins = core.start();
 
     let staging = consensus_manager.new_staging_consensus();
-    staging.commit();
+    let staging_session = staging.session().await;
+    let genesis_hash = config.genesis.hash;
 
+    // A fresh staging consensus skips normal genesis processing, so genesis is
+    // absent from both the headers store and the status store before import.
+    assert!(staging_session.async_get_header(genesis_hash).await.is_err());
+    assert_eq!(staging_session.async_get_block_status(genesis_hash).await, None);
+
+    let mut genesis_header: Header = (&config.genesis).into();
+    genesis_header.hash = genesis_hash;
+    let genesis_header = Arc::new(genesis_header);
+    staging_session.clone().spawn_blocking(move |c| c.import_pruning_points(vec![genesis_header])).await.unwrap();
+
+    // Importing pruning points stores headers without assigning block statuses.
+    // Header access must keep working for headers-proof IBD in this state.
+    assert_eq!(staging_session.async_get_header(genesis_hash).await.unwrap().hash, genesis_hash);
+    assert_eq!(staging_session.async_get_block_status(genesis_hash).await, None);
+
+    drop(staging_session);
+    staging.commit();
     core.shutdown();
     core.join(joins);
 }
@@ -2279,7 +2298,7 @@ fn build_p2pk_block(
     (consensus, wait_handles, transactions, block.to_immutable())
 }
 
-fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
+fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
     let redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
     let stark_spk = pay_to_script_hash_script(&redeem_script);
     let output_spk = ScriptPublicKey::from_vec(0, vec![OpTrue]);
@@ -2350,7 +2369,11 @@ fn init_testnet12_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle
         })
         .collect::<Vec<_>>();
 
-    let config = ConfigBuilder::new(TESTNET12_PARAMS)
+    let mut params = TESTNET_PARAMS;
+    params.crescendo_activation = ForkActivation::always();
+    params.toccata_activation = ForkActivation::always();
+
+    let config = ConfigBuilder::new(params)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             let mut genesis_multiset = MuHash::new();
@@ -2429,10 +2452,10 @@ async fn mass_per_sig_op_does_not_change_block_capacity() {
 }
 
 #[tokio::test]
-async fn testnet12_accepts_one_valid_stark_proof_but_rejects_two() {
+async fn toccata_accepts_one_valid_stark_proof_but_rejects_two() {
     init_allocator_with_default_settings();
 
-    let (consensus, wait_handles, genesis_hash, transactions) = init_testnet12_stark_fixture();
+    let (consensus, wait_handles, genesis_hash, transactions) = init_toccata_stark_fixture();
     let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
     let one_stark_block = consensus
         .build_utxo_valid_block_with_parents(new_unique(), vec![genesis_hash], miner_data.clone(), vec![transactions[0].clone()])
@@ -2449,7 +2472,7 @@ async fn testnet12_accepts_one_valid_stark_proof_but_rejects_two() {
         .to_immutable();
     assert_match!(
         consensus.validate_and_insert_block(two_stark_block).virtual_state_task.await,
-        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == TESTNET12_PARAMS.block_mass_limits().after().compute
+        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == consensus.params().block_mass_limits().after().compute
     );
     consensus.shutdown(wait_handles);
 }

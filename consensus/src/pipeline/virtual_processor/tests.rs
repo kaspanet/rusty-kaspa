@@ -342,3 +342,83 @@ fn new_miner_data() -> MinerData {
     let script = ScriptVec::from_slice(&pk.serialize());
     MinerData::new(ScriptPublicKey::new(0, script), vec![])
 }
+
+fn inactivity_shortcut_config() -> kaspa_consensus_core::config::Config {
+    ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.finality_depth = 2;
+            p.toccata_activation = ForkActivation::always();
+        })
+        .build()
+}
+
+/// Blocks with `bs <= finality_depth` have no resolvable shortcut yet;
+/// the recorded `inactivity_shortcut_block` clamps to genesis, which folds
+/// to `ZERO_HASH` via `inactivity_shortcut()` and seeds forward walks
+/// correctly once descendants cross `bs = finality_depth + 1`.
+#[tokio::test]
+async fn inactivity_shortcut_block_clamps_to_genesis_within_finality_depth() {
+    let config = inactivity_shortcut_config();
+    let mut ctx = TestContext::new(TestConsensus::new(&config));
+    let finality_depth = config.finality_depth();
+    assert_eq!(finality_depth, 2);
+
+    let mut chain = vec![config.genesis.hash];
+    for _ in 0..2 {
+        ctx.build_block_template_row(0..1).validate_and_insert_row().await;
+        chain.push(ctx.consensus.get_sink());
+    }
+
+    for hash in chain.iter().copied().skip(1) {
+        let header = ctx.consensus.get_header(hash).unwrap();
+        assert!(header.blue_score <= finality_depth);
+        let meta = ctx.consensus.smt_block_metadata(hash);
+        assert_eq!(meta.inactivity_shortcut_block(), config.genesis.hash, "bs={}", header.blue_score);
+    }
+}
+
+/// Tip at `bs = finality_depth + 4` records the chain block at
+/// `bs = target_bs = tip_bs - finality_depth - 1` as its
+/// inactivity_shortcut block hash.
+#[tokio::test]
+async fn inactivity_shortcut_resolves_to_chain_block_at_target_bs() {
+    let config = inactivity_shortcut_config();
+    let mut ctx = TestContext::new(TestConsensus::new(&config));
+    let finality_depth = config.finality_depth();
+
+    let mut chain = Vec::new();
+    for _ in 0..6 {
+        ctx.build_block_template_row(0..1).validate_and_insert_row().await;
+        chain.push(ctx.consensus.get_sink());
+    }
+
+    let tip = *chain.last().unwrap();
+    let tip_header = ctx.consensus.get_header(tip).unwrap();
+    assert_eq!(tip_header.blue_score, 6);
+    let target_bs = tip_header.blue_score - finality_depth - 1; // = 3
+
+    let expected_block = *chain.iter().find(|h| ctx.consensus.get_header(**h).unwrap().blue_score == target_bs).unwrap();
+    let recorded = ctx.consensus.smt_block_metadata(tip).inactivity_shortcut_block();
+    assert_eq!(recorded, expected_block);
+}
+
+/// Consecutive chain blocks: the inactivity_shortcut advances by one chain
+/// block per parent-to-child step, since `target_bs` grows in lockstep with
+/// `blue_score` on a no-merge chain.
+#[tokio::test]
+async fn inactivity_shortcut_advances_one_block_per_chain_step() {
+    let config = inactivity_shortcut_config();
+    let mut ctx = TestContext::new(TestConsensus::new(&config));
+
+    let mut chain = vec![config.genesis.hash];
+    for _ in 0..6 {
+        ctx.build_block_template_row(0..1).validate_and_insert_row().await;
+        chain.push(ctx.consensus.get_sink());
+    }
+
+    for (i, hash) in chain.iter().copied().enumerate().skip(4) {
+        let expected = chain[i - 3];
+        assert_eq!(ctx.consensus.smt_block_metadata(hash).inactivity_shortcut_block(), expected, "block index {i}");
+    }
+}

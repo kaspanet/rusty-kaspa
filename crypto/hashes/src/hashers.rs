@@ -46,6 +46,7 @@ blake3_hasher! {
     struct SeqCommitActivityLeaf => b"SeqCommitActivityLeaf",
     struct SeqCommitMergesetContext => b"SeqCommitMergesetContext",
     struct SeqCommitMinerPayloadLeaf => b"SeqCommitMinerPayloadLeaf",
+    struct SeqCommitActivityRoot => b"SeqCommitActivityRoot",
 
     struct SeqCommitActiveLeaf => b"SeqCommitActiveLeaf",
     struct SeqCommitActiveNode => b"SeqCommitActiveNode",
