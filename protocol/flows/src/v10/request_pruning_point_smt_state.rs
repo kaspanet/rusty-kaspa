@@ -97,7 +97,9 @@ impl RequestPruningPointSmtStateFlow {
             }
             if !batch.is_empty() {
                 count += batch.len() as u64;
-                let _ = tx.blocking_send(batch);
+                if tx.blocking_send(batch).is_err() {
+                    return Err(ConsensusError::General("receiver went away"));
+                }
             }
             Ok(count)
         });

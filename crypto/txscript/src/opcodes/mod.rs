@@ -897,7 +897,7 @@ opcode_list! {
             vm.consume_script_units(tag.cost())?;
 
             // Verify the ZK proof
-            verify_zk(tag, &mut vm.dstack, &mut vm.runtime_resource_meter, vm.flags)?;
+            verify_zk(tag, &mut vm.dstack, &mut vm.runtime_resource_meter)?;
 
             // If no errors, push true to the stack
             vm.dstack.push_item(true)?;
