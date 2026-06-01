@@ -422,7 +422,7 @@ fn mempool_delay_daa_score(params: &Params) -> u64 {
 
 fn mining_manager(params: &Params) -> MiningManager {
     let config = Config::build_default(TARGET_TIME_PER_BLOCK, true, params.mempool_block_mass_limits(), BLOCK_LANE_LIMITS);
-    MiningManager::with_config(config, None, Arc::new(MiningCounters::default()))
+    MiningManager::with_config(config, params.toccata_activation, None, Arc::new(MiningCounters::default()))
 }
 
 fn test_transaction(n: u64, transient_mass: u64, fee: u64) -> MutableTransaction {

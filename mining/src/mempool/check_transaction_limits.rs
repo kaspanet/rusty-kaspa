@@ -57,7 +57,7 @@ mod tests {
     use super::*;
     use crate::{MiningCounters, mempool::config::Config};
     use kaspa_consensus_core::{
-        config::constants::consensus::DEFAULT_LANES_PER_BLOCK_LIMIT,
+        config::{constants::consensus::DEFAULT_LANES_PER_BLOCK_LIMIT, params::ForkActivation},
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         mass::{BlockLaneLimits, BlockMassLimits},
         subnets::SUBNETWORK_ID_NATIVE,
@@ -93,7 +93,7 @@ mod tests {
             LIMITS,
             BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: GAS_PER_LANE },
         );
-        Mempool::new(Arc::new(config), Arc::new(MiningCounters::default()))
+        Mempool::new(Arc::new(config), ForkActivation::never(), Arc::new(MiningCounters::default()))
     }
 
     fn transaction(gas: u64, compute_mass: u64, transient_mass: u64, storage_mass: u64) -> MutableTransaction {

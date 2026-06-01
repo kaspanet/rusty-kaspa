@@ -1,6 +1,8 @@
 use crate::mempool::{
     Mempool,
+    config::LEGACY_MINIMUM_RELAY_TRANSACTION_FEE,
     errors::{NonStandardError, NonStandardResult},
+    tx::Priority,
 };
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
@@ -32,7 +34,12 @@ impl Mempool {
     /// standard form.
     /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
     /// into the mempool and relay.
-    pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
+    pub(crate) fn check_transaction_standard_in_context(
+        &self,
+        transaction: &MutableTransaction,
+        priority: Priority,
+        virtual_daa_score: u64,
+    ) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
         for i in 0..transaction.tx.inputs.len() {
             // It is safe to elide existence and index checks here since
@@ -58,31 +65,44 @@ impl Mempool {
         let masses = transaction.calculated_non_contextual_masses.unwrap();
         let cofactors = self.config.mempool_mass_cofactors.raw_post();
         let normalized_transient_mass = masses.normalized_transient(&cofactors);
-        let fee_mass = masses.compute_mass.max(normalized_transient_mass);
-        let minimum_fee = self.minimum_required_transaction_relay_fee(fee_mass);
+
+        // TODO(post-toccata): remove `use_prior_p2p_fee_rules` and unconditionally use:
+        //   fee_mass = max(compute_mass, normalized_transient_mass)
+        //   relay_fee = self.config.minimum_relay_transaction_fee
+        // The relaxation allows software to adapt between release and activation, instead of txs being p2p rejected by updated nodes
+        let use_prior_p2p_fee_rules = priority == Priority::Low && !self.toccata_activation.is_active(virtual_daa_score);
+        let (fee_mass, relay_fee) = if use_prior_p2p_fee_rules {
+            // Prior P2P relay-fee policy: legacy base fee over compute mass only.
+            (masses.compute_mass, LEGACY_MINIMUM_RELAY_TRANSACTION_FEE)
+        } else {
+            (masses.compute_mass.max(normalized_transient_mass), self.config.minimum_relay_transaction_fee)
+        };
+        let minimum_fee = self.minimum_required_transaction_relay_fee(fee_mass, relay_fee);
+
         let fee = transaction.calculated_fee.unwrap();
         if fee < minimum_fee {
-            return if masses.compute_mass >= normalized_transient_mass {
+            return if use_prior_p2p_fee_rules || masses.compute_mass >= normalized_transient_mass {
                 Err(NonStandardError::RejectInsufficientComputeFee(transaction_id, fee, minimum_fee, masses.compute_mass))
             } else {
                 Err(NonStandardError::RejectInsufficientTransientFee(transaction_id, fee, minimum_fee, normalized_transient_mass))
             };
         }
+        // end-TODO
 
         Ok(())
     }
 
     /// minimum_required_transaction_relay_fee returns the minimum transaction fee required
     /// for a transaction with the passed mass to be accepted into the mempool and relayed.
-    fn minimum_required_transaction_relay_fee(&self, mass: u64) -> u64 {
+    fn minimum_required_transaction_relay_fee(&self, mass: u64, minimum_relay_transaction_fee: u64) -> u64 {
         // Calculate the minimum fee for a transaction to be allowed into the
         // mempool and relayed by scaling the base fee. MinimumRelayTransactionFee is in
         // sompi/kg so multiply by mass (which is in grams) and divide by 1000 to get
         // minimum sompis.
-        let mut minimum_fee = (mass * self.config.minimum_relay_transaction_fee) / 1000;
+        let mut minimum_fee = (mass * minimum_relay_transaction_fee) / 1000;
 
         if minimum_fee == 0 {
-            minimum_fee = self.config.minimum_relay_transaction_fee;
+            minimum_fee = minimum_relay_transaction_fee;
         }
 
         // Set the minimum fee to the maximum possible value if the calculated
@@ -167,10 +187,11 @@ mod tests {
                     params.block_lane_limits,
                 );
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
+                let minimum_relay_transaction_fee = config.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
-                let mempool = Mempool::new(Arc::new(config), counters);
+                let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
 
-                let got = mempool.minimum_required_transaction_relay_fee(test.size);
+                let got = mempool.minimum_required_transaction_relay_fee(test.size, minimum_relay_transaction_fee);
                 if got != test.want {
                     println!("test_calc_min_required_tx_relay_fee test '{}' failed: got {}, want {}", test.name, got, test.want);
                 }
@@ -292,7 +313,7 @@ mod tests {
                     params.block_lane_limits,
                 );
                 let counters = Arc::new(MiningCounters::default());
-                let mempool = Mempool::new(Arc::new(config), counters);
+                let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
 
                 // Ensure standard-ness is as expected.
                 println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);
@@ -412,10 +433,10 @@ mod tests {
         let config =
             Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
         let counters = Arc::new(MiningCounters::default());
-        let mempool = Mempool::new(Arc::new(config), counters);
+        let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
 
         for test in tests {
-            let res = mempool.check_transaction_standard_in_context(&test.mtx);
+            let res = mempool.check_transaction_standard_in_context(&test.mtx, Priority::High, 0);
             match test.expected {
                 Expected::Standard => assert_eq!(res, Ok(()), "failed for test '{}'", test.name),
                 Expected::RejectInputScriptClass => {
@@ -435,5 +456,69 @@ mod tests {
                 ),
             }
         }
+
+        // TODO(post-toccata): remove this temporary test case
+        let params: Params = NetworkType::Mainnet.into();
+
+        let config =
+            Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
+        let toccata_activation = ForkActivation::new(10);
+        let toccata_daa_activation = toccata_activation.daa_score();
+        let cofactors = config.mempool_mass_cofactors.raw_post();
+        let mempool = Mempool::new(Arc::new(config), toccata_activation, Arc::new(MiningCounters::default()));
+
+        let compute_mass = 1_000;
+        let legacy_minimum_fee = LEGACY_MINIMUM_RELAY_TRANSACTION_FEE;
+        let insufficient_legacy_fee = legacy_minimum_fee - 1;
+        let masses = NonContextualMasses::new(compute_mass, compute_mass * 4);
+        let normalized_transient_mass = masses.normalized_transient(&cofactors);
+        assert!(normalized_transient_mass > compute_mass);
+        let new_minimum_fee = default_minimum_relay_fee_for_mass(normalized_transient_mass);
+
+        let addr = Address::new(Prefix::Mainnet, Version::PubKey, &[1u8; 32]);
+        let script_public_key = kaspa_txscript::pay_to_address_script(&addr);
+        let mtx = new_mtx(script_public_key.clone(), masses, legacy_minimum_fee);
+
+        assert_eq!(mempool.check_transaction_standard_in_context(&mtx, Priority::Low, toccata_daa_activation - 1), Ok(()));
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(
+                &new_mtx(script_public_key, masses, insufficient_legacy_fee),
+                Priority::Low,
+                toccata_daa_activation - 1
+            ),
+            Err(NonStandardError::RejectInsufficientComputeFee(mtx.id(), insufficient_legacy_fee, legacy_minimum_fee, compute_mass))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::Low, toccata_daa_activation),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::High, toccata_daa_activation - 1),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::High, toccata_daa_activation),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+        // end-TODO
     }
 }

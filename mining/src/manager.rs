@@ -28,7 +28,7 @@ use kaspa_consensus_core::{
     },
     block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
-    config::params::ForkedParam,
+    config::params::{ForkActivation, ForkedParam},
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     mass::{BlockLaneLimits, BlockMassLimits},
     tx::{MutableTransaction, Transaction, TransactionId},
@@ -52,19 +52,21 @@ impl MiningManager {
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
         mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
+        toccata_activation: ForkActivation,
         block_lane_limits: BlockLaneLimits,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
         let config =
             Config::build_default(target_time_per_block, relay_non_std_transactions, mempool_block_mass_limits, block_lane_limits);
-        Self::with_config(config, cache_lifetime, counters)
+        Self::with_config(config, toccata_activation, cache_lifetime, counters)
     }
 
     pub fn new_with_extended_config(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
         mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
+        toccata_activation: ForkActivation,
         block_lane_limits: BlockLaneLimits,
         ram_scale: f64,
         cache_lifetime: Option<u64>,
@@ -73,12 +75,17 @@ impl MiningManager {
         let config =
             Config::build_default(target_time_per_block, relay_non_std_transactions, mempool_block_mass_limits, block_lane_limits)
                 .apply_ram_scale(ram_scale);
-        Self::with_config(config, cache_lifetime, counters)
+        Self::with_config(config, toccata_activation, cache_lifetime, counters)
     }
 
-    pub(crate) fn with_config(config: Config, cache_lifetime: Option<u64>, counters: Arc<MiningCounters>) -> Self {
+    pub(crate) fn with_config(
+        config: Config,
+        toccata_activation: ForkActivation,
+        cache_lifetime: Option<u64>,
+        counters: Arc<MiningCounters>,
+    ) -> Self {
         let config = Arc::new(config);
-        let mempool = RwLock::new(Mempool::new(config.clone(), counters.clone()));
+        let mempool = RwLock::new(Mempool::new(config.clone(), toccata_activation, counters.clone()));
         let block_template_cache = BlockTemplateCache::new(cache_lifetime);
         Self { config, block_template_cache, mempool, counters }
     }
