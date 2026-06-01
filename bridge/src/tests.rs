@@ -532,6 +532,15 @@ fn test_append_line_data_accepts_exactly_at_limit() {
     assert!(!append_line_data(&mut buf, "y"));
 }
 
+#[cfg(test)]
+#[test]
+fn test_total_row_spm_uses_worker_average() {
+    use kaspa_stratum_bridge::average_worker_spm;
+    assert_eq!(average_worker_spm(0.0, 0), 0.0);
+    assert!((average_worker_spm(30.0, 2) - 15.0).abs() < f64::EPSILON);
+    assert!((average_worker_spm(12.5, 1) - 12.5).abs() < f64::EPSILON);
+}
+
 // JSON-RPC event tests
 #[cfg(test)]
 #[test]

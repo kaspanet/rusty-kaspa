@@ -101,6 +101,10 @@ fn vardiff_compute_next_diff(current: f64, shares: f64, elapsed_secs: f64, expec
     if (next - current).abs() > f64::EPSILON { Some(next) } else { None }
 }
 
+pub fn average_worker_spm(sum_spm: f64, worker_count: usize) -> f64 {
+    if worker_count == 0 { 0.0 } else { sum_spm / worker_count as f64 }
+}
+
 struct StatsPrinterEntry {
     instance_id: String,
     inst_short: String,
@@ -1313,6 +1317,8 @@ impl ShareHandler {
 
                 let mut rows: Vec<(String, String)> = Vec::new();
                 let mut total_rate = 0.0;
+                let mut total_worker_spm = 0.0;
+                let mut total_worker_count: usize = 0;
                 let mut total_shares: i64 = 0;
                 let mut total_stales: i64 = 0;
                 let mut total_invalids: i64 = 0;
@@ -1321,8 +1327,6 @@ impl ShareHandler {
 
                 let now = Instant::now();
                 let start = entries.iter().map(|(_, _, start, _, _)| *start).max_by_key(|t| t.elapsed()).unwrap_or_else(Instant::now);
-                let total_uptime_mins = now.duration_since(start).as_secs_f64() / 60.0;
-
                 let mut total_target: Option<f64> = Some(entries[0].1);
                 for (inst_short, target_spm, _, stats, overall) in entries.iter() {
                     if let Some(t) = total_target
@@ -1359,6 +1363,8 @@ impl ShareHandler {
                         total_blocks += blocks;
 
                         let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
+                        total_worker_spm += spm;
+                        total_worker_count += 1;
                         let trend = if spm > *target_spm * 1.2 {
                             "up"
                         } else if spm < *target_spm * 0.8 {
@@ -1517,7 +1523,7 @@ impl ShareHandler {
                     total_blocks_all_time += blocks; // Also add to all-time total for the "Total" column
                 }
 
-                let overall_spm = if total_uptime_mins > 0.0 { (total_shares as f64) / total_uptime_mins } else { 0.0 };
+                let overall_spm = average_worker_spm(total_worker_spm, total_worker_count);
                 let total_spm_tgt = match total_target {
                     Some(t) => format!("{:>4.1}/{:<4.1}", overall_spm, t),
                     None => format!("{:>4.1}/-", overall_spm),
