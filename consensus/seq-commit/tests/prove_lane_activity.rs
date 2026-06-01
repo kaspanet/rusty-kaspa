@@ -46,6 +46,7 @@ struct CommitmentWitness {
     parent_seq_commit: Hash,
     smt_proof: OwnedSmtProof,
     blue_score: u64,
+    inactivity_shortcut: Hash,
 }
 
 /// Chain `lane_tip_next` across blocks, starting from `parent_ref`.
@@ -68,11 +69,13 @@ fn compute_lane_tip(parent_ref: &Hash, lane_key: &Hash, blocks: &[BlockActivity]
 }
 
 /// Compute `seq_commit` from a lane tip: `smt_leaf → proof.compute_root
-/// → lanes_root → state_root → seq_commit`.
+/// → lanes_root → activity_root → state_root → seq_commit`.
 fn compute_seq_commit_for_lane(lane_key: &Hash, lane_tip: &Hash, witness: &CommitmentWitness) -> Hash {
     let leaf = smt_leaf_hash(&SmtLeafInput { lane_tip, blue_score: witness.blue_score });
     let lanes_root = witness.smt_proof.as_proof().compute_root::<SeqCommitActiveNode>(lane_key, Some(leaf)).unwrap();
-    let state_root = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &witness.payload_and_ctx_digest });
+    let activity_root = activity_root_hash(&witness.inactivity_shortcut, &lanes_root);
+    let state_root =
+        seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &witness.payload_and_ctx_digest });
     seq_commit(&SeqCommitInput { parent_seq_commit: &witness.parent_seq_commit, state_root: &state_root })
 }
 
@@ -102,7 +105,8 @@ fn build_commitment(
     let payload_root = miner_payload_root(core::iter::once(pl));
     let lanes_root = smt.root();
     let pd = payload_and_context_digest(&ctx, &payload_root);
-    let sr = seq_state_root(&SeqState { lanes_root: &lanes_root, payload_and_ctx_digest: &pd });
+    let activity_root = activity_root_hash(&kaspa_hashes::ZERO_HASH, &lanes_root);
+    let sr = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
     let sc = seq_commit(&SeqCommitInput { parent_seq_commit, state_root: &sr });
     (sc, lanes_root, pd)
 }
@@ -203,6 +207,7 @@ fn build_chain(n: usize) -> (Hash, Hash, Hash, Vec<BlockActivity>, CommitmentWit
         parent_seq_commit: last_parent_sc,
         smt_proof: last_smt_proof.unwrap(),
         blue_score: last_blue_score,
+        inactivity_shortcut: kaspa_hashes::ZERO_HASH,
     };
 
     (last_sc, key_x, grandparent_commit, block_activities, witness)

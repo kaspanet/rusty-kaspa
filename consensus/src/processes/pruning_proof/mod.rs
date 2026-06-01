@@ -120,7 +120,6 @@ pub struct PruningProofManager {
     ghostdag_k: KType,
     skip_proof_of_work: bool,
     toccata_activation: ForkActivation,
-    is_mainnet: bool,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -143,7 +142,6 @@ impl PruningProofManager {
         ghostdag_k: KType,
         skip_proof_of_work: bool,
         toccata_activation: ForkActivation,
-        is_mainnet: bool,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -180,7 +178,6 @@ impl PruningProofManager {
             ghostdag_k,
             skip_proof_of_work,
             toccata_activation,
-            is_mainnet,
 
             is_consensus_exiting,
         }
@@ -361,6 +358,13 @@ impl PruningProofManager {
                 }
 
                 let current_header = self.headers_store.get_compact_header_data(current).unwrap();
+                // This cutoff also covers the inactivity-shortcut anchor.
+                // Chain qualification gives pp.bs >= pp.sp.bs + 1, so a block failing the check
+                // satisfies `current.bs + F <= pp.sp.bs <= pp.bs - 1`, i.e. `current.bs <= pp.bs - F - 1`.
+                // pp.inactivity_shortcut is by definition the highest chain block with
+                // `bs <= pp.bs - F - 1` (see `compute_inactivity_shortcut_block`), so its bs is at
+                // least the break block's bs. The iteration walks the chain in decreasing bs and
+                // pushes before checking, so pp.inactivity_shortcut is always included in the segment.
                 if !seq_commit_within_threshold(context_blue_score, current_header.blue_score, threshold) {
                     break;
                 }

@@ -524,13 +524,21 @@ impl<'a> SmtProcessor<'a> {
                 lane_changes: self.lane_changes,
                 payload_and_ctx_digest: ZERO_HASH,
                 active_lanes_count: 0,
+                inactivity_shortcut_block: ZERO_HASH,
             });
         }
 
         let leaf_updates = self.lane_changes.to_leaf_updates();
         let reader = VersionedBranchReader { stores: self.stores, bounds: self.bounds, is_canonical };
         let (root, node_changes) = compute_root_update::<SeqCommitActiveNode, _>(&reader, self.current_lanes_root, leaf_updates)?;
-        Ok(SmtBuild { root, node_changes, lane_changes: self.lane_changes, payload_and_ctx_digest: ZERO_HASH, active_lanes_count: 0 })
+        Ok(SmtBuild {
+            root,
+            node_changes,
+            lane_changes: self.lane_changes,
+            payload_and_ctx_digest: ZERO_HASH,
+            active_lanes_count: 0,
+            inactivity_shortcut_block: ZERO_HASH,
+        })
     }
 }
 
@@ -539,9 +547,11 @@ pub struct SmtBuild {
     pub root: Hash,
     node_changes: SmtNodeChanges,
     lane_changes: BlockLaneChanges,
-    /// Set by `build_seq_commit` after computing the seq_commit components.
     pub payload_and_ctx_digest: Hash,
     pub active_lanes_count: u64,
+    /// KIP-21: block hash whose seq_commit IS the `inactivity_shortcut`. Kept here
+    /// for the per-block parent-fallback path in `compute_inactivity_shortcut_block`.
+    pub inactivity_shortcut_block: Hash,
 }
 
 impl SmtBuild {

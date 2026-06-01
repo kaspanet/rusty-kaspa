@@ -1,7 +1,7 @@
 pub use super::{
     bps::{Bps, TenBps},
     constants::consensus::*,
-    genesis::{DEVNET_GENESIS, GENESIS, GenesisBlock, SIMNET_GENESIS, TESTNET_GENESIS, TESTNET12_GENESIS},
+    genesis::{DEVNET_GENESIS, GENESIS, GenesisBlock, SIMNET_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
     BlockLevel, KType,
@@ -525,12 +525,7 @@ impl Params {
     }
 
     pub fn block_version(&self) -> ForkedParam<u16> {
-        if self.net == TESTNET12_PARAMS.net {
-            // The testnet12 hardfork was activated without a block version bump, so we return a constant value of 1 for compatibility with the existing testnet12 chain.
-            ForkedParam::new_const(BLOCK_VERSION)
-        } else {
-            ForkedParam::new(BLOCK_VERSION, TOCCATA_BLOCK_VERSION, self.toccata_activation)
-        }
+        ForkedParam::new(BLOCK_VERSION, TOCCATA_BLOCK_VERSION, self.toccata_activation)
     }
 
     pub fn network_name(&self) -> String {
@@ -639,7 +634,6 @@ impl From<NetworkId> for Params {
             NetworkType::Mainnet => MAINNET_PARAMS,
             NetworkType::Testnet => match value.suffix {
                 Some(10) => TESTNET_PARAMS,
-                Some(12) => TESTNET12_PARAMS,
                 Some(x) => panic!("Testnet suffix {} is not supported", x),
                 None => panic!("Testnet suffix not provided"),
             },
@@ -781,36 +775,6 @@ pub const TESTNET_PARAMS: Params = Params {
     // TODO(pre-covpp): Before setting the activation DAA score, resolve all comments of the form TODO(pre-covpp)
     // ~16:00 UTC, May 18, 2026
     toccata_activation: ForkActivation::new(467_579_632),
-};
-
-pub const TESTNET12_PARAMS: Params = Params {
-    dns_seeders: &[
-        // This DNS seeder is run by someone235
-        "tn12-dnsseed.kas.pa",
-        // This DNS seeder is run by iziodev
-        "tn12-dnsseed.kasia.fyi",
-        // This DNS seeder is run by supertypo
-        "n-testnet-12.kaspa.ws",
-        // This DNS seeder is run by Tiram
-        "seeder1-tn12.kaspad.net",
-    ],
-    net: NetworkId::with_suffix(NetworkType::Testnet, 12),
-    genesis: TESTNET12_GENESIS,
-
-    prior_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
-    new_max_signature_script_len: NEW_MAX_SIGNATURE_SCRIPT_LEN,
-
-    // Transient mass is increased for stark proofs
-    prior_block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
-    new_transient_mass_limit: 1_000_000,
-
-    deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
-    pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
-    pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
-
-    crescendo_activation: ForkActivation::always(),
-    toccata_activation: ForkActivation::always(),
-    ..TESTNET_PARAMS
 };
 
 pub const SIMNET_PARAMS: Params = Params {

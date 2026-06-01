@@ -4,6 +4,7 @@ use crate::{
         args::ArgsBuilder,
         client_notify::ChannelNotify,
         daemon::{ClientManager, Daemon},
+        fee::FEE_RATE,
         utils::CONTRACT_FACTOR,
     },
     tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
@@ -680,7 +681,7 @@ fn generate_stark_tx_dag(
                     );
                     logged_first_provisional_tx = true;
                 }
-                let fee = provisional_tx_mass_normalized;
+                let fee = FEE_RATE * provisional_tx_mass_normalized;
                 let total_out = total_in.saturating_sub(fee);
                 let outputs = (0..num_outputs)
                     .map(|_| TransactionOutput {

@@ -725,7 +725,7 @@ impl PruningProcessor {
         info!("Rebuilding pruning point SMT root after pruning data (sanity test)");
         let bounds = kaspa_smt_store::processor::SmtReadBounds::for_pov(pruning_point_blue_score, self.config.params.finality_depth());
         let expected_root = self.smt_stores.get_lanes_root(bounds, |bh| self.is_smt_canonical(bh, new_pruning_point));
-        let expected_count = self.smt_metadata_store.get(new_pruning_point).unwrap().active_lanes_count;
+        let expected_count = self.smt_metadata_store.get(new_pruning_point).unwrap().active_lanes_count();
         let (root, count) = self
             .smt_stores
             .recompute_lanes_root_from_leaf_stream(bounds, expected_count, |bh| self.is_smt_canonical(bh, new_pruning_point))

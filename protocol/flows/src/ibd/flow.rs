@@ -706,32 +706,46 @@ impl IbdFlow {
 
         let mut stream = SmtStream::new(&self.router, &mut self.incoming_route);
 
-        // Phase 0: receive and verify metadata
+        // Phase 0: receive and verify metadata. Single 96-byte wire.
         let md = stream.recv_metadata().await?;
         let parent_header = consensus.async_get_header(pp_header.direct_parents()[0]).await.unwrap();
+
+        // Derive the shortcut block via consensus (uses reachability + headers only; safe at the PP
+        // boundary before the SMT is imported). Then resolve to the seqcommit hash with the same
+        // fold-to-zero rule used by `inactivity_shortcut(block)`.
+        let shortcut_block = consensus
+            .async_inactivity_shortcut_block_for_pov(pruning_point)
+            .await
+            .map_err(|e| ProtocolError::OtherOwned(format!("inactivity_shortcut_block resolution failed: {e}")))?;
+        let shortcut_header = consensus
+            .async_get_header(shortcut_block)
+            .await
+            .map_err(|_| ProtocolError::Other("inactivity_shortcut_block header not found"))?;
+        let inactivity_shortcut = if !self.ctx.config.toccata_activation.is_active(shortcut_header.daa_score) {
+            kaspa_hashes::ZERO_HASH
+        } else {
+            shortcut_header.accepted_id_merkle_root
+        };
+
         verify_smt_metadata(
             &SmtMetadata {
                 lanes_root: &md.lanes_root,
                 payload_and_ctx_digest: &md.payload_and_ctx_digest,
                 parent_seq_commit: &md.parent_seq_commit,
             },
+            inactivity_shortcut,
             pp_header.accepted_id_merkle_root,
             parent_header.accepted_id_merkle_root,
         )
         .map_err(|e| ProtocolError::OtherOwned(format!("SMT metadata verification failed: {e}")))?;
-
-        let lanes_root = md.lanes_root;
-        let payload_and_ctx_digest = md.payload_and_ctx_digest;
-        let expected_count = md.active_lanes_count;
 
         // Small queue of already-chunked batches: one in flight + one being processed
         // by the importer is enough headroom; each chunk holds up to SMT_CHUNK_SIZE lanes.
         let (tx, rx) = tokio::sync::mpsc::channel::<Vec<kaspa_consensus_core::api::ImportLane>>(2);
 
         let consensus_for_import = consensus.clone();
-        let builder_handle = tokio::task::spawn_blocking(move || {
-            consensus_for_import.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, rx)
-        });
+        let builder_handle =
+            tokio::task::spawn_blocking(move || consensus_for_import.import_pruning_point_smt(pruning_point, md, shortcut_block, rx));
 
         while let Some(chunk) = stream.next_chunk().await? {
             tx.send(chunk).await.map_err(|_| ProtocolError::Other("streaming SMT builder stopped unexpectedly"))?;
