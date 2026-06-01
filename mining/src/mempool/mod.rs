@@ -46,7 +46,7 @@ pub(crate) mod validate_and_insert_transaction;
 ///   They are owned by the node, they never expire in the mempool and the node
 ///   rebroadcasts them once in a while.
 /// - Transactions received through P2P have **low-priority**. They expire after
-///   60 seconds and are removed if not inserted in a block for mining.
+///   24 hours and are removed if not inserted in a block for mining.
 pub(crate) struct Mempool {
     config: Arc<Config>,
     // TODO(post-toccata): remove this field, will be unused after post-toccata cleanups
