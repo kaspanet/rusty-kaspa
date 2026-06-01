@@ -34,6 +34,9 @@ pub enum ScriptBuilderError {
     #[error("adding integer {0} would exceed the maximum allowed canonical script length of {1}")]
     IntegerRejected(i64, usize),
 
+    #[error("explicit data push opcodes require covenant-enabled script builder flags")]
+    ExplicitDataPushRejected,
+
     #[error(transparent)]
     Serialization(#[from] SerializationError),
 }
@@ -176,11 +179,9 @@ impl ScriptBuilder {
         self.add_raw_data(data)
     }
 
-    fn validate_data_push(&self, data: &[u8]) -> ScriptBuilderResult<()> {
+    fn validate_data_push(&self, data: &[u8], data_size: usize) -> ScriptBuilderResult<()> {
         // Pushes that would cause the script to exceed the largest allowed
         // script size would result in a non-canonical script.
-        let data_size = Self::canonical_data_size(data);
-
         let max_scripts_size = max_scripts_size(self.flags.covenants_enabled);
         if self.script.len() + data_size > max_scripts_size {
             return Err(ScriptBuilderError::DataRejected(data_size, max_scripts_size));
@@ -207,7 +208,7 @@ impl ScriptBuilder {
     /// Also, the script will not be modified if pushing the data would cause the script to
     /// exceed the maximum allowed script engine size.
     pub fn add_data(&mut self, data: &[u8]) -> ScriptBuilderResult<&mut Self> {
-        self.validate_data_push(data)?;
+        self.validate_data_push(data, Self::canonical_data_size(data))?;
 
         Ok(self.add_raw_data(data))
     }
@@ -221,8 +222,30 @@ impl ScriptBuilder {
     /// one of the push-data forms (`OpDataN`, `OpPushData1`, `OpPushData2`, or
     /// `OpPushData4`) according to the length of `data`.
     pub fn add_data_with_push_opcode(&mut self, data: &[u8]) -> ScriptBuilderResult<&mut Self> {
-        self.validate_data_push(data)?;
+        if !self.flags.covenants_enabled {
+            return Err(ScriptBuilderError::ExplicitDataPushRejected);
+        }
+
+        self.validate_data_push(data, Self::explicit_push_encoded_size(data.len()))?;
         Ok(self.add_raw_data_with_data_opcode(data))
+    }
+
+    /// Returns the number of bytes emitted by the explicit push-data encoding.
+    fn explicit_push_encoded_size(data_len: usize) -> usize {
+        if data_len == 0 {
+            return 1;
+        }
+
+        data_len
+            + if data_len <= OP_DATA_MAX_VAL as usize {
+                1 // length encoded as OpData#
+            } else if data_len <= u8::MAX as usize {
+                2 // length encoded as OpPushData1 + 1 byte for value
+            } else if data_len <= u16::MAX as usize {
+                3 // length encoded as OpPushData2 + 2 bytes for value
+            } else {
+                5 // length encoded as OpPushData4 + 4 bytes for value
+            }
     }
 
     /// Adds `data` using an explicit push-data opcode chosen only by payload size.
@@ -558,6 +581,47 @@ mod tests {
             };
             assert_eq!(result, test.expected, "{} wrong result", test.name);
         }
+    }
+
+    #[test]
+    fn test_add_data_with_push_opcode() {
+        assert_eq!(
+            ScriptBuilder::new().add_data_with_push_opcode(&[0x11]).map(|_| ()),
+            Err(ScriptBuilderError::ExplicitDataPushRejected)
+        );
+
+        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
+        let tests = [
+            ("empty", vec![], vec![Op0]),
+            ("small int", vec![0x01], vec![OpData1, 0x01]),
+            ("one negate", vec![0x81], vec![OpData1, 0x81]),
+            ("normal byte", vec![0x11], vec![OpData1, 0x11]),
+            ("pushdata1", vec![0x49; 76], once(OpPushData1).chain(once(76)).chain(repeat_n(0x49, 76)).collect()),
+        ];
+
+        for (name, data, expected) in tests {
+            let result = ScriptBuilder::with_flags(flags).add_data_with_push_opcode(&data).expect("explicit push is allowed").drain();
+            assert_eq!(result, expected, "{name} wrong result");
+        }
+    }
+
+    #[test]
+    fn test_add_data_with_push_opcode_validates_explicit_size() {
+        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
+        let max_scripts_size = max_scripts_size(flags.covenants_enabled);
+
+        let mut canonical_builder = ScriptBuilder::with_flags(flags);
+        canonical_builder.script_mut().resize(max_scripts_size - 1, OpTrue);
+        assert_eq!(canonical_builder.add_data(&[0x01]).map(|_| ()), Ok(()));
+        assert_eq!(canonical_builder.script().len(), max_scripts_size);
+
+        let mut explicit_builder = ScriptBuilder::with_flags(flags);
+        explicit_builder.script_mut().resize(max_scripts_size - 1, OpTrue);
+        let original_script = Vec::from(explicit_builder.script());
+
+        let result = explicit_builder.add_data_with_push_opcode(&[0x01]).map(|_| ());
+        assert_eq!(result, Err(ScriptBuilderError::DataRejected(2, max_scripts_size)));
+        assert_eq!(explicit_builder.script(), &original_script);
     }
 
     #[test]
