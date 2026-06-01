@@ -129,7 +129,9 @@ impl ScriptBuilder {
         // When the data consists of a single number that can be represented
         // by one of the "small integer" opcodes, that opcode will used be instead
         // of a data push opcode followed by the number.
-        if data_len == 0 || (data_len == 1 && (data[0] <= OP_SMALL_INT_MAX_VAL || data[0] == OP_1_NEGATE_VAL)) {
+        if data_len == 0
+            || (data_len == 1 && ((OP_SMALL_INT_MIN_VAL..=OP_SMALL_INT_MAX_VAL).contains(&data[0]) || data[0] == OP_1_NEGATE_VAL))
+        {
             return 1;
         }
 
@@ -625,6 +627,26 @@ mod tests {
     }
 
     #[test]
+    fn test_add_data_validates_zero_byte_canonical_size() {
+        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
+        let max_scripts_size = max_scripts_size(flags.covenants_enabled);
+
+        let mut valid_builder = ScriptBuilder::with_flags(flags);
+        valid_builder.script_mut().resize(max_scripts_size - 2, OpTrue);
+        valid_builder.add_data(&[0x00]).expect("two-byte zero push should fit");
+        assert_eq!(valid_builder.script().len(), max_scripts_size);
+        assert_eq!(&valid_builder.script()[max_scripts_size - 2..], &[OpData1, 0x00]);
+
+        let mut builder = ScriptBuilder::with_flags(flags);
+        builder.script_mut().resize(max_scripts_size - 1, OpTrue);
+        let original_script = Vec::from(builder.script());
+
+        let result = builder.add_data(&[0x00]).map(|_| ());
+        assert_eq!(result, Err(ScriptBuilderError::DataRejected(2, max_scripts_size)));
+        assert_eq!(builder.script(), &original_script);
+    }
+
+    #[test]
     fn test_u64() {
         struct Test {
             name: &'static str,
@@ -682,7 +704,7 @@ mod tests {
         let result = builder.add_data(&[0u8]).map(|_| ());
         assert_eq!(
             result,
-            Err(ScriptBuilderError::DataRejected(1, max_scripts_size(false))),
+            Err(ScriptBuilderError::DataRejected(2, max_scripts_size(false))),
             "adding data that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.script(), &original_result, "unexpected modified script");
