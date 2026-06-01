@@ -821,18 +821,21 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     #[inline]
     fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
-            ScriptSource::TxInput { tx, idx, .. } => {
-                let sig_hash = calc_schnorr_signature_hash(tx, idx, hash_type, self.reused_values);
-                self.check_schnorr_signature_for_msg_hash(sig_hash, key, sig)
-            }
+            ScriptSource::TxInput { tx, idx, .. } => self.check_schnorr_signature_with_msg_hash(key, sig, |reused_values| {
+                calc_schnorr_signature_hash(tx, idx, hash_type, reused_values)
+            }),
             _ => Err(TxScriptError::NotATransactionInput),
         }
     }
 
-    fn check_schnorr_signature_for_msg_hash(&mut self, msg_hash: Hash, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+    fn check_schnorr_signature_with_msg_hash<F>(&mut self, key: &[u8], sig: &[u8], msg_hash: F) -> Result<bool, TxScriptError>
+    where
+        F: FnOnce(&Reused) -> Hash,
+    {
         self.consume_sig_op_cost(1)?;
         let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidPubkey)?;
         let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
+        let msg_hash = msg_hash(self.reused_values);
         let secp_msg = secp256k1::Message::from_digest(msg_hash.into());
         let sig_cache_key = SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: secp_msg };
 
@@ -853,19 +856,22 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
     fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
-            ScriptSource::TxInput { tx, idx, .. } => {
-                let sig_hash = calc_ecdsa_signature_hash(tx, idx, hash_type, self.reused_values);
-                self.check_ecdsa_signature_for_msg_hash(sig_hash, key, sig)
-            }
+            ScriptSource::TxInput { tx, idx, .. } => self.check_ecdsa_signature_with_msg_hash(key, sig, |reused_values| {
+                calc_ecdsa_signature_hash(tx, idx, hash_type, reused_values)
+            }),
             _ => Err(TxScriptError::NotATransactionInput),
         }
     }
 
-    fn check_ecdsa_signature_for_msg_hash(&mut self, msg_hash: Hash, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+    fn check_ecdsa_signature_with_msg_hash<F>(&mut self, key: &[u8], sig: &[u8], msg_hash: F) -> Result<bool, TxScriptError>
+    where
+        F: FnOnce(&Reused) -> Hash,
+    {
         self.consume_sig_op_cost(1)?;
         Self::check_pub_key_encoding_ecdsa(key)?;
         let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidPubkey)?;
         let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
+        let msg_hash = msg_hash(self.reused_values);
         let secp_msg = secp256k1::Message::from_digest(msg_hash.into());
         let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: secp_msg };
 
