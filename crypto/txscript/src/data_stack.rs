@@ -318,13 +318,12 @@ impl Stack {
         self.pushed_bytes = self.pushed_bytes.checked_add(bytes as u64).expect("stack pushed-bytes accounting should never overflow");
     }
 
+    /// Returns the bytes pushed since the previous call and resets the counter.
     #[inline]
-    pub fn pushed_bytes(&self) -> u64 {
-        self.pushed_bytes
-    }
-
-    pub fn reset_pushed_bytes(&mut self) {
+    pub fn pop_pushed_bytes(&mut self) -> u64 {
+        let pushed_bytes = self.pushed_bytes;
         self.pushed_bytes = 0;
+        pushed_bytes
     }
 
     fn max_element_size(&self) -> usize {
