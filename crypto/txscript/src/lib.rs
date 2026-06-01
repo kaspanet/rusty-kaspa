@@ -428,8 +428,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         self.runtime_resource_meter.used_script_units()
     }
 
-    /// Returns the total bytes pushed into the data and alt stacks so far.
-    pub fn total_pushed_bytes(&self) -> u64 {
+    fn pushed_bytes_in_last_opcode(&self) -> u64 {
         self.dstack.pushed_bytes().saturating_add(self.astack.pushed_bytes())
     }
 
@@ -549,8 +548,15 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         self.cond_stack.is_empty() || *self.cond_stack.last().expect("Checked not empty") == OpCond::True
     }
 
+    fn reset_pushed_bytes(&mut self) {
+        self.dstack.reset_pushed_bytes();
+        self.astack.reset_pushed_bytes();
+    }
+
     pub fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
         self.print_opcode_execution(&opcode);
+
+        self.reset_pushed_bytes();
 
         // Different from kaspad: Illegal and disabled opcode are checked on execute instead
         // Note that this includes OP_RESERVED which counts as a push operation.
@@ -568,7 +574,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 opcode.check_minimal_data_push()?;
             }
             opcode.execute(self)?;
-            self.runtime_resource_meter.charge_newly_pushed_bytes(self.total_pushed_bytes())?;
+            self.runtime_resource_meter.charge_newly_pushed_bytes(self.pushed_bytes_in_last_opcode())?;
             Ok(())
         } else {
             Ok(())
@@ -1023,7 +1029,7 @@ mod tests {
                 EngineFlags { covenants_enabled: true, ..Default::default() },
             );
         assert!(vm_exact_budget.execute().is_ok());
-        assert_eq!(vm_exact_budget.total_pushed_bytes(), 3);
+        assert_eq!(vm_exact_budget.pushed_bytes_in_last_opcode(), 0); // The last opcode is OpDrop which doesn't push any bytes, so this should be 0 and not 3.
     }
 
     #[test]
@@ -1070,7 +1076,7 @@ mod tests {
         );
         assert!(vm.execute().is_ok());
         assert_eq!(vm.used_script_units(), 0.into());
-        assert_eq!(vm.total_pushed_bytes(), 0);
+        assert_eq!(vm.pushed_bytes_in_last_opcode(), 0);
     }
 
     #[test]
@@ -1088,7 +1094,7 @@ mod tests {
         );
         assert!(vm.execute().is_ok());
         assert_eq!(vm.used_script_units(), 0.into());
-        assert_eq!(vm.total_pushed_bytes(), 0);
+        assert_eq!(vm.pushed_bytes_in_last_opcode(), 0);
     }
 
     #[test]

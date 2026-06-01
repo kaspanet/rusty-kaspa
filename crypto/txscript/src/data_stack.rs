@@ -323,6 +323,10 @@ impl Stack {
         self.pushed_bytes
     }
 
+    pub fn reset_pushed_bytes(&mut self) {
+        self.pushed_bytes = 0;
+    }
+
     fn max_element_size(&self) -> usize {
         // Pre-toccata the element size limit was only enforced for OP_PUSHDATA opcodes, but
         // since Pre-Toccata is missing OP_CAT, it was impossible to create elements larger
