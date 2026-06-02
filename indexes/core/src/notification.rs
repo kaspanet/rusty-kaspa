@@ -1,5 +1,8 @@
 use crate::indexed_utxos::{UtxoChanges, UtxoSetByScriptPublicKey};
 use derive_more::Display;
+use kaspa_consensus_notify::notification::{
+    BlockAddedNotification, PruningPointUtxoSetOverrideNotification, VirtualChainChangedNotification,
+};
 use kaspa_notify::{
     events::EventType,
     full_featured,
@@ -20,6 +23,12 @@ pub enum Notification {
 
     #[display(fmt = "PruningPointUtxoSetOverride notification")]
     PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
+
+    #[display(fmt = "BlockAdded notification")]
+    BlockAdded(BlockAddedNotification),
+
+    #[display(fmt = "VirtualChainChanged notification")]
+    VirtualChainChanged(VirtualChainChangedNotification),
 }
 }
 
@@ -57,9 +66,6 @@ impl NotificationTrait for Notification {
         self.into()
     }
 }
-
-#[derive(Debug, Clone, Default)]
-pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct UtxosChangedNotification {

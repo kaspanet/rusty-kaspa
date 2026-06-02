@@ -26,7 +26,7 @@ pub struct MergesetAcceptanceMetaData {
     pub accepting_block_hash: Hash,
     pub acceptance_data: Arc<AcceptanceData>,
     pub accepting_daa_score: u64,
-    pub mergeset_idx: usize,
+    pub mergeset_index: usize,
 }
 
 impl VirtualStateProcessor {
@@ -61,7 +61,7 @@ impl VirtualStateProcessor {
                                 .headers_store
                                 .get_daa_score(candidate)
                                 .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(candidate))?,
-                            mergeset_idx: i,
+                            mergeset_index: i,
                         }));
                     }
                 }

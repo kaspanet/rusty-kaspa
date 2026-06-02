@@ -89,6 +89,7 @@ impl RpcApi for RpcCoreMock {
             mempool_size: 1234,
             server_version: "mock".to_string(),
             is_utxo_indexed: false,
+            is_tx_indexed: false,
             is_synced: false,
             has_notify_command: false,
             has_message_id: false,
@@ -392,6 +393,14 @@ impl RpcApi for RpcCoreMock {
         _connection: Option<&DynRpcConnection>,
         _request: GetVirtualChainFromBlockV2Request,
     ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_transaction_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetTransactionRequest,
+    ) -> RpcResult<GetTransactionResponse> {
         Err(RpcError::NotImplemented)
     }
 

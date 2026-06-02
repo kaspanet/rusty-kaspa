@@ -23,7 +23,7 @@ use kaspa_utils::hex::*;
 const TS_TRANSACTION: &'static str = r#"
 /**
  * Interface defining the structure of a transaction.
- * 
+ *
  * @category Consensus
  */
 export interface ITransaction {
@@ -43,7 +43,7 @@ export interface ITransaction {
 
 /**
  * Optional transaction verbose data.
- * 
+ *
  * @category Node RPC
  */
 export interface ITransactionVerboseData {
@@ -52,6 +52,40 @@ export interface ITransactionVerboseData {
     computeMass : bigint;
     blockHash : HexString;
     blockTime : bigint;
+}
+
+/**
+ * Transaction data returned by GetTransaction.
+ *
+ * @category Node RPC
+ */
+export interface ITransactionData {
+    transactions: ITransaction[];
+    inclusionData: ITransactionInclusionData[];
+    acceptanceData?: ITransactionAcceptanceData;
+    confCount?: bigint;
+}
+
+/**
+ * Transaction inclusion data
+ *
+ * @category Node RPC
+ */
+export interface ITransactionInclusionData {
+    includingBlockHash: HexString;
+    includingDaaScore: bigint;
+    indexWithinBlock: number;
+}
+
+/**
+ * Transaction acceptance data
+ *
+ * @category Node RPC
+ */
+export interface ITransactionAcceptanceData {
+    acceptingBlockHash: HexString;
+    acceptingBlueScore: bigint;
+    mergesetIndex: number;
 }
 "#;
 

@@ -44,6 +44,9 @@ impl TryFrom<&[u8]> for Hash {
 }
 
 impl Hash {
+    pub const MIN: Hash = ZERO_HASH;
+    pub const MAX: Hash = MAX_HASH;
+
     #[inline(always)]
     pub const fn from_bytes(bytes: [u8; HASH_SIZE]) -> Self {
         Hash(bytes)
@@ -201,7 +204,8 @@ impl TryCastFromJs for Hash {
     }
 }
 
-pub const ZERO_HASH: Hash = Hash([0; HASH_SIZE]);
+pub const ZERO_HASH: Hash = Hash([0x00; HASH_SIZE]);
+pub const MAX_HASH: Hash = Hash([0xFF; HASH_SIZE]);
 
 #[cfg(test)]
 mod tests {

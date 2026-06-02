@@ -291,6 +291,14 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_block_transaction_iterator(&self) -> Box<dyn Iterator<Item = (Hash, Arc<Vec<Transaction>>)> + Send + Sync + '_> {
+        unimplemented!()
+    }
+
+    fn get_acceptance_data_iterator(&self) -> Box<dyn Iterator<Item = (Hash, Arc<AcceptanceData>)> + Send + Sync + '_> {
+        unimplemented!()
+    }
+
     fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }

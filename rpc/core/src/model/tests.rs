@@ -671,6 +671,21 @@ mod mockery {
 
     test!(GetBlockResponse);
 
+    impl Mock for GetTransactionRequest {
+        fn mock() -> Self {
+            GetTransactionRequest {
+                transaction_id: mock(),
+                include_unaccepted: true,
+                transaction_verbosity: Some(RpcDataVerbosityLevel::Full),
+                include_inclusion_data: true,
+                include_acceptance_data: false,
+                include_conf_count: false,
+            }
+        }
+    }
+
+    test!(GetTransactionRequest);
+
     impl Mock for GetInfoRequest {
         fn mock() -> Self {
             GetInfoRequest {}
@@ -686,6 +701,7 @@ mod mockery {
                 mempool_size: mock(),
                 server_version: "0.4.2".to_string(),
                 is_utxo_indexed: true,
+                is_tx_indexed: true,
                 is_synced: false,
                 has_notify_command: true,
                 has_message_id: false,
@@ -1229,6 +1245,7 @@ mod mockery {
                 server_version: "0.4.2".to_string(),
                 network_id: NetworkType::Mainnet.try_into().unwrap(),
                 has_utxo_index: true,
+                has_tx_index: true,
                 is_synced: false,
                 virtual_daa_score: mock(),
             }

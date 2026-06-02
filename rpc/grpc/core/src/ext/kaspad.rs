@@ -64,6 +64,9 @@ impl kaspad_request::Payload {
                     command: command.into(),
                 })
             }
+            Scope::RetentionRootChanged(_) => {
+                panic!("RetentionRootChanged has no corresponding subscription request")
+            }
         }
     }
 

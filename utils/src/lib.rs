@@ -49,7 +49,7 @@ pub mod as_slice;
 /// ```
 /// use smallvec::{smallvec, SmallVec};
 /// #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-/// struct MyStructSmallVec {  
+/// struct MyStructSmallVec {
 ///     #[serde(with = "kaspa_utils::serde_bytes")]
 ///     v: SmallVec<[u8; 19]>,
 /// }

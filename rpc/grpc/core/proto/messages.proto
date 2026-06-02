@@ -67,6 +67,7 @@ message KaspadRequest {
     GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1110;
     GetUtxoReturnAddressRequestMessage getUtxoReturnAddressRequest = 1112;
     GetVirtualChainFromBlockV2RequestMessage getVirtualChainFromBlockV2Request = 1114;
+    GetTransactionRequestMessage getTransactionRequest = 1116;
   }
 }
 
@@ -134,7 +135,8 @@ message KaspadResponse {
     GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1111;
     GetUtxoReturnAddressResponseMessage getUtxoReturnAddressResponse = 1113;
     GetVirtualChainFromBlockV2ResponseMessage getVirtualChainFromBlockV2Response = 1115;
-  }
+    GetTransactionResponseMessage getTransactionResponse = 1117;
+}
 }
 
 service RPC {

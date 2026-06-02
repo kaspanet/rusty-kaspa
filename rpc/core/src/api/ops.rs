@@ -140,6 +140,8 @@ pub enum RpcApiOps {
     GetUtxoReturnAddress = 150,
     /// Get Virtual Chain from Block V2
     GetVirtualChainFromBlockV2 = 151,
+    /// Get Transaction by its ID
+    GetTransaction = 152,
 }
 
 impl RpcApiOps {
@@ -181,6 +183,7 @@ impl From<EventType> for RpcApiOps {
             EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
             EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
             EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+            EventType::RetentionRootChanged => panic!("RetentionRootChanged has no corresponding RpcApiOps variant"),
         }
     }
 }

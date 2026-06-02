@@ -5,6 +5,7 @@ use crate::{
     Notification, PruningPointUtxoSetOverrideNotification, RpcAcceptedTransactionIds, SinkBlueScoreChangedNotification,
     UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification, convert::utxo::utxo_set_into_rpc,
 };
+use core::panic;
 use kaspa_consensus_notify::notification as consensus_notify;
 use kaspa_index_core::notification as index_notify;
 use std::sync::Arc;
@@ -31,6 +32,9 @@ impl From<&consensus_notify::Notification> for Notification {
             consensus_notify::Notification::VirtualDaaScoreChanged(msg) => Notification::VirtualDaaScoreChanged(msg.into()),
             consensus_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
             consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
+            consensus_notify::Notification::RetentionRootChanged(_) => {
+                panic!("RetentionRootChanged has no corresponding RpcApiOps variant")
+            }
         }
     }
 }
@@ -127,13 +131,9 @@ impl From<&index_notify::Notification> for Notification {
         match item {
             index_notify::Notification::UtxosChanged(msg) => Notification::UtxosChanged(msg.into()),
             index_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
+            index_notify::Notification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
+            index_notify::Notification::VirtualChainChanged(msg) => Notification::VirtualChainChanged(msg.into()),
         }
-    }
-}
-
-impl From<&index_notify::PruningPointUtxoSetOverrideNotification> for PruningPointUtxoSetOverrideNotification {
-    fn from(_: &index_notify::PruningPointUtxoSetOverrideNotification) -> Self {
-        Self {}
     }
 }
 

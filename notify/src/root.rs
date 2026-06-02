@@ -62,6 +62,17 @@ where
     pub fn has_subscription(&self, event: EventType) -> bool {
         self.inner.has_subscription(event)
     }
+
+    /// Tries to downcast the root's subscription for `event` to `T` and, if successful,
+    /// calls `f` with a reference to the downcasted subscription. Returns `Some` with the
+    /// closure's result, otherwise `None`.
+    pub fn get_subscription_as<T>(&self, event: EventType) -> Option<T>
+    where
+        T: Clone + 'static,
+    {
+        let subscription = &self.inner.subscriptions.read()[event];
+        (**subscription).as_any().downcast_ref::<T>().cloned()
+    }
 }
 
 impl<N> Notify<N> for Root<N>

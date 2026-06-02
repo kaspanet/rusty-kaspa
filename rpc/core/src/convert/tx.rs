@@ -2,9 +2,10 @@
 
 use crate::{
     RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionOutput, RpcResult, RpcTransaction,
-    RpcTransactionInput, RpcTransactionOutput,
+    RpcTransactionAcceptanceData, RpcTransactionInclusionData, RpcTransactionInput, RpcTransactionOutput,
 };
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
+use kaspa_index_core::indexed_transactions::{TxAcceptanceData, TxInclusionData};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -173,5 +174,21 @@ impl TryFrom<RpcOptionalTransactionInput> for TransactionInput {
             item.sequence.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sequence".to_owned()))?,
             item.sig_op_count.ok_or(RpcError::MissingRpcFieldError("RpcTransactionInput".to_owned(), "sig_op_count".to_owned()))?,
         ))
+    }
+}
+
+impl From<TxAcceptanceData> for RpcTransactionAcceptanceData {
+    fn from(data: TxAcceptanceData) -> Self {
+        Self { accepting_block_hash: data.block_hash, accepting_blue_score: data.blue_score, mergeset_index: data.mergeset_index }
+    }
+}
+
+impl From<TxInclusionData> for RpcTransactionInclusionData {
+    fn from(data: TxInclusionData) -> Self {
+        Self {
+            including_block_hash: data.block_hash,
+            including_daa_score: data.daa_score,
+            index_within_block: data.index_within_block,
+        }
     }
 }

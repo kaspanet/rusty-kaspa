@@ -66,12 +66,14 @@ use kaspa_rpc_core::{
     model::*,
     notify::connection::ChannelConnection,
 };
+use kaspa_txindex::api::TxIndexProxy;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::ops::Deref;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -105,6 +107,7 @@ pub struct RpcCoreService {
     mining_manager: MiningManagerProxy,
     flow_context: Arc<FlowContext>,
     utxoindex: Option<UtxoIndexProxy>,
+    txindex: Option<TxIndexProxy>,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
@@ -138,6 +141,7 @@ impl RpcCoreService {
         flow_context: Arc<FlowContext>,
         subscription_context: SubscriptionContext,
         utxoindex: Option<UtxoIndexProxy>,
+        txindex: Option<TxIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
         processing_counters: Arc<ProcessingCounters>,
@@ -164,6 +168,7 @@ impl RpcCoreService {
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
+        consensus_events[EventType::RetentionRootChanged] = false;
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
         let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
@@ -201,8 +206,27 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let notifier =
-            Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, subscription_context, 1, policies));
+        let notifier = Arc::new(Notifier::new(
+            RPC_CORE,
+            [
+                EventType::BlockAdded,
+                EventType::VirtualChainChanged,
+                EventType::FinalityConflict,
+                EventType::FinalityConflictResolved,
+                EventType::UtxosChanged,
+                EventType::SinkBlueScoreChanged,
+                EventType::VirtualDaaScoreChanged,
+                EventType::PruningPointUtxoSetOverride,
+                EventType::NewBlockTemplate,
+            ]
+            .as_ref()
+            .into(),
+            collectors,
+            subscribers,
+            subscription_context,
+            1,
+            policies,
+        ));
 
         Self {
             consensus_manager,
@@ -210,6 +234,7 @@ impl RpcCoreService {
             mining_manager,
             flow_context,
             utxoindex,
+            txindex,
             config,
             consensus_converter,
             index_converter,
@@ -493,6 +518,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
+            is_tx_indexed: self.config.txindex,
             is_synced: self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp),
             has_notify_command: true,
             has_message_id: true,
@@ -1227,6 +1253,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             server_version: version().to_string(),
             network_id: self.config.net,
             has_utxo_index: self.config.utxoindex,
+            has_tx_index: self.config.txindex,
             is_synced,
             virtual_daa_score,
         })
@@ -1291,6 +1318,71 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             added_chain_block_hashes: chain_path.added.into(),
             chain_block_accepted_transactions: chain_blocks_accepted_transactions.into(),
         })
+    }
+
+    async fn get_transaction_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetTransactionRequest,
+    ) -> RpcResult<GetTransactionResponse> {
+        if !self.config.txindex {
+            return Err(RpcError::NoTxIndex);
+        }
+
+        let require_inclusion_data =
+            request.include_inclusion_data || request.transaction_verbosity.is_some_and(|v| !matches!(v, RpcDataVerbosityLevel::None));
+        let require_acceptance_data =
+            request.include_acceptance_data || request.include_conf_count || (require_inclusion_data && !request.include_unaccepted);
+
+        if !require_acceptance_data && !require_inclusion_data {
+            // The request does not require any data
+            return Ok(GetTransactionResponse::new(None));
+        };
+        let consensus = self.consensus_manager.consensus().session().await;
+
+        // We scope the txindex read lock to only the data gathering phase, to avoid holding beyond async await points
+        let (accepted_transaction_data, sink_hash, sink_blue_score, included_transaction_data) = {
+            let txindex = &*self.txindex.as_ref().unwrap().deref().read();
+
+            let (accepted_transaction_data, sink_hash, sink_blue_score) = if require_acceptance_data {
+                // We require acceptance data
+                let acceptance_data = txindex
+                    .get_accepted_transaction_data(request.transaction_id)
+                    .map_err(|e| RpcError::TxIndexError(e.to_string()))?;
+                let (sink_hash, sink_blue_score) =
+                    txindex.get_sink_with_blue_score().map_err(|e| RpcError::TxIndexError(e.to_string()))?;
+                (acceptance_data, Some(sink_hash), Some(sink_blue_score))
+            } else {
+                (vec![], None, None)
+            };
+
+            let included_transaction_data = if require_inclusion_data {
+                // We require inclusion data
+                txindex.get_included_transaction_data(request.transaction_id).map_err(|e| RpcError::TxIndexError(e.to_string()))?
+            } else {
+                vec![]
+            };
+
+            (accepted_transaction_data, sink_hash, sink_blue_score, included_transaction_data)
+        };
+
+        let transaction_data = self
+            .consensus_converter
+            .get_transaction_data(
+                &consensus,
+                request.transaction_id,
+                sink_hash,
+                sink_blue_score,
+                accepted_transaction_data,
+                included_transaction_data,
+                request.include_unaccepted,
+                request.transaction_verbosity,
+                request.include_inclusion_data,
+                request.include_acceptance_data,
+                request.include_conf_count,
+            )
+            .await?;
+        Ok(GetTransactionResponse::new(Some(transaction_data)))
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

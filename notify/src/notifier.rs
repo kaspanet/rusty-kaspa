@@ -649,69 +649,179 @@ pub mod test_helpers {
     }
 
     pub fn virtual_chain_changed_test_steps(listener_id: ListenerId) -> Vec<Step> {
-        fn m(command: Command, include_accepted_transaction_ids: bool) -> Option<Mutation> {
+        fn m(
+            command: Command,
+            active: bool,
+            include_accepted_transaction_ids: bool,
+            include_accepting_blue_scores: bool,
+        ) -> Option<Mutation> {
             Some(Mutation {
                 command,
-                scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(include_accepted_transaction_ids)),
+                scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                    active,
+                    include_accepted_transaction_ids,
+                    include_accepting_blue_scores,
+                )),
             })
         }
-        let s = |command: Command, include_accepted_transaction_ids: bool| -> Option<SubscriptionMessage> {
+        let s = |command: Command,
+                 active: bool,
+                 include_accepted_transaction_ids: bool,
+                 include_accepting_blue_scores: bool|
+         -> Option<SubscriptionMessage> {
             Some(SubscriptionMessage {
                 listener_id,
                 mutation: Mutation {
                     command,
-                    scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(include_accepted_transaction_ids)),
+                    scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                        active,
+                        include_accepted_transaction_ids,
+                        include_accepting_blue_scores,
+                    )),
                 },
             })
         };
-        fn n(accepted_transaction_ids: Option<u64>) -> TestNotification {
-            TestNotification::VirtualChainChanged(VirtualChainChangedNotification { data: 0, accepted_transaction_ids })
+        fn n(accepted_transaction_ids: Option<u64>, accepting_blue_scores: Option<u64>) -> TestNotification {
+            TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
+                data: 0,
+                accepted_transaction_ids,
+                accepting_blue_scores,
+            })
         }
-        fn e(accepted_transaction_ids: Option<u64>) -> Option<TestNotification> {
-            Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification { data: 0, accepted_transaction_ids }))
+        fn e(accepted_transaction_ids: Option<u64>, accepting_blue_scores: Option<u64>) -> Option<TestNotification> {
+            Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
+                data: 0,
+                accepted_transaction_ids,
+                accepting_blue_scores,
+            }))
         }
 
         set_steps_data(vec![
+            // 0: do nothing
             Step {
                 name: "do nothing",
                 mutations: vec![],
                 expected_subscriptions: vec![],
-                notification: n(None),
+                notification: n(None, None),
                 expected_notifications: vec![None, None],
             },
             Step {
-                name: "L0+ on",
-                mutations: vec![m(Command::Start, true), None],
-                expected_subscriptions: vec![s(Command::Start, true), None],
-                notification: n(Some(21)),
-                expected_notifications: vec![e(Some(21)), None],
+                name: "L0 add_all",
+                mutations: vec![m(Command::Start, true, true, true), None],
+                expected_subscriptions: vec![s(Command::Start, true, true, true), None],
+                notification: n(Some(21), Some(21)),
+                expected_notifications: vec![e(Some(21), Some(21)), None],
             },
             Step {
-                name: "L0+ & L1- on",
-                mutations: vec![None, m(Command::Start, false)],
+                name: "L0 remove transactions 1",
+                mutations: vec![m(Command::Stop, false, true, false), None],
+                expected_subscriptions: vec![s(Command::Stop, false, true, false), None],
+                notification: n(None, Some(22)),
+                expected_notifications: vec![e(None, Some(22)), None],
+            },
+            Step {
+                name: "L0 remove blue 1",
+                mutations: vec![m(Command::Stop, false, false, true), None],
+                expected_subscriptions: vec![s(Command::Stop, false, false, true), None],
+                notification: n(None, None),
+                expected_notifications: vec![e(None, None), None],
+            },
+            Step {
+                name: "L0 add transactions / add blue 1",
+                mutations: vec![m(Command::Start, false, true, true), None],
+                expected_subscriptions: vec![s(Command::Start, false, true, true), None],
+                notification: n(Some(24), Some(24)),
+                expected_notifications: vec![e(Some(24), Some(24)), None],
+            },
+            Step {
+                name: "L0 add active 1",
+                mutations: vec![m(Command::Start, true, false, false), None],
                 expected_subscriptions: vec![None, None],
-                notification: n(Some(42)),
-                expected_notifications: vec![e(Some(42)), e(None)],
+                notification: n(Some(25), Some(25)),
+                expected_notifications: vec![e(Some(25), Some(25)), None],
             },
             Step {
-                name: "L0- & L1+ on",
-                mutations: vec![m(Command::Start, false), m(Command::Start, true)],
-                expected_subscriptions: vec![s(Command::Start, false), s(Command::Start, true)],
-                notification: n(Some(63)),
-                expected_notifications: vec![e(None), e(Some(63))],
+                name: "L0 remove transactions / remove blue 1",
+                mutations: vec![m(Command::Stop, false, true, true), None],
+                expected_subscriptions: vec![s(Command::Stop, false, true, true), None],
+                notification: n(None, None),
+                expected_notifications: vec![e(None, None), None],
             },
             Step {
-                name: "L1+ on",
-                mutations: vec![m(Command::Stop, false), None],
+                name: "L0 remove active1",
+                mutations: vec![m(Command::Stop, true, false, false), None],
+                expected_subscriptions: vec![s(Command::Stop, true, false, false), None],
+                notification: n(None, None),
+                expected_notifications: vec![None, None],
+            },
+            Step {
+                name: "L0 remove active2",
+                mutations: vec![m(Command::Stop, true, false, false), None],
                 expected_subscriptions: vec![None, None],
-                notification: n(Some(84)),
-                expected_notifications: vec![None, e(Some(84))],
+                notification: n(None, None),
+                expected_notifications: vec![None, None],
             },
             Step {
-                name: "all off",
-                mutations: vec![None, m(Command::Stop, true)],
-                expected_subscriptions: vec![None, s(Command::Stop, true)],
-                notification: n(Some(21)),
+                name: "start active+txids",
+                mutations: vec![m(Command::Start, true, true, false), None],
+                expected_subscriptions: vec![s(Command::Start, true, true, false), None],
+                notification: n(Some(33), None),
+                expected_notifications: vec![e(Some(33), None), None],
+            },
+            Step {
+                name: "start blue only",
+                mutations: vec![m(Command::Start, false, false, true), None],
+                expected_subscriptions: vec![s(Command::Start, false, false, true), None],
+                notification: n(Some(34), Some(34)),
+                expected_notifications: vec![e(Some(34), Some(34)), None],
+            },
+            Step {
+                name: "start dup all (L1)",
+                mutations: vec![None, m(Command::Start, true, true, true)],
+                expected_subscriptions: vec![None, None],
+                notification: n(Some(35), Some(35)),
+                expected_notifications: vec![e(Some(35), Some(35)), e(Some(35), Some(35))],
+            },
+            Step {
+                name: "stop txids 1",
+                mutations: vec![m(Command::Stop, false, true, false), None],
+                expected_subscriptions: vec![None, None],
+                notification: n(None, Some(36)),
+                expected_notifications: vec![e(None, Some(36)), e(None, Some(36))],
+            },
+            Step {
+                name: "stop txids 2",
+                mutations: vec![None, m(Command::Stop, false, true, false)],
+                expected_subscriptions: vec![None, s(Command::Stop, false, true, false)],
+                notification: n(None, Some(37)),
+                expected_notifications: vec![e(None, Some(37)), e(None, Some(37))],
+            },
+            Step {
+                name: "stop blue 1",
+                mutations: vec![m(Command::Stop, false, false, true), None],
+                expected_subscriptions: vec![None, None],
+                notification: n(None, Some(38)),
+                expected_notifications: vec![e(None, None), e(None, Some(38))],
+            },
+            Step {
+                name: "stop blue 2",
+                mutations: vec![None, m(Command::Stop, false, false, true)],
+                expected_subscriptions: vec![None, s(Command::Stop, false, false, true)],
+                notification: n(None, None),
+                expected_notifications: vec![e(None, None), e(None, None)],
+            },
+            Step {
+                name: "stop active 1",
+                mutations: vec![m(Command::Stop, true, false, false), None],
+                expected_subscriptions: vec![None, None],
+                notification: n(None, None),
+                expected_notifications: vec![None, e(None, None)],
+            },
+            Step {
+                name: "stop active 2",
+                mutations: vec![None, m(Command::Stop, true, false, false)],
+                expected_subscriptions: vec![None, s(Command::Stop, true, false, false)],
+                notification: n(None, None),
                 expected_notifications: vec![None, None],
             },
         ])

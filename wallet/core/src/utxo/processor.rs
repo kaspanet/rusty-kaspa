@@ -506,6 +506,7 @@ impl UtxoProcessor {
             server_version,
             network_id: server_network_id,
             has_utxo_index,
+            has_tx_index: _,
             is_synced,
             virtual_daa_score,
         } = self.rpc_api().get_server_info().await?;
