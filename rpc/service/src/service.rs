@@ -990,7 +990,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
         let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
         if let Some(connection_manager) = self.flow_context.connection_manager() {
-            connection_manager.add_connection_request(peer_address.into(), request.is_permanent).await;
+            connection_manager.add_connection_requests(vec![(peer_address.into(), request.is_permanent)]).await;
         } else {
             return Err(RpcError::NoConnectionManager);
         }
@@ -1042,7 +1042,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _: GetConnectedPeerInfoRequest,
     ) -> RpcResult<GetConnectedPeerInfoResponse> {
-        let peers = self.flow_context.hub().active_peers();
+        let peers = self.flow_context.hub().active_peers(false);
         let peer_info = self.protocol_converter.get_peers_info(&peers);
         Ok(GetConnectedPeerInfoResponse::new(peer_info))
     }

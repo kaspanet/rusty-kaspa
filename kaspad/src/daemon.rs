@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
+use kaspa_connectionmanager::EVENT_LOOP_TIMER;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
@@ -18,6 +19,7 @@ use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_p2p_lib::Hub;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
+use kaspa_perigeemanager::{PerigeeConfig, PerigeeManager};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::git;
@@ -261,6 +263,76 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
     });
 
     (preset, cache_budget, wal_dir)
+}
+
+/// Create Perigee configuration from CLI arguments.
+/// Panics if the supplied arguments are considered invalid.
+fn create_perigee_config(
+    outbound_target: usize,
+    perigee_target: usize,
+    round_duration: usize,
+    leverage_target: usize,
+    exploration_target: usize,
+    persistence: bool,
+    statistics: bool,
+    network_bps: u64,
+) -> PerigeeConfig {
+    assert!(
+        perigee_target <= outbound_target,
+        "Perigee target of {} cannot exceed total outbound target of {}",
+        perigee_target,
+        outbound_target
+    );
+
+    // We only perform within at [`EVENT_LOOP_TIMER`] granularity,
+    let round_granularity = EVENT_LOOP_TIMER.as_secs() as usize;
+    let min_duration = round_granularity;
+    let max_duration = 300;
+
+    assert!(min_duration - round_granularity == 0, "Min perigee round duration be at least the event loop timer granularity");
+    assert!(
+        max_duration % round_granularity == 0,
+        "Max perigee round duration must be a multiple of the event loop timer granularity"
+    );
+
+    // clamp to valid ranges (>300 seconds is not allowed, as to limit excessive data accumulation), (<30 seconds is under the bounds set by the [`EVENT_LOOP_TIMER`] interval)
+    let round_duration = round_duration.clamp(min_duration, max_duration);
+    // We only perform within at [`EVENT_LOOP_TIMER`] granularity, so we round the duration to the nearest multiple of it
+    let round_duration = (round_duration as f64 / round_granularity as f64) as usize * round_granularity;
+
+    let leverage_target = if leverage_target == 0 {
+        // Apply default to 50% of total target
+        perigee_target / 2 // integer division rounds down by default
+    } else {
+        leverage_target
+    };
+    let exploration_target = if exploration_target == 0 {
+        // Apply default to 25% of total target
+        perigee_target / 4 // integer division rounds down by default
+    } else {
+        exploration_target
+    };
+
+    // assert valid targets
+    assert!(
+        (leverage_target + exploration_target) <= perigee_target,
+        "{}",
+        format!(
+            "Leverage target of {0} Plus the Exploration target of {1} cannot exceed the Total perigee target of {2}",
+            leverage_target, exploration_target, perigee_target
+        )
+    );
+
+    PerigeeConfig::new(
+        perigee_target,
+        leverage_target,
+        exploration_target,
+        round_duration,
+        EVENT_LOOP_TIMER,
+        statistics,
+        persistence,
+        network_bps,
+    )
 }
 
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
@@ -545,6 +617,33 @@ Do you confirm? (y/n)";
     let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound/inbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
+    let mut random_graph_target = outbound_target;
+
+    // Handle the Perigee configuration
+    let perigee_config = if args.blk_perigee_peers == 0 {
+        debug!("Perigee disabled: perigee target is set to 0 (default behavior)");
+        None
+    } else if !connect_peers.is_empty() {
+        // We supply an explicit log here, as the user most have tried to enable perigee, and probably wants to know why, and that, it is disabled
+        info!("Perigee disabled: outbound target is set to 0 because `--connect-peers` argument was supplied");
+        None
+    } else {
+        let perigee_config = create_perigee_config(
+            outbound_target,
+            args.blk_perigee_peers,
+            args.blk_perigee_duration,
+            args.blk_perigee_leverage,
+            args.blk_perigee_exploration,
+            args.blk_perigee_persist,
+            args.blk_perigee_stats,
+            config.bps(),
+        );
+        // Reduce random graph outbound target by perigee outbound target
+        random_graph_target -= perigee_config.perigee_outbound_target;
+        info!("Perigee enabled - Perigee Configuration: {}", perigee_config);
+        Some(perigee_config)
+    };
+
     let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
     let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
@@ -623,6 +722,9 @@ Do you confirm? (y/n)";
     };
 
     let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
+    if args.blk_perigee_reset {
+        address_manager.lock().reset_perigee_data();
+    }
 
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block(),
@@ -644,6 +746,11 @@ Do you confirm? (y/n)";
         hub.clone(),
         mining_rules,
     ));
+
+    // Ibd running flag, is created here to be potentially shared with the perigee manager
+    let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::default());
+    let perigee_manager = perigee_config.map(|perigee_config| Arc::new(PerigeeManager::new(perigee_config, is_ibd_running.clone())));
+
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
@@ -653,13 +760,16 @@ Do you confirm? (y/n)";
         notification_root,
         hub.clone(),
         mining_rule_engine.clone(),
+        is_ibd_running,
+        perigee_manager,
     ));
+
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),
         connect_peers,
         add_peers,
         p2p_server_addr,
-        outbound_target,
+        random_graph_target,
         inbound_limit,
         dns_seeders,
         config.default_p2p_port(),

@@ -14,6 +14,7 @@ duration-string.workspace = true
 futures-util.workspace = true
 itertools.workspace = true
 kaspa-addressmanager.workspace = true
+kaspa-perigeemanager.workspace = true
 kaspa-core.workspace = true
 kaspa-p2p-lib.workspace = true
 kaspa-utils.workspace = true

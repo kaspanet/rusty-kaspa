@@ -11,11 +11,11 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router, SharedIncomingRoute,
     common::ProtocolError,
     convert::header::{HeaderFormat, Versioned},
-    dequeue, dequeue_with_timeout, make_message, make_request,
+    dequeue_with_timeout, dequeue_with_timestamp, make_message, make_request,
     pb::{InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage, kaspad_message::Payload},
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Instant};
 
 pub struct RelayInvMessage {
     hash: Hash,
@@ -26,6 +26,9 @@ pub struct RelayInvMessage {
 
     /// Indicates whether this inv is already known to be within orphan resolution range
     known_within_range: bool,
+
+    // Time when this message was first dequeued -> of interest only for direct invs in conjunction with pergiee
+    timestamp: Option<Instant>,
 }
 
 /// Encapsulates an incoming invs route which also receives data locally
@@ -41,16 +44,21 @@ impl TwoWayIncomingRoute {
 
     pub fn enqueue_indirect_invs<I: IntoIterator<Item = Hash>>(&mut self, iter: I, known_within_range: bool) {
         // All indirect invs are orphan roots; not all are known to be within orphan resolution range
-        self.indirect_invs.extend(iter.into_iter().map(|h| RelayInvMessage { hash: h, is_orphan_root: true, known_within_range }))
+        self.indirect_invs.extend(iter.into_iter().map(|h| RelayInvMessage {
+            hash: h,
+            is_orphan_root: true,
+            known_within_range,
+            timestamp: None,
+        }))
     }
 
     pub async fn dequeue(&mut self) -> Result<RelayInvMessage, ProtocolError> {
         if let Some(inv) = self.indirect_invs.pop_front() {
             Ok(inv)
         } else {
-            let msg = dequeue!(self.incoming_route, Payload::InvRelayBlock)?;
+            let (msg, ts) = dequeue_with_timestamp!(self.incoming_route, Payload::InvRelayBlock)?;
             let inv = msg.try_into()?;
-            Ok(RelayInvMessage { hash: inv, is_orphan_root: false, known_within_range: false })
+            Ok(RelayInvMessage { hash: inv, is_orphan_root: false, known_within_range: false, timestamp: Some(ts) })
         }
     }
 }
@@ -105,18 +113,27 @@ impl HandleRelayInvsFlow {
                     return Err(ProtocolError::OtherOwned(format!("sent inv of an invalid block {}", inv.hash)));
                 }
                 _ => {
-                    // Block is already known, skip to next inv
                     debug!("Relay block {} already exists, continuing...", inv.hash);
+                    if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
+                        self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
+                    }
                     continue;
                 }
             }
 
             match self.ctx.get_orphan_roots_if_known(&session, inv.hash).await {
-                OrphanOutput::Unknown => {}           // Keep processing this inv
-                OrphanOutput::NoRoots(_) => continue, // Existing orphan w/o missing roots
+                OrphanOutput::Unknown => {} // Keep processing this inv
+                OrphanOutput::NoRoots(_) => {
+                    if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
+                        self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
+                    }
+                } // Existing orphan w/o missing roots
                 OrphanOutput::Roots(roots) => {
                     // Known orphan with roots to enqueue
                     self.enqueue_orphan_roots(inv.hash, roots, inv.known_within_range);
+                    if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
+                        self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
+                    }
                     continue;
                 }
             }
@@ -131,8 +148,12 @@ impl HandleRelayInvsFlow {
             // We keep the request scope alive until consensus processes the block
             let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id(), self.header_format).await? else {
                 debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
+                if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
+                    self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
+                }
                 continue;
             };
+
             request_scope.report_obtained();
 
             if block.is_header_only() {
@@ -192,6 +213,9 @@ impl HandleRelayInvsFlow {
                         }
                         ancestor_batch
                     } else {
+                        if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
+                            self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
+                        }
                         continue;
                     }
                 }
@@ -223,11 +247,24 @@ impl HandleRelayInvsFlow {
             // We spawn post-processing as a separate task so that this loop
             // can continue processing the following relay blocks
             let ctx = self.ctx.clone();
+            let router = self.router.clone();
             tokio::spawn(async move {
                 ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
+                if should_signal_perigee(&ctx, &inv, ctx.is_ibd_running()) {
+                    ctx.maybe_add_perigee_timestamp(router, inv.hash, inv.timestamp.unwrap(), true).await;
+                }
                 ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
             });
         }
+    }
+
+    fn spawn_perigee_timestamp_signal(&self, hash: Hash, timestamp: Instant, verify: bool) {
+        let ctx = self.ctx.clone();
+        let router = self.router.clone();
+
+        tokio::spawn(async move {
+            ctx.maybe_add_perigee_timestamp(router, hash, timestamp, verify).await;
+        });
     }
 
     fn enqueue_orphan_roots(&mut self, _orphan: Hash, roots: Vec<Hash>, known_within_range: bool) {
@@ -375,4 +412,8 @@ impl HandleRelayInvsFlow {
             Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
         }
     }
+}
+
+fn should_signal_perigee(ctx: &FlowContext, inv: &RelayInvMessage, is_ibd_running: bool) -> bool {
+    !inv.is_orphan_root && ctx.is_perigee_active() && !is_ibd_running
 }

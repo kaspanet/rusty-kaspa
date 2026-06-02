@@ -1,5 +1,5 @@
 use kaspa_core::debug;
-use kaspa_p2p_lib::echo::EchoFlowInitializer;
+use kaspa_p2p_lib::{PeerOutboundType, echo::EchoFlowInitializer};
 use std::{sync::Arc, time::Duration};
 
 #[tokio::main]
@@ -13,7 +13,8 @@ async fn main() {
     let ip_port = String::from("[::1]:50051");
     for i in 0..1 {
         debug!("P2P, p2p_client::main - starting peer:{}", i);
-        let _peer_key = adaptor.connect_peer_with_retries(ip_port.clone(), 16, Duration::from_secs(1)).await;
+        let _peer_key =
+            adaptor.connect_peer_with_retries(ip_port.clone(), 16, Duration::from_secs(1), PeerOutboundType::UserSupplied).await;
     }
     // [2] - wait a few seconds and terminate
     tokio::time::sleep(Duration::from_secs(5)).await;
