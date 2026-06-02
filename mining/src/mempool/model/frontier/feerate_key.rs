@@ -1,5 +1,7 @@
-use crate::{block_template::selector::ALPHA, mempool::model::tx::MempoolTransaction};
-use kaspa_consensus_core::{mass::ContextualMasses, tx::Transaction};
+use crate::mempool::model::{frontier::selectors::ALPHA, tx::MempoolTransaction};
+use kaspa_consensus_core::mass::{ContextualMasses, Mass, MassCofactors};
+use kaspa_consensus_core::subnets::SubnetworkId;
+use kaspa_consensus_core::tx::Transaction;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -23,6 +25,9 @@ impl FeerateTransactionKey {
         // NOTE: any change to the way this weight is calculated (such as scaling by some factor)
         // requires a reversed update to total_weight in `Frontier::build_feerate_estimator`. This
         // is because the math methods in FeeEstimator assume this specific weight function.
+        //
+        // Gas is intentionally not folded into this global weight: gas capacity is lane-local and
+        // is enforced by selectors during block template construction.
         Self { fee, mass, weight: (fee as f64 / mass as f64).powi(ALPHA), tx }
     }
 
@@ -32,6 +37,10 @@ impl FeerateTransactionKey {
 
     pub fn weight(&self) -> f64 {
         self.weight
+    }
+
+    pub fn lane(&self) -> SubnetworkId {
+        self.tx.subnetwork_id
     }
 }
 
@@ -75,14 +84,17 @@ impl Ord for FeerateTransactionKey {
     }
 }
 
-impl From<&MempoolTransaction> for FeerateTransactionKey {
-    fn from(tx: &MempoolTransaction) -> Self {
+impl FeerateTransactionKey {
+    pub(crate) fn from_tx(tx: &MempoolTransaction, cofactors: &MassCofactors) -> Self {
         // NOTE: The code below is a mempool simplification reducing the various block mass units to a
         //       single one-dimension value (making it easier to select transactions for block templates).
         // Future mempool improvements are expected to refine this behavior and use the multi-dimension values
         // in order to optimize and increase block space usage.
-        let mass = ContextualMasses::new(tx.mtx.tx.mass())
-            .max(tx.mtx.calculated_non_contextual_masses.expect("masses are expected to be calculated"));
+        let mass = Mass::new(
+            tx.mtx.calculated_non_contextual_masses.expect("masses are expected to be calculated"),
+            ContextualMasses::new(tx.mtx.tx.mass()),
+        )
+        .normalized_max(cofactors);
         let fee = tx.mtx.calculated_fee.expect("fee is expected to be populated");
         Self::new(fee, mass, tx.mtx.tx.clone())
     }

@@ -1380,7 +1380,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     });
 
     // Sort workers by blocks (most blocks first)
-    stats.workers.sort_by_key(|w| std::cmp::Reverse(w.blocks));
+    stats.workers.sort_by_key(|worker| std::cmp::Reverse(worker.blocks));
 
     // Calculate bridge uptime
     if let Some(&start_time) = BRIDGE_START_TIME.get() {

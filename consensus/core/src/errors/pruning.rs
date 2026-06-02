@@ -86,6 +86,18 @@ pub enum PruningImportError {
 
     #[error("got trusted block {0} in the future of the pruning point {1}")]
     TrustedBlockInPruningPointFuture(Hash, Hash),
+
+    #[error("missing pruning point selected-parent chain block {0} in trusted data")]
+    MissingPruningPointChainSegment(Hash),
+
+    #[error("trusted block {0} selected parent {1} is missing from reachability parents")]
+    TrustedBlockSelectedParentMissing(Hash, Hash),
+
+    #[error("SMT root mismatch: expected {expected}, computed {computed}")]
+    SmtRootMismatch { expected: Hash, computed: Hash },
+
+    #[error("SMT store error: {0}")]
+    SmtStoreError(String),
 }
 
 #[derive(Error, Debug, Clone)]

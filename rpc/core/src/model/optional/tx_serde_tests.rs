@@ -46,6 +46,7 @@ fn input_some() -> RpcOptionalTransactionInput {
         signature_script: Some(vec![0x00, 0x01, 0x02, 0xff]),
         sequence: Some(99),
         sig_op_count: Some(1),
+        compute_budget: Some(0),
         verbose_data: Some(RpcOptionalTransactionInputVerboseData { utxo_entry: None }),
     }
 }
@@ -56,6 +57,7 @@ fn input_all_none() -> RpcOptionalTransactionInput {
         signature_script: None,
         sequence: None,
         sig_op_count: None,
+        compute_budget: None,
         verbose_data: None,
     }
 }
