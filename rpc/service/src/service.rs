@@ -66,9 +66,9 @@ use kaspa_rpc_core::{
     model::*,
     notify::connection::ChannelConnection,
 };
+use kaspa_system_info::SystemInfo;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
-use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
@@ -1158,7 +1158,10 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 node_bodies_processed_count: processing_counters.body_counts,
                 node_transactions_processed_count: processing_counters.txs_counts,
                 node_chain_blocks_processed_count: processing_counters.chain_block_counts,
-                node_mass_processed_count: processing_counters.mass_counts,
+                node_mass_processed_count: processing_counters
+                    .storage_mass_counts
+                    .max(processing_counters.compute_mass_counts)
+                    .max(processing_counters.transient_mass_counts), // TODO: mass should be multidimensional
                 // ---
                 node_database_blocks_count: consensus_stats.block_counts.block_count,
                 node_database_headers_count: consensus_stats.block_counts.header_count,

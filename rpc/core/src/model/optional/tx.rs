@@ -1,14 +1,15 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    CovenantBinding, ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoEntry,
 };
 use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref, serde_bytes_fixed_ref_optional, serde_bytes_optional};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
 use crate::{
-    RpcError, RpcResult, RpcScriptPublicKey, RpcTransactionId,
+    RpcCovenantBinding, RpcError, RpcResult, RpcScriptPublicKey, RpcTransactionId,
     prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
 };
 
@@ -24,6 +25,7 @@ pub struct RpcOptionalUtxoEntry {
     /// Level: High
     pub is_coinbase: Option<bool>,
     pub verbose_data: Option<RpcOptionalUtxoEntryVerboseData>,
+    pub covenant_id: Option<RpcHash>,
 }
 
 impl RpcOptionalUtxoEntry {
@@ -41,8 +43,9 @@ impl RpcOptionalUtxoEntry {
         block_daa_score: Option<u64>,
         is_coinbase: Option<bool>,
         verbose_data: Option<RpcOptionalUtxoEntryVerboseData>,
+        covenant_id: Option<RpcHash>,
     ) -> Self {
-        Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data }
+        Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data, covenant_id }
     }
 }
 
@@ -54,6 +57,7 @@ impl From<UtxoEntry> for RpcOptionalUtxoEntry {
             block_daa_score: Some(entry.block_daa_score),
             is_coinbase: Some(entry.is_coinbase),
             verbose_data: None,
+            covenant_id: entry.covenant_id,
         }
     }
 }
@@ -73,18 +77,20 @@ impl TryFrom<RpcOptionalUtxoEntry> for UtxoEntry {
             is_coinbase: entry
                 .is_coinbase
                 .ok_or(RpcError::MissingRpcFieldError("RpcUtxoEntry".to_string(), "is_coinbase".to_string()))?,
+            covenant_id: entry.covenant_id,
         })
     }
 }
 
 impl Serializer for RpcOptionalUtxoEntry {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(Option<u64>, &self.amount, writer)?;
         store!(Option<ScriptPublicKey>, &self.script_public_key, writer)?;
         store!(Option<u64>, &self.block_daa_score, writer)?;
         store!(Option<bool>, &self.is_coinbase, writer)?;
         serialize!(Option<RpcOptionalUtxoEntryVerboseData>, &self.verbose_data, writer)?;
+        store!(Option<RpcHash>, &self.covenant_id, writer)?;
 
         Ok(())
     }
@@ -92,14 +98,16 @@ impl Serializer for RpcOptionalUtxoEntry {
 
 impl Deserializer for RpcOptionalUtxoEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
+
         let amount = load!(Option<u64>, reader)?;
         let script_public_key = load!(Option<ScriptPublicKey>, reader)?;
         let block_daa_score = load!(Option<u64>, reader)?;
         let is_coinbase = load!(Option<bool>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalUtxoEntryVerboseData>, reader)?;
 
-        Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data })
+        let covenant_id = if version > 1 { load!(Option<RpcHash>, reader)? } else { None };
+        Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data, covenant_id })
     }
 }
 
@@ -217,6 +225,8 @@ pub struct RpcOptionalTransactionInput {
     pub sequence: Option<u64>,
     /// Level: High
     pub sig_op_count: Option<u8>,
+    /// Level: High
+    pub compute_budget: Option<u16>,
     pub verbose_data: Option<RpcOptionalTransactionInputVerboseData>,
 }
 
@@ -227,6 +237,7 @@ impl std::fmt::Debug for RpcOptionalTransactionInput {
             .field("signature_script", &self.signature_script.as_ref().map(|v| v.to_hex()))
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.sig_op_count)
+            .field("compute_budget", &self.compute_budget)
             .field("verbose_data", &self.verbose_data)
             .finish()
     }
@@ -238,7 +249,8 @@ impl From<TransactionInput> for RpcOptionalTransactionInput {
             previous_outpoint: Some(input.previous_outpoint.into()),
             signature_script: Some(input.signature_script),
             sequence: Some(input.sequence),
-            sig_op_count: Some(input.sig_op_count),
+            sig_op_count: Some(input.mass.sig_op_count().unwrap_or(0)),
+            compute_budget: Some(input.mass.compute_budget().unwrap_or(0)),
             verbose_data: None,
         }
     }
@@ -255,18 +267,20 @@ impl RpcOptionalTransactionInput {
             && self.signature_script.is_none()
             && self.sequence.is_none()
             && self.sig_op_count.is_none()
+            && self.compute_budget.is_none()
             && (self.verbose_data.is_none() || self.verbose_data.as_ref().is_some_and(|x| x.is_empty()))
     }
 }
 
 impl Serializer for RpcOptionalTransactionInput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         serialize!(Option<RpcOptionalTransactionOutpoint>, &self.previous_outpoint, writer)?;
         store!(Option<Vec<u8>>, &self.signature_script, writer)?;
         store!(Option<u64>, &self.sequence, writer)?;
         store!(Option<u8>, &self.sig_op_count, writer)?;
         serialize!(Option<RpcOptionalTransactionInputVerboseData>, &self.verbose_data, writer)?;
+        store!(Option<u16>, &self.compute_budget, writer)?;
 
         Ok(())
     }
@@ -274,14 +288,15 @@ impl Serializer for RpcOptionalTransactionInput {
 
 impl Deserializer for RpcOptionalTransactionInput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let previous_outpoint = deserialize!(Option<RpcOptionalTransactionOutpoint>, reader)?;
         let signature_script = load!(Option<Vec<u8>>, reader)?;
         let sequence = load!(Option<u64>, reader)?;
         let sig_op_count = load!(Option<u8>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalTransactionInputVerboseData>, reader)?;
+        let compute_budget = if version > 1 { load!(Option<u16>, reader)? } else { None };
 
-        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data })
+        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, verbose_data })
     }
 }
 
@@ -323,6 +338,7 @@ pub struct RpcOptionalTransactionOutput {
     /// Level - Low
     pub script_public_key: Option<RpcScriptPublicKey>,
     pub verbose_data: Option<RpcOptionalTransactionOutputVerboseData>,
+    pub covenant: Option<RpcNullableCovenantBinding>,
 }
 
 impl RpcOptionalTransactionOutput {
@@ -339,16 +355,22 @@ impl RpcOptionalTransactionOutput {
 
 impl From<TransactionOutput> for RpcOptionalTransactionOutput {
     fn from(output: TransactionOutput) -> Self {
-        Self { value: Some(output.value), script_public_key: Some(output.script_public_key), verbose_data: None }
+        Self {
+            value: Some(output.value),
+            script_public_key: Some(output.script_public_key),
+            verbose_data: None,
+            covenant: output.covenant.map(Into::into),
+        }
     }
 }
 
 impl Serializer for RpcOptionalTransactionOutput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(Option<u64>, &self.value, writer)?;
         store!(Option<RpcScriptPublicKey>, &self.script_public_key, writer)?;
         serialize!(Option<RpcOptionalTransactionOutputVerboseData>, &self.verbose_data, writer)?;
+        serialize!(Option<RpcNullableCovenantBinding>, &self.covenant, writer)?;
 
         Ok(())
     }
@@ -356,12 +378,13 @@ impl Serializer for RpcOptionalTransactionOutput {
 
 impl Deserializer for RpcOptionalTransactionOutput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let value = load!(Option<u64>, reader)?;
         let script_public_key = load!(Option<RpcScriptPublicKey>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalTransactionOutputVerboseData>, reader)?;
+        let covenant = if version > 1 { deserialize!(Option<RpcNullableCovenantBinding>, reader)? } else { None };
 
-        Ok(Self { value, script_public_key, verbose_data })
+        Ok(Self { value, script_public_key, verbose_data, covenant })
     }
 }
 
@@ -397,6 +420,55 @@ impl Deserializer for RpcOptionalTransactionOutputVerboseData {
         let script_public_key_type = load!(Option<RpcScriptClass>, reader)?;
         let script_public_key_address = load!(Option<Address>, reader)?;
         Ok(Self { script_public_key_type, script_public_key_address })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[repr(transparent)]
+pub struct RpcNullableCovenantBinding(pub Option<RpcCovenantBinding>);
+
+impl Serializer for RpcNullableCovenantBinding {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        serialize!(Option<RpcCovenantBinding>, &self.0, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcNullableCovenantBinding {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let covenant = deserialize!(Option<RpcCovenantBinding>, reader)?;
+        Ok(Self(covenant))
+    }
+}
+
+impl From<RpcCovenantBinding> for RpcNullableCovenantBinding {
+    fn from(value: RpcCovenantBinding) -> Self {
+        Self(Some(value))
+    }
+}
+
+impl From<Option<RpcCovenantBinding>> for RpcNullableCovenantBinding {
+    fn from(value: Option<RpcCovenantBinding>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<CovenantBinding> for RpcNullableCovenantBinding {
+    fn from(value: CovenantBinding) -> Self {
+        Self(Some(value.into()))
+    }
+}
+
+impl TryFrom<RpcNullableCovenantBinding> for RpcCovenantBinding {
+    type Error = RpcError;
+
+    fn try_from(covenant: RpcNullableCovenantBinding) -> RpcResult<Self> {
+        let covenant = covenant.0.ok_or(RpcError::General("covenant binding is none".to_string()))?;
+        Ok(Self(CovenantBinding { authorizing_input: covenant.0.authorizing_input, covenant_id: covenant.0.covenant_id }))
     }
 }
 

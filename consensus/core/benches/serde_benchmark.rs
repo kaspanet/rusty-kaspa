@@ -1,7 +1,7 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_COINBASE;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+    ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
 };
 use smallvec::smallvec;
 use std::time::{Duration, Instant};
@@ -27,7 +27,7 @@ fn serialize_benchmark(c: &mut Criterion) {
                 },
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
-                sig_op_count: 0,
+                mass: TxInputMass::SigopCount(0.into()),
             },
             TransactionInput {
                 previous_outpoint: TransactionOutpoint {
@@ -39,12 +39,12 @@ fn serialize_benchmark(c: &mut Criterion) {
                 },
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
-                sig_op_count: 0,
+                mass: TxInputMass::SigopCount(0.into()),
             },
         ],
         vec![
-            TransactionOutput { value: 300, script_public_key: script_public_key.clone() },
-            TransactionOutput { value: 300, script_public_key },
+            TransactionOutput { value: 300, script_public_key: script_public_key.clone(), covenant: None },
+            TransactionOutput { value: 300, script_public_key, covenant: None },
         ],
         0,
         SUBNETWORK_ID_COINBASE,
@@ -89,7 +89,7 @@ fn deserialize_benchmark(c: &mut Criterion) {
                 },
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
-                sig_op_count: 0,
+                mass: TxInputMass::SigopCount(0.into()),
             },
             TransactionInput {
                 previous_outpoint: TransactionOutpoint {
@@ -101,12 +101,12 @@ fn deserialize_benchmark(c: &mut Criterion) {
                 },
                 signature_script: vec![1; 32],
                 sequence: u64::MAX,
-                sig_op_count: 0,
+                mass: TxInputMass::SigopCount(0.into()),
             },
         ],
         vec![
-            TransactionOutput { value: 300, script_public_key: script_public_key.clone() },
-            TransactionOutput { value: 300, script_public_key },
+            TransactionOutput { value: 300, script_public_key: script_public_key.clone(), covenant: None },
+            TransactionOutput { value: 300, script_public_key, covenant: None },
         ],
         0,
         SUBNETWORK_ID_COINBASE,
