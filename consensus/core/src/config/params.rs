@@ -719,7 +719,7 @@ pub const MAINNET_PARAMS: Params = Params {
 
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
-    // TODO(pre-toccata): Before setting the activation DAA score, resolve all comments of the form TODO(pre-toccata)
+
     toccata_activation: ForkActivation::never(),
 };
 
