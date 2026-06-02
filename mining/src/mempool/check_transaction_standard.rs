@@ -8,7 +8,15 @@ use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     tx::MutableTransaction,
 };
-use kaspa_txscript::script_class::ScriptClass;
+use kaspa_txscript::{post_toccata_p2sh_sig_scanner, script_class::ScriptClass};
+
+/// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
+/// that are considered standard in a pay-to-script-hash script.
+///
+/// The upper-bound execution limit comes from compute mass: some zk opcodes already cost the equivalent
+/// of roughly 140-250 signature operations. However, for classic Schnorr/ECDSA signature operations, this
+/// standardness limit encourages parallelism across inputs rather than concentrating work in one input.
+const MAX_STANDARD_P2SH_SIG_OPS: u16 = 15;
 
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
@@ -31,7 +39,8 @@ impl Mempool {
     /// check_transaction_standard_in_context performs a series of checks on a transaction's
     /// inputs to ensure they are "standard". A standard transaction input within the
     /// context of this function is one whose referenced public key script is of a
-    /// standard form.
+    /// standard form and, for pay-to-script-hash, does not have more than
+    /// MAX_STANDARD_P2SH_SIG_OPS signature operations.
     /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
     /// into the mempool and relay.
     pub(crate) fn check_transaction_standard_in_context(
@@ -52,7 +61,14 @@ impl Mempool {
                 }
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
-                ScriptClass::ScriptHash => {}
+                ScriptClass::ScriptHash => {
+                    // post-toccata scanner is valid pre-toccata as well
+                    let num_sig_ops =
+                        post_toccata_p2sh_sig_scanner(&transaction.tx.inputs[i].signature_script, &entry.script_public_key);
+                    if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
+                        return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
+                    }
+                }
             }
         }
 

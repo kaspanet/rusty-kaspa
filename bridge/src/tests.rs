@@ -1047,12 +1047,12 @@ mod integration {
         let temp_dir = std::env::temp_dir().join(format!("kaspad_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        // Start an in-process testnet node with random listener ports to avoid conflicts
+        // Start an in-process devnet node with random listener ports to avoid conflicts
         // with a locally running node.
         let rpc_address = format!("127.0.0.1:{}", free_port());
         let argv: Vec<OsString> = vec![
             "kaspad".into(),
-            "--testnet".into(),
+            "--devnet".into(),
             "--appdir".into(),
             temp_dir.to_string_lossy().to_string().into(),
             format!("--rpclisten={rpc_address}").into(),
@@ -1119,13 +1119,13 @@ mod integration {
         let temp_dir = std::env::temp_dir().join(format!("kaspad_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        // Start an in-process testnet node with random listener ports to avoid conflicts
+        // Start an in-process devnet node with random listener ports to avoid conflicts
         // with a locally running node.
         let rpc_port = free_port();
         let rpc_address = format!("127.0.0.1:{}", rpc_port);
         let argv: Vec<OsString> = vec![
             "kaspad".into(),
-            "--testnet".into(),
+            "--devnet".into(),
             "--appdir".into(),
             temp_dir.to_string_lossy().to_string().into(),
             format!("--rpclisten={rpc_address}").into(),

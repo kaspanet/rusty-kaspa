@@ -71,7 +71,6 @@ impl RuntimeSigOpCounter {
 #[derive(Debug, Clone)]
 pub struct RuntimeScriptUnitMeter {
     used_sig_ops: u16,
-    accounted_pushed_bytes: u64,
     sigop_script_units: ScriptUnits,
     script_units_limit: ScriptUnits,
     remaining_script_units: ScriptUnits,
@@ -79,13 +78,7 @@ pub struct RuntimeScriptUnitMeter {
 
 impl RuntimeScriptUnitMeter {
     pub fn new(sigop_script_units: ScriptUnits, script_units_limit: ScriptUnits) -> Self {
-        Self {
-            used_sig_ops: 0,
-            accounted_pushed_bytes: 0,
-            sigop_script_units,
-            script_units_limit,
-            remaining_script_units: script_units_limit,
-        }
+        Self { used_sig_ops: 0, sigop_script_units, script_units_limit, remaining_script_units: script_units_limit }
     }
 
     pub fn used_sig_ops(&self) -> u16 {
@@ -116,12 +109,9 @@ impl RuntimeScriptUnitMeter {
         Ok(())
     }
 
-    pub fn charge_newly_pushed_bytes(&mut self, total_pushed_bytes: u64) -> Result<(), TxScriptError> {
-        let pushed_bytes_delta = total_pushed_bytes.saturating_sub(self.accounted_pushed_bytes);
+    pub fn charge_newly_pushed_bytes(&mut self, pushed_bytes_delta: u64) -> Result<(), TxScriptError> {
         // Pushed bytes are charged 1:1 as script units.
-        self.consume_script_units(pushed_bytes_delta.into())?;
-        self.accounted_pushed_bytes = total_pushed_bytes;
-        Ok(())
+        self.consume_script_units(pushed_bytes_delta.into())
     }
 }
 
@@ -168,16 +158,18 @@ impl RuntimeResourceMeter {
         }
     }
 
-    pub fn charge_newly_pushed_bytes(&mut self, total_pushed_bytes: u64) -> Result<(), TxScriptError> {
+    pub fn charge_newly_pushed_bytes(&mut self, pushed_bytes_delta: u64) -> Result<(), TxScriptError> {
         match self {
             Self::Sigops(_) => Ok(()),
-            Self::ScriptUnits(meter) => meter.charge_newly_pushed_bytes(total_pushed_bytes),
+            Self::ScriptUnits(meter) => meter.charge_newly_pushed_bytes(pushed_bytes_delta),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use kaspa_core::assert_match;
+
     use super::*;
 
     #[test]
@@ -239,12 +231,12 @@ mod tests {
         assert_eq!(meter.charge_newly_pushed_bytes(7), Ok(()));
         assert_eq!(meter.used_script_units(), ScriptUnits(7));
 
-        // Charging the same total again is a no-op because only newly pushed bytes are charged.
-        assert_eq!(meter.charge_newly_pushed_bytes(7), Ok(()));
+        // Charging zero is a no-op because only newly pushed bytes are charged.
+        assert_eq!(meter.charge_newly_pushed_bytes(0), Ok(()));
         assert_eq!(meter.used_script_units(), ScriptUnits(7));
 
         assert_eq!(meter.charge_newly_pushed_bytes(9), Ok(()));
-        assert_eq!(meter.used_script_units(), ScriptUnits(9));
+        assert_eq!(meter.used_script_units(), ScriptUnits(16));
     }
 
     #[test]
@@ -268,7 +260,20 @@ mod tests {
         let mut max_units_meter = RuntimeScriptUnitMeter::new(ScriptUnits(0), ScriptUnits(u64::MAX));
         assert_eq!(max_units_meter.charge_newly_pushed_bytes(u64::MAX), Ok(()));
         assert_eq!(max_units_meter.used_script_units(), ScriptUnits(u64::MAX));
-        assert_eq!(max_units_meter.charge_newly_pushed_bytes(u64::MAX), Ok(()));
-        assert_eq!(max_units_meter.used_script_units(), ScriptUnits(u64::MAX));
+        assert_match!(
+            max_units_meter.charge_newly_pushed_bytes(u64::MAX),
+            Err(TxScriptError::ExceededCommittedScriptUnits { used: _, limit: _ })
+        ); // Charging u64::MAX again should excceed budget and not panic due to overflow.
+        assert_eq!(max_units_meter.used_script_units(), ScriptUnits(u64::MAX)); // On overflow, used_script_units are not affected.
+
+        // Now checking overflow behaviour when starting non-max u64 values.
+        let mut max_units_meter = RuntimeScriptUnitMeter::new(ScriptUnits(0), ScriptUnits(u64::MAX));
+        assert_eq!(max_units_meter.charge_newly_pushed_bytes(u64::MAX - 1), Ok(()));
+        assert_eq!(max_units_meter.used_script_units(), ScriptUnits(u64::MAX - 1));
+        assert_match!(
+            max_units_meter.charge_newly_pushed_bytes(2),
+            Err(TxScriptError::ExceededCommittedScriptUnits { used: _, limit: _ })
+        ); // Charging 2 should excceed budget and not panic due to overflow.
+        assert_eq!(max_units_meter.used_script_units(), ScriptUnits(u64::MAX - 1)); // On overflow, used_script_units are not affected.
     }
 }
