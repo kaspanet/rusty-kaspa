@@ -79,7 +79,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 .await?;
 
             //
-            // TODO(pre-covpp): refactor GRPC to properly include the header-only chain segment and cleanup old fields
+            // TODO(relaxed): consider refactoring GRPC to properly include the header-only chain segment and cleanup old fields
             //
 
             let blocks_iter = trusted_data

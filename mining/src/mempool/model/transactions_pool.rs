@@ -83,16 +83,12 @@ pub(crate) struct TransactionsPool {
 impl TransactionsPool {
     pub(crate) fn new(config: Arc<Config>) -> Self {
         let target_time_per_block = 1.0 / (config.network_blocks_per_second as f64);
-        // Params::mempool_block_mass_cofactors asserts that the reference mass is stable across activation.
-        assert!(config.block_lane_limits.gas_per_lane > 0);
-        let gas_cofactor = config.mempool_mass_cofactors.after().reference as f64 / config.block_lane_limits.gas_per_lane as f64;
-        let ready_transactions = Frontier::new_with_gas_cofactor(target_time_per_block, gas_cofactor);
         Self {
             config,
             all_transactions: MempoolTransactionCollection::default(),
             parent_transactions: TransactionsEdges::default(),
             chained_transactions: TransactionsEdges::default(),
-            ready_transactions,
+            ready_transactions: Frontier::new(target_time_per_block),
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: unix_now(),
             utxo_set: MempoolUtxoSet::new(),

@@ -119,10 +119,15 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
 
 fn request_database_deletion_approval(approve: bool) -> bool {
     let msg = "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
-    get_user_approval_or_exit(msg, approve);
-    info!("Deleting databases from previous Kaspad version");
-    true // if consensus not exited, always return true
+    request_database_deletion_approval_with_message(msg, approve)
 }
+
+fn request_database_deletion_approval_with_message(message: &str, approve: bool) -> bool {
+    get_user_approval_or_exit(message, approve);
+    info!("Deleting databases due to incompatible Kaspad DB version");
+    true // Approval was granted; rejection exits the process above.
+}
+
 fn get_user_approval_or_exit(message: &str, approve: bool) {
     if approve {
         return;
@@ -439,14 +444,18 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         }
     }
 
-    // Reset Condition: Need to reset if we're upgrading from kaspad DB version
-    // TEMP: upgrade from Alpha version or any version before this one
-    'db_upgrade: while !is_db_reset_needed
-        && (meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some())
-            || MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap())
-    {
+    // Reset/upgrade condition: Handle mismatches against the current Kaspad DB version.
+    'db_upgrade: while !is_db_reset_needed && MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap() {
         let mut mcms = MultiConsensusManagementStore::new(meta_db.clone());
         let version = mcms.version().unwrap();
+
+        if version > LATEST_DB_VERSION {
+            let msg = format!(
+                "Node database is from a newer Kaspad DB version ({version}) than this node supports ({LATEST_DB_VERSION}). Downgrading requires deleting the database, do you confirm the delete? (y/n)"
+            );
+            is_db_reset_needed = request_database_deletion_approval_with_message(&msg, args.yes);
+            continue 'db_upgrade;
+        }
 
         if version <= 3 {
             is_db_reset_needed = request_database_deletion_approval(args.yes);

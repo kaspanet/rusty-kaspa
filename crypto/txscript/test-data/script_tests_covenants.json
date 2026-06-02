@@ -4043,7 +4043,7 @@
     "0 TX_INPUT_DAA_SCORE DROP",
     "",
     "OK",
-    "OpTxInputDaaScore is enabled since covpp"
+    "OpTxInputDaaScore is enabled post covenants activation"
   ],
   [
     "1",
@@ -4212,7 +4212,7 @@
     "RETURN",
     "",
     "OP_RETURN",
-    "TODO(pre-covpp): Add tests that check basic functionality for opcodes in this range"
+    "OP_RETURN remains terminal under covenant flags"
   ],
   [
     "1",

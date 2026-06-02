@@ -511,8 +511,8 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the expected trusted entry"));
         }
 
-        // TODO(pre-covpp): this buffering can be heavy on RAM for large chain segments, but is acceptable
-        // for now since syncee memory usage is still low at this phase.
+        // TODO(optimization): this buffering can be heavy on RAM for large chain segments, but is acceptable
+        // since syncee memory usage is still low at this phase.
         let mut entries = vec![pruning_point_entry];
         let mut header_only_chain_segment = Vec::new();
         while let Some(entry) = entry_stream.next().await? {

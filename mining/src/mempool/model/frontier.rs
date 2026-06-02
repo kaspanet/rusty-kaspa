@@ -67,8 +67,6 @@ pub struct Frontier {
     average_transaction_mass: f64,
 
     target_time_per_block_seconds: f64,
-
-    gas_cofactor: f64,
 }
 
 #[derive(Default)]
@@ -136,17 +134,12 @@ impl SampleMassTracker {
 
 impl Frontier {
     pub fn new(target_time_per_block_seconds: f64) -> Self {
-        Self::new_with_gas_cofactor(target_time_per_block_seconds, 500_000f64 / DEFAULT_BLOCK_LANE_LIMITS.gas_per_lane as f64)
-    }
-
-    pub fn new_with_gas_cofactor(target_time_per_block_seconds: f64, gas_cofactor: f64) -> Self {
         Self {
             search_tree: Default::default(),
             by_lane: Default::default(),
             total_mass: Default::default(),
             average_transaction_mass: INITIAL_AVG_MASS,
             target_time_per_block_seconds,
-            gas_cofactor,
         }
     }
 }
@@ -172,8 +165,7 @@ impl Frontier {
         let mass = key.mass;
         let lane = key.lane();
         if self.search_tree.insert(key.clone()) {
-            // Per-lane ordering should account for gas as another lane-limited resource.
-            self.by_lane.entry(lane).or_default().insert(FeerateTransactionKey::with_normalized_gas(key, self.gas_cofactor));
+            self.by_lane.entry(lane).or_default().insert(key);
             self.total_mass += mass;
             // A decaying average formula. Denote ɛ = 1 - AVG_MASS_DECAY_FACTOR. A transaction inserted N slots ago has
             // ɛ * (1 - ɛ)^N weight within the updated average. This gives some weight to the full mempool history while
@@ -192,7 +184,7 @@ impl Frontier {
             let lane = key.lane();
             let mut remove_lane = false;
             if let Some(entries) = self.by_lane.get_mut(&lane) {
-                entries.remove(&FeerateTransactionKey::with_normalized_gas(key.clone(), self.gas_cofactor));
+                entries.remove(key);
                 remove_lane = entries.is_empty();
             }
             if remove_lane {
@@ -447,7 +439,7 @@ mod tests {
     use feerate_key::tests::build_feerate_key;
     use itertools::Itertools;
     use kaspa_consensus_core::{
-        mass::{BlockLaneLimits, BlockMassLimits},
+        mass::BlockMassLimits,
         subnets::SubnetworkId,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
@@ -585,32 +577,6 @@ mod tests {
         let selected_lanes = sample.iter().map(|tx| tx.tx.subnetwork_id).collect::<HashSet<_>>();
 
         assert_eq!(selected_lanes.len(), policy.lanes_per_block_limit);
-    }
-
-    #[test]
-    fn test_by_lane_feerate_key_accounts_for_normalized_gas() {
-        let lane = SubnetworkId::from_namespace([1, 1, 0, 0]);
-        let block_lane_limits = BlockLaneLimits { lanes_per_block: 1, gas_per_lane: 100 };
-        let policy = Policy::new(10_000, block_lane_limits);
-        let mut frontier = Frontier::new_with_gas_cofactor(1.0, 1_000f64 / block_lane_limits.gas_per_lane as f64);
-
-        let keys = (11..=22).map(|gas| build_feerate_key_with_lane(1_000, 100, gas, lane, gas)).collect_vec();
-        for key in keys.iter().cloned() {
-            frontier.insert(key).then_some(()).unwrap();
-        }
-
-        let mut sequence = SequenceSelectorInput::default();
-        let lanes = Lanes { occupied: HashSet::from([lane]), frozen: true };
-        let mut mass = SampleMassTracker::new(&policy);
-        frontier.finish_intra_lane_selection(&mut sequence, &HashSet::new(), &lanes, &mut mass);
-
-        assert_eq!(sequence.iter().map(|item| item.tx.gas).collect_vec(), (11..=22).collect_vec());
-
-        for key in &keys {
-            frontier.remove(key).then_some(()).unwrap();
-        }
-        assert!(frontier.is_empty());
-        assert!(frontier.by_lane.is_empty());
     }
 
     /// Epsilon used for various test comparisons
