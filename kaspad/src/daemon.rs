@@ -7,6 +7,7 @@ use kaspa_consensus_core::{
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     errors::config::{ConfigError, ConfigResult},
     mining_rules::MiningRules,
+    network::NetworkType,
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, debug, info};
@@ -277,12 +278,9 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
 
-    // TODO(pre-covpp): Remove this log when Toccata activation DAA score is finalized on mainnet.
-    if network.is_mainnet() {
-        get_user_approval_or_exit(
-            "This version of kaspad does not officially support mainnet. Use with caution and report to developers if you encounter any issues. Do you want to continue? (y/n)",
-            args.yes,
-        );
+    if network.network_type == NetworkType::Testnet && network.suffix() == Some(10) {
+        println!("This branch does not currently support testnet-10. Please use the tn10 branch for TN10.");
+        exit(1);
     }
 
     let mut fd_remaining = fd_total_budget;
