@@ -15,7 +15,11 @@ use kaspa_notify::{
         SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
     },
 };
-use kaspa_rpc_core::{Notification, api::rpc::RpcApi, model::*};
+use kaspa_rpc_core::{
+    Notification,
+    api::rpc::{MAX_SAFE_WINDOW_SIZE, RpcApi},
+    model::*,
+};
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
 use tokio::task::JoinHandle;
@@ -34,6 +38,43 @@ macro_rules! tst {
             info!("Skipping {:?} --- {}", $op, $reason);
         })
     };
+}
+
+async fn submit_simnet_block(
+    rpc_client: &kaspa_grpc_client::GrpcClient,
+    event_receiver: &async_channel::Receiver<Notification>,
+    expected_daa_score: u64,
+) -> Hash {
+    let GetBlockTemplateResponse { block, .. } = rpc_client
+        .get_block_template_call(
+            None,
+            GetBlockTemplateRequest { pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]), extra_data: Vec::new() },
+        )
+        .await
+        .unwrap();
+
+    let header: Header = (&block.header).try_into().unwrap();
+    let block_hash = header.hash;
+    let response = rpc_client.submit_block(block, false).await.unwrap();
+    assert_eq!(response.report, SubmitBlockReport::Success);
+
+    while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver.recv()).await {
+        Ok(res) => res,
+        Err(elapsed) => panic!("expected virtual event before {}", elapsed),
+    } {
+        match notification {
+            Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score == expected_daa_score => {
+                break;
+            }
+            Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score > expected_daa_score => {
+                panic!("DAA score too high for number of submitted blocks")
+            }
+            Notification::VirtualDaaScoreChanged(_) => {}
+            _ => {}
+        }
+    }
+
+    block_hash
 }
 
 /// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::sanity_test`
@@ -408,12 +449,12 @@ async fn sanity_test() {
             KaspadPayloadOps::GetHeaders => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let response_result = rpc_client
+                    let response = rpc_client
                         .get_headers_call(None, GetHeadersRequest { start_hash: SIMNET_GENESIS.hash, limit: 1, is_ascending: true })
-                        .await;
-
-                    // Err because it's currently unimplemented
-                    assert!(response_result.is_err());
+                        .await
+                        .unwrap();
+                    assert_eq!(response.headers.len(), 1);
+                    assert_eq!(response.headers[0].hash, SIMNET_GENESIS.hash);
                 })
             }
 
@@ -799,6 +840,62 @@ async fn sanity_test() {
     //
     // Fold-up
     //
+    client.disconnect().await.unwrap();
+    drop(client);
+    daemon.shutdown();
+}
+
+#[tokio::test]
+async fn get_headers_selected_chain_test() {
+    kaspa_core::log::try_init_logger("info");
+    kaspa_core::panic::configure_panic();
+
+    let args = Args {
+        simnet: true,
+        disable_upnp: true,
+        enable_unsynced_mining: true,
+        block_template_cache_lifetime: Some(0),
+        unsafe_rpc: true,
+        ..Default::default()
+    };
+
+    let fd_total_budget = fd_budget::test_limit();
+    let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
+    let client = daemon.start().await;
+
+    let (sender, event_receiver) = async_channel::unbounded();
+    client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
+    client.start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await.unwrap();
+
+    let first_hash = submit_simnet_block(&client, &event_receiver, 1).await;
+    let second_hash = submit_simnet_block(&client, &event_receiver, 2).await;
+
+    let empty_headers = client.get_headers(SIMNET_GENESIS.hash, 0, true).await.unwrap();
+    assert!(empty_headers.is_empty());
+
+    let genesis_only = client.get_headers(SIMNET_GENESIS.hash, 1, true).await.unwrap();
+    assert_eq!(genesis_only.iter().map(|header| header.hash).collect::<Vec<_>>(), vec![SIMNET_GENESIS.hash]);
+
+    let ascending = client.get_headers(SIMNET_GENESIS.hash, 3, true).await.unwrap();
+    assert_eq!(ascending.iter().map(|header| header.hash).collect::<Vec<_>>(), vec![SIMNET_GENESIS.hash, first_hash, second_hash]);
+
+    let sink_only = client.get_headers(second_hash, 10, true).await.unwrap();
+    assert_eq!(sink_only.iter().map(|header| header.hash).collect::<Vec<_>>(), vec![second_hash]);
+
+    let descending = client.get_headers(second_hash, 3, false).await.unwrap();
+    assert_eq!(descending.iter().map(|header| header.hash).collect::<Vec<_>>(), vec![second_hash, first_hash, SIMNET_GENESIS.hash]);
+
+    for header in ascending.iter().chain(descending.iter()) {
+        let block = client.get_block(header.hash, false).await.unwrap();
+        assert_eq!(block.header.hash, header.hash);
+    }
+
+    let missing_hash = Hash::from_bytes([42; 32]);
+    assert!(client.get_headers(missing_hash, 1, true).await.is_err());
+
+    assert!(client.get_headers(SIMNET_GENESIS.hash, u64::from(MAX_SAFE_WINDOW_SIZE) + 1, true).await.is_err());
+
+    let _ = client.shutdown_call(None, ShutdownRequest {}).await.unwrap();
     client.disconnect().await.unwrap();
     drop(client);
     daemon.shutdown();

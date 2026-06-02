@@ -1018,8 +1018,8 @@ build_wrpc_wasm_bindgen_interface!(
         GetDaaScoreTimestampEstimate,
         /// Feerate estimates (experimental)
         GetFeeEstimateExperimental,
-        /// Retrieves block headers from the Kaspa BlockDAG.
-        /// Returned information: List of block headers.
+        /// Retrieves selected-parent-chain block headers from the Kaspa BlockDAG.
+        /// Returned information: List of block headers, inclusive of the start hash when the limit is greater than zero.
         GetHeaders,
         /// Retrieves mempool entries from the Kaspa node's mempool.
         /// Returned information: List of mempool entries.

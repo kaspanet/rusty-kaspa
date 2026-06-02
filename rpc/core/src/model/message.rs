@@ -1215,8 +1215,11 @@ impl Deserializer for ShutdownResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetHeadersRequest {
+    /// The selected-parent-chain header where traversal starts.
     pub start_hash: RpcHash,
+    /// The maximum number of headers to return, including `start_hash`.
     pub limit: u64,
+    /// When true, walk toward the sink; when false, walk toward genesis.
     pub is_ascending: bool,
 }
 

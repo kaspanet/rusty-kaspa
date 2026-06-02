@@ -1003,7 +1003,11 @@ declare! {
     IGetHeadersRequest,
     r#"
     /**
+     * Selected-parent-chain header request.
      *
+     * If `isAscending` is true, traversal walks from `startHash` toward the
+     * sink. Otherwise, traversal walks from `startHash` toward genesis.
+     * `limit` includes `startHash` when greater than zero.
      *
      * @category Node RPC
      */

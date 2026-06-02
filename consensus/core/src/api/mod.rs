@@ -275,7 +275,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.
+    /// Returns the antipast of block `hash` from the POV of `context`, i.e. the intersection of `antipast(hash)` and `past(context)`.
     /// Since this might be an expensive operation for deep blocks, we allow the caller to specify a limit
     /// `max_traversal_allowed` on the maximum amount of blocks to traverse for obtaining the answer
     fn get_antipast_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
@@ -292,6 +292,11 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
+
+    /// Returns up to `limit` hashes from `start` toward the virtual selected-chain tip, including `start`.
+    fn get_virtual_selected_chain_from(&self, start: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 
