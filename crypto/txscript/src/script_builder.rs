@@ -126,12 +126,8 @@ impl ScriptBuilder {
     pub fn canonical_data_size(data: &[u8]) -> usize {
         let data_len = data.len();
 
-        // When the data consists of a single number that can be represented
-        // by one of the "small integer" opcodes, that opcode will used be instead
-        // of a data push opcode followed by the number.
-        if data_len == 0
-            || (data_len == 1 && ((OP_SMALL_INT_MIN_VAL..=OP_SMALL_INT_MAX_VAL).contains(&data[0]) || data[0] == OP_1_NEGATE_VAL))
-        {
+        // Empty data and single-byte small integers have one-byte canonical encodings.
+        if matches!(data, [] | [OP_SMALL_INT_MIN_VAL..=OP_SMALL_INT_MAX_VAL] | [OP_1_NEGATE_VAL]) {
             return 1;
         }
 
