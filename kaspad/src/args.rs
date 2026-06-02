@@ -89,6 +89,7 @@ pub struct Args {
     pub disable_dns_seeding: bool,
     #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
+    pub disable_relay_tx: bool,
     pub ram_scale: f64,
     pub retention_period_days: Option<f64>,
 
@@ -146,6 +147,7 @@ impl Default for Args {
             disable_upnp: false,
             disable_dns_seeding: false,
             disable_grpc: false,
+            disable_relay_tx: false,
             ram_scale: 1.0,
             retention_period_days: None,
             override_params_file: None,
@@ -160,6 +162,7 @@ impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
         config.disable_upnp = self.disable_upnp;
+        config.disable_relay_tx = self.disable_relay_tx;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
         config.enable_mainnet_mining = self.enable_mainnet_mining;
@@ -391,6 +394,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(arg!(--"disable-upnp" "Disable upnp").env("KASPAD_DISABLE_UPNP"))
         .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers").env("KASPAD_NODNSSEED"))
         .arg(arg!(--"nogrpc" "Disable gRPC server").env("KASPAD_NOGRPC"))
+        .arg(arg!(--"disable-relay-tx" "Disable transaction relay. Node will not request or broadcast transactions to/from peers.").env("KASPAD_DISABLE_RELAY_TX"))
         .arg(
             Arg::new("ram-scale")
                 .long("ram-scale")
@@ -519,6 +523,7 @@ impl Args {
             disable_upnp: arg_match_unwrap_or::<bool>(&m, "disable-upnp", defaults.disable_upnp),
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
+            disable_relay_tx: arg_match_unwrap_or::<bool>(&m, "disable-relay-tx", defaults.disable_relay_tx),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
             retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
 
