@@ -277,6 +277,7 @@ pub fn post_toccata_p2sh_sig_scanner(signature_script: &[u8], spk: &ScriptPublic
             return 0;
         };
         let opcode_value = op.value();
+        let multisig_count = prev_opcode_multisig_count.take();
         match opcode_value {
             // Post-Toccata p2sh sigop scanning includes from-stack variants.
             codes::OpCheckSig
@@ -285,22 +286,21 @@ pub fn post_toccata_p2sh_sig_scanner(signature_script: &[u8], spk: &ScriptPublic
             | codes::OpCheckSigFromStack
             | codes::OpCheckSigFromStackECDSA => sigops = sigops.saturating_add(1),
             codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpCheckMultiSigECDSA => {
-                sigops = sigops.saturating_add(prev_opcode_multisig_count.unwrap_or(MAX_PUB_KEYS_PER_MUTLTISIG as u64));
+                sigops = sigops.saturating_add(multisig_count.unwrap_or(MAX_PUB_KEYS_PER_MUTLTISIG as u64));
             }
-            _ => {}
-        }
-        prev_opcode_multisig_count = match opcode_value {
-            codes::Op1..=codes::Op16 => Some((opcode_value - codes::Op1 + 1) as u64),
+            codes::Op1..=codes::Op16 => {
+                prev_opcode_multisig_count = Some((opcode_value - codes::Op1 + 1) as u64);
+            }
             ..=codes::OpPushData4 => {
                 // Post-Toccata allows non-minimal data pushes, so
                 // OpData*/OpPushData* forms before multisig are counted.
-                deserialize_i64(op.get_data(), false)
+                prev_opcode_multisig_count = deserialize_i64(op.get_data(), false)
                     .ok()
                     .filter(|count| (1..=MAX_PUB_KEYS_PER_MUTLTISIG as i64).contains(count))
-                    .map(|count| count as u64)
+                    .map(|count| count as u64);
             }
-            _ => None,
-        };
+            _ => {}
+        }
     }
 
     sigops
