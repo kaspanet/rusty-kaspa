@@ -6,12 +6,16 @@ use crate::{
     stores::store_manager::Store,
     update_container::UtxoIndexChanges,
 };
-use kaspa_consensus_core::{BlockHashSet, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
+use kaspa_consensus_core::{
+    BlockHashSet,
+    tx::{ScriptPublicKey, ScriptPublicKeys},
+    utxo::utxo_diff::UtxoDiff,
+};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{DB, StoreError, StoreResult};
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage};
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
@@ -34,6 +38,10 @@ pub struct UtxoIndex {
 }
 
 impl UtxoIndex {
+    pub fn has_legacy_db_version(db: Arc<DB>) -> UtxoIndexResult<bool> {
+        Store::new(db).has_legacy_db_version()
+    }
+
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
     pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
         let mut utxoindex =
@@ -61,7 +69,27 @@ impl UtxoIndexApi for UtxoIndex {
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         trace!("[{0}] retrieving utxos from {1} script public keys", IDENT, script_public_keys.len());
 
-        self.store.get_utxos_by_script_public_key(script_public_keys)
+        self.store.get_utxos_by_script_public_keys(script_public_keys)
+    }
+
+    fn get_utxos_by_script_public_keys_by_daa_score_page(
+        &self,
+        script_public_keys: ScriptPublicKeys,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        start_script_public_key: Option<ScriptPublicKey>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
+        trace!("[{0}] retrieving utxos by daa-score range for {1} script public keys (paged)", IDENT, script_public_keys.len());
+        self.store.get_utxos_by_script_public_keys_by_daa_score_page(
+            script_public_keys,
+            from_daa_score,
+            to_daa_score,
+            start_script_public_key,
+            start_daa_score,
+            limit,
+        )
     }
 
     /// Retrieve utxos by script public keys from the utxoindex db.
@@ -186,6 +214,7 @@ impl UtxoIndexApi for UtxoIndex {
 
         trace!("[{0}] committing consensus tips {consensus_tips:?} from consensus db", IDENT);
         self.store.set_tips(consensus_tips, true)?;
+        self.store.ensure_db_version_current()?;
 
         Ok(())
     }
@@ -222,7 +251,12 @@ impl ConsensusResetHandler for UtxoIndexConsensusResetHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::{UtxoIndex, api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator};
+    use crate::{
+        UtxoIndex,
+        api::UtxoIndexApi,
+        model::{CirculatingSupply, UtxoEntryKeyData},
+        testutils::virtual_change_emulator::VirtualChangeEmulator,
+    };
     use kaspa_consensus::{
         config::Config,
         consensus::test_consensus::TestConsensus,
@@ -296,10 +330,12 @@ mod tests {
                 .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
                 .expect("expected script public key to be in database");
             for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
-                let compact_utxo = indexed_compact_utxo_collection.get(&tx_outpoint).expect("expected outpoint as key");
+                let utxo_entry_key_data = UtxoEntryKeyData::new(utxo_entry.block_daa_score, tx_outpoint);
+                let compact_utxo =
+                    indexed_compact_utxo_collection.get(&utxo_entry_key_data).expect("expected utxo entry key data as key");
                 assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
                 assert_eq!(utxo_entry.amount, compact_utxo.amount);
-                assert_eq!(utxo_entry.block_daa_score, compact_utxo.block_daa_score);
+                assert_eq!(utxo_entry.block_daa_score, utxo_entry_key_data.daa_score);
                 assert_eq!(utxo_entry.is_coinbase, compact_utxo.is_coinbase);
                 i += 1;
             }
@@ -327,11 +363,15 @@ mod tests {
 
         let mut i = 0;
         for (script_public_key, compact_utxo_collection) in utxo_changes.added.iter() {
-            for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
-                let utxo_entry = virtual_change_emulator.accumulated_utxo_diff.add.get(tx_outpoint).expect("expected utxo_entry");
+            for (utxo_entry_key_data, compact_utxo_entry) in compact_utxo_collection.iter() {
+                let utxo_entry = virtual_change_emulator
+                    .accumulated_utxo_diff
+                    .add
+                    .get(&utxo_entry_key_data.transaction_outpoint)
+                    .expect("expected utxo_entry");
                 assert_eq!(*script_public_key, utxo_entry.script_public_key);
                 assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
-                assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
+                assert_eq!(utxo_entry_key_data.daa_score, utxo_entry.block_daa_score);
                 assert_eq!(compact_utxo_entry.is_coinbase, utxo_entry.is_coinbase);
                 i += 1;
             }
@@ -341,12 +381,16 @@ mod tests {
         i = 0;
 
         for (script_public_key, compact_utxo_collection) in utxo_changes.removed.iter() {
-            for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
-                assert!(virtual_change_emulator.accumulated_utxo_diff.remove.contains_key(tx_outpoint));
-                let utxo_entry = virtual_change_emulator.accumulated_utxo_diff.remove.get(tx_outpoint).expect("expected utxo_entry");
+            for (utxo_entry_key_data, compact_utxo_entry) in compact_utxo_collection.iter() {
+                assert!(virtual_change_emulator.accumulated_utxo_diff.remove.contains_key(&utxo_entry_key_data.transaction_outpoint));
+                let utxo_entry = virtual_change_emulator
+                    .accumulated_utxo_diff
+                    .remove
+                    .get(&utxo_entry_key_data.transaction_outpoint)
+                    .expect("expected utxo_entry");
                 assert_eq!(*script_public_key, utxo_entry.script_public_key);
                 assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
-                assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
+                assert_eq!(utxo_entry_key_data.daa_score, utxo_entry.block_daa_score);
                 assert_eq!(compact_utxo_entry.is_coinbase, utxo_entry.is_coinbase);
                 i += 1;
             }
@@ -375,10 +419,12 @@ mod tests {
                 .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
                 .expect("expected script public key to be in database");
             for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
-                let compact_utxo = indexed_compact_utxo_collection.get(&tx_outpoint).expect("expected outpoint as key");
+                let utxo_entry_key_data = UtxoEntryKeyData::new(utxo_entry.block_daa_score, tx_outpoint);
+                let compact_utxo =
+                    indexed_compact_utxo_collection.get(&utxo_entry_key_data).expect("expected utxo entry key data as key");
                 assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
                 assert_eq!(utxo_entry.amount, compact_utxo.amount);
-                assert_eq!(utxo_entry.block_daa_score, compact_utxo.block_daa_score);
+                assert_eq!(utxo_entry.block_daa_score, utxo_entry_key_data.daa_score);
                 assert_eq!(utxo_entry.is_coinbase, compact_utxo.is_coinbase);
                 i += 1;
             }

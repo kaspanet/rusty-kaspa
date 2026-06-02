@@ -1244,6 +1244,74 @@ try_from! ( args: GetUtxosByAddressesResponse, IGetUtxosByAddressesResponse, {
     Ok(response)
 });
 
+declare! {
+    IGetUtxosByAddressesV2Request,
+    "IGetUtxosByAddressesV2Request | Address[] | string[]",
+    r#"
+    /**
+     * Requests UTXOs for multiple addresses with optional inclusive DAA-score bounds.
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxosByAddressesV2Request {
+        addresses : Address[] | string[];
+        fromDaaScore? : bigint;
+        toDaaScore? : bigint;
+        startAddress? : Address | string;
+        startDaaScore? : bigint;
+        limit? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: IGetUtxosByAddressesV2Request, GetUtxosByAddressesV2Request, {
+    let js_value = JsValue::from(args);
+    let request = if let Ok(addresses) = Vec::<Address>::try_from(AddressOrStringArrayT::from(js_value.clone())) {
+        GetUtxosByAddressesV2Request {
+            addresses,
+            from_daa_score: None,
+            to_daa_score: None,
+            start_address: None,
+            start_daa_score: None,
+            limit: None,
+        }
+    } else {
+        from_value::<GetUtxosByAddressesV2Request>(js_value)?
+    };
+    Ok(request)
+});
+
+declare! {
+    IGetUtxosByAddressesV2Response,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxosByAddressesV2Response {
+        entries : UtxoEntryReference[];
+        nextAddress? : Address | string;
+        nextDaaScore? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: GetUtxosByAddressesV2Response, IGetUtxosByAddressesV2Response, {
+    let GetUtxosByAddressesV2Response { entries, next_address, next_daa_score } = args;
+    let entries = entries.into_iter().map(UtxoEntryReference::from).collect::<Vec<UtxoEntryReference>>();
+    let entries = js_sys::Array::from_iter(entries.into_iter().map(JsValue::from));
+    let response = IGetUtxosByAddressesV2Response::default();
+    response.set("entries", entries.as_ref())?;
+    if let Some(address) = next_address {
+        response.set("nextAddress", &JsValue::from(address.to_string()))?;
+    }
+    if let Some(daa_score) = next_daa_score {
+        response.set("nextDaaScore", &js_sys::BigInt::from(daa_score).into())?;
+    }
+    Ok(response)
+});
+
 // ---
 
 declare! {

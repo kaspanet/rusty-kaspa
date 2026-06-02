@@ -218,6 +218,7 @@ where
         &self,
         bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
         seek_from: Option<TKey>, // iter whole range if None
+        seek_to: Option<TKey>,   // iter until the seek_to key (exclusive) if Some, else iter whole range.
         limit: usize,            // amount to take.
         skip_first: bool,        // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
     ) -> impl Iterator<Item = KeyDataResult<TData>> + '_
@@ -237,12 +238,14 @@ where
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
 
-        let mut db_iterator = match seek_from {
-            Some(seek_key) => {
-                self.db.iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
-            }
-            None => self.db.iterator_opt(IteratorMode::Start, read_opts),
+        if let Some(seek_from) = &seek_from {
+            read_opts.set_iterate_lower_bound(DbKey::new(db_key.as_ref(), seek_from).as_ref());
         };
+        if let Some(seek_to) = &seek_to {
+            read_opts.set_iterate_upper_bound(DbKey::new(db_key.as_ref(), seek_to).as_ref());
+        };
+
+        let mut db_iterator = self.db.iterator_opt(IteratorMode::Start, read_opts);
 
         if skip_first {
             db_iterator.next();

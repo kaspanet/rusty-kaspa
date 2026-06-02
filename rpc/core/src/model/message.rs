@@ -1508,6 +1508,99 @@ impl Deserializer for GetUtxosByAddressesResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GetUtxosByAddressesV2Request {
+    /// Addresses to query UTXOs for.
+    pub addresses: Vec<RpcAddress>,
+    /// Inclusive DAA-score range start; None defaults to 0.
+    pub from_daa_score: Option<u64>,
+    /// Inclusive DAA-score range end; None defaults to u64::MAX.
+    pub to_daa_score: Option<u64>,
+    /// Cursor start address; None starts from the first address.
+    pub start_address: Option<RpcAddress>,
+    /// Cursor start DAA score for start_address; None starts from from_daa_score.
+    pub start_daa_score: Option<u64>,
+    /// Soft cap on entries; None means no limit, and a page may exceed this to finish the current script public key + DAA-score group.
+    pub limit: Option<u64>,
+}
+
+impl GetUtxosByAddressesV2Request {
+    pub fn new(
+        addresses: Vec<RpcAddress>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        start_address: Option<RpcAddress>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> Self {
+        Self { addresses, from_daa_score, to_daa_score, start_address, start_daa_score, limit }
+    }
+}
+
+impl Serializer for GetUtxosByAddressesV2Request {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcAddress>, &self.addresses, writer)?;
+        store!(Option<u64>, &self.from_daa_score, writer)?;
+        store!(Option<u64>, &self.to_daa_score, writer)?;
+        store!(Option<RpcAddress>, &self.start_address, writer)?;
+        store!(Option<u64>, &self.start_daa_score, writer)?;
+        store!(Option<u64>, &self.limit, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByAddressesV2Request {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let addresses = load!(Vec<RpcAddress>, reader)?;
+        let from_daa_score = load!(Option<u64>, reader)?;
+        let to_daa_score = load!(Option<u64>, reader)?;
+        let start_address = load!(Option<RpcAddress>, reader)?;
+        let start_daa_score = load!(Option<u64>, reader)?;
+        let limit = load!(Option<u64>, reader)?;
+        Ok(Self { addresses, from_daa_score, to_daa_score, start_address, start_daa_score, limit })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByAddressesV2Response {
+    /// UTXO entries for the requested addresses and DAA-score range.
+    pub entries: Vec<RpcUtxosByAddressesEntry>,
+    /// Cursor address for the next page; None means there is no next page.
+    pub next_address: Option<RpcAddress>,
+    /// Cursor DAA score for the next page; None means there is no next page.
+    pub next_daa_score: Option<u64>,
+}
+
+impl GetUtxosByAddressesV2Response {
+    pub fn new(entries: Vec<RpcUtxosByAddressesEntry>, next_address: Option<RpcAddress>, next_daa_score: Option<u64>) -> Self {
+        Self { entries, next_address, next_daa_score }
+    }
+}
+
+impl Serializer for GetUtxosByAddressesV2Response {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.entries, writer)?;
+        store!(Option<RpcAddress>, &self.next_address, writer)?;
+        store!(Option<u64>, &self.next_daa_score, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByAddressesV2Response {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+        let next_address = load!(Option<RpcAddress>, reader)?;
+        let next_daa_score = load!(Option<u64>, reader)?;
+        Ok(Self { entries, next_address, next_daa_score })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BanRequest {
     pub ip: RpcIpAddress,
 }

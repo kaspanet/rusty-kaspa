@@ -563,6 +563,36 @@ message GetUtxosByAddressesResponseMessage {
   RPCError error = 1000;
 }
 
+// GetUtxosByAddressesV2RequestMessage requests UTXOs for multiple addresses,
+// optionally bounded by an inclusive DAA-score range.
+//
+// This call is only available when this kaspad was started with `--utxoindex`.
+message GetUtxosByAddressesV2RequestMessage {
+  // Addresses to query UTXOs for.
+  repeated string addresses = 1;
+  // Inclusive DAA-score range start; omitted defaults to 0.
+  optional uint64 fromDaaScore = 2;
+  // Inclusive DAA-score range end; omitted defaults to u64::MAX.
+  optional uint64 toDaaScore = 3;
+  // Cursor start address; omitted starts from the first address.
+  optional string startAddress = 4;
+  // Cursor start DAA score for startAddress; omitted starts from fromDaaScore.
+  optional uint64 startDaaScore = 5;
+  // Soft cap on entries; omitted means no limit and a page may exceed this to finish the current address + DAA-score group.
+  optional uint64 limit = 6;
+}
+
+message GetUtxosByAddressesV2ResponseMessage {
+  // UTXO entries for the requested addresses and DAA-score range.
+  repeated RpcUtxosByAddressesEntry entries = 1;
+  // Cursor address for the next page; omitted means there is no next page.
+  optional string nextAddress = 2;
+  // Cursor DAA score for the next page; omitted means there is no next page.
+  optional uint64 nextDaaScore = 3;
+
+  RPCError error = 1000;
+}
+
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
 //
 // This call is only available when this kaspad was started with `--utxoindex`

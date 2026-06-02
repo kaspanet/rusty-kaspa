@@ -338,6 +338,26 @@ from!(item: RpcResult<&kaspa_rpc_core::GetUtxosByAddressesResponse>, protowire::
     Self { entries: item.entries.iter().map(|x| x.into()).collect(), error: None }
 });
 
+from!(item: &kaspa_rpc_core::GetUtxosByAddressesV2Request, protowire::GetUtxosByAddressesV2RequestMessage, {
+    Self {
+        addresses: item.addresses.iter().map(|x| x.into()).collect(),
+        from_daa_score: item.from_daa_score,
+        to_daa_score: item.to_daa_score,
+        start_address: item.start_address.as_ref().map(|address| address.to_string()),
+        start_daa_score: item.start_daa_score,
+        limit: item.limit,
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetUtxosByAddressesV2Response>, protowire::GetUtxosByAddressesV2ResponseMessage, {
+    debug!("GRPC, Creating GetUtxosByAddressesV2 message with {} entries", item.entries.len());
+    Self {
+        entries: item.entries.iter().map(|x| x.into()).collect(),
+        next_address: item.next_address.as_ref().map(|address| address.to_string()),
+        next_daa_score: item.next_daa_score,
+        error: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::GetBalanceByAddressRequest, protowire::GetBalanceByAddressRequestMessage, {
     Self { address: (&item.address).into() }
 });
@@ -857,6 +877,24 @@ try_from!(item: &protowire::GetUtxosByAddressesRequestMessage, kaspa_rpc_core::G
 });
 try_from!(item: &protowire::GetUtxosByAddressesResponseMessage, RpcResult<kaspa_rpc_core::GetUtxosByAddressesResponse>, {
     Self { entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()? }
+});
+
+try_from!(item: &protowire::GetUtxosByAddressesV2RequestMessage, kaspa_rpc_core::GetUtxosByAddressesV2Request, {
+    Self {
+        addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()?,
+        from_daa_score: item.from_daa_score,
+        to_daa_score: item.to_daa_score,
+        start_address: item.start_address.as_deref().map(|address| address.try_into()).transpose()?,
+        start_daa_score: item.start_daa_score,
+        limit: item.limit,
+    }
+});
+try_from!(item: &protowire::GetUtxosByAddressesV2ResponseMessage, RpcResult<kaspa_rpc_core::GetUtxosByAddressesV2Response>, {
+    Self {
+        entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+        next_address: item.next_address.as_deref().map(|address| address.try_into()).transpose()?,
+        next_daa_score: item.next_daa_score,
+    }
 });
 
 try_from!(item: &protowire::GetBalanceByAddressRequestMessage, kaspa_rpc_core::GetBalanceByAddressRequest, {

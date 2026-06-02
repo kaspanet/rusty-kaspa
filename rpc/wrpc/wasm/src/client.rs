@@ -1037,6 +1037,10 @@ build_wrpc_wasm_bindgen_interface!(
         /// specific addresses.
         /// Returned information: List of UTXOs.
         GetUtxosByAddresses,
+        /// Retrieves unspent transaction outputs (UTXOs) for multiple addresses
+        /// with optional inclusive DAA-score range bounds.
+        /// Returned information: A list of UTXOs.
+        GetUtxosByAddressesV2,
         /// Retrieves the virtual chain corresponding to a specified block hash.
         /// Returned information: Virtual chain information.
         GetVirtualChainFromBlock,

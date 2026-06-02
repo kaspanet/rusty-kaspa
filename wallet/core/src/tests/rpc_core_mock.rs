@@ -307,6 +307,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_utxos_by_addresses_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetUtxosByAddressesV2Request,
+    ) -> RpcResult<GetUtxosByAddressesV2Response> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_sink_blue_score_call(
         &self,
         _connection: Option<&DynRpcConnection>,

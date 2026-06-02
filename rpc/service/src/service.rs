@@ -72,6 +72,7 @@ use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use kaspa_utxoindex::model::OrderedUtxoSetByScriptPublicKeyPage;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -271,6 +272,30 @@ impl RpcCoreService {
             .clone()
             .unwrap()
             .get_balance_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+            .await
+            .unwrap_or_default()
+    }
+
+    async fn get_ordered_utxo_set_by_script_public_key_page<'a>(
+        &self,
+        addresses: impl Iterator<Item = &'a RpcAddress>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        start_address: Option<&'a RpcAddress>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> OrderedUtxoSetByScriptPublicKeyPage {
+        self.utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_by_script_public_keys_by_daa_score_page(
+                addresses.map(pay_to_address_script).collect(),
+                from_daa_score,
+                to_daa_score,
+                start_address.map(pay_to_address_script),
+                start_daa_score,
+                limit,
+            )
             .await
             .unwrap_or_default()
     }
@@ -706,6 +731,74 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         //       (the current impl does not retain an entry order matching the request addresses order)
         let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
+    }
+
+    async fn get_utxos_by_addresses_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxosByAddressesV2Request,
+    ) -> RpcResult<GetUtxosByAddressesV2Response> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        if request.start_daa_score.is_some() && request.start_address.is_none() {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("start_daa_score requires start_address".to_string()));
+        }
+
+        if request.limit == Some(0) {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("limit must be greater than zero".to_string()));
+        }
+
+        if matches!(
+            request.start_address.as_ref(),
+            Some(start_address) if !request.addresses.iter().any(|address| address == start_address)
+        ) {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("start_address must be included in addresses".to_string()));
+        }
+
+        let from_daa_score = request.from_daa_score.unwrap_or(0);
+        let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
+        if from_daa_score > to_daa_score {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("from_daa_score must be <= to_daa_score".to_string()));
+        }
+
+        if matches!(
+            request.start_daa_score,
+            Some(start_daa_score) if start_daa_score < from_daa_score || start_daa_score > to_daa_score
+        ) {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request(
+                "start_daa_score must be within from_daa_score and to_daa_score".to_string(),
+            ));
+        }
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let page = self
+            .get_ordered_utxo_set_by_script_public_key_page(
+                request.addresses.iter(),
+                request.from_daa_score,
+                request.to_daa_score,
+                request.start_address.as_ref(),
+                request.start_daa_score,
+                request.limit,
+            )
+            .await;
+
+        let OrderedUtxoSetByScriptPublicKeyPage { entries, next_script_public_key, next_daa_score } = page;
+        let entries = self.index_converter.get_ordered_utxos_by_addresses_entries(&entries);
+        let next_address = match next_script_public_key.as_ref() {
+            Some(script_public_key) => Some(
+                extract_script_pub_key_address(script_public_key, self.config.prefix())
+                    .map_err(|err| RpcError::General(err.to_string()))?,
+            ),
+            None => None,
+        };
+
+        Ok(GetUtxosByAddressesV2Response::new(entries, next_address, next_daa_score))
     }
 
     async fn get_balance_by_address_call(

@@ -5,7 +5,31 @@ use std::collections::HashMap;
 
 // TODO: explore potential optimization via custom TransactionOutpoint hasher for below,
 // One possible implementation: u64 of transaction id xor'd with 4 bytes of transaction index.
-pub type CompactUtxoCollection = HashMap<TransactionOutpoint, CompactUtxoEntry>;
+pub type CompactUtxoCollection = HashMap<UtxoEntryKeyData, CompactUtxoEntry>;
+
+/// A deterministic ordered list of UTXOs keyed by [`UtxoEntryKeyData`].
+pub type OrderedUtxoCollection = Vec<(UtxoEntryKeyData, CompactUtxoEntry)>;
+
+/// A deterministic ordered list of UTXO collections keyed by [`ScriptPublicKey`].
+pub type OrderedUtxoSetByScriptPublicKey = Vec<(ScriptPublicKey, OrderedUtxoCollection)>;
+
+/// A page of ordered UTXOs with an optional cursor for the next group.
+#[derive(Clone, Debug, Default)]
+pub struct OrderedUtxoSetByScriptPublicKeyPage {
+    pub entries: OrderedUtxoSetByScriptPublicKey,
+    pub next_script_public_key: Option<ScriptPublicKey>,
+    pub next_daa_score: Option<u64>,
+}
+
+impl OrderedUtxoSetByScriptPublicKeyPage {
+    pub fn new(
+        entries: OrderedUtxoSetByScriptPublicKey,
+        next_script_public_key: Option<ScriptPublicKey>,
+        next_daa_score: Option<u64>,
+    ) -> Self {
+        Self { entries, next_script_public_key, next_daa_score }
+    }
+}
 
 /// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxoEntry`].
 pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
@@ -16,18 +40,18 @@ pub type BalanceByScriptPublicKey = HashMap<ScriptPublicKey, u64>;
 // Note: memory optimization compared to go-lang kaspad:
 // Unlike `consensus_core::tx::UtxoEntry` the utxoindex utilizes a compacted utxo form, where `script_public_key` field is removed.
 // This utxo structure can be utilized in the utxoindex, since utxos are implicitly key'd via its script public key (and outpoint) at all times.
+// furthermore, the daa_score is also added to the key (for range queries) and thus is removed from the value as well. This results in a more compact representation of the utxo entry, which is more suitable for storage in the utxoindex.
 /// A compacted form of [`UtxoEntry`] without reference to [`ScriptPublicKey`] or [`TransactionOutpoint`]
 #[derive(Clone, Copy, Deserialize, Serialize, Debug)]
 pub struct CompactUtxoEntry {
     pub amount: u64,
-    pub block_daa_score: u64,
     pub is_coinbase: bool,
 }
 
 impl CompactUtxoEntry {
     /// Creates a new [`CompactUtxoEntry`]
-    pub fn new(amount: u64, block_daa_score: u64, is_coinbase: bool) -> Self {
-        Self { amount, block_daa_score, is_coinbase }
+    pub fn new(amount: u64, is_coinbase: bool) -> Self {
+        Self { amount, is_coinbase }
     }
 }
 
@@ -35,7 +59,19 @@ impl MemSizeEstimator for CompactUtxoEntry {}
 
 impl From<UtxoEntry> for CompactUtxoEntry {
     fn from(utxo_entry: UtxoEntry) -> Self {
-        Self { amount: utxo_entry.amount, block_daa_score: utxo_entry.block_daa_score, is_coinbase: utxo_entry.is_coinbase }
+        Self { amount: utxo_entry.amount, is_coinbase: utxo_entry.is_coinbase }
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct UtxoEntryKeyData {
+    pub daa_score: u64,
+    pub transaction_outpoint: TransactionOutpoint,
+}
+
+impl UtxoEntryKeyData {
+    pub fn new(daa_score: u64, transaction_outpoint: TransactionOutpoint) -> Self {
+        Self { daa_score, transaction_outpoint }
     }
 }
 

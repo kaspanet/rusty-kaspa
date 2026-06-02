@@ -1,12 +1,12 @@
 use kaspa_consensus_core::{
     BlockHashSet,
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
 };
 use kaspa_consensusmanager::spawn_blocking;
 use kaspa_database::prelude::StoreResult;
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage};
 use parking_lot::RwLock;
 use std::{collections::HashSet, fmt::Debug, sync::Arc};
 
@@ -27,6 +27,17 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     /// Note: Use a read lock when accessing this method
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
 
+    /// Retrieve ordered UTXOs for multiple script public keys with cursor pagination.
+    fn get_utxos_by_script_public_keys_by_daa_score_page(
+        &self,
+        script_public_keys: ScriptPublicKeys,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        start_script_public_key: Option<ScriptPublicKey>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage>;
+
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
 
     // This can have a big memory footprint, so it should be used only for tests.
@@ -41,7 +52,7 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     ///
     /// Note:
     /// 1) Use a read lock when accessing this method
-    /// 2) due to potential sync-gaps is_synced is unreliable while consensus is actively resolving virtual states.  
+    /// 2) due to potential sync-gaps is_synced is unreliable while consensus is actively resolving virtual states.
     fn is_synced(&self) -> UtxoIndexResult<bool>;
 
     /// Update the utxoindex with the given utxo_diff, and tips.
@@ -72,6 +83,29 @@ impl UtxoIndexProxy {
 
     pub async fn get_utxos_by_script_public_keys(self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         spawn_blocking(move || self.inner.read().get_utxos_by_script_public_keys(script_public_keys)).await.unwrap()
+    }
+
+    pub async fn get_utxos_by_script_public_keys_by_daa_score_page(
+        self,
+        script_public_keys: ScriptPublicKeys,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        start_script_public_key: Option<ScriptPublicKey>,
+        start_daa_score: Option<u64>,
+        limit: Option<u64>,
+    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
+        spawn_blocking(move || {
+            self.inner.read().get_utxos_by_script_public_keys_by_daa_score_page(
+                script_public_keys,
+                from_daa_score,
+                to_daa_score,
+                start_script_public_key,
+                start_daa_score,
+                limit,
+            )
+        })
+        .await
+        .unwrap()
     }
 
     pub async fn get_balance_by_script_public_keys(

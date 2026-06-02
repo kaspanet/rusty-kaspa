@@ -313,6 +313,49 @@ impl Rpc {
 
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetUtxosByAddressesV2 => {
+                let mut args = argv;
+
+                if args.len() < 6 {
+                    return Err(Error::custom(
+                        "Usage: rpc get-utxos-by-addresses-v2 <addr...> <from_daa_score|None> <to_daa_score|None> <start_address|None> <start_daa_score|None> <limit|None> (limit is a soft cap at the script public key + DAA boundary)",
+                    ));
+                }
+
+                let parse_optional_u64 = |value: String| -> Result<Option<u64>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(value.parse::<u64>()?)) }
+                };
+
+                let parse_optional_address = |value: String| -> Result<Option<Address>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(Address::try_from(value.as_str())?)) }
+                };
+
+                let limit = parse_optional_u64(args.pop().unwrap())?;
+                let start_daa_score = parse_optional_u64(args.pop().unwrap())?;
+                let start_address = parse_optional_address(args.pop().unwrap())?;
+                let to_daa_score = parse_optional_u64(args.pop().unwrap())?;
+                let from_daa_score = parse_optional_u64(args.pop().unwrap())?;
+
+                if args.is_empty() {
+                    return Err(Error::custom("Please specify at least one address"));
+                }
+
+                let addresses = args.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
+                let result = rpc
+                    .get_utxos_by_addresses_v2_call(
+                        None,
+                        GetUtxosByAddressesV2Request::new(
+                            addresses,
+                            from_daa_score,
+                            to_daa_score,
+                            start_address,
+                            start_daa_score,
+                            limit,
+                        ),
+                    )
+                    .await?;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

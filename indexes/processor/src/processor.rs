@@ -191,15 +191,15 @@ mod tests {
             Notification::UtxosChanged(utxo_changed_notification) => {
                 let mut notification_utxo_added_count = 0;
                 for (script_public_key, compact_utxo_collection) in utxo_changed_notification.added.iter() {
-                    for (transaction_outpoint, compact_utxo) in compact_utxo_collection.iter() {
+                    for (utxo_entry_key_data, compact_utxo) in compact_utxo_collection.iter() {
                         let test_utxo = test_notification
                             .accumulated_utxo_diff
                             .add
-                            .get(transaction_outpoint)
+                            .get(&utxo_entry_key_data.transaction_outpoint)
                             .expect("expected transaction outpoint to be in test event");
                         assert_eq!(test_utxo.script_public_key, *script_public_key);
                         assert_eq!(test_utxo.amount, compact_utxo.amount);
-                        assert_eq!(test_utxo.block_daa_score, compact_utxo.block_daa_score);
+                        assert_eq!(test_utxo.block_daa_score, utxo_entry_key_data.daa_score);
                         assert_eq!(test_utxo.is_coinbase, compact_utxo.is_coinbase);
                         notification_utxo_added_count += 1;
                     }
@@ -208,15 +208,15 @@ mod tests {
 
                 let mut notification_utxo_removed_count = 0;
                 for (script_public_key, compact_utxo_collection) in utxo_changed_notification.removed.iter() {
-                    for (transaction_outpoint, compact_utxo) in compact_utxo_collection.iter() {
+                    for (utxo_entry_key_data, compact_utxo) in compact_utxo_collection.iter() {
                         let test_utxo = test_notification
                             .accumulated_utxo_diff
                             .remove
-                            .get(transaction_outpoint)
+                            .get(&utxo_entry_key_data.transaction_outpoint)
                             .expect("expected transaction outpoint to be in test event");
                         assert_eq!(test_utxo.script_public_key, *script_public_key);
                         assert_eq!(test_utxo.amount, compact_utxo.amount);
-                        assert_eq!(test_utxo.block_daa_score, compact_utxo.block_daa_score);
+                        assert_eq!(test_utxo.block_daa_score, utxo_entry_key_data.daa_score);
                         assert_eq!(test_utxo.is_coinbase, compact_utxo.is_coinbase);
                         notification_utxo_removed_count += 1;
                     }
