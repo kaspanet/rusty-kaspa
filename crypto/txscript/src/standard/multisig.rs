@@ -70,7 +70,7 @@ pub fn multisig_redeem_script_ecdsa(pub_keys: impl Iterator<Item = impl Borrow<[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{TxScriptEngine, caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script};
+    use crate::{EngineContext, TxScriptEngine, caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script};
     use core::str::FromStr;
     use kaspa_consensus_core::{
         hashing::{
@@ -138,7 +138,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                sig_op_count: 4,
+                mass: TxInputMass::SigopCount(4.into()),
             }],
             vec![],
             0,
@@ -152,6 +152,7 @@ mod tests {
             script_public_key: pay_to_script_hash_script(&script),
             block_daa_score: 36151168,
             is_coinbase: false,
+            covenant_id: None,
         }];
         let mut tx = MutableTransaction::with_entries(tx, entries);
 
@@ -185,7 +186,8 @@ mod tests {
         let (input, entry) = tx.populated_inputs().next().unwrap();
 
         let cache = Cache::new(10_000);
-        let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &reused_values, &cache);
+        let ctx = EngineContext::new(&cache).with_reused(&reused_values);
+        let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, ctx, Default::default());
         assert_eq!(engine.execute().is_ok(), is_ok);
     }
     #[test]

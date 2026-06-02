@@ -7,11 +7,22 @@
 #![allow(non_snake_case)]
 
 mod script_public_key;
+mod serde_impl;
 
+use crate::mass::{
+    ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
+};
+pub use crate::utxo::UtxoEntry;
+use crate::{
+    errors::tx::PopulateGenesisCovenantsError,
+    hashing,
+    subnets::{self, SubnetworkId},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
+use kaspa_hashes::Hash;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
-use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
+use kaspa_utils::serde_bytes_fixed_ref;
 pub use script_public_key::{
     SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
@@ -25,44 +36,11 @@ use std::{
     ops::Range,
     str::{self},
 };
-use wasm_bindgen::prelude::*;
-
-use crate::mass::{ContextualMasses, NonContextualMasses};
-use crate::{
-    hashing,
-    subnets::{self, SubnetworkId},
-};
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
 /// A 32-byte Kaspa transaction identifier.
 pub type TransactionId = kaspa_hashes::Hash;
-
-/// Holds details about an individual transaction output in a utxo
-/// set such as whether or not it was contained in a coinbase tx, the daa
-/// score of the block that accepts the tx, its public key script, and how
-/// much it pays.
-/// @category Consensus
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable, js_name = TransactionUtxoEntry)]
-pub struct UtxoEntry {
-    pub amount: u64,
-    #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
-    pub script_public_key: ScriptPublicKey,
-    #[wasm_bindgen(js_name = blockDaaScore)]
-    pub block_daa_score: u64,
-    #[wasm_bindgen(js_name = isCoinbase)]
-    pub is_coinbase: bool,
-}
-
-impl UtxoEntry {
-    pub fn new(amount: u64, script_public_key: ScriptPublicKey, block_daa_score: u64, is_coinbase: bool) -> Self {
-        Self { amount, script_public_key, block_daa_score, is_coinbase }
-    }
-}
-
-impl MemSizeEstimator for UtxoEntry {}
 
 pub type TransactionIndexType = u32;
 
@@ -87,20 +65,90 @@ impl Display for TransactionOutpoint {
     }
 }
 
+/// Encodes the mass commitment for a transaction input.
+/// Version 0 transactions use `SigopCount`, version >= 1 transactions use `ComputeBudget`.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Debug, Copy)]
+pub enum TxInputMass {
+    SigopCount(SigopCount),
+    ComputeBudget(ComputeBudget),
+}
+
+impl TxInputMass {
+    pub fn sig_op_count(self) -> Option<u8> {
+        match self {
+            Self::SigopCount(n) => Some(n.into()),
+            _ => None,
+        }
+    }
+
+    pub fn compute_budget(self) -> Option<u16> {
+        match self {
+            Self::ComputeBudget(n) => Some(n.into()),
+            _ => None,
+        }
+    }
+
+    pub fn version_expects_compute_budget_field(version: u16) -> bool {
+        version >= 1
+    }
+
+    pub fn version_expects_sig_op_count_field(version: u16) -> bool {
+        !Self::version_expects_compute_budget_field(version)
+    }
+
+    /// Returns the total script units this input mass allows the engine to consume, including a free per-input budget.
+    pub fn allowed_script_units(self) -> ScriptUnits {
+        let script_units = ScriptUnits::from(self);
+        script_units.saturating_add(free_script_units_per_input())
+    }
+}
+
+impl From<SigopCount> for TxInputMass {
+    fn from(value: SigopCount) -> Self {
+        Self::SigopCount(value)
+    }
+}
+
+impl From<ComputeBudget> for TxInputMass {
+    fn from(value: ComputeBudget) -> Self {
+        Self::ComputeBudget(value)
+    }
+}
+
+impl From<TxInputMass> for ScriptUnits {
+    fn from(value: TxInputMass) -> Self {
+        match value {
+            TxInputMass::SigopCount(count) => ScriptUnits::from(count),
+            TxInputMass::ComputeBudget(budget) => ScriptUnits::from(budget),
+        }
+    }
+}
+
 /// Represents a Kaspa transaction input
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
-    #[serde(with = "serde_bytes")]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    pub sig_op_count: u8,
+    pub mass: TxInputMass,
 }
 
 impl TransactionInput {
+    pub fn new_with_mass(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, mass: TxInputMass) -> Self {
+        Self { previous_outpoint, signature_script, sequence, mass }
+    }
+
     pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
-        Self { previous_outpoint, signature_script, sequence, sig_op_count }
+        Self { previous_outpoint, signature_script, sequence, mass: SigopCount(sig_op_count).into() }
+    }
+
+    pub fn new_with_compute_budget(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        compute_budget: u16,
+    ) -> Self {
+        Self { previous_outpoint, signature_script, sequence, mass: ComputeBudget(compute_budget).into() }
     }
 }
 
@@ -110,22 +158,59 @@ impl std::fmt::Debug for TransactionInput {
             .field("previous_outpoint", &self.previous_outpoint)
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
-            .field("sig_op_count", &self.sig_op_count)
+            .field("sig_op_count", &self.mass.sig_op_count().unwrap_or_default())
+            .field("compute_budget", &self.mass.compute_budget().unwrap_or_default())
             .finish()
     }
 }
 
 /// Represents a Kaspad transaction output
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct TransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
+    pub covenant: Option<CovenantBinding>,
 }
 
 impl TransactionOutput {
     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
-        Self { value, script_public_key }
+        Self { value, script_public_key, covenant: None }
+    }
+
+    pub fn with_covenant(value: u64, script_public_key: ScriptPublicKey, covenant: Option<CovenantBinding>) -> Self {
+        Self { value, script_public_key, covenant }
+    }
+}
+
+/// Binds a transaction output to the covenant and input authorizing its creation.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Copy)]
+#[serde(rename_all = "camelCase")]
+pub struct CovenantBinding {
+    pub authorizing_input: u16,
+    pub covenant_id: Hash,
+}
+
+// #[wasm_bindgen]
+impl CovenantBinding {
+    pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
+        Self { authorizing_input, covenant_id }
+    }
+}
+
+/// A genesis covenant group for bulk covenant binding population.
+///
+/// All listed outputs are bound to the same covenant id, derived from the
+/// authorizing input outpoint and this exact ordered output list.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenesisCovenantGroup {
+    pub authorizing_input: u16,
+    pub outputs: Vec<u32>,
+}
+
+impl GenesisCovenantGroup {
+    pub fn new(authorizing_input: u16, outputs: Vec<u32>) -> Self {
+        Self { authorizing_input, outputs }
     }
 }
 
@@ -160,8 +245,7 @@ impl BorshSerialize for TransactionMass {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, Default, BorshSerialize, BorshDeserialize)]
 pub struct Transaction {
     pub version: u16,
     pub inputs: Vec<TransactionInput>,
@@ -169,17 +253,14 @@ pub struct Transaction {
     pub lock_time: u64,
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
-    #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
 
     /// Holds a commitment to the storage mass (KIP-0009)
     /// TODO: rename field and related methods to storage_mass
-    #[serde(default)]
     mass: TransactionMass,
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
-    #[serde(with = "serde_bytes_fixed_ref")]
     id: TransactionId,
 }
 
@@ -225,6 +306,70 @@ impl Transaction {
     ) -> Self {
         Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: Default::default(), id: Default::default() }
     }
+
+    /// Populates genesis covenant bindings for multiple output groups.
+    ///
+    /// For each group, this computes `covenant_id(authorizing_input.outpoint, group.outputs)`
+    /// and sets that binding on all listed outputs.
+    ///
+    /// Validation is performed for all groups before mutating the transaction:
+    /// - authorizing input index must exist
+    /// - output indices must exist
+    /// - outputs in each group must be strictly increasing
+    /// - outputs across groups must be disjoint
+    /// - targeted outputs must not already contain a covenant binding
+    pub fn populate_genesis_covenants(&mut self, groups: &[GenesisCovenantGroup]) -> Result<(), PopulateGenesisCovenantsError> {
+        let mut seen_outs = vec![false; self.outputs.len()];
+
+        // Phase 1: Validate all groups without mutating.
+        for group in groups {
+            let auth_input = group.authorizing_input as usize;
+            if auth_input >= self.inputs.len() {
+                return Err(PopulateGenesisCovenantsError::NoSuchInput(auth_input, self.inputs.len()));
+            }
+
+            let outs = group.outputs.as_slice();
+            if outs.is_empty() {
+                return Err(PopulateGenesisCovenantsError::EmptyOutputs);
+            }
+
+            // Only enforce monotonic order here; duplicate indices are rejected by the `seen_outs` disjointness check below.
+            if !outs.is_sorted() {
+                return Err(PopulateGenesisCovenantsError::OutputsNotOrdered);
+            }
+
+            // Because indices are sorted ascending, bound-checking the last (max) index is sufficient.
+            let last = *outs.last().expect("checked non-empty above");
+            if (last as usize) >= self.outputs.len() {
+                return Err(PopulateGenesisCovenantsError::NoSuchOutput(last, self.outputs.len()));
+            }
+
+            for &out in outs {
+                if seen_outs[out as usize] {
+                    return Err(PopulateGenesisCovenantsError::OutputsNotDisjoint(out));
+                }
+                seen_outs[out as usize] = true;
+
+                if self.outputs[out as usize].covenant.is_some() {
+                    return Err(PopulateGenesisCovenantsError::CovenantAlreadyPopulated(out));
+                }
+            }
+        }
+
+        // Phase 2: Compute covenant ids and apply bindings.
+        for group in groups {
+            let auth_input = group.authorizing_input as usize;
+            let input_outpoint = self.inputs[auth_input].previous_outpoint;
+            let covenant_id =
+                hashing::covenant_id::covenant_id(input_outpoint, group.outputs.iter().map(|&out| (out, &self.outputs[out as usize])));
+            let binding = CovenantBinding::new(group.authorizing_input, covenant_id);
+            for &out in &group.outputs {
+                self.outputs[out as usize].covenant = Some(binding);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Transaction {
@@ -261,6 +406,10 @@ impl Transaction {
     pub fn with_mass(self, mass: u64) -> Self {
         self.set_mass(mass);
         self
+    }
+
+    pub fn payload_digest(&self) -> Hash {
+        hashing::tx::payload_digest(&self.payload)
     }
 }
 
@@ -313,6 +462,14 @@ pub trait VerifiableTransaction {
     }
 
     fn utxo(&self, index: usize) -> Option<&UtxoEntry>;
+
+    fn payload_digest(&self) -> Hash {
+        self.tx().payload_digest()
+    }
+
+    fn version(&self) -> u16 {
+        self.tx().version
+    }
 }
 
 /// A custom iterator written only so that `populated_inputs` has a known return type and can de defined on the trait level
@@ -475,9 +632,9 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     /// transactions pays per gram of the aggregated contextual mass (max over compute, transient
     /// and storage masses). The function returns a value when calculated fee and calculated masses
     /// exist, otherwise `None` is returned.
-    pub fn calculated_feerate(&self) -> Option<f64> {
+    pub fn calculated_feerate(&self, cofactors: &MassCofactors) -> Option<f64> {
         self.calculated_non_contextual_masses
-            .map(|non_contextual_masses| ContextualMasses::new(self.tx.as_ref().mass()).max(non_contextual_masses))
+            .map(|non_contextual| Mass::new(non_contextual, ContextualMasses::new(self.tx.as_ref().mass())).normalized_max(cofactors))
             .and_then(|max_mass| self.calculated_fee.map(|fee| fee as f64 / max_mass as f64))
     }
 
@@ -566,8 +723,11 @@ pub enum TransactionQueryResult {
 
 #[cfg(test)]
 mod tests {
+    use crate::errors::tx::PopulateGenesisCovenantsError;
+    use crate::hashing;
+    use crate::subnets::SUBNETWORK_ID_NATIVE;
+
     use super::*;
-    use consensus_core::subnets::SUBNETWORK_ID_COINBASE;
     use smallvec::smallvec;
 
     fn test_transaction() -> Transaction {
@@ -579,7 +739,7 @@ mod tests {
             ],
         );
         Transaction::new(
-            1,
+            0,
             vec![
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint {
@@ -594,7 +754,7 @@ mod tests {
                         0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
                     ],
                     sequence: 2,
-                    sig_op_count: 3,
+                    mass: TxInputMass::SigopCount(3.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint {
@@ -609,15 +769,15 @@ mod tests {
                         0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
                     ],
                     sequence: 4,
-                    sig_op_count: 5,
+                    mass: TxInputMass::SigopCount(5.into()),
                 },
             ],
             vec![
-                TransactionOutput { value: 6, script_public_key: script_public_key.clone() },
-                TransactionOutput { value: 7, script_public_key },
+                TransactionOutput { value: 6, script_public_key: script_public_key.clone(), covenant: None },
+                TransactionOutput { value: 7, script_public_key, covenant: None },
             ],
             8,
-            SUBNETWORK_ID_COINBASE,
+            SUBNETWORK_ID_NATIVE,
             9,
             vec![
                 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12,
@@ -630,14 +790,27 @@ mod tests {
         )
     }
 
+    fn test_transaction_v1() -> Transaction {
+        let mut tx = test_transaction();
+        tx.version = 1;
+        // A valid v1 transaction must carry a ComputeBudget mass on every input;
+        // the serializer panics otherwise (that's its contract with the type system).
+        tx.inputs[0].mass = TxInputMass::ComputeBudget(ComputeBudget(17));
+        tx.inputs[1].mass = TxInputMass::ComputeBudget(ComputeBudget(23));
+        tx.outputs[0].covenant = Some(CovenantBinding::new(1, hashing::tx::payload_digest(&[1, 2, 3])));
+        tx.finalize();
+        tx
+    }
+
     #[test]
     fn test_transaction_bincode() {
         let tx = test_transaction();
         let bts = bincode::serialize(&tx).unwrap();
-
-        // standard, based on https://github.com/kaspanet/rusty-kaspa/commit/7e947a06d2434daf4bc7064d4cd87dc1984b56fe
+        // Captured from the version-aware custom serializer in `tx::serde_impl`.
+        // v0 inputs carry a flat `sig_op_count: u8` (no `TxInputMass` enum tag)
+        // and v0 outputs have no `covenant` field at all.
         let expected_bts = vec![
-            1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,
+            0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,
             130, 26, 104, 59, 122, 78, 222, 254, 44, 0, 0, 0, 250, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8,
             9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 3, 75,
             176, 117, 53, 223, 213, 142, 11, 60, 214, 79, 215, 21, 82, 128, 135, 42, 4, 113, 188, 248, 48, 149, 82, 106, 206, 14, 56,
@@ -646,13 +819,13 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185,
             117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185, 117, 220, 118, 217, 0,
-            59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
             43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
             73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0, 0, 0, 0, 0,
-            0, 0, 0, 69, 146, 193, 64, 98, 49, 45, 0, 77, 32, 25, 122, 77, 15, 211, 252, 61, 210, 82, 177, 39, 153, 127, 33, 188, 172,
-            138, 38, 67, 75, 241, 176,
+            0, 0, 0, 50, 200, 4, 55, 147, 193, 14, 39, 3, 248, 207, 196, 68, 249, 136, 99, 48, 134, 161, 29, 52, 181, 205, 113, 128,
+            141, 219, 202, 72, 208, 223, 66,
         ];
         assert_eq!(expected_bts, bts);
         assert_eq!(tx, bincode::deserialize(&bts).unwrap());
@@ -663,7 +836,7 @@ mod tests {
         let tx = test_transaction();
         let str = serde_json::to_string_pretty(&tx).unwrap();
         let expected_str = r#"{
-  "version": 1,
+  "version": 0,
   "inputs": [
     {
       "previousOutpoint": {
@@ -695,14 +868,162 @@ mod tests {
     }
   ],
   "lockTime": 8,
-  "subnetworkId": "0100000000000000000000000000000000000000",
+  "subnetworkId": "0000000000000000000000000000000000000000",
   "gas": 9,
   "payload": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263",
   "mass": 0,
-  "id": "4592c14062312d004d20197a4d0fd3fc3dd252b127997f21bcac8a26434bf1b0"
+  "id": "32c8043793c10e2703f8cfc444f988633086a11d34b5cd71808ddbca48d0df42"
 }"#;
         assert_eq!(expected_str, str);
         assert_eq!(tx, serde_json::from_str(&str).unwrap());
+    }
+
+    #[test]
+    fn test_transaction_v1_json() {
+        let tx = test_transaction_v1();
+        let str = serde_json::to_string_pretty(&tx).unwrap();
+        assert!(str.contains("\"computeBudget\": 17"));
+        assert!(str.contains("\"covenant\": {"));
+        assert_eq!(tx, serde_json::from_str(&str).unwrap());
+    }
+
+    #[test]
+    fn test_transaction_v1_bincode() {
+        let tx = test_transaction_v1();
+        let bts = bincode::serialize(&tx).unwrap();
+        assert_eq!(tx, bincode::deserialize(&bts).unwrap());
+    }
+
+    #[test]
+    fn test_transaction_yaml_v0() {
+        let tx = test_transaction();
+        let s = serde_yaml::to_string(&tx).unwrap();
+        let expected = r#"inputs:
+- previousOutpoint:
+    transactionId: 165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000
+    index: 4294967290
+  signatureScript: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  sequence: 2
+  sigOpCount: 3
+- previousOutpoint:
+    transactionId: 4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000
+    index: 4294967291
+  signatureScript: 202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f
+  sequence: 4
+  sigOpCount: 5
+outputs:
+- value: 6
+  scriptPublicKey: 000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e
+- value: 7
+  scriptPublicKey: 000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e
+lockTime: 8
+subnetworkId: '0000000000000000000000000000000000000000'
+gas: 9
+payload: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263
+mass: 0
+id: 32c8043793c10e2703f8cfc444f988633086a11d34b5cd71808ddbca48d0df42
+version: 0
+"#;
+        let decoded_actual: Transaction = serde_yaml::from_str(&s).unwrap();
+        let decoded_expected: Transaction = serde_yaml::from_str(expected).unwrap();
+        assert_eq!(tx, decoded_actual);
+        assert_eq!(decoded_expected, decoded_actual);
+    }
+
+    #[test]
+    fn test_transaction_yaml_v1() {
+        let tx = test_transaction_v1();
+        let s = serde_yaml::to_string(&tx).unwrap();
+        let expected = r#"
+inputs:
+- previousOutpoint:
+    transactionId: 165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000
+    index: 4294967290
+  signatureScript: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  sequence: 2
+  computeBudget: 17
+- previousOutpoint:
+    transactionId: 4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000
+    index: 4294967291
+  signatureScript: 202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f
+  sequence: 4
+  computeBudget: 23
+outputs:
+- value: 6
+  scriptPublicKey: 000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e
+  covenant:
+    authorizingInput: 1
+    covenantId: 6d190a52d1ad6f508837acf97d05fa45e579df2c2d9a4a2fe5bc259182b4551b
+- value: 7
+  scriptPublicKey: 000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e
+  covenant: null
+lockTime: 8
+subnetworkId: '0000000000000000000000000000000000000000'
+gas: 9
+payload: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263
+mass: 0
+id: 630ca922552ada815f0da92913c2327190f5c9728a0cae12ce38f9a5dfc19b76
+version: 1
+"#;
+        let decoded_actual: Transaction = serde_yaml::from_str(&s).unwrap();
+        let decoded_expected: Transaction = serde_yaml::from_str(expected).unwrap();
+        assert_eq!(tx, decoded_actual);
+        assert_eq!(decoded_expected, decoded_actual);
+    }
+
+    #[test]
+    fn test_transaction_toml_v0() {
+        let tx = test_transaction();
+        let s = toml::to_string(&tx).unwrap();
+        // Hand-authored fixture with `version` at the end. TOML forbids root scalars
+        // after `[[array-of-tables]]` blocks, so inputs/outputs are written as inline
+        // arrays to keep the `version` key at the root table.
+        let expected = r#"inputs = [
+    { previousOutpoint = { transactionId = "165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000", index = 4294967290 }, signatureScript = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", sequence = 2, sigOpCount = 3 },
+    { previousOutpoint = { transactionId = "4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000", index = 4294967291 }, signatureScript = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f", sequence = 4, sigOpCount = 5 },
+]
+outputs = [
+    { value = 6, scriptPublicKey = "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e" },
+    { value = 7, scriptPublicKey = "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e" },
+]
+lockTime = 8
+subnetworkId = "0000000000000000000000000000000000000000"
+gas = 9
+payload = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263"
+mass = 0
+id = "32c8043793c10e2703f8cfc444f988633086a11d34b5cd71808ddbca48d0df42"
+version = 0
+"#;
+        let decoded_actual: Transaction = toml::from_str(&s).unwrap();
+        let decoded_expected: Transaction = toml::from_str(expected).unwrap();
+        assert_eq!(tx, decoded_actual);
+        assert_eq!(decoded_expected, decoded_actual);
+    }
+
+    #[test]
+    fn test_transaction_toml_v1() {
+        let tx = test_transaction_v1();
+        let s = toml::to_string(&tx).unwrap();
+        let expected = r#"inputs = [
+    { previousOutpoint = { transactionId = "165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000", index = 4294967290 }, signatureScript = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", sequence = 2, computeBudget = 17 },
+    { previousOutpoint = { transactionId = "4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000", index = 4294967291 }, signatureScript = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f", sequence = 4, computeBudget = 23 },
+]
+outputs = [
+    { value = 6, scriptPublicKey = "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e", covenant = { authorizingInput = 1, covenantId = "6d190a52d1ad6f508837acf97d05fa45e579df2c2d9a4a2fe5bc259182b4551b" } },
+    { value = 7, scriptPublicKey = "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e" },
+]
+lockTime = 8
+subnetworkId = "0000000000000000000000000000000000000000"
+gas = 9
+payload = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263"
+mass = 0
+id = "630ca922552ada815f0da92913c2327190f5c9728a0cae12ce38f9a5dfc19b76"
+version = 1
+"#;
+        let decoded_actual: Transaction = toml::from_str(&s).unwrap();
+        let decoded_expected: Transaction = toml::from_str(expected).unwrap();
+        assert_eq!(tx, decoded_actual);
+        assert_eq!(decoded_expected, decoded_actual);
     }
 
     #[test]
@@ -733,6 +1054,119 @@ mod tests {
         let bin = borsh::to_vec(&spk).unwrap();
         let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(spk, spk2);
+    }
+
+    fn tx_for_genesis_covenant_population(num_inputs: usize, num_outputs: usize) -> Transaction {
+        let inputs = (0..num_inputs)
+            .map(|i| TransactionInput::new(TransactionOutpoint::new((i as u64).into(), 0), vec![], 0, 0))
+            .collect::<Vec<_>>();
+        let outputs = (0..num_outputs).map(|_| TransactionOutput::new(100, Default::default())).collect::<Vec<_>>();
+        Transaction::new(1, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![])
+    }
+
+    #[test]
+    fn test_populate_genesis_covenants() {
+        // Success case
+        let mut tx = tx_for_genesis_covenant_population(1, 8);
+        let group_a_outputs = [1u32, 3, 7];
+        let group_b_outputs = [2u32, 4, 5];
+        let expected_group_a = hashing::covenant_id::covenant_id(
+            tx.inputs[0].previous_outpoint,
+            group_a_outputs.into_iter().map(|i| (i, &tx.outputs[i as usize])),
+        );
+        let expected_group_b = hashing::covenant_id::covenant_id(
+            tx.inputs[0].previous_outpoint,
+            group_b_outputs.into_iter().map(|i| (i, &tx.outputs[i as usize])),
+        );
+        tx.populate_genesis_covenants(&[GenesisCovenantGroup::new(0, vec![1, 3, 7]), GenesisCovenantGroup::new(0, vec![2, 4, 5])])
+            .unwrap();
+        for &i in &[1u32, 3, 7] {
+            assert_eq!(tx.outputs[i as usize].covenant, Some(CovenantBinding::new(0, expected_group_a)));
+        }
+        for &i in &[2u32, 4, 5] {
+            assert_eq!(tx.outputs[i as usize].covenant, Some(CovenantBinding::new(0, expected_group_b)));
+        }
+        assert!(tx.outputs[0].covenant.is_none());
+        assert!(tx.outputs[6].covenant.is_none());
+
+        // Error cases
+        let mut already_populated_tx = tx_for_genesis_covenant_population(1, 2);
+        already_populated_tx.outputs[1].covenant = Some(CovenantBinding::new(0, Hash::from_u64_word(7)));
+
+        let cases = vec![
+            (
+                tx_for_genesis_covenant_population(1, 1),
+                vec![GenesisCovenantGroup::new(1, vec![0])],
+                PopulateGenesisCovenantsError::NoSuchInput(1, 1),
+            ),
+            (
+                tx_for_genesis_covenant_population(1, 1),
+                vec![GenesisCovenantGroup::new(0, vec![1])],
+                PopulateGenesisCovenantsError::NoSuchOutput(1, 1),
+            ),
+            (
+                tx_for_genesis_covenant_population(1, 1),
+                vec![GenesisCovenantGroup::new(0, vec![])],
+                PopulateGenesisCovenantsError::EmptyOutputs,
+            ),
+            (
+                tx_for_genesis_covenant_population(1, 4),
+                vec![GenesisCovenantGroup::new(0, vec![1, 3, 2])],
+                PopulateGenesisCovenantsError::OutputsNotOrdered,
+            ),
+            (
+                tx_for_genesis_covenant_population(1, 5),
+                vec![GenesisCovenantGroup::new(0, vec![1, 3]), GenesisCovenantGroup::new(0, vec![2, 3])],
+                PopulateGenesisCovenantsError::OutputsNotDisjoint(3),
+            ),
+            (
+                already_populated_tx,
+                vec![GenesisCovenantGroup::new(0, vec![1])],
+                PopulateGenesisCovenantsError::CovenantAlreadyPopulated(1),
+            ),
+        ];
+
+        for (mut tx, groups, expected_err) in cases {
+            let err = tx.populate_genesis_covenants(&groups).unwrap_err();
+            assert_eq!(err, expected_err);
+        }
+    }
+
+    #[test]
+    fn json_transaction_deserialize_accepts_fields_before_version() {
+        let tx = Transaction::new(
+            1,
+            vec![TransactionInput::new_with_compute_budget(
+                TransactionOutpoint::new(Hash::from_bytes([0x11; 32]), 0),
+                vec![0xaa, 0xbb],
+                42,
+                7,
+            )],
+            vec![TransactionOutput::with_covenant(
+                100,
+                ScriptPublicKey::new(0, vec![0x51].into()),
+                Some(CovenantBinding::new(0, Hash::from_bytes([0x22; 32]))),
+            )],
+            123,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![0xcc],
+        );
+        let value = serde_json::to_value(&tx).unwrap();
+        let reordered = serde_json::json!({
+            "inputs": value["inputs"],
+            "outputs": value["outputs"],
+            "version": value["version"],
+            "lockTime": value["lockTime"],
+            "subnetworkId": value["subnetworkId"],
+            "gas": value["gas"],
+            "payload": value["payload"],
+            "mass": value["mass"],
+            "id": value["id"],
+        });
+
+        let decoded: Transaction = serde_json::from_value(reordered).expect("field order must not affect transaction JSON");
+        assert_eq!(decoded, tx);
     }
 
     // use wasm_bindgen_test::wasm_bindgen_test;

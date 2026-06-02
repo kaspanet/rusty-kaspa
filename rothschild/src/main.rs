@@ -5,11 +5,15 @@ use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     config::params::TESTNET_PARAMS,
-    constants::{SOMPI_PER_KASPA, TX_VERSION},
+    constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_TOCCATA},
+    hashing::covenant_id::covenant_id,
     network::NetworkType,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
+    tx::{
+        CovenantBinding, MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+        UtxoEntry,
+    },
 };
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::{ClientPool, GrpcClient};
@@ -26,9 +30,14 @@ use secp256k1::{
 use tokio::time::{Instant, MissedTickBehavior, interval};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
-const FEE_RATE: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
 const ADDRESS_VERSION: Version = Version::PubKey;
+
+// Minimum standard relay fee is 100 sompi/gram; use 110 for a safety margin.
+const FEE_RATE: u64 = 110;
+
+// Mempool minimum relay fee uses post-Toccata cofactors immediately, so we normalize accordingly (factor / ratio between limits).
+const NORMALIZED_TRANSIENT_BYTE_FACTOR: u64 = 2;
 
 struct Stats {
     num_txs: usize,
@@ -48,6 +57,8 @@ pub struct Args {
     pub priority_fee: u64,
     pub randomize_fee: bool,
     pub payload_size: usize,
+    pub enable_covenant_id: bool,
+    pub randomize_tx_version: bool,
     pub network: NetworkType,
 }
 
@@ -69,6 +80,8 @@ impl Args {
             priority_fee: m.get_one::<u64>("priority-fee").cloned().unwrap_or(0),
             randomize_fee: m.get_one::<bool>("randomize-fee").cloned().unwrap_or(false),
             payload_size: m.get_one::<usize>("payload-size").cloned().unwrap_or(0),
+            enable_covenant_id: m.get_one::<bool>("enable-covenant-id").cloned().unwrap_or_default(),
+            randomize_tx_version: m.get_one::<bool>("randomize-tx-version").cloned().unwrap_or_default(),
         }
     }
 }
@@ -140,6 +153,23 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(usize))
                 .help("Randomized payload size"),
         )
+        .arg(
+            Arg::new("enable-covenant-id")
+                .long("enable-covenant-id")
+                .value_name("enable-covenant-id")
+                .action(ArgAction::SetTrue)
+                .hide(true)
+                .default_value("false")
+                .help("Wether or not to populate with covenant id"),
+        )
+        .arg(
+            Arg::new("randomize-tx-version")
+                .long("randomize-tx-version")
+                .value_name("randomize-tx-version")
+                .action(ArgAction::SetTrue)
+                .default_value("false")
+                .help("Randomize transaction version between 0 and 1"),
+        )
 }
 
 async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
@@ -170,6 +200,8 @@ struct TxConfig {
     priority_fee: u64,
     randomize_fee: bool,
     payload_size: usize,
+    with_covenant_id: bool,
+    randomize_tx_version: bool,
 }
 
 #[tokio::main]
@@ -181,6 +213,7 @@ async fn main() {
 
     let stats = Arc::new(Mutex::new(Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 }));
     let subscription_context = SubscriptionContext::new();
+    info!("Connecting to {}", format!("grpc://{}", args.rpc_server));
     let rpc_client = GrpcClient::connect_with_args(
         NotificationMode::Direct,
         format!("grpc://{}", args.rpc_server),
@@ -220,7 +253,13 @@ async fn main() {
 
     (args.payload_size <= 20000).then_some(()).expect("payload-size can be max 20000");
 
-    let tx_config = TxConfig { priority_fee: args.priority_fee, randomize_fee: args.randomize_fee, payload_size: args.payload_size };
+    let tx_config = TxConfig {
+        priority_fee: args.priority_fee,
+        randomize_fee: args.randomize_fee,
+        payload_size: args.payload_size,
+        with_covenant_id: args.enable_covenant_id,
+        randomize_tx_version: args.randomize_tx_version,
+    };
 
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
@@ -250,10 +289,7 @@ async fn main() {
 
     let info = rpc_client.get_block_dag_info().await.expect("Failed to get block dag info.");
 
-    let coinbase_maturity = match info.network.suffix {
-        Some(11) => panic!("TN11 is not supported on this version"),
-        None | Some(_) => TESTNET_PARAMS.coinbase_maturity(),
-    };
+    let coinbase_maturity = TESTNET_PARAMS.coinbase_maturity();
     info!(
         "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {},
 \tMedian time: {}, \n\tDAA score: {}, \n\tPruning point: {}, \n\tTips: {}, \n\t{} virtual parents: ...{}, \n\tCoinbase maturity: {}",
@@ -444,7 +480,7 @@ async fn fetch_spendable_utxos(
         // Eliminates UTXOs we already tried to spend so we don't try to spend them again in this period
         .filter(|(outpoint,_)| !pending.contains_key(outpoint))
         .collect::<Vec<_>>();
-    utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
+    utxos.sort_by_key(|(_, entry)| std::cmp::Reverse(entry.amount));
     utxos
 }
 
@@ -502,7 +538,16 @@ async fn maybe_send_tx(
         .into_par_iter()
         .map(|utxo_option| {
             if let Some((selected_utxos, selected_amount)) = utxo_option {
-                let tx = generate_tx(schnorr_key, &selected_utxos, selected_amount, num_outs, &kaspa_addr, tx_config.payload_size);
+                let tx = generate_tx(
+                    schnorr_key,
+                    &selected_utxos,
+                    selected_amount,
+                    num_outs,
+                    &kaspa_addr,
+                    tx_config.payload_size,
+                    tx_config.with_covenant_id,
+                    tx_config.randomize_tx_version,
+                );
 
                 return Some((tx, selected_utxos.len(), selected_utxos.into_iter().map(|(_, entry)| entry.amount).sum::<u64>()));
             }
@@ -533,12 +578,56 @@ fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, Instan
     pending.retain(|_, &mut time| now.duration_since(time) <= Duration::from_secs(3600));
 }
 
-fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
-    FEE_RATE * estimated_mass(num_utxos, num_outs)
+fn required_fee(num_utxos: usize, num_outs: u64, payload_size: usize, with_covenant_binding: bool) -> u64 {
+    let (compute_mass, serialized_bytes) =
+        estimated_compute_mass_and_serialized_bytes(num_utxos, num_outs, payload_size, with_covenant_binding);
+    let normalized_transient_mass = serialized_bytes * NORMALIZED_TRANSIENT_BYTE_FACTOR;
+    FEE_RATE * compute_mass.max(normalized_transient_mass)
 }
 
-fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
-    200 + 34 * num_outs + 1000 * (num_utxos as u64)
+const fn estimated_compute_mass_and_serialized_bytes(
+    num_utxos: usize,
+    num_outs: u64,
+    payload_size: usize,
+    with_covenant_binding: bool,
+) -> (u64, u64) {
+    let covenant_bytes_per_output = if with_covenant_binding { 34 } else { 0 }; // covenant binding: authorizing input [2] + covenant id [32]
+    let serialized_bytes = 94 // plain tx: version [2] + input/output counts [16] + locktime [8] + subnetwork id [20] + gas [8] + payload hash [32] + payload length [8]
+        + 118 * (num_utxos as u64) // std input: outpoint [36] + signature script length [8] + single-signature script [66] + sequence [8]
+        + (53 + covenant_bytes_per_output) * num_outs // std output: value [8] + script public key version [2] + script public key length [8] + max std script public key [35] + covenant binding [0/34]
+        + payload_size as u64;
+    let compute_mass = serialized_bytes
+        + 1000 * (num_utxos as u64) // std input script mass (1 sigop)
+        + 370 * num_outs; // std output spk mass: (script public key version [2] + max std script public key [35]) * 10
+    (compute_mass, serialized_bytes)
+}
+
+fn apply_random_covenant_binding_from_inputs(tx: &mut MutableTransaction<Transaction>, with_covenant_id: bool) {
+    if !with_covenant_id {
+        return;
+    }
+
+    if tx.entries.is_empty() || tx.tx.outputs.is_empty() {
+        return;
+    }
+
+    // Only start a new genesis with probability 1:100
+    let start_covenant_genesis = thread_rng().gen_bool(0.01);
+    let idx = thread_rng().gen_range(0..tx.entries.len());
+
+    let covenant_id = if start_covenant_genesis {
+        let auth_outputs = tx.tx.outputs.iter().enumerate().map(|(i, output)| (i as u32, output));
+        Some(covenant_id(tx.tx.inputs[idx].previous_outpoint, auth_outputs))
+    } else {
+        // Otherwise try reusing an existing covenant id
+        tx.entries[idx].as_ref().expect("populated").covenant_id
+    };
+
+    if let Some(covenant_id) = covenant_id {
+        for output in tx.tx.outputs.iter_mut() {
+            output.covenant = Some(CovenantBinding::new(idx as u16, covenant_id));
+        }
+    }
 }
 
 fn generate_tx(
@@ -548,21 +637,44 @@ fn generate_tx(
     num_outs: u64,
     kaspa_addr: &Address,
     payload_size: usize,
+    with_covenant_id: bool,
+    randomize_tx_version: bool,
 ) -> Transaction {
     let script_public_key = pay_to_address_script(kaspa_addr);
     let inputs = utxos
         .iter()
-        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
+        .map(|(op, _)| TransactionInput {
+            previous_outpoint: *op,
+            signature_script: vec![],
+            sequence: 0,
+            mass: if with_covenant_id { TxInputMass::ComputeBudget(10.into()) } else { TxInputMass::SigopCount(1.into()) },
+        })
         .collect_vec();
 
+    // set base version according to the usage of covenant
+    let mut tx_version = match with_covenant_id {
+        true => TX_VERSION_TOCCATA,
+        false => TX_VERSION,
+    };
+
+    // randomize version between 0 and 1 (pre/post HF)
+    if randomize_tx_version {
+        tx_version = thread_rng().gen_range(0..=1);
+    }
+
     let outputs = (0..num_outs)
-        .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone() })
+        .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone(), covenant: None })
         .collect_vec();
+
     let mut data = vec![0u8; payload_size];
     rand::thread_rng().fill_bytes(&mut data);
-    let unsigned_tx = Transaction::new_non_finalized(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, data);
-    let signed_tx =
-        sign(MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec()), schnorr_key);
+
+    let unsigned_tx = Transaction::new_non_finalized(tx_version, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, data);
+    let mut unsigned_tx = MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec());
+    if tx_version == TX_VERSION_TOCCATA {
+        apply_random_covenant_binding_from_inputs(&mut unsigned_tx, with_covenant_id);
+    }
+    let signed_tx = sign(unsigned_tx, schnorr_key);
     signed_tx.tx
 }
 
@@ -584,7 +696,10 @@ fn select_utxos(
         selected_amount += entry.amount;
         selected.push((outpoint, entry));
 
-        let fee = required_fee(selected.len(), num_outs);
+        // Pass with_covenant_id as a signal that the tx might have covenant bindings. This can
+        // slightly overestimate the fee when tx versions are randomized, since bindings are only
+        // added later if the final tx version is Toccata.
+        let fee = required_fee(selected.len(), num_outs, tx_config.payload_size, tx_config.with_covenant_id);
         let priority_fee = if tx_config.randomize_fee && tx_config.priority_fee > 0 {
             rng.gen_range(0..tx_config.priority_fee)
         } else {

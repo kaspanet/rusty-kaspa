@@ -1,5 +1,7 @@
-use std::rc::Rc;
-use std::sync::Arc;
+use alloc::boxed::Box;
+use alloc::rc::Rc;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 
 /// Something that can be seen as an immutable slice
 pub trait AsSlice {

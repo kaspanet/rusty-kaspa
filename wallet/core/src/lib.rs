@@ -105,8 +105,10 @@ pub fn version() -> String {
 }
 
 /// Returns the version of the Wallet framework combined with short git hash.
+/// Only available when the `git-hash` feature is enabled.
+#[cfg(feature = "git-hash")]
 pub fn version_with_git_hash() -> String {
-    kaspa_utils::git::with_short_hash(env!("CARGO_PKG_VERSION")).to_string()
+    kaspa_build_info::git::with_short_hash(env!("CARGO_PKG_VERSION")).to_string()
 }
 
 #[cfg(test)]

@@ -18,7 +18,7 @@ where
 }
 
 mod de {
-    use std::fmt::Display;
+    use core::fmt::Display;
 
     pub trait Deserialize<'de>: Sized {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -35,7 +35,7 @@ mod de {
             D: serde::Deserializer<'de>,
         {
             struct OptionalVisitor<T> {
-                out: std::marker::PhantomData<T>,
+                out: core::marker::PhantomData<T>,
             }
 
             impl<'de, T> serde::de::Visitor<'de> for OptionalVisitor<T>
@@ -44,7 +44,7 @@ mod de {
             {
                 type Value = Option<T>;
 
-                fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                     f.write_str("optional string, str or slice, vec of bytes")
                 }
 
@@ -64,7 +64,7 @@ mod de {
                 }
             }
 
-            let visitor = OptionalVisitor { out: std::marker::PhantomData };
+            let visitor = OptionalVisitor { out: core::marker::PhantomData };
             deserializer.deserialize_option(visitor)
         }
     }
@@ -82,7 +82,7 @@ mod ser {
 
     impl<T> Serialize for Option<T>
     where
-        T: crate::serde_bytes::Serialize + std::convert::AsRef<[u8]>,
+        T: crate::serde_bytes::Serialize + core::convert::AsRef<[u8]>,
     {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where

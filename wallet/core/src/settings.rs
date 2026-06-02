@@ -130,7 +130,7 @@ where
     }
 
     pub async fn try_store(&self) -> Result<()> {
-        let map = Map::from_iter(self.map.clone().into_iter());
+        let map = Map::from_iter(self.map.clone());
         self.storage.ensure_dir().await?;
         workflow_store::fs::write_json(self.storage.filename(), &Value::Object(map)).await?;
         Ok(())

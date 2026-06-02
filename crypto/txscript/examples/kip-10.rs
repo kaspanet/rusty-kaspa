@@ -4,13 +4,14 @@ use kaspa_consensus_core::{
         sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::SIG_HASH_ALL,
     },
+    mass::SigopCount,
     tx::{
         MutableTransaction, PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
         TransactionOutput, UtxoEntry, VerifiableTransaction,
     },
 };
 use kaspa_txscript::{
-    TxScriptEngine,
+    EngineCtx, TxScriptEngine,
     caches::Cache,
     opcodes::codes::{
         OpCheckSig, OpCheckSigVerify, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpGreaterThanOrEqual, OpIf, OpSub, OpTrue,
@@ -61,6 +62,8 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
     // Prepare to reuse values for signature hashing
     let reused_values = SigHashReusedValuesUnsync::new();
 
+    let ctx = EngineCtx::new(&sig_cache).with_reused(&reused_values);
+
     // Create the script builder
     let mut builder = ScriptBuilder::new();
     let script = builder
@@ -83,10 +86,10 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
     let input_value = 1000000000;
 
     // Create a transaction output
-    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: spk.clone() };
+    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: spk.clone(), covenant: None };
 
     // Create a UTXO entry for the input
-    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false, None);
 
     // Create a transaction input
     let input = TransactionInput {
@@ -99,7 +102,7 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        sig_op_count: 1,
+        mass: SigopCount(1).into(),
     };
 
     // Create a transaction with the input and output
@@ -126,7 +129,7 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
         }
 
         let tx = tx.as_verifiable();
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Ok(()));
         println!("[STANDARD] Owner branch execution successful");
     }
@@ -136,7 +139,7 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
         println!("[STANDARD] Checking borrower branch");
         tx.inputs[0].signature_script = ScriptBuilder::new().add_op(OpFalse)?.add_data(&script)?.drain();
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Ok(()));
         println!("[STANDARD] Borrower branch execution successful");
     }
@@ -147,7 +150,7 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
         // Less than threshold
         tx.outputs[0].value -= 1;
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Err(EvalFalse));
         println!("[STANDARD] Borrower branch with threshold not reached failed as expected");
     }
@@ -245,6 +248,8 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
     // Prepare to reuse values for signature hashing
     let reused_values = SigHashReusedValuesUnsync::new();
 
+    let ctx = EngineCtx::new(&sig_cache).with_reused(&reused_values);
+
     // Generate the script public key
     let spk = pay_to_script_hash_script(&script);
 
@@ -252,10 +257,10 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
     let input_value = 1000000000;
 
     // Create a transaction output
-    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2pk.clone() };
+    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2pk.clone(), covenant: None };
 
     // Create a UTXO entry for the input
-    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false, None);
 
     // Create a transaction input
     let input = TransactionInput {
@@ -268,7 +273,7 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        sig_op_count: 1,
+        mass: SigopCount(1).into(),
     };
 
     // Create a transaction with the input and output
@@ -295,7 +300,7 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
         }
 
         let tx = tx.as_verifiable();
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Ok(()));
         println!("[ONE-TIME] Owner branch execution successful");
     }
@@ -305,7 +310,7 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
         println!("[ONE-TIME] Checking borrower branch");
         tx.inputs[0].signature_script = ScriptBuilder::new().add_op(OpFalse)?.add_data(&script)?.drain();
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Ok(()));
         println!("[ONE-TIME] Borrower branch execution successful");
     }
@@ -316,7 +321,7 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
         // Less than threshold
         tx.outputs[0].value -= 1;
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Err(EvalFalse));
         println!("[ONE-TIME] Borrower branch with threshold not reached failed as expected");
     }
@@ -339,7 +344,7 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
 
         let wrong_tx = PopulatedTransaction::new(&wrong_tx, vec![utxo_entry.clone()]);
         let mut vm =
-            TxScriptEngine::from_transaction_input(&wrong_tx, &wrong_tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache);
+            TxScriptEngine::from_transaction_input(&wrong_tx, &wrong_tx.tx.inputs[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Err(VerifyError));
         println!("[ONE-TIME] Borrower branch with output going to wrong address failed as expected");
     }
@@ -398,6 +403,8 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
     // Prepare to reuse values for signature hashing
     let reused_values = SigHashReusedValuesUnsync::new();
 
+    let ctx = EngineCtx::new(&sig_cache).with_reused(&reused_values);
+
     // Generate the script public key
     let spk = pay_to_script_hash_script(&two_times_script);
 
@@ -405,10 +412,10 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
     let input_value = 1000000000;
 
     // Create a transaction output
-    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2sh_one_time };
+    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2sh_one_time, covenant: None };
 
     // Create a UTXO entry for the input
-    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false, None);
 
     // Create a transaction input
     let input = TransactionInput {
@@ -421,7 +428,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&two_times_script)?.drain(),
         sequence: 4294967295,
-        sig_op_count: 1,
+        mass: SigopCount(1).into(),
     };
 
     // Create a transaction with the input and output
@@ -448,7 +455,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
         }
 
         let tx = tx.as_verifiable();
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Ok(()));
         println!("[TWO-TIMES] Owner branch execution successful");
     }
@@ -458,7 +465,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
         println!("[TWO-TIMES] Checking borrower branch (first borrowing)");
         tx.inputs[0].signature_script = ScriptBuilder::new().add_op(OpFalse)?.add_data(&two_times_script)?.drain();
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Ok(()));
         println!("[TWO-TIMES] Borrower branch (first borrowing) execution successful");
     }
@@ -469,7 +476,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
         // Less than threshold
         tx.outputs[0].value -= 1;
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Err(EvalFalse));
         println!("[TWO-TIMES] Borrower branch with threshold not reached failed as expected");
     }
@@ -492,7 +499,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
 
         let wrong_tx = PopulatedTransaction::new(&wrong_tx, vec![utxo_entry.clone()]);
         let mut vm =
-            TxScriptEngine::from_transaction_input(&wrong_tx, &wrong_tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache);
+            TxScriptEngine::from_transaction_input(&wrong_tx, &wrong_tx.tx.inputs[0], 0, &utxo_entry, ctx, Default::default());
         assert_eq!(vm.execute(), Err(VerifyError));
         println!("[TWO-TIMES] Borrower branch with output going to wrong address failed as expected");
     }
@@ -554,10 +561,10 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
     let input_value = 1000000000;
 
     // Create a transaction output
-    let output = TransactionOutput { value: input_value, script_public_key: spk.clone() };
+    let output = TransactionOutput { value: input_value, script_public_key: spk.clone(), covenant: None };
 
     // Create a UTXO entry for the input
-    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false, None);
 
     // Create a transaction input
     let input = TransactionInput {
@@ -570,7 +577,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         },
         signature_script: ScriptBuilder::new().add_data(&script)?.drain(),
         sequence: 4294967295,
-        sig_op_count: 1,
+        mass: SigopCount(1).into(),
     };
 
     // Create a transaction with the input and output
@@ -603,7 +610,14 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         }
 
         let tx = tx.as_verifiable();
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &tx,
+            &tx.inputs()[0],
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            Default::default(),
+        );
         assert_eq!(vm.execute(), Ok(()));
         println!("[SHARED-SECRET] Owner branch execution successful");
     }
@@ -621,7 +635,14 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         }
 
         let tx = tx.as_verifiable();
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &tx,
+            &tx.inputs()[0],
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            Default::default(),
+        );
         assert_eq!(vm.execute(), Ok(()));
         println!("[SHARED-SECRET] Borrower branch with correct shared secret execution successful");
     }
@@ -639,7 +660,14 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         }
 
         let tx = tx.as_verifiable();
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache);
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &tx,
+            &tx.inputs()[0],
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            Default::default(),
+        );
         assert_eq!(vm.execute(), Err(VerifyError));
         println!("[SHARED-SECRET] Borrower branch with incorrect secret failed as expected");
     }

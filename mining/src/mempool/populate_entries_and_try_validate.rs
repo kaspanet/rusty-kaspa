@@ -14,8 +14,13 @@ impl Mempool {
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             if let Some(parent) = self.transaction_pool.get(&input.previous_outpoint.transaction_id) {
                 let output = &parent.mtx.tx.outputs[input.previous_outpoint.index as usize];
-                transaction.entries[i] =
-                    Some(UtxoEntry::new(output.value, output.script_public_key.clone(), UNACCEPTED_DAA_SCORE, false));
+                transaction.entries[i] = Some(UtxoEntry::new(
+                    output.value,
+                    output.script_public_key.clone(),
+                    UNACCEPTED_DAA_SCORE,
+                    false,
+                    output.covenant.map(|x| x.covenant_id),
+                ));
             }
         }
     }

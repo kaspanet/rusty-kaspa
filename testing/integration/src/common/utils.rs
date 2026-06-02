@@ -1,11 +1,12 @@
-use super::client::ListeningClient;
+use super::{client::ListeningClient, fee};
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    constants::TX_VERSION,
+    constants::{TX_VERSION, TX_VERSION_TOCCATA},
     header::Header,
+    mass::SigopCount,
     sign::sign,
-    subnets::SUBNETWORK_ID_NATIVE,
+    subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
     tx::{
         MutableTransaction, ScriptPublicKey, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
         TransactionOutput, UtxoEntry,
@@ -19,7 +20,8 @@ use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::{BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification, api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rand::{Rng, thread_rng};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use secp256k1::Keypair;
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry::Occupied},
@@ -29,17 +31,8 @@ use std::{
 };
 use tokio::time::timeout;
 
-pub(crate) const EXPAND_FACTOR: u64 = 1;
-pub(crate) const CONTRACT_FACTOR: u64 = 1;
-
-const fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
-    200 + 34 * num_outputs + 1000 * (num_inputs as u64)
-}
-
-pub const fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
-    const FEE_RATE: u64 = 10;
-    FEE_RATE * estimated_mass(num_inputs, num_outputs)
-}
+pub(crate) const EXPAND_FACTOR: u64 = 2;
+pub(crate) const CONTRACT_FACTOR: u64 = 2;
 
 /// Builds a TX DAG based on the initial UTXO set and on constant params
 pub fn generate_tx_dag(
@@ -77,9 +70,9 @@ pub fn generate_tx_dag(
             .into_par_iter()
             .map(|(inputs, entries)| {
                 let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
-                let total_out = total_in - required_fee(num_inputs, num_outputs);
+                let total_out = total_in - fee::calc_for_plain_standard_tx(num_inputs, num_outputs);
                 let outputs = (0..num_outputs)
-                    .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone() })
+                    .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
                     .collect_vec();
                 let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
                 sign(SignableTransaction::with_entries(unsigned_tx, entries), schnorr_key)
@@ -95,6 +88,94 @@ pub fn generate_tx_dag(
 
         if i % (target_levels / 10).max(1) == 0 {
             info!("Generated {} txs", txs.len());
+        }
+    }
+
+    txs
+}
+
+fn make_lane_id(level_idx: usize, lane_idx: usize) -> SubnetworkId {
+    // KIP-21 user-lane shape: `[namespace (4 bytes), 0×16]` with a non-zero
+    // namespace. Keep bytes[1..4] non-zero even for (level, lane) = (0, 0),
+    // otherwise `[x, 0×19]` is interpreted as a reserved system ID before the
+    // user-lane rule is reached.
+    assert!(level_idx <= u16::MAX as usize, "level_idx must fit in u16");
+    assert!(lane_idx <= u8::MAX as usize, "lane_idx must fit in u8");
+    let mut bytes = [0u8; 20];
+    bytes[0..2].copy_from_slice(&(level_idx as u16).to_be_bytes());
+    bytes[2] = 0xFF;
+    bytes[3] = lane_idx as u8;
+    SubnetworkId::from_bytes(bytes)
+}
+
+fn generate_level_lane_assignments<R: Rng + ?Sized>(
+    level_idx: usize,
+    target_width: usize,
+    lanes_per_level: usize,
+    rng: &mut R,
+) -> Vec<SubnetworkId> {
+    assert!(lanes_per_level > 0, "lanes_per_level must be positive");
+
+    let lane_ids = (0..lanes_per_level).map(|lane_idx| make_lane_id(level_idx, lane_idx)).collect_vec();
+    (0..target_width).map(|_| lane_ids[rng.gen_range(0..lanes_per_level)]).collect()
+}
+
+/// Like [`generate_tx_dag`] but each level draws tx lanes from a level-local pool
+/// of `lanes_per_level` unique subnetwork IDs.
+///
+/// Uses `TX_VERSION_TOCCATA` so non-native subnetworks pass validation.
+pub fn generate_tx_dag_with_lanes(
+    mut utxoset: UtxoCollection,
+    schnorr_key: Keypair,
+    spk: ScriptPublicKey,
+    target_levels: usize,
+    target_width: usize,
+    lanes_per_level: usize,
+) -> Vec<Arc<Transaction>> {
+    let num_inputs = CONTRACT_FACTOR as usize;
+    let num_outputs = EXPAND_FACTOR;
+    let mut rng = thread_rng();
+
+    let mut txs = Vec::with_capacity(target_levels * target_width);
+
+    for i in 0..target_levels {
+        let level_lane_assignments = generate_level_lane_assignments(i, target_width, lanes_per_level, &mut rng);
+        let mut utxo_diff = UtxoDiff::default();
+        utxoset
+            .iter()
+            .take(num_inputs * target_width)
+            .chunks(num_inputs)
+            .into_iter()
+            .map(|c| c.into_iter().map(|(o, e)| (TransactionInput::new(*o, vec![], 0, 1), e.clone())).unzip())
+            .collect::<Vec<(Vec<_>, Vec<_>)>>()
+            .into_par_iter()
+            .enumerate()
+            .map(|(j, (inputs, entries))| {
+                let subnetwork = level_lane_assignments[j];
+                let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
+                let total_out = total_in - fee::calc_for_plain_standard_tx(num_inputs, num_outputs);
+                let outputs = (0..num_outputs)
+                    .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
+                    .collect_vec();
+                let unsigned_tx = Transaction::new(TX_VERSION_TOCCATA, inputs, outputs, 0, subnetwork, 0, vec![]);
+                sign(SignableTransaction::with_entries(unsigned_tx, entries), schnorr_key)
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .for_each(|signed_tx| {
+                utxo_diff.add_transaction(&signed_tx.as_verifiable(), 0).unwrap();
+                txs.push(Arc::new(signed_tx.tx));
+            });
+        utxoset.remove_collection(&utxo_diff.remove);
+        utxoset.add_collection(&utxo_diff.add);
+
+        if i % (target_levels / 10).max(1) == 0 {
+            info!(
+                "Generated {} txs ({} lane ids per level, {} unique level lane ids so far)",
+                txs.len(),
+                lanes_per_level,
+                (i + 1) * lanes_per_level
+            );
         }
     }
 
@@ -142,15 +223,15 @@ pub fn generate_tx(
     address: &Address,
 ) -> Transaction {
     let total_in = utxos.iter().map(|x| x.1.amount).sum::<u64>();
-    assert!(amount <= total_in - required_fee(utxos.len(), num_outputs));
+    assert!(amount <= total_in - fee::calc_for_plain_standard_tx(utxos.len(), num_outputs));
     let script_public_key = pay_to_address_script(address);
     let inputs = utxos
         .iter()
-        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
+        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, mass: SigopCount(1).into() })
         .collect_vec();
 
     let outputs = (0..num_outputs)
-        .map(|_| TransactionOutput { value: amount / num_outputs, script_public_key: script_public_key.clone() })
+        .map(|_| TransactionOutput { value: amount / num_outputs, script_public_key: script_public_key.clone(), covenant: None })
         .collect_vec();
     let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let signed_tx =
@@ -159,7 +240,7 @@ pub fn generate_tx(
 }
 
 pub async fn fetch_spendable_utxos(
-    client: &GrpcClient,
+    client: &impl RpcApi,
     address: Address,
     coinbase_maturity: u64,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
@@ -173,7 +254,7 @@ pub async fn fetch_spendable_utxos(
         assert_eq!(*resp_entry.address.as_ref().unwrap(), address);
         utxos.push((TransactionOutpoint::from(resp_entry.outpoint), UtxoEntry::from(resp_entry.utxo_entry)));
     }
-    utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
+    utxos.sort_by_key(|(_, entry)| std::cmp::Reverse(entry.amount));
     utxos
 }
 
@@ -183,8 +264,11 @@ pub fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_
 }
 
 pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[ListeningClient]) {
-    // Discard all unreceived block added notifications in each listening client
-    listening_clients.iter().for_each(|x| x.block_added_listener().unwrap().drain());
+    // Discard notifications from previous blocks so this helper waits only for the block it submits.
+    listening_clients.iter().for_each(|x| {
+        x.block_added_listener().unwrap().drain();
+        x.virtual_daa_score_changed_listener().unwrap().drain();
+    });
 
     // Mine a block
     let template = submitting_client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
@@ -210,5 +294,37 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
             }
             _ => panic!("wrong notification type"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{generate_level_lane_assignments, make_lane_id};
+    use rand::{SeedableRng, rngs::SmallRng};
+    use std::collections::HashSet;
+
+    #[test]
+    fn level_lane_assignments_use_level_local_lane_pools() {
+        let mut rng = SmallRng::seed_from_u64(42);
+        let lanes_per_level = 4;
+
+        let level_0_assignments = generate_level_lane_assignments(0, 128, lanes_per_level, &mut rng);
+        let level_1_assignments = generate_level_lane_assignments(1, 128, lanes_per_level, &mut rng);
+
+        let level_0_pool: HashSet<_> = (0..lanes_per_level).map(|lane_idx| make_lane_id(0, lane_idx)).collect();
+        let level_1_pool: HashSet<_> = (0..lanes_per_level).map(|lane_idx| make_lane_id(1, lane_idx)).collect();
+
+        assert_eq!(level_0_pool.len(), lanes_per_level);
+        assert_eq!(level_1_pool.len(), lanes_per_level);
+        assert!(level_0_pool.is_disjoint(&level_1_pool));
+        assert!(level_0_assignments.iter().all(|lane_id| level_0_pool.contains(lane_id)));
+        assert!(level_1_assignments.iter().all(|lane_id| level_1_pool.contains(lane_id)));
+    }
+
+    #[test]
+    #[should_panic(expected = "lanes_per_level must be positive")]
+    fn level_lane_assignments_require_positive_lane_count() {
+        let mut rng = SmallRng::seed_from_u64(7);
+        let _ = generate_level_lane_assignments(0, 1, 0, &mut rng);
     }
 }

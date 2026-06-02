@@ -1,8 +1,16 @@
+pub mod units;
+
+pub use units::{
+    ComputeBudget, GRAMS_PER_COMPUTE_BUDGET_UNIT, Gram, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits,
+    SigopCount, free_script_units_per_input,
+};
+
 use crate::{
     config::params::Params,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
+    mass::units::GRAMS_PER_SIGOP_COUNT_UNIT,
     subnets::SUBNETWORK_ID_SIZE,
-    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
+    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction},
 };
 use kaspa_hashes::HASH_SIZE;
 
@@ -14,7 +22,7 @@ pub fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     let mut size: u64 = 0;
     size += 2; // Tx version (u16)
     size += 8; // Number of inputs (u64)
-    let inputs_size: u64 = tx.inputs.iter().map(transaction_input_estimated_serialized_size).sum();
+    let inputs_size: u64 = tx.inputs.iter().map(|input| transaction_input_estimated_serialized_size(input, tx.version)).sum();
     size += inputs_size;
 
     size += 8; // number of outputs (u64)
@@ -31,7 +39,7 @@ pub fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     size
 }
 
-fn transaction_input_estimated_serialized_size(input: &TransactionInput) -> u64 {
+fn transaction_input_estimated_serialized_size(input: &TransactionInput, version: u16) -> u64 {
     let mut size = 0;
     size += outpoint_estimated_serialized_size();
 
@@ -39,6 +47,11 @@ fn transaction_input_estimated_serialized_size(input: &TransactionInput) -> u64 
     size += input.signature_script.len() as u64;
 
     size += 8; // sequence (uint64)
+
+    if version >= 1 {
+        size += 2; // compute_budget (u16)
+    }
+
     size
 }
 
@@ -55,13 +68,19 @@ pub fn transaction_output_estimated_serialized_size(output: &TransactionOutput) 
     size += 2; // output.ScriptPublicKey.Version (u16)
     size += 8; // length of script public key (u64)
     size += output.script_public_key.script().len() as u64;
+
+    if output.covenant.is_some() {
+        size += 2; // authorizing_input (u16)
+        size += HASH_SIZE as u64; // covenant_id
+    }
+
     size
 }
 
 /// Returns the UTXO storage "plurality" for this script public key.
 /// i.e., how many 100-byte "storage units" it occupies.
 /// The choice of 100 bytes per unit ensures that all standard SPKs have a plurality of 1.
-pub fn utxo_plurality(spk: &ScriptPublicKey) -> u64 {
+pub fn utxo_plurality(spk: &ScriptPublicKey, has_covenant_id: bool) -> u64 {
     /// A constant representing the number of bytes used by the fixed parts of a UTXO.
     const UTXO_CONST_STORAGE: usize =
         32  // outpoint::tx_id
@@ -77,7 +96,7 @@ pub fn utxo_plurality(spk: &ScriptPublicKey) -> u64 {
     // Hence, all standard SPKs end up with a plurality of 1.
     const UTXO_UNIT_SIZE: usize = 100;
 
-    (UTXO_CONST_STORAGE + spk.script().len()).div_ceil(UTXO_UNIT_SIZE) as u64
+    (UTXO_CONST_STORAGE + spk.script().len() + if has_covenant_id { HASH_SIZE } else { 0 }).div_ceil(UTXO_UNIT_SIZE) as u64
 }
 
 pub trait UtxoPlurality {
@@ -85,21 +104,15 @@ pub trait UtxoPlurality {
     fn plurality(&self) -> u64;
 }
 
-impl UtxoPlurality for ScriptPublicKey {
-    fn plurality(&self) -> u64 {
-        utxo_plurality(self)
-    }
-}
-
 impl UtxoPlurality for UtxoEntry {
     fn plurality(&self) -> u64 {
-        utxo_plurality(&self.script_public_key)
+        utxo_plurality(&self.script_public_key, self.covenant_id.is_some())
     }
 }
 
 impl UtxoPlurality for TransactionOutput {
     fn plurality(&self) -> u64 {
-        utxo_plurality(&self.script_public_key)
+        utxo_plurality(&self.script_public_key, self.covenant.is_some())
     }
 }
 
@@ -160,17 +173,89 @@ impl NonContextualMasses {
         Self { compute_mass, transient_mass }
     }
 
-    /// Returns the maximum over all non-contextual masses (currently compute and transient). This
-    /// max value has no consensus meaning and should only be used for mempool-level simplification
-    /// such as obtaining a one-dimensional mass value when composing blocks templates.  
-    pub fn max(&self) -> u64 {
-        self.compute_mass.max(self.transient_mass)
+    /// Returns the normalized maximum mass for non-contextual dimensions only.
+    /// The result is in units of `cofactors.reference` (= compute limit).
+    pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
+        // Compute mass is already in the reference scale (compute limit).
+        let c = self.compute_mass;
+        let t = self.normalized_transient(cofactors);
+        c.max(t)
+    }
+
+    /// Returns transient mass normalized to the compute-mass scale.
+    pub fn normalized_transient(&self, cofactors: &MassCofactors) -> u64 {
+        (self.transient_mass as f64 * cofactors.transient).ceil() as u64
     }
 }
 
 impl std::fmt::Display for NonContextualMasses {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "compute: {}, transient: {}", self.compute_mass, self.transient_mass)
+    }
+}
+
+/// Per-dimension block mass limits grouped into a single struct for convenience.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlockMassLimits {
+    pub storage: u64,
+    pub compute: u64,
+    pub transient: u64,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlockLaneLimits {
+    pub lanes_per_block: usize,
+    pub gas_per_lane: u64,
+}
+
+impl BlockMassLimits {
+    /// Create limits with the same value for all dimensions.
+    #[inline]
+    pub const fn with_shared_limit(limit: u64) -> Self {
+        Self { storage: limit, compute: limit, transient: limit }
+    }
+
+    /// Returns the mass cofactors derived from these limits.
+    #[inline]
+    pub fn cofactors(&self) -> MassCofactors {
+        MassCofactors::new(self)
+    }
+
+    /// Returns the normalized block mass reference value (= compute limit).
+    /// All normalized masses should be compared against this value.
+    #[inline]
+    pub const fn reference(&self) -> u64 {
+        self.compute
+    }
+}
+
+/// Per-dimension floating-point scaling factors for normalizing masses to compute-mass scale.
+///
+/// Given per-dimension block mass limits (L_s, L_c, L_t), normalization maps all
+/// dimensions to the compute limit scale:
+///   cofactor_i = L_compute / L_i
+///   reference  = L_compute
+///
+/// A normalized mass `ceil(m_i * cofactor_i)` is in compute-mass units and can be
+/// compared directly against `reference` as the block mass limit.
+///
+/// When all limits are equal, all cofactors = 1.0, reference = L.
+/// Cofactors can be less than 1 (dimension has a larger limit than compute)
+/// or greater than 1 (dimension has a smaller limit than compute).
+#[derive(Copy, Clone, Debug)]
+pub struct MassCofactors {
+    pub storage: f64,
+    pub transient: f64,
+    /// The normalized block mass limit (= compute limit)
+    pub reference: u64,
+}
+
+impl MassCofactors {
+    pub fn new(limits: &BlockMassLimits) -> Self {
+        let reference = limits.compute as f64;
+        Self { storage: reference / limits.storage as f64, transient: reference / limits.transient as f64, reference: limits.compute }
     }
 }
 
@@ -183,13 +268,6 @@ pub struct ContextualMasses {
 impl ContextualMasses {
     pub fn new(storage_mass: u64) -> Self {
         Self { storage_mass }
-    }
-
-    /// Returns the maximum over *all masses* (currently compute, transient and storage). This max
-    /// value has no consensus meaning and should only be used for mempool-level simplification such
-    /// as obtaining a one-dimensional mass value when composing blocks templates.  
-    pub fn max(&self, non_contextual_masses: NonContextualMasses) -> u64 {
-        self.storage_mass.max(non_contextual_masses.max())
     }
 }
 
@@ -205,15 +283,26 @@ impl std::cmp::PartialEq<u64> for ContextualMasses {
     }
 }
 
-pub type Mass = (NonContextualMasses, ContextualMasses);
-
-pub trait MassOps {
-    fn max(&self) -> u64;
+/// Block mass breakdown with explicit contextual and non-contextual dimensions.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Mass {
+    pub non_contextual: NonContextualMasses,
+    pub contextual: ContextualMasses,
 }
 
-impl MassOps for Mass {
-    fn max(&self) -> u64 {
-        self.1.max(self.0)
+impl Mass {
+    pub fn new(non_contextual: NonContextualMasses, contextual: ContextualMasses) -> Self {
+        Self { non_contextual, contextual }
+    }
+
+    /// Returns the normalized maximum mass, scaling each dimension by its f64 cofactor
+    /// (with ceiling) to compute-mass scale.
+    /// The result is in units of `cofactors.reference` (= compute limit).
+    /// When all limits are equal, all cofactors are 1.0 and this reduces to `max(storage, compute, transient)`.
+    pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
+        let s = (self.contextual.storage_mass as f64 * cofactors.storage).ceil() as u64;
+        let nc = self.non_contextual.normalized_max(cofactors);
+        s.max(nc)
     }
 }
 
@@ -224,20 +313,18 @@ impl MassOps for Mass {
 pub struct MassCalculator {
     mass_per_tx_byte: u64,
     mass_per_script_pub_key_byte: u64,
-    mass_per_sig_op: u64,
     storage_mass_parameter: u64,
 }
 
 impl MassCalculator {
-    pub fn new(mass_per_tx_byte: u64, mass_per_script_pub_key_byte: u64, mass_per_sig_op: u64, storage_mass_parameter: u64) -> Self {
-        Self { mass_per_tx_byte, mass_per_script_pub_key_byte, mass_per_sig_op, storage_mass_parameter }
+    pub fn new(mass_per_tx_byte: u64, mass_per_script_pub_key_byte: u64, storage_mass_parameter: u64) -> Self {
+        Self { mass_per_tx_byte, mass_per_script_pub_key_byte, storage_mass_parameter }
     }
 
     pub fn new_with_consensus_params(consensus_params: &Params) -> Self {
         Self {
             mass_per_tx_byte: consensus_params.mass_per_tx_byte,
             mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
-            mass_per_sig_op: consensus_params.mass_per_sig_op,
             storage_mass_parameter: consensus_params.storage_mass_parameter,
         }
     }
@@ -259,10 +346,22 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
-        let total_sigops_mass = total_sigops * self.mass_per_sig_op;
+        let script_mass = if TxInputMass::version_expects_compute_budget_field(tx.version) {
+            GRAMS_PER_COMPUTE_BUDGET_UNIT
+                * tx.inputs
+                    .iter()
+                    .map(|input| input.mass.compute_budget().expect("v1 transactions are expected to have compute budget") as u64)
+                    .sum::<u64>()
+        } else {
+            let total_sigops: u64 = tx
+                .inputs
+                .iter()
+                .map(|input| input.mass.sig_op_count().expect("v0 transactions are expected to have sig op count") as u64)
+                .sum();
+            total_sigops * GRAMS_PER_SIGOP_COUNT_UNIT
+        };
 
-        let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass;
+        let compute_mass = compute_mass_for_size + total_script_public_key_mass + script_mass;
         let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
 
         NonContextualMasses::new(compute_mass, transient_mass)
@@ -433,8 +532,8 @@ mod tests {
         */
         for net in NetworkType::iter() {
             let params: Params = net.into();
-            let max_spk_len =
-                (params.max_script_public_key_len as u64).min(params.max_block_mass.div_ceil(params.mass_per_script_pub_key_byte));
+            let max_spk_len = (params.max_script_public_key_len as u64)
+                .min(params.block_mass_limits().after().compute.div_ceil(params.mass_per_script_pub_key_byte));
             let max_plurality = (UTXO_CONST_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
             // verify C·P^2 can never overflow
@@ -442,10 +541,12 @@ mod tests {
         }
 
         // verify P >= 1 also when the script is empty
-        assert!(utxo_plurality(&ScriptPublicKey::new(0, ScriptVec::from_slice(&[]))) == 1);
+        assert!(utxo_plurality(&ScriptPublicKey::new(0, ScriptVec::from_slice(&[])), false) == 1);
         // Assert the UTXO_CONST_STORAGE=63, UTXO_UNIT_SIZE=100 constants
-        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE) as usize])) == 1);
-        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE + 1) as usize])) == 2);
+        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE) as usize]), false) == 1);
+        assert!(
+            utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE + 1) as usize]), false) == 2
+        );
     }
 
     #[derive(Debug)]
@@ -502,7 +603,7 @@ mod tests {
                 }
             }
 
-            let mc = MassCalculator::new(0, 0, 0, self.storage_mass_parameter);
+            let mc = MassCalculator::new(0, 0, self.storage_mass_parameter);
 
             let mass1 = mc.calc_contextual_masses(&tx1.as_verifiable());
             let mass2 = mc.calc_contextual_masses(&tx2.as_verifiable());
@@ -638,26 +739,26 @@ mod tests {
         // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
         //
 
-        let storage_mass = MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 10u64.pow(12)).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0); // Compounds from 3 to 2, with symmetric outputs and no fee, should be zero
 
         // Create asymmetry
         tx.tx.outputs[0].value = 50;
         tx.tx.outputs[1].value = 550;
         let storage_mass_parameter = 10u64.pow(12);
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, storage_mass_parameter / 50 + storage_mass_parameter / 550 - 3 * (storage_mass_parameter / 200));
 
         // Create a tx with more outs than ins
         let base_value = 10_000 * SOMPI_PER_KASPA;
         let mut tx = generate_tx_from_amounts(&[base_value, base_value, base_value * 2], &[base_value; 4]);
         let storage_mass_parameter = STORAGE_MASS_PARAMETER;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 4); // Inputs are above C so they don't contribute negative mass, 4 outputs exactly equal C each charge 1
 
         let mut tx2 = tx.clone();
         tx2.tx.outputs[0].value = 10 * SOMPI_PER_KASPA;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx2.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx2.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 1003);
 
         // Increase values over the lim
@@ -665,7 +766,7 @@ mod tests {
             out.value += 1
         }
         tx.entries[0].as_mut().unwrap().amount += tx.tx.outputs.len() as u64;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Now create 2:2 transaction
@@ -673,19 +774,19 @@ mod tests {
         let mut tx = generate_tx_from_amounts(&[100, 200], &[50, 250]);
         let storage_mass_parameter = 10u64.pow(12);
 
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 9000000000);
 
         // Set outputs to be equal to inputs
         tx.tx.outputs[0].value = 100;
         tx.tx.outputs[1].value = 200;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Remove an output and make sure the other is small enough to make storage mass greater than zero
         tx.tx.outputs.pop();
         tx.tx.outputs[0].value = 50;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 5000000000);
     }
 
@@ -699,7 +800,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: i as u32 },
                     signature_script: vec![],
                     sequence: 0,
-                    sig_op_count: 0,
+                    mass: TxInputMass::SigopCount(0.into()),
                 })
                 .collect(),
             outs.iter()
@@ -707,6 +808,7 @@ mod tests {
                 .map(|out_amount| TransactionOutput {
                     value: out_amount,
                     script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                    covenant: None,
                 })
                 .collect(),
             1615462089000,
@@ -722,8 +824,106 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
                 block_daa_score: 0,
                 is_coinbase: false,
+                covenant_id: None,
             })
             .collect();
         MutableTransaction::with_entries(tx, entries)
+    }
+
+    #[test]
+    fn test_mass_cofactors() {
+        // Cofactors are f64, normalized to compute-mass scale:
+        //   cofactor_i = compute_limit / limit_i
+        //   reference  = compute_limit
+        //
+        // Table of (limits, expected_cofactors, expected_reference)
+        let cases: Vec<(BlockMassLimits, (f64, f64), u64)> = vec![
+            // 1. Shared limit — all equal → all cofactors 1.0, reference = L
+            (BlockMassLimits { storage: 500_000, compute: 500_000, transient: 500_000 }, (1.0, 1.0), 500_000),
+            // 2. Simple multiples — (1M, 500K, 250K)
+            //    storage has 2x headroom → cofactor 0.5 (scales down)
+            //    transient has half the headroom → cofactor 2.0 (scales up)
+            (BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 }, (0.5, 2.0), 500_000),
+            // 3. Coprime-ish values — cofactors are irrational-ish fractions,
+            //    but reference stays at a sane 78_901 (the compute limit)
+            (
+                BlockMassLimits { storage: 123_456, compute: 78_901, transient: 45_678 },
+                (78_901.0 / 123_456.0, 78_901.0 / 45_678.0),
+                78_901,
+            ),
+            // 4. Realistic ops tuning — wide spread, reference = 77_777
+            (
+                BlockMassLimits { storage: 333_333, compute: 77_777, transient: 12_345 },
+                (77_777.0 / 333_333.0, 77_777.0 / 12_345.0),
+                77_777,
+            ),
+            // 5. Mersenne-like — near powers of two, reference = 524_287
+            (
+                BlockMassLimits { storage: 1_048_575, compute: 524_287, transient: 262_143 },
+                (524_287.0 / 1_048_575.0, 524_287.0 / 262_143.0),
+                524_287,
+            ),
+        ];
+
+        for (i, (limits, (exp_s, exp_t), expected_reference)) in cases.iter().enumerate() {
+            let cofactors = limits.cofactors();
+            assert!(
+                (cofactors.storage - exp_s).abs() < 1e-10,
+                "case {i}: storage cofactor mismatch: {} vs {exp_s}",
+                cofactors.storage
+            );
+            assert!(
+                (cofactors.transient - exp_t).abs() < 1e-10,
+                "case {i}: transient cofactor mismatch: {} vs {exp_t}",
+                cofactors.transient
+            );
+            assert_eq!(cofactors.reference, *expected_reference, "case {i}: reference mismatch for limits {limits:?}");
+
+            // Verify the normalized_max invariant: a transaction filling exactly one dimension
+            // to its raw limit should have normalized_max == reference (compute limit).
+            // Because ceil(limit_i * (compute / limit_i)) == compute for f64 precision in this range.
+            for (dim_limit, dim_label) in [(limits.storage, "storage"), (limits.compute, "compute"), (limits.transient, "transient")] {
+                let mass = match dim_label {
+                    "storage" => Mass::new(NonContextualMasses::new(0, 0), ContextualMasses::new(dim_limit)),
+                    "compute" => Mass::new(NonContextualMasses::new(dim_limit, 0), ContextualMasses::new(0)),
+                    "transient" => Mass::new(NonContextualMasses::new(0, dim_limit), ContextualMasses::new(0)),
+                    _ => unreachable!(),
+                };
+                assert_eq!(
+                    mass.normalized_max(&cofactors),
+                    *expected_reference,
+                    "case {i}: normalized_max invariant failed for {dim_label} dimension"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_normalized_max_ranking() {
+        // When dimensions have unequal limits, normalized_max should rank transactions
+        // by their bottleneck dimension (highest utilization fraction), not by raw mass.
+        let limits = BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 };
+        let cofactors = limits.cofactors();
+        // cofactors: (0.5, 2.0), reference: 500_000
+
+        // tx_a: 50% storage utilization (500_000 / 1_000_000)
+        let tx_a = Mass::new(NonContextualMasses::new(0, 0), ContextualMasses::new(500_000));
+        // tx_b: 60% compute utilization (300_000 / 500_000), raw mass is lower than tx_a
+        let tx_b = Mass::new(NonContextualMasses::new(300_000, 0), ContextualMasses::new(0));
+        // tx_c: 80% transient utilization (200_000 / 250_000), raw mass is lowest
+        let tx_c = Mass::new(NonContextualMasses::new(0, 200_000), ContextualMasses::new(0));
+
+        let norm_a = tx_a.normalized_max(&cofactors);
+        let norm_b = tx_b.normalized_max(&cofactors);
+        let norm_c = tx_c.normalized_max(&cofactors);
+
+        // Ranking by utilization fraction: tx_c (80%) > tx_b (60%) > tx_a (50%)
+        assert!(norm_c > norm_b, "tx_c (80% transient) should rank higher than tx_b (60% compute)");
+        assert!(norm_b > norm_a, "tx_b (60% compute) should rank higher than tx_a (50% storage)");
+
+        // Verify exact normalized values (in compute-mass scale)
+        assert_eq!(norm_a, 250_000); // ceil(500_000 * 0.5)
+        assert_eq!(norm_b, 300_000); // compute mass (no scaling)
+        assert_eq!(norm_c, 400_000); // ceil(200_000 * 2.0)
     }
 }

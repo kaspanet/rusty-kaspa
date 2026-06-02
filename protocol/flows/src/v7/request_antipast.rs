@@ -55,7 +55,7 @@ impl HandleAntipastRequests {
             debug!("got {} headers in anticone({}) cap past({}) for peer {}", headers.len(), block, context, self.router);
 
             // Sort the headers in bottom-up topological order before sending
-            headers.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
+            headers.sort_by_key(|a| a.blue_work);
 
             self.router
                 .enqueue(make_response!(

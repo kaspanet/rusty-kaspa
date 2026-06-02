@@ -71,7 +71,7 @@ impl OrphanPool {
             return Ok(());
         }
         self.check_orphan_duplicate(&transaction)?;
-        self.check_orphan_mass(&transaction)?;
+        self.check_orphan_mass(virtual_daa_score, &transaction)?;
         self.check_orphan_double_spend(&transaction)?;
         // Make sure there is room in the pool for the new transaction
         self.limit_orphan_pool_size(1)?;
@@ -98,12 +98,11 @@ impl OrphanPool {
         Ok(())
     }
 
-    fn check_orphan_mass(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        if transaction.calculated_non_contextual_masses.unwrap().max() > self.config.maximum_orphan_transaction_mass {
-            return Err(RuleError::RejectBadOrphanMass(
-                transaction.calculated_non_contextual_masses.unwrap().max(),
-                self.config.maximum_orphan_transaction_mass,
-            ));
+    fn check_orphan_mass(&self, virtual_daa_score: u64, transaction: &MutableTransaction) -> RuleResult<()> {
+        let cofactors = self.config.mempool_mass_cofactors.get(virtual_daa_score);
+        let normalized_mass = transaction.calculated_non_contextual_masses.unwrap().normalized_max(&cofactors);
+        if normalized_mass > self.config.maximum_orphan_transaction_normalized_mass {
+            return Err(RuleError::RejectBadOrphanMass(normalized_mass, self.config.maximum_orphan_transaction_normalized_mass));
         }
         Ok(())
     }

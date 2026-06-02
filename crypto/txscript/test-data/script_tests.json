@@ -2877,6 +2877,13 @@
     "OK"
   ],
   [
+    "0x41 0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+    "0x1f 0x02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256 CHECKSIG NOT",
+    "",
+    "PUBKEYFORMAT",
+    "CHECKSIG rejects an invalid public key even when the signature is all zeros with a valid sighash type"
+  ],
+  [
     "0",
     "1 0x21 0x02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0 1 CHECKMULTISIG NOT",
     "",
@@ -3294,6 +3301,20 @@
     "2 PICK 22 EQUALVERIFY DEPTH 3 EQUAL",
     "",
     "EQUALVERIFY"
+  ],
+  [
+    "1",
+    "0x05 0x0000000000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "Without covenants, PICK rejects a 5-byte integer encoding for its i32 argument"
+  ],
+  [
+    "1",
+    "0x05 0x0000008000 PICK EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "Without covenants, PICK rejects a 5-byte integer encoding whose value exceeds i32::MAX"
   ],
   [
     "",
@@ -3798,7 +3819,7 @@
     "IF 0xc0 ELSE 1 ENDIF",
     "",
     "BAD_OPCODE",
-    "OpTxInputBlockDaaScore is reserved"
+    "OpTxInputDaaScore is reserved"
   ],
   [
     "1",
@@ -5388,8 +5409,21 @@
     "0x09 0x300602010102010101 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
     "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
     "",
-    "NULLFAIL",
+    "PUBKEYFORMAT",
     "BIP66-compliant but not NULLFAIL-compliant 4"
+  ],
+  [
+    "0x41 0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+    "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
+    "",
+    "PUBKEYFORMAT"
+  ],
+  [
+    "0x09 0x300602010102010101 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+    "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
+    "",
+    "PUBKEYFORMAT",
+    "BIP66-compliant but not PUBKEYFORMAT-compliant 4"
   ],
   [
     "The End"

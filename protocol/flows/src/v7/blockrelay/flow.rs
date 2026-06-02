@@ -223,9 +223,10 @@ impl HandleRelayInvsFlow {
             // We spawn post-processing as a separate task so that this loop
             // can continue processing the following relay blocks
             let ctx = self.ctx.clone();
+            let daa_score = block.header.daa_score;
             tokio::spawn(async move {
                 ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
-                ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
+                ctx.log_block_event(BlockLogEvent::Relay(inv.hash, daa_score));
             });
         }
     }

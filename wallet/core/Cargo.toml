@@ -25,6 +25,7 @@ wasm32-core = [
 wasm32-sdk = [
     "wasm32-core"
 ]
+git-hash = ["dep:kaspa-build-info"]
 default = ["wasm32-sdk"]
 # default = []
 
@@ -57,6 +58,7 @@ itertools.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-bip32.workspace = true
+kaspa-build-info = { workspace = true, optional = true }
 kaspa-consensus-client.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-wasm.workspace = true
@@ -67,7 +69,7 @@ kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["hashmap"] }
 kaspa-wallet-keys.workspace = true
 kaspa-wallet-macros.workspace = true
 kaspa-wallet-pskt.workspace = true

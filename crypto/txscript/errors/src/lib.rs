@@ -1,3 +1,4 @@
+use kaspa_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
@@ -8,6 +9,8 @@ pub enum TxScriptError {
     MalformedPush(usize, usize),
     #[error("transaction input {0} is out of bounds, should be non-negative below {1}")]
     InvalidInputIndex(i32, usize),
+    #[error("transaction input {0} is either out of bounds or has no associated covenant outputs")]
+    InvalidCovInputIndex(i32),
     #[error("combined stack size {0} > max allowed {1}")]
     StackSizeExceeded(usize, usize),
     #[error("attempt to execute invalid opcode {0}")]
@@ -29,6 +32,8 @@ pub enum TxScriptError {
     VerifyError,
     #[error("encountered invalid state while running script: {0}")]
     InvalidState(String),
+    #[error("pubkey invalid: {0}")]
+    InvalidPubkey(secp256k1::Error),
     #[error("signature invalid: {0}")]
     InvalidSignature(secp256k1::Error),
     #[error("invalid signature in sig cache")]
@@ -57,8 +62,6 @@ pub enum TxScriptError {
     InvalidSigHashType(u8),
     #[error("unsupported public key type")]
     PubKeyFormat,
-    #[error("invalid signature length {0}")]
-    SigLength(usize),
     #[error("no scripts to run")]
     NoScripts,
     #[error("signature script is not push only")]
@@ -74,11 +77,48 @@ pub enum TxScriptError {
     #[error(transparent)]
     Serialization(#[from] SerializationError),
     #[error("sig op count exceeds passed limit of {0}")]
-    ExceededSigOpLimit(u8),
+    ExceededSigOpLimit(u16),
+    #[error("script units exceeded the amount committed in the input: used={used}, limit={limit}")]
+    ExceededCommittedScriptUnits { used: u64, limit: u64 },
+    #[error("ZK Integrity: {0}")]
+    ZkIntegrity(String),
+    #[error("substring [{0}:{1}] is out of bounds for string of length {2}")]
+    OutOfBoundsSubstring(usize, usize, usize),
+    #[error("{0} cannot be used as an array index")]
+    InvalidIndex(i32),
+    #[error("{start}..{end} is not a valid range, {end} must be greater than {start}")]
+    InvalidRange { start: usize, end: usize },
+
+    #[error("blockhash must be exactly 32 bytes long, got {0} bytes instead")]
+    InvalidLengthOfBlockHash(usize),
+    #[error("block {0} not selected")]
+    BlockNotSelected(String),
+    #[error("block {0} already pruned")]
+    BlockAlreadyPruned(String),
+    #[error("block {0} is too deep")]
+    BlockIsTooDeep(String),
+    #[error("covenants error: {0}")]
+    CovenantsError(#[from] CovenantsError),
 }
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SerializationError {
-    #[error("Number exceeds 8 bytes: {0}")]
-    NumberTooLong(i64),
+    #[error("Number exceeds {1} bytes: {0}")]
+    NumberTooLong(i64, usize),
+    #[error("Ark serialization error")]
+    ArkSerialization,
+}
+
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum CovenantsError {
+    #[error("input #{0} and outputs with covenant id {1} do not correspond to the expected genesis hashing")]
+    WrongGenesisCovenantId(usize, Hash),
+    #[error("output #{0} covenant authorizing input index {1} is out of bounds")]
+    AuthInputOutOfBounds(usize, u16),
+    #[error("covenant id {0} input {1} is out of bounds")]
+    InvalidCovInIndex(Hash, usize),
+    #[error("covenant id {0} output {1} is out of bounds")]
+    InvalidCovOutIndex(Hash, usize),
+    #[error("{0} is not a valid covenant output index for input {1} with {2} authorized outputs")]
+    InvalidAuthCovOutIndex(usize, usize, usize),
 }

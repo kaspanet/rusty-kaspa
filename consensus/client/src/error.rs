@@ -53,6 +53,9 @@ pub enum Error {
 
     #[error("Transaction input is missing UTXO entry")]
     MissingUtxoEntry,
+
+    #[error(transparent)]
+    PopulateGenesisCovenants(#[from] kaspa_consensus_core::errors::tx::PopulateGenesisCovenantsError),
 }
 
 impl Error {
