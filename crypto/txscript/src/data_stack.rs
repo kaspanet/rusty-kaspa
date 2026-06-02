@@ -321,9 +321,7 @@ impl Stack {
     /// Returns the bytes pushed since the previous call and resets the counter.
     #[inline]
     pub fn pop_pushed_bytes(&mut self) -> u64 {
-        let pushed_bytes = self.pushed_bytes;
-        self.pushed_bytes = 0;
-        pushed_bytes
+        std::mem::take(&mut self.pushed_bytes)
     }
 
     fn max_element_size(&self) -> usize {
