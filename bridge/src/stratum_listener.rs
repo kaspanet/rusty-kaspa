@@ -11,6 +11,21 @@ use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
+/// Maximum permitted size (in bytes) for an incomplete Stratum line awaiting `\n`.
+/// Legitimate JSON-RPC Stratum messages are well below this; the cap prevents unbounded
+/// memory growth when a client sends data without a newline.
+pub const MAX_STRATUM_LINE_BYTES: usize = 64 * 1024;
+
+/// Append received data to the line buffer. Returns `false` if the append would exceed
+/// [`MAX_STRATUM_LINE_BYTES`], leaving the buffer unchanged.
+pub fn append_line_data(line_buffer: &mut String, data: &str) -> bool {
+    if line_buffer.len().saturating_add(data.len()) > MAX_STRATUM_LINE_BYTES {
+        return false;
+    }
+    line_buffer.push_str(data);
+    true
+}
+
 /// Event handler function type
 pub type EventHandler = Arc<
     dyn Fn(
@@ -467,7 +482,15 @@ impl StratumListener {
                         first_message = false;
                     }
 
-                    line_buffer.push_str(&String::from_utf8_lossy(&data));
+                    let chunk = String::from_utf8_lossy(&data);
+                    if !append_line_data(&mut line_buffer, &chunk) {
+                        warn!(
+                            "[CONNECTION] Client {}:{} exceeded maximum Stratum line size ({} bytes), disconnecting",
+                            ctx.remote_addr, ctx.remote_port, MAX_STRATUM_LINE_BYTES
+                        );
+                        ctx.disconnect();
+                        break;
+                    }
 
                     // Process complete lines
                     while let Some(newline_pos) = line_buffer.find('\n') {
