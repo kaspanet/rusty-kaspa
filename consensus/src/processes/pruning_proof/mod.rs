@@ -298,7 +298,7 @@ impl PruningProofManager {
                     // send is `daa_window_blocks` which represents the full trusted sub-DAG in the antifuture
                     // of the pruning point which kaspad-rust nodes expect to get when synced with headers proof
                     //
-                    // TODO(pre-covpp): remove the redundant `ghostdag_blocks` field as part of restructuring trusted data sending
+                    // TODO(post-toccata): remove the redundant `ghostdag_blocks` field as part of cleaning up old P2P versions
                     if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                         e.insert(TrustedHeader {
                             header: self.headers_store.get_header(hash).unwrap(),
