@@ -31,16 +31,6 @@ impl FeerateTransactionKey {
         Self { fee, mass, weight: (fee as f64 / mass as f64).powi(ALPHA), tx }
     }
 
-    /// Builds a lane-local feerate key which accounts for gas as another lane-limited resource.
-    ///
-    /// The global key intentionally ignores gas, but once lane selection is frozen we compare
-    /// candidates within each occupied lane using max(normalized mass, normalized gas).
-    pub fn with_normalized_gas(inner: FeerateTransactionKey, gas_cofactor: f64) -> Self {
-        let normalized_gas_mass = (inner.tx.gas as f64 * gas_cofactor).ceil() as u64;
-        let lane_normalized_mass = inner.mass.max(normalized_gas_mass);
-        Self::new(inner.fee, lane_normalized_mass, inner.tx)
-    }
-
     pub fn feerate(&self) -> f64 {
         self.fee as f64 / self.mass as f64
     }

@@ -1161,7 +1161,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 node_mass_processed_count: processing_counters
                     .storage_mass_counts
                     .max(processing_counters.compute_mass_counts)
-                    .max(processing_counters.transient_mass_counts), // TODO(pre-covpp): mass must be multidimensional
+                    .max(processing_counters.transient_mass_counts), // TODO: mass should be multidimensional
                 // ---
                 node_database_blocks_count: consensus_stats.block_counts.block_count,
                 node_database_headers_count: consensus_stats.block_counts.header_count,
