@@ -896,18 +896,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         let secp_msg = secp256k1::Message::from_digest(msg_hash.into());
         let sig_cache_key = SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: secp_msg };
 
-        match self.sig_cache.get(&sig_cache_key) {
-            Some(valid) => Ok(valid),
-            None => match sig.verify(&secp_msg, &pk) {
-                Ok(()) => {
-                    self.sig_cache.insert(sig_cache_key, true);
-                    Ok(true)
-                }
-                Err(_) => {
-                    self.sig_cache.insert(sig_cache_key, false);
-                    Ok(false)
-                }
-            },
+        if let Some(valid) = self.sig_cache.get(&sig_cache_key) {
+            Ok(valid)
+        } else {
+            let valid = sig.verify(&secp_msg, &pk).is_ok();
+            self.sig_cache.insert(sig_cache_key, valid);
+            Ok(valid)
         }
     }
 
@@ -932,18 +926,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         let secp_msg = secp256k1::Message::from_digest(msg_hash.into());
         let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: secp_msg };
 
-        match self.sig_cache.get(&sig_cache_key) {
-            Some(valid) => Ok(valid),
-            None => match sig.verify(&secp_msg, &pk) {
-                Ok(()) => {
-                    self.sig_cache.insert(sig_cache_key, true);
-                    Ok(true)
-                }
-                Err(_) => {
-                    self.sig_cache.insert(sig_cache_key, false);
-                    Ok(false)
-                }
-            },
+        if let Some(valid) = self.sig_cache.get(&sig_cache_key) {
+            Ok(valid)
+        } else {
+            let valid = sig.verify(&secp_msg, &pk).is_ok();
+            self.sig_cache.insert(sig_cache_key, valid);
+            Ok(valid)
         }
     }
 }
