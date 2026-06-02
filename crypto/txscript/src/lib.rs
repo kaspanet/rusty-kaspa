@@ -34,7 +34,6 @@ pub mod zk_deps {
 }
 
 use std::io::Write;
-
 use std::ops::Deref;
 
 use crate::caches::Cache;
@@ -250,6 +249,63 @@ pub fn get_sig_op_count<T: VerifiableTransaction>(
     );
     vm.execute()?;
     Ok(vm.used_sig_ops())
+}
+
+/// Counts post-Toccata sigops in a p2sh redeem script.
+///
+/// This includes post-Toccata from-stack signature opcodes and post-Toccata
+/// non-minimal data pushes used as multisig pubkey counts.
+/// Malformed scripts return zero.
+pub fn post_toccata_p2sh_sig_scanner(signature_script: &[u8], spk: &ScriptPublicKey) -> u64 {
+    if !ScriptClass::is_pay_to_script_hash(spk.script()) {
+        return 0;
+    }
+
+    let signature_script_ops = parse_script::<PopulatedTransaction, SigHashReusedValuesUnsync>(signature_script).collect_vec();
+    if signature_script_ops.iter().any(Result::is_err) {
+        return 0;
+    }
+    let Some(Ok(p2sh_script_op)) = signature_script_ops.last() else {
+        return 0;
+    };
+    let p2sh_script = p2sh_script_op.get_data();
+
+    let mut sigops = 0u64;
+    let mut prev_opcode_multisig_count = None;
+    for op in parse_script::<PopulatedTransaction, SigHashReusedValuesUnsync>(p2sh_script) {
+        match op {
+            Ok(op) => {
+                let opcode_value = op.value();
+                match opcode_value {
+                    // Post-Toccata p2sh sigop scanning includes from-stack variants.
+                    codes::OpCheckSig
+                    | codes::OpCheckSigVerify
+                    | codes::OpCheckSigECDSA
+                    | codes::OpCheckSigFromStack
+                    | codes::OpCheckSigFromStackECDSA => sigops = sigops.saturating_add(1),
+                    codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpCheckMultiSigECDSA => {
+                        sigops = sigops.saturating_add(prev_opcode_multisig_count.unwrap_or(MAX_PUB_KEYS_PER_MUTLTISIG as u64));
+                    }
+                    _ => {}
+                }
+                prev_opcode_multisig_count = if (codes::Op1..=codes::Op16).contains(&opcode_value) {
+                    Some((opcode_value - codes::Op1 + 1) as u64)
+                } else if opcode_value <= codes::OpPushData4 {
+                    // Post-Toccata allows non-minimal data pushes, so
+                    // OpData*/OpPushData* forms before multisig are counted.
+                    match deserialize_i64(op.get_data(), false) {
+                        Ok(count) if (1..=MAX_PUB_KEYS_PER_MUTLTISIG as i64).contains(&count) => Some(count as u64),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+            }
+            Err(_) => return 0,
+        }
+    }
+
+    sigops
 }
 
 /// Calculates an upper bound of signature operations in a script without executing it.
@@ -1778,6 +1834,93 @@ mod tests {
                 test.name
             );
         }
+    }
+
+    #[test]
+    fn test_post_toccata_p2sh_sig_scanner() {
+        struct Test {
+            name: String,
+            redeem_script: Vec<u8>,
+            signature_prefix: Vec<u8>,
+            expected_sig_ops: u64,
+        }
+
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
+        // OpPushData1 declares a two-byte payload, but only one payload byte follows the length byte.
+        let malformed_push = [OpPushData1, 2, 1];
+
+        let mut tests = vec![
+            Test {
+                name: "from-stack sigops are counted".to_string(),
+                redeem_script: ScriptBuilder::new()
+                    .add_op(OpCheckSigFromStack)
+                    .unwrap()
+                    .add_op(OpCheckSigFromStackECDSA)
+                    .unwrap()
+                    .drain(),
+                signature_prefix: vec![],
+                expected_sig_ops: 2,
+            },
+            Test {
+                name: "canonical multisig count".to_string(),
+                redeem_script: ScriptBuilder::new().add_op(codes::Op2).unwrap().add_op(OpCheckMultiSig).unwrap().drain(),
+                signature_prefix: vec![],
+                expected_sig_ops: 2,
+            },
+            Test {
+                name: "missing multisig count falls back to max".to_string(),
+                redeem_script: ScriptBuilder::new().add_op(OpCheckMultiSig).unwrap().drain(),
+                signature_prefix: vec![],
+                expected_sig_ops: MAX_PUB_KEYS_PER_MUTLTISIG as u64,
+            },
+            Test {
+                name: "signature prefix is ignored".to_string(),
+                redeem_script: ScriptBuilder::new().add_op(OpCheckSig).unwrap().drain(),
+                signature_prefix: ScriptBuilder::new().add_op(OpTrue).unwrap().drain(),
+                expected_sig_ops: 1,
+            },
+            Test {
+                name: "malformed redeem script returns zero".to_string(),
+                redeem_script: [OpCheckSig].into_iter().chain(malformed_push).collect(),
+                signature_prefix: vec![],
+                expected_sig_ops: 0,
+            },
+        ];
+
+        for count in 1u8..=MAX_PUB_KEYS_PER_MUTLTISIG as u8 + 1 {
+            let expected_sig_ops = u64::from(count).min(MAX_PUB_KEYS_PER_MUTLTISIG as u64);
+
+            let canonical_redeem_script = ScriptBuilder::new().add_data(&[count]).unwrap().add_op(OpCheckMultiSig).unwrap().drain();
+            tests.push(Test {
+                name: format!("canonical multisig count {count}"),
+                redeem_script: canonical_redeem_script,
+                signature_prefix: vec![],
+                expected_sig_ops,
+            });
+
+            let explicit_redeem_script =
+                ScriptBuilder::with_flags(flags).add_data_with_push_opcode(&[count]).unwrap().add_op(OpCheckMultiSig).unwrap().drain();
+            tests.push(Test {
+                name: format!("explicit push multisig count {count}"),
+                redeem_script: explicit_redeem_script,
+                signature_prefix: vec![],
+                expected_sig_ops,
+            });
+        }
+
+        for test in tests {
+            let spk = pay_to_script_hash_script(&test.redeem_script);
+            let signature_script = pay_to_script_hash_signature_script_with_flags(test.redeem_script, test.signature_prefix, flags)
+                .expect("p2sh script build");
+            assert_eq!(post_toccata_p2sh_sig_scanner(&signature_script, &spk), test.expected_sig_ops, "{}", test.name);
+        }
+
+        let non_p2sh = ScriptPublicKey::new(0, SmallVec::from_slice(&[OpTrue]));
+        assert_eq!(post_toccata_p2sh_sig_scanner(&[], &non_p2sh), 0, "non-p2sh spk");
+
+        let redeem_script = ScriptBuilder::new().add_op(OpCheckSig).unwrap().drain();
+        let p2sh = pay_to_script_hash_script(&redeem_script);
+        assert_eq!(post_toccata_p2sh_sig_scanner(&malformed_push, &p2sh), 0, "malformed sigscript");
     }
 
     #[test]
