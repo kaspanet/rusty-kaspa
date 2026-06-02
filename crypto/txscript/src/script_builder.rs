@@ -234,13 +234,9 @@ impl ScriptBuilder {
 
     /// Returns the number of bytes emitted by the explicit push-data encoding.
     fn explicit_push_encoded_size(data_len: usize) -> usize {
-        if data_len == 0 {
-            return 1;
-        }
-
         data_len
             + if data_len <= OP_DATA_MAX_VAL as usize {
-                1 // length encoded as OpData#
+                1 // Op0 for empty data, otherwise length encoded as OpData#
             } else if data_len <= u8::MAX as usize {
                 2 // length encoded as OpPushData1 + 1 byte for value
             } else if data_len <= u16::MAX as usize {
@@ -604,6 +600,35 @@ mod tests {
         for (name, data, expected) in tests {
             let result = ScriptBuilder::with_flags(flags).add_data_with_push_opcode(&data).expect("explicit push is allowed").drain();
             assert_eq!(result, expected, "{name} wrong result");
+        }
+    }
+
+    #[test]
+    fn test_explicit_push_encoded_size_matches_canonical_on_boundaries() {
+        // Len 1 is excluded because canonical size is data-dependent there:
+        // small ints and Op1Negate encode as a single opcode. The other
+        // boundary lengths below are length-only.
+        let boundary_lengths = [
+            0,
+            2,
+            OP_DATA_MAX_VAL as usize - 1,
+            OP_DATA_MAX_VAL as usize,
+            OP_DATA_MAX_VAL as usize + 1,
+            u8::MAX as usize - 1,
+            u8::MAX as usize,
+            u8::MAX as usize + 1,
+            u16::MAX as usize - 1,
+            u16::MAX as usize,
+            u16::MAX as usize + 1,
+        ];
+
+        for data_len in boundary_lengths {
+            let data = vec![0x49; data_len];
+            assert_eq!(
+                ScriptBuilder::explicit_push_encoded_size(data_len),
+                ScriptBuilder::canonical_data_size(&data),
+                "wrong encoded size for len {data_len}"
+            );
         }
     }
 
