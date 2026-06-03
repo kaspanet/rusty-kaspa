@@ -30,7 +30,7 @@ impl Mempool {
         transaction.calculated_non_contextual_masses = Some(consensus.calculate_transaction_non_contextual_masses(&transaction.tx)?);
         let virtual_daa_score = consensus.get_virtual_daa_score();
         self.validate_transaction_limits_in_isolation(&transaction, virtual_daa_score)?;
-        self.validate_transaction_std_in_isolation(&transaction)?;
+        self.validate_transaction_std_in_isolation(&transaction, virtual_daa_score)?;
         let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy, virtual_daa_score)?;
         self.populate_mempool_entries(&mut transaction);
         Ok(TransactionPreValidation { transaction, feerate_threshold })
@@ -146,9 +146,9 @@ impl Mempool {
         Ok(())
     }
 
-    fn validate_transaction_std_in_isolation(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+    fn validate_transaction_std_in_isolation(&self, transaction: &MutableTransaction, virtual_daa_score: u64) -> RuleResult<()> {
         if !self.config.accept_non_standard {
-            self.check_transaction_standard_in_isolation(transaction)?;
+            self.check_transaction_standard_in_isolation(transaction, virtual_daa_score)?;
         }
         Ok(())
     }
