@@ -3,9 +3,9 @@
 //! where all large integer values (`u64`) are serialized to and from JSON as strings.
 //!
 
-use super::invalid_input_mass_variant;
 use crate::error::Error;
 use crate::imports::*;
+use crate::invalid_input_mass_variant;
 use crate::result::Result;
 use crate::{
     CovenantBinding, Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutpointInner,

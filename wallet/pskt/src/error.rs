@@ -9,6 +9,8 @@ pub enum Error {
     #[error("{0}")]
     Custom(String),
     #[error(transparent)]
+    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+    #[error(transparent)]
     ConstructorError(#[from] ConstructorError),
     #[error("OutputNotModifiable")]
     OutOfBounds,
@@ -46,6 +48,8 @@ pub enum Error {
     PayloadRequiresVersion1(crate::pskt::Version),
     #[error("Outputs not allowed to contain covenant due to pskt or tx versions mismatch")]
     Covenant,
+    #[error("PSKT does not yet support transaction input compute_budget")]
+    UnsupportedInputComputeBudget,
 }
 #[derive(thiserror::Error, Debug)]
 pub enum ConstructorError {

@@ -7,6 +7,7 @@
 use crate::TransactionOutpoint;
 use crate::UtxoEntryReference;
 use crate::imports::*;
+use crate::invalid_input_mass_variant;
 use crate::result::Result;
 use kaspa_utils::hex::*;
 
@@ -260,18 +261,26 @@ impl TransactionInput {
     }
 }
 
-impl From<TransactionInputWithVersion<'_>> for cctx::TransactionInput {
-    fn from(value: TransactionInputWithVersion<'_>) -> Self {
+impl TryFrom<TransactionInputWithVersion<'_>> for cctx::TransactionInput {
+    type Error = Error;
+
+    fn try_from(value: TransactionInputWithVersion<'_>) -> Result<Self> {
         let inner = value.tx_input.inner();
-        cctx::TransactionInput {
+        Ok(cctx::TransactionInput {
             previous_outpoint: inner.previous_outpoint.clone().into(),
             signature_script: inner.signature_script.clone().unwrap_or_default(), // TODO - discuss: should this unwrap_or_default or return an error?
             sequence: inner.sequence,
             mass: if cctx::TxInputMass::version_expects_compute_budget_field(value.version) {
+                if inner.sig_op_count != 0 {
+                    return Err(invalid_input_mass_variant("sig_op_count", value.version));
+                }
                 cctx::TxInputMass::ComputeBudget(inner.compute_budget.into())
             } else {
+                if inner.compute_budget != 0 {
+                    return Err(invalid_input_mass_variant("compute_budget", value.version));
+                }
                 cctx::TxInputMass::SigopCount(inner.sig_op_count.into())
             },
-        }
+        })
     }
 }

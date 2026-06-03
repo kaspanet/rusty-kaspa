@@ -13,16 +13,19 @@ use kaspa_consensus_core::tx as cctx;
 
 impl TryFrom<Transaction> for Inner {
     type Error = Error;
-    fn try_from(_transaction: Transaction) -> Result<Self, Self::Error> {
-        Inner::try_from(cctx::Transaction::from(&_transaction))
+    fn try_from(transaction: Transaction) -> Result<Self, Self::Error> {
+        Inner::try_from(cctx::Transaction::try_from(&transaction)?)
     }
 }
 
 impl TryFrom<TransactionInput> for Input {
     type Error = Error;
     fn try_from(input: TransactionInput) -> std::result::Result<Input, Self::Error> {
-        let TransactionInputInner { previous_outpoint, signature_script: _, sequence: _, sig_op_count, compute_budget: _, utxo } =
+        let TransactionInputInner { previous_outpoint, signature_script: _, sequence: _, sig_op_count, compute_budget, utxo } =
             &*input.inner();
+        if *compute_budget != 0 {
+            return Err(Error::UnsupportedInputComputeBudget);
+        }
 
         let input = InputBuilder::default()
         .utxo_entry(utxo.as_ref().ok_or(Error::MissingUtxoEntry)?.into())
@@ -68,6 +71,9 @@ impl TryFrom<(cctx::Transaction, Vec<(&cctx::TransactionInput, &cctx::UtxoEntry)
     fn try_from(
         (transaction, populated_inputs): (cctx::Transaction, Vec<(&cctx::TransactionInput, &cctx::UtxoEntry)>),
     ) -> Result<Self, Self::Error> {
+        if cctx::TxInputMass::version_expects_compute_budget_field(transaction.version) {
+            return Err(Error::UnsupportedInputComputeBudget);
+        }
         let inputs: Result<Vec<Input>, Self::Error> = populated_inputs
             .into_iter()
             .map(|(input, utxo)| {
@@ -96,6 +102,9 @@ impl TryFrom<(cctx::Transaction, Vec<(&cctx::TransactionInput, &cctx::UtxoEntry)
 impl TryFrom<cctx::Transaction> for Inner {
     type Error = Error;
     fn try_from(transaction: cctx::Transaction) -> Result<Self, self::Error> {
+        if cctx::TxInputMass::version_expects_compute_budget_field(transaction.version) {
+            return Err(Error::UnsupportedInputComputeBudget);
+        }
         let inputs = transaction
             .inputs
             .iter()
@@ -113,5 +122,46 @@ impl TryFrom<cctx::Transaction> for Inner {
             .collect::<Result<_, _>>()?;
 
         Ok(Inner { global: Global::default(), inputs, outputs })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_client::{TransactionInput, TransactionOutpoint};
+    use kaspa_consensus_core::{
+        mass::ComputeBudget,
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::{
+            ScriptPublicKey, Transaction as CoreTransaction, TransactionId, TransactionInput as CoreTransactionInput,
+            TransactionOutput,
+        },
+    };
+
+    #[test]
+    fn transaction_input_with_compute_budget_is_rejected() {
+        let input = TransactionInput::new(TransactionOutpoint::new(TransactionId::default(), 0), None, 0, 0, 1, None);
+        let err = Input::try_from(input).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedInputComputeBudget));
+    }
+
+    #[test]
+    fn v1_transaction_conversion_to_pskt_is_rejected() {
+        let tx = CoreTransaction::new(
+            1,
+            vec![CoreTransactionInput {
+                previous_outpoint: Default::default(),
+                signature_script: vec![],
+                sequence: 0,
+                mass: cctx::TxInputMass::ComputeBudget(ComputeBudget(1)),
+            }],
+            vec![TransactionOutput::new(0, ScriptPublicKey::new(0, vec![].into()))],
+            0,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        );
+        let err = Inner::try_from(tx).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedInputComputeBudget));
     }
 }

@@ -6,9 +6,9 @@
 //! but may be deserialized in other JSON-capable environments that support large integers)
 //!
 
-use super::invalid_input_mass_variant;
 use crate::error::Error;
 use crate::imports::*;
+use crate::invalid_input_mass_variant;
 use crate::result::Result;
 use crate::{
     CovenantBinding, Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutpointInner,
