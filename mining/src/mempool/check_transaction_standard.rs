@@ -1,16 +1,69 @@
 use crate::mempool::{
     Mempool,
+    config::LEGACY_MINIMUM_RELAY_TRANSACTION_FEE,
     errors::{NonStandardError, NonStandardResult},
+    tx::Priority,
 };
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     tx::MutableTransaction,
 };
-use kaspa_txscript::script_class::ScriptClass;
+use kaspa_txscript::{post_toccata_p2sh_sig_scanner, script_class::ScriptClass};
+
+/// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
+/// that are considered standard in a pay-to-script-hash script.
+///
+/// The upper-bound execution limit comes from compute mass: some zk opcodes already cost the equivalent
+/// of roughly 140-250 signature operations. However, for classic Schnorr/ECDSA signature operations, this
+/// standardness limit encourages parallelism across inputs rather than concentrating work in one input.
+const MAX_STANDARD_P2SH_SIG_OPS: u16 = 15;
+
+/// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum per-dimension transaction mass considered
+/// standard prior to Toccata. Until the network is about to activate Toccata (see
+/// STANDARD_MASS_RELAXATION_WINDOW_SECONDS), the mempool keeps rejecting higher-mass transactions
+/// as non-standard, so that updated nodes don't admit and relay transactions that not-yet-updated
+/// peers would drop, leaving them stuck unmined.
+pub(crate) const MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA: u64 = 100_000;
+
+/// Window, in seconds, before Toccata activation at which the standard mass cap is relaxed. By this
+/// point the network is expected to be fully updated, so high-mass transactions can be admitted and
+/// primed in mempools ahead of activation.
+const STANDARD_MASS_RELAXATION_WINDOW_SECONDS: u64 = 30 * 60;
 
 impl Mempool {
-    pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
+    /// Returns the per-dimension standard mass cap currently in effect, or `None` once the cap has
+    /// been relaxed (within [`STANDARD_MASS_RELAXATION_WINDOW_SECONDS`] before Toccata activation,
+    /// and ever after). `early_by` keeps `never`/`always` activations untouched, so networks without
+    /// a scheduled Toccata keep the cap and `always`-active ones never apply it.
+    ///
+    /// TODO(post-toccata): once Toccata is active on all networks, delete this helper together with
+    /// MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA, STANDARD_MASS_RELAXATION_WINDOW_SECONDS and the
+    /// cap checks in `check_transaction_standard_in_isolation`/`_in_context`. The block-fit limits in
+    /// check_transaction_limits then remain the only per-tx mass ceiling.
+    fn standard_transaction_mass_cap(&self, virtual_daa_score: u64) -> Option<u64> {
+        let window = STANDARD_MASS_RELAXATION_WINDOW_SECONDS.saturating_mul(self.config.network_blocks_per_second);
+        let relaxation = self.toccata_activation.early_by(window);
+        (!relaxation.is_active(virtual_daa_score)).then_some(MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA)
+    }
+
+    pub(crate) fn check_transaction_standard_in_isolation(
+        &self,
+        transaction: &MutableTransaction,
+        virtual_daa_score: u64,
+    ) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
+
+        // Until shortly before Toccata activates, keep the legacy per-tx standard mass cap on the
+        // non-contextual dimensions so updated nodes don't relay transactions that peers still reject.
+        if let Some(cap) = self.standard_transaction_mass_cap(virtual_daa_score) {
+            let masses = transaction.calculated_non_contextual_masses.unwrap();
+            if masses.compute_mass > cap {
+                return Err(NonStandardError::RejectComputeMass(transaction_id, masses.compute_mass, cap));
+            }
+            if masses.transient_mass > cap {
+                return Err(NonStandardError::RejectTransientMass(transaction_id, masses.transient_mass, cap));
+            }
+        }
 
         // None of the output public key scripts can be a non-standard script.
         for (i, output) in transaction.tx.outputs.iter().enumerate() {
@@ -29,11 +82,26 @@ impl Mempool {
     /// check_transaction_standard_in_context performs a series of checks on a transaction's
     /// inputs to ensure they are "standard". A standard transaction input within the
     /// context of this function is one whose referenced public key script is of a
-    /// standard form.
+    /// standard form and, for pay-to-script-hash, does not have more than
+    /// MAX_STANDARD_P2SH_SIG_OPS signature operations.
     /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
     /// into the mempool and relay.
-    pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
+    pub(crate) fn check_transaction_standard_in_context(
+        &self,
+        transaction: &MutableTransaction,
+        priority: Priority,
+        virtual_daa_score: u64,
+    ) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
+
+        // Storage mass is only known after contextual population, so the standard mass cap is applied to it here.
+        if let Some(cap) = self.standard_transaction_mass_cap(virtual_daa_score) {
+            let storage_mass = transaction.tx.mass();
+            if storage_mass > cap {
+                return Err(NonStandardError::RejectStorageMass(transaction_id, storage_mass, cap));
+            }
+        }
+
         for i in 0..transaction.tx.inputs.len() {
             // It is safe to elide existence and index checks here since
             // they have already been checked prior to calling this
@@ -45,7 +113,14 @@ impl Mempool {
                 }
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
-                ScriptClass::ScriptHash => {}
+                ScriptClass::ScriptHash => {
+                    // post-toccata scanner is valid pre-toccata as well
+                    let num_sig_ops =
+                        post_toccata_p2sh_sig_scanner(&transaction.tx.inputs[i].signature_script, &entry.script_public_key);
+                    if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
+                        return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
+                    }
+                }
             }
         }
 
@@ -58,31 +133,44 @@ impl Mempool {
         let masses = transaction.calculated_non_contextual_masses.unwrap();
         let cofactors = self.config.mempool_mass_cofactors.raw_post();
         let normalized_transient_mass = masses.normalized_transient(&cofactors);
-        let fee_mass = masses.compute_mass.max(normalized_transient_mass);
-        let minimum_fee = self.minimum_required_transaction_relay_fee(fee_mass);
+
+        // TODO(post-toccata): remove `use_prior_p2p_fee_rules` and unconditionally use:
+        //   fee_mass = max(compute_mass, normalized_transient_mass)
+        //   relay_fee = self.config.minimum_relay_transaction_fee
+        // The relaxation allows software to adapt between release and activation, instead of txs being p2p rejected by updated nodes
+        let use_prior_p2p_fee_rules = priority == Priority::Low && !self.toccata_activation.is_active(virtual_daa_score);
+        let (fee_mass, relay_fee) = if use_prior_p2p_fee_rules {
+            // Prior P2P relay-fee policy: legacy base fee over compute mass only.
+            (masses.compute_mass, LEGACY_MINIMUM_RELAY_TRANSACTION_FEE)
+        } else {
+            (masses.compute_mass.max(normalized_transient_mass), self.config.minimum_relay_transaction_fee)
+        };
+        let minimum_fee = self.minimum_required_transaction_relay_fee(fee_mass, relay_fee);
+
         let fee = transaction.calculated_fee.unwrap();
         if fee < minimum_fee {
-            return if masses.compute_mass >= normalized_transient_mass {
+            return if use_prior_p2p_fee_rules || masses.compute_mass >= normalized_transient_mass {
                 Err(NonStandardError::RejectInsufficientComputeFee(transaction_id, fee, minimum_fee, masses.compute_mass))
             } else {
                 Err(NonStandardError::RejectInsufficientTransientFee(transaction_id, fee, minimum_fee, normalized_transient_mass))
             };
         }
+        // end-TODO
 
         Ok(())
     }
 
     /// minimum_required_transaction_relay_fee returns the minimum transaction fee required
     /// for a transaction with the passed mass to be accepted into the mempool and relayed.
-    fn minimum_required_transaction_relay_fee(&self, mass: u64) -> u64 {
+    fn minimum_required_transaction_relay_fee(&self, mass: u64, minimum_relay_transaction_fee: u64) -> u64 {
         // Calculate the minimum fee for a transaction to be allowed into the
         // mempool and relayed by scaling the base fee. MinimumRelayTransactionFee is in
         // sompi/kg so multiply by mass (which is in grams) and divide by 1000 to get
         // minimum sompis.
-        let mut minimum_fee = (mass * self.config.minimum_relay_transaction_fee) / 1000;
+        let mut minimum_fee = (mass * minimum_relay_transaction_fee) / 1000;
 
         if minimum_fee == 0 {
-            minimum_fee = self.config.minimum_relay_transaction_fee;
+            minimum_fee = minimum_relay_transaction_fee;
         }
 
         // Set the minimum fee to the maximum possible value if the calculated
@@ -167,10 +255,11 @@ mod tests {
                     params.block_lane_limits,
                 );
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
+                let minimum_relay_transaction_fee = config.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
-                let mempool = Mempool::new(Arc::new(config), counters);
+                let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
 
-                let got = mempool.minimum_required_transaction_relay_fee(test.size);
+                let got = mempool.minimum_required_transaction_relay_fee(test.size, minimum_relay_transaction_fee);
                 if got != test.want {
                     println!("test_calc_min_required_tx_relay_fee test '{}' failed: got {}, want {}", test.name, got, test.want);
                 }
@@ -292,11 +381,11 @@ mod tests {
                     params.block_lane_limits,
                 );
                 let counters = Arc::new(MiningCounters::default());
-                let mempool = Mempool::new(Arc::new(config), counters);
+                let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
 
                 // Ensure standard-ness is as expected.
                 println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);
-                let res = mempool.check_transaction_standard_in_isolation(&test.mtx);
+                let res = mempool.check_transaction_standard_in_isolation(&test.mtx, 0);
                 if res.is_ok() && test.is_standard {
                     // Test passes since function returned standard for a
                     // transaction which is intended to be standard.
@@ -412,10 +501,10 @@ mod tests {
         let config =
             Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
         let counters = Arc::new(MiningCounters::default());
-        let mempool = Mempool::new(Arc::new(config), counters);
+        let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
 
         for test in tests {
-            let res = mempool.check_transaction_standard_in_context(&test.mtx);
+            let res = mempool.check_transaction_standard_in_context(&test.mtx, Priority::High, 0);
             match test.expected {
                 Expected::Standard => assert_eq!(res, Ok(()), "failed for test '{}'", test.name),
                 Expected::RejectInputScriptClass => {
@@ -435,5 +524,160 @@ mod tests {
                 ),
             }
         }
+
+        // TODO(post-toccata): remove this temporary test case
+        let params: Params = NetworkType::Mainnet.into();
+
+        let config =
+            Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
+        let toccata_activation = ForkActivation::new(10);
+        let toccata_daa_activation = toccata_activation.daa_score();
+        let cofactors = config.mempool_mass_cofactors.raw_post();
+        let mempool = Mempool::new(Arc::new(config), toccata_activation, Arc::new(MiningCounters::default()));
+
+        let compute_mass = 1_000;
+        let legacy_minimum_fee = LEGACY_MINIMUM_RELAY_TRANSACTION_FEE;
+        let insufficient_legacy_fee = legacy_minimum_fee - 1;
+        let masses = NonContextualMasses::new(compute_mass, compute_mass * 4);
+        let normalized_transient_mass = masses.normalized_transient(&cofactors);
+        assert!(normalized_transient_mass > compute_mass);
+        let new_minimum_fee = default_minimum_relay_fee_for_mass(normalized_transient_mass);
+
+        let addr = Address::new(Prefix::Mainnet, Version::PubKey, &[1u8; 32]);
+        let script_public_key = kaspa_txscript::pay_to_address_script(&addr);
+        let mtx = new_mtx(script_public_key.clone(), masses, legacy_minimum_fee);
+
+        assert_eq!(mempool.check_transaction_standard_in_context(&mtx, Priority::Low, toccata_daa_activation - 1), Ok(()));
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(
+                &new_mtx(script_public_key, masses, insufficient_legacy_fee),
+                Priority::Low,
+                toccata_daa_activation - 1
+            ),
+            Err(NonStandardError::RejectInsufficientComputeFee(mtx.id(), insufficient_legacy_fee, legacy_minimum_fee, compute_mass))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::Low, toccata_daa_activation),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::High, toccata_daa_activation - 1),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::High, toccata_daa_activation),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+        // end-TODO
+    }
+
+    #[test]
+    fn test_standard_transaction_mass_cap() {
+        // Toccata score far enough out that the relaxation window (30 min * bps) starts at a positive score.
+        let toccata_activation = ForkActivation::new(1_000_000);
+        let params: Params = NetworkType::Mainnet.into();
+        let config =
+            Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
+        let mempool = Mempool::new(Arc::new(config), toccata_activation, Arc::new(MiningCounters::default()));
+
+        let addr = Address::new(Prefix::Mainnet, Version::PubKey, &[1u8; 32]);
+        let spk = kaspa_txscript::pay_to_address_script(&addr);
+
+        // 0 is before the relaxation window opens; one score below activation is inside it.
+        let before_window = 0;
+        let in_window = toccata_activation.daa_score() - 1;
+        let over = MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA + 1;
+
+        // Non-contextual (compute/transient) dimensions, checked in isolation.
+        let isolation_mtx = |compute, transient| {
+            let input = TransactionInput::new(
+                TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 0),
+                vec![],
+                MAX_TX_IN_SEQUENCE_NUM,
+                0,
+            );
+            let tx = Transaction::new(
+                TX_VERSION,
+                vec![input],
+                vec![TransactionOutput::new(SOMPI_PER_KASPA, spk.clone())],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            let mut mtx = MutableTransaction::from_tx(tx);
+            mtx.calculated_non_contextual_masses = Some(NonContextualMasses::new(compute, transient));
+            mtx
+        };
+
+        let high_compute = isolation_mtx(over, 1_000);
+        assert_eq!(
+            mempool.check_transaction_standard_in_isolation(&high_compute, before_window),
+            Err(NonStandardError::RejectComputeMass(high_compute.id(), over, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA))
+        );
+        assert_eq!(mempool.check_transaction_standard_in_isolation(&high_compute, in_window), Ok(()));
+
+        let high_transient = isolation_mtx(1_000, over);
+        assert_eq!(
+            mempool.check_transaction_standard_in_isolation(&high_transient, before_window),
+            Err(NonStandardError::RejectTransientMass(high_transient.id(), over, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA))
+        );
+        assert_eq!(mempool.check_transaction_standard_in_isolation(&high_transient, in_window), Ok(()));
+
+        // A transaction at the cap is standard even before the window.
+        let within_cap = isolation_mtx(MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA);
+        assert_eq!(mempool.check_transaction_standard_in_isolation(&within_cap, before_window), Ok(()));
+
+        // Contextual storage dimension, checked in context.
+        let context_mtx = |storage: u64, fee: u64| {
+            let input = TransactionInput::new(
+                TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 0),
+                vec![],
+                MAX_TX_IN_SEQUENCE_NUM,
+                0,
+            );
+            let tx = Transaction::new(
+                TX_VERSION,
+                vec![input],
+                vec![TransactionOutput::new(SOMPI_PER_KASPA, spk.clone())],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            tx.set_mass(storage);
+            let mut mtx =
+                MutableTransaction::with_entries(tx.into(), vec![UtxoEntry::new(2 * SOMPI_PER_KASPA, spk.clone(), 0, false, None)]);
+            mtx.calculated_non_contextual_masses = Some(NonContextualMasses::new(1_000, 1_000));
+            mtx.calculated_fee = Some(fee);
+            mtx
+        };
+
+        let high_storage = context_mtx(over, SOMPI_PER_KASPA);
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&high_storage, Priority::High, before_window),
+            Err(NonStandardError::RejectStorageMass(high_storage.id(), over, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA))
+        );
+        // Within the window the storage cap is lifted; the well-funded, standard tx is accepted.
+        assert_eq!(mempool.check_transaction_standard_in_context(&high_storage, Priority::High, in_window), Ok(()));
     }
 }

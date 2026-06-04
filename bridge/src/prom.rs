@@ -496,6 +496,11 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
     serve_http_loop(listener, HttpMode::Aggregated { web_bind: web_bind_for_status }).await
 }
 
+/// Worker label used for stats/metrics: explicit name or stable default (`asic-{id}`).
+pub fn prom_worker_id(ctx: &crate::stratum_context::StratumContext) -> String {
+    ctx.effective_worker_name()
+}
+
 /// Worker context for metrics
 pub struct WorkerContext {
     pub instance_id: String,
@@ -508,6 +513,38 @@ pub struct WorkerContext {
 impl WorkerContext {
     pub fn labels(&self) -> Vec<&str> {
         vec![&self.instance_id, &self.worker_name, &self.miner, &self.wallet, &self.ip]
+    }
+
+    /// Build Prometheus worker labels from a live Stratum connection.
+    pub fn from_stratum(instance_id: &str, ctx: &crate::stratum_context::StratumContext, miner: &str) -> Self {
+        Self::from_stratum_parts(instance_id, &prom_worker_id(ctx), ctx, miner)
+    }
+
+    /// Build Prometheus worker labels when the stats key is already known.
+    pub fn from_stratum_parts(
+        instance_id: &str,
+        worker_name: &str,
+        ctx: &crate::stratum_context::StratumContext,
+        miner: &str,
+    ) -> Self {
+        Self {
+            instance_id: instance_id.to_string(),
+            worker_name: worker_name.to_string(),
+            miner: miner.to_string(),
+            wallet: ctx.wallet_addr.lock().clone(),
+            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
+        }
+    }
+}
+
+/// Build Prometheus worker labels from a Stratum session (stable name, no empty `worker` label).
+pub fn worker_context(instance_id: &str, ctx: &crate::stratum_context::StratumContext, miner: impl Into<String>) -> WorkerContext {
+    WorkerContext {
+        instance_id: instance_id.to_string(),
+        worker_name: ctx.effective_worker_name(),
+        miner: miner.into(),
+        wallet: ctx.wallet_addr.lock().clone(),
+        ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
     }
 }
 
@@ -733,8 +770,8 @@ fn filter_metric_families_for_instance(metric_families: Vec<MetricFamily>, insta
     out
 }
 
-/// Initialize worker counters (set to 0 to create the metric)
-pub fn init_worker_counters(worker: &WorkerContext) {
+/// Register counter/gauge time series for a worker (idempotent).
+fn init_worker_counter_series(worker: &WorkerContext) {
     if let Some(counter) = SHARE_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc_by(0.0);
     }
@@ -763,19 +800,45 @@ pub fn init_worker_counters(worker: &WorkerContext) {
     if let Some(counter) = JOB_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc_by(0.0);
     }
-    // Set worker start time (Unix timestamp in seconds)
-    if let Some(gauge) = WORKER_START_TIME.get() {
-        let start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
-        gauge.with_label_values(&worker.labels()).set(start_time);
-    }
-    // Initialize worker difficulty to 0 (will be updated when difficulty is set)
     if let Some(gauge) = WORKER_CURRENT_DIFFICULTY.get() {
-        gauge.with_label_values(&worker.labels()).set(0.0);
+        let metric = gauge.with_label_values(&worker.labels());
+        if metric.get() <= 0.0 {
+            metric.set(0.0);
+        }
     }
 }
 
-/// Update the current mining difficulty for a worker
+/// Ensure Prometheus worker metrics exist for the current `(instance, worker, wallet)` labels.
+/// `session_start_unix` should be aligned with in-memory `WorkStats.start_time` when available so
+/// dashboard hashrate/uptime match the terminal table.
+pub fn ensure_worker_session_metrics(worker: &WorkerContext, session_start_unix: f64) {
+    if worker.wallet.is_empty() {
+        return;
+    }
+
+    init_worker_counter_series(worker);
+
+    if let Some(gauge) = WORKER_START_TIME.get() {
+        let metric = gauge.with_label_values(&worker.labels());
+        if metric.get() <= 0.0 {
+            metric.set(session_start_unix);
+        }
+    }
+
+    update_worker_activity(worker);
+}
+
+/// Initialize worker counters (set to 0 to create the metric)
+pub fn init_worker_counters(worker: &WorkerContext) {
+    let start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
+    ensure_worker_session_metrics(worker, start_time);
+}
+
+/// Update the current mining difficulty for a worker.
+/// Does not refresh dashboard activity — jobs alone must not keep 0-share workers "online".
 pub fn update_worker_difficulty(worker: &WorkerContext, difficulty: f64) {
+    init_worker_counter_series(worker);
+
     if let Some(gauge) = WORKER_CURRENT_DIFFICULTY.get() {
         gauge.with_label_values(&worker.labels()).set(difficulty);
     }

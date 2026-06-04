@@ -101,6 +101,10 @@ fn vardiff_compute_next_diff(current: f64, shares: f64, elapsed_secs: f64, expec
     if (next - current).abs() > f64::EPSILON { Some(next) } else { None }
 }
 
+pub fn average_worker_spm(sum_spm: f64, worker_count: usize) -> f64 {
+    if worker_count == 0 { 0.0 } else { sum_spm / worker_count as f64 }
+}
+
 struct StatsPrinterEntry {
     instance_id: String,
     inst_short: String,
@@ -254,39 +258,55 @@ impl ShareHandler {
         format!("[{}]", self.instance_id)
     }
 
-    pub fn get_create_stats(&self, ctx: &StratumContext) -> WorkStats {
-        let mut stats_map = self.stats.lock();
+    fn worker_prom_context(&self, ctx: &StratumContext, miner: &str) -> crate::prom::WorkerContext {
+        crate::prom::WorkerContext::from_stratum(&self.instance_id, ctx, miner)
+    }
 
-        let worker_id = {
-            let worker_name = ctx.worker_name.lock();
-            if !worker_name.is_empty() { worker_name.clone() } else { ctx.remote_addr().to_string() }
+    fn workstats_session_start_unix(stats: &WorkStats) -> f64 {
+        let now_unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64();
+        now_unix - stats.start_time.elapsed().as_secs_f64()
+    }
+
+    fn sync_worker_prom_session(&self, ctx: &StratumContext, stats: &WorkStats) {
+        if ctx.wallet_addr.lock().is_empty() {
+            return;
+        }
+        let worker = self.worker_prom_context(ctx, "");
+        ensure_worker_session_metrics(&worker, Self::workstats_session_start_unix(stats));
+    }
+
+    /// Return in-memory stats for a worker when already registered (authorize/submit lifecycle).
+    fn get_stats_if_exists(&self, ctx: &StratumContext) -> Option<WorkStats> {
+        let worker_id = ctx.effective_worker_name();
+        self.stats.lock().get(&worker_id).cloned()
+    }
+
+    fn current_stratum_diff(ctx: &StratumContext) -> f64 {
+        GetMiningState(ctx).stratum_diff().map(|d| d.diff_value).unwrap_or(0.0)
+    }
+
+    pub fn get_create_stats(&self, ctx: &StratumContext) -> WorkStats {
+        let worker_id = ctx.effective_worker_name();
+
+        let stats = {
+            let mut stats_map = self.stats.lock();
+
+            if let Some(stats) = stats_map.get(&worker_id) {
+                stats.clone()
+            } else {
+                let stats = WorkStats::new(worker_id.clone());
+                // Seed per-worker displayed diff from current mining state so recreated
+                // entries do not start at 0.0 and get stuck in terminal/UI.
+                let seeded_diff = GetMiningState(ctx).stratum_diff().map(|d| d.diff_value).unwrap_or(0.0);
+                if seeded_diff > 0.0 {
+                    *stats.min_diff.lock() = seeded_diff;
+                }
+                stats_map.insert(worker_id.clone(), stats.clone());
+                stats
+            }
         };
 
-        if let Some(stats) = stats_map.get(&worker_id) {
-            return stats.clone();
-        }
-
-        let stats = WorkStats::new(worker_id.clone());
-        // Seed per-worker displayed diff from current mining state so recreated
-        // entries do not start at 0.0 and get stuck in terminal/UI.
-        let seeded_diff = GetMiningState(ctx).stratum_diff().map(|d| d.diff_value).unwrap_or(0.0);
-        if seeded_diff > 0.0 {
-            *stats.min_diff.lock() = seeded_diff;
-        }
-        stats_map.insert(worker_id.clone(), stats.clone());
-        drop(stats_map);
-
-        // Initialize worker counters
-        let wallet_addr = ctx.wallet_addr.lock().clone();
-        let worker_name = stats.worker_name.lock().clone();
-        init_worker_counters(&crate::prom::WorkerContext {
-            instance_id: self.instance_id.clone(),
-            worker_name: worker_name.clone(),
-            miner: String::new(),
-            wallet: wallet_addr.clone(),
-            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-        });
-
+        self.sync_worker_prom_session(ctx, &stats);
         stats
     }
 
@@ -454,10 +474,7 @@ impl ShareHandler {
         debug!("[SUBMIT] Parsed nonce value (u64): {}", nonce_val);
         debug!("[SUBMIT] Nonce hex: {:016x}", nonce_val);
 
-        let worker_id = {
-            let worker_name = ctx.worker_name.lock();
-            if !worker_name.is_empty() { worker_name.clone() } else { format!("{}:{}", ctx.remote_addr(), ctx.remote_port()) }
-        };
+        let worker_id = ctx.effective_worker_name();
         let submit_key = format!("{}|{}|{}", worker_id, job_id, final_nonce_str);
 
         let duplicate_outcome = {
@@ -650,7 +667,7 @@ impl ShareHandler {
             // This ensures we use the correct target for each job, as different jobs may have different header.bits
             if meets_network_target {
                 let wallet_addr = ctx.wallet_addr.lock().clone();
-                let worker_name = ctx.worker_name.lock().clone();
+                let worker_name = ctx.effective_worker_name();
                 let prefix = self.log_prefix();
 
                 info!(
@@ -817,13 +834,7 @@ impl ShareHandler {
                         let stats = self.get_create_stats(&ctx);
                         let overall = self.overall.clone();
                         let instance_id = self.instance_id.clone();
-                        let prom_worker = crate::prom::WorkerContext {
-                            instance_id: self.instance_id.clone(),
-                            worker_name: worker_name.clone(),
-                            miner: String::new(),
-                            wallet: wallet_addr.clone(),
-                            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                        };
+                        let prom_worker = self.worker_prom_context(&ctx, "");
 
                         record_block_accepted_by_node(&prom_worker);
 
@@ -906,13 +917,7 @@ impl ShareHandler {
                             *stats.stale_shares.lock() += 1;
                             *self.overall.stale_shares.lock() += 1;
 
-                            record_stale_share(&crate::prom::WorkerContext {
-                                instance_id: self.instance_id.clone(),
-                                worker_name: worker_name.clone(),
-                                miner: String::new(),
-                                wallet: wallet_addr.clone(),
-                                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                            });
+                            record_stale_share(&self.worker_prom_context(&ctx, ""));
                             ctx.reply_stale_share(event.id.clone()).await?;
                             return Ok(());
                         } else {
@@ -936,13 +941,7 @@ impl ShareHandler {
                             *stats.invalid_shares.lock() += 1;
                             *self.overall.invalid_shares.lock() += 1;
 
-                            record_invalid_share(&crate::prom::WorkerContext {
-                                instance_id: self.instance_id.clone(),
-                                worker_name: worker_name.clone(),
-                                miner: String::new(),
-                                wallet: wallet_addr.clone(),
-                                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                            });
+                            record_invalid_share(&self.worker_prom_context(&ctx, ""));
 
                             {
                                 let now = Instant::now();
@@ -1058,15 +1057,7 @@ impl ShareHandler {
             *stats.invalid_shares.lock() += 1;
             *self.overall.invalid_shares.lock() += 1;
 
-            let wallet_addr = ctx.wallet_addr.lock().clone();
-            let worker_name = ctx.worker_name.lock().clone();
-            record_weak_share(&crate::prom::WorkerContext {
-                instance_id: self.instance_id.clone(),
-                worker_name: worker_name.clone(),
-                miner: String::new(),
-                wallet: wallet_addr.clone(),
-                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-            });
+            record_weak_share(&self.worker_prom_context(&ctx, ""));
 
             if let Some(id) = &event.id {
                 let _ = ctx.reply_low_diff_share(id).await;
@@ -1099,18 +1090,7 @@ impl ShareHandler {
         *stats.last_share.lock() = Instant::now();
         *self.overall.shares_found.lock() += 1;
 
-        let wallet_addr = ctx.wallet_addr.lock().clone();
-        let worker_name = ctx.worker_name.lock().clone();
-        record_share_found(
-            &crate::prom::WorkerContext {
-                instance_id: self.instance_id.clone(),
-                worker_name: worker_name.clone(),
-                miner: String::new(),
-                wallet: wallet_addr.clone(),
-                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-            },
-            hash_value,
-        );
+        record_share_found(&self.worker_prom_context(&ctx, ""), hash_value);
 
         {
             let now = Instant::now();
@@ -1139,7 +1119,10 @@ impl ShareHandler {
     }
 
     pub fn set_client_vardiff(&self, ctx: &StratumContext, min_diff: f64) -> f64 {
-        let stats = self.get_create_stats(ctx);
+        let Some(stats) = self.get_stats_if_exists(ctx) else {
+            // Job/difficulty paths must not resurrect pruned 0-share workers in the terminal table.
+            return Self::current_stratum_diff(ctx);
+        };
         let previous = *stats.min_diff.lock();
         *stats.min_diff.lock() = min_diff;
         *stats.var_diff_start_time.lock() = Some(Instant::now());
@@ -1149,12 +1132,16 @@ impl ShareHandler {
     }
 
     pub fn get_client_vardiff(&self, ctx: &StratumContext) -> f64 {
-        let stats = self.get_create_stats(ctx);
-        *stats.min_diff.lock()
+        if let Some(stats) = self.get_stats_if_exists(ctx) {
+            return *stats.min_diff.lock();
+        }
+        Self::current_stratum_diff(ctx)
     }
 
     pub fn start_client_vardiff(&self, ctx: &StratumContext) {
-        let stats = self.get_create_stats(ctx);
+        let Some(stats) = self.get_stats_if_exists(ctx) else {
+            return;
+        };
         if stats.var_diff_start_time.lock().is_none() {
             *stats.var_diff_start_time.lock() = Some(Instant::now());
             *stats.var_diff_shares_found.lock() = 0;
@@ -1330,6 +1317,8 @@ impl ShareHandler {
 
                 let mut rows: Vec<(String, String)> = Vec::new();
                 let mut total_rate = 0.0;
+                let mut total_worker_spm = 0.0;
+                let mut total_worker_count: usize = 0;
                 let mut total_shares: i64 = 0;
                 let mut total_stales: i64 = 0;
                 let mut total_invalids: i64 = 0;
@@ -1338,8 +1327,6 @@ impl ShareHandler {
 
                 let now = Instant::now();
                 let start = entries.iter().map(|(_, _, start, _, _)| *start).max_by_key(|t| t.elapsed()).unwrap_or_else(Instant::now);
-                let total_uptime_mins = now.duration_since(start).as_secs_f64() / 60.0;
-
                 let mut total_target: Option<f64> = Some(entries[0].1);
                 for (inst_short, target_spm, _, stats, overall) in entries.iter() {
                     if let Some(t) = total_target
@@ -1376,6 +1363,8 @@ impl ShareHandler {
                         total_blocks += blocks;
 
                         let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
+                        total_worker_spm += spm;
+                        total_worker_count += 1;
                         let trend = if spm > *target_spm * 1.2 {
                             "up"
                         } else if spm < *target_spm * 0.8 {
@@ -1534,7 +1523,7 @@ impl ShareHandler {
                     total_blocks_all_time += blocks; // Also add to all-time total for the "Total" column
                 }
 
-                let overall_spm = if total_uptime_mins > 0.0 { (total_shares as f64) / total_uptime_mins } else { 0.0 };
+                let overall_spm = average_worker_spm(total_worker_spm, total_worker_count);
                 let total_spm_tgt = match total_target {
                     Some(t) => format!("{:>4.1}/{:<4.1}", overall_spm, t),
                     None => format!("{:>4.1}/-", overall_spm),
@@ -1680,7 +1669,45 @@ pub trait KaspaApiTrait: Send + Sync {
     async fn get_current_block_color(&self, block_hash: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>>;
 }
 
-pub struct WorkerContext<'a> {
-    pub worker_name: &'a str,
-    pub wallet_addr: &'a str,
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+    use crate::mining_state::MiningState;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    fn test_ctx() -> Arc<StratumContext> {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let accept_handle = tokio::spawn(async move { listener.accept().await });
+            let _stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+            let (accepted_stream, _) = accept_handle.await.unwrap().unwrap();
+            let state = Arc::new(MiningState::new());
+            let (tx, _rx) = mpsc::unbounded_channel();
+            StratumContext::new("127.0.0.1".to_string(), 12345, accepted_stream, state, tx)
+        })
+    }
+
+    #[test]
+    fn set_client_vardiff_does_not_recreate_pruned_stats() {
+        let handler = ShareHandler::new("test-instance".to_string());
+        let ctx = test_ctx();
+        *ctx.worker_name.lock() = "ghost".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:ghost".to_string();
+
+        handler.get_create_stats(&ctx);
+        assert_eq!(handler.stats.lock().len(), 1);
+
+        handler.stats.lock().clear();
+        assert!(handler.stats.lock().is_empty());
+
+        let previous = handler.set_client_vardiff(&ctx, 512.0);
+        assert_eq!(previous, 0.0, "vardiff should fall back to mining-state diff when stats were pruned");
+        assert!(handler.stats.lock().is_empty(), "job/vardiff paths must not recreate pruned stats");
+
+        handler.get_create_stats(&ctx);
+        assert_eq!(handler.stats.lock().len(), 1, "authorize/submit lifecycle may recreate stats");
+    }
 }

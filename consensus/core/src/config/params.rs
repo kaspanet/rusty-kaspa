@@ -56,10 +56,17 @@ impl ForkActivation {
         current_daa_score >= self.0
     }
 
-    pub fn delayed_by(self, delay_daa_score: u64) -> Self {
+    pub fn delayed_by(self, daa_score_delta: u64) -> Self {
         match self.0 {
             Self::ALWAYS | Self::NEVER => self,
-            daa_score => Self(daa_score.saturating_add(delay_daa_score)),
+            daa_score => Self(daa_score.saturating_add(daa_score_delta)),
+        }
+    }
+
+    pub fn early_by(self, daa_score_delta: u64) -> Self {
+        match self.0 {
+            Self::ALWAYS | Self::NEVER => self,
+            daa_score => Self(daa_score.saturating_sub(daa_score_delta)),
         }
     }
 
@@ -712,6 +719,7 @@ pub const MAINNET_PARAMS: Params = Params {
 
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
+
     toccata_activation: ForkActivation::never(),
 };
 
@@ -772,7 +780,6 @@ pub const TESTNET_PARAMS: Params = Params {
     // 18:30 UTC, March 6, 2025
     crescendo_activation: ForkActivation::new(88_657_000),
 
-    // TODO(pre-covpp): Before setting the activation DAA score, resolve all comments of the form TODO(pre-covpp)
     // ~16:00 UTC, May 18, 2026
     toccata_activation: ForkActivation::new(467_579_632),
 };
