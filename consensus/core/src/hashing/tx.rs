@@ -84,7 +84,7 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
     */
 
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) {
-        let mass = tx.mass();
+        let mass = tx.storage_mass();
         if tx.version < 1 {
             if mass > 0 {
                 hasher.write_u64(mass);
@@ -360,7 +360,7 @@ mod tests {
             0,
             vec![],
         );
-        tx_v1_a.set_mass(0);
+        tx_v1_a.set_storage_mass(0);
 
         let mut tx_v1_b = tx_v1_a.clone();
         tx_v1_b.inputs[0].mass = TxInputMass::ComputeBudget(222.into());

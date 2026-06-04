@@ -473,8 +473,7 @@ impl TryFrom<RpcNullableCovenantBinding> for RpcCovenantBinding {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone)]
 pub struct RpcOptionalTransaction {
     /// Level: Full
     pub version: Option<u16>,
@@ -486,12 +485,94 @@ pub struct RpcOptionalTransaction {
     pub subnetwork_id: Option<RpcSubnetworkId>,
     /// Level: Full
     pub gas: Option<u64>,
-    #[serde(with = "serde_bytes_optional")]
     /// Level: High
     pub payload: Option<Vec<u8>>,
     /// Level: High
-    pub mass: Option<u64>,
+    pub storage_mass: Option<u64>,
     pub verbose_data: Option<RpcOptionalTransactionVerboseData>,
+}
+
+// This struct is used only for human-readable serialization of RpcOptionalTransaction, and is not intended to be used directly.
+// It exists to avoid breaking existing clients that rely on the "mass" field in JSON serialization of RpcOptionalTransaction,
+// while allowing us to rename the internal storage mass field to storage_mass for better clarity.
+// Once the "mass" field is removed from RpcOptionalTransaction, this struct and the related code can be removed as well.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RpcOptionalTransactionHumanReadable {
+    version: Option<u16>,
+    inputs: Vec<RpcOptionalTransactionInput>,
+    outputs: Vec<RpcOptionalTransactionOutput>,
+    lock_time: Option<u64>,
+    subnetwork_id: Option<RpcSubnetworkId>,
+    gas: Option<u64>,
+    #[serde(with = "serde_bytes_optional")]
+    payload: Option<Vec<u8>>,
+    storage_mass: Option<u64>,
+    mass: Option<u64>, // Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future.
+    verbose_data: Option<RpcOptionalTransactionVerboseData>,
+}
+
+impl<'de> serde::Deserialize<'de> for RpcOptionalTransaction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            return Err(serde::de::Error::custom("RpcOptionalTransaction does not support non-human-readable deserialization"));
+        }
+
+        let value = RpcOptionalTransactionHumanReadable::deserialize(deserializer)?;
+        let storage_mass = match (value.storage_mass, value.mass) {
+            (Some(storage_mass), Some(mass)) if storage_mass != mass => {
+                return Err(serde::de::Error::custom(format!(
+                    "storageMass and mass must match when both are provided: storageMass={storage_mass}, mass={mass}"
+                )));
+            }
+            (Some(storage_mass), _) => Some(storage_mass),
+            (None, mass) => mass,
+        };
+
+        Ok(Self {
+            version: value.version,
+            inputs: value.inputs,
+            outputs: value.outputs,
+            lock_time: value.lock_time,
+            subnetwork_id: value.subnetwork_id,
+            gas: value.gas,
+            payload: value.payload,
+            storage_mass,
+            verbose_data: value.verbose_data,
+        })
+    }
+}
+
+impl Serialize for RpcOptionalTransaction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if !serializer.is_human_readable() {
+            return Err(serde::ser::Error::custom("RpcOptionalTransaction does not support non-human-readable serialization"));
+        }
+
+        // We use this destructuring so any change in the fields of RpcOptionalTransaction will cause a compile error here, reminding us to update the serialization code of RpcOptionalTransactionHumanReadable accordingly.
+        let Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass, verbose_data } = self;
+
+        let hr = RpcOptionalTransactionHumanReadable {
+            version: *version,
+            inputs: inputs.clone(),
+            outputs: outputs.clone(),
+            lock_time: *lock_time,
+            subnetwork_id: *subnetwork_id,
+            gas: *gas,
+            payload: payload.clone(),
+            storage_mass: *storage_mass,
+            #[allow(deprecated)]
+            mass: *storage_mass,
+            verbose_data: verbose_data.clone(),
+        };
+        hr.serialize(serializer)
+    }
 }
 
 impl RpcOptionalTransaction {
@@ -503,20 +584,20 @@ impl RpcOptionalTransaction {
             && self.subnetwork_id.is_none()
             && self.gas.is_none()
             && self.payload.is_none()
-            && self.mass.is_none()
+            && self.storage_mass.is_none()
             && (self.verbose_data.is_none() || self.verbose_data.as_ref().is_some_and(|x| x.is_empty()))
     }
 }
 
 impl std::fmt::Debug for RpcOptionalTransaction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RpcTransaction")
+        f.debug_struct("RpcOptionalTransaction")
             .field("version", &self.version)
             .field("lock_time", &self.lock_time)
             .field("subnetwork_id", &self.subnetwork_id)
             .field("gas", &self.gas)
             .field("payload", &self.payload.as_ref().map(|v|v.to_hex()))
-            .field("mass", &self.mass)
+            .field("storage_mass", &self.storage_mass)
             .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
@@ -534,7 +615,7 @@ impl Serializer for RpcOptionalTransaction {
         store!(Option<RpcSubnetworkId>, &self.subnetwork_id, writer)?;
         store!(Option<u64>, &self.gas, writer)?;
         store!(Option<Vec<u8>>, &self.payload, writer)?;
-        store!(Option<u64>, &self.mass, writer)?;
+        store!(Option<u64>, &self.storage_mass, writer)?;
         serialize!(Option<RpcOptionalTransactionVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -552,10 +633,10 @@ impl Deserializer for RpcOptionalTransaction {
         let subnetwork_id = load!(Option<RpcSubnetworkId>, reader)?;
         let gas = load!(Option<u64>, reader)?;
         let payload = load!(Option<Vec<u8>>, reader)?;
-        let mass = load!(Option<u64>, reader)?;
+        let storage_mass = load!(Option<u64>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalTransactionVerboseData>, reader)?;
 
-        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data })
+        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass, verbose_data })
     }
 }
 

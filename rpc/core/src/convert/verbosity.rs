@@ -143,7 +143,7 @@ impl_verbosity_from! {
 impl_verbosity_from! {
     for RpcTransactionVerbosity, from RpcDataVerbosityLevel {
         include_payload:           (RpcDataVerbosityLevel::High),
-        include_mass:              (RpcDataVerbosityLevel::High),
+        include_storage_mass:      (RpcDataVerbosityLevel::High),
         include_version:           (RpcDataVerbosityLevel::Full),
         include_lock_time:         (RpcDataVerbosityLevel::Full),
         include_subnetwork_id:     (RpcDataVerbosityLevel::Full),

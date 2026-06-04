@@ -387,7 +387,7 @@ mod mockery {
                 include_subnetwork_id: mock(),
                 include_gas: mock(),
                 include_payload: mock(),
-                include_mass: mock(),
+                include_storage_mass: mock(),
                 verbose_data_verbosity: mock(),
             }
         }
@@ -403,7 +403,7 @@ mod mockery {
                 subnetwork_id: mock(),
                 gas: mock(),
                 payload: Hash::mock().as_bytes().to_vec(),
-                mass: mock(),
+                storage_mass: mock(),
                 verbose_data: mock(),
             }
         }
@@ -419,7 +419,7 @@ mod mockery {
                 subnetwork_id: mock(),
                 gas: mock(),
                 payload: Some(Hash::mock().as_bytes().to_vec()),
-                mass: mock(),
+                storage_mass: mock(),
                 verbose_data: mock(),
             }
         }
@@ -1677,7 +1677,7 @@ mod mockery {
                 subnetwork_id: mock(),
                 gas: 0,
                 payload: vec![],
-                mass: 0,
+                storage_mass: 0,
                 verbose_data: None,
             };
 
@@ -1702,7 +1702,7 @@ mod mockery {
             store!(RpcSubnetworkId, &tx.subnetwork_id, &mut buffer).unwrap();
             store!(u64, &tx.gas, &mut buffer).unwrap();
             store!(Vec<u8>, &tx.payload, &mut buffer).unwrap();
-            store!(u64, &tx.mass, &mut buffer).unwrap();
+            store!(u64, &tx.storage_mass, &mut buffer).unwrap();
             serialize!(Option<RpcTransactionVerboseData>, &tx.verbose_data, &mut buffer).unwrap();
 
             let decoded = RpcTransaction::deserialize(&mut buffer.as_slice()).unwrap();

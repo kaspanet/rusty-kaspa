@@ -163,7 +163,7 @@ impl ConsensusApi for MassPolicyTestConsensus {
         }
         let non_contextual_masses = mutable_tx.calculated_non_contextual_masses.expect("populated by mempool");
         let contextual_masses = self.calculate_transaction_contextual_masses(mutable_tx).ok_or(TxRuleError::MassIncomputable)?;
-        mutable_tx.tx.set_mass(contextual_masses.storage_mass);
+        mutable_tx.tx.set_storage_mass(contextual_masses.storage_mass);
 
         let total_in: u64 = mutable_tx.entries.iter().map(|entry| entry.as_ref().unwrap().amount).sum();
         let total_out: u64 = mutable_tx.tx.outputs.iter().map(|output| output.value).sum();

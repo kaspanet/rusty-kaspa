@@ -92,7 +92,7 @@ impl FeerateTransactionKey {
         // in order to optimize and increase block space usage.
         let mass = Mass::new(
             tx.mtx.calculated_non_contextual_masses.expect("masses are expected to be calculated"),
-            ContextualMasses::new(tx.mtx.tx.mass()),
+            ContextualMasses::new(tx.mtx.tx.storage_mass()),
         )
         .normalized_max(cofactors);
         let fee = tx.mtx.calculated_fee.expect("fee is expected to be populated");

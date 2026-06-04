@@ -264,7 +264,7 @@ mod tests {
         );
 
         // Test a tx with storage mass commitment > 0
-        txs[0].set_mass(7);
+        txs[0].set_storage_mass(7);
 
         assert_eq!(
             calc_hash_merkle_root(txs.iter()),

@@ -92,7 +92,7 @@ impl From<&Transaction> for RpcTransaction {
             subnetwork_id: item.subnetwork_id,
             gas: item.gas,
             payload: item.payload.clone(),
-            mass: item.mass(),
+            storage_mass: item.storage_mass(),
             verbose_data: None,
         }
     }
@@ -145,7 +145,7 @@ impl TryFrom<RpcTransaction> for Transaction {
             item.gas,
             item.payload.clone(),
         );
-        transaction.set_mass(item.mass);
+        transaction.set_storage_mass(item.storage_mass);
         Ok(transaction)
     }
 }
@@ -171,7 +171,7 @@ impl From<&Transaction> for RpcOptionalTransaction {
             subnetwork_id: Some(item.subnetwork_id),
             gas: Some(item.gas),
             payload: Some(item.payload.clone()),
-            mass: Some(item.mass()),
+            storage_mass: Some(item.storage_mass()),
             verbose_data: None,
         }
     }
@@ -224,7 +224,9 @@ impl TryFrom<RpcOptionalTransaction> for Transaction {
             item.gas.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "gas".to_owned()))?,
             item.payload.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "payload".to_owned()))?,
         );
-        transaction.set_mass(item.mass.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "mass".to_owned()))?);
+        transaction.set_storage_mass(
+            item.storage_mass.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "mass".to_owned()))?,
+        );
         Ok(transaction)
     }
 }

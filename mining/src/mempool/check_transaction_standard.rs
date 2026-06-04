@@ -96,7 +96,7 @@ impl Mempool {
 
         // Storage mass is only known after contextual population, so the standard mass cap is applied to it here.
         if let Some(cap) = self.standard_transaction_mass_cap(virtual_daa_score) {
-            let storage_mass = transaction.tx.mass();
+            let storage_mass = transaction.tx.storage_mass();
             if storage_mass > cap {
                 return Err(NonStandardError::RejectStorageMass(transaction_id, storage_mass, cap));
             }
@@ -664,7 +664,7 @@ mod tests {
                 0,
                 vec![],
             );
-            tx.set_mass(storage);
+            tx.set_storage_mass(storage);
             let mut mtx =
                 MutableTransaction::with_entries(tx.into(), vec![UtxoEntry::new(2 * SOMPI_PER_KASPA, spk.clone(), 0, false, None)]);
             mtx.calculated_non_contextual_masses = Some(NonContextualMasses::new(1_000, 1_000));

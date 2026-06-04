@@ -77,7 +77,7 @@ impl BlockBodyProcessor {
             // Read the storage mass commitment. This value cannot be computed here w/o UTXO context
             // so we use the commitment. Later on, when the transaction is verified in context, we use
             // the context to calculate the expected storage mass and verify it matches this commitment
-            let storage_mass_commitment = tx.mass();
+            let storage_mass_commitment = tx.storage_mass();
 
             // Sum over the various masses separately
             total_compute_mass = total_compute_mass.saturating_add(compute_mass);

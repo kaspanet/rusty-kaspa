@@ -43,7 +43,7 @@ impl Mempool {
         virtual_daa_score: u64,
     ) -> RuleResult<()> {
         let limits = self.config.mempool_block_mass_limits.get(virtual_daa_score);
-        let storage_mass = transaction.tx.mass();
+        let storage_mass = transaction.tx.storage_mass();
         if storage_mass > limits.storage {
             return Err(RuleError::RejectStorageMass(transaction.id(), storage_mass, limits.storage));
         }
@@ -102,7 +102,7 @@ mod tests {
         let input = TransactionInput::new(outpoint, vec![], MAX_TX_IN_SEQUENCE_NUM, 0);
         let output = TransactionOutput::new(SOMPI_PER_KASPA, script_public_key.clone());
         let tx = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, gas, vec![]);
-        tx.set_mass(storage_mass);
+        tx.set_storage_mass(storage_mass);
         let entry = UtxoEntry::new(SOMPI_PER_KASPA, script_public_key, 0, false, None);
         let mut tx = MutableTransaction::with_entries(tx.into(), vec![entry]);
         tx.calculated_non_contextual_masses = Some(NonContextualMasses::new(compute_mass, transient_mass));
