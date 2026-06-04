@@ -1,6 +1,5 @@
-use crate::result::Result;
-use crate::{script_builder as native, standard};
-use kaspa_consensus_core::tx::ScriptPublicKey;
+use crate::{EngineFlags, error::Error, result::Result, script_builder as native, standard};
+use kaspa_consensus_core::{mass::ScriptUnits, tx::ScriptPublicKey};
 use kaspa_utils::hex::ToHex;
 use kaspa_wasm_core::hex::{HexViewConfig, HexViewConfigT};
 use kaspa_wasm_core::types::{BinaryT, HexString};
@@ -8,6 +7,37 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
 use workflow_wasm::prelude::*;
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_SCRIPT_BUILDER_OPTIONS: &'static str = r#"
+/**
+ * Script builder engine flags.
+ *
+ * @category TxScript
+ */
+export interface ScriptBuilderFlags {
+    /** Whether or not covenant opcodes and post-Toccata script limits are enabled. */
+    covenantsEnabled?: boolean;
+    /** Script units charged for each signature operation. Defaults to the native engine default. */
+    sigopScriptUnits?: bigint | number;
+}
+
+/**
+ * Script builder options.
+ *
+ * @category TxScript
+ */
+export interface ScriptBuilderOptions {
+    /** Engine flags used by the underlying native ScriptBuilder. */
+    flags?: ScriptBuilderFlags;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "ScriptBuilderOptions")]
+    pub type ScriptBuilderOptions;
+}
 
 /// ScriptBuilder provides a facility for building custom scripts. It allows
 /// you to push opcodes, ints, and data while respecting canonical encoding. In
@@ -23,6 +53,15 @@ pub struct ScriptBuilder {
 }
 
 impl ScriptBuilder {
+    fn with_flags(flags: EngineFlags) -> Self {
+        Self { script_builder: Rc::new(RefCell::new(native::ScriptBuilder::with_flags(flags))) }
+    }
+
+    fn try_new(options: Option<ScriptBuilderOptions>) -> Result<Self> {
+        let flags = options.map(EngineFlags::try_from).transpose()?.unwrap_or_default();
+        Ok(Self::with_flags(flags))
+    }
+
     #[inline]
     pub fn inner(&self) -> Ref<'_, native::ScriptBuilder> {
         self.script_builder.borrow()
@@ -36,23 +75,49 @@ impl ScriptBuilder {
 
 impl Default for ScriptBuilder {
     fn default() -> Self {
-        Self { script_builder: Rc::new(RefCell::new(native::ScriptBuilder::new())) }
+        Self::with_flags(Default::default())
     }
 }
 
-// TODO: Add `ScriptBuilder::with_flags` method that allows setting script engine flags for the builder.
+impl TryFrom<ScriptBuilderOptions> for EngineFlags {
+    type Error = Error;
+
+    fn try_from(value: ScriptBuilderOptions) -> Result<Self> {
+        let object = js_sys::Object::try_from(&value).ok_or_else(|| Error::Custom("options must be an object".into()))?;
+        let flags = object.try_get_value("flags")?;
+        let Some(flags) = flags else {
+            return Ok(Self::default());
+        };
+
+        let flags = js_sys::Object::try_from(&flags).ok_or_else(|| Error::Custom("options.flags must be an object".into()))?;
+        let mut engine_flags = Self::default();
+
+        if let Some(value) = flags.try_get_value("covenantsEnabled")? {
+            engine_flags.covenants_enabled =
+                value.as_bool().ok_or_else(|| Error::convert("flags.covenantsEnabled", "expected boolean"))?;
+        }
+
+        if flags.try_get_value("sigopScriptUnits")?.is_some() {
+            engine_flags.sigop_script_units =
+                ScriptUnits(flags.get_u64("sigopScriptUnits").map_err(|err| Error::convert("flags.sigopScriptUnits", err))?);
+        }
+
+        Ok(engine_flags)
+    }
+}
+
 #[wasm_bindgen]
 impl ScriptBuilder {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(options: Option<ScriptBuilderOptions>) -> Result<ScriptBuilder> {
+        Self::try_new(options)
     }
 
     /// Creates a new ScriptBuilder over an existing script.
     /// Supplied script can be represented as an `Uint8Array` or a `HexString`.
     #[wasm_bindgen(js_name = "fromScript")]
-    pub fn from_script(script: BinaryT) -> Result<ScriptBuilder> {
-        let builder = ScriptBuilder::default();
+    pub fn from_script(script: BinaryT, options: Option<ScriptBuilderOptions>) -> Result<ScriptBuilder> {
+        let builder = ScriptBuilder::try_new(options)?;
         let script = script.try_as_vec_u8()?;
         builder.inner_mut().script_mut().extend(&script);
 
@@ -163,8 +228,9 @@ impl ScriptBuilder {
     pub fn pay_to_script_hash_signature_script(&self, signature: BinaryT) -> Result<HexString> {
         let inner = self.inner();
         let script = inner.script();
+        let flags = inner.flags();
         let signature = signature.try_as_vec_u8()?;
-        let generated_script = standard::pay_to_script_hash_signature_script(script.into(), signature)?;
+        let generated_script = standard::pay_to_script_hash_signature_script_with_flags(script.into(), signature, flags)?;
 
         Ok(generated_script.to_hex().into())
     }
@@ -176,5 +242,49 @@ impl ScriptBuilder {
 
         let config = args.map(HexViewConfig::try_from).transpose()?.unwrap_or_default();
         Ok(config.build(script).to_string())
+    }
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod tests {
+    use super::{ScriptBuilder, ScriptBuilderOptions};
+    use crate::{max_script_element_size, wasm::Opcodes};
+    use js_sys::{Object, Reflect, Uint8Array};
+    use kaspa_wasm_core::types::BinaryT;
+    use wasm_bindgen::{JsCast, JsValue};
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    fn binary(bytes: &[u8]) -> BinaryT {
+        Uint8Array::from(bytes).unchecked_into()
+    }
+
+    fn script_builder_options(covenants_enabled: bool) -> ScriptBuilderOptions {
+        let flags = Object::new();
+        Reflect::set(&flags, &JsValue::from_str("covenantsEnabled"), &JsValue::from_bool(covenants_enabled)).unwrap();
+
+        let options = Object::new();
+        Reflect::set(&options, &JsValue::from_str("flags"), &flags).unwrap();
+        options.unchecked_into()
+    }
+
+    #[wasm_bindgen_test]
+    fn script_builder_js_test() {
+        let builder = ScriptBuilder::new(None).expect("builder should be created");
+        builder.add_op(Opcodes::OpTrue as u8).expect("opcode should be added");
+        builder.add_data(binary(&[0xab, 0xcd])).expect("data should be added");
+
+        assert_eq!(builder.to_string_js().as_string().unwrap(), "5102abcd");
+    }
+
+    #[wasm_bindgen_test]
+    fn script_builder_uses_flags_js_test() {
+        let data_with_length_greater_than_max = vec![0x01; max_script_element_size(false) + 1];
+
+        let builder_without_covenants = ScriptBuilder::new(None).expect("builder should be created");
+        assert!(builder_without_covenants.add_data(binary(&data_with_length_greater_than_max)).is_err());
+
+        let builder_with_covenants =
+            ScriptBuilder::new(Some(script_builder_options(true))).expect("builder should be created with covenant flags");
+        builder_with_covenants.add_data(binary(&data_with_length_greater_than_max)).expect("covenant flag allow pushes > 520");
     }
 }
