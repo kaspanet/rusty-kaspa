@@ -92,7 +92,7 @@ impl From<&Transaction> for RpcTransaction {
             subnetwork_id: item.subnetwork_id,
             gas: item.gas,
             payload: item.payload.clone(),
-            mass: item.storage_mass(),
+            storage_mass: item.storage_mass(),
             verbose_data: None,
         }
     }
@@ -145,7 +145,7 @@ impl TryFrom<RpcTransaction> for Transaction {
             item.gas,
             item.payload.clone(),
         );
-        transaction.set_storage_mass(item.mass);
+        transaction.set_storage_mass(item.storage_mass);
         Ok(transaction)
     }
 }

@@ -363,7 +363,7 @@ impl Deserializer for RpcTransactionOutputVerboseData {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransaction {
     pub version: u16,
@@ -374,8 +374,47 @@ pub struct RpcTransaction {
     pub gas: u64,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
+    #[serde(alias = "mass")] // DEPRECATED alias for mass to avoid breaking existing clients. Should be removed in the future.
+    pub storage_mass: u64,
+    pub verbose_data: Option<RpcTransactionVerboseData>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionJson {
+    pub version: u16,
+    pub inputs: Vec<RpcTransactionInput>,
+    pub outputs: Vec<RpcTransactionOutput>,
+    pub lock_time: u64,
+    pub subnetwork_id: RpcSubnetworkId,
+    pub gas: u64,
+    #[serde(with = "hex::serde")]
+    pub payload: Vec<u8>,
+    #[serde(alias = "mass")]
+    pub storage_mass: u64,
     pub mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
+}
+
+impl Serialize for RpcTransaction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let json = RpcTransactionJson {
+            version: self.version,
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
+            lock_time: self.lock_time,
+            subnetwork_id: self.subnetwork_id,
+            gas: self.gas,
+            payload: self.payload.clone(),
+            storage_mass: self.storage_mass,
+            mass: self.storage_mass,
+            verbose_data: self.verbose_data.clone(),
+        };
+        json.serialize(serializer)
+    }
 }
 
 impl std::fmt::Debug for RpcTransaction {
@@ -386,7 +425,7 @@ impl std::fmt::Debug for RpcTransaction {
             .field("subnetwork_id", &self.subnetwork_id)
             .field("gas", &self.gas)
             .field("payload", &self.payload.to_hex())
-            .field("mass", &self.mass)
+            .field("storage_mass", &self.storage_mass)
             .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
@@ -404,7 +443,7 @@ impl Serializer for RpcTransaction {
         store!(RpcSubnetworkId, &self.subnetwork_id, writer)?;
         store!(u64, &self.gas, writer)?;
         store!(Vec<u8>, &self.payload, writer)?;
-        store!(u64, &self.mass, writer)?;
+        store!(u64, &self.storage_mass, writer)?;
         serialize!(Option<RpcTransactionVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -424,7 +463,67 @@ impl Deserializer for RpcTransaction {
         let mass = load!(u64, reader)?;
         let verbose_data = deserialize!(Option<RpcTransactionVerboseData>, reader)?;
 
-        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data })
+        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass: mass, verbose_data })
+    }
+}
+
+#[cfg(test)]
+mod rpc_transaction_json_tests {
+    use super::*;
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use serde_json::json;
+
+    fn transaction() -> RpcTransaction {
+        RpcTransaction {
+            version: 1,
+            inputs: vec![],
+            outputs: vec![],
+            lock_time: 0,
+            subnetwork_id: SubnetworkId::from_byte(0),
+            gas: 0,
+            payload: vec![],
+            storage_mass: 123,
+            verbose_data: None,
+        }
+    }
+
+    #[test]
+    fn rpc_transaction_json_serializes_mass_and_storage_mass() {
+        let json = serde_json::to_value(transaction()).unwrap();
+
+        assert_eq!(json["mass"], json!(123));
+        assert_eq!(json["storageMass"], json!(123));
+    }
+
+    #[test]
+    fn rpc_transaction_json_deserializes_mass_or_storage_mass_to_storage_mass() {
+        let storage_mass_json = r#"{
+            "version": 1,
+            "inputs": [],
+            "outputs": [],
+            "lockTime": 0,
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": 0,
+            "payload": "",
+            "storageMass": 123,
+            "verboseData": null
+        }"#;
+        let storage_mass_tx: RpcTransaction = serde_json::from_str(storage_mass_json).unwrap();
+        assert_eq!(storage_mass_tx.storage_mass, 123);
+
+        let mass_json = r#"{
+            "version": 1,
+            "inputs": [],
+            "outputs": [],
+            "lockTime": 0,
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": 0,
+            "payload": "",
+            "mass": 123,
+            "verboseData": null
+        }"#;
+        let mass_tx: RpcTransaction = serde_json::from_str(mass_json).unwrap();
+        assert_eq!(mass_tx.storage_mass, 123);
     }
 }
 

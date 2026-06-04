@@ -153,7 +153,7 @@ impl ConsensusConverter {
                 subnetwork_id: transaction.subnetwork_id,
                 gas: transaction.gas,
                 payload: transaction.payload.clone(),
-                mass: transaction.storage_mass(),
+                storage_mass: transaction.storage_mass(),
                 verbose_data,
             })
         } else {
