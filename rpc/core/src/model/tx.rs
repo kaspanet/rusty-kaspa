@@ -381,7 +381,7 @@ pub struct RpcTransaction {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RpcTransactionJson {
+pub struct RpcTransactionHumanReadable {
     pub version: u16,
     pub inputs: Vec<RpcTransactionInput>,
     pub outputs: Vec<RpcTransactionOutput>,
@@ -390,9 +390,8 @@ pub struct RpcTransactionJson {
     pub gas: u64,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
-    #[serde(alias = "mass")]
     pub storage_mass: u64,
-    pub mass: u64,
+    pub mass: u64, // DEPRECATED field for storage mass to avoid breaking existing clients. Should be removed in the future.
     pub verbose_data: Option<RpcTransactionVerboseData>,
 }
 
@@ -401,19 +400,26 @@ impl Serialize for RpcTransaction {
     where
         S: serde::Serializer,
     {
-        let json = RpcTransactionJson {
-            version: self.version,
-            inputs: self.inputs.clone(),
-            outputs: self.outputs.clone(),
-            lock_time: self.lock_time,
-            subnetwork_id: self.subnetwork_id,
-            gas: self.gas,
-            payload: self.payload.clone(),
-            storage_mass: self.storage_mass,
-            mass: self.storage_mass,
-            verbose_data: self.verbose_data.clone(),
+        if !serializer.is_human_readable() {
+            return Err(serde::ser::Error::custom("RpcTransaction does not support non-human-readable serialization"));
+        }
+
+        // We use this destructuring so any change in the fields of RpcTransaction will cause a compile error here, reminding us to update the serialization code of RpcTransactionHumanReadable accordingly.
+        let Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass, verbose_data } = self;
+
+        let hr = RpcTransactionHumanReadable {
+            version: *version,
+            inputs: inputs.clone(),
+            outputs: outputs.clone(),
+            lock_time: *lock_time,
+            subnetwork_id: *subnetwork_id,
+            gas: *gas,
+            payload: payload.clone(),
+            storage_mass: *storage_mass,
+            mass: *storage_mass,
+            verbose_data: verbose_data.clone(),
         };
-        json.serialize(serializer)
+        hr.serialize(serializer)
     }
 }
 
