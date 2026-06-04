@@ -391,10 +391,8 @@ struct RpcTransactionHumanReadable {
     gas: u64,
     #[serde(with = "hex::serde")]
     payload: Vec<u8>,
-    #[serde(default)]
-    storage_mass: u64,
-    #[serde(default)]
-    mass: u64, // Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future.
+    storage_mass: Option<u64>,
+    mass: Option<u64>, // Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future.
     verbose_data: Option<RpcTransactionVerboseData>,
 }
 
@@ -409,13 +407,14 @@ impl<'de> serde::Deserialize<'de> for RpcTransaction {
 
         let value = RpcTransactionHumanReadable::deserialize(deserializer)?;
         let storage_mass = match (value.storage_mass, value.mass) {
-            (storage_mass, mass) if storage_mass > 0 && mass > 0 && storage_mass != mass => {
+            (Some(storage_mass), Some(mass)) if storage_mass != mass => {
                 return Err(serde::de::Error::custom(format!(
-                    "storageMass and mass must match when both are positive: storageMass={storage_mass}, mass={mass}"
+                    "storageMass and mass must match when both are provided: storageMass={storage_mass}, mass={mass}"
                 )));
             }
-            (storage_mass, _) if storage_mass > 0 => storage_mass,
-            (_, mass) => mass,
+            (Some(storage_mass), _) => storage_mass,
+            (None, None) => return Err(serde::de::Error::custom("Either storageMass or mass must be provided")),
+            (None, Some(mass)) => mass,
         };
 
         Ok(Self {
@@ -452,8 +451,8 @@ impl Serialize for RpcTransaction {
             subnetwork_id: *subnetwork_id,
             gas: *gas,
             payload: payload.clone(),
-            storage_mass: *storage_mass,
-            mass: *storage_mass,
+            storage_mass: Some(*storage_mass),
+            mass: Some(*storage_mass),
             verbose_data: verbose_data.clone(),
         };
         hr.serialize(serializer)
@@ -606,7 +605,7 @@ mod rpc_transaction_json_tests {
 
         let err = serde_json::from_str::<RpcTransaction>(json).unwrap_err();
 
-        assert!(err.to_string().contains("storageMass and mass must match when both are positive"), "got: {err}");
+        assert!(err.to_string().contains("storageMass and mass must match when both are provided"), "got: {err}");
     }
 }
 
