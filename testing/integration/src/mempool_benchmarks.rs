@@ -552,7 +552,7 @@ async fn bench_bbt_latency_stark() {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([0u8; 32]), index: 0 },
             signature_script: stark_signature_script.clone(),
             sequence: 0,
-            mass: ComputeBudget(0).into(),
+            compute_commit: ComputeBudget(0).into(),
         };
 
         let tx = Transaction::new(1, vec![input.clone()], vec![], 0, Default::default(), 0, vec![]);
@@ -671,7 +671,7 @@ fn generate_stark_tx_dag(
                 if !logged_first_provisional_tx {
                     let provisional_tx_size = transaction_estimated_serialized_size(&provisional_tx);
                     let provisional_tx_total_budget: u64 =
-                        provisional_tx.inputs.iter().map(|input| u64::from(input.mass.compute_budget().unwrap())).sum();
+                        provisional_tx.inputs.iter().map(|input| u64::from(input.compute_commit.compute_budget().unwrap())).sum();
                     info!(
                         "First provisional tx: non_contextual=({}), normalized_non_contextual_max={}, size={}, total_budget={}",
                         provisional_tx_non_contextual_masses,
