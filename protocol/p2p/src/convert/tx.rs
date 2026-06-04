@@ -84,7 +84,7 @@ impl From<&Transaction> for protowire::TransactionMessage {
             subnetwork_id: Some((&tx.subnetwork_id).into()),
             gas: tx.gas,
             payload: tx.payload.clone(),
-            mass: tx.storage_mass(),
+            storage_mass: tx.storage_mass(),
         }
     }
 }
@@ -201,7 +201,7 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
             tx.gas,
             tx.payload,
         );
-        transaction.set_storage_mass(tx.mass);
+        transaction.set_storage_mass(tx.storage_mass);
         Ok(transaction)
     }
 }
