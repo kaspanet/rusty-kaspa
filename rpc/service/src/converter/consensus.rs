@@ -444,7 +444,11 @@ impl ConsensusConverter {
             },
             gas: if verbosity.include_gas.unwrap_or(false) { Some(transaction.gas) } else { Default::default() },
             payload: if verbosity.include_payload.unwrap_or(false) { Some(transaction.payload.clone()) } else { Default::default() },
-            mass: if verbosity.include_mass.unwrap_or(false) { Some(transaction.storage_mass()) } else { Default::default() },
+            storage_mass: if verbosity.include_storage_mass.unwrap_or(false) {
+                Some(transaction.storage_mass())
+            } else {
+                Default::default()
+            },
             verbose_data: if let Some(verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
                 Some(
                     self.get_transaction_verbose_data_with_verbosity(
@@ -499,7 +503,7 @@ impl ConsensusConverter {
             subnetwork_id: Some(transaction.tx.subnetwork_id),
             gas: Some(transaction.tx.gas),
             payload: Some(transaction.tx.payload.clone()),
-            mass: Some(transaction.tx.storage_mass()),
+            storage_mass: Some(transaction.tx.storage_mass()),
             verbose_data: if let Some(verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
                 Some(
                     self.get_transaction_verbose_data_with_verbosity(

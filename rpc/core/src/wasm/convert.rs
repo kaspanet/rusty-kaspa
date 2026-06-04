@@ -112,7 +112,7 @@ cfg_if::cfg_if! {
                     subnetwork_id: inner.subnetwork_id,
                     gas: inner.gas,
                     payload: inner.payload.clone(),
-                    storage_mass: inner.mass,
+                    storage_mass: inner.storage_mass,
                     verbose_data: None,
                 }
             }
@@ -162,7 +162,7 @@ cfg_if::cfg_if! {
                     subnetwork_id: Some(inner.subnetwork_id),
                     gas: Some(inner.gas),
                     payload: Some(inner.payload.clone()),
-                    mass: Some(inner.mass),
+                    storage_mass: Some(inner.storage_mass),
                     verbose_data: None,
                 }
             }

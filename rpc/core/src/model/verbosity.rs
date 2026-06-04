@@ -374,7 +374,7 @@ pub struct RpcTransactionVerbosity {
     pub include_subnetwork_id: Option<bool>,
     pub include_gas: Option<bool>,
     pub include_payload: Option<bool>,
-    pub include_mass: Option<bool>,
+    pub include_storage_mass: Option<bool>,
     pub verbose_data_verbosity: Option<RpcTransactionVerboseDataVerbosity>,
 }
 
@@ -387,7 +387,7 @@ impl RpcTransactionVerbosity {
         include_subnetwork_id: Option<bool>,
         include_gas: Option<bool>,
         include_payload: Option<bool>,
-        include_mass: Option<bool>,
+        include_storage_mass: Option<bool>,
         verbose_data_verbosity: Option<RpcTransactionVerboseDataVerbosity>,
     ) -> Self {
         Self {
@@ -398,7 +398,7 @@ impl RpcTransactionVerbosity {
             include_subnetwork_id,
             include_gas,
             include_payload,
-            include_mass,
+            include_storage_mass,
             verbose_data_verbosity,
         }
     }
@@ -428,7 +428,7 @@ impl Serializer for RpcTransactionVerbosity {
         store!(Option<bool>, &self.include_subnetwork_id, writer)?;
         store!(Option<bool>, &self.include_gas, writer)?;
         store!(Option<bool>, &self.include_payload, writer)?;
-        store!(Option<bool>, &self.include_mass, writer)?;
+        store!(Option<bool>, &self.include_storage_mass, writer)?;
         serialize!(Option<RpcTransactionVerboseDataVerbosity>, &self.verbose_data_verbosity, writer)?;
 
         Ok(())
@@ -446,7 +446,7 @@ impl Deserializer for RpcTransactionVerbosity {
         let include_subnetwork_id = load!(Option<bool>, reader)?;
         let include_gas = load!(Option<bool>, reader)?;
         let include_payload = load!(Option<bool>, reader)?;
-        let include_mass = load!(Option<bool>, reader)?;
+        let include_storage_mass = load!(Option<bool>, reader)?;
         let verbose_data_verbosity = deserialize!(Option<RpcTransactionVerboseDataVerbosity>, reader)?;
 
         Ok(Self {
@@ -457,7 +457,7 @@ impl Deserializer for RpcTransactionVerbosity {
             include_subnetwork_id,
             include_gas,
             include_payload,
-            include_mass,
+            include_storage_mass,
             verbose_data_verbosity,
         })
     }

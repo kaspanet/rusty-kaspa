@@ -71,7 +71,7 @@ fn transaction_some() -> RpcOptionalTransaction {
         subnetwork_id: Some(SubnetworkId::from_byte(0)),
         gas: Some(0),
         payload: Some(vec![0xde, 0xad, 0xbe, 0xef]),
-        mass: Some(0),
+        storage_mass: Some(0),
         verbose_data: None,
     }
 }
@@ -85,7 +85,7 @@ fn transaction_none_payload() -> RpcOptionalTransaction {
         subnetwork_id: None,
         gas: None,
         payload: None,
-        mass: None,
+        storage_mass: None,
         verbose_data: None,
     }
 }
