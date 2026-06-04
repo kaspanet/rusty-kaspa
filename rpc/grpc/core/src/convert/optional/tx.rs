@@ -223,6 +223,6 @@ mod tests {
 
         let decoded = RpcOptionalTransaction::try_from(&wire).unwrap();
         assert_eq!(decoded.inputs[0].compute_budget, Some(444));
-        assert_eq!(decoded.mass, Some(333));
+        assert_eq!(decoded.storage_mass, Some(333));
     }
 }
