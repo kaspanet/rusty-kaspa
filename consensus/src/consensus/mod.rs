@@ -800,8 +800,8 @@ impl ConsensusApi for Consensus {
 
             for child in children {
                 if visited.insert(child) {
-                    let blue_work = self.headers_store.get_header(child).unwrap();
-                    heap.push(Reverse(SortableBlock::new(child, blue_work.into())));
+                    let blue_work = self.headers_store.get_header(child).unwrap().blue_work;
+                    heap.push(Reverse(SortableBlock::new(child, blue_work)));
                 }
             }
         }
