@@ -787,7 +787,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     let build_single_input_tx = |version: u16, selected_utxo: &(TransactionOutpoint, UtxoEntry)| {
         let fee = fee::calc_for_plain_standard_tx(1, 1);
         let output_value = selected_utxo.1.amount.checked_sub(fee).expect("expected enough input value for test fee");
-        let mass = ComputeBudget(0).into(); // set correctly by sign below
+        let compute_commit = ComputeBudget(0).into(); // set correctly by sign below
         let tx = Transaction::new(
             version,
             vec![TransactionInput { previous_outpoint: selected_utxo.0, signature_script: vec![], sequence: 0, compute_commit }],
