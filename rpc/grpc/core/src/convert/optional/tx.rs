@@ -17,7 +17,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalTransaction, protowire::RpcOptionalTrans
         subnetwork_id: item.subnetwork_id.as_ref().map(|x| x.to_string()),
         gas: item.gas,
         payload: item.payload.as_ref().map(|x| x.to_rpc_hex()),
-        mass: item.mass,
+        mass: item.storage_mass,
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
