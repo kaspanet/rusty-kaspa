@@ -465,7 +465,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             let queried_ghostdag = session.async_get_ghostdag_data(request.hash).await?;
             let queried_coinbase = &queried_block.transactions[COINBASE_TRANSACTION_INDEX];
 
-            // only a chain block has its own red-reward coinbase output, as an exrta output
+            // only a chain block has its own red-reward coinbase output, as an extra output
             // see CoinbaseManager::expected_coinbase_transaction
             if queried_coinbase.outputs.len() == queried_ghostdag.mergeset_blues.len() + 1 {
                 let own_red_reward_output =

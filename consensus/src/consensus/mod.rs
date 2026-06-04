@@ -778,9 +778,9 @@ impl ConsensusApi for Consensus {
             }
         }
 
-        while let Some(Reverse(SortableBlock { hash: decedent, .. })) = heap.pop() {
-            if self.services.reachability_service.is_chain_ancestor_of(decedent, sink) {
-                let decedent_data = self.get_ghostdag_data(decedent).unwrap();
+        while let Some(Reverse(SortableBlock { hash: descendent, .. })) = heap.pop() {
+            if self.services.reachability_service.is_chain_ancestor_of(descendent, sink) {
+                let decedent_data = self.get_ghostdag_data(descendent).unwrap();
 
                 if decedent_data.mergeset_blues.contains(&hash) {
                     return Some(true);
@@ -791,17 +791,17 @@ impl ConsensusApi for Consensus {
                 // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
                 // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
                 // unreachable.
-                kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
+                kaspa_core::warn!("DAG topology inconsistency: {descendent} is expected to be a merging block of {hash}");
                 // TODO: we should consider the option of returning Result<Option<bool>> from this method
                 return None;
             }
 
-            let children = self.get_block_children(decedent).unwrap();
+            let children = self.get_block_children(descendent).unwrap();
 
             for child in children {
                 if visited.insert(child) {
-                    let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
-                    heap.push(Reverse(SortableBlock::new(child, blue_work)));
+                    let blue_work = self.headers_store.get_header(child).unwrap();
+                    heap.push(Reverse(SortableBlock::new(child, blue_work.into())));
                 }
             }
         }
@@ -811,7 +811,7 @@ impl ConsensusApi for Consensus {
 
     /// If block hash doesn't exist, returns Err
     ///
-    /// For a given block hash, try to find its `MergingBlockContext`
+    /// For a given block hash, try to find its `MergedBlockContext`
     fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         let _guard = self.pruning_lock.blocking_read();
 

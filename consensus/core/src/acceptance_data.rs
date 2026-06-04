@@ -20,6 +20,7 @@ pub struct AcceptedTxEntry {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+/// Context of a merged block, its color and its merging chain block hash
 pub struct MergedBlockContext {
     pub merging_chain_block_hash: Hash,
     pub is_blue: bool,
