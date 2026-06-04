@@ -174,7 +174,7 @@ pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_value
     let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for input in tx.inputs.iter() {
-            hasher.write_u8(input.mass.sig_op_count().unwrap_or(0));
+            hasher.write_u8(input.compute_commit.sig_op_count().unwrap_or(0));
         }
         hasher.finalize()
     };
@@ -266,7 +266,7 @@ pub fn calc_schnorr_signature_hash(
     hasher.write_u64(input.1.amount).write_u64(input.0.sequence);
 
     if tx.version < 1 {
-        hasher.write_u8(input.0.mass.sig_op_count().unwrap_or(0));
+        hasher.write_u8(input.0.compute_commit.sig_op_count().unwrap_or(0));
     }
 
     hasher
@@ -300,7 +300,7 @@ mod tests {
     use crate::{
         hashing::sighash_type::{SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE},
         subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
-        tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, TxInputMass, UtxoEntry},
+        tx::{ComputeCommit, PopulatedTransaction, Transaction, TransactionId, TransactionInput, UtxoEntry},
     };
 
     use super::*;
@@ -324,19 +324,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0.into()),
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    mass: TxInputMass::SigopCount(0.into()),
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(0.into()),
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
             ],
             vec![
@@ -383,19 +383,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::ComputeBudget(11.into()),
+                    compute_commit: ComputeCommit::ComputeBudget(11.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    mass: TxInputMass::ComputeBudget(22.into()),
+                    compute_commit: ComputeCommit::ComputeBudget(22.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    mass: TxInputMass::ComputeBudget(33.into()),
+                    compute_commit: ComputeCommit::ComputeBudget(33.into()),
                 },
             ],
             vec![
@@ -784,10 +784,10 @@ mod tests {
                     tx.inputs[i].previous_outpoint.index = 2;
                 }
                 ModifyAction::ComputeBudget(i) => {
-                    tx.inputs[i].mass = TxInputMass::ComputeBudget(1234.into());
+                    tx.inputs[i].compute_commit = ComputeCommit::ComputeBudget(1234.into());
                 }
                 ModifyAction::SigOpCount(i) => {
-                    tx.inputs[i].mass = TxInputMass::SigopCount(123.into());
+                    tx.inputs[i].compute_commit = ComputeCommit::SigopCount(123.into());
                 }
                 ModifyAction::AmountSpent(i) => {
                     entries[i].amount = 666;

@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{
-        CovenantBinding, MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+        ComputeCommit, CovenantBinding, MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
         UtxoEntry,
     },
 };
@@ -647,7 +647,11 @@ fn generate_tx(
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            mass: if with_covenant_id { TxInputMass::ComputeBudget(10.into()) } else { TxInputMass::SigopCount(1.into()) },
+            compute_commit: if with_covenant_id {
+                ComputeCommit::ComputeBudget(10.into())
+            } else {
+                ComputeCommit::SigopCount(1.into())
+            },
         })
         .collect_vec();
 

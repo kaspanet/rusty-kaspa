@@ -269,7 +269,7 @@ impl MassCalculator {
     }
 
     pub(crate) fn calc_compute_mass_for_client_transaction_input(&self, input: &TransactionInput) -> u64 {
-        input.mass.sig_op_count().unwrap_or(0) as u64 * self.mass_per_sig_op
+        input.compute_commit.sig_op_count().unwrap_or(0) as u64 * self.mass_per_sig_op
             + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte // TODO: Add support for v1 transactions.
     }
 

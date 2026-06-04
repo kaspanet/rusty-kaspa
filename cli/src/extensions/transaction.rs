@@ -178,7 +178,7 @@ impl TransactionExtension for TransactionRecord {
                     for input in transaction.inputs.iter() {
                         let TransactionInput { previous_outpoint, signature_script: _, sequence, .. } = input;
                         let TransactionOutpoint { transaction_id, index } = previous_outpoint;
-                        let sig_op_count = input.mass.sig_op_count().unwrap_or(0);
+                        let sig_op_count = input.compute_commit.sig_op_count().unwrap_or(0);
 
                         lines.push(format!("{:>4}{sequence:>2}: {transaction_id}:{index} SigOps: {sig_op_count}", ""));
                     }

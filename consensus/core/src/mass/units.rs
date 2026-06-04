@@ -204,7 +204,7 @@ impl From<ScriptUnits> for u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::tx::TxInputMass;
+    use crate::tx::ComputeCommit;
 
     use super::{ComputeBudget, ScriptUnits};
 
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn checked_covering_script_units_returns_none_on_budget_overflow() {
-        let max_coverable = TxInputMass::from(ComputeBudget(u16::MAX)).allowed_script_units();
+        let max_coverable = ComputeCommit::from(ComputeBudget(u16::MAX)).allowed_script_units();
 
         assert_eq!(ComputeBudget::checked_covering_script_units(max_coverable), Some(ComputeBudget(u16::MAX)));
         assert_eq!(ComputeBudget::checked_covering_script_units(max_coverable.saturating_add(ScriptUnits(1))), None);

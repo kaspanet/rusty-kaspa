@@ -391,12 +391,12 @@ impl ConsensusConverter {
             },
             sequence: if verbosity.include_sequence.unwrap_or(false) { Some(input.sequence) } else { Default::default() },
             sig_op_count: if verbosity.include_sig_op_count.unwrap_or(false) {
-                Some(input.mass.sig_op_count().unwrap_or(0))
+                Some(input.compute_commit.sig_op_count().unwrap_or(0))
             } else {
                 Default::default()
             },
             compute_budget: if verbosity.include_sig_op_count.unwrap_or(false) {
-                Some(input.mass.compute_budget().unwrap_or(0))
+                Some(input.compute_commit.compute_budget().unwrap_or(0))
             } else {
                 Default::default()
             }, // TODO: consider having a separate flag for compute_mass

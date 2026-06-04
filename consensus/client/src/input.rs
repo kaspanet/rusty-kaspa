@@ -241,8 +241,8 @@ impl From<cctx::TransactionInput> for TransactionInput {
             previous_outpoint: tx_input.previous_outpoint.into(),
             signature_script: Some(tx_input.signature_script),
             sequence: tx_input.sequence,
-            sig_op_count: tx_input.mass.sig_op_count().unwrap_or(0),
-            compute_budget: tx_input.mass.compute_budget().unwrap_or(0),
+            sig_op_count: tx_input.compute_commit.sig_op_count().unwrap_or(0),
+            compute_budget: tx_input.compute_commit.compute_budget().unwrap_or(0),
             utxo: None,
         };
         TransactionInput::new_with_inner(inner)
@@ -267,10 +267,10 @@ impl From<TransactionInputWithVersion<'_>> for cctx::TransactionInput {
             previous_outpoint: inner.previous_outpoint.clone().into(),
             signature_script: inner.signature_script.clone().unwrap_or_default(), // TODO - discuss: should this unwrap_or_default or return an error?
             sequence: inner.sequence,
-            mass: if cctx::TxInputMass::version_expects_compute_budget_field(value.version) {
-                cctx::TxInputMass::ComputeBudget(inner.compute_budget.into())
+            compute_commit: if cctx::ComputeCommit::version_expects_compute_budget_field(value.version) {
+                cctx::ComputeCommit::ComputeBudget(inner.compute_budget.into())
             } else {
-                cctx::TxInputMass::SigopCount(inner.sig_op_count.into())
+                cctx::ComputeCommit::SigopCount(inner.sig_op_count.into())
             },
         }
     }

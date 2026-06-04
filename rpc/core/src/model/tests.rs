@@ -1711,8 +1711,8 @@ mod mockery {
             assert_eq!(decoded.inputs[0].compute_budget, 0);
 
             let consensus_tx: kaspa_consensus_core::tx::Transaction = decoded.try_into().unwrap();
-            assert_eq!(consensus_tx.inputs[0].mass.sig_op_count(), Some(9));
-            assert_eq!(consensus_tx.inputs[0].mass.compute_budget(), None);
+            assert_eq!(consensus_tx.inputs[0].compute_commit.sig_op_count(), Some(9));
+            assert_eq!(consensus_tx.inputs[0].compute_commit.compute_budget(), None);
         }
 
         #[test]

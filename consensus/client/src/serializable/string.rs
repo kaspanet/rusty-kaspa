@@ -103,8 +103,8 @@ impl SerializableTransactionInput {
             index: input.previous_outpoint.index,
             signature_script: input.signature_script.clone(),
             sequence: input.sequence.to_string(),
-            sig_op_count: input.mass.sig_op_count().unwrap_or(0),
-            compute_budget: input.mass.compute_budget().unwrap_or(0),
+            sig_op_count: input.compute_commit.sig_op_count().unwrap_or(0),
+            compute_budget: input.compute_commit.compute_budget().unwrap_or(0),
             utxo: utxo.clone(),
         }
     }
@@ -143,16 +143,16 @@ impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
             previous_outpoint: cctx::TransactionOutpoint { transaction_id: input.transaction_id, index: input.index },
             signature_script: input.signature_script,
             sequence: input.sequence.parse()?,
-            mass: if cctx::TxInputMass::version_expects_compute_budget_field(value.version) {
+            compute_commit: if cctx::ComputeCommit::version_expects_compute_budget_field(value.version) {
                 if input.sig_op_count != 0 {
                     return Err(invalid_input_mass_variant("sig_op_count", value.version));
                 }
-                cctx::TxInputMass::ComputeBudget(input.compute_budget.into())
+                cctx::ComputeCommit::ComputeBudget(input.compute_budget.into())
             } else {
                 if input.compute_budget != 0 {
                     return Err(invalid_input_mass_variant("compute_budget", value.version));
                 }
-                cctx::TxInputMass::SigopCount(input.sig_op_count.into())
+                cctx::ComputeCommit::SigopCount(input.sig_op_count.into())
             },
         })
     }
