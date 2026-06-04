@@ -89,6 +89,7 @@ pub enum KaspadPayloadOps {
     GetCurrentBlockColor,
     GetUtxoReturnAddress,
     GetVirtualChainFromBlockV2,
+    GetBlockRewardInfo,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
