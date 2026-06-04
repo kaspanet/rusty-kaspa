@@ -4,8 +4,8 @@ use kaspa_consensus_core::{
     mass::{ComputeBudget, SigopCount},
     subnets::SubnetworkId,
     tx::{
-        CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
-        TxInputMass, UtxoEntry,
+        ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
+        TransactionOutput, UtxoEntry,
     },
 };
 use kaspa_hashes::Hash;
@@ -50,9 +50,9 @@ impl From<&TransactionInput> for protowire::TransactionInput {
             previous_outpoint: Some((&input.previous_outpoint).into()),
             signature_script: input.signature_script.clone(),
             sequence: input.sequence,
-            mass: match input.mass {
-                TxInputMass::SigopCount(count) => u8::from(count) as u32,
-                TxInputMass::ComputeBudget(budget) => u16::from(budget) as u32,
+            compute_commit: match input.compute_commit {
+                ComputeCommit::SigopCount(count) => u8::from(count) as u32,
+                ComputeCommit::ComputeBudget(budget) => u16::from(budget) as u32,
             },
         }
     }
@@ -152,10 +152,10 @@ impl TryFrom<ProtoInputWithVersion> for TransactionInput {
             previous_outpoint: value.input.previous_outpoint.try_into_ex()?,
             signature_script: value.input.signature_script,
             sequence: value.input.sequence,
-            mass: if TxInputMass::version_expects_compute_budget_field(value.version as u16) {
-                ComputeBudget(u16::try_from(value.input.mass)?).into()
+            compute_commit: if ComputeCommit::version_expects_compute_budget_field(value.version as u16) {
+                ComputeBudget(u16::try_from(value.input.compute_commit)?).into()
             } else {
-                SigopCount(u8::try_from(value.input.mass)?).into()
+                SigopCount(u8::try_from(value.input.compute_commit)?).into()
             },
         })
     }
@@ -229,11 +229,11 @@ mod tests {
         tx.set_storage_mass(54_321);
 
         let message: protowire::TransactionMessage = (&tx).into();
-        assert_eq!(message.inputs[0].mass, 12_345);
+        assert_eq!(message.inputs[0].compute_commit, 12_345);
 
         let received = Transaction::try_from(message).unwrap();
         assert_eq!(received.inputs.len(), 1);
-        assert_eq!(received.inputs[0].mass.compute_budget(), Some(12_345));
+        assert_eq!(received.inputs[0].compute_commit.compute_budget(), Some(12_345));
         assert_eq!(received.storage_mass(), 54_321);
     }
 }

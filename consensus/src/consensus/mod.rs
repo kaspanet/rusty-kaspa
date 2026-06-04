@@ -72,8 +72,8 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{
-        MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
-        TransactionType, TxInputMass, UtxoEntry,
+        ComputeCommit, MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint,
+        TransactionQueryResult, TransactionType, UtxoEntry,
     },
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -609,15 +609,15 @@ impl Consensus {
             return Err(TxRuleError::TooManyOutputs(transaction.outputs.len(), self.config.params.max_tx_outputs));
         }
 
-        if TxInputMass::version_expects_compute_budget_field(transaction.version) {
+        if ComputeCommit::version_expects_compute_budget_field(transaction.version) {
             for (i, input) in transaction.inputs.iter().enumerate() {
-                if let Some(sig_op_count) = input.mass.sig_op_count() {
+                if let Some(sig_op_count) = input.compute_commit.sig_op_count() {
                     return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
                 }
             }
         } else {
             for (i, input) in transaction.inputs.iter().enumerate() {
-                if let Some(compute_budget) = input.mass.compute_budget() {
+                if let Some(compute_budget) = input.compute_commit.compute_budget() {
                     return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
                 }
             }
