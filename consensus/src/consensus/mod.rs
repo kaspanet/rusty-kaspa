@@ -751,19 +751,27 @@ impl ConsensusApi for Consensus {
         DaaScoreTimestamp { daa_score: compact.daa_score, timestamp: compact.timestamp }
     }
 
-    /// If block hash doesn't exist, returns Err
+    /// Returns the merge context of `hash`, if the block was already merged by a virtual chain block.
     ///
-    /// For a given block hash, try to find its `MergedBlockContext`
+    /// Return semantics:
+    /// - `Err` if `hash` is unknown or outside the retained context required for this query.
+    /// - `Ok(None)` if `hash` is known and retained, but is not yet in `past(sink)`.
+    /// - `Ok(Some(..))` with the merging chain block context otherwise.
     fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         let _guard = self.pruning_lock.blocking_read();
 
+        // Verify the block exists and can be assumed to have relations and reachability data
         self.validate_block_exists(hash)?;
 
+        // Verify that the block is in future(retention root), where Ghostdag data is complete
         if !self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash) {
             return Err(ConsensusError::General("the queried hash does not have retention root in its past"));
         }
 
         let sink = self.get_sink();
+
+        // Optimization: verify that the block is in past(sink), otherwise the search will fail anyway
+        // (means the block was not merged yet by a virtual chain block)
         if !self.services.reachability_service.is_dag_ancestor_of(hash, sink) {
             return Ok(None);
         }
