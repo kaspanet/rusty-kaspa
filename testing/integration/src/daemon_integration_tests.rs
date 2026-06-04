@@ -423,7 +423,7 @@ async fn daemon_utxos_propagation_test() {
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            mass: ComputeBudget(0).into(),
+            compute_commit: ComputeBudget(0).into(),
         })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
@@ -441,7 +441,7 @@ async fn daemon_utxos_propagation_test() {
     .unwrap();
     let mut transaction = signed_tx.tx;
     let per_input_compute_budget_commitment: u16 = 300; // ~30k-gram per-input upper bound
-    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(per_input_compute_budget_commitment).into());
+    transaction.inputs.iter_mut().for_each(|input| input.compute_commit = ComputeBudget(per_input_compute_budget_commitment).into());
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -656,7 +656,7 @@ async fn daemon_compute_budget_relay_test() {
                 previous_outpoint: *op,
                 signature_script: vec![],
                 sequence: 0,
-                mass: ComputeBudget(0).into(),
+                compute_commit: ComputeBudget(0).into(),
             })
             .collect();
         let outputs = (0..NUMBER_OUTPUTS)
@@ -677,16 +677,16 @@ async fn daemon_compute_budget_relay_test() {
 
     let tx_fee = fee::calc_from_probe(|| {
         let mut tx = build_transaction(total_in);
-        tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(PER_INPUT_COMPUTE_BUDGET).into());
+        tx.inputs.iter_mut().for_each(|input| input.compute_commit = ComputeBudget(PER_INPUT_COMPUTE_BUDGET).into());
         tx
     })
     .saturating_add(EXTRA_FEE);
     let tx_amount = total_in.checked_sub(tx_fee).expect("expected enough input value for test transaction fee");
 
     let mut transaction = build_transaction(tx_amount);
-    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(PER_INPUT_COMPUTE_BUDGET).into());
+    transaction.inputs.iter_mut().for_each(|input| input.compute_commit = ComputeBudget(PER_INPUT_COMPUTE_BUDGET).into());
     assert!(
-        transaction.inputs.iter().any(|input| input.mass.compute_budget().unwrap() > 0),
+        transaction.inputs.iter().any(|input| input.compute_commit.compute_budget().unwrap() > 0),
         "expected non-zero compute_budget commitment for v1 transaction"
     );
     let transaction_id = transaction.id();
@@ -790,7 +790,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
         let mass = ComputeBudget(0).into(); // set correctly by sign below
         let tx = Transaction::new(
             version,
-            vec![TransactionInput { previous_outpoint: selected_utxo.0, signature_script: vec![], sequence: 0, mass }],
+            vec![TransactionInput { previous_outpoint: selected_utxo.0, signature_script: vec![], sequence: 0, compute_commit }],
             vec![TransactionOutput { value: output_value, script_public_key: pay_spk.clone(), covenant: None }],
             0,
             SUBNETWORK_ID_NATIVE,

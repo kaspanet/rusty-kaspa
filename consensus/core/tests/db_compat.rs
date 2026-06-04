@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use kaspa_consensus_core::mass::ComputeBudget;
 use kaspa_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
 use kaspa_consensus_core::tx::{
-    CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+    CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, ComputeCommit,
 };
 use kaspa_hashes::Hash;
 
@@ -121,7 +121,7 @@ fn roundtrip_post_toccata_transaction_with_compute_budget_and_covenant() {
         TransactionOutpoint::new(Hash::from_bytes([0x33; 32]), 2),
         vec![0xaa, 0xbb, 0xcc],
         42,
-        TxInputMass::ComputeBudget(ComputeBudget(17)),
+        ComputeCommit::ComputeBudget(ComputeBudget(17)),
     );
     let output =
         TransactionOutput::with_covenant(999, spk(0, &[0x40, 0x41]), Some(CovenantBinding::new(0, Hash::from_bytes([0x77; 32]))));
@@ -150,7 +150,7 @@ fn roundtrip_mixed_pre_and_post_toccata_block_body() {
             TransactionOutpoint::new(Hash::from_bytes([0x55; 32]), 1),
             vec![0x02, 0x03],
             0,
-            TxInputMass::ComputeBudget(ComputeBudget(5)),
+            ComputeCommit::ComputeBudget(ComputeBudget(5)),
         )],
         vec![TransactionOutput::with_covenant(20, spk(0, &[0x60]), Some(CovenantBinding::new(0, Hash::from_bytes([0x88; 32]))))],
         0,

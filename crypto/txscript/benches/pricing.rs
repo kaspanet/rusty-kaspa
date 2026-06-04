@@ -16,7 +16,7 @@ use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::mass::{ComputeBudget, Gram, MassCalculator, ScriptUnits};
 use kaspa_consensus_core::tx::{
     MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-    TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction,
+    TransactionOutput, ComputeCommit, UtxoEntry, VerifiableTransaction,
 };
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::{self, OpDrop, OpDup};
@@ -136,12 +136,12 @@ fn format_average_input_budget(block: &BenchBlock) -> String {
 
     for bench_tx in &block.txs {
         for input in &bench_tx.tx.tx.inputs {
-            match input.mass {
-                TxInputMass::ComputeBudget(budget) => {
+            match input.compute_commit {
+                ComputeCommit::ComputeBudget(budget) => {
                     total_compute_budget += u16::from(budget) as u64;
                     compute_budget_inputs += 1;
                 }
-                TxInputMass::SigopCount(count) => {
+                ComputeCommit::SigopCount(count) => {
                     total_sigops += u8::from(count) as u64;
                     sigop_inputs += 1;
                 }
@@ -249,8 +249,8 @@ fn build_schnorr_2in1_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let mut tx = Transaction::new(
         1,
         vec![
-            TransactionInput { previous_outpoint: dummy_out1, signature_script: vec![], sequence: 0, mass: ComputeBudget(10).into() },
-            TransactionInput { previous_outpoint: dummy_out2, signature_script: vec![], sequence: 0, mass: ComputeBudget(10).into() },
+            TransactionInput { previous_outpoint: dummy_out1, signature_script: vec![], sequence: 0, compute_commit: ComputeBudget(10).into() },
+            TransactionInput { previous_outpoint: dummy_out2, signature_script: vec![], sequence: 0, compute_commit: ComputeBudget(10).into() },
         ],
         outputs,
         0,
@@ -289,8 +289,8 @@ fn build_ecdsa_2in1_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let mut tx = Transaction::new(
         1,
         vec![
-            TransactionInput { previous_outpoint: dummy_out1, signature_script: vec![], sequence: 0, mass: ComputeBudget(10).into() },
-            TransactionInput { previous_outpoint: dummy_out2, signature_script: vec![], sequence: 0, mass: ComputeBudget(10).into() },
+            TransactionInput { previous_outpoint: dummy_out1, signature_script: vec![], sequence: 0, compute_commit: ComputeBudget(10).into() },
+            TransactionInput { previous_outpoint: dummy_out2, signature_script: vec![], sequence: 0, compute_commit: ComputeBudget(10).into() },
         ],
         outputs,
         0,
@@ -583,7 +583,7 @@ fn try_build_budgeted_single_input_tx_with_result_check(
             previous_outpoint: outpoint,
             signature_script,
             sequence: 0,
-            mass: TxInputMass::ComputeBudget(0.into()),
+            compute_commit: ComputeCommit::ComputeBudget(0.into()),
         }],
         vec![],
         0,
@@ -607,7 +607,7 @@ fn try_build_budgeted_single_input_tx_with_result_check(
     result_check(vm.execute())?;
     let compute_budget = ComputeBudget::checked_covering_script_units(vm.used_script_units())
         .ok_or_else(|| "required compute budget does not fit for input #0".to_string())?;
-    tx.inputs[0].mass = compute_budget.into();
+    tx.inputs[0].compute_commit = compute_budget.into();
 
     Ok((tx, utxos))
 }
@@ -646,7 +646,7 @@ fn build_single_input_tx_with_compute_budget(
             previous_outpoint: outpoint,
             signature_script,
             sequence: 0,
-            mass: TxInputMass::ComputeBudget(compute_budget),
+            compute_commit: ComputeCommit::ComputeBudget(compute_budget),
         }],
         vec![],
         0,
@@ -690,7 +690,7 @@ fn build_introspection_cat_substr_math_tx(nonce: u32) -> (Transaction, Vec<UtxoE
             previous_outpoint: outpoint,
             signature_script,
             sequence: 0,
-            mass: TxInputMass::ComputeBudget(0.into()),
+            compute_commit: ComputeCommit::ComputeBudget(0.into()),
         }],
         vec![TransactionOutput { value: 10_000, script_public_key: output_spk, covenant: None }],
         0,
@@ -748,7 +748,7 @@ fn build_hash_storm_tx_with_rounds(
             previous_outpoint: outpoint,
             signature_script,
             sequence: 0,
-            mass: TxInputMass::ComputeBudget(0.into()),
+            compute_commit: ComputeCommit::ComputeBudget(0.into()),
         }],
         vec![],
         0,
@@ -1414,7 +1414,7 @@ fn estimate_groth16_repeated_tx_with_input_count(
     call_count: usize,
 ) -> Option<(Transaction, Vec<UtxoEntry>)> {
     let single_candidate = try_build_groth16_prepare_inputs_tx_with_input_count(nonce, public_input_count).ok()?;
-    let TxInputMass::ComputeBudget(single_budget) = single_candidate.0.inputs.first()?.mass else {
+    let ComputeCommit::ComputeBudget(single_budget) = single_candidate.0.inputs.first()?.compute_commit else {
         return None;
     };
     let repeated_budget = single_budget.value().checked_mul(u16::try_from(call_count).ok()?)?.checked_add(1).map(ComputeBudget)?;
@@ -1745,7 +1745,7 @@ fn build_budgeted_charged_tx(label: &str, tx: &Transaction, entries: &[UtxoEntry
         vm.execute().unwrap_or_else(|err| panic!("failed to measure {label} input #{input_idx}: {err}"));
         let compute_budget = ComputeBudget::checked_covering_script_units(vm.used_script_units())
             .unwrap_or_else(|| panic!("required compute budget does not fit for {label} input #{input_idx}"));
-        budgeted_tx.inputs[input_idx].mass = compute_budget.into();
+        budgeted_tx.inputs[input_idx].compute_commit = compute_budget.into();
     }
 
     budgeted_tx
@@ -2016,7 +2016,7 @@ fn validate_block_sequential(block: &BenchBlock) {
         let ctx = EngineCtx::new(&cache).with_reused(&reused_values);
 
         for (input_idx, (input, utxo)) in verifiable.populated_inputs().enumerate() {
-            let script_units_limit = input.mass.allowed_script_units();
+            let script_units_limit = input.compute_commit.allowed_script_units();
             let mut vm = TxScriptEngine::from_transaction_input_with_script_units_limit(
                 &verifiable,
                 input,
@@ -2043,7 +2043,7 @@ fn validate_block_parallel(block: &BenchBlock, pool: &rayon::ThreadPool) {
 
             (0..verifiable.inputs().len()).into_par_iter().try_for_each(|input_idx| {
                 let (input, utxo) = verifiable.populated_input(input_idx);
-                let script_units_limit = input.mass.allowed_script_units();
+                let script_units_limit = input.compute_commit.allowed_script_units();
                 let mut vm = TxScriptEngine::from_transaction_input_with_script_units_limit(
                     &verifiable,
                     input,
