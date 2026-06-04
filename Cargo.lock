@@ -3851,6 +3851,7 @@ dependencies = [
  "hexplay",
  "indexmap 2.14.0",
  "itertools 0.13.0",
+ "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-core",
@@ -3874,6 +3875,7 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.18",
  "wasm-bindgen",
+ "wasm-bindgen-test",
  "workflow-wasm",
 ]
 

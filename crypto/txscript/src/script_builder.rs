@@ -79,6 +79,10 @@ impl ScriptBuilder {
         Self { script: Vec::with_capacity(DEFAULT_SCRIPT_ALLOC), flags }
     }
 
+    pub fn flags(&self) -> EngineFlags {
+        self.flags
+    }
+
     pub fn script(&self) -> &[u8] {
         &self.script
     }

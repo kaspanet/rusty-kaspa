@@ -129,6 +129,7 @@ pub struct EngineFlags {
 
 impl Default for EngineFlags {
     fn default() -> Self {
+        // TODO(post-toccata): change default values (wasm client is based on this one, no other changes needed)
         Self { covenants_enabled: false, sigop_script_units: Gram(1000).into() }
     }
 }

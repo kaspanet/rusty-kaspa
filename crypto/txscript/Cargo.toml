@@ -14,7 +14,7 @@ build = "build.rs"
 name = "kip-10"
 
 [features]
-wasm32-core = ["dep:kaspa-wasm-core"]
+wasm32-core = ["dep:js-sys", "dep:kaspa-wasm-core"]
 wasm32-sdk = ["wasm32-core", "kaspa-consensus-core/wasm32-sdk"]
 
 [dependencies]
@@ -32,6 +32,7 @@ faster-hex.workspace = true
 hexplay.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
+js-sys = { workspace = true, optional = true }
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
@@ -65,6 +66,7 @@ rayon.workspace = true
 kaspa-core.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true
+wasm-bindgen-test.workspace = true
 
 [[bench]]
 name = "zk_precompiles"
