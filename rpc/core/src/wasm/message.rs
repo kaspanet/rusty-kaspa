@@ -1084,9 +1084,9 @@ declare! {
      * @category Node RPC
      */
     export interface IGetMempoolEntriesRequest {
-        /// Whether or not to include the orphan pool (transactions which inputs are not known at this time)
+        /** Whether or not to include the orphan pool (transactions which inputs are not known at this time) */
         includeOrphanPool: boolean;
-        /// Whether or not to filter out the transaction pool
+        /** Whether or not to filter out the transaction pool */
         filterTransactionPool: boolean;
     }
     "#,
@@ -1126,8 +1126,10 @@ declare! {
      */
     export interface IGetMempoolEntriesByAddressesRequest {
         addresses : Address[] | string[];
-        includeOrphanPool? : boolean;
-        filterTransactionPool? : boolean;
+        /** Whether or not to include the orphan pool (transactions which inputs are not known at this time) */
+        includeOrphanPool: boolean;
+        /** Whether or not to filter out the transaction pool */
+        filterTransactionPool: boolean;
     }
     "#,
 }

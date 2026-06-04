@@ -21,5 +21,5 @@ kaspa.initConsolePanicHook();
     includeOrphanPool: true,
     filterTransactionPool: false,
   });
-  console.log(`${response.mempoolEntries.length} transations in the mempool`);
+  console.log(`${response.mempoolEntries.length} transactions in the mempool`);
 })();
