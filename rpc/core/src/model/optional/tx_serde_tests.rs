@@ -9,6 +9,7 @@ use super::tx::{
 };
 use crate::{RpcHash, RpcTransactionId};
 use kaspa_consensus_core::{subnets::SubnetworkId, tx::TransactionId};
+use serde_json::json;
 
 fn hash32(b: u8) -> RpcHash {
     RpcHash::from_bytes([b; 32])
@@ -170,4 +171,46 @@ fn transaction_json_payload_none() {
     assert!(json.contains(r#""payload":null"#), "got: {json}");
     let back: RpcOptionalTransaction = serde_json::from_str(&json).unwrap();
     assert_eq!(back.payload, None);
+}
+
+#[test]
+fn rpc_optional_transaction_json_serializes_mass_and_storage_mass() {
+    let mut transaction = transaction_some();
+    transaction.storage_mass = Some(123);
+
+    let json = serde_json::to_value(transaction).unwrap();
+
+    assert_eq!(json["mass"], json!(123));
+    assert_eq!(json["storageMass"], json!(123));
+}
+
+#[test]
+fn rpc_optional_transaction_json_deserializes_mass_or_storage_mass_to_storage_mass() {
+    let storage_mass_json = r#"{
+        "version": 1,
+        "inputs": [],
+        "outputs": [],
+        "lockTime": 0,
+        "subnetworkId": "0000000000000000000000000000000000000000",
+        "gas": 0,
+        "payload": "deadbeef",
+        "storageMass": 123,
+        "verboseData": null
+    }"#;
+    let storage_mass_tx: RpcOptionalTransaction = serde_json::from_str(storage_mass_json).unwrap();
+    assert_eq!(storage_mass_tx.storage_mass, Some(123));
+
+    let mass_json = r#"{
+        "version": 1,
+        "inputs": [],
+        "outputs": [],
+        "lockTime": 0,
+        "subnetworkId": "0000000000000000000000000000000000000000",
+        "gas": 0,
+        "payload": "deadbeef",
+        "mass": 123,
+        "verboseData": null
+    }"#;
+    let mass_tx: RpcOptionalTransaction = serde_json::from_str(mass_json).unwrap();
+    assert_eq!(mass_tx.storage_mass, Some(123));
 }
