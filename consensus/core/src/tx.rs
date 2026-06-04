@@ -837,7 +837,7 @@ mod tests {
         let tx = test_transaction();
         let bts = bincode::serialize(&tx).unwrap();
         // Captured from the version-aware custom serializer in `tx::serde_impl`.
-        // v0 inputs carry a flat `sig_op_count: u8` (no `TxInputMass` enum tag)
+        // v0 inputs carry a flat `sig_op_count: u8` (no `ComputeCommit` enum tag)
         // and v0 outputs have no `covenant` field at all.
         let expected_bts = vec![
             0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,

@@ -4,7 +4,7 @@
 //! Decodes bincode bytes produced by the pre-Toccata types (checked in under
 //! `tests/fixtures/pre_toccata_db_compat_hex`) using the post-Toccata types,
 //! then round-trips both the pre-Toccata values and values that use the new
-//! covenant / `TxInputMass::ComputeBudget` variants introduced by Toccata.
+//! covenant / `ComputeCommit::ComputeBudget` variants introduced by Toccata.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;

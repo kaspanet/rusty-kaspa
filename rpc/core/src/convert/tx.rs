@@ -225,7 +225,7 @@ impl TryFrom<RpcOptionalTransaction> for Transaction {
             item.payload.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "payload".to_owned()))?,
         );
         transaction.set_storage_mass(
-            item.storage_mass.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "mass".to_owned()))?,
+            item.storage_mass.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "storage_mass".to_owned()))?,
         );
         Ok(transaction)
     }
