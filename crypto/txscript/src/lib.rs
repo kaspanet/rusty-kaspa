@@ -536,7 +536,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         let runtime_resource_meter = if flags.covenants_enabled {
             RuntimeResourceMeter::new_script_units(flags.sigop_script_units, script_units_limit)
         } else {
-            RuntimeResourceMeter::new_sigops(input.mass.sig_op_count().unwrap_or(0))
+            RuntimeResourceMeter::new_sigops(input.compute_commit.sig_op_count().unwrap_or(0))
         };
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -964,8 +964,8 @@ mod tests {
         ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits, SigopCount,
     };
     use kaspa_consensus_core::tx::{
-        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-        TransactionOutput, TxInputMass,
+        ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput,
+        TransactionOutpoint, TransactionOutput,
     };
     use kaspa_core::assert_match;
     use kaspa_utils::hex::FromHex;
@@ -1014,7 +1014,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 4294967295,
-                mass: ComputeBudget(0).into(),
+                compute_commit: ComputeBudget(0).into(),
             };
             let output = TransactionOutput {
                 value: 1000000000,
@@ -1208,7 +1208,7 @@ mod tests {
             &script,
             &reused_values,
             &sig_cache,
-            TxInputMass::from(ComputeBudget(1)).allowed_script_units(),
+            ComputeCommit::from(ComputeBudget(1)).allowed_script_units(),
             flags,
         );
         assert!(exact_vm.execute().is_ok());
@@ -1218,7 +1218,7 @@ mod tests {
                 &script,
                 &reused_values,
                 &sig_cache,
-                TxInputMass::from(ComputeBudget(0)).allowed_script_units(),
+                ComputeCommit::from(ComputeBudget(0)).allowed_script_units(),
                 flags,
             );
         assert_eq!(
@@ -1324,7 +1324,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(0).into(),
+                compute_commit: SigopCount(0).into(),
             };
             let output =
                 TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
@@ -1359,7 +1359,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([7u8; 32]), index: 0 },
             signature_script: vec![OpTrue, OpTrue],
             sequence: 0,
-            mass: ComputeBudget(0).into(),
+            compute_commit: ComputeBudget(0).into(),
         };
 
         let output =
@@ -1431,7 +1431,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([9u8; 32]), index: 0 },
             signature_script: vec![],
             sequence: 0,
-            mass: ComputeBudget(0).into(), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
+            compute_commit: ComputeBudget(0).into(), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
         };
 
         let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
@@ -2125,7 +2125,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: SigopCount(test.sig_op_limit).into(),
+                    compute_commit: SigopCount(test.sig_op_limit).into(),
                 }],
                 vec![],
                 0,
@@ -2202,7 +2202,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(2).into(),
+                compute_commit: SigopCount(2).into(),
             }],
             vec![],
             0,
@@ -2314,7 +2314,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(3).into(),
+                compute_commit: SigopCount(3).into(),
             }],
             vec![],
             0,

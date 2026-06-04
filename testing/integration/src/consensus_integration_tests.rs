@@ -2281,7 +2281,7 @@ fn build_p2pk_block(
                 vec![],
             );
             let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, vec![utxo.clone()]), keypair).tx;
-            assert_eq!(signed_tx.inputs[0].mass.sig_op_count(), Some(1));
+            assert_eq!(signed_tx.inputs[0].compute_commit.sig_op_count(), Some(1));
             signed_tx
         })
         .collect::<Vec<_>>();

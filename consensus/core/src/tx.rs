@@ -65,15 +65,15 @@ impl Display for TransactionOutpoint {
     }
 }
 
-/// Encodes the mass commitment for a transaction input.
+/// Encodes the compute mass commitment for a transaction input.
 /// Version 0 transactions use `SigopCount`, version >= 1 transactions use `ComputeBudget`.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Debug, Copy)]
-pub enum TxInputMass {
+pub enum ComputeCommit {
     SigopCount(SigopCount),
     ComputeBudget(ComputeBudget),
 }
 
-impl TxInputMass {
+impl ComputeCommit {
     pub fn sig_op_count(self) -> Option<u8> {
         match self {
             Self::SigopCount(n) => Some(n.into()),
@@ -103,23 +103,23 @@ impl TxInputMass {
     }
 }
 
-impl From<SigopCount> for TxInputMass {
+impl From<SigopCount> for ComputeCommit {
     fn from(value: SigopCount) -> Self {
         Self::SigopCount(value)
     }
 }
 
-impl From<ComputeBudget> for TxInputMass {
+impl From<ComputeBudget> for ComputeCommit {
     fn from(value: ComputeBudget) -> Self {
         Self::ComputeBudget(value)
     }
 }
 
-impl From<TxInputMass> for ScriptUnits {
-    fn from(value: TxInputMass) -> Self {
+impl From<ComputeCommit> for ScriptUnits {
+    fn from(value: ComputeCommit) -> Self {
         match value {
-            TxInputMass::SigopCount(count) => ScriptUnits::from(count),
-            TxInputMass::ComputeBudget(budget) => ScriptUnits::from(budget),
+            ComputeCommit::SigopCount(count) => ScriptUnits::from(count),
+            ComputeCommit::ComputeBudget(budget) => ScriptUnits::from(budget),
         }
     }
 }
@@ -130,16 +130,21 @@ pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    pub mass: TxInputMass,
+    pub compute_commit: ComputeCommit,
 }
 
 impl TransactionInput {
-    pub fn new_with_mass(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, mass: TxInputMass) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass }
+    pub fn new_with_mass(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        compute_commit: ComputeCommit,
+    ) -> Self {
+        Self { previous_outpoint, signature_script, sequence, compute_commit }
     }
 
     pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: SigopCount(sig_op_count).into() }
+        Self { previous_outpoint, signature_script, sequence, compute_commit: SigopCount(sig_op_count).into() }
     }
 
     pub fn new_with_compute_budget(
@@ -148,7 +153,7 @@ impl TransactionInput {
         sequence: u64,
         compute_budget: u16,
     ) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: ComputeBudget(compute_budget).into() }
+        Self { previous_outpoint, signature_script, sequence, compute_commit: ComputeBudget(compute_budget).into() }
     }
 }
 
@@ -158,8 +163,8 @@ impl std::fmt::Debug for TransactionInput {
             .field("previous_outpoint", &self.previous_outpoint)
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
-            .field("sig_op_count", &self.mass.sig_op_count().unwrap_or_default())
-            .field("compute_budget", &self.mass.compute_budget().unwrap_or_default())
+            .field("sig_op_count", &self.compute_commit.sig_op_count().unwrap_or_default())
+            .field("compute_budget", &self.compute_commit.compute_budget().unwrap_or_default())
             .finish()
     }
 }
@@ -779,7 +784,7 @@ mod tests {
                         0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
                     ],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(3.into()),
+                    compute_commit: ComputeCommit::SigopCount(3.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint {
@@ -794,7 +799,7 @@ mod tests {
                         0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
                     ],
                     sequence: 4,
-                    mass: TxInputMass::SigopCount(5.into()),
+                    compute_commit: ComputeCommit::SigopCount(5.into()),
                 },
             ],
             vec![
@@ -820,8 +825,8 @@ mod tests {
         tx.version = 1;
         // A valid v1 transaction must carry a ComputeBudget mass on every input;
         // the serializer panics otherwise (that's its contract with the type system).
-        tx.inputs[0].mass = TxInputMass::ComputeBudget(ComputeBudget(17));
-        tx.inputs[1].mass = TxInputMass::ComputeBudget(ComputeBudget(23));
+        tx.inputs[0].compute_commit = ComputeCommit::ComputeBudget(ComputeBudget(17));
+        tx.inputs[1].compute_commit = ComputeCommit::ComputeBudget(ComputeBudget(23));
         tx.outputs[0].covenant = Some(CovenantBinding::new(1, hashing::tx::payload_digest(&[1, 2, 3])));
         tx.finalize();
         tx
