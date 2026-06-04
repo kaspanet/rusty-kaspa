@@ -144,7 +144,7 @@ impl<R> PSKT<R> {
                     previous_outpoint: *previous_outpoint,
                     signature_script: vec![],
                     sequence: sequence.unwrap_or(u64::MAX),
-                    compute_commit: ComputeCommit::SigopCount(sig_op_count.unwrap_or(0).into()), // TODO: Add support for v1 transactions with TxInputMass::ComputeBudget
+                    compute_commit: ComputeCommit::SigopCount(sig_op_count.unwrap_or(0).into()), // TODO: Add support for v1 transactions with ComputeCommit::ComputeBudget
                 })
                 .collect(),
             self.outputs
