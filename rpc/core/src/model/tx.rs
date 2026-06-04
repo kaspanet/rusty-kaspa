@@ -363,8 +363,7 @@ impl Deserializer for RpcTransactionOutputVerboseData {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone)]
 pub struct RpcTransaction {
     pub version: u16,
     pub inputs: Vec<RpcTransactionInput>,
@@ -372,11 +371,65 @@ pub struct RpcTransaction {
     pub lock_time: u64,
     pub subnetwork_id: RpcSubnetworkId,
     pub gas: u64,
-    #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
-    #[serde(alias = "mass")] // DEPRECATED alias for mass to avoid breaking existing clients. Should be removed in the future.
     pub storage_mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
+}
+
+// This struct is used only for human-readable serialization of RpcTransaction, and is not intended to be used directly.
+// It exists to avoid breaking existing clients that rely on the "mass" field in JSON serialization of RpcTransaction,
+// while allowing us to rename the internal storage mass field to storage_mass for better clarity.
+// Once the "mass" field is removed from RpcTransaction, this struct and the related code can be removed as well.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RpcTransactionHumanReadable {
+    version: u16,
+    inputs: Vec<RpcTransactionInput>,
+    outputs: Vec<RpcTransactionOutput>,
+    lock_time: u64,
+    subnetwork_id: RpcSubnetworkId,
+    gas: u64,
+    #[serde(with = "hex::serde")]
+    payload: Vec<u8>,
+    #[serde(default)]
+    storage_mass: u64,
+    #[serde(default)]
+    mass: u64, // Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future.
+    verbose_data: Option<RpcTransactionVerboseData>,
+}
+
+impl<'de> serde::Deserialize<'de> for RpcTransaction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            return Err(serde::de::Error::custom("RpcTransaction does not support non-human-readable deserialization"));
+        }
+
+        let value = RpcTransactionHumanReadable::deserialize(deserializer)?;
+        let storage_mass = match (value.storage_mass, value.mass) {
+            (storage_mass, mass) if storage_mass > 0 && mass > 0 && storage_mass != mass => {
+                return Err(serde::de::Error::custom(format!(
+                    "storageMass and mass must match when both are positive: storageMass={storage_mass}, mass={mass}"
+                )));
+            }
+            (storage_mass, _) if storage_mass > 0 => storage_mass,
+            (_, mass) => mass,
+        };
+
+        Ok(Self {
+            version: value.version,
+            inputs: value.inputs,
+            outputs: value.outputs,
+            lock_time: value.lock_time,
+            subnetwork_id: value.subnetwork_id,
+            gas: value.gas,
+            payload: value.payload,
+            storage_mass,
+            verbose_data: value.verbose_data,
+        })
+    }
 }
 
 impl Serialize for RpcTransaction {
@@ -384,27 +437,6 @@ impl Serialize for RpcTransaction {
     where
         S: serde::Serializer,
     {
-        // This struct is used only for human-readable serialization of RpcTransaction, and is not intended to be used directly.
-        // It exists to avoid breaking existing clients that rely on the "mass" field in JSON serialization of RpcTransaction,
-        // while allowing us to rename the internal storage mass field to storage_mass for better clarity.
-        // Once the "mass" field is removed from RpcTransaction, this struct and the related code can be removed as well.
-        #[derive(Clone, Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct RpcTransactionHumanReadable {
-            pub version: u16,
-            pub inputs: Vec<RpcTransactionInput>,
-            pub outputs: Vec<RpcTransactionOutput>,
-            pub lock_time: u64,
-            pub subnetwork_id: RpcSubnetworkId,
-            pub gas: u64,
-            #[serde(with = "hex::serde")]
-            pub payload: Vec<u8>,
-            pub storage_mass: u64,
-            #[deprecated = "Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future."]
-            pub mass: u64,
-            pub verbose_data: Option<RpcTransactionVerboseData>,
-        }
-
         if !serializer.is_human_readable() {
             return Err(serde::ser::Error::custom("RpcTransaction does not support non-human-readable serialization"));
         }
@@ -421,7 +453,6 @@ impl Serialize for RpcTransaction {
             gas: *gas,
             payload: payload.clone(),
             storage_mass: *storage_mass,
-            #[allow(deprecated)]
             mass: *storage_mass,
             verbose_data: verbose_data.clone(),
         };
@@ -536,6 +567,46 @@ mod rpc_transaction_json_tests {
         }"#;
         let mass_tx: RpcTransaction = serde_json::from_str(mass_json).unwrap();
         assert_eq!(mass_tx.storage_mass, 123);
+    }
+
+    #[test]
+    fn rpc_transaction_json_deserializes_matching_mass_and_storage_mass_to_storage_mass() {
+        let json = r#"{
+            "version": 1,
+            "inputs": [],
+            "outputs": [],
+            "lockTime": 0,
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": 0,
+            "payload": "",
+            "storageMass": 123,
+            "mass": 123,
+            "verboseData": null
+        }"#;
+
+        let tx: RpcTransaction = serde_json::from_str(json).unwrap();
+
+        assert_eq!(tx.storage_mass, 123);
+    }
+
+    #[test]
+    fn rpc_transaction_json_rejects_conflicting_positive_mass_and_storage_mass() {
+        let json = r#"{
+            "version": 1,
+            "inputs": [],
+            "outputs": [],
+            "lockTime": 0,
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": 0,
+            "payload": "",
+            "storageMass": 123,
+            "mass": 456,
+            "verboseData": null
+        }"#;
+
+        let err = serde_json::from_str::<RpcTransaction>(json).unwrap_err();
+
+        assert!(err.to_string().contains("storageMass and mass must match when both are positive"), "got: {err}");
     }
 }
 

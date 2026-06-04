@@ -214,3 +214,43 @@ fn rpc_optional_transaction_json_deserializes_mass_or_storage_mass_to_storage_ma
     let mass_tx: RpcOptionalTransaction = serde_json::from_str(mass_json).unwrap();
     assert_eq!(mass_tx.storage_mass, Some(123));
 }
+
+#[test]
+fn rpc_optional_transaction_json_deserializes_matching_mass_and_storage_mass_to_storage_mass() {
+    let json = r#"{
+        "version": 1,
+        "inputs": [],
+        "outputs": [],
+        "lockTime": 0,
+        "subnetworkId": "0000000000000000000000000000000000000000",
+        "gas": 0,
+        "payload": "deadbeef",
+        "storageMass": 123,
+        "mass": 123,
+        "verboseData": null
+    }"#;
+
+    let tx: RpcOptionalTransaction = serde_json::from_str(json).unwrap();
+
+    assert_eq!(tx.storage_mass, Some(123));
+}
+
+#[test]
+fn rpc_optional_transaction_json_rejects_conflicting_mass_and_storage_mass() {
+    let json = r#"{
+        "version": 1,
+        "inputs": [],
+        "outputs": [],
+        "lockTime": 0,
+        "subnetworkId": "0000000000000000000000000000000000000000",
+        "gas": 0,
+        "payload": "deadbeef",
+        "storageMass": 123,
+        "mass": 456,
+        "verboseData": null
+    }"#;
+
+    let err = serde_json::from_str::<RpcOptionalTransaction>(json).unwrap_err();
+
+    assert!(err.to_string().contains("storageMass and mass must match"), "got: {err}");
+}
