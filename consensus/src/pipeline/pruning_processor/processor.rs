@@ -38,7 +38,7 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
-use kaspa_hashes::Hash;
+use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
@@ -313,12 +313,13 @@ impl PruningProcessor {
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
         // We keep full data for pruning point and its anticone, relations for DAA/GD
-        // windows and pruning proof, and only headers for past pruning points
+        // windows, seqcommit chain segment and pruning proof, and only headers for past pruning points
         let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
         let mut keep_relations: BlockHashMap<BlockLevel> = std::iter::empty()
             .chain(data.anticone.iter().copied())
             .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
+            .chain(data.header_only_chain_segment.iter().copied())
             .chain(proof[0].iter().map(|h| h.hash))
             .map(|h| (h, 0)) // Mark block level 0 for all the above. Note that below we add the remaining levels
             .collect();
@@ -486,6 +487,7 @@ impl PruningProcessor {
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
+                self.smt_metadata_store.delete_batch(&mut batch, current).unwrap();
 
                 if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
                     if statuses_write.get(current).optional().unwrap().is_some_and(|s| s.is_valid()) {
@@ -574,6 +576,23 @@ impl PruningProcessor {
         if self.config.enable_sanity_checks {
             self.assert_proof_rebuilding(proof, new_pruning_point);
             self.assert_data_rebuilding(data, new_pruning_point);
+        }
+
+        let pp_header = self.headers_store.get_compact_header_data(new_pruning_point).unwrap();
+        // Prune SMT lane/branch version stores and score index.
+        // The inclusive cutoff is `pp.blue_score − finality_depth − 1`: the
+        // score `pp.blue_score − finality_depth` is still inside the active
+        // window at the pruning point and must be preserved.
+        if self.config.toccata_activation.is_active(pp_header.daa_score) {
+            let smt_cutoff = crate::pipeline::virtual_processor::bounds::SeqCommitBounds::inclusive_prune_cutoff(
+                pp_header.blue_score,
+                self.config.params.finality_depth(),
+            );
+            info!("SMT pruning: cutoff_blue_score={}", smt_cutoff);
+            self.smt_stores.prune(&self.db, smt_cutoff);
+            if self.config.enable_sanity_checks {
+                self.assert_smt_rebuilding(new_pruning_point, pp_header.blue_score);
+            }
         }
 
         {
@@ -689,6 +708,30 @@ impl PruningProcessor {
             ref_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>(),
             built_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>()
         );
+        assert_eq!(
+            ref_data.header_only_chain_segment.iter().copied().collect::<BlockHashSet>(),
+            built_data.header_only_chain_segment.iter().copied().collect::<BlockHashSet>()
+        );
         info!("Trusted data was rebuilt successfully following pruning");
+    }
+
+    /// Check if `block_hash` is canonical for SMT lookups at `selected_parent`.
+    /// ZERO_HASH is always canonical because it marks IBD-imported entries.
+    fn is_smt_canonical(&self, block_hash: Hash, selected_parent: Hash) -> bool {
+        block_hash == ZERO_HASH || matches!(self.reachability_service.try_is_chain_ancestor_of(block_hash, selected_parent), Ok(true))
+    }
+
+    fn assert_smt_rebuilding(&self, new_pruning_point: Hash, pruning_point_blue_score: u64) {
+        info!("Rebuilding pruning point SMT root after pruning data (sanity test)");
+        let bounds = kaspa_smt_store::processor::SmtReadBounds::for_pov(pruning_point_blue_score, self.config.params.finality_depth());
+        let expected_root = self.smt_stores.get_lanes_root(bounds, |bh| self.is_smt_canonical(bh, new_pruning_point));
+        let expected_count = self.smt_metadata_store.get(new_pruning_point).unwrap().active_lanes_count();
+        let (root, count) = self
+            .smt_stores
+            .recompute_lanes_root_from_leaf_stream(bounds, expected_count, |bh| self.is_smt_canonical(bh, new_pruning_point))
+            .unwrap();
+        assert_eq!(count, expected_count, "SMT pruning sanity: active lane count mismatch");
+        assert_eq!(root, expected_root, "SMT pruning sanity: lanes root mismatch after pruning");
+        info!("SMT root was rebuilt successfully following pruning");
     }
 }

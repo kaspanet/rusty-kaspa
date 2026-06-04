@@ -15,7 +15,7 @@ cfg_if::cfg_if! {
         mod consts;
         mod logger;
 
-        pub use appender::CRESCENDO_KEYWORD;
+        pub use appender::FORK_KEYWORD;
     }
 }
 

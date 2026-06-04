@@ -17,6 +17,7 @@ use crate::{
         reachability::{DbReachabilityStore, ReachabilityData},
         relations::DbRelationsStore,
         selected_chain::DbSelectedChainStore,
+        smt_metadata::DbSmtMetadataStore,
         statuses::DbStatusesStore,
         tips::DbTipsStore,
         utxo_diffs::DbUtxoDiffsStore,
@@ -30,6 +31,7 @@ use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
 use kaspa_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
+use kaspa_smt_store::processor::SmtStores;
 use parking_lot::RwLock;
 use std::{ops::DerefMut, sync::Arc};
 
@@ -66,6 +68,10 @@ pub struct ConsensusStorage {
     // Block window caches
     pub block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
     pub block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
+
+    // SMT stores (KIP-21 lane processing)
+    pub smt_stores: Arc<SmtStores>,
+    pub smt_metadata_store: Arc<DbSmtMetadataStore>,
 
     // "Last Known Good" caches
     /// The "last known good" virtual state. To be used by any logic which does not want to wait
@@ -109,7 +115,7 @@ impl ConsensusStorage {
         let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
 
-        // If the fork is already scheduled, prefer the long-term, permanent values
+        // Window sizes in bytes
         let difficulty_window_bytes = params.difficulty_window_size * size_of::<SortableBlock>();
         let median_window_bytes = params.past_median_time_window_size * size_of::<SortableBlock>();
 
@@ -224,6 +230,19 @@ impl ConsensusStorage {
         let virtual_stores =
             Arc::new(RwLock::new(VirtualStores::new(db.clone(), lkg_virtual_state.clone(), utxo_set_builder.build())));
 
+        // SMT stores (KIP-21).
+        //
+        // The branch cache is larger because each lane update can touch multiple
+        // branch versions along the collapsed path. With the current tuple sizes,
+        // the selected capacities correspond to ~116MB for branches (500k * 232B)
+        // and ~18MB for lanes (100k * 176B).
+        // TODO: decide if SMT cache capacities should be determined from byte budgets
+        let smt_stores = Arc::new(SmtStores::new(db.clone(), scaled(500_000), scaled(100_000)));
+        // Use the header-data cache size for now because SMT metadata entries are small.
+        // TODO: tune SMT metadata cache budget based on profiling.
+        let smt_metadata_builder = PolicyBuilder::new().max_items(perf_params.header_data_cache_size).untracked();
+        let smt_metadata_store = Arc::new(DbSmtMetadataStore::new(db.clone(), smt_metadata_builder.build()));
+
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
         relations::init(reachability_relations_store.write().deref_mut());
@@ -252,6 +271,8 @@ impl ConsensusStorage {
             utxo_multisets_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
+            smt_stores,
+            smt_metadata_store,
             lkg_virtual_state,
         })
     }

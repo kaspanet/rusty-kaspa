@@ -1,6 +1,7 @@
 // ============================================================================
 // TEST SUITE FOR RKSTRATUM BRIDGE
 // ============================================================================
+// This module is compiled from `main.rs` under `#[cfg(test)]` (stratum-bridge binary).
 // This file contains comprehensive tests for the RKStratum Bridge.
 // Tests are organized into several categories:
 //
@@ -480,6 +481,66 @@ fn test_bind_addr_from_port_empty() {
     assert_eq!(bind_addr_from_port("   "), "");
 }
 
+// Stratum line buffer tests (issue #1017 — cap incomplete lines to prevent memory exhaustion)
+#[cfg(test)]
+#[test]
+fn test_append_line_data_accepts_data_under_limit() {
+    use kaspa_stratum_bridge::append_line_data;
+    let mut buf = String::new();
+    assert!(append_line_data(&mut buf, "{\"jsonrpc\":\"2.0\"}\n"));
+    assert_eq!(buf, "{\"jsonrpc\":\"2.0\"}\n");
+}
+
+#[cfg(test)]
+#[test]
+fn test_append_line_data_accepts_incremental_chunks_under_limit() {
+    use kaspa_stratum_bridge::{MAX_STRATUM_LINE_BYTES, append_line_data};
+    let mut buf = String::new();
+    let chunk_size = 1024;
+    let chunks = MAX_STRATUM_LINE_BYTES / chunk_size;
+    for _ in 0..chunks {
+        assert!(append_line_data(&mut buf, &"x".repeat(chunk_size)));
+    }
+    assert_eq!(buf.len(), chunks * chunk_size);
+}
+
+#[cfg(test)]
+#[test]
+fn test_append_line_data_rejects_when_limit_exceeded() {
+    use kaspa_stratum_bridge::{MAX_STRATUM_LINE_BYTES, append_line_data};
+    let mut buf = "x".repeat(MAX_STRATUM_LINE_BYTES);
+    assert!(!append_line_data(&mut buf, "y"));
+    assert_eq!(buf.len(), MAX_STRATUM_LINE_BYTES);
+}
+
+#[cfg(test)]
+#[test]
+fn test_append_line_data_rejects_single_oversized_chunk() {
+    use kaspa_stratum_bridge::{MAX_STRATUM_LINE_BYTES, append_line_data};
+    let mut buf = String::new();
+    assert!(!append_line_data(&mut buf, &"x".repeat(MAX_STRATUM_LINE_BYTES + 1)));
+    assert!(buf.is_empty());
+}
+
+#[cfg(test)]
+#[test]
+fn test_append_line_data_accepts_exactly_at_limit() {
+    use kaspa_stratum_bridge::{MAX_STRATUM_LINE_BYTES, append_line_data};
+    let mut buf = String::new();
+    assert!(append_line_data(&mut buf, &"x".repeat(MAX_STRATUM_LINE_BYTES)));
+    assert_eq!(buf.len(), MAX_STRATUM_LINE_BYTES);
+    assert!(!append_line_data(&mut buf, "y"));
+}
+
+#[cfg(test)]
+#[test]
+fn test_total_row_spm_uses_worker_average() {
+    use kaspa_stratum_bridge::average_worker_spm;
+    assert_eq!(average_worker_spm(0.0, 0), 0.0);
+    assert!((average_worker_spm(30.0, 2) - 15.0).abs() < f64::EPSILON);
+    assert!((average_worker_spm(12.5, 1) - 12.5).abs() < f64::EPSILON);
+}
+
 // JSON-RPC event tests
 #[cfg(test)]
 #[test]
@@ -950,7 +1011,6 @@ fn test_unmarshal_event_with_very_long_string() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_with_all_fields() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,diff=8192,prom=:9090,wait=1000,extranonce=4,log=true,var_diff=true,shares_per_min=30,var_diff_stats=true,pow2_clamp=false";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_ok());
@@ -968,7 +1028,6 @@ fn test_parse_instance_spec_with_all_fields() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_with_whitespace() {
-    use crate::cli::parse_instance_spec;
     let spec = "  port = :5555 , diff = 8192  ";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_ok());
@@ -980,7 +1039,6 @@ fn test_parse_instance_spec_with_whitespace() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_invalid_diff() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,diff=not_a_number";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_err());
@@ -989,7 +1047,6 @@ fn test_parse_instance_spec_invalid_diff() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_invalid_wait() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,diff=8192,wait=invalid";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_err());
@@ -998,7 +1055,6 @@ fn test_parse_instance_spec_invalid_wait() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_unknown_key() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,diff=8192,unknown_key=value";
     let result = parse_instance_spec(spec, None);
     assert!(result.is_err());
@@ -1007,7 +1063,6 @@ fn test_parse_instance_spec_unknown_key() {
 #[cfg(test)]
 #[test]
 fn test_parse_instance_spec_multiple_ports() {
-    use crate::cli::parse_instance_spec;
     let spec = "port=:5555,port=:5556,diff=8192";
     let result = parse_instance_spec(spec, None);
     // Last port should win, or it should error
@@ -1028,6 +1083,17 @@ mod integration {
     use tokio::sync::watch;
     use tokio::time::timeout;
 
+    // Mirrors testing/integration/src/common/daemon.rs::free_port.
+    fn free_port() -> u16 {
+        loop {
+            let port = rand::random::<u16>() % (u16::MAX - 1024) + 1024;
+            if let Ok(listener) = std::net::TcpListener::bind(format!("127.0.0.1:{port}")) {
+                drop(listener);
+                return port;
+            }
+        }
+    }
+
     #[tokio::test]
     async fn test_bridge_startup_with_inprocess_node() {
         init_allocator_with_default_settings();
@@ -1036,16 +1102,17 @@ mod integration {
         let temp_dir = std::env::temp_dir().join(format!("kaspad_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        // Start an in-process node with simnet/testnet settings
-        // Use a random port to avoid conflicts
-        let rpc_port = 16110 + (std::process::id() % 1000) as u16;
-        let rpc_address = format!("127.0.0.1:{}", rpc_port);
+        // Start an in-process devnet node with random listener ports to avoid conflicts
+        // with a locally running node.
+        let rpc_address = format!("127.0.0.1:{}", free_port());
         let argv: Vec<OsString> = vec![
             "kaspad".into(),
-            "--testnet".into(),
+            "--devnet".into(),
             "--appdir".into(),
             temp_dir.to_string_lossy().to_string().into(),
-            format!("--rpclisten={}", rpc_address).into(),
+            format!("--rpclisten={rpc_address}").into(),
+            format!("--listen=127.0.0.1:{}", free_port()).into(),
+            "--disable-upnp".into(),
             "--utxoindex".into(),
         ];
 
@@ -1107,16 +1174,18 @@ mod integration {
         let temp_dir = std::env::temp_dir().join(format!("kaspad_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        // Start an in-process node with simnet/testnet settings
-        // Use a random port to avoid conflicts
-        let rpc_port = 16110 + (std::process::id() % 1000) as u16;
+        // Start an in-process devnet node with random listener ports to avoid conflicts
+        // with a locally running node.
+        let rpc_port = free_port();
         let rpc_address = format!("127.0.0.1:{}", rpc_port);
         let argv: Vec<OsString> = vec![
             "kaspad".into(),
-            "--testnet".into(),
+            "--devnet".into(),
             "--appdir".into(),
             temp_dir.to_string_lossy().to_string().into(),
-            format!("--rpclisten={}", rpc_address).into(),
+            format!("--rpclisten={rpc_address}").into(),
+            format!("--listen=127.0.0.1:{}", free_port()).into(),
+            "--disable-upnp".into(),
             "--utxoindex".into(),
         ];
 
@@ -1186,16 +1255,6 @@ mod integration {
 // ============================================================================
 // COMPREHENSIVE TEST SUITE FOR BRIDGE FUNCTIONALITY
 // ============================================================================
-// These tests demonstrate how the bridge works and help developers understand
-// the codebase. They cover:
-// 1. Stratum protocol flow (subscribe, authorize, submit)
-// 2. Share validation and PoW checking
-// 3. Miner compatibility (IceRiver, Bitmain, BzMiner)
-// 4. Extranonce assignment and detection
-// 5. Job management and stale job handling
-// 6. Difficulty calculations
-// 7. VarDiff logic
-// ============================================================================
 
 #[cfg(test)]
 mod comprehensive_tests {
@@ -1210,6 +1269,7 @@ mod comprehensive_tests {
         hasher::KaspaDiff,
         jsonrpc_event::JsonRpcEvent,
         mining_state::{GetMiningState, Job, MiningState},
+        prom::{WorkerContext, init_metrics, record_share_found},
         share_handler::ShareHandler,
         stratum_context::StratumContext,
     };
@@ -1718,7 +1778,6 @@ mod comprehensive_tests {
 
     #[test]
     fn test_worker_prom_session_syncs_start_time_for_current_wallet() {
-        use crate::prom::{WorkerContext, init_metrics, record_share_found};
         use prometheus::gather;
 
         init_metrics();
@@ -1765,6 +1824,9 @@ mod comprehensive_tests {
         // Test: VarDiff difficulty management
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "worker1".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:test".to_string();
+        handler.get_create_stats(&ctx);
 
         // Set initial difficulty
         let prev = handler.set_client_vardiff(&ctx, 8192.0);
@@ -1816,6 +1878,9 @@ mod comprehensive_tests {
         // This test verifies the ShareHandler can manage VarDiff
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "worker1".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:test".to_string();
+        handler.get_create_stats(&ctx);
 
         // Set initial difficulty
         handler.set_client_vardiff(&ctx, 8192.0);
@@ -2640,6 +2705,9 @@ mod comprehensive_tests {
         // Note: set_client_vardiff stores the value as-is; clamping happens during VarDiff computation
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "worker1".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:test".to_string();
+        handler.get_create_stats(&ctx);
 
         // Test minimum difficulty (1.0)
         handler.set_client_vardiff(&ctx, 1.0);
@@ -2663,6 +2731,9 @@ mod comprehensive_tests {
         // Test: Scenarios where VarDiff should not change
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = create_test_context_sync();
+        *ctx.worker_name.lock() = "worker1".to_string();
+        *ctx.wallet_addr.lock() = "kaspatest:test".to_string();
+        handler.get_create_stats(&ctx);
 
         // Set initial difficulty
         handler.set_client_vardiff(&ctx, 8192.0);

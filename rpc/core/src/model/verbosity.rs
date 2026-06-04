@@ -291,6 +291,7 @@ pub struct RpcTransactionOutputVerbosity {
     pub include_amount: Option<bool>,
     pub include_script_public_key: Option<bool>,
     pub verbose_data_verbosity: Option<RpcTransactionOutputVerboseDataVerbosity>,
+    pub include_covenant: Option<bool>,
 }
 
 impl RpcTransactionOutputVerbosity {
@@ -298,14 +299,15 @@ impl RpcTransactionOutputVerbosity {
         include_amount: Option<bool>,
         include_script_public_key: Option<bool>,
         verbose_data_verbosity: Option<RpcTransactionOutputVerboseDataVerbosity>,
+        include_covenant: Option<bool>,
     ) -> Self {
-        Self { include_amount, include_script_public_key, verbose_data_verbosity }
+        Self { include_amount, include_script_public_key, verbose_data_verbosity, include_covenant }
     }
 }
 
 impl Serializer for RpcTransactionOutputVerbosity {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(Option<bool>, &self.include_amount, writer)?;
         store!(Option<bool>, &self.include_script_public_key, writer)?;
         serialize!(Option<RpcTransactionOutputVerboseDataVerbosity>, &self.verbose_data_verbosity, writer)?;
@@ -316,13 +318,13 @@ impl Serializer for RpcTransactionOutputVerbosity {
 
 impl Deserializer for RpcTransactionOutputVerbosity {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
 
         let include_amount = load!(Option<bool>, reader)?;
         let include_script_public_key = load!(Option<bool>, reader)?;
         let verbose_data_verbosity = deserialize!(Option<RpcTransactionOutputVerboseDataVerbosity>, reader)?;
-
-        Ok(Self { include_amount, include_script_public_key, verbose_data_verbosity })
+        let include_covenant = if version < 2 { None } else { load!(Option<bool>, reader)? };
+        Ok(Self { include_amount, include_script_public_key, verbose_data_verbosity, include_covenant })
     }
 }
 
