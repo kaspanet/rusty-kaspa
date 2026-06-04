@@ -401,9 +401,9 @@ impl Transaction {
         self.id
     }
 
-    /// [DEPRECATED] This function is deprecated to avoid ambiguity with compute mass and trasient mass. Use `self.set_storage_mass(mass)` instead.
     /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
     /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
+    #[deprecated = "This function is deprecated to avoid ambiguity with compute mass and trasient mass. Use `self.set_storage_mass(mass)` instead."]
     pub fn set_mass(&self, mass: u64) {
         self.set_storage_mass(mass);
     }
@@ -414,8 +414,8 @@ impl Transaction {
         self.storage_mass.0.store(mass, SeqCst)
     }
 
-    /// [DEPRECATED] This function is deprecated to avoid ambiguity with compute mass and trasient mass. Use `self.storage_mass()` instead.
     /// Read the storage mass commitment
+    #[deprecated = "This function is deprecated to avoid ambiguity with compute mass and trasient mass. Use `self.storage_mass()` instead."]
     pub fn mass(&self) -> u64 {
         self.storage_mass()
     }

@@ -473,7 +473,7 @@ impl TryFrom<RpcNullableCovenantBinding> for RpcCovenantBinding {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransaction {
     /// Level: Full
@@ -493,6 +493,56 @@ pub struct RpcOptionalTransaction {
     #[serde(alias = "mass")] // DEPRECATED alias for mass to avoid breaking existing clients. Should be removed in the future.
     pub storage_mass: Option<u64>,
     pub verbose_data: Option<RpcOptionalTransactionVerboseData>,
+}
+
+impl Serialize for RpcOptionalTransaction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // This struct is used only for human-readable serialization of RpcOptionalTransaction, and is not intended to be used directly.
+        // It exists to avoid breaking existing clients that rely on the "mass" field in JSON serialization of RpcOptionalTransaction,
+        // while allowing us to rename the internal storage mass field to storage_mass for better clarity.
+        // Once the "mass" field is removed from RpcOptionalTransaction, this struct and the related code can be removed as well.
+        #[derive(Clone, Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RpcOptionalTransactionHumanReadable {
+            version: Option<u16>,
+            inputs: Vec<RpcOptionalTransactionInput>,
+            outputs: Vec<RpcOptionalTransactionOutput>,
+            lock_time: Option<u64>,
+            subnetwork_id: Option<RpcSubnetworkId>,
+            gas: Option<u64>,
+            #[serde(with = "serde_bytes_optional")]
+            payload: Option<Vec<u8>>,
+            storage_mass: Option<u64>,
+            #[deprecated = "Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future."]
+            mass: Option<u64>,
+            verbose_data: Option<RpcOptionalTransactionVerboseData>,
+        }
+
+        if !serializer.is_human_readable() {
+            return Err(serde::ser::Error::custom("RpcOptionalTransaction does not support non-human-readable serialization"));
+        }
+
+        // We use this destructuring so any change in the fields of RpcTransaction will cause a compile error here, reminding us to update the serialization code of RpcTransactionHumanReadable accordingly.
+        let Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass, verbose_data } = self;
+
+        let hr = RpcOptionalTransactionHumanReadable {
+            version: *version,
+            inputs: inputs.clone(),
+            outputs: outputs.clone(),
+            lock_time: *lock_time,
+            subnetwork_id: *subnetwork_id,
+            gas: *gas,
+            payload: payload.clone(),
+            storage_mass: *storage_mass,
+            #[allow(deprecated)]
+            mass: *storage_mass,
+            verbose_data: verbose_data.clone(),
+        };
+        hr.serialize(serializer)
+    }
 }
 
 impl RpcOptionalTransaction {

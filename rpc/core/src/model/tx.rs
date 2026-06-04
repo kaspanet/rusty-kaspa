@@ -379,27 +379,32 @@ pub struct RpcTransaction {
     pub verbose_data: Option<RpcTransactionVerboseData>,
 }
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcTransactionHumanReadable {
-    pub version: u16,
-    pub inputs: Vec<RpcTransactionInput>,
-    pub outputs: Vec<RpcTransactionOutput>,
-    pub lock_time: u64,
-    pub subnetwork_id: RpcSubnetworkId,
-    pub gas: u64,
-    #[serde(with = "hex::serde")]
-    pub payload: Vec<u8>,
-    pub storage_mass: u64,
-    pub mass: u64, // DEPRECATED field for storage mass to avoid breaking existing clients. Should be removed in the future.
-    pub verbose_data: Option<RpcTransactionVerboseData>,
-}
-
 impl Serialize for RpcTransaction {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
+        // This struct is used only for human-readable serialization of RpcTransaction, and is not intended to be used directly.
+        // It exists to avoid breaking existing clients that rely on the "mass" field in JSON serialization of RpcTransaction,
+        // while allowing us to rename the internal storage mass field to storage_mass for better clarity.
+        // Once the "mass" field is removed from RpcTransaction, this struct and the related code can be removed as well.
+        #[derive(Clone, Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RpcTransactionHumanReadable {
+            pub version: u16,
+            pub inputs: Vec<RpcTransactionInput>,
+            pub outputs: Vec<RpcTransactionOutput>,
+            pub lock_time: u64,
+            pub subnetwork_id: RpcSubnetworkId,
+            pub gas: u64,
+            #[serde(with = "hex::serde")]
+            pub payload: Vec<u8>,
+            pub storage_mass: u64,
+            #[deprecated = "Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future."]
+            pub mass: u64,
+            pub verbose_data: Option<RpcTransactionVerboseData>,
+        }
+
         if !serializer.is_human_readable() {
             return Err(serde::ser::Error::custom("RpcTransaction does not support non-human-readable serialization"));
         }
@@ -416,6 +421,7 @@ impl Serialize for RpcTransaction {
             gas: *gas,
             payload: payload.clone(),
             storage_mass: *storage_mass,
+            #[allow(deprecated)]
             mass: *storage_mass,
             verbose_data: verbose_data.clone(),
         };
