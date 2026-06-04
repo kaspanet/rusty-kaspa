@@ -335,7 +335,7 @@ impl TryCastFromJs for Transaction {
 impl From<cctx::Transaction> for Transaction {
     fn from(tx: cctx::Transaction) -> Self {
         let id = tx.id();
-        let mass = tx.mass();
+        let mass = tx.storage_mass();
         let inputs: Vec<TransactionInput> = tx.inputs.into_iter().map(|input| input.into()).collect::<Vec<TransactionInput>>();
         let outputs: Vec<TransactionOutput> = tx.outputs.into_iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
         Self::new_with_inner(TransactionInner {
@@ -364,7 +364,7 @@ impl From<&Transaction> for cctx::Transaction {
         let outputs: Vec<cctx::TransactionOutput> =
             inner.outputs.clone().into_iter().map(|output| output.as_ref().into()).collect::<Vec<cctx::TransactionOutput>>();
         cctx::Transaction::new(inner.version, inputs, outputs, inner.lock_time, inner.subnetwork_id, inner.gas, inner.payload.clone())
-            .with_mass(inner.mass)
+            .with_storage_mass(inner.mass)
     }
 }
 
@@ -396,7 +396,7 @@ impl Transaction {
             lock_time: tx.lock_time,
             gas: tx.gas,
             payload: tx.payload.clone(),
-            mass: tx.mass(),
+            mass: tx.storage_mass(),
             subnetwork_id: tx.subnetwork_id,
         })
     }
@@ -424,7 +424,7 @@ impl Transaction {
             inner.gas,
             inner.payload.clone(),
         )
-        .with_mass(inner.mass);
+        .with_storage_mass(inner.mass);
 
         Ok((tx, utxos))
     }

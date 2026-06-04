@@ -335,7 +335,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time,
             subnetwork_id: transaction.subnetwork_id,
             gas: transaction.gas,
-            mass: transaction.mass(),
+            mass: transaction.storage_mass(),
             payload: transaction.payload.clone(),
             id: transaction.id(),
         })
@@ -383,7 +383,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time,
             subnetwork_id: transaction.subnetwork_id,
             gas: transaction.gas,
-            mass: transaction.mass(),
+            mass: transaction.storage_mass(),
             payload: transaction.payload.clone(),
         })
     }
@@ -411,7 +411,7 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
             serializable.gas,
             serializable.payload,
         )
-        .with_mass(serializable.mass);
+        .with_storage_mass(serializable.mass);
 
         Ok(Self::with_entries(tx, entries))
     }

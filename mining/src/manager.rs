@@ -1071,7 +1071,7 @@ fn feerate_stats(transactions: Vec<Transaction>, calculated_fees: Vec<u64>) -> O
             .iter()
             // skip coinbase tx
             .skip(1)
-            .map(Transaction::mass))
+            .map(Transaction::storage_mass))
         .map(|(fee, mass)| fee as f64 / mass as f64)
         .collect_vec();
     feerates.sort_unstable_by(f64::total_cmp);
@@ -1092,7 +1092,7 @@ mod tests {
     fn transactions(length: usize) -> Vec<Transaction> {
         let tx = || {
             let tx = Transaction::new(0, vec![], vec![], 0, Default::default(), 0, vec![]);
-            tx.set_mass(2);
+            tx.set_storage_mass(2);
             tx
         };
         let mut txs = repeat_n(tx(), length).collect_vec();

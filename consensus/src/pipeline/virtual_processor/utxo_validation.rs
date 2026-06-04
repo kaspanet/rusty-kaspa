@@ -457,7 +457,7 @@ impl VirtualStateProcessor {
             .ok_or(TxRuleError::MassIncomputable)?;
 
         // Set the inner mass field
-        mutable_tx.tx.set_mass(contextual_mass.storage_mass);
+        mutable_tx.tx.set_storage_mass(contextual_mass.storage_mass);
 
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
         let mass_and_feerate_threshold = args.feerate_threshold.map(|threshold| {

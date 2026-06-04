@@ -84,7 +84,7 @@ impl From<&Transaction> for protowire::TransactionMessage {
             subnetwork_id: Some((&tx.subnetwork_id).into()),
             gas: tx.gas,
             payload: tx.payload.clone(),
-            mass: tx.mass(),
+            mass: tx.storage_mass(),
         }
     }
 }
@@ -201,7 +201,7 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
             tx.gas,
             tx.payload,
         );
-        transaction.set_mass(tx.mass);
+        transaction.set_storage_mass(tx.mass);
         Ok(transaction)
     }
 }
@@ -226,7 +226,7 @@ mod tests {
             7,
             vec![1, 2, 3],
         );
-        tx.set_mass(54_321);
+        tx.set_storage_mass(54_321);
 
         let message: protowire::TransactionMessage = (&tx).into();
         assert_eq!(message.inputs[0].mass, 12_345);
@@ -234,6 +234,6 @@ mod tests {
         let received = Transaction::try_from(message).unwrap();
         assert_eq!(received.inputs.len(), 1);
         assert_eq!(received.inputs[0].mass.compute_budget(), Some(12_345));
-        assert_eq!(received.mass(), 54_321);
+        assert_eq!(received.storage_mass(), 54_321);
     }
 }
