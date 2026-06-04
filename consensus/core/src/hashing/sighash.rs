@@ -300,7 +300,7 @@ mod tests {
     use crate::{
         hashing::sighash_type::{SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE},
         subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
-        tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, ComputeCommit, UtxoEntry},
+        tx::{ComputeCommit, PopulatedTransaction, Transaction, TransactionId, TransactionInput, UtxoEntry},
     };
 
     use super::*;

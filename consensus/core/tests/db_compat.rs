@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use kaspa_consensus_core::mass::ComputeBudget;
 use kaspa_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
 use kaspa_consensus_core::tx::{
-    CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, ComputeCommit,
+    ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
 };
 use kaspa_hashes::Hash;
 

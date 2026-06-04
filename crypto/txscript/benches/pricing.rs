@@ -15,8 +15,8 @@ use kaspa_consensus_core::hashing::sighash::{
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::mass::{ComputeBudget, Gram, MassCalculator, ScriptUnits};
 use kaspa_consensus_core::tx::{
-    MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-    TransactionOutput, ComputeCommit, UtxoEntry, VerifiableTransaction,
+    ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput,
+    TransactionOutpoint, TransactionOutput, UtxoEntry, VerifiableTransaction,
 };
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::{self, OpDrop, OpDup};
@@ -249,8 +249,18 @@ fn build_schnorr_2in1_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let mut tx = Transaction::new(
         1,
         vec![
-            TransactionInput { previous_outpoint: dummy_out1, signature_script: vec![], sequence: 0, compute_commit: ComputeBudget(10).into() },
-            TransactionInput { previous_outpoint: dummy_out2, signature_script: vec![], sequence: 0, compute_commit: ComputeBudget(10).into() },
+            TransactionInput {
+                previous_outpoint: dummy_out1,
+                signature_script: vec![],
+                sequence: 0,
+                compute_commit: ComputeBudget(10).into(),
+            },
+            TransactionInput {
+                previous_outpoint: dummy_out2,
+                signature_script: vec![],
+                sequence: 0,
+                compute_commit: ComputeBudget(10).into(),
+            },
         ],
         outputs,
         0,
@@ -289,8 +299,18 @@ fn build_ecdsa_2in1_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
     let mut tx = Transaction::new(
         1,
         vec![
-            TransactionInput { previous_outpoint: dummy_out1, signature_script: vec![], sequence: 0, compute_commit: ComputeBudget(10).into() },
-            TransactionInput { previous_outpoint: dummy_out2, signature_script: vec![], sequence: 0, compute_commit: ComputeBudget(10).into() },
+            TransactionInput {
+                previous_outpoint: dummy_out1,
+                signature_script: vec![],
+                sequence: 0,
+                compute_commit: ComputeBudget(10).into(),
+            },
+            TransactionInput {
+                previous_outpoint: dummy_out2,
+                signature_script: vec![],
+                sequence: 0,
+                compute_commit: ComputeBudget(10).into(),
+            },
         ],
         outputs,
         0,

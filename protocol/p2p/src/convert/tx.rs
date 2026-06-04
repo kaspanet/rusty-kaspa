@@ -4,8 +4,8 @@ use kaspa_consensus_core::{
     mass::{ComputeBudget, SigopCount},
     subnets::SubnetworkId,
     tx::{
-        CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
-        ComputeCommit, UtxoEntry,
+        ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
+        TransactionOutput, UtxoEntry,
     },
 };
 use kaspa_hashes::Hash;

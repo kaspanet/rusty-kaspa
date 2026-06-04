@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     Hash,
     constants::TX_VERSION,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, ComputeCommit},
+    tx::{ComputeCommit, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
 
 fn constuct_tx() -> Transaction {

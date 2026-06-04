@@ -5,7 +5,7 @@ use crate::{
     RpcTransactionInput, RpcTransactionOutput,
 };
 use kaspa_consensus_core::mass::{ComputeBudget, SigopCount};
-use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, ComputeCommit};
+use kaspa_consensus_core::tx::{ComputeCommit, Transaction, TransactionInput, TransactionOutput};
 
 struct RpcInputWithVersion {
     version: u16,

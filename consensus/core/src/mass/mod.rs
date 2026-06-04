@@ -10,7 +10,7 @@ use crate::{
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     mass::units::GRAMS_PER_SIGOP_COUNT_UNIT,
     subnets::SUBNETWORK_ID_SIZE,
-    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, ComputeCommit, UtxoEntry, VerifiableTransaction},
+    tx::{ComputeCommit, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
 };
 use kaspa_hashes::HASH_SIZE;
 
@@ -350,7 +350,9 @@ impl MassCalculator {
             GRAMS_PER_COMPUTE_BUDGET_UNIT
                 * tx.inputs
                     .iter()
-                    .map(|input| input.compute_commit.compute_budget().expect("v1 transactions are expected to have compute budget") as u64)
+                    .map(|input| {
+                        input.compute_commit.compute_budget().expect("v1 transactions are expected to have compute budget") as u64
+                    })
                     .sum::<u64>()
         } else {
             let total_sigops: u64 = tx

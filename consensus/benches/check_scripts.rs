@@ -6,7 +6,7 @@ use kaspa_consensus::processes::transaction_validator::tx_validation_in_utxo_con
 use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, ComputeCommit, UtxoEntry};
+use kaspa_consensus_core::tx::{ComputeCommit, MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, UtxoEntry};
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::{EngineCtx, pay_to_address_script};
 use kaspa_utils::iter::parallelism_in_power_steps;

@@ -19,7 +19,7 @@
 //! `#[serde(transparent)]` over `u8` / `u16`, the two sides share the exact
 //! same wire format by construction.
 
-use super::{CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, ComputeCommit};
+use super::{ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use crate::mass::{ComputeBudget, SigopCount};
 use kaspa_utils::serde_bytes::{self, ByteBuf, Bytes};
 use serde::{
@@ -165,7 +165,10 @@ impl Serialize for InputsRef<'_> {
                         previous_outpoint: &input.previous_outpoint,
                         signature_script: input.signature_script.as_slice(),
                         sequence: input.sequence,
-                        compute_budget: input.compute_commit.compute_budget().expect("v1+ transaction inputs must carry a ComputeBudget mass"),
+                        compute_budget: input
+                            .compute_commit
+                            .compute_budget()
+                            .expect("v1+ transaction inputs must carry a ComputeBudget mass"),
                     })?;
                 }
             }

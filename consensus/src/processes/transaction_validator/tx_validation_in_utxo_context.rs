@@ -237,8 +237,8 @@ mod tests {
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{
-        MutableTransaction, PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId, TransactionInput,
-        TransactionOutpoint, TransactionOutput, ComputeCommit, UtxoEntry,
+        ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId,
+        TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
     };
     use kaspa_consensus_core::{
         config::params::ForkActivation,
