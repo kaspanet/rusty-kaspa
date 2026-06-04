@@ -202,6 +202,19 @@ async fn sanity_test() {
                 tst!(op, "see SubmitBlock")
             }
 
+            KaspadPayloadOps::GetBlockRewardInfo => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_block_reward_info_call(None, GetBlockRewardInfoRequest { hash: SIMNET_GENESIS.hash })
+                        .await
+                        .unwrap();
+
+                    assert_eq!(response.block_color, RpcBlockColor::Unknown);
+                    assert_eq!(response.header.hash, SIMNET_GENESIS.hash);
+                })
+            }
+
             KaspadPayloadOps::GetCurrentNetwork => {
                 let rpc_client = client.clone();
                 tst!(op, {

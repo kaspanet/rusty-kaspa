@@ -926,6 +926,44 @@ try_from! ( args: GetCurrentBlockColorResponse, IGetCurrentBlockColorResponse, {
 // ---
 
 declare! {
+    IGetBlockRewardInfoRequest,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetBlockRewardInfoRequest {
+        hash: HexString;
+    }
+    "#,
+}
+
+try_from! ( args: IGetBlockRewardInfoRequest, GetBlockRewardInfoRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetBlockRewardInfoResponse,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetBlockRewardInfoResponse {
+        header: IHeader;
+        blockColor: BlockColor;
+        confirmationCount?: bigint;
+        mergingChainBlockHash?: HexString;
+        rewardAmount?: bigint;
+    }
+    "#,
+}
+
+try_from! ( args: GetBlockRewardInfoResponse, IGetBlockRewardInfoResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
     IGetDaaScoreTimestampEstimateRequest,
     r#"
     /**

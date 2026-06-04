@@ -275,6 +275,15 @@ impl Rpc {
                 let result = rpc.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash }).await?;
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetBlockRewardInfo => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing block hash argument"));
+                }
+                let hash = argv.remove(0);
+                let hash = RpcHash::from_hex(hash.as_str())?;
+                let result = rpc.get_block_reward_info_call(None, GetBlockRewardInfoRequest::new(hash)).await?;
+                self.println(&ctx, result);
+            }
             RpcApiOps::GetUtxoReturnAddress => {
                 if argv.is_empty() || argv.len() != 2 {
                     return Err(Error::custom("Please specify a txid and a accepting_block_daa_score"));
