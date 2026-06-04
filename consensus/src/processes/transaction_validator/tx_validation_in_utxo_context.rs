@@ -126,7 +126,7 @@ impl TransactionValidator {
     fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let calculated_contextual_mass =
             self.mass_calculator.calc_contextual_masses(tx).ok_or(TxRuleError::MassIncomputable)?.storage_mass;
-        let committed_contextual_mass = tx.tx().mass();
+        let committed_contextual_mass = tx.tx().storage_mass();
         if committed_contextual_mass != calculated_contextual_mass {
             return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));
         }

@@ -477,7 +477,7 @@ impl PSKT<Extractor> {
         let storage_mass = calculator.calc_contextual_masses(&tx.as_verifiable()).map(|mass| mass.storage_mass).unwrap_or_default();
         let NonContextualMasses { compute_mass, transient_mass } = calculator.calc_non_contextual_masses(&tx.tx);
         let mass = storage_mass.max(compute_mass).max(transient_mass);
-        tx.tx.set_mass(mass);
+        tx.tx.set_storage_mass(mass);
         Ok(tx)
     }
 

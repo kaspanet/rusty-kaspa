@@ -213,7 +213,7 @@ impl Serialize for Transaction {
         state.serialize_field("subnetworkId", &self.subnetwork_id)?;
         state.serialize_field("gas", &self.gas)?;
         state.serialize_field("payload", &Bytes(&self.payload))?;
-        state.serialize_field("mass", &self.mass)?;
+        state.serialize_field("mass", &self.storage_mass)?;
         state.serialize_field("id", &self.id)?;
         state.end()
     }
@@ -287,7 +287,7 @@ impl<'de> Visitor<'de> for TransactionVisitor {
         let mass = seq.next_element()?.unwrap_or_default();
         let id = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(8, &self))?;
 
-        Ok(Transaction { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, id })
+        Ok(Transaction { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass: mass, id })
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
@@ -397,7 +397,17 @@ impl<'de> Visitor<'de> for TransactionVisitor {
 
         // `mass` keeps its historical `#[serde(default)]` leniency; `id` is required and
         // read verbatim — serde does not recompute the txid on deserialization.
-        Ok(Transaction { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: mass.unwrap_or_default(), id })
+        Ok(Transaction {
+            version,
+            inputs,
+            outputs,
+            lock_time,
+            subnetwork_id,
+            gas,
+            payload,
+            storage_mass: mass.unwrap_or_default(),
+            id,
+        })
     }
 }
 

@@ -257,7 +257,7 @@ pub struct Transaction {
 
     /// Holds a commitment to the storage mass (KIP-0009)
     /// TODO: rename field and related methods to storage_mass
-    mass: TransactionMass,
+    storage_mass: TransactionMass,
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
@@ -290,7 +290,7 @@ impl Transaction {
         mass: u64,
     ) -> Self {
         let mut tx = Self::new_non_finalized(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
-        tx.set_mass(mass);
+        tx.set_storage_mass(mass);
         tx.finalize();
         tx
     }
@@ -304,7 +304,17 @@ impl Transaction {
         gas: u64,
         payload: Vec<u8>,
     ) -> Self {
-        Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: Default::default(), id: Default::default() }
+        Self {
+            version,
+            inputs,
+            outputs,
+            lock_time,
+            subnetwork_id,
+            gas,
+            payload,
+            storage_mass: Default::default(),
+            id: Default::default(),
+        }
     }
 
     /// Populates genesis covenant bindings for multiple output groups.
@@ -393,18 +403,31 @@ impl Transaction {
 
     /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
     /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
+    #[deprecated = "This function is deprecated to avoid ambiguity with compute mass and trasient mass. Use `self.set_storage_mass(mass)` instead."]
     pub fn set_mass(&self, mass: u64) {
-        self.mass.0.store(mass, SeqCst)
+        self.set_storage_mass(mass);
+    }
+
+    /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
+    /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
+    pub fn set_storage_mass(&self, mass: u64) {
+        self.storage_mass.0.store(mass, SeqCst)
     }
 
     /// Read the storage mass commitment
+    #[deprecated = "This function is deprecated to avoid ambiguity with compute mass and trasient mass. Use `self.storage_mass()` instead."]
     pub fn mass(&self) -> u64 {
-        self.mass.0.load(SeqCst)
+        self.storage_mass()
+    }
+
+    /// Read the storage mass commitment
+    pub fn storage_mass(&self) -> u64 {
+        self.storage_mass.0.load(SeqCst)
     }
 
     /// Set the storage mass commitment of the passed transaction
-    pub fn with_mass(self, mass: u64) -> Self {
-        self.set_mass(mass);
+    pub fn with_storage_mass(self, mass: u64) -> Self {
+        self.set_storage_mass(mass);
         self
     }
 
@@ -634,7 +657,9 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     /// exist, otherwise `None` is returned.
     pub fn calculated_feerate(&self, cofactors: &MassCofactors) -> Option<f64> {
         self.calculated_non_contextual_masses
-            .map(|non_contextual| Mass::new(non_contextual, ContextualMasses::new(self.tx.as_ref().mass())).normalized_max(cofactors))
+            .map(|non_contextual| {
+                Mass::new(non_contextual, ContextualMasses::new(self.tx.as_ref().storage_mass())).normalized_max(cofactors)
+            })
             .and_then(|max_mass| self.calculated_fee.map(|fee| fee as f64 / max_mass as f64))
     }
 

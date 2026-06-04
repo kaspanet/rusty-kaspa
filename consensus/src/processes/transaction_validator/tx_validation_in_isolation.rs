@@ -46,7 +46,7 @@ impl TransactionValidator {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
 
-        if tx.mass() > 0 {
+        if tx.storage_mass() > 0 {
             return Err(TxRuleError::CoinbaseNonZeroMassCommitment);
         }
 

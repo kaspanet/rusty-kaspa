@@ -196,7 +196,7 @@ impl Miner {
             .map(|mutable_tx| {
                 let signed_tx = sign(mutable_tx, schnorr_key);
                 let mass = self.mass_calculator.calc_contextual_masses(&signed_tx.as_verifiable()).unwrap().storage_mass;
-                signed_tx.tx.set_mass(mass);
+                signed_tx.tx.set_storage_mass(mass);
                 let mut signed_tx = signed_tx.tx;
                 signed_tx.finalize();
                 signed_tx
