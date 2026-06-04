@@ -179,10 +179,6 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
-        unimplemented!()
-    }
-
     fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         unimplemented!()
     }

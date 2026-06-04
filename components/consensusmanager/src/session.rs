@@ -257,10 +257,6 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_sink_daa_score_timestamp()).await
     }
 
-    pub async fn async_get_current_block_color(&self, hash: Hash) -> Option<bool> {
-        self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
-    }
-
     pub async fn async_get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         self.clone().spawn_blocking(move |c| c.get_merged_block_context(hash)).await
     }

@@ -439,15 +439,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             ));
         }
 
-        let merging_ghostdag = session.async_get_ghostdag_data(merging_chain_block_hash).await?;
-        let queried_blue_index = merging_ghostdag.mergeset_blues.iter().position(|hash| *hash == request.hash).ok_or_else(|| {
-            RpcError::General(format!(
-                "blue block {} was not found in merging chain block {} mergeset blues",
-                request.hash, merging_chain_block_hash
-            ))
-        })?;
+        let merging_chain_block_ghostdag = session.async_get_ghostdag_data(merging_chain_block_hash).await?;
+        let queried_blue_index =
+            merging_chain_block_ghostdag.mergeset_blues.iter().position(|hash| *hash == request.hash).ok_or_else(|| {
+                RpcError::General(format!(
+                    "blue block {} was not found in merging chain block {} mergeset blues",
+                    request.hash, merging_chain_block_hash
+                ))
+            })?;
 
         // queried blue's reward is the matching output in the merging block coinbase
+        // index maps to the coinbase output index because blue blocks are never non-daa
         // see CoinbaseManager::expected_coinbase_transaction
         let mut reward_amount = merging_chain_block.transactions[COINBASE_TRANSACTION_INDEX]
             .outputs
@@ -460,7 +462,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             })?
             .value;
 
-        if session.async_is_chain_block(request.hash).await? {
+        // The merging chain block of queried block is the first selected-chain descendant that merged the queried block, so
+        // the queried block is on-chain iff it is that block's selected parent
+        if merging_chain_block_ghostdag.selected_parent == request.hash {
             let queried_block = session.async_get_block(request.hash).await?;
             let queried_ghostdag = session.async_get_ghostdag_data(request.hash).await?;
             let queried_coinbase = &queried_block.transactions[COINBASE_TRANSACTION_INDEX];
