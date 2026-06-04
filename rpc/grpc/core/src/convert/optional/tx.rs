@@ -107,7 +107,7 @@ try_from!(item: &protowire::RpcOptionalTransaction, kaspa_rpc_core::RpcOptionalT
         subnetwork_id: item.subnetwork_id.as_ref().map(|x| RpcSubnetworkId::from_str(x)).transpose()?,
         gas: item.gas,
         payload: item.payload.as_ref().map(|x| Vec::from_rpc_hex(x)).transpose()?,
-        mass: item.mass,
+        storage_mass: item.mass,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionVerboseData::try_from).transpose()?,
     }
 });
@@ -214,7 +214,7 @@ mod tests {
             subnetwork_id: Some(SubnetworkId::from_bytes([5; 20])),
             gas: Some(0),
             payload: Some(vec![0x01, 0x02]),
-            mass: Some(333),
+            storage_mass: Some(333),
             verbose_data: None,
         };
 

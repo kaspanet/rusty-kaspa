@@ -30,7 +30,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalTransaction, protowire::RpcTransaction, 
         subnetwork_id: item.subnetwork_id.as_ref().map(|x| x.to_string()).unwrap_or_default(),
         gas: item.gas.unwrap_or_default(),
         payload: item.payload.as_ref().map(|x| x.to_rpc_hex()).unwrap_or_default(),
-        storage_mass: item.mass.unwrap_or_default(),
+        storage_mass: item.storage_mass.unwrap_or_default(),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
@@ -243,7 +243,7 @@ try_from!(item: &protowire::RpcTransaction, kaspa_rpc_core::RpcOptionalTransacti
             .subnetwork_id)?),
         gas: Some(item.gas),
         payload: Some(Vec::from_rpc_hex(&item.payload)?),
-        mass: Some(item.storage_mass),
+        storage_mass: Some(item.storage_mass),
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionVerboseData::try_from).transpose()?,
     }
 });

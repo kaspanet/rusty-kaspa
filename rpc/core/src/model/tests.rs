@@ -387,7 +387,7 @@ mod mockery {
                 include_subnetwork_id: mock(),
                 include_gas: mock(),
                 include_payload: mock(),
-                include_mass: mock(),
+                include_storage_mass: mock(),
                 verbose_data_verbosity: mock(),
             }
         }
@@ -419,7 +419,7 @@ mod mockery {
                 subnetwork_id: mock(),
                 gas: mock(),
                 payload: Some(Hash::mock().as_bytes().to_vec()),
-                mass: mock(),
+                storage_mass: mock(),
                 verbose_data: mock(),
             }
         }

@@ -490,7 +490,8 @@ pub struct RpcOptionalTransaction {
     /// Level: High
     pub payload: Option<Vec<u8>>,
     /// Level: High
-    pub mass: Option<u64>,
+    #[serde(alias = "mass")] // DEPRECATED alias for mass to avoid breaking existing clients. Should be removed in the future.
+    pub storage_mass: Option<u64>,
     pub verbose_data: Option<RpcOptionalTransactionVerboseData>,
 }
 
@@ -503,7 +504,7 @@ impl RpcOptionalTransaction {
             && self.subnetwork_id.is_none()
             && self.gas.is_none()
             && self.payload.is_none()
-            && self.mass.is_none()
+            && self.storage_mass.is_none()
             && (self.verbose_data.is_none() || self.verbose_data.as_ref().is_some_and(|x| x.is_empty()))
     }
 }
@@ -516,7 +517,7 @@ impl std::fmt::Debug for RpcOptionalTransaction {
             .field("subnetwork_id", &self.subnetwork_id)
             .field("gas", &self.gas)
             .field("payload", &self.payload.as_ref().map(|v|v.to_hex()))
-            .field("mass", &self.mass)
+            .field("storage_mass", &self.storage_mass)
             .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
@@ -534,7 +535,7 @@ impl Serializer for RpcOptionalTransaction {
         store!(Option<RpcSubnetworkId>, &self.subnetwork_id, writer)?;
         store!(Option<u64>, &self.gas, writer)?;
         store!(Option<Vec<u8>>, &self.payload, writer)?;
-        store!(Option<u64>, &self.mass, writer)?;
+        store!(Option<u64>, &self.storage_mass, writer)?;
         serialize!(Option<RpcOptionalTransactionVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -552,10 +553,10 @@ impl Deserializer for RpcOptionalTransaction {
         let subnetwork_id = load!(Option<RpcSubnetworkId>, reader)?;
         let gas = load!(Option<u64>, reader)?;
         let payload = load!(Option<Vec<u8>>, reader)?;
-        let mass = load!(Option<u64>, reader)?;
+        let storage_mass = load!(Option<u64>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalTransactionVerboseData>, reader)?;
 
-        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data })
+        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass, verbose_data })
     }
 }
 
