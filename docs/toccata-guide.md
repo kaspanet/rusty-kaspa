@@ -62,7 +62,7 @@ Leave this process running. Closing it will stop your node. If you have other fl
 
 Toccata introduces v1 transactions with new fields (`TransactionOutput.covenant`, `TransactionInput.compute_commit`), which need to be preserved from the template that you get from `GetBlockTemplate` and passed back when you submit your mined block via `SubmitBlock`.
 
-Ensure your pool/stratum is updated to preserve the new fields in the transactions by updating your GRPC proto files. Then, ensure that your pool software properly sends back the `mass` for each transaction in the block.
+Ensure your pool/stratum is updated to preserve the new fields in the transactions by updating your GRPC proto files.
 
 ### Updating your Pool/Stratum to work in Toccata
 
@@ -85,7 +85,7 @@ Exchanges, miners, pools, explorers, wallet operators and other service provider
 Ideally, this includes deposit and withdrawal flows, block template handling, mined block submission, transaction parsing, indexing, wallet balance tracking, fee estimation, and any internal services that depend on transaction or block formats. Testing on Testnet-10 is the recommended way to verify that your systems handle the Toccata transaction fields before mainnet activation.
 
 ## Fee adaptation
-One week before Toccata activation the minimum fee rate is going to be increased from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything, otherwise, you'll need to update your code to create transactions with the correct fee rate.
+On Toccata activation the minimum fee rate is going to be increased from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything, otherwise, you'll need to update your code to create transactions with the correct fee rate.
 
 ## Deprecation of `Transaction.mass` in Transaction APIs
 
