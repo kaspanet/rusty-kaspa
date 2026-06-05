@@ -4,7 +4,7 @@ Kaspa is about to take a significant leap with the **Toccata Hardfork**, as deta
 
 ## Key notes
 
-- Node operators should upgrade to this version before the upcoming hardfork.
+- Node operators should upgrade to this version before the upcoming hard fork.
 
 - Miners may use this release to sanity-test mining flows, but this does not replace testing on an activated testnet. Before activation, mainnet block templates only contain current transaction versions, so some Toccata-specific paths are only meaningfully exercised after activation.
 
@@ -44,7 +44,7 @@ If you are a pool operator, it is _strongly recommended_ that you pick specs tha
 
 There are two reasons for the change:
 1. [More accurate measurements](https://github.com/elldeeone/node-research/blob/main/investigations/node-resource-usage/REPORT.md#6-recommended-hardware-requirements) made by @elldeeone.
-2. Doubling of the transient mass limit to allow zk-stark proofs.
+2. Doubling of the transient mass limit to allow ZK-STARK proofs.
 
 ## Running Your Node
 
@@ -82,17 +82,17 @@ Leave this process running. Closing it will stop your node. If you have other fl
 
 Toccata introduces v1 transactions with new fields (`TransactionOutput.covenant`, `TransactionInput.compute_commit`), which need to be preserved from the template that you get from `GetBlockTemplate` and passed back when you submit your mined block via `SubmitBlock`.
 
-Ensure your pool/stratum is updated to preserve the new fields in the transactions by updating your GRPC proto files.
+Ensure your pool/stratum is updated to preserve the new fields in the transactions by updating your gRPC proto files.
 
-### Updating your Pool/Stratum to work in Toccata
+### Updating Your Pool/Stratum to Work with Toccata
 
-#### Updating GRPC proto
+#### Updating gRPC proto
 
-Make sure that you get the updated `message.proto` and `rpc.proto` from the rusty-kaspa repo at https://github.com/kaspanet/rusty-kaspa/tree/master/rpc/grpc/core/proto
+Make sure that you get the updated `messages.proto` and `rpc.proto` from the rusty-kaspa repo at https://github.com/kaspanet/rusty-kaspa/tree/master/rpc/grpc/core/proto.
 
-#### Using the golang Kaspad repo as an SDK
+#### Using the Go Kaspad Repo as an SDK
 
-If you use the golang Kaspad repo as an SDK, a new tag [v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23) has been made which contains the changes you would need to get your pool/stratum updated. Update your dependency on the old repo to that tag.
+If you use the Go Kaspad repo as an SDK, a new tag [v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23) has been made which contains the changes you need to get your pool/stratum updated. Update your dependency on the old repo to that tag.
 
 ### What happens if I don't update my pool/stratum?
 
@@ -100,12 +100,12 @@ After Toccata activates, if you still have not updated, the blocks that you subm
 
 ## Test Against Testnet-10 Before Activation
 
-Exchanges, miners, pools, explorers, wallet operators and other service providers should test their full infrastructure against Testnet-10 before Toccata activates on mainnet.
+Exchanges, miners, pools, explorers, wallet operators, and other service providers should test their full infrastructure against Testnet-10 before Toccata activates on mainnet.
 
 Ideally, this includes deposit and withdrawal flows, block template handling, mined block submission, transaction parsing, indexing, wallet balance tracking, fee estimation, and any internal services that depend on transaction or block formats. Testing on Testnet-10 is the recommended way to verify that your systems handle the Toccata transaction fields before mainnet activation.
 
 ## Fee adaptation
-On Toccata activation the minimum fee rate is going to be increased from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything, otherwise, you'll need to update your code to create transactions with the correct fee rate.
+On Toccata activation, the minimum fee rate is going to be increased from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything. Otherwise, you'll need to update your code to create transactions with the correct fee rate.
 
 ## Deprecation of `Transaction.mass` in Transaction APIs
 
