@@ -78,6 +78,12 @@ If you use the golang Kaspad repo as an SDK, a new tag [v0.12.23](https://github
 
 After Toccata activates, if you still have not updated, the blocks that you submit will be considered invalid.
 
+## Test Against Testnet-10 Before Activation
+
+Exchanges, miners, pools, explorers, wallet operators and other service providers should test their full infrastructure against Testnet-10 before Toccata activates on mainnet.
+
+Ideally, this includes deposit and withdrawal flows, block template handling, mined block submission, transaction parsing, indexing, wallet balance tracking, fee estimation, and any internal services that depend on transaction or block formats. Testing on Testnet-10 is the recommended way to verify that your systems handle the Toccata transaction fields before mainnet activation.
+
 ## Fee adaptation
 One week before Toccata activation the minimum fee rate is going to be increased from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything, otherwise, you'll need to update your code to create transactions with the correct fee rate.
 
