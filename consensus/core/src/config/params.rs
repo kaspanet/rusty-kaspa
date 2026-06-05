@@ -720,7 +720,8 @@ pub const MAINNET_PARAMS: Params = Params {
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
 
-    toccata_activation: ForkActivation::never(),
+    // Roughly 2026-06-30 1615 UTC
+    toccata_activation: ForkActivation::new(474_165_565),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
