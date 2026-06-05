@@ -449,6 +449,11 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
     parse_script::<T, Reused>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
 }
 
+enum ScriptExecutionOutput {
+    Executed,
+    AcceptedUnknownVersion,
+}
+
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
     pub fn new(ctx: EngineContext<'a, Reused>, flags: EngineFlags) -> Self {
         let runtime_resource_meter = if flags.covenants_enabled {
@@ -684,12 +689,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         script_result
     }
 
-    fn execute_inner(&mut self) -> Result<(), TxScriptError> {
+    fn execute_inner(&mut self) -> Result<ScriptExecutionOutput, TxScriptError> {
         let (scripts, is_p2sh, utxo_spk_script_units) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                     trace!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
-                    return Ok(());
+                    return Ok(ScriptExecutionOutput::AcceptedUnknownVersion);
                 }
 
                 // To avoid breaking the old pricing, we only charge for the part of the script public key
@@ -743,18 +748,20 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             let script = self.dstack.pop()?;
             self.execute_script(script.as_slice(), false)?
         }
-        Ok(())
+        Ok(ScriptExecutionOutput::Executed)
     }
 
     pub fn execute(&mut self) -> Result<(), TxScriptError> {
-        self.execute_inner()?;
-        self.check_error_condition(true)?;
-        Ok(())
+        match self.execute_inner()? {
+            ScriptExecutionOutput::Executed => self.check_error_condition(true),
+            // Unknown script versions are accepted without execution, indepedently of the stack state. There's no need to check the error condition.
+            ScriptExecutionOutput::AcceptedUnknownVersion => Ok(()),
+        }
     }
 
     /// Executes the scripts without the final error condition checks and returns both stacks in raw vector form.
     pub fn execute_and_return_stacks(mut self) -> Result<ExecutionStacks, TxScriptError> {
-        self.execute_inner()?;
+        let _ = self.execute_inner()?;
         Ok(ExecutionStacks { dstack: self.dstack.into(), astack: self.astack.into() })
     }
 
@@ -1502,6 +1509,35 @@ mod tests {
         ];
 
         run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_unknown_script_public_key_version_skips_final_stack_check() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([1u8; 32]), index: 0 },
+            signature_script: vec![],
+            sequence: 0,
+            compute_commit: ComputeBudget(0).into(),
+        };
+        let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
+        let tx = Transaction::new(1, vec![input.clone()], vec![output], 0, Default::default(), 0, vec![]);
+        let unknown_version_spk = ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION + 1, vec![OpFalse].into());
+        let utxo_entry = UtxoEntry::new(1, unknown_version_spk, 0, false, None);
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &populated_tx,
+            &input,
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            Default::default(),
+        );
+
+        assert_eq!(vm.execute(), Ok(()));
     }
 
     #[test]
