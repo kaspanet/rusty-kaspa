@@ -449,6 +449,11 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
     parse_script::<T, Reused>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
 }
 
+enum ScriptExecutionResult {
+    Executed,
+    AcceptedUnknownVersion,
+}
+
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
     pub fn new(ctx: EngineContext<'a, Reused>, flags: EngineFlags) -> Self {
         let runtime_resource_meter = if flags.covenants_enabled {
@@ -684,12 +689,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         script_result
     }
 
-    fn execute_inner(&mut self) -> Result<(), TxScriptError> {
+    fn execute_inner(&mut self) -> Result<ScriptExecutionResult, TxScriptError> {
         let (scripts, is_p2sh, utxo_spk_script_units) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                     trace!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
-                    return Ok(());
+                    return Ok(ScriptExecutionResult::AcceptedUnknownVersion);
                 }
 
                 // To avoid breaking the old pricing, we only charge for the part of the script public key
@@ -743,18 +748,20 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             let script = self.dstack.pop()?;
             self.execute_script(script.as_slice(), false)?
         }
-        Ok(())
+        Ok(ScriptExecutionResult::Executed)
     }
 
     pub fn execute(&mut self) -> Result<(), TxScriptError> {
-        self.execute_inner()?;
-        self.check_error_condition(true)?;
-        Ok(())
+        match self.execute_inner()? {
+            ScriptExecutionResult::Executed => self.check_error_condition(true),
+            // Unknown script versions are accepted without execution, indepedently of the stack state. There's no need to check the error condition.
+            ScriptExecutionResult::AcceptedUnknownVersion => Ok(()),
+        }
     }
 
     /// Executes the scripts without the final error condition checks and returns both stacks in raw vector form.
     pub fn execute_and_return_stacks(mut self) -> Result<ExecutionStacks, TxScriptError> {
-        self.execute_inner()?;
+        let _ = self.execute_inner()?;
         Ok(ExecutionStacks { dstack: self.dstack.into(), astack: self.astack.into() })
     }
 
