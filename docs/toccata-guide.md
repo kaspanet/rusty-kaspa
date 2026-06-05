@@ -14,7 +14,7 @@ Kaspa is about to take a significant leap with the **Toccata Hardfork**, as deta
 
 - This fee rule is a node policy / mempool rule, not a consensus rule. Consensus does not have a fee policy; zero-fee transactions are and remain consensus-valid.
 
-- Until activation, the higher minimum standard fee rule is applied at the RPC transaction-submission level. P2P relay remains under the current behavior until activation.
+- Until activation, the higher minimum standard fee is enforced only for transactions submitted directly through RPC. Transactions received through P2P relay continue to follow the current pre-activation policy, but after activation they will also be rejected unless they meet the higher fee rule.
 
 - Wallets and other transaction-submitting software should verify that they do not rely on outdated fixed minimum-fee assumptions. Software should derive the required minimum fee from the node API where possible, or otherwise be updated to match the new minimum standard fee rule.
 
@@ -110,6 +110,8 @@ Ideally, this includes deposit and withdrawal flows, block template handling, mi
 ## Fee Adaptation
 
 On Toccata activation, the minimum fee rate will increase from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything. Otherwise, you'll need to update your code to create transactions with the correct fee rate.
+
+If you use `kaspawallet` from the Go Kaspad repo, download the new [v0.12.23 release](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23), which is adapted to the new minimum fee rate.
 
 ## Deprecation of `Transaction.mass` in Transaction APIs
 
