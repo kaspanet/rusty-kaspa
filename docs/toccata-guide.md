@@ -1,6 +1,6 @@
 # Kaspa Toccata Hardfork Node Setup Guide
 
-Kaspa is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md), [KIP20](https://github.com/kaspanet/kips/blob/master/kip-0020.md), and [KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), bringing native L1 covenant programming and infrastructure for based ZK applications to Kaspa. The hard fork is scheduled to activate on mainnet at DAA score `474,165,565`, which is roughly June 30, 2026 at 16:15 UTC.
+Kaspa is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md), [KIP20](https://github.com/kaspanet/kips/blob/master/kip-0020.md), and [KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), bringing native L1 covenant programming and infrastructure for based ZK applications to Kaspa. The hard fork is scheduled to activate on mainnet at DAA score `474,165,565`, roughly on June 30, 2026, at 16:15 UTC.
 
 ## Key notes
 
@@ -18,7 +18,7 @@ Kaspa is about to take a significant leap with the **Toccata Hardfork**, as deta
 
 - Wallets and other transaction-submitting software should verify that they do not rely on outdated fixed minimum-fee assumptions. Software should derive the required minimum fee from the node API where possible, or otherwise be updated to match the new minimum standard fee rule.
 
-- gRPC/protobuf integrators can update and test their integrations ahead of the activation to make sure existing APIs continue to behave as expected and to prepare for Toccata compatibility.
+- gRPC/protobuf integrators can update and test their integrations ahead of activation to make sure existing APIs continue to behave as expected and to prepare for Toccata compatibility.
 
 - The node database upgrade is one-way. After upgrading a node database to this release, it cannot be downgraded back to an earlier version. Operators who need to return to an earlier version can resync, but larger operators and pools should account for that operational cost.
 
@@ -40,49 +40,52 @@ While the minimum specs suffice to sync and maintain a node, increasing CPU core
 
 If you are a pool operator, it is _strongly recommended_ that you pick specs that are closer to the preferred specifications above.
 
-### Note on The Change of Hardware Specifications
+### Note on the Updated Hardware Specifications
 
 There are two reasons for the change:
+
 1. [More accurate measurements](https://github.com/elldeeone/node-research/blob/main/investigations/node-resource-usage/REPORT.md#6-recommended-hardware-requirements) made by @elldeeone.
-2. Doubling of the transient mass limit to allow ZK-STARK proofs.
+2. The doubling of the transient mass limit to allow ZK-STARK proofs.
 
 ## Running Your Node
 
 1. **Obtain Kaspa v2.0.0 binaries**  
-    Download and extract the official [2.0.0 release](https://github.com/kaspanet/rusty-kaspa/releases/tag/v2.0.0), or build from the `master` branch by following the instructions in the project README.
+   Download and extract the official [2.0.0 release](https://github.com/kaspanet/rusty-kaspa/releases/tag/v2.0.0), or build from the `master` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
-    ```
-    kaspad --utxoindex
-    ```
 
-    *(If running from source code:)*  
-    ```
-    cargo run --bin kaspad --release -- --utxoindex
-    ```
+   ```
+   kaspad --utxoindex
+   ```
 
-    To run on testnet, simply add `--testnet` at the end. For example:
+   *(If running from source code:)*  
 
-    ```
-    kaspad --utxoindex --testnet
-    ```
+   ```
+   cargo run --bin kaspad --release -- --utxoindex
+   ```
+
+   To run on testnet, simply add `--testnet` at the end. For example:
+
+   ```
+   kaspad --utxoindex --testnet
+   ```
 
 Leave this process running. Closing it will stop your node. If you have other flags that you use for your current node, you may continue to use those.
 
 - **Advanced Command-Line Options**:
   - `--disable-upnp` if you don't want your node to be automatically publicly connectable (if your router supports UPnP). Recommended for pools and exchanges.
-  - `--rpclisten=0.0.0.0` to listen for RPC connections on all network interfaces (public RPC). Use `--rpclisten=127.0.0.1` if you are running your pool/exchange software on the same machine
-  - `--rpclisten-borsh` for local borsh RPC access from the `kaspa-cli` binary.
-  - `--unsaferpc` for allowing P2P peer query and management via RPC (recommended to use only if **not** exposing RPC publicly).
+  - `--rpclisten=0.0.0.0` to listen for RPC connections on all network interfaces (public RPC). Use `--rpclisten=127.0.0.1` if you are running your pool/exchange software on the same machine.
+  - `--rpclisten-borsh` for local Borsh RPC access from the `kaspa-cli` binary.
+  - `--unsaferpc` to allow P2P peer query and management via RPC (recommended only when RPC is not exposed publicly).
   - `--perf-metrics --loglevel=info,kaspad_lib::daemon=debug,kaspa_mining::monitor=debug` for detailed performance logs.
-  - `--loglevel=kaspa_grpc_server=warn` for suppressing most RPC connect/disconnect log reports.
-  - `--ram-scale=3.0` for increasing cache size threefold (relevant for utilizing large RAM; can be set between 0.1 and 10).
+  - `--loglevel=kaspa_grpc_server=warn` to suppress most RPC connect/disconnect log reports.
+  - `--ram-scale=3.0` to increase cache size threefold (relevant for utilizing large RAM; can be set between 0.1 and 10).
 
 ## Mining and Preparation for Toccata
 
 Toccata introduces v1 transactions with new fields (`TransactionOutput.covenant`, `TransactionInput.compute_commit`), which need to be preserved from the template that you get from `GetBlockTemplate` and passed back when you submit your mined block via `SubmitBlock`.
 
-Ensure your pool/stratum is updated to preserve the new fields in the transactions by updating your gRPC proto files.
+Ensure your pool/stratum is updated to preserve the new fields in transactions by updating your gRPC proto files.
 
 ### Updating Your Pool/Stratum to Work with Toccata
 
@@ -104,8 +107,9 @@ Exchanges, miners, pools, explorers, wallet operators, and other service provide
 
 Ideally, this includes deposit and withdrawal flows, block template handling, mined block submission, transaction parsing, indexing, wallet balance tracking, fee estimation, and any internal services that depend on transaction or block formats. Testing on Testnet-10 is the recommended way to verify that your systems handle the Toccata transaction fields before mainnet activation.
 
-## Fee adaptation
-On Toccata activation, the minimum fee rate is going to be increased from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything. Otherwise, you'll need to update your code to create transactions with the correct fee rate.
+## Fee Adaptation
+
+On Toccata activation, the minimum fee rate will increase from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything. Otherwise, you'll need to update your code to create transactions with the correct fee rate.
 
 ## Deprecation of `Transaction.mass` in Transaction APIs
 
