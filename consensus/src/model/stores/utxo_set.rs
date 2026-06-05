@@ -138,6 +138,15 @@ impl DbUtxoSetStore {
         self.access.write_many_without_cache(&mut writer, &mut utxos.into_iter().map(|(o, e)| (o.into(), e)))?;
         Ok(())
     }
+
+    /// Write many UTXOs using a WriteBatch (for better performance during IBD).
+    /// This method skips cache updates and writes directly to the batch.
+    /// NOTE: This action also clears the cache.
+    pub fn write_many_batch(&mut self, batch: &mut WriteBatch, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
+        let mut writer = BatchDbWriter::new(batch);
+        self.access.write_many_without_cache(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        Ok(())
+    }
 }
 
 impl UtxoView for DbUtxoSetStore {
