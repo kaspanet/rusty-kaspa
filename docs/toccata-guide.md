@@ -80,3 +80,11 @@ After Toccata activates, if you still have not updated, the blocks that you subm
 
 ## Fee adaptation
 One week before Toccata activation the minimum fee rate is going to be increased from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything, otherwise, you'll need to update your code to create transactions with the correct fee rate.
+
+## Deprecation of `Transaction.mass` in Transaction APIs
+
+The transaction field previously exposed as `mass` is now named `storage_mass` in Rust/protobuf APIs and `storageMass` in JSON/JavaScript APIs. This rename makes it clear that the field is the transaction's storage mass commitment, and avoids ambiguity with other mass concepts such as compute mass and transient mass.
+
+For JSON RPC transaction objects, both `mass` and `storageMass` are currently emitted with the same value for backward compatibility. When deserializing JSON, clients may provide either field. If both are provided, they must agree: conflicting values are rejected. New integrations should read and write `storageMass`.
+
+For JavaScript/WASM transaction objects, `mass` is deprecated and aliases `storageMass`. New code should use `storageMass`.
