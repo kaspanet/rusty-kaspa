@@ -1,6 +1,6 @@
 # Kaspa Toccata Hardfork Node Setup Guide
 
-Kaspa is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md),[KIP120](https://github.com/kaspanet/kips/blob/master/kip-0020.md),[KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), improving Kaspa programmability and support in ZK rollups. The hardfork is scheduled to activate on mainnet at DAA Score `474,165,565` which is roughly June 30, 2026 at 16:15 UTC.
+Kaspa is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md), [KIP20](https://github.com/kaspanet/kips/blob/master/kip-0020.md), and [KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), bringing native L1 covenant programming and infrastructure for based ZK applications to Kaspa. The hard fork is scheduled to activate on mainnet at DAA score `474,165,565`, which is roughly June 30, 2026 at 16:15 UTC.
 
 ## Recommended Hardware Specifications
 
