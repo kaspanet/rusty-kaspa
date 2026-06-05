@@ -1512,6 +1512,35 @@ mod tests {
     }
 
     #[test]
+    fn test_unknown_script_public_key_version_skips_final_stack_check() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([1u8; 32]), index: 0 },
+            signature_script: vec![],
+            sequence: 0,
+            compute_commit: ComputeBudget(0).into(),
+        };
+        let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
+        let tx = Transaction::new(1, vec![input.clone()], vec![output], 0, Default::default(), 0, vec![]);
+        let unknown_version_spk = ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION + 1, vec![OpFalse].into());
+        let utxo_entry = UtxoEntry::new(1, unknown_version_spk, 0, false, None);
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &populated_tx,
+            &input,
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            Default::default(),
+        );
+
+        assert_eq!(vm.execute(), Ok(()));
+    }
+
+    #[test]
     fn test_opcode_execution_log_buffer_trace_output() {
         let sig_cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
