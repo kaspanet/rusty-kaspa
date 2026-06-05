@@ -449,7 +449,7 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
     parse_script::<T, Reused>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
 }
 
-enum ScriptExecutionResult {
+enum ScriptExecutionOutput {
     Executed,
     AcceptedUnknownVersion,
 }
@@ -689,12 +689,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         script_result
     }
 
-    fn execute_inner(&mut self) -> Result<ScriptExecutionResult, TxScriptError> {
+    fn execute_inner(&mut self) -> Result<ScriptExecutionOutput, TxScriptError> {
         let (scripts, is_p2sh, utxo_spk_script_units) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                     trace!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
-                    return Ok(ScriptExecutionResult::AcceptedUnknownVersion);
+                    return Ok(ScriptExecutionOutput::AcceptedUnknownVersion);
                 }
 
                 // To avoid breaking the old pricing, we only charge for the part of the script public key
@@ -748,14 +748,14 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             let script = self.dstack.pop()?;
             self.execute_script(script.as_slice(), false)?
         }
-        Ok(ScriptExecutionResult::Executed)
+        Ok(ScriptExecutionOutput::Executed)
     }
 
     pub fn execute(&mut self) -> Result<(), TxScriptError> {
         match self.execute_inner()? {
-            ScriptExecutionResult::Executed => self.check_error_condition(true),
+            ScriptExecutionOutput::Executed => self.check_error_condition(true),
             // Unknown script versions are accepted without execution, indepedently of the stack state. There's no need to check the error condition.
-            ScriptExecutionResult::AcceptedUnknownVersion => Ok(()),
+            ScriptExecutionOutput::AcceptedUnknownVersion => Ok(()),
         }
     }
 
