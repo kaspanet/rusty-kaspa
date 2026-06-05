@@ -2,6 +2,26 @@
 
 Kaspa is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md), [KIP20](https://github.com/kaspanet/kips/blob/master/kip-0020.md), and [KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), bringing native L1 covenant programming and infrastructure for based ZK applications to Kaspa. The hard fork is scheduled to activate on mainnet at DAA score `474,165,565`, which is roughly June 30, 2026 at 16:15 UTC.
 
+## Key notes
+
+- Node operators should upgrade to this version before the upcoming hardfork.
+
+- Miners may use this release to sanity-test mining flows, but this does not replace testing on an activated testnet. Before activation, mainnet block templates only contain current transaction versions, so some Toccata-specific paths are only meaningfully exercised after activation.
+
+- RPC transaction submission now applies the upcoming higher minimum standard fee rule: `100 sompi * max(compute grams, 2 * transaction bytes)`.
+
+- The `2 * transaction bytes` term reflects the post-Toccata normalized transient-mass component.
+
+- This fee rule is a node policy / mempool rule, not a consensus rule. Consensus does not have a fee policy; zero-fee transactions are and remain consensus-valid.
+
+- Until activation, the higher minimum standard fee rule is applied at the RPC transaction-submission level. P2P relay remains under the current behavior until activation.
+
+- Wallets and other transaction-submitting software should verify that they do not rely on outdated fixed minimum-fee assumptions. Software should derive the required minimum fee from the node API where possible, or otherwise be updated to match the new minimum standard fee rule.
+
+- gRPC/protobuf integrators can update and test their integrations ahead of the activation to make sure existing APIs continue to behave as expected and to prepare for Toccata compatibility.
+
+- The node database upgrade is one-way. After upgrading a node database to this release, it cannot be downgraded back to an earlier version. Operators who need to return to an earlier version can resync, but larger operators and pools should account for that operational cost.
+
 ## Recommended Hardware Specifications
 
 - **Minimum**:  
