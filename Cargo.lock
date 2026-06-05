@@ -2909,7 +2909,7 @@ dependencies = [
  "log",
  "parking_lot",
  "rand 0.8.6",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "tokio",
 ]
 

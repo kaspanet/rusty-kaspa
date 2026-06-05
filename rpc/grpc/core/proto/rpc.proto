@@ -313,9 +313,11 @@ message GetConnectedPeerInfoMessage {
 //     are accepted at parse time without DNS resolution and resolved at
 //     dial time by the connection manager. An unresolvable hostname is
 //     registered for periodic retry rather than rejected at the RPC
-//     layer; the connection manager re-resolves on the configured
-//     cadence and on dial failures (full behavioral contract: KIP-0016
-//     in the kaspanet/kips repository).
+//     layer. This is intentional operator-visible behavior: RPC AddPeer
+//     returns success once the hostname syntax is accepted, and DNS
+//     availability is retried by the connection manager on the configured
+//     cadence and on dial failures (full behavioral contract: KIP-0016 in
+//     the kaspanet/kips repository).
 message AddPeerRequestMessage {
   string address = 1;
 
@@ -927,10 +929,10 @@ message GetMetricsResponseMessage {
 // borsh `_V1` -> `_V2` bump, and the conversion-mapping update site
 // in `rpc/grpc/core/src/convert/metrics.rs`).
 message PeerHostnameMetrics {
-  // Reserved for the next trigger-label expansion (per the doc-comment
-  // schema-intent above). Declaring `reserved` here prevents a future
-  // schema author from reusing 9 / 10 for a non-trigger field, so the
-  // gap stays available for the matching `*Ok` / `*Failed` pair.
+  // Reserved for the next trigger-label expansion pair. Declaring
+  // `reserved` here prevents a future schema author from reusing 9 / 10
+  // for a non-trigger field, so the gap stays available for the matching
+  // `resolutionsTotal<NextTrigger>Ok` / `...Failed` fields.
   reserved 9, 10;
 
   uint64 resolutionsTotalInitialOk = 1;

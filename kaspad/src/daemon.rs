@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
     mining_rules::MiningRules,
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, debug, info};
+use kaspa_core::{core::Core, debug, info, warn};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::{
     prelude::{CachePolicy, DbWriter, DirectDbWriter, RocksDbPreset},
@@ -22,7 +22,7 @@ use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_system_info::SystemInfo;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::networking::{ContextualNetAddress, PeerEndpoint};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
@@ -62,6 +62,8 @@ pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4 * 1024;
 /// (otherwise it is meaningless since pruning periods are typically at least 2 days long)
 const MINIMUM_RETENTION_PERIOD_DAYS: f64 = 2.0;
 const ONE_GIGABYTE: f64 = 1_000_000_000.0;
+const HOSTNAME_DNS_LOAD_WARNING_COUNT: usize = 25;
+const HOSTNAME_DNS_LOAD_WARNING_INTERVAL_SEC: u64 = 60;
 
 use crate::args::Args;
 
@@ -115,6 +117,21 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
         return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
     Ok(())
+}
+
+fn should_warn_high_hostname_dns_load(hostname_count: usize, hostname_refresh_interval_sec: u64) -> bool {
+    hostname_count >= HOSTNAME_DNS_LOAD_WARNING_COUNT
+        && (1..HOSTNAME_DNS_LOAD_WARNING_INTERVAL_SEC).contains(&hostname_refresh_interval_sec)
+}
+
+fn warn_if_high_hostname_dns_load(connect_peers: &[PeerEndpoint], add_peers: &[PeerEndpoint], hostname_refresh_interval_sec: u64) {
+    let hostname_count = connect_peers.iter().chain(add_peers).filter(|endpoint| endpoint.hostname().is_some()).count();
+    if should_warn_high_hostname_dns_load(hostname_count, hostname_refresh_interval_sec) {
+        warn!(
+            "configured {hostname_count} hostname peer endpoint(s) with hostname refresh interval = {hostname_refresh_interval_sec}s; \
+             each refresh cadence can issue one DNS lookup per hostname. Consider increasing --hostname-refresh-interval or reducing hostname peers."
+        );
+    }
 }
 
 fn request_database_deletion_approval(approve: bool) -> bool {
@@ -586,8 +603,9 @@ Do you confirm? (y/n)";
         );
     }
 
-    let connect_peers: Vec<kaspa_utils::networking::PeerEndpoint> = args.connect_peers.clone();
-    let add_peers: Vec<kaspa_utils::networking::PeerEndpoint> = args.add_peers.clone();
+    let connect_peers: Vec<PeerEndpoint> = args.connect_peers.clone();
+    let add_peers: Vec<PeerEndpoint> = args.add_peers.clone();
+    warn_if_high_hostname_dns_load(&connect_peers, &add_peers, args.hostname_refresh_interval_sec);
     let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound/inbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
@@ -803,4 +821,35 @@ Do you confirm? (y/n)";
     core.bind(async_runtime);
 
     (core, rpc_core_service)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HOSTNAME_DNS_LOAD_WARNING_COUNT, should_warn_high_hostname_dns_load, warn_if_high_hostname_dns_load};
+    use kaspa_utils::networking::{ContextualNetAddress, PeerEndpoint};
+
+    fn hostname_endpoint(i: usize) -> PeerEndpoint {
+        PeerEndpoint::Hostname { host: format!("node-{i}.example.com"), port: None }
+    }
+
+    #[test]
+    fn high_hostname_dns_load_warning_thresholds() {
+        assert!(!should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT, 0));
+        assert!(!should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT - 1, 30));
+        assert!(should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT, 30));
+        assert!(should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT, 59));
+        assert!(!should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT, 60));
+    }
+
+    #[test]
+    fn high_hostname_dns_load_counts_only_hostname_endpoints() {
+        let mut add_peers: Vec<PeerEndpoint> = (0..HOSTNAME_DNS_LOAD_WARNING_COUNT - 1).map(hostname_endpoint).collect();
+        add_peers.push(PeerEndpoint::Address(ContextualNetAddress::loopback()));
+
+        assert!(!should_warn_high_hostname_dns_load(add_peers.iter().filter(|endpoint| endpoint.hostname().is_some()).count(), 30,));
+
+        add_peers.push(hostname_endpoint(HOSTNAME_DNS_LOAD_WARNING_COUNT));
+        warn_if_high_hostname_dns_load(&[], &add_peers, 30);
+        assert!(should_warn_high_hostname_dns_load(add_peers.iter().filter(|endpoint| endpoint.hostname().is_some()).count(), 30,));
+    }
 }

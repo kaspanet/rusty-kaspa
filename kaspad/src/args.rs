@@ -655,6 +655,7 @@ fn validate_ua_rules(rules: &[String]) -> Result<(), clap::Error> {
 #[cfg(test)]
 mod tests {
     use super::Args;
+    use std::{fs, path::Path};
 
     #[test]
     fn parses_ua_rules() {
@@ -668,6 +669,39 @@ mod tests {
         let err = Args::parse(["kaspad", "--ua-rule=reject;regex:*"]).unwrap_err();
 
         assert!(err.to_string().contains("invalid --ua-rule"));
+    }
+
+    #[test]
+    fn hostname_refresh_interval_cli_accepts_zero_and_minimum() {
+        let disabled = Args::parse(["kaspad", "--hostname-refresh-interval=0"]).unwrap();
+        assert_eq!(disabled.hostname_refresh_interval_sec, 0);
+
+        let minimum = Args::parse(["kaspad", "--hostname-refresh-interval=30"]).unwrap();
+        assert_eq!(minimum.hostname_refresh_interval_sec, 30);
+    }
+
+    #[test]
+    fn hostname_refresh_interval_cli_rejects_thrash_band() {
+        let err = Args::parse(["kaspad", "--hostname-refresh-interval=29"]).unwrap_err();
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+        assert!(err.to_string().contains("accepted: 0 (disable periodic refresh) or >= 30"));
+    }
+
+    #[test]
+    fn hostname_refresh_interval_config_rejects_thrash_band() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("kaspad.toml");
+        write_config(&config_path, "hostname-refresh-interval-sec = 29\n");
+
+        let err = Args::parse(["kaspad", "--configfile", config_path.to_str().unwrap()]).unwrap_err();
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+        assert!(err.to_string().contains("accepted: 0 (disable periodic refresh) or >= 30"));
+    }
+
+    fn write_config(path: &Path, contents: &str) {
+        fs::write(path, contents).unwrap();
     }
 }
 

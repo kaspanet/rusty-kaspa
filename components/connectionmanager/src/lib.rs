@@ -319,34 +319,43 @@ impl ConnectionManager {
                     hostname_state.mark_stale(&host, hostname::StaleReason::InitialRetry);
                     return;
                 }
-                // Cancellation-atomicity contract for the resolved-non-empty
-                // arm: acquire BOTH `hostname_state` and `connection_requests`
-                // before performing any state mutation. Every commit
-                // (`hostname_state.upsert`, `connection_requests.insert`)
-                // happens in the synchronous tail under both guards, so a
-                // future cancelled at either lock-acquisition `.await` drops
-                // out without committing either side. Lock order is
-                // `hostname_state` -> `connection_requests`; the only other
-                // path that holds both serially is `refresh_hostnames`
-                // (Phase 3b releases `hostname_state` before Phase 4 acquires
-                // `connection_requests`), and `handle_connection_requests`
-                // releases `connection_requests` before taking
-                // `hostname_state` for `mark_stale`, so no path nests the
-                // pair in the opposite order.
-                {
-                    let mut hostname_state = self.hostname_state.lock().await;
-                    let mut requests = self.connection_requests.lock().await;
-                    let key = hostname_state.upsert(&host, port, is_permanent, initial);
-                    for addr in &resolved {
-                        requests.insert(*addr, ConnectionRequest::new_hostname_origin(is_permanent, key.clone()));
-                    }
-                }
+                self.commit_resolved_endpoint_request(&host, port, is_permanent, initial, &resolved).await;
                 info!(
                     "addpeer: resolved {host} -> {resolved}",
                     resolved = resolved.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",")
                 );
                 let _ = self.force_next_iteration.send(());
             }
+        }
+    }
+
+    async fn commit_resolved_endpoint_request(
+        &self,
+        host: &str,
+        port: u16,
+        is_permanent: bool,
+        initial: HashSet<SocketAddr>,
+        resolved: &[SocketAddr],
+    ) {
+        // Cancellation-atomicity contract for the resolved-non-empty
+        // arm: acquire BOTH `hostname_state` and `connection_requests`
+        // before performing any state mutation. Every commit
+        // (`hostname_state.upsert`, `connection_requests.insert`)
+        // happens in the synchronous tail under both guards, so a
+        // future cancelled at either lock-acquisition `.await` drops
+        // out without committing either side. Lock order is
+        // `hostname_state` -> `connection_requests`; the only other
+        // path that holds both serially is `refresh_hostnames`
+        // (Phase 3b releases `hostname_state` before Phase 4 acquires
+        // `connection_requests`), and `handle_connection_requests`
+        // releases `connection_requests` before taking
+        // `hostname_state` for `mark_stale`, so no path nests the
+        // pair in the opposite order.
+        let mut hostname_state = self.hostname_state.lock().await;
+        let mut requests = self.connection_requests.lock().await;
+        let key = hostname_state.upsert(host, port, is_permanent, initial);
+        for addr in resolved {
+            requests.insert(*addr, ConnectionRequest::new_hostname_origin(is_permanent, key.clone()));
         }
     }
 
@@ -469,10 +478,15 @@ impl ConnectionManager {
         if deltas.is_empty() {
             return;
         }
+        self.reconcile_hostname_deltas(&deltas, &permanence).await;
+        let _ = self.force_next_iteration.send(());
+    }
+
+    async fn reconcile_hostname_deltas(&self, deltas: &[hostname::HostnameDelta], permanence: &HashMap<Arc<str>, bool>) {
         // Phase 4: reconcile deltas into connection_requests outside
         // the registry lock.
         let mut requests = self.connection_requests.lock().await;
-        for delta in &deltas {
+        for delta in deltas {
             info!("addpeer: {} +{} new, -{} removed", delta.host, delta.added.len(), delta.removed.len());
             // `permanence` is built under the same `hostname_state` lock
             // acquisition that produced `deltas` (Phase 3b above), and
@@ -494,8 +508,6 @@ impl ConnectionManager {
                 requests.remove(addr);
             }
         }
-        drop(requests);
-        let _ = self.force_next_iteration.send(());
     }
 
     pub async fn stop(&self) {
@@ -518,16 +530,31 @@ impl ConnectionManager {
     // `connect_peer().await` calls. While dials are in flight, sibling
     // consumers of `connection_requests` (`add_connection_request`,
     // `add_endpoint_request` reconciliation, `is_permanent`, `is_banned`,
-    // `ip_has_permanent_connection`, `refresh_hostnames` Phase 4) cannot
+    // `ip_has_permanent_connection`, `refresh_hostnames` Phase 4 delta
+    // reconciliation into `connection_requests`) cannot
     // make progress. A cleanup pass should snapshot the work under the
     // lock, drop the lock, await the dials sequentially, and re-acquire
     // the lock to apply outcomes -- the merge logic must preserve
     // concurrent inserts during the await window (see
     // https://github.com/kaspanet/rusty-kaspa/issues/986).
     async fn handle_connection_requests(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
+        let stale_hosts = self.sweep_connection_requests(peer_by_address).await;
+
+        if !stale_hosts.is_empty() {
+            let mut hostname_state = self.hostname_state.lock().await;
+            for host in &stale_hosts {
+                hostname_state.mark_stale(host, hostname::StaleReason::DialFailure);
+            }
+            // Best-effort wakeup of the refresh task; if the channel is closed
+            // (shutdown), the next periodic tick still picks up the stale flag.
+            let _ = self.force_hostname_refresh.send(());
+        }
+    }
+
+    async fn sweep_connection_requests(&self, peer_by_address: &HashMap<SocketAddr, Peer>) -> HashSet<Arc<str>> {
+        let mut stale_hosts: HashSet<Arc<str>> = HashSet::new();
         let mut requests = self.connection_requests.lock().await;
         let mut new_requests = HashMap::with_capacity(requests.len());
-        let mut stale_hosts: HashSet<Arc<str>> = HashSet::new();
         for (address, request) in requests.iter() {
             let address = *address;
             let request = request.clone();
@@ -575,17 +602,7 @@ impl ConnectionManager {
         }
 
         *requests = new_requests;
-        drop(requests);
-
-        if !stale_hosts.is_empty() {
-            let mut hostname_state = self.hostname_state.lock().await;
-            for host in &stale_hosts {
-                hostname_state.mark_stale(host, hostname::StaleReason::DialFailure);
-            }
-            // Best-effort wakeup of the refresh task; if the channel is closed
-            // (shutdown), the next periodic tick still picks up the stale flag.
-            let _ = self.force_hostname_refresh.send(());
-        }
+        stale_hosts
     }
 
     async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {

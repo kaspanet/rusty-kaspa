@@ -36,7 +36,7 @@ use kaspad_lib::{
 };
 use rand::thread_rng;
 use serde_json;
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 fn load_override_params(path: &PathBuf) -> Params {
     let override_params_json = fs::read_to_string(path).unwrap();
@@ -1352,8 +1352,9 @@ async fn kaspad_addpeer_ipv6_unchanged() {
 }
 
 /// `--hostname-refresh-interval=0` is honored: the connection manager
-/// instantiates without a periodic refresh task. Verified indirectly by
-/// successful startup with a hostname endpoint and `interval=0`.
+/// instantiates without a periodic refresh task. Successful startup proves
+/// the hostname endpoint is registered; the metric assertions below prove
+/// no periodic refresh work ran after startup.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn kaspad_periodic_refresh_disabled_with_zero_interval() {
     init_allocator_with_default_settings();
@@ -1370,13 +1371,15 @@ async fn kaspad_periodic_refresh_disabled_with_zero_interval() {
     let mut kaspad = Daemon::new_random_with_args(args, 10);
     let rpc_client = kaspad.start().await;
     assert!(rpc_client.handle_message_id());
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let snapshot =
+        kaspad.hostname_metrics_snapshot().await.expect("connection manager should be wired into the flow context after start()");
+    assert_eq!(snapshot.resolutions_total.periodic_ok, 0, "periodic_ok must stay zero when hostname refresh interval is 0");
+    assert_eq!(snapshot.resolutions_total.periodic_failed, 0, "periodic_failed must stay zero when hostname refresh interval is 0");
     rpc_client.disconnect().await.unwrap();
     drop(rpc_client);
     kaspad.shutdown();
 }
-
-// FromStr is used for the hostname endpoints in the tests above.
-use std::str::FromStr;
 
 /// `--addpeer=<unresolvable-host>` does NOT abort kaspad; the hostname is
 /// registered for periodic retry, the `initial_failed` metric is bumped,

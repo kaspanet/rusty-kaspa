@@ -2362,6 +2362,11 @@ impl Deserializer for CustomMetricValue {
 /// declared in the spec; a future Prometheus exporter prepends the
 /// type-group prefix at presentation time.
 ///
+/// The derived `BorshSerialize` / `BorshDeserialize` impls serve generic
+/// type-bound callers and model mock tests. RPC response framing uses the
+/// manual [`Serializer`] / [`Deserializer`] impl below, which carries the
+/// explicit version tag and future-extension policy.
+///
 /// **Field ordering -- borsh vs proto, maintenance hint.** Field-
 /// declaration order here is semantic-grouped
 /// (`Initial -> InitialRetry -> DialFailure -> Periodic`) so the eight
@@ -2500,8 +2505,12 @@ impl GetMetricsResponse {
 impl Serializer for GetMetricsResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         // version 2 adds the optional `peer_hostname_metrics` block at the
-        // tail. v1 readers terminate before the new block; the field is
-        // not exposed via the v1 borsh frame.
+        // tail. Compatibility relies on the existing wRPC message envelope:
+        // each response frame is length-delimited before the model payload is
+        // deserialized, so a v1 reader that consumes the historical fields can
+        // ignore the unread tail without shifting the next response frame. The
+        // paired tests below lock both sides: v1 frames decode with
+        // `peer_hostname_metrics = None`, and v2 emit keeps a stable tag/tail.
         store!(u16, &2, writer)?;
         store!(u64, &self.server_time, writer)?;
         serialize!(Option<ProcessMetrics>, &self.process_metrics, writer)?;
@@ -3924,6 +3933,14 @@ mod add_peer_request_borsh_tests {
         Deserializer::deserialize(&mut cursor).unwrap()
     }
 
+    fn workflow_serialize_framed(req: &AddPeerRequest, prefix: u32, suffix: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        store!(u32, &prefix, &mut out).unwrap();
+        serialize!(AddPeerRequest, req, &mut out).unwrap();
+        store!(u32, &suffix, &mut out).unwrap();
+        out
+    }
+
     #[test]
     fn add_peer_request_v1_byte_buffer_decodes_to_address() {
         let bytes = v1_fixture_bytes();
@@ -4032,13 +4049,7 @@ mod add_peer_request_borsh_tests {
             let original = AddPeerRequest::new(RpcPeerEndpoint::from_str(input).unwrap(), true);
             assert!(matches!(original.peer_address, RpcPeerEndpoint::Hostname { .. }), "test setup: {input} must parse as Hostname",);
 
-            let mut buffer1 = Vec::new();
-            {
-                let writer = &mut buffer1;
-                store!(u32, &PREFIX, writer).unwrap();
-                serialize!(AddPeerRequest, &original, writer).unwrap();
-                store!(u32, &SUFFIX, writer).unwrap();
-            }
+            let buffer1 = workflow_serialize_framed(&original, PREFIX, SUFFIX);
 
             let reader = &mut buffer1.as_slice();
             let prefix: u32 = load!(u32, reader).unwrap();
@@ -4050,13 +4061,7 @@ mod add_peer_request_borsh_tests {
             assert_eq!(decoded.peer_address, original.peer_address);
             assert_eq!(decoded.is_permanent, original.is_permanent);
 
-            let mut buffer2 = Vec::new();
-            {
-                let writer = &mut buffer2;
-                store!(u32, &PREFIX, writer).unwrap();
-                serialize!(AddPeerRequest, &decoded, writer).unwrap();
-                store!(u32, &SUFFIX, writer).unwrap();
-            }
+            let buffer2 = workflow_serialize_framed(&decoded, PREFIX, SUFFIX);
             assert_eq!(buffer1, buffer2, "second emit must be byte-identical for `{input}`");
         }
     }
@@ -4133,6 +4138,23 @@ mod get_metrics_response_borsh_tests {
         bytes
     }
 
+    /// Reads the exact field sequence used by the pre-hostname
+    /// `GetMetricsResponse` deserializer on `kaspanet/master`.
+    ///
+    /// It deliberately returns after `custom_metrics` without looking at
+    /// the reader tail, matching the old v1 reader shape.
+    fn deserialize_like_old_v1_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<()> {
+        let _version = load!(u16, reader)?;
+        let _server_time = load!(u64, reader)?;
+        let _process_metrics = deserialize!(Option<ProcessMetrics>, reader)?;
+        let _connection_metrics = deserialize!(Option<ConnectionMetrics>, reader)?;
+        let _bandwidth_metrics = deserialize!(Option<BandwidthMetrics>, reader)?;
+        let _consensus_metrics = deserialize!(Option<ConsensusMetrics>, reader)?;
+        let _storage_metrics = deserialize!(Option<StorageMetrics>, reader)?;
+        let _custom_metrics = deserialize!(Option<HashMap<String, CustomMetricValue>>, reader)?;
+        Ok(())
+    }
+
     /// A v1 byte buffer (pre-`peer_hostname_metrics` wire) decodes
     /// through the v2-aware deserializer cleanly: the version-tag
     /// dispatch reads `version=1`, processes the six pre-hostname
@@ -4193,6 +4215,43 @@ mod get_metrics_response_borsh_tests {
         let decoded: GetMetricsResponse = Deserializer::deserialize(&mut cursor).expect("v2 buffer must decode");
         assert_eq!(decoded.server_time, original.server_time);
         assert_eq!(decoded.peer_hostname_metrics, original.peer_hostname_metrics);
+    }
+
+    /// A master-tree v1 reader can consume a v2 frame through
+    /// `custom_metrics` and stop before the hostname tail. The unread
+    /// remainder is exactly the v2 `Option<PeerHostnameMetrics>` payload,
+    /// proving the tail is isolated from the historical field sequence.
+    #[test]
+    fn get_metrics_response_v2_frame_leaves_hostname_tail_for_old_v1_reader() {
+        let peer_hostname_metrics = PeerHostnameMetrics {
+            resolutions_total_initial_ok: 7,
+            resolutions_total_initial_failed: 1,
+            resolutions_total_initial_retry_ok: 2,
+            resolutions_total_initial_retry_failed: 3,
+            resolutions_total_dial_failure_ok: 4,
+            resolutions_total_dial_failure_failed: 5,
+            resolutions_total_periodic_ok: 6,
+            resolutions_total_periodic_failed: 0,
+            active: 9,
+            resolved_addrs: 10,
+        };
+        let original = GetMetricsResponse::new(1_750_000, None, None, None, None, None, Some(peer_hostname_metrics), None);
+        let mut bytes = Vec::new();
+        Serializer::serialize(&original, &mut bytes).expect("v2 emit must succeed");
+
+        let mut expected_tail = Vec::new();
+        serialize!(Option<PeerHostnameMetrics>, &Some(peer_hostname_metrics), &mut expected_tail).unwrap();
+
+        let mut cursor = std::io::Cursor::new(&bytes);
+        deserialize_like_old_v1_reader(&mut cursor).expect("old reader shape must consume historical fields");
+        let cursor_position = cursor.position() as usize;
+
+        assert!(cursor_position < bytes.len(), "old reader must stop before the v2 hostname tail");
+        assert_eq!(
+            &bytes[cursor_position..],
+            expected_tail.as_slice(),
+            "unread bytes must be exactly the v2 peer_hostname_metrics tail"
+        );
     }
 
     /// Round-trip with `peer_hostname_metrics: None`: the v2 emit still

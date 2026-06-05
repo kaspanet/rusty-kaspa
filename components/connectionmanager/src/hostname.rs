@@ -134,8 +134,8 @@ pub struct HostnameMetrics {
 }
 
 impl HostnameMetrics {
-    pub fn record(&self, trigger: ResolveTrigger, status: ResolveStatus) {
-        let counter = match (trigger, status) {
+    fn counter_for(&self, trigger: ResolveTrigger, status: ResolveStatus) -> &AtomicU64 {
+        match (trigger, status) {
             (ResolveTrigger::Initial, ResolveStatus::Ok) => &self.initial_ok,
             (ResolveTrigger::Initial, ResolveStatus::Failed) => &self.initial_failed,
             (ResolveTrigger::InitialRetry, ResolveStatus::Ok) => &self.initial_retry_ok,
@@ -144,8 +144,11 @@ impl HostnameMetrics {
             (ResolveTrigger::DialFailure, ResolveStatus::Failed) => &self.dial_failure_failed,
             (ResolveTrigger::Periodic, ResolveStatus::Ok) => &self.periodic_ok,
             (ResolveTrigger::Periodic, ResolveStatus::Failed) => &self.periodic_failed,
-        };
-        counter.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub fn record(&self, trigger: ResolveTrigger, status: ResolveStatus) {
+        self.counter_for(trigger, status).fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn snapshot(&self) -> HostnameMetricsSnapshot {
@@ -167,17 +170,7 @@ impl HostnameMetrics {
     }
 
     pub fn get(&self, trigger: ResolveTrigger, status: ResolveStatus) -> u64 {
-        let counter = match (trigger, status) {
-            (ResolveTrigger::Initial, ResolveStatus::Ok) => &self.initial_ok,
-            (ResolveTrigger::Initial, ResolveStatus::Failed) => &self.initial_failed,
-            (ResolveTrigger::InitialRetry, ResolveStatus::Ok) => &self.initial_retry_ok,
-            (ResolveTrigger::InitialRetry, ResolveStatus::Failed) => &self.initial_retry_failed,
-            (ResolveTrigger::DialFailure, ResolveStatus::Ok) => &self.dial_failure_ok,
-            (ResolveTrigger::DialFailure, ResolveStatus::Failed) => &self.dial_failure_failed,
-            (ResolveTrigger::Periodic, ResolveStatus::Ok) => &self.periodic_ok,
-            (ResolveTrigger::Periodic, ResolveStatus::Failed) => &self.periodic_failed,
-        };
-        counter.load(Ordering::Relaxed)
+        self.counter_for(trigger, status).load(Ordering::Relaxed)
     }
 }
 
@@ -256,19 +249,17 @@ impl HostnameResolver for TokioHostnameResolver {
 /// stamping `last_refresh = Some(now)`.
 #[derive(Clone, Debug)]
 pub struct HostnameRequest {
-    pub host: Arc<str>,
-    pub port: u16,
-    pub is_permanent: bool,
-    pub last_resolved: HashSet<SocketAddr>,
-    pub last_refresh: Option<Instant>,
-    pub stale_reason: Option<StaleReason>,
-    pub refresh_failures: u32,
+    pub(crate) port: u16,
+    pub(crate) is_permanent: bool,
+    pub(crate) last_resolved: HashSet<SocketAddr>,
+    pub(crate) last_refresh: Option<Instant>,
+    pub(crate) stale_reason: Option<StaleReason>,
+    pub(crate) refresh_failures: u32,
 }
 
 impl HostnameRequest {
-    fn new(host: Arc<str>, port: u16, is_permanent: bool, initial: HashSet<SocketAddr>) -> Self {
+    fn new(port: u16, is_permanent: bool, initial: HashSet<SocketAddr>) -> Self {
         Self {
-            host,
             port,
             is_permanent,
             last_resolved: initial,
@@ -347,7 +338,7 @@ impl HostnameRegistry {
     /// gate -- the method itself does not.
     pub fn upsert(&mut self, host: &str, port: u16, is_permanent: bool, initial: HashSet<SocketAddr>) -> Arc<str> {
         let key: Arc<str> = Arc::from(host);
-        self.requests.insert(key.clone(), HostnameRequest::new(key.clone(), port, is_permanent, initial));
+        self.requests.insert(key.clone(), HostnameRequest::new(port, is_permanent, initial));
         key
     }
 
@@ -896,7 +887,7 @@ mod tests {
         reg.mark_stale("a.example", StaleReason::DialFailure);
         // Apply the in-flight Ok with the snapshot captured before mark_stale.
         let fresh = sock("10.0.0.2:16111");
-        let host = reg.get("a.example").unwrap().host.clone();
+        let host = Arc::<str>::from("a.example");
         reg.apply_refresh_results(vec![(host, snapshot, Ok(vec![fresh]))]);
         let entry = reg.get("a.example").unwrap();
         assert!(entry.last_refresh.is_none(), "apply must preserve mark_stale-set None last_refresh");
@@ -916,7 +907,7 @@ mod tests {
         reg.upsert("a.example", 16111, true, HashSet::new());
         let snapshot = reg.get("a.example").unwrap().last_refresh;
         let fresh = sock("10.0.0.1:16111");
-        let host = reg.get("a.example").unwrap().host.clone();
+        let host = Arc::<str>::from("a.example");
         reg.apply_refresh_results(vec![(host, snapshot, Ok(vec![fresh]))]);
         let entry = reg.get("a.example").unwrap();
         assert!(entry.last_refresh.is_some(), "apply must stamp last_refresh = Some(now)");
@@ -942,7 +933,7 @@ mod tests {
         // Second mark_stale during the resolve -- last-write-wins on stale_reason.
         reg.mark_stale("a.example", StaleReason::DialFailure);
         let fresh = sock("10.0.0.1:16111");
-        let host = reg.get("a.example").unwrap().host.clone();
+        let host = Arc::<str>::from("a.example");
         reg.apply_refresh_results(vec![(host, snapshot, Ok(vec![fresh]))]);
         let entry = reg.get("a.example").unwrap();
         assert!(entry.last_refresh.is_some(), "(None, _) -> (None, _) interleaving stamps last_refresh");
@@ -963,7 +954,7 @@ mod tests {
         reg.upsert("a.example", 16111, true, [initial].into_iter().collect());
         let snapshot = reg.get("a.example").unwrap().last_refresh;
         assert!(snapshot.is_some(), "fresh upsert must have last_refresh = Some(_)");
-        let host = reg.get("a.example").unwrap().host.clone();
+        let host = Arc::<str>::from("a.example");
         // Apply Ok(empty) with the matching snapshot (no concurrent mark_stale).
         let deltas = reg.apply_refresh_results(vec![(host, snapshot, Ok(Vec::new()))]);
         let entry = reg.get("a.example").unwrap();
@@ -995,7 +986,7 @@ mod tests {
         assert!(snapshot.is_some());
         // Concurrent mark_stale fires during the resolve.
         reg.mark_stale("a.example", StaleReason::DialFailure);
-        let host = reg.get("a.example").unwrap().host.clone();
+        let host = Arc::<str>::from("a.example");
         // Apply Ok(empty) with the captured-pre-stale snapshot.
         reg.apply_refresh_results(vec![(host, snapshot, Ok(Vec::new()))]);
         let entry = reg.get("a.example").unwrap();
@@ -1019,7 +1010,7 @@ mod tests {
         reg.upsert("a.example", 16111, true, HashSet::new());
         // Drive into the PeriodicEmpty state via apply_refresh_results.
         let snapshot = reg.get("a.example").unwrap().last_refresh;
-        let host = reg.get("a.example").unwrap().host.clone();
+        let host = Arc::<str>::from("a.example");
         reg.apply_refresh_results(vec![(host, snapshot, Ok(Vec::new()))]);
         assert_eq!(reg.get("a.example").unwrap().stale_reason, Some(StaleReason::PeriodicEmpty));
         // Now even a 1-hour cadence yields the entry immediately.
@@ -1073,7 +1064,7 @@ mod tests {
         assert!(snapshot.is_none(), "snapshot must be None for this quadrant");
         // Rival cycle completes first: stamps current = Some(now), clears stale_reason.
         let rival_ip = sock("10.0.0.2:16111");
-        let host = reg.get("a.example").unwrap().host.clone();
+        let host = Arc::<str>::from("a.example");
         reg.apply_refresh_results(vec![(host.clone(), snapshot, Ok(vec![rival_ip]))]);
         let rival_stamp = reg.get("a.example").unwrap().last_refresh;
         assert!(rival_stamp.is_some(), "rival apply must have stamped last_refresh");

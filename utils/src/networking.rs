@@ -2,7 +2,9 @@
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::String;
+#[cfg(not(target_arch = "wasm32"))]
 use alloc::vec;
+#[cfg(not(target_arch = "wasm32"))]
 use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::{
