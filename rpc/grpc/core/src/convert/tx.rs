@@ -16,7 +16,7 @@ from!(item: &kaspa_rpc_core::RpcTransaction, protowire::RpcTransaction, {
         subnetwork_id: item.subnetwork_id.to_string(),
         gas: item.gas,
         payload: item.payload.to_rpc_hex(),
-        mass: item.mass,
+        storage_mass: item.storage_mass,
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
@@ -30,7 +30,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalTransaction, protowire::RpcTransaction, 
         subnetwork_id: item.subnetwork_id.as_ref().map(|x| x.to_string()).unwrap_or_default(),
         gas: item.gas.unwrap_or_default(),
         payload: item.payload.as_ref().map(|x| x.to_rpc_hex()).unwrap_or_default(),
-        mass: item.mass.unwrap_or_default(),
+        storage_mass: item.storage_mass.unwrap_or_default(),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
 });
@@ -220,7 +220,7 @@ try_from!(item: &protowire::RpcTransaction, kaspa_rpc_core::RpcTransaction, {
         subnetwork_id: kaspa_rpc_core::RpcSubnetworkId::from_str(&item.subnetwork_id)?,
         gas: item.gas,
         payload: Vec::from_rpc_hex(&item.payload)?,
-        mass: item.mass,
+        storage_mass: item.storage_mass,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcTransactionVerboseData::try_from).transpose()?,
     }
 });
@@ -243,7 +243,7 @@ try_from!(item: &protowire::RpcTransaction, kaspa_rpc_core::RpcOptionalTransacti
             .subnetwork_id)?),
         gas: Some(item.gas),
         payload: Some(Vec::from_rpc_hex(&item.payload)?),
-        mass: Some(item.mass),
+        storage_mass: Some(item.storage_mass),
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionVerboseData::try_from).transpose()?,
     }
 });
@@ -476,7 +476,7 @@ mod tests {
             subnetwork_id: SubnetworkId::from_bytes([4; 20]),
             gas: 0,
             payload: vec![0xaa, 0xbb],
-            mass: 111,
+            storage_mass: 111,
             verbose_data: None,
         };
 
@@ -485,6 +485,6 @@ mod tests {
 
         let decoded = RpcTransaction::try_from(&wire).unwrap();
         assert_eq!(decoded.inputs[0].compute_budget, 222);
-        assert_eq!(decoded.mass, 111);
+        assert_eq!(decoded.storage_mass, 111);
     }
 }

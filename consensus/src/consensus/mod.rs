@@ -45,7 +45,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::{
         BlockValidationFutures, ConsensusApi, ConsensusStats, ImportLaneBatchIterator,
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -72,8 +72,8 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{
-        MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
-        TransactionType, TxInputMass, UtxoEntry,
+        ComputeCommit, MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint,
+        TransactionQueryResult, TransactionType, UtxoEntry,
     },
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -609,15 +609,15 @@ impl Consensus {
             return Err(TxRuleError::TooManyOutputs(transaction.outputs.len(), self.config.params.max_tx_outputs));
         }
 
-        if TxInputMass::version_expects_compute_budget_field(transaction.version) {
+        if ComputeCommit::version_expects_compute_budget_field(transaction.version) {
             for (i, input) in transaction.inputs.iter().enumerate() {
-                if let Some(sig_op_count) = input.mass.sig_op_count() {
+                if let Some(sig_op_count) = input.compute_commit.sig_op_count() {
                     return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
                 }
             }
         } else {
             for (i, input) in transaction.inputs.iter().enumerate() {
-                if let Some(compute_budget) = input.mass.compute_budget() {
+                if let Some(compute_budget) = input.compute_commit.compute_budget() {
                     return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
                 }
             }
@@ -751,27 +751,35 @@ impl ConsensusApi for Consensus {
         DaaScoreTimestamp { daa_score: compact.daa_score, timestamp: compact.timestamp }
     }
 
-    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+    /// Returns the merge context of `hash`, if the block was already merged by a virtual chain block.
+    ///
+    /// Return semantics:
+    /// - `Err` if `hash` is unknown or outside the retained context required for this query.
+    /// - `Ok(None)` if `hash` is known and retained, but is not yet in `past(sink)`.
+    /// - `Ok(Some(..))` with the merging chain block context otherwise.
+    fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         let _guard = self.pruning_lock.blocking_read();
 
         // Verify the block exists and can be assumed to have relations and reachability data
-        self.validate_block_exists(hash).ok()?;
+        self.validate_block_exists(hash)?;
 
         // Verify that the block is in future(retention root), where Ghostdag data is complete
-        self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash).then_some(())?;
+        if !self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash) {
+            return Err(ConsensusError::General("the queried hash does not have retention root in its past"));
+        }
 
         let sink = self.get_sink();
 
         // Optimization: verify that the block is in past(sink), otherwise the search will fail anyway
         // (means the block was not merged yet by a virtual chain block)
-        self.services.reachability_service.is_dag_ancestor_of(hash, sink).then_some(())?;
+        if !self.services.reachability_service.is_dag_ancestor_of(hash, sink) {
+            return Ok(None);
+        }
 
         let mut heap: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
         let mut visited = BlockHashSet::new();
 
-        let initial_children = self.get_block_children(hash).unwrap();
-
-        for child in initial_children {
+        for child in self.get_block_children(hash).unwrap() {
             if visited.insert(child) {
                 let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
                 heap.push(Reverse(SortableBlock::new(child, blue_work)));
@@ -782,23 +790,20 @@ impl ConsensusApi for Consensus {
             if self.services.reachability_service.is_chain_ancestor_of(decedent, sink) {
                 let decedent_data = self.get_ghostdag_data(decedent).unwrap();
 
-                if decedent_data.mergeset_blues.contains(&hash) {
-                    return Some(true);
+                return Ok(if decedent_data.mergeset_blues.contains(&hash) {
+                    Some(MergedBlockContext { merging_chain_block_hash: decedent, is_blue: true })
                 } else if decedent_data.mergeset_reds.contains(&hash) {
-                    return Some(false);
-                }
-
-                // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
-                // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
-                // unreachable.
-                kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
-                // TODO: we should consider the option of returning Result<Option<bool>> from this method
-                return None;
+                    Some(MergedBlockContext { merging_chain_block_hash: decedent, is_blue: false })
+                } else {
+                    // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
+                    // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
+                    // unreachable.
+                    kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
+                    None
+                });
             }
 
-            let children = self.get_block_children(decedent).unwrap();
-
-            for child in children {
+            for child in self.get_block_children(decedent).unwrap() {
                 if visited.insert(child) {
                     let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
                     heap.push(Reverse(SortableBlock::new(child, blue_work)));
@@ -806,7 +811,7 @@ impl ConsensusApi for Consensus {
             }
         }
 
-        None
+        Ok(None)
     }
 
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {

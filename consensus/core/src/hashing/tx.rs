@@ -1,7 +1,7 @@
 use super::HasherExtensions;
 use crate::{
     mass::transaction_estimated_serialized_size,
-    tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass},
+    tx::{ComputeCommit, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
 use kaspa_hashes::{Hash, Hasher, HasherBase, PayloadDigest};
 
@@ -84,7 +84,7 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
     */
 
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) {
-        let mass = tx.mass();
+        let mass = tx.storage_mass();
         if tx.version < 1 {
             if mass > 0 {
                 hasher.write_u64(mass);
@@ -101,16 +101,16 @@ fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, version:
     write_outpoint(hasher, &input.previous_outpoint);
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
         hasher.write_var_bytes(input.signature_script.as_slice());
-        if TxInputMass::version_expects_sig_op_count_field(version) {
-            hasher.update([input.mass.sig_op_count().unwrap_or(0)]);
+        if ComputeCommit::version_expects_sig_op_count_field(version) {
+            hasher.update([input.compute_commit.sig_op_count().unwrap_or(0)]);
         }
     } else {
         hasher.write_var_bytes(&[]);
     }
     hasher.update(input.sequence.to_le_bytes());
 
-    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && TxInputMass::version_expects_compute_budget_field(version) {
-        hasher.write_u16(input.mass.compute_budget().unwrap_or(0));
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) && ComputeCommit::version_expects_compute_budget_field(version) {
+        hasher.write_u16(input.compute_commit.compute_budget().unwrap_or(0));
     }
 }
 
@@ -240,7 +240,7 @@ mod tests {
     use super::*;
     use crate::{
         subnets::{self, SubnetworkId},
-        tx::{ScriptPublicKey, TxInputMass, scriptvec},
+        tx::{ComputeCommit, ScriptPublicKey, scriptvec},
     };
     use std::str::FromStr;
 
@@ -353,17 +353,17 @@ mod tests {
         // Version >= 1: tx::id excludes mass commitments while tx::hash commits to both mass and per input compute_budget
         let tx_v1_a = Transaction::new(
             1,
-            vec![TransactionInput::new_with_mass(TransactionOutpoint::default(), vec![], 0, TxInputMass::ComputeBudget(111.into()))],
+            vec![TransactionInput::new_with_mass(TransactionOutpoint::default(), vec![], 0, ComputeCommit::ComputeBudget(111.into()))],
             vec![],
             0,
             subnets::SUBNETWORK_ID_NATIVE,
             0,
             vec![],
         );
-        tx_v1_a.set_mass(0);
+        tx_v1_a.set_storage_mass(0);
 
         let mut tx_v1_b = tx_v1_a.clone();
-        tx_v1_b.inputs[0].mass = TxInputMass::ComputeBudget(222.into());
+        tx_v1_b.inputs[0].compute_commit = ComputeCommit::ComputeBudget(222.into());
 
         // Test #11
         tests.push(Test {

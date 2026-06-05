@@ -46,7 +46,7 @@ impl TransactionValidator {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
 
-        if tx.mass() > 0 {
+        if tx.storage_mass() > 0 {
             return Err(TxRuleError::CoinbaseNonZeroMassCommitment);
         }
 
@@ -195,13 +195,13 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
 fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
     if tx.version > 0 {
         for (i, input) in tx.inputs.iter().enumerate() {
-            if let Some(sig_op_count) = input.mass.sig_op_count() {
+            if let Some(sig_op_count) = input.compute_commit.sig_op_count() {
                 return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
             }
         }
     } else {
         for (i, input) in tx.inputs.iter().enumerate() {
-            if let Some(compute_budget) = input.mass.compute_budget() {
+            if let Some(compute_budget) = input.compute_commit.compute_budget() {
                 return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
             }
         }
@@ -222,7 +222,7 @@ mod tests {
         constants::{TX_VERSION, TX_VERSION_TOCCATA},
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
         tx::{
-            ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+            ComputeCommit, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
             scriptvec,
         },
     };
@@ -295,7 +295,7 @@ mod tests {
                     0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                 ],
                 sequence: u64::MAX,
-                mass: TxInputMass::SigopCount(0.into()),
+                compute_commit: ComputeCommit::SigopCount(0.into()),
             }],
             vec![
                 TransactionOutput {
@@ -396,12 +396,12 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.version = 1;
-        tx.inputs[0].mass = TxInputMass::SigopCount(1.into());
+        tx.inputs[0].compute_commit = ComputeCommit::SigopCount(1.into());
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::SigopCountInV1(_, _)));
 
         let mut tx = valid_tx.clone();
         tx.version = 0;
-        tx.inputs[0].mass = TxInputMass::ComputeBudget(1.into());
+        tx.inputs[0].compute_commit = ComputeCommit::ComputeBudget(1.into());
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::ComputeBudgetInV0(_, _)));
 
         let mut tx = valid_tx.clone();
@@ -433,7 +433,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_slice(&[0u8; 32]), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: TxInputMass::SigopCount(0.into()),
+                compute_commit: ComputeCommit::SigopCount(0.into()),
             };
             let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, scriptvec!(0u8)), covenant: None };
             Transaction::new(version, vec![input], vec![output], 0, subnetwork_id, 0, vec![])

@@ -65,15 +65,15 @@ impl Display for TransactionOutpoint {
     }
 }
 
-/// Encodes the mass commitment for a transaction input.
+/// Encodes the compute mass commitment for a transaction input.
 /// Version 0 transactions use `SigopCount`, version >= 1 transactions use `ComputeBudget`.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Debug, Copy)]
-pub enum TxInputMass {
+pub enum ComputeCommit {
     SigopCount(SigopCount),
     ComputeBudget(ComputeBudget),
 }
 
-impl TxInputMass {
+impl ComputeCommit {
     pub fn sig_op_count(self) -> Option<u8> {
         match self {
             Self::SigopCount(n) => Some(n.into()),
@@ -103,23 +103,23 @@ impl TxInputMass {
     }
 }
 
-impl From<SigopCount> for TxInputMass {
+impl From<SigopCount> for ComputeCommit {
     fn from(value: SigopCount) -> Self {
         Self::SigopCount(value)
     }
 }
 
-impl From<ComputeBudget> for TxInputMass {
+impl From<ComputeBudget> for ComputeCommit {
     fn from(value: ComputeBudget) -> Self {
         Self::ComputeBudget(value)
     }
 }
 
-impl From<TxInputMass> for ScriptUnits {
-    fn from(value: TxInputMass) -> Self {
+impl From<ComputeCommit> for ScriptUnits {
+    fn from(value: ComputeCommit) -> Self {
         match value {
-            TxInputMass::SigopCount(count) => ScriptUnits::from(count),
-            TxInputMass::ComputeBudget(budget) => ScriptUnits::from(budget),
+            ComputeCommit::SigopCount(count) => ScriptUnits::from(count),
+            ComputeCommit::ComputeBudget(budget) => ScriptUnits::from(budget),
         }
     }
 }
@@ -130,16 +130,21 @@ pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    pub mass: TxInputMass,
+    pub compute_commit: ComputeCommit,
 }
 
 impl TransactionInput {
-    pub fn new_with_mass(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, mass: TxInputMass) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass }
+    pub fn new_with_mass(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        compute_commit: ComputeCommit,
+    ) -> Self {
+        Self { previous_outpoint, signature_script, sequence, compute_commit }
     }
 
     pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: SigopCount(sig_op_count).into() }
+        Self { previous_outpoint, signature_script, sequence, compute_commit: SigopCount(sig_op_count).into() }
     }
 
     pub fn new_with_compute_budget(
@@ -148,7 +153,7 @@ impl TransactionInput {
         sequence: u64,
         compute_budget: u16,
     ) -> Self {
-        Self { previous_outpoint, signature_script, sequence, mass: ComputeBudget(compute_budget).into() }
+        Self { previous_outpoint, signature_script, sequence, compute_commit: ComputeBudget(compute_budget).into() }
     }
 }
 
@@ -158,8 +163,8 @@ impl std::fmt::Debug for TransactionInput {
             .field("previous_outpoint", &self.previous_outpoint)
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
-            .field("sig_op_count", &self.mass.sig_op_count().unwrap_or_default())
-            .field("compute_budget", &self.mass.compute_budget().unwrap_or_default())
+            .field("sig_op_count", &self.compute_commit.sig_op_count().unwrap_or_default())
+            .field("compute_budget", &self.compute_commit.compute_budget().unwrap_or_default())
             .finish()
     }
 }
@@ -256,8 +261,7 @@ pub struct Transaction {
     pub payload: Vec<u8>,
 
     /// Holds a commitment to the storage mass (KIP-0009)
-    /// TODO: rename field and related methods to storage_mass
-    mass: TransactionMass,
+    storage_mass: TransactionMass,
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
@@ -290,7 +294,7 @@ impl Transaction {
         mass: u64,
     ) -> Self {
         let mut tx = Self::new_non_finalized(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
-        tx.set_mass(mass);
+        tx.set_storage_mass(mass);
         tx.finalize();
         tx
     }
@@ -304,7 +308,17 @@ impl Transaction {
         gas: u64,
         payload: Vec<u8>,
     ) -> Self {
-        Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: Default::default(), id: Default::default() }
+        Self {
+            version,
+            inputs,
+            outputs,
+            lock_time,
+            subnetwork_id,
+            gas,
+            payload,
+            storage_mass: Default::default(),
+            id: Default::default(),
+        }
     }
 
     /// Populates genesis covenant bindings for multiple output groups.
@@ -393,18 +407,31 @@ impl Transaction {
 
     /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
     /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
+    #[deprecated = "This function is deprecated to avoid ambiguity with compute mass and transient mass. Use `self.set_storage_mass(mass)` instead."]
     pub fn set_mass(&self, mass: u64) {
-        self.mass.0.store(mass, SeqCst)
+        self.set_storage_mass(mass);
+    }
+
+    /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
+    /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
+    pub fn set_storage_mass(&self, mass: u64) {
+        self.storage_mass.0.store(mass, SeqCst)
     }
 
     /// Read the storage mass commitment
+    #[deprecated = "This function is deprecated to avoid ambiguity with compute mass and transient mass. Use `self.storage_mass()` instead."]
     pub fn mass(&self) -> u64 {
-        self.mass.0.load(SeqCst)
+        self.storage_mass()
+    }
+
+    /// Read the storage mass commitment
+    pub fn storage_mass(&self) -> u64 {
+        self.storage_mass.0.load(SeqCst)
     }
 
     /// Set the storage mass commitment of the passed transaction
-    pub fn with_mass(self, mass: u64) -> Self {
-        self.set_mass(mass);
+    pub fn with_storage_mass(self, mass: u64) -> Self {
+        self.set_storage_mass(mass);
         self
     }
 
@@ -634,7 +661,9 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     /// exist, otherwise `None` is returned.
     pub fn calculated_feerate(&self, cofactors: &MassCofactors) -> Option<f64> {
         self.calculated_non_contextual_masses
-            .map(|non_contextual| Mass::new(non_contextual, ContextualMasses::new(self.tx.as_ref().mass())).normalized_max(cofactors))
+            .map(|non_contextual| {
+                Mass::new(non_contextual, ContextualMasses::new(self.tx.as_ref().storage_mass())).normalized_max(cofactors)
+            })
             .and_then(|max_mass| self.calculated_fee.map(|fee| fee as f64 / max_mass as f64))
     }
 
@@ -754,7 +783,7 @@ mod tests {
                         0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
                     ],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(3.into()),
+                    compute_commit: ComputeCommit::SigopCount(3.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint {
@@ -769,7 +798,7 @@ mod tests {
                         0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
                     ],
                     sequence: 4,
-                    mass: TxInputMass::SigopCount(5.into()),
+                    compute_commit: ComputeCommit::SigopCount(5.into()),
                 },
             ],
             vec![
@@ -795,8 +824,8 @@ mod tests {
         tx.version = 1;
         // A valid v1 transaction must carry a ComputeBudget mass on every input;
         // the serializer panics otherwise (that's its contract with the type system).
-        tx.inputs[0].mass = TxInputMass::ComputeBudget(ComputeBudget(17));
-        tx.inputs[1].mass = TxInputMass::ComputeBudget(ComputeBudget(23));
+        tx.inputs[0].compute_commit = ComputeCommit::ComputeBudget(ComputeBudget(17));
+        tx.inputs[1].compute_commit = ComputeCommit::ComputeBudget(ComputeBudget(23));
         tx.outputs[0].covenant = Some(CovenantBinding::new(1, hashing::tx::payload_digest(&[1, 2, 3])));
         tx.finalize();
         tx
@@ -807,7 +836,7 @@ mod tests {
         let tx = test_transaction();
         let bts = bincode::serialize(&tx).unwrap();
         // Captured from the version-aware custom serializer in `tx::serde_impl`.
-        // v0 inputs carry a flat `sig_op_count: u8` (no `TxInputMass` enum tag)
+        // v0 inputs carry a flat `sig_op_count: u8` (no `ComputeCommit` enum tag)
         // and v0 outputs have no `covenant` field at all.
         let expected_bts = vec![
             0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,
