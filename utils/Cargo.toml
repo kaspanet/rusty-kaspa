@@ -31,13 +31,7 @@ wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit = { workspace = true, optional = true }
-# `tokio` is only used by `PeerEndpoint::resolve` (gated on the same
-# `cfg`), so utils' wasm32 build carries no tokio dep at all and cannot
-# inherit any wasm32-incompatible features (`net`, `rt-multi-thread`)
-# from the workspace tokio entry. Non-wasm32 builds inherit whatever
-# the workspace declares plus the `time` + `net` features actually used
-# by the resolver.
-tokio = { workspace = true, features = ["time", "net"] }
+tokio = { workspace = true, features = ["time", "net"], optional = true }
 
 [dev-dependencies]
 bincode.workspace = true
@@ -53,7 +47,7 @@ name = "bench"
 harness = false
 
 [features]
-default = ["std", "sync", "mem_size", "sim", "triggers", "hashmap", "peer-id"]
+default = ["std", "sync", "mem_size", "sim", "triggers", "hashmap", "peer-id", "resolver"]
 std = ["async-channel/std", "borsh/std","faster-hex/std", "ipnet/std", "itertools/use_std", "log/std", "once_cell/std", "serde/std", "sha2/std", "thiserror/std", "uuid/std", "wasm-bindgen/std"]
 
 semaphore-trace = []
@@ -65,6 +59,7 @@ sim = ["std"]
 hashmap = ["std"]
 expiring-cache = ["std", "dep:arc-swap"]
 peer-id = ["std", "dep:uuid"]
+resolver = ["std", "dep:tokio"]
 
 [lints]
 workspace = true

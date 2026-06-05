@@ -17,7 +17,7 @@ itertools.workspace = true
 kaspa-addressmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-p2p-lib.workspace = true
-kaspa-utils = { workspace = true, features = ["triggers"] }
+kaspa-utils = { workspace = true, features = ["triggers", "resolver"] }
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true

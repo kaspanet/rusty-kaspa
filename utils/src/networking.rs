@@ -2,9 +2,9 @@
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::String;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "resolver"))]
 use alloc::vec;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "resolver"))]
 use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::{
@@ -369,6 +369,7 @@ pub enum PeerEndpointParseError {
 }
 
 /// Errors from async DNS resolution of a [`PeerEndpoint`].
+#[cfg(all(not(target_arch = "wasm32"), feature = "resolver"))]
 #[derive(Error, Debug)]
 pub enum PeerEndpointResolveError {
     #[error("DNS lookup of `{host}` timed out after {timeout:?}")]
@@ -390,7 +391,7 @@ pub enum PeerEndpointResolveError {
 /// timeout bound and the `PeerEndpointResolveError` mapping; the
 /// previous in-tree duplicate had drift risk if the timeout
 /// constant or the error variant set ever changed.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "resolver"))]
 pub async fn resolve_with_timeout<F>(host: &str, lookup: F) -> Result<Vec<SocketAddr>, PeerEndpointResolveError>
 where
     F: std::future::Future<Output = std::io::Result<Vec<SocketAddr>>>,
@@ -499,8 +500,10 @@ impl PeerEndpoint {
     /// `tokio::net` resolver requires `mio`, which has no `wasm32`
     /// implementation. wasm32 callers do not need a DNS resolver
     /// (the kaspad connection manager that drives this method is
-    /// itself non-wasm32).
-    #[cfg(not(target_arch = "wasm32"))]
+    /// itself non-wasm32). Also requires the std-only `resolver`
+    /// feature (on by default), keeping tokio and its `mio`/`socket2`
+    /// transitive deps out of `no_std` builds of this crate.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "resolver"))]
     pub async fn resolve(&self, default_port: u16) -> Result<Vec<NetAddress>, PeerEndpointResolveError> {
         match self {
             Self::Address(addr) => Ok(vec![addr.normalize(default_port)]),
