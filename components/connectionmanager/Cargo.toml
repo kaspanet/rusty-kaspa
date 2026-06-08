@@ -10,17 +10,27 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 duration-string.workspace = true
 futures-util.workspace = true
 itertools.workspace = true
 kaspa-addressmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-p2p-lib.workspace = true
-kaspa-utils = { workspace = true, features = ["triggers"] }
+kaspa-utils = { workspace = true, features = ["triggers", "resolver"] }
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
-tokio.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
+
+[features]
+# Exposes [`test_support::FakeHostnameResolver`] for downstream
+# integration tests. Off by default; enabled by `kaspa-testing-integration`.
+test-utils = []
 
 [lints]
 workspace = true

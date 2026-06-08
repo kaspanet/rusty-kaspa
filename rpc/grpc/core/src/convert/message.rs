@@ -24,8 +24,8 @@ use kaspa_consensus_core::{Hash, network::NetworkId};
 use kaspa_core::debug;
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
-    RpcContextualPeerAddress, RpcDataVerbosityLevel, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress,
-    RpcResult, SubmitBlockRejectReason, SubmitBlockReport,
+    RpcDataVerbosityLevel, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
+    SubmitBlockRejectReason, SubmitBlockReport,
 };
 use kaspa_utils::hex::*;
 use std::{str::FromStr, sync::Arc};
@@ -476,6 +476,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
         storage_metrics: item.storage_metrics.as_ref().map(|x| x.into()),
+        peer_hostname_metrics: item.peer_hostname_metrics.as_ref().map(|x| x.into()),
         // TODO
         // custom_metrics : None,
         error: None,
@@ -742,7 +743,13 @@ try_from!(item: &protowire::GetConnectedPeerInfoResponseMessage, RpcResult<kaspa
 });
 
 try_from!(item: &protowire::AddPeerRequestMessage, kaspa_rpc_core::AddPeerRequest, {
-    Self { peer_address: RpcContextualPeerAddress::from_str(&item.address)?, is_permanent: item.is_permanent }
+    // gRPC always carried the peer address as `string` on the wire, so this
+    // is a textual parse only -- no DNS happens at the gRPC edge.
+    Self {
+        peer_address: kaspa_rpc_core::RpcPeerEndpoint::from_str(&item.address)
+            .map_err(|e| kaspa_rpc_core::RpcError::invalid_peer_endpoint(item.address.clone(), e.to_string()))?,
+        is_permanent: item.is_permanent,
+    }
 });
 try_from!(&protowire::AddPeerResponseMessage, RpcResult<kaspa_rpc_core::AddPeerResponse>);
 
@@ -1022,6 +1029,7 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         storage_metrics: item.storage_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        peer_hostname_metrics: item.peer_hostname_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         // TODO
         custom_metrics: None,
     }

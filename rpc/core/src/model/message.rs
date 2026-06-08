@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{
     fmt::{Display, Formatter},
+    str::FromStr,
     sync::Arc,
 };
 use workflow_serializer::prelude::*;
@@ -617,35 +618,95 @@ impl Deserializer for GetConnectedPeerInfoResponse {
     }
 }
 
+/// Borsh wire-version dispatch for [`AddPeerRequest`].
+///
+/// v1: struct `(RpcContextualPeerAddress, bool)` -- the historical
+/// IP-only layout emitted by every previously-shipped wRPC client.
+/// v2: struct `(String, bool)` where the string is the canonical
+/// [`PeerEndpoint::Display`] form (accepting hostnames).
+///
+/// Wire-format compatibility rule (mandatory; required for rolling
+/// upgrades across mixed-version clusters):
+///
+/// - `Address` payload (IP literal) MUST serialize as v1, byte-identical
+///   to the historical wire frame. A v1 server still in the cluster
+///   accepts the request unchanged; a new server's deserializer
+///   recognises v1 and upgrades the payload into the
+///   [`RpcPeerEndpoint::Address`] variant.
+/// - `Hostname` payload MUST serialize as v2. A v1 server cannot decode
+///   v2 frames -- but a hostname-using client requires a new server
+///   anyway (the server's connection manager owns the resolution loop),
+///   so this asymmetry is the documented contract.
+///
+/// The server-side deserializer accepts both versions and dispatches
+/// on the version tag, so an old client (v1-only emit) remains
+/// compatible with a new server.
+const ADD_PEER_REQUEST_BORSH_V1: u16 = 1;
+const ADD_PEER_REQUEST_BORSH_V2: u16 = 2;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPeerRequest {
-    pub peer_address: RpcContextualPeerAddress,
+    pub peer_address: RpcPeerEndpoint,
     pub is_permanent: bool,
 }
 
 impl AddPeerRequest {
-    pub fn new(peer_address: RpcContextualPeerAddress, is_permanent: bool) -> Self {
+    pub fn new(peer_address: RpcPeerEndpoint, is_permanent: bool) -> Self {
         Self { peer_address, is_permanent }
     }
 }
 
 impl Serializer for AddPeerRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
-        store!(RpcContextualPeerAddress, &self.peer_address, writer)?;
+        match &self.peer_address {
+            RpcPeerEndpoint::Address(addr) => {
+                store!(u16, &ADD_PEER_REQUEST_BORSH_V1, writer)?;
+                store!(RpcContextualPeerAddress, addr, writer)?;
+            }
+            RpcPeerEndpoint::Hostname { .. } => {
+                store!(u16, &ADD_PEER_REQUEST_BORSH_V2, writer)?;
+                store!(String, &self.peer_address.to_string(), writer)?;
+            }
+        }
         store!(bool, &self.is_permanent, writer)?;
-
         Ok(())
     }
 }
 
 impl Deserializer for AddPeerRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
-        let peer_address = load!(RpcContextualPeerAddress, reader)?;
+        let version = load!(u16, reader)?;
+        let peer_address = match version {
+            ADD_PEER_REQUEST_BORSH_V1 => {
+                let legacy = load!(RpcContextualPeerAddress, reader)?;
+                RpcPeerEndpoint::Address(legacy)
+            }
+            ADD_PEER_REQUEST_BORSH_V2 => {
+                let s = load!(String, reader)?;
+                RpcPeerEndpoint::from_str(&s).map_err(|e| {
+                    // Wrap the structured `RpcError::InvalidPeerEndpoint`
+                    // as the io::Error source so a downstream consumer
+                    // that downcasts the wRPC borsh deserialization error
+                    // can recover the typed variant -- matching the gRPC
+                    // edge's `try_from!` mapping. The Display message
+                    // (`invalid peer endpoint `{s}`: {e}`) is preserved
+                    // verbatim through the thiserror `#[error(...)]`
+                    // attribute on `RpcError::InvalidPeerEndpoint`.
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        crate::error::RpcError::invalid_peer_endpoint(s.clone(), e.to_string()),
+                    )
+                })?
+            }
+            other => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Unknown AddPeerRequest borsh version: {other}"),
+                ));
+            }
+        };
         let is_permanent = load!(bool, reader)?;
-
         Ok(Self { peer_address, is_permanent })
     }
 }
@@ -2283,6 +2344,126 @@ impl Deserializer for CustomMetricValue {
     }
 }
 
+/// Hostname-origin peer metrics, exported via [`GetMetricsResponse`].
+///
+/// `resolutions_total_*` are counters split across eight
+/// `(status, trigger)` buckets: `status` in `{ok, failed}`, `trigger`
+/// in `{initial, initial_retry, dial_failure, periodic}`. `active`
+/// and `resolved_addrs` are gauges over the live hostname registry.
+///
+/// Wire-level field names (JSON-RPC keys via serde camelCase rename;
+/// gRPC field names via the `.proto` schema) drop the redundant
+/// `peerHostname` / `peer_hostname_` prefix; the type name
+/// `PeerHostnameMetrics` already carries the group, consistent with
+/// `BandwidthMetrics`, `ConnectionMetrics`, `ProcessMetrics`, etc.
+/// The Prometheus-canonical metric NAMES
+/// (`peer_hostname_resolutions_total{status, trigger}`,
+/// `peer_hostname_active`, `peer_hostname_resolved_addrs`) remain as
+/// declared in the spec; a future Prometheus exporter prepends the
+/// type-group prefix at presentation time.
+///
+/// The derived `BorshSerialize` / `BorshDeserialize` impls serve generic
+/// type-bound callers and model mock tests. RPC response framing uses the
+/// manual [`Serializer`] / [`Deserializer`] impl below, which carries the
+/// explicit version tag and future-extension policy.
+///
+/// **Field ordering -- borsh vs proto, maintenance hint.** Field-
+/// declaration order here is semantic-grouped
+/// (`Initial -> InitialRetry -> DialFailure -> Periodic`) so the eight
+/// resolution buckets read naturally as a 4 trigger x 2 status grid.
+/// The matching gRPC `.proto` schema (`rpc/grpc/core/proto/rpc.proto`
+/// `message PeerHostnameMetrics`) is history-ordered:
+/// `Initial=1-2, DialFailure=3-4, Periodic=5-6, InitialRetry=7-8`,
+/// with `reserved 9, 10` allocating the next trigger pair slot. This
+/// is NOT a wire-compatibility issue (proto3 is field-number-keyed;
+/// borsh is positional), but a future trigger label addition has to
+/// keep both orderings consistent: append the new pair at the borsh
+/// tail (which forces a `PEER_HOSTNAME_METRICS_BORSH_V1 -> V2` bump
+/// for forward-compat readers), allocate the next reserved pair in
+/// proto, and update the `from!` / `try_from!` mappings in
+/// `rpc/grpc/core/src/convert/metrics.rs`.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerHostnameMetrics {
+    pub resolutions_total_initial_ok: u64,
+    pub resolutions_total_initial_failed: u64,
+    pub resolutions_total_initial_retry_ok: u64,
+    pub resolutions_total_initial_retry_failed: u64,
+    pub resolutions_total_dial_failure_ok: u64,
+    pub resolutions_total_dial_failure_failed: u64,
+    pub resolutions_total_periodic_ok: u64,
+    pub resolutions_total_periodic_failed: u64,
+    pub active: u64,
+    pub resolved_addrs: u64,
+}
+
+/// Wire version of the [`PeerHostnameMetrics`] borsh encoding.
+///
+/// v1: ten `u64` fields in struct-declaration order
+/// (`resolutions_total_initial_ok`, `_initial_failed`,
+/// `_initial_retry_ok`, `_initial_retry_failed`, `_dial_failure_ok`,
+/// `_dial_failure_failed`, `_periodic_ok`, `_periodic_failed`,
+/// `active`, `resolved_addrs`).
+///
+/// Future layout extensions bump the leading `u16` tag and append at
+/// the tail; the `Deserializer` matches on the tag and dispatches to
+/// the matching field-set so v1 readers continue to decode v1 payloads
+/// without surprises and reject unknown versions explicitly.
+const PEER_HOSTNAME_METRICS_BORSH_V1: u16 = 1;
+
+impl Serializer for PeerHostnameMetrics {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &PEER_HOSTNAME_METRICS_BORSH_V1, writer)?;
+        store!(u64, &self.resolutions_total_initial_ok, writer)?;
+        store!(u64, &self.resolutions_total_initial_failed, writer)?;
+        store!(u64, &self.resolutions_total_initial_retry_ok, writer)?;
+        store!(u64, &self.resolutions_total_initial_retry_failed, writer)?;
+        store!(u64, &self.resolutions_total_dial_failure_ok, writer)?;
+        store!(u64, &self.resolutions_total_dial_failure_failed, writer)?;
+        store!(u64, &self.resolutions_total_periodic_ok, writer)?;
+        store!(u64, &self.resolutions_total_periodic_failed, writer)?;
+        store!(u64, &self.active, writer)?;
+        store!(u64, &self.resolved_addrs, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for PeerHostnameMetrics {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let version = load!(u16, reader)?;
+        match version {
+            PEER_HOSTNAME_METRICS_BORSH_V1 => {
+                let resolutions_total_initial_ok = load!(u64, reader)?;
+                let resolutions_total_initial_failed = load!(u64, reader)?;
+                let resolutions_total_initial_retry_ok = load!(u64, reader)?;
+                let resolutions_total_initial_retry_failed = load!(u64, reader)?;
+                let resolutions_total_dial_failure_ok = load!(u64, reader)?;
+                let resolutions_total_dial_failure_failed = load!(u64, reader)?;
+                let resolutions_total_periodic_ok = load!(u64, reader)?;
+                let resolutions_total_periodic_failed = load!(u64, reader)?;
+                let active = load!(u64, reader)?;
+                let resolved_addrs = load!(u64, reader)?;
+                Ok(Self {
+                    resolutions_total_initial_ok,
+                    resolutions_total_initial_failed,
+                    resolutions_total_initial_retry_ok,
+                    resolutions_total_initial_retry_failed,
+                    resolutions_total_dial_failure_ok,
+                    resolutions_total_dial_failure_failed,
+                    resolutions_total_periodic_ok,
+                    resolutions_total_periodic_failed,
+                    active,
+                    resolved_addrs,
+                })
+            }
+            other => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Unknown PeerHostnameMetrics borsh version: {other}"),
+            )),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsResponse {
@@ -2292,6 +2473,7 @@ pub struct GetMetricsResponse {
     pub bandwidth_metrics: Option<BandwidthMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
     pub storage_metrics: Option<StorageMetrics>,
+    pub peer_hostname_metrics: Option<PeerHostnameMetrics>,
     // TODO: this is currently a placeholder
     pub custom_metrics: Option<HashMap<String, CustomMetricValue>>,
 }
@@ -2304,6 +2486,7 @@ impl GetMetricsResponse {
         bandwidth_metrics: Option<BandwidthMetrics>,
         consensus_metrics: Option<ConsensusMetrics>,
         storage_metrics: Option<StorageMetrics>,
+        peer_hostname_metrics: Option<PeerHostnameMetrics>,
         custom_metrics: Option<HashMap<String, CustomMetricValue>>,
     ) -> Self {
         Self {
@@ -2312,6 +2495,7 @@ impl GetMetricsResponse {
             bandwidth_metrics,
             consensus_metrics,
             storage_metrics,
+            peer_hostname_metrics,
             server_time,
             custom_metrics,
         }
@@ -2320,7 +2504,14 @@ impl GetMetricsResponse {
 
 impl Serializer for GetMetricsResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        // version 2 adds the optional `peer_hostname_metrics` block at the
+        // tail. Compatibility relies on the existing wRPC message envelope:
+        // each response frame is length-delimited before the model payload is
+        // deserialized, so a v1 reader that consumes the historical fields can
+        // ignore the unread tail without shifting the next response frame. The
+        // paired tests below lock both sides: v1 frames decode with
+        // `peer_hostname_metrics = None`, and v2 emit keeps a stable tag/tail.
+        store!(u16, &2, writer)?;
         store!(u64, &self.server_time, writer)?;
         serialize!(Option<ProcessMetrics>, &self.process_metrics, writer)?;
         serialize!(Option<ConnectionMetrics>, &self.connection_metrics, writer)?;
@@ -2328,6 +2519,7 @@ impl Serializer for GetMetricsResponse {
         serialize!(Option<ConsensusMetrics>, &self.consensus_metrics, writer)?;
         serialize!(Option<StorageMetrics>, &self.storage_metrics, writer)?;
         serialize!(Option<HashMap<String, CustomMetricValue>>, &self.custom_metrics, writer)?;
+        serialize!(Option<PeerHostnameMetrics>, &self.peer_hostname_metrics, writer)?;
 
         Ok(())
     }
@@ -2335,7 +2527,7 @@ impl Serializer for GetMetricsResponse {
 
 impl Deserializer for GetMetricsResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let server_time = load!(u64, reader)?;
         let process_metrics = deserialize!(Option<ProcessMetrics>, reader)?;
         let connection_metrics = deserialize!(Option<ConnectionMetrics>, reader)?;
@@ -2343,6 +2535,7 @@ impl Deserializer for GetMetricsResponse {
         let consensus_metrics = deserialize!(Option<ConsensusMetrics>, reader)?;
         let storage_metrics = deserialize!(Option<StorageMetrics>, reader)?;
         let custom_metrics = deserialize!(Option<HashMap<String, CustomMetricValue>>, reader)?;
+        let peer_hostname_metrics = if version >= 2 { deserialize!(Option<PeerHostnameMetrics>, reader)? } else { None };
 
         Ok(Self {
             server_time,
@@ -2351,6 +2544,7 @@ impl Deserializer for GetMetricsResponse {
             bandwidth_metrics,
             consensus_metrics,
             storage_metrics,
+            peer_hostname_metrics,
             custom_metrics,
         })
     }
@@ -3703,5 +3897,378 @@ impl Deserializer for UnsubscribeResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader);
         Ok(Self {})
+    }
+}
+
+#[cfg(test)]
+mod add_peer_request_borsh_tests {
+    use super::*;
+    use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
+    use std::net::{IpAddr, Ipv4Addr};
+
+    /// Hand-encoded v1 wire buffer for `AddPeerRequest { peer_address:
+    /// RpcContextualPeerAddress(1.2.3.4:16111), is_permanent: true }`.
+    ///
+    /// Layout: u16=1 LE | IpAddress { variant=0 (V4), octets [1,2,3,4] }
+    ///       | Option<u16>::Some=1, port=16111 LE | bool=true
+    fn v1_fixture_bytes() -> Vec<u8> {
+        vec![
+            0x01, 0x00, // u16 version = 1
+            0x00, // IpAddress variant tag: V4
+            0x01, 0x02, 0x03, 0x04, // octets 1.2.3.4
+            0x01, // Option::Some
+            0xef, 0x3e, // u16 LE port = 16111 (0x3eef)
+            0x01, // bool is_permanent = true
+        ]
+    }
+
+    fn workflow_serialize(req: &AddPeerRequest) -> Vec<u8> {
+        let mut out = Vec::new();
+        Serializer::serialize(req, &mut out).unwrap();
+        out
+    }
+
+    fn workflow_deserialize(bytes: &[u8]) -> AddPeerRequest {
+        let mut cursor = std::io::Cursor::new(bytes);
+        Deserializer::deserialize(&mut cursor).unwrap()
+    }
+
+    fn workflow_serialize_framed(req: &AddPeerRequest, prefix: u32, suffix: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        store!(u32, &prefix, &mut out).unwrap();
+        serialize!(AddPeerRequest, req, &mut out).unwrap();
+        store!(u32, &suffix, &mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn add_peer_request_v1_byte_buffer_decodes_to_address() {
+        let bytes = v1_fixture_bytes();
+        let req = workflow_deserialize(&bytes);
+        match req.peer_address {
+            RpcPeerEndpoint::Address(addr) => {
+                let want = ContextualNetAddress::new(IpAddress::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))), Some(16111));
+                assert_eq!(addr, want);
+            }
+            other => panic!("expected Address variant, got {other:?}"),
+        }
+        assert!(req.is_permanent);
+    }
+
+    #[test]
+    fn add_peer_request_address_emits_v1_byte_identical() {
+        // Cross-version compatibility (new client -> old server): an
+        // Address-variant request from a newly-built client MUST emit a
+        // wire frame byte-identical to the v1 fixture, so an older
+        // server that only decodes v1 still accepts it.
+        let original = AddPeerRequest::new(
+            RpcPeerEndpoint::Address(ContextualNetAddress::new(IpAddress::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))), Some(16111))),
+            true,
+        );
+        let emitted = workflow_serialize(&original);
+        assert_eq!(emitted, v1_fixture_bytes(), "Address-variant request must serialize byte-identical to the v1 fixture");
+        // And the new client's emitted buffer round-trips through the
+        // new server's deserializer back to the Address variant.
+        let back = workflow_deserialize(&emitted);
+        assert_eq!(back.peer_address, original.peer_address);
+        assert_eq!(back.is_permanent, original.is_permanent);
+    }
+
+    #[test]
+    fn add_peer_request_v2_roundtrip_hostname() {
+        let original = AddPeerRequest::new(RpcPeerEndpoint::from_str("node.example.com:16111").unwrap(), false);
+        let bytes = workflow_serialize(&original);
+        // Hostname payload MUST serialize as v2.
+        assert_eq!(&bytes[..2], &[0x02, 0x00]);
+        let back = workflow_deserialize(&bytes);
+        assert_eq!(back.peer_address, original.peer_address);
+        assert!(!back.is_permanent);
+        // Hostname-with-no-port also roundtrips.
+        let np = AddPeerRequest::new(RpcPeerEndpoint::from_str("pod-1.svc.cluster.local").unwrap(), true);
+        let np_bytes = workflow_serialize(&np);
+        assert_eq!(&np_bytes[..2], &[0x02, 0x00]);
+        let np_back = workflow_deserialize(&np_bytes);
+        assert_eq!(np_back.peer_address, np.peer_address);
+        assert!(np_back.is_permanent);
+    }
+
+    #[test]
+    fn add_peer_request_v2_string_payload_format() {
+        // The body of the v2 wire must be the canonical Display form of
+        // the endpoint, encoded as a borsh String (u32 LE length prefix
+        // + UTF-8 bytes). Only Hostname-variant payloads are emitted as
+        // v2; Address-variant payloads (numeric IP literals) emit v1.
+        for input in ["node.example.com:16111", "node.example.com", "pod-1.svc.cluster.local"] {
+            let endpoint = RpcPeerEndpoint::from_str(input).unwrap();
+            assert!(matches!(endpoint, RpcPeerEndpoint::Hostname { .. }), "test setup: {input} must parse as Hostname");
+            let req = AddPeerRequest::new(endpoint.clone(), true);
+            let bytes = workflow_serialize(&req);
+            // bytes[0..2]    = version u16
+            // bytes[2..6]    = string length u32 LE
+            // bytes[6..6+L]  = string bytes (UTF-8)
+            // bytes[6+L]     = bool
+            assert_eq!(&bytes[..2], &[0x02, 0x00]);
+            let display = endpoint.to_string();
+            let len = display.len();
+            let len_bytes = (len as u32).to_le_bytes();
+            assert_eq!(&bytes[2..6], &len_bytes, "length-prefix mismatch for {input}");
+            assert_eq!(&bytes[6..6 + len], display.as_bytes(), "string payload mismatch for {input}");
+            assert_eq!(bytes[6 + len], 1u8, "bool tail mismatch for {input}");
+        }
+    }
+
+    #[test]
+    fn add_peer_request_address_v1_roundtrip_for_ipv6_and_no_port() {
+        // Address-variant requests with IPv6 literals or no explicit port
+        // also serialize as v1 (numeric forms never need hostname-aware
+        // wire encoding).
+        for input in ["[::1]:16111", "1.2.3.4"] {
+            let endpoint = RpcPeerEndpoint::from_str(input).unwrap();
+            assert!(matches!(endpoint, RpcPeerEndpoint::Address(_)), "test setup: {input} must parse as Address");
+            let req = AddPeerRequest::new(endpoint.clone(), false);
+            let bytes = workflow_serialize(&req);
+            assert_eq!(&bytes[..2], &[0x01, 0x00], "expected v1 version prefix for Address-variant input {input}");
+            let back = workflow_deserialize(&bytes);
+            assert_eq!(back.peer_address, endpoint);
+            assert!(!back.is_permanent);
+        }
+    }
+
+    /// Deterministic counterpart to the random-Mock-driven
+    /// `test!(AddPeerRequest)` round trip in `tests.rs`: drives a
+    /// `Hostname`-variant `AddPeerRequest` through the same
+    /// `workflow_serializer` framing the macro uses (PREFIX | payload |
+    /// SUFFIX), so every run -- not just runs where Mock happens to pick
+    /// the Hostname arm -- exercises the v2 codegen path.
+    #[test]
+    fn add_peer_request_v2_macro_framed_roundtrip() {
+        const PREFIX: u32 = 0x12345678;
+        const SUFFIX: u32 = 0x90abcdef;
+
+        for input in ["node.example.com:16111", "node.example.com", "pod-1.svc.cluster.local"] {
+            let original = AddPeerRequest::new(RpcPeerEndpoint::from_str(input).unwrap(), true);
+            assert!(matches!(original.peer_address, RpcPeerEndpoint::Hostname { .. }), "test setup: {input} must parse as Hostname",);
+
+            let buffer1 = workflow_serialize_framed(&original, PREFIX, SUFFIX);
+
+            let reader = &mut buffer1.as_slice();
+            let prefix: u32 = load!(u32, reader).unwrap();
+            assert_eq!(prefix, PREFIX, "frame misalignment in `{input}`");
+            let decoded: AddPeerRequest = deserialize!(AddPeerRequest, reader).unwrap();
+            let suffix: u32 = load!(u32, reader).unwrap();
+            assert_eq!(suffix, SUFFIX, "frame misalignment in `{input}`");
+
+            assert_eq!(decoded.peer_address, original.peer_address);
+            assert_eq!(decoded.is_permanent, original.is_permanent);
+
+            let buffer2 = workflow_serialize_framed(&decoded, PREFIX, SUFFIX);
+            assert_eq!(buffer1, buffer2, "second emit must be byte-identical for `{input}`");
+        }
+    }
+
+    /// A v2 frame whose string body fails [`RpcPeerEndpoint::from_str`]
+    /// surfaces a typed [`RpcError::InvalidPeerEndpoint`] as the
+    /// [`std::io::Error::source`]. Downstream wRPC consumers can
+    /// downcast the structured variant -- matching the gRPC edge's
+    /// `try_from!` mapping at the rpc-core boundary.
+    #[test]
+    fn add_peer_request_v2_invalid_endpoint_yields_typed_rpc_error() {
+        use crate::error::RpcError;
+
+        // Leading whitespace fails RFC 1123 strict validation.
+        let invalid = " not a valid host";
+        let mut bytes = Vec::new();
+        store!(u16, &ADD_PEER_REQUEST_BORSH_V2, &mut bytes).unwrap();
+        store!(String, &invalid.to_string(), &mut bytes).unwrap();
+        store!(bool, &true, &mut bytes).unwrap();
+
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let err = <AddPeerRequest as Deserializer>::deserialize(&mut cursor).expect_err("invalid hostname must fail to deserialize");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+
+        let rpc_err =
+            err.get_ref().and_then(|inner| inner.downcast_ref::<RpcError>()).expect("io::Error source must downcast to RpcError");
+        match rpc_err {
+            RpcError::InvalidPeerEndpoint { endpoint, reason } => {
+                assert_eq!(endpoint, invalid, "endpoint field must carry the bad input verbatim");
+                assert!(!reason.is_empty(), "reason field must be non-empty");
+            }
+            other => panic!("expected RpcError::InvalidPeerEndpoint, got {other:?}"),
+        }
+
+        // Display chains through to the canonical message text -- byte-
+        // for-byte equivalent to the format!() literal the prior cycle
+        // produced, so message-text consumers stay unaffected.
+        let msg = err.to_string();
+        assert!(msg.starts_with("invalid peer endpoint"), "Display chain mismatch: {msg}");
+        assert!(msg.contains(invalid), "Display chain must include the bad endpoint: {msg}");
+    }
+}
+
+#[cfg(test)]
+mod get_metrics_response_borsh_tests {
+    use super::*;
+
+    /// V1 wire buffer for an all-None
+    /// `GetMetricsResponse { server_time: 1_000_000, .. }`, built
+    /// using the same `store!` / `serialize!` macros the master-tree
+    /// `GetMetricsResponse::serialize` impl wrote with before this
+    /// branch added the trailing `peer_hostname_metrics` field.
+    ///
+    /// Constructing the fixture via the macros (rather than as a raw
+    /// byte literal) inherits the workflow-serializer framing for
+    /// `u16` / `u64` / `Option<T>` so the test stays correct under any
+    /// future macro tweak that affects byte layout (e.g. an Option
+    /// length-prefix change). The deliberate omission is the trailing
+    /// `peer_hostname_metrics` field -- that is the load-bearing
+    /// difference vs the v2 frame.
+    fn v1_fixture_bytes() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        store!(u16, &1, &mut bytes).unwrap();
+        store!(u64, &1_000_000u64, &mut bytes).unwrap();
+        serialize!(Option<ProcessMetrics>, &None, &mut bytes).unwrap();
+        serialize!(Option<ConnectionMetrics>, &None, &mut bytes).unwrap();
+        serialize!(Option<BandwidthMetrics>, &None, &mut bytes).unwrap();
+        serialize!(Option<ConsensusMetrics>, &None, &mut bytes).unwrap();
+        serialize!(Option<StorageMetrics>, &None, &mut bytes).unwrap();
+        serialize!(Option<HashMap<String, CustomMetricValue>>, &None, &mut bytes).unwrap();
+        // Intentionally NO `peer_hostname_metrics` write -- that is
+        // the v2-only field that this fixture is testing the absence
+        // of.
+        bytes
+    }
+
+    /// Reads the exact field sequence used by the pre-hostname
+    /// `GetMetricsResponse` deserializer on `kaspanet/master`.
+    ///
+    /// It deliberately returns after `custom_metrics` without looking at
+    /// the reader tail, matching the old v1 reader shape.
+    fn deserialize_like_old_v1_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<()> {
+        let _version = load!(u16, reader)?;
+        let _server_time = load!(u64, reader)?;
+        let _process_metrics = deserialize!(Option<ProcessMetrics>, reader)?;
+        let _connection_metrics = deserialize!(Option<ConnectionMetrics>, reader)?;
+        let _bandwidth_metrics = deserialize!(Option<BandwidthMetrics>, reader)?;
+        let _consensus_metrics = deserialize!(Option<ConsensusMetrics>, reader)?;
+        let _storage_metrics = deserialize!(Option<StorageMetrics>, reader)?;
+        let _custom_metrics = deserialize!(Option<HashMap<String, CustomMetricValue>>, reader)?;
+        Ok(())
+    }
+
+    /// A v1 byte buffer (pre-`peer_hostname_metrics` wire) decodes
+    /// through the v2-aware deserializer cleanly: the version-tag
+    /// dispatch reads `version=1`, processes the six pre-hostname
+    /// `Option<_>` fields, and short-circuits the trailing
+    /// `peer_hostname_metrics` read so the field defaults to `None`.
+    /// Old wRPC servers emitting v1 frames stay compatible with
+    /// post-PR clients.
+    #[test]
+    fn get_metrics_response_v1_byte_buffer_decodes_with_no_hostname_metrics() {
+        let bytes = v1_fixture_bytes();
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let resp: GetMetricsResponse = Deserializer::deserialize(&mut cursor).expect("v1 GetMetricsResponse buffer must decode");
+        assert_eq!(resp.server_time, 1_000_000);
+        assert!(resp.process_metrics.is_none());
+        assert!(resp.connection_metrics.is_none());
+        assert!(resp.bandwidth_metrics.is_none());
+        assert!(resp.consensus_metrics.is_none());
+        assert!(resp.storage_metrics.is_none());
+        assert!(resp.custom_metrics.is_none());
+        assert!(resp.peer_hostname_metrics.is_none(), "v1 buffer must default peer_hostname_metrics to None");
+        // Cursor must be fully consumed: a v1 buffer carries no trailing
+        // bytes, and the v2-aware deserializer must NOT have read past
+        // the v1 frame's tail.
+        assert_eq!(cursor.position() as usize, bytes.len(), "v1 buffer over-read");
+    }
+
+    /// Round-trip: a fresh `GetMetricsResponse` (post-PR client emit)
+    /// serializes with the `u16=2 LE` version prefix and decodes back
+    /// to the same value. The `peer_hostname_metrics` field is carried
+    /// through the v2 tail position.
+    #[test]
+    fn get_metrics_response_v2_emit_roundtrip_with_hostname_metrics() {
+        let original = GetMetricsResponse::new(
+            1_500_000,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(PeerHostnameMetrics {
+                resolutions_total_initial_ok: 7,
+                resolutions_total_initial_failed: 0,
+                resolutions_total_initial_retry_ok: 0,
+                resolutions_total_initial_retry_failed: 0,
+                resolutions_total_dial_failure_ok: 0,
+                resolutions_total_dial_failure_failed: 0,
+                resolutions_total_periodic_ok: 3,
+                resolutions_total_periodic_failed: 0,
+                active: 1,
+                resolved_addrs: 1,
+            }),
+            None,
+        );
+        let mut bytes = Vec::new();
+        Serializer::serialize(&original, &mut bytes).expect("v2 emit must succeed");
+        assert_eq!(&bytes[..2], &[0x02, 0x00], "post-PR client must emit u16=2 version prefix");
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let decoded: GetMetricsResponse = Deserializer::deserialize(&mut cursor).expect("v2 buffer must decode");
+        assert_eq!(decoded.server_time, original.server_time);
+        assert_eq!(decoded.peer_hostname_metrics, original.peer_hostname_metrics);
+    }
+
+    /// A master-tree v1 reader can consume a v2 frame through
+    /// `custom_metrics` and stop before the hostname tail. The unread
+    /// remainder is exactly the v2 `Option<PeerHostnameMetrics>` payload,
+    /// proving the tail is isolated from the historical field sequence.
+    #[test]
+    fn get_metrics_response_v2_frame_leaves_hostname_tail_for_old_v1_reader() {
+        let peer_hostname_metrics = PeerHostnameMetrics {
+            resolutions_total_initial_ok: 7,
+            resolutions_total_initial_failed: 1,
+            resolutions_total_initial_retry_ok: 2,
+            resolutions_total_initial_retry_failed: 3,
+            resolutions_total_dial_failure_ok: 4,
+            resolutions_total_dial_failure_failed: 5,
+            resolutions_total_periodic_ok: 6,
+            resolutions_total_periodic_failed: 0,
+            active: 9,
+            resolved_addrs: 10,
+        };
+        let original = GetMetricsResponse::new(1_750_000, None, None, None, None, None, Some(peer_hostname_metrics), None);
+        let mut bytes = Vec::new();
+        Serializer::serialize(&original, &mut bytes).expect("v2 emit must succeed");
+
+        let mut expected_tail = Vec::new();
+        serialize!(Option<PeerHostnameMetrics>, &Some(peer_hostname_metrics), &mut expected_tail).unwrap();
+
+        let mut cursor = std::io::Cursor::new(&bytes);
+        deserialize_like_old_v1_reader(&mut cursor).expect("old reader shape must consume historical fields");
+        let cursor_position = cursor.position() as usize;
+
+        assert!(cursor_position < bytes.len(), "old reader must stop before the v2 hostname tail");
+        assert_eq!(
+            &bytes[cursor_position..],
+            expected_tail.as_slice(),
+            "unread bytes must be exactly the v2 peer_hostname_metrics tail"
+        );
+    }
+
+    /// Round-trip with `peer_hostname_metrics: None`: the v2 emit still
+    /// writes a single `0x00` None-marker at the tail (it does NOT
+    /// downgrade to v1), and decoding it yields `None` symmetrically.
+    /// Locks the assumption that the version-tag dispatch is by
+    /// constant tag, not by content sniffing.
+    #[test]
+    fn get_metrics_response_v2_emit_with_none_hostname_metrics_preserves_v2_tag() {
+        let original = GetMetricsResponse::new(2_000_000, None, None, None, None, None, None, None);
+        let mut bytes = Vec::new();
+        Serializer::serialize(&original, &mut bytes).expect("v2 emit must succeed");
+        assert_eq!(&bytes[..2], &[0x02, 0x00], "v2 emit must use u16=2 prefix even with peer_hostname_metrics: None");
+        // Tail byte is the Option<PeerHostnameMetrics>::None marker.
+        assert_eq!(bytes.last().copied(), Some(0x00), "trailing byte must be Option::None marker");
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let decoded: GetMetricsResponse = Deserializer::deserialize(&mut cursor).expect("v2-None buffer must decode");
+        assert!(decoded.peer_hostname_metrics.is_none());
     }
 }

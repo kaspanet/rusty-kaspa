@@ -2898,6 +2898,7 @@ dependencies = [
 name = "kaspa-connectionmanager"
 version = "2.0.0"
 dependencies = [
+ "async-trait",
  "duration-string",
  "futures-util",
  "itertools 0.13.0",
@@ -2908,6 +2909,7 @@ dependencies = [
  "log",
  "parking_lot",
  "rand 0.8.6",
+ "thiserror 2.0.18",
  "tokio",
 ]
 
@@ -3787,6 +3789,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-alloc",
  "kaspa-bip32",
+ "kaspa-connectionmanager",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -3828,6 +3831,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "workflow-perf-monitor",
+ "workflow-serializer",
 ]
 
 [[package]]
@@ -4344,6 +4348,7 @@ dependencies = [
  "kaspa-addressmanager",
  "kaspa-alloc",
  "kaspa-build-info",
+ "kaspa-connectionmanager",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",

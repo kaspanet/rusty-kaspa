@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
     mining_rules::MiningRules,
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, debug, info};
+use kaspa_core::{core::Core, debug, info, warn};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::{
     prelude::{CachePolicy, DbWriter, DirectDbWriter, RocksDbPreset},
@@ -22,10 +22,11 @@ use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_system_info::SystemInfo;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::networking::{ContextualNetAddress, PeerEndpoint};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
+use kaspa_connectionmanager::HostnameResolver;
 use kaspa_consensus::{
     consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
 };
@@ -61,6 +62,8 @@ pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4 * 1024;
 /// (otherwise it is meaningless since pruning periods are typically at least 2 days long)
 const MINIMUM_RETENTION_PERIOD_DAYS: f64 = 2.0;
 const ONE_GIGABYTE: f64 = 1_000_000_000.0;
+const HOSTNAME_DNS_LOAD_WARNING_COUNT: usize = 25;
+const HOSTNAME_DNS_LOAD_WARNING_INTERVAL_SEC: u64 = 60;
 
 use crate::args::Args;
 
@@ -114,6 +117,21 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
         return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
     Ok(())
+}
+
+fn should_warn_high_hostname_dns_load(hostname_count: usize, hostname_refresh_interval_sec: u64) -> bool {
+    hostname_count >= HOSTNAME_DNS_LOAD_WARNING_COUNT
+        && (1..HOSTNAME_DNS_LOAD_WARNING_INTERVAL_SEC).contains(&hostname_refresh_interval_sec)
+}
+
+fn warn_if_high_hostname_dns_load(connect_peers: &[PeerEndpoint], add_peers: &[PeerEndpoint], hostname_refresh_interval_sec: u64) {
+    let hostname_count = connect_peers.iter().chain(add_peers).filter(|endpoint| endpoint.hostname().is_some()).count();
+    if should_warn_high_hostname_dns_load(hostname_count, hostname_refresh_interval_sec) {
+        warn!(
+            "configured {hostname_count} hostname peer endpoint(s) with hostname refresh interval = {hostname_refresh_interval_sec}s; \
+             each refresh cadence can issue one DNS lookup per hostname. Consider increasing --hostname-refresh-interval or reducing hostname peers."
+        );
+    }
 }
 
 fn request_database_deletion_approval(approve: bool) -> bool {
@@ -202,20 +220,41 @@ impl Runtime {
     }
 }
 
+/// Test-only injection seam for [`create_core`] / [`create_core_with_runtime`].
+///
+/// Production callers pass [`DaemonOverrides::default()`]; integration
+/// tests construct directly to swap in deterministic substitutes (such
+/// as a programmable hostname resolver) without bloating the
+/// operator-facing CLI [`Args`] struct or coupling the kaspad CLI
+/// module's public surface to connection-manager trait objects.
+#[derive(Default, Clone)]
+pub struct DaemonOverrides {
+    /// Optional override of the async DNS resolver used by the
+    /// connection manager for hostname-origin peer entries. Production
+    /// runs leave this `None` and the daemon installs
+    /// [`kaspa_connectionmanager::TokioHostnameResolver`] internally.
+    /// Integration tests inject a programmable fake to make
+    /// hostname-driven flows deterministic.
+    pub hostname_resolver: Option<Arc<dyn HostnameResolver>>,
+}
+
 /// Create [`Core`] instance with supplied [`Args`].
 /// This function will automatically create a [`Runtime`]
 /// instance with the supplied [`Args`] and then
 /// call [`create_core_with_runtime`].
 ///
 /// Usage semantics:
-/// `let (core, rpc_core_service) = create_core(args);`
+/// `let (core, rpc_core_service) = create_core(args, overrides, fd_total_budget);`
+///
+/// `overrides` is a test-only seam ([`DaemonOverrides`]); production
+/// callers pass [`DaemonOverrides::default()`].
 ///
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
 ///
-pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
+pub fn create_core(args: Args, overrides: DaemonOverrides, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let rt = Runtime::from_args(&args);
-    create_core_with_runtime(&rt, &args, fd_total_budget)
+    create_core_with_runtime(&rt, &args, &overrides, fd_total_budget)
 }
 
 /// Configure RocksDB parameters from CLI arguments.
@@ -273,13 +312,21 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
 /// Usage semantics:
 /// ```ignore
 /// let Runtime = Runtime::from_args(&args); // or create your own
-/// let (core, rpc_core_service) = create_core(&runtime, &args);
+/// let (core, rpc_core_service) = create_core_with_runtime(&runtime, &args, &overrides, fd_total_budget);
 /// ```
+///
+/// `overrides` is a test-only seam ([`DaemonOverrides`]); production
+/// callers pass `&DaemonOverrides::default()`.
 ///
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
 ///
-pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
+pub fn create_core_with_runtime(
+    runtime: &Runtime,
+    args: &Args,
+    overrides: &DaemonOverrides,
+    fd_total_budget: i32,
+) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
 
     let mut fd_remaining = fd_total_budget;
@@ -556,8 +603,9 @@ Do you confirm? (y/n)";
         );
     }
 
-    let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
-    let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
+    let connect_peers: Vec<PeerEndpoint> = args.connect_peers.clone();
+    let add_peers: Vec<PeerEndpoint> = args.add_peers.clone();
+    warn_if_high_hostname_dns_load(&connect_peers, &add_peers, args.hostname_refresh_interval_sec);
     let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound/inbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
@@ -672,17 +720,24 @@ Do you confirm? (y/n)";
         hub.clone(),
         mining_rule_engine.clone(),
     ));
-    let p2p_service = Arc::new(P2pService::new(
-        flow_context.clone(),
-        connect_peers,
-        add_peers,
-        p2p_server_addr,
-        outbound_target,
-        inbound_limit,
-        dns_seeders,
-        config.default_p2p_port(),
-        p2p_tower_counters.clone(),
-    ));
+    let p2p_service = {
+        let service = P2pService::new(
+            flow_context.clone(),
+            connect_peers,
+            add_peers,
+            p2p_server_addr,
+            outbound_target,
+            inbound_limit,
+            dns_seeders,
+            config.default_p2p_port(),
+            std::time::Duration::from_secs(args.hostname_refresh_interval_sec),
+            p2p_tower_counters.clone(),
+        );
+        match overrides.hostname_resolver.clone() {
+            Some(resolver) => Arc::new(service.with_resolver(resolver)),
+            None => Arc::new(service),
+        }
+    };
 
     let rpc_core_service = Arc::new(RpcCoreService::new(
         consensus_manager.clone(),
@@ -766,4 +821,35 @@ Do you confirm? (y/n)";
     core.bind(async_runtime);
 
     (core, rpc_core_service)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HOSTNAME_DNS_LOAD_WARNING_COUNT, should_warn_high_hostname_dns_load, warn_if_high_hostname_dns_load};
+    use kaspa_utils::networking::{ContextualNetAddress, PeerEndpoint};
+
+    fn hostname_endpoint(i: usize) -> PeerEndpoint {
+        PeerEndpoint::Hostname { host: format!("node-{i}.example.com"), port: None }
+    }
+
+    #[test]
+    fn high_hostname_dns_load_warning_thresholds() {
+        assert!(!should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT, 0));
+        assert!(!should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT - 1, 30));
+        assert!(should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT, 30));
+        assert!(should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT, 59));
+        assert!(!should_warn_high_hostname_dns_load(HOSTNAME_DNS_LOAD_WARNING_COUNT, 60));
+    }
+
+    #[test]
+    fn high_hostname_dns_load_counts_only_hostname_endpoints() {
+        let mut add_peers: Vec<PeerEndpoint> = (0..HOSTNAME_DNS_LOAD_WARNING_COUNT - 1).map(hostname_endpoint).collect();
+        add_peers.push(PeerEndpoint::Address(ContextualNetAddress::loopback()));
+
+        assert!(!should_warn_high_hostname_dns_load(add_peers.iter().filter(|endpoint| endpoint.hostname().is_some()).count(), 30,));
+
+        add_peers.push(hostname_endpoint(HOSTNAME_DNS_LOAD_WARNING_COUNT));
+        warn_if_high_hostname_dns_load(&[], &add_peers, 30);
+        assert!(should_warn_high_hostname_dns_load(add_peers.iter().filter(|endpoint| endpoint.hostname().is_some()).count(), 30,));
+    }
 }

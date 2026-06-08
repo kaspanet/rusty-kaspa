@@ -1,11 +1,16 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_utils::networking::{ContextualNetAddress, IpAddress, NetAddress, PeerId};
+use kaspa_utils::networking::{ContextualNetAddress, IpAddress, NetAddress, PeerEndpoint, PeerId};
 use serde::{Deserialize, Serialize};
 
 pub type RpcNodeId = PeerId;
 pub type RpcIpAddress = IpAddress;
 pub type RpcPeerAddress = NetAddress;
 pub type RpcContextualPeerAddress = ContextualNetAddress;
+/// Operator-facing peer endpoint accepted by the RPC `AddPeer` method
+/// and the `--addpeer` / `--connect` CLI flags. Wraps either a numeric
+/// IP literal or a textual hostname; the connection manager resolves
+/// hostnames at dial time.
+pub type RpcPeerEndpoint = PeerEndpoint;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct RpcPeerInfo {

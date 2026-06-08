@@ -6,10 +6,12 @@ use kaspa_consensus_core::{
 use kaspa_core::kaspad_env::version;
 use kaspa_notify::address::tracker::Tracker;
 use kaspa_p2p_flows::user_agent_rule::UserAgentRule;
-use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::networking::{ContextualNetAddress, PeerEndpoint};
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, serde_as};
+#[cfg(feature = "devnet-prealloc")]
+use std::sync::Arc;
 use std::{ffi::OsString, fs};
 use toml::from_str;
 
@@ -19,8 +21,6 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_txscript::pay_to_address_script;
-#[cfg(feature = "devnet-prealloc")]
-use std::sync::Arc;
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
@@ -45,10 +45,10 @@ pub struct Args {
     pub async_threads: usize,
     #[serde(rename = "connect")]
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub connect_peers: Vec<ContextualNetAddress>,
+    pub connect_peers: Vec<PeerEndpoint>,
     #[serde(rename = "addpeer")]
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub add_peers: Vec<ContextualNetAddress>,
+    pub add_peers: Vec<PeerEndpoint>,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub listen: Option<ContextualNetAddress>,
     #[serde(rename = "uacomment")]
@@ -91,6 +91,10 @@ pub struct Args {
     pub disable_dns_seeding: bool,
     #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
+    /// Interval in seconds at which `--addpeer` / `--connect` hostnames are
+    /// re-resolved by the connection manager. `0` disables periodic
+    /// re-resolution; dial-failure-triggered re-resolution still runs.
+    pub hostname_refresh_interval_sec: u64,
     pub ram_scale: f64,
     pub retention_period_days: Option<f64>,
 
@@ -149,6 +153,7 @@ impl Default for Args {
             disable_upnp: false,
             disable_dns_seeding: false,
             disable_grpc: false,
+            hostname_refresh_interval_sec: 600,
             ram_scale: 1.0,
             retention_period_days: None,
             override_params_file: None,
@@ -283,21 +288,21 @@ pub fn cli() -> Command {
             Arg::new("connect-peers")
                 .long("connect")
                 .env("KASPAD_CONNECTPEERS")
-                .value_name("IP[:PORT]")
+                .value_name("HOST[:PORT]")
                 .action(ArgAction::Append)
                 .require_equals(true)
-                .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Connect only to the specified peers at startup."),
+                .value_parser(clap::value_parser!(PeerEndpoint))
+                .help("Connect only to the specified peers at startup. Accepts IPv4, IPv6, or hostnames; hostnames are resolved at dial time."),
         )
         .arg(
             Arg::new("add-peers")
                 .long("addpeer")
                 .env("KASPAD_ADDPEERS")
-                .value_name("IP[:PORT]")
+                .value_name("HOST[:PORT]")
                 .action(ArgAction::Append)
                 .require_equals(true)
-                .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Add peers to connect with at startup."),
+                .value_parser(clap::value_parser!(PeerEndpoint))
+                .help("Add peers to connect with at startup. Accepts IPv4, IPv6, or hostnames; hostnames are resolved at dial time."),
         )
         .arg(
             Arg::new("listen")
@@ -411,6 +416,20 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers").env("KASPAD_NODNSSEED"))
         .arg(arg!(--"nogrpc" "Disable gRPC server").env("KASPAD_NOGRPC"))
         .arg(
+            Arg::new("hostname-refresh-interval")
+                .long("hostname-refresh-interval")
+                .env("KASPAD_HOSTNAME_REFRESH_INTERVAL_SEC")
+                .require_equals(true)
+                .value_name("SECONDS")
+                .value_parser(parse_hostname_refresh_interval_sec)
+                .help(
+                    "Interval in seconds at which `--addpeer` / `--connect` hostnames are re-resolved. \
+                     Default: 600 (10 minutes). Typical operator range: 60-3600. \
+                     Values 1-29 are rejected to protect the local DNS resolver from thrashing; \
+                     0 disables periodic refresh and dial-failure-triggered re-resolution still runs.",
+                ),
+        )
+        .arg(
             Arg::new("ram-scale")
                 .long("ram-scale")
                 .env("KASPAD_RAM_SCALE")
@@ -498,6 +517,16 @@ impl Args {
                     format!("failed parsing config file, reason: {}", toml_error.message()),
                 )
             })?;
+            // Mirror the clap parser's disjoint-accept-set check on
+            // values that arrive via the toml config-file path. `serde`
+            // decodes `hostname_refresh_interval_sec: u64` with no bound
+            // check, so a config-file `hostname-refresh-interval-sec = 1`
+            // would otherwise reach the connection manager unchanged --
+            // exactly the resolver-thrash pattern the disjoint accept
+            // set forbids. Tests construct `Args` programmatically
+            // (no `Args::parse` call) and remain unconstrained.
+            validate_hostname_refresh_interval_sec(defaults.hostname_refresh_interval_sec)
+                .map_err(|reason| clap::Error::raw(clap::error::ErrorKind::ValueValidation, reason))?;
         }
 
         let args = Args {
@@ -511,8 +540,8 @@ impl Args {
             wrpc_verbose: false,
             log_level: arg_match_unwrap_or::<String>(&m, "log_level", defaults.log_level),
             async_threads: arg_match_unwrap_or::<usize>(&m, "async_threads", defaults.async_threads),
-            connect_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "connect-peers", defaults.connect_peers),
-            add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
+            connect_peers: arg_match_many_unwrap_or::<PeerEndpoint>(&m, "connect-peers", defaults.connect_peers),
+            add_peers: arg_match_many_unwrap_or::<PeerEndpoint>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
@@ -539,6 +568,11 @@ impl Args {
             disable_upnp: arg_match_unwrap_or::<bool>(&m, "disable-upnp", defaults.disable_upnp),
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
+            hostname_refresh_interval_sec: arg_match_unwrap_or::<u64>(
+                &m,
+                "hostname-refresh-interval",
+                defaults.hostname_refresh_interval_sec,
+            ),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
             retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
 
@@ -570,6 +604,38 @@ fn arg_match_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatches, a
     m.get_one::<T>(arg_id).cloned().filter(|_| m.value_source(arg_id) != Some(DefaultValue)).unwrap_or(default)
 }
 
+/// Minimum accepted value for `--hostname-refresh-interval` when non-zero.
+/// Smaller intervals multiplied by many registered hostnames thrash the
+/// local DNS resolver with no operational benefit (typical A-record TTL
+/// is on the order of minutes). `0` remains accepted as the explicit
+/// "disable periodic refresh" sentinel.
+const MIN_HOSTNAME_REFRESH_INTERVAL_SEC: u64 = 30;
+
+/// Parse `--hostname-refresh-interval` with a disjoint accept set:
+/// `0` (disable) and `>= MIN_HOSTNAME_REFRESH_INTERVAL_SEC`. Values
+/// in `1..MIN_HOSTNAME_REFRESH_INTERVAL_SEC` are rejected because
+/// small intervals multiplied by many registered hostnames thrash
+/// the local DNS resolver with no operational benefit.
+fn parse_hostname_refresh_interval_sec(s: &str) -> Result<u64, String> {
+    let n: u64 = s.parse().map_err(|e: std::num::ParseIntError| format!("invalid SECONDS `{s}`: {e}"))?;
+    validate_hostname_refresh_interval_sec(n).map_err(|reason| reason.to_string())?;
+    Ok(n)
+}
+
+/// Reject inputs in the resolver-thrash band so the toml-config and
+/// programmatic-construction paths share a single bound check with the
+/// CLI parser. Returns a human-readable error suitable for both clap
+/// and `validate_args` surfaces. The accepted set is `{0} U [MIN, infinity)`.
+pub(crate) fn validate_hostname_refresh_interval_sec(n: u64) -> Result<(), String> {
+    if (1..MIN_HOSTNAME_REFRESH_INTERVAL_SEC).contains(&n) {
+        return Err(format!(
+            "hostname-refresh-interval = {n} thrashes the local DNS resolver; \
+             accepted: 0 (disable periodic refresh) or >= {MIN_HOSTNAME_REFRESH_INTERVAL_SEC}",
+        ));
+    }
+    Ok(())
+}
+
 fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatches, arg_id: &str, default: Vec<T>) -> Vec<T> {
     match m.get_many::<T>(arg_id) {
         Some(val_ref) => val_ref.cloned().collect(),
@@ -589,6 +655,7 @@ fn validate_ua_rules(rules: &[String]) -> Result<(), clap::Error> {
 #[cfg(test)]
 mod tests {
     use super::Args;
+    use std::{fs, path::Path};
 
     #[test]
     fn parses_ua_rules() {
@@ -602,6 +669,39 @@ mod tests {
         let err = Args::parse(["kaspad", "--ua-rule=reject;regex:*"]).unwrap_err();
 
         assert!(err.to_string().contains("invalid --ua-rule"));
+    }
+
+    #[test]
+    fn hostname_refresh_interval_cli_accepts_zero_and_minimum() {
+        let disabled = Args::parse(["kaspad", "--hostname-refresh-interval=0"]).unwrap();
+        assert_eq!(disabled.hostname_refresh_interval_sec, 0);
+
+        let minimum = Args::parse(["kaspad", "--hostname-refresh-interval=30"]).unwrap();
+        assert_eq!(minimum.hostname_refresh_interval_sec, 30);
+    }
+
+    #[test]
+    fn hostname_refresh_interval_cli_rejects_thrash_band() {
+        let err = Args::parse(["kaspad", "--hostname-refresh-interval=29"]).unwrap_err();
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+        assert!(err.to_string().contains("accepted: 0 (disable periodic refresh) or >= 30"));
+    }
+
+    #[test]
+    fn hostname_refresh_interval_config_rejects_thrash_band() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("kaspad.toml");
+        write_config(&config_path, "hostname-refresh-interval-sec = 29\n");
+
+        let err = Args::parse(["kaspad", "--configfile", config_path.to_str().unwrap()]).unwrap_err();
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+        assert!(err.to_string().contains("accepted: 0 (disable periodic refresh) or >= 30"));
+    }
+
+    fn write_config(path: &Path, contents: &str) {
+        fs::write(path, contents).unwrap();
     }
 }
 

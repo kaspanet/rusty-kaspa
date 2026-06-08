@@ -301,6 +301,23 @@ message GetConnectedPeerInfoMessage {
 
 // AddPeerRequestMessage adds a peer to kaspad's outgoing connection list.
 // This will, in most cases, result in kaspad connecting to said peer.
+//
+// `address` accepts either:
+//   - An IP socket address: `1.2.3.4:16111`, `[::1]:16111`, `1.2.3.4`,
+//     `[::1]` (numeric IPv4 / IPv6, with optional port; default port
+//     is the network's p2p port).
+//   - A hostname socket address: `node.example.com:16111`,
+//     `pod-1.svc.cluster.local` (RFC 1123 strict -- ASCII letter-digit-hyphen,
+//     each label 1..=63 chars, total 1..=253 chars, no leading or trailing
+//     hyphen per label, no consecutive dots, no underscores). Hostnames
+//     are accepted at parse time without DNS resolution and resolved at
+//     dial time by the connection manager. An unresolvable hostname is
+//     registered for periodic retry rather than rejected at the RPC
+//     layer. This is intentional operator-visible behavior: RPC AddPeer
+//     returns success once the hostname syntax is accepted, and DNS
+//     availability is retried by the connection manager on the configured
+//     cadence and on dial failures (full behavioral contract: KIP-0016 in
+//     the kaspanet/kips repository).
 message AddPeerRequestMessage {
   string address = 1;
 
@@ -883,7 +900,51 @@ message GetMetricsResponseMessage {
   BandwidthMetrics bandwidthMetrics = 13;
   ConsensusMetrics consensusMetrics = 14;
   StorageMetrics storageMetrics = 15;
+  PeerHostnameMetrics peerHostnameMetrics = 16;
   RPCError error = 1000;
+}
+
+// Hostname-origin peer metrics. Wire-flat field names drop the
+// redundant `peerHostname` prefix; the type name `PeerHostnameMetrics`
+// already carries the group, consistent with `BandwidthMetrics`,
+// `ConnectionMetrics`, and the rest of the existing kaspa metric-naming
+// convention. The Prometheus-canonical metric NAMES
+// (`peer_hostname_resolutions_total{status, trigger}`,
+// `peer_hostname_active`, `peer_hostname_resolved_addrs`) remain as
+// declared in the spec; a future Prometheus exporter prepends the
+// type-group prefix at presentation time.
+//
+// `resolutionsTotal*` is split across eight (status, trigger) buckets:
+//   status   in {ok, failed}
+//   trigger  in {initial, initial_retry, dial_failure, periodic}
+// `active` and `resolvedAddrs` are gauges over the live hostname
+// registry (count of distinct hostname entries; sum of distinct
+// resolved socket addresses across all entries).
+//
+// Field numbers leave gaps so future labels can be inserted without
+// renumbering. Numbers 7-8 are the InitialRetry bucket; 9-10 reserved
+// for the next trigger label. See the `kaspa_rpc_core::PeerHostnameMetrics`
+// doc-comment in `rpc/core/src/model/message.rs` for the canonical
+// extension recipe (the borsh-vs-proto field-order asymmetry, the
+// borsh `_V1` -> `_V2` bump, and the conversion-mapping update site
+// in `rpc/grpc/core/src/convert/metrics.rs`).
+message PeerHostnameMetrics {
+  // Reserved for the next trigger-label expansion pair. Declaring
+  // `reserved` here prevents a future schema author from reusing 9 / 10
+  // for a non-trigger field, so the gap stays available for the matching
+  // `resolutionsTotal<NextTrigger>Ok` / `...Failed` fields.
+  reserved 9, 10;
+
+  uint64 resolutionsTotalInitialOk = 1;
+  uint64 resolutionsTotalInitialFailed = 2;
+  uint64 resolutionsTotalDialFailureOk = 3;
+  uint64 resolutionsTotalDialFailureFailed = 4;
+  uint64 resolutionsTotalPeriodicOk = 5;
+  uint64 resolutionsTotalPeriodicFailed = 6;
+  uint64 resolutionsTotalInitialRetryOk = 7;
+  uint64 resolutionsTotalInitialRetryFailed = 8;
+  uint64 active = 11;
+  uint64 resolvedAddrs = 12;
 }
 
 message GetServerInfoRequestMessage {}

@@ -17,6 +17,7 @@ kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
+kaspa-connectionmanager = { workspace = true, features = ["test-utils"] }
 kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
@@ -29,6 +30,7 @@ kaspa-math.workspace = true
 kaspa-merkle.workspace = true
 kaspa-muhash.workspace = true
 kaspa-notify.workspace = true
+kaspa-p2p-flows.workspace = true
 kaspa-pow.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
@@ -66,6 +68,7 @@ tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 workflow-perf-monitor.workspace = true
+workflow-serializer.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

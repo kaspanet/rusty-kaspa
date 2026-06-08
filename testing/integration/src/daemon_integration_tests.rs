@@ -30,10 +30,13 @@ use kaspa_txscript::{
     opcodes::codes, pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script,
     script_builder::ScriptBuilder,
 };
-use kaspad_lib::{args::Args, daemon::Runtime as KaspadRuntime};
+use kaspad_lib::{
+    args::Args,
+    daemon::{DaemonOverrides, Runtime as KaspadRuntime},
+};
 use rand::thread_rng;
 use serde_json;
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 fn load_override_params(path: &PathBuf) -> Params {
     let override_params_json = fs::read_to_string(path).unwrap();
@@ -1268,4 +1271,890 @@ async fn daemon_cleaning_test() {
     assert_eq!(consensus_manager.strong_count(), 0);
     assert_eq!(async_runtime.strong_count(), 0);
     assert_eq!(core.strong_count(), 0);
+}
+
+// =============================================================================
+// Hostname endpoint integration tests
+// =============================================================================
+
+/// `--addpeer=localhost:<port>` parses, resolves via the OS resolver, and
+/// kaspad starts cleanly with the resulting socket addresses staged in the
+/// connection request set.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn kaspad_addpeer_hostname_localhost_starts() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    use kaspa_utils::networking::PeerEndpoint;
+    let args = Args {
+        devnet: true,
+        disable_upnp: true,
+        add_peers: vec![PeerEndpoint::from_str("localhost").expect("parse hostname")],
+        hostname_refresh_interval_sec: 0,
+        ..Default::default()
+    };
+    let total_fd_limit = 10;
+    let mut kaspad = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client = kaspad.start().await;
+    // If startup made it this far, hostname resolution succeeded and the
+    // node is up. A single round-trip RPC confirms the gRPC server reached
+    // the steady state.
+    assert!(rpc_client.handle_message_id(), "client did not collect server features after addpeer hostname startup");
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
+/// `--addpeer=127.0.0.1:<port>` (numeric IPv4 literal) takes the same
+/// short-circuit path as before the hostname work landed; this is the
+/// IP-only regression guard.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn kaspad_addpeer_ipv4_unchanged() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    use kaspa_utils::networking::PeerEndpoint;
+    let args = Args {
+        devnet: true,
+        disable_upnp: true,
+        add_peers: vec![PeerEndpoint::from_str("127.0.0.1:12345").unwrap()],
+        hostname_refresh_interval_sec: 0,
+        ..Default::default()
+    };
+    let mut kaspad = Daemon::new_random_with_args(args, 10);
+    let rpc_client = kaspad.start().await;
+    assert!(rpc_client.handle_message_id());
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
+/// `--addpeer=[::1]:<port>` (numeric IPv6 literal) regresses identically.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn kaspad_addpeer_ipv6_unchanged() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    use kaspa_utils::networking::PeerEndpoint;
+    let args = Args {
+        devnet: true,
+        disable_upnp: true,
+        add_peers: vec![PeerEndpoint::from_str("[::1]:12345").unwrap()],
+        hostname_refresh_interval_sec: 0,
+        ..Default::default()
+    };
+    let mut kaspad = Daemon::new_random_with_args(args, 10);
+    let rpc_client = kaspad.start().await;
+    assert!(rpc_client.handle_message_id());
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
+/// `--hostname-refresh-interval=0` is honored: the connection manager
+/// instantiates without a periodic refresh task. Successful startup proves
+/// the hostname endpoint is registered; the metric assertions below prove
+/// no periodic refresh work ran after startup.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn kaspad_periodic_refresh_disabled_with_zero_interval() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    use kaspa_utils::networking::PeerEndpoint;
+    let args = Args {
+        devnet: true,
+        disable_upnp: true,
+        add_peers: vec![PeerEndpoint::from_str("localhost").unwrap()],
+        hostname_refresh_interval_sec: 0,
+        ..Default::default()
+    };
+    let mut kaspad = Daemon::new_random_with_args(args, 10);
+    let rpc_client = kaspad.start().await;
+    assert!(rpc_client.handle_message_id());
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let snapshot =
+        kaspad.hostname_metrics_snapshot().await.expect("connection manager should be wired into the flow context after start()");
+    assert_eq!(snapshot.resolutions_total.periodic_ok, 0, "periodic_ok must stay zero when hostname refresh interval is 0");
+    assert_eq!(snapshot.resolutions_total.periodic_failed, 0, "periodic_failed must stay zero when hostname refresh interval is 0");
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
+/// `--addpeer=<unresolvable-host>` does NOT abort kaspad; the hostname is
+/// registered for periodic retry, the `initial_failed` metric is bumped,
+/// and the daemon keeps serving normally. The unresolvable-host path and
+/// the unreachable-IP path both queue the entry and retry forever, never
+/// refusing startup.
+///
+/// Source: https://github.com/bitcoin/bitcoin/blob/8f4a3ba8972dae9412ba975a040cea22c227f983/src/net.cpp#L2974
+/// (`ThreadOpenAddedConnections`).
+///
+/// The fake resolver returns `Err` for the cited hostname so no real DNS
+/// is consulted. The assertion stack is: (1) `Daemon::new_random_with_args`
+/// + `start()` complete without panicking - i.e. `create_core_with_runtime`
+/// returned a live daemon despite the unresolvable peer endpoint;
+/// (2) the metric counter `initial_failed >= 1` (registered by the
+/// connection manager when the resolver returned `Err`); (3) the daemon
+/// is still alive after `2 x hostname_refresh_interval` (a healthy gRPC
+/// round-trip against the running RPC server is the strongest single
+/// liveness probe available in-process).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn kaspad_addpeer_hostname_unresolvable_keeps_running() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    use kaspa_connectionmanager::test_support::FakeHostnameResolver;
+    use kaspa_consensus_core::network::{NetworkId, NetworkType};
+    use kaspa_utils::networking::PeerEndpoint;
+
+    let host = "nonexistent.kas947.invalid";
+    let endpoint = PeerEndpoint::from_str(host).expect("parse hostname endpoint");
+    let resolver = Arc::new(FakeHostnameResolver::new());
+    // The connection manager hands the active network's default p2p port
+    // to the resolver when the endpoint omits one. Derive it from the
+    // `kaspa-consensus-core` `NetworkId` API so a future port reshuffle on
+    // the consensus side does not silently regress the test to "resolver
+    // never called" while assertions still pass with `call_count = 0`.
+    let devnet_p2p_port = NetworkId::new(NetworkType::Devnet).default_p2p_port();
+    resolver.set_err(host, devnet_p2p_port, "fake resolver: nonexistent.kas947.invalid does not resolve");
+
+    let refresh_interval_sec = 2u64;
+    let args = Args {
+        devnet: true,
+        disable_upnp: true,
+        add_peers: vec![endpoint],
+        hostname_refresh_interval_sec: refresh_interval_sec,
+        ..Default::default()
+    };
+    let overrides = DaemonOverrides { hostname_resolver: Some(resolver.clone()) };
+    let mut kaspad = Daemon::new_random_with_args_and_overrides(args, overrides, 10);
+    // start() runs the bound services. With the post-amendment
+    // register-on-failure design, this returns a working RPC client even
+    // though the only `--addpeer` host is unresolvable.
+    let rpc_client = kaspad.start().await;
+
+    // Liveness probe: the gRPC server is reachable and responsive. If the
+    // daemon had aborted, `start()` would have hung or panicked first.
+    assert!(
+        rpc_client.handle_message_id(),
+        "RPC client did not collect server features: kaspad must keep running on unresolvable --addpeer",
+    );
+
+    // Wait at least 2 x refresh_interval so the periodic refresh task has
+    // had room to tick at least twice past the initial registration.
+    tokio::time::sleep(Duration::from_secs(2 * refresh_interval_sec + 1)).await;
+    let snapshot =
+        kaspad.hostname_metrics_snapshot().await.expect("connection manager should be wired into the flow context after start()");
+    assert!(
+        snapshot.resolutions_total.initial_failed >= 1,
+        "expected initial_failed >= 1 after registering an unresolvable hostname; snapshot = {snapshot:?}; resolver call_count = {}",
+        resolver.call_count(),
+    );
+    assert_eq!(snapshot.resolutions_total.initial_ok, 0, "no successful initial resolution expected; snapshot = {snapshot:?}",);
+    // The daemon stayed up across the observation window. A second
+    // RPC round-trip confirms it is still serving requests.
+    assert!(rpc_client.handle_message_id(), "RPC client lost server liveness during the observation window");
+
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
+/// Companion to `kaspad_addpeer_hostname_unresolvable_keeps_running`:
+/// drives `PeerEndpointResolveError::Timeout` deterministically through
+/// the seam that
+/// [`kaspa_connectionmanager::test_support::FakeHostnameResolver::set_timeout`]
+/// exposes, and verifies the timeout-arm metric increment lands in the
+/// `initial_failed` bucket.
+///
+/// The production [`kaspa_connectionmanager::TokioHostnameResolver`]
+/// only emits this variant under a real wall-clock timeout (`~5 s` per
+/// resolve) which is unsuitable for fast-CI test loops -- the
+/// `set_timeout` synthetic outcome path lets the test exercise the same
+/// `register-with-failed-resolve` shape without sleeping for the full
+/// real timeout.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn kaspad_addpeer_hostname_resolve_timeout_metric() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    use kaspa_connectionmanager::test_support::FakeHostnameResolver;
+    use kaspa_consensus_core::network::{NetworkId, NetworkType};
+    use kaspa_utils::networking::PeerEndpoint;
+
+    let host = "timeout.kas947.invalid";
+    let endpoint = PeerEndpoint::from_str(host).expect("parse hostname endpoint");
+    let resolver = Arc::new(FakeHostnameResolver::new());
+    let devnet_p2p_port = NetworkId::new(NetworkType::Devnet).default_p2p_port();
+    resolver.set_timeout(host, devnet_p2p_port);
+
+    let refresh_interval_sec = 2u64;
+    let args = Args {
+        devnet: true,
+        disable_upnp: true,
+        add_peers: vec![endpoint],
+        hostname_refresh_interval_sec: refresh_interval_sec,
+        ..Default::default()
+    };
+    let overrides = DaemonOverrides { hostname_resolver: Some(resolver.clone()) };
+    let mut kaspad = Daemon::new_random_with_args_and_overrides(args, overrides, 10);
+    // start() registers the timeout-resolving hostname endpoint. The
+    // tolerate-unresolvable design returns a working RPC client even
+    // though the resolver fires `PeerEndpointResolveError::Timeout`.
+    let rpc_client = kaspad.start().await;
+
+    // Liveness probe: a real timeout from the resolver is observable
+    // only via metrics, never as a startup abort.
+    assert!(
+        rpc_client.handle_message_id(),
+        "RPC client did not collect server features: kaspad must keep running across a Timeout-arm resolve",
+    );
+
+    // Initial registration counts toward the `initial` trigger bucket;
+    // any subsequent retry under the `InitialRetry` cadence anchor
+    // counts toward `initial_retry` instead. Asserting against
+    // `initial_failed` ties the test to the Timeout-arm at registration
+    // exclusively, independent of how many cadence ticks elapse.
+    let snapshot =
+        kaspad.hostname_metrics_snapshot().await.expect("connection manager should be wired into the flow context after start()");
+    assert!(
+        snapshot.resolutions_total.initial_failed >= 1,
+        "expected initial_failed >= 1 after registering a timeout-only hostname; snapshot = {snapshot:?}; resolver call_count = {}",
+        resolver.call_count(),
+    );
+    assert_eq!(
+        snapshot.resolutions_total.initial_ok, 0,
+        "no successful resolution expected on the Timeout-arm; snapshot = {snapshot:?}",
+    );
+
+    // Hold the observation window long enough for at least one
+    // `InitialRetry` cadence tick after registration. The retry must
+    // also deterministically produce a Timeout (resolver entry stays
+    // installed), so `initial_retry_failed` is also expected to reach
+    // 1. This second assertion ties the test to the cross-cadence
+    // shape, not just the registration moment.
+    tokio::time::sleep(Duration::from_secs(2 * refresh_interval_sec + 1)).await;
+    let snapshot = kaspad
+        .hostname_metrics_snapshot()
+        .await
+        .expect("connection manager should be wired into the flow context after observation window");
+    assert!(
+        snapshot.resolutions_total.initial_retry_failed >= 1,
+        "expected initial_retry_failed >= 1 after at least one cadence tick on a Timeout-only hostname; snapshot = {snapshot:?}; resolver call_count = {}",
+        resolver.call_count(),
+    );
+
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
+/// `--addpeer=<host> --hostname-refresh-interval=2` produces at least two
+/// `peer_hostname_resolutions_total{trigger="periodic"}` increments inside
+/// a five-second observation window. The fake resolver pins `<host>` to a
+/// loopback socket address so no real DNS is consulted, and the metric
+/// counter is read directly off the running daemon's
+/// [`kaspa_connectionmanager::ConnectionManager`] via the integration
+/// harness's [`Daemon::hostname_metrics_snapshot`] hook.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn kaspad_periodic_refresh_observed() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    use kaspa_connectionmanager::test_support::FakeHostnameResolver;
+    use kaspa_consensus_core::network::{NetworkId, NetworkType};
+    use kaspa_utils::networking::PeerEndpoint;
+    use std::net::SocketAddr;
+
+    let host = "fakehost.kas947.invalid";
+    let endpoint = PeerEndpoint::from_str(host).expect("parse hostname endpoint");
+    let resolver = Arc::new(FakeHostnameResolver::new());
+    // The connection manager calls the resolver with the active network's
+    // default p2p port when the `add_peers` endpoint omits an explicit
+    // port. Derive the port from the `kaspa-consensus-core` `NetworkId`
+    // API so a future consensus-side port change cannot silently regress
+    // the resolver mapping to a stale literal.
+    let devnet_p2p_port = NetworkId::new(NetworkType::Devnet).default_p2p_port();
+    let stub_addr: SocketAddr = "127.0.0.1:42101".parse().unwrap();
+    resolver.set(host, devnet_p2p_port, vec![stub_addr]);
+
+    let args = Args {
+        devnet: true,
+        disable_upnp: true,
+        add_peers: vec![endpoint],
+        // Two-second cadence keeps the observation window short.
+        hostname_refresh_interval_sec: 2,
+        ..Default::default()
+    };
+    let overrides = DaemonOverrides { hostname_resolver: Some(resolver.clone()) };
+    let mut kaspad = Daemon::new_random_with_args_and_overrides(args, overrides, 10);
+    let rpc_client = kaspad.start().await;
+    // Wait long enough for >=2 periodic ticks at the 2 s cadence even under
+    // CI load (the ticker uses MissedTickBehavior::Delay; a single slipped
+    // tick must not flake the assertion). 15 s gives ~7 ticks of headroom.
+    tokio::time::sleep(Duration::from_secs(15)).await;
+    let snapshot =
+        kaspad.hostname_metrics_snapshot().await.expect("connection manager should be wired into the flow context after start()");
+    assert!(
+        snapshot.resolutions_total.periodic_ok >= 2,
+        "expected periodic_ok >= 2 after 15s with 2s cadence; snapshot = {snapshot:?}; resolver call_count = {}",
+        resolver.call_count(),
+    );
+    assert_eq!(snapshot.resolutions_total.initial_ok, 1, "exactly one initial resolution expected; snapshot = {snapshot:?}");
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
+/// A hostname-origin dial against a port that no peer is listening on
+/// fails, marks the hostname entry stale, and triggers a re-resolution at
+/// the next refresh tick. The fake resolver swaps its response between
+/// the failing IP and a different IP after the dial-failure marker fires,
+/// so the dial-failure-triggered re-resolve is observable both via the
+/// metrics counter and via the resolver's invocation count.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn kaspad_dial_failure_re_resolves() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    use kaspa_connectionmanager::test_support::FakeHostnameResolver;
+    use kaspa_consensus_core::network::{NetworkId, NetworkType};
+    use kaspa_utils::networking::PeerEndpoint;
+    use std::net::SocketAddr;
+
+    let host = "rotating.kas947.invalid";
+    let endpoint = PeerEndpoint::from_str(host).unwrap();
+    let resolver = Arc::new(FakeHostnameResolver::new());
+    // Derive the active network's default p2p port from the
+    // `kaspa-consensus-core` `NetworkId` API so the resolver mapping stays
+    // in sync with whatever the connection manager hands it.
+    let devnet_p2p_port = NetworkId::new(NetworkType::Devnet).default_p2p_port();
+    // Initial response: a port that nothing is listening on. The dial
+    // attempt against it will fail (connection refused), which the
+    // connection manager translates into a hostname stale-mark.
+    let ip_a: SocketAddr = "127.0.0.1:1".parse().unwrap();
+    let ip_b: SocketAddr = "127.0.0.1:2".parse().unwrap();
+    resolver.set(host, devnet_p2p_port, vec![ip_a]);
+
+    let args = Args {
+        devnet: true,
+        disable_upnp: true,
+        add_peers: vec![endpoint],
+        // Short cadence so the dial-failure-triggered re-resolve is
+        // observed inside the test deadline. The dial-failure path forces
+        // an immediate re-resolve regardless of cadence; the cadence is
+        // a safety net.
+        hostname_refresh_interval_sec: 2,
+        ..Default::default()
+    };
+    let overrides = DaemonOverrides { hostname_resolver: Some(resolver.clone()) };
+    let mut kaspad = Daemon::new_random_with_args_and_overrides(args, overrides, 10);
+    let rpc_client = kaspad.start().await;
+    // After the daemon settles, swap the resolver to point at a different
+    // socket so the next refresh observes a delta (and the dial-failure
+    // path stamps `dial_failure_ok` when the re-resolve succeeds).
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    resolver.set(host, devnet_p2p_port, vec![ip_b]);
+
+    // Wait long enough to observe at least one dial-failure-triggered
+    // re-resolution event. The dial loop ticks every 30 s by default, so a
+    // 60 s polling budget absorbs the worst case (one full ticker period
+    // landing just past the start of the window) plus CI-load overhead.
+    let mut observed = false;
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        if let Some(snapshot) = kaspad.hostname_metrics_snapshot().await
+            && snapshot.resolutions_total.dial_failure_ok >= 1
+        {
+            observed = true;
+            break;
+        }
+    }
+    let final_snapshot = kaspad.hostname_metrics_snapshot().await.unwrap_or_default();
+    assert!(
+        observed,
+        "expected dial_failure_ok >= 1 within ~60s; final snapshot = {final_snapshot:?}; resolver call_count = {}",
+        resolver.call_count(),
+    );
+
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+}
+
+// =============================================================================
+// DNS-volatility integration tests (silent-on-no-delta + toggle suites)
+// =============================================================================
+
+mod dns_volatility {
+    use super::{Daemon, init_allocator_with_default_settings};
+    use kaspa_connectionmanager::test_support::FakeHostnameResolver;
+    use kaspa_consensus_core::network::{NetworkId, NetworkType};
+    use kaspa_utils::networking::PeerEndpoint;
+    use kaspad_lib::{args::Args, daemon::DaemonOverrides};
+    use std::net::SocketAddr;
+    use std::str::FromStr;
+    use std::sync::{Arc, Mutex as StdMutex};
+    use std::time::Duration;
+
+    /// In-memory `log::Log` shim. Tests install it via
+    /// [`install_capturing_logger`] before [`Daemon::start`] so every line
+    /// the running daemon emits via `info!` / `warn!` lands in a
+    /// `Vec<String>` the test can scan for `addpeer:` substrings. The
+    /// install replaces the standard `kaspa_core::log::try_init_logger`
+    /// console appender; tests in this module MUST NOT also call
+    /// `try_init_logger` (the global logger is single-set; second call
+    /// would race the appender installed here).
+    ///
+    /// Per-test isolation relies on `cargo nextest` running each
+    /// integration test in its own subprocess (the rusty-kaspa CI default
+    /// per `scopes/rust.md`); the `set_boxed_logger` call panics on a
+    /// double-install so a regression to a shared-process runner is
+    /// surfaced loudly rather than silently passing on empty captures.
+    struct CapturingLogger {
+        lines: Arc<StdMutex<Vec<String>>>,
+    }
+
+    impl log::Log for CapturingLogger {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record) {
+            let line = format!("{} {}: {}", record.level(), record.target(), record.args());
+            // Mirror to stderr so a failing assertion still surfaces context
+            // in the nextest captured-output panel.
+            eprintln!("{line}");
+            self.lines.lock().unwrap().push(line);
+        }
+        fn flush(&self) {}
+    }
+
+    fn install_capturing_logger() -> Arc<StdMutex<Vec<String>>> {
+        let lines = Arc::new(StdMutex::new(Vec::new()));
+        let logger = Box::new(CapturingLogger { lines: lines.clone() });
+        log::set_boxed_logger(logger).expect(
+            "global logger must be unset at install time; \
+             cargo nextest runs each integration test in its own process",
+        );
+        log::set_max_level(log::LevelFilter::Info);
+        lines
+    }
+
+    /// Snapshot of the captured log lines since process start. Cloning
+    /// keeps subsequent comparisons lock-free.
+    fn snapshot(lines: &Arc<StdMutex<Vec<String>>>) -> Vec<String> {
+        lines.lock().unwrap().clone()
+    }
+
+    /// Count of `addpeer:` lines (any level) referencing `host`.
+    /// Production logging vocabulary: registration uses `addpeer:`,
+    /// reconciliation deltas use `addpeer:`, dial-loop logs use other
+    /// prefixes (filtered out by the substring test).
+    fn addpeer_count(lines: &[String], host: &str) -> usize {
+        lines.iter().filter(|l| l.contains("addpeer:") && l.contains(host)).count()
+    }
+
+    /// Hold an arm for `cadence_sec` (first-tick window) plus
+    /// `2 * cadence_sec` (intra-arm window), and return
+    /// `(transition_delta, intra_arm_delta)` -- the count of new
+    /// `addpeer:` lines for `host` produced inside each window.
+    /// Caller asserts `transition_delta <= 1` (per-discipline
+    /// one-shot allowed) and `intra_arm_delta == 0` (silence between
+    /// transitions).
+    async fn arm_observe(lines: &Arc<StdMutex<Vec<String>>>, host: &str, cadence_sec: u64) -> (usize, usize) {
+        let pre_first = snapshot(lines);
+        tokio::time::sleep(Duration::from_millis(cadence_sec * 1000 + 500)).await;
+        let post_first = snapshot(lines);
+        tokio::time::sleep(Duration::from_millis(2 * cadence_sec * 1000 + 500)).await;
+        let post_intra = snapshot(lines);
+        let transition_delta = addpeer_count(&post_first, host) - addpeer_count(&pre_first, host);
+        let intra_delta = addpeer_count(&post_intra, host) - addpeer_count(&post_first, host);
+        (transition_delta, intra_delta)
+    }
+
+    /// Single-arm DNS-failure suite. The fake resolver returns `Err` for
+    /// the addpeer host across every periodic refresh tick the daemon
+    /// fires inside the observation window. Locks two contracts:
+    ///
+    /// 1. **Silent-on-no-delta:** the daemon emits exactly one `addpeer:`
+    ///    warn line for the host -- the registration-time one-shot from
+    ///    `add_endpoint_request`. Subsequent failed refreshes do NOT
+    ///    re-emit the warn (the discipline encoded in
+    ///    `ConnectionManager::refresh_hostnames` Phase 4: `info!` only
+    ///    fires on a non-empty delta; `apply_refresh_results` on `Err`
+    ///    bumps `refresh_failures` silently).
+    /// 2. **Periodic ticks actually fired:** the metric counter
+    ///    `peer_hostname_resolutions_total` increments at least 4 times
+    ///    on the failure path during the window, proving the silence is
+    ///    real work-not-skipped. The label is `initial_retry_failed`
+    ///    (NOT `periodic_failed` and NOT `dial_failure_failed`) because
+    ///    the entry was registered with `StaleReason::InitialRetry`
+    ///    (see `add_endpoint_request`) and never resolved successfully;
+    ///    `pending_refreshes` derives the trigger from the per-entry
+    ///    `stale_reason`, so an unresolvable host stays in the
+    ///    `InitialRetry` bucket until DNS recovers.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn kaspad_unresolvable_periodic_no_log_spam() {
+        init_allocator_with_default_settings();
+        let lines = install_capturing_logger();
+
+        let host = "no-spam.kas947.invalid";
+        let endpoint = PeerEndpoint::from_str(host).expect("parse hostname endpoint");
+        let resolver = Arc::new(FakeHostnameResolver::new());
+        let devnet_p2p_port = NetworkId::new(NetworkType::Devnet).default_p2p_port();
+        resolver.set_err(host, devnet_p2p_port, "fake resolver: no-spam.kas947.invalid never resolves");
+
+        let refresh_interval_sec = 1u64;
+        let args = Args {
+            devnet: true,
+            disable_upnp: true,
+            add_peers: vec![endpoint],
+            hostname_refresh_interval_sec: refresh_interval_sec,
+            ..Default::default()
+        };
+        let overrides = DaemonOverrides { hostname_resolver: Some(resolver.clone()) };
+        let mut kaspad = Daemon::new_random_with_args_and_overrides(args, overrides, 10);
+        let rpc_client = kaspad.start().await;
+
+        // Observation window: cadence 1 s, sleep 6 s. The ticker skips
+        // its immediate-fire tick, so the first periodic tick lands at
+        // ~ t=1 s and at least 5 ticks fire by t=6 s. CI-jitter headroom
+        // keeps the >= 4 metric assertion comfortable.
+        tokio::time::sleep(Duration::from_secs(6)).await;
+
+        let snap = snapshot(&lines);
+        let metrics =
+            kaspad.hostname_metrics_snapshot().await.expect("connection manager should be wired into the flow context after start()");
+
+        let warn_lines: Vec<&String> =
+            snap.iter().filter(|l| l.starts_with("WARN") && l.contains("addpeer:") && l.contains(host)).collect();
+        assert_eq!(
+            warn_lines.len(),
+            1,
+            "expected exactly one addpeer warn line for {host} (the registration one-shot); got {}: {warn_lines:?}",
+            warn_lines.len(),
+        );
+        let info_lines: Vec<&String> =
+            snap.iter().filter(|l| l.starts_with("INFO") && l.contains("addpeer:") && l.contains(host)).collect();
+        assert!(info_lines.is_empty(), "expected zero addpeer info lines for {host} on the unresolvable path; got: {info_lines:?}",);
+
+        // Cross-check: the periodic refresh task DID run (>= 4 failure
+        // increments inside the 6 s window). The discipline labels these
+        // increments `initial_retry_failed` -- the initial-failed register
+        // marks the entry stale with `StaleReason::InitialRetry`, and
+        // `pending_refreshes` derives the per-entry trigger from
+        // `stale_reason` so an entry that has never resolved successfully
+        // stays in the InitialRetry bucket until DNS recovers.
+        assert!(
+            metrics.resolutions_total.initial_failed >= 1,
+            "expected initial_failed >= 1 after registering an unresolvable hostname; metrics = {metrics:?}; resolver call_count = {}",
+            resolver.call_count(),
+        );
+        assert!(
+            metrics.resolutions_total.initial_retry_failed >= 4,
+            "expected initial_retry_failed >= 4 after 6 s @ 1 s cadence (proves periodic ticks fired); metrics = {metrics:?}; resolver call_count = {}",
+            resolver.call_count(),
+        );
+        assert_eq!(
+            metrics.resolutions_total.dial_failure_failed, 0,
+            "dial_failure_failed must remain 0 for a never-resolved host (the dial loop never flagged this entry); metrics = {metrics:?}",
+        );
+        // The resolver was hit at least: 1 initial + 4 ticks = 5 calls.
+        assert!(
+            resolver.call_count() >= 5,
+            "expected resolver call_count >= 5 (1 initial + >=4 periodic ticks); got {}",
+            resolver.call_count(),
+        );
+
+        // Daemon stayed up across the window.
+        assert!(rpc_client.handle_message_id(), "RPC client lost server liveness during the unresolvable-host observation window",);
+
+        rpc_client.disconnect().await.unwrap();
+        drop(rpc_client);
+        kaspad.shutdown();
+    }
+
+    /// Toggle suite seeded UNRESOLVABLE. Cycles through arms
+    /// `unresolvable -> resolvable -> unresolvable -> resolvable`, each
+    /// arm holding for >= 2 periodic-refresh ticks. Locks the
+    /// intra-arm-silence contract: across the K-1 ticks AFTER the first
+    /// tick of any new arm, the daemon emits zero new `addpeer:` lines.
+    /// The first tick of an arm may emit one transition log line per
+    /// the current discipline (the seeded-unresolvable arm emits the
+    /// initial registration warn; the first-resolvable arm emits a
+    /// `+1 new` reconciliation info line; subsequent transitions are
+    /// silent because `last_resolved` is preserved on `Err` and the
+    /// resolvable arms reuse the same socket address).
+    ///
+    /// Cross-checks the metric interleave (`dial_failure_*` on the
+    /// first transition out of the seeded-stale state, `periodic_*`
+    /// from then on) and the `last_resolved` invariant via
+    /// `HostnameMetricsSnapshot.resolved_addrs`: once a resolvable arm
+    /// installs the socket address, the gauge stays at >= 1 across
+    /// every subsequent unresolvable arm (the failure path never
+    /// clears the registry).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn kaspad_unresolvable_to_resolvable_toggle() {
+        init_allocator_with_default_settings();
+        let lines = install_capturing_logger();
+
+        let host = "toggle-u2r.kas947.invalid";
+        let endpoint = PeerEndpoint::from_str(host).expect("parse hostname endpoint");
+        let resolver = Arc::new(FakeHostnameResolver::new());
+        let devnet_p2p_port = NetworkId::new(NetworkType::Devnet).default_p2p_port();
+        let stub: SocketAddr = "127.0.0.1:42201".parse().unwrap();
+        // Seed: unresolvable.
+        resolver.set_err(host, devnet_p2p_port, "fake resolver: toggle-u2r.kas947.invalid (initial unresolvable)");
+
+        let refresh_interval_sec = 1u64;
+        let args = Args {
+            devnet: true,
+            disable_upnp: true,
+            add_peers: vec![endpoint],
+            hostname_refresh_interval_sec: refresh_interval_sec,
+            ..Default::default()
+        };
+        let overrides = DaemonOverrides { hostname_resolver: Some(resolver.clone()) };
+        let mut kaspad = Daemon::new_random_with_args_and_overrides(args, overrides, 10);
+        let rpc_client = kaspad.start().await;
+
+        // Daemon::start() completes the initial registration before
+        // returning. The registration discipline for the unresolvable
+        // seed is exactly 1 warn line ("addpeer: ...; queued for
+        // periodic retry"); lock that here, separately from the
+        // per-arm windows below which only cover post-registration
+        // ticks.
+        let after_register = snapshot(&lines);
+        let warn_after_register =
+            after_register.iter().filter(|l| l.starts_with("WARN") && l.contains("addpeer:") && l.contains(host)).count();
+        assert_eq!(
+            warn_after_register, 1,
+            "registration discipline (unresolvable seed): exactly 1 addpeer warn line; got {warn_after_register}; snapshot = {after_register:?}",
+        );
+
+        // Arm 1: seeded unresolvable, ticks all run after registration.
+        // Failure-path ticks are silent.
+        let (arm1_transition, arm1_intra) = arm_observe(&lines, host, refresh_interval_sec).await;
+        assert_eq!(
+            arm1_transition, 0,
+            "arm 1 (post-register, unresolvable) tick window must be silent (failure path doesn't log); got {arm1_transition}",
+        );
+        assert_eq!(arm1_intra, 0, "arm 1 (unresolvable) intra-arm addpeer lines must be zero; got {arm1_intra}");
+
+        // Switch to resolvable. Arm 2: first tick is labelled
+        // InitialRetry (the registration set `stale_reason =
+        // InitialRetry`; the entry has never resolved successfully).
+        // The first successful resolve produces the +1-new delta info
+        // line, clears `stale_reason`, and stamps `last_refresh`.
+        // Subsequent ticks are silent (same socket address, empty
+        // delta) and labelled Periodic.
+        resolver.set(host, devnet_p2p_port, vec![stub]);
+        let (arm2_transition, arm2_intra) = arm_observe(&lines, host, refresh_interval_sec).await;
+        assert_eq!(
+            arm2_transition, 1,
+            "arm 2 (unresolvable -> resolvable) discipline produces exactly 1 transition addpeer line (+1 new reconciliation info); got {arm2_transition}",
+        );
+        assert_eq!(arm2_intra, 0, "arm 2 (resolvable) intra-arm addpeer lines must be zero; got {arm2_intra}");
+
+        // Resolvable arm planted the socket: the registry gauge is now
+        // >= 1; the invariant is that the failure path below preserves
+        // it (entries are removed only via explicit mark_stale, never
+        // by failure paths).
+        let after_arm2 = kaspad.hostname_metrics_snapshot().await.expect("snapshot after resolvable arm");
+        assert!(
+            after_arm2.resolved_addrs >= 1,
+            "after resolvable arm 2: resolved_addrs gauge must be >= 1; got {}",
+            after_arm2.resolved_addrs,
+        );
+
+        // Switch back to unresolvable. Arm 3: ticks labelled Periodic
+        // (last_refresh is now Some(...) from arm 2's success). Failure
+        // path leaves last_resolved untouched -> gauge stays >= 1 and
+        // no new log lines fire.
+        resolver.set_err(host, devnet_p2p_port, "fake resolver: toggle-u2r.kas947.invalid (toggle to unresolvable)");
+        let (arm3_transition, arm3_intra) = arm_observe(&lines, host, refresh_interval_sec).await;
+        assert_eq!(
+            arm3_transition, 0,
+            "arm 3 (resolvable -> unresolvable) discipline produces zero transition addpeer lines (failure path is silent); got {arm3_transition}",
+        );
+        assert_eq!(arm3_intra, 0, "arm 3 (unresolvable) intra-arm addpeer lines must be zero; got {arm3_intra}");
+        let after_arm3 = kaspad.hostname_metrics_snapshot().await.expect("snapshot after unresolvable arm");
+        assert_eq!(
+            after_arm3.resolved_addrs, after_arm2.resolved_addrs,
+            "last_resolved invariant broken: failure path cleared the registry across arm 3 (was {} now {})",
+            after_arm2.resolved_addrs, after_arm3.resolved_addrs,
+        );
+
+        // Switch to resolvable with the SAME socket. Arm 4: ticks
+        // resolve OK; delta is empty (last_resolved unchanged); no log
+        // line at all.
+        resolver.set(host, devnet_p2p_port, vec![stub]);
+        let (arm4_transition, arm4_intra) = arm_observe(&lines, host, refresh_interval_sec).await;
+        assert_eq!(
+            arm4_transition, 0,
+            "arm 4 (resolvable, same IP) transition addpeer lines must be zero (delta empty); got {arm4_transition}",
+        );
+        assert_eq!(arm4_intra, 0, "arm 4 (resolvable) intra-arm addpeer lines must be zero; got {arm4_intra}");
+
+        // Final metric interleave check: every counter we expected to
+        // increment did, and the unresolvable seed bumps the
+        // `initial_retry_*` buckets while the toggled arms move into
+        // `periodic_*` once the entry has resolved successfully at
+        // least once and `stale_reason` has been cleared.
+        let final_metrics = kaspad.hostname_metrics_snapshot().await.expect("final snapshot");
+        assert!(final_metrics.resolutions_total.initial_failed >= 1, "initial register failed at least once: {final_metrics:?}");
+        assert!(
+            final_metrics.resolutions_total.initial_retry_failed >= 1,
+            "arm 1 (post-register, unresolvable) ticks must increment initial_retry_failed (entry never resolved yet): {final_metrics:?}",
+        );
+        assert!(
+            final_metrics.resolutions_total.initial_retry_ok >= 1,
+            "arm 2 first tick must increment initial_retry_ok (the entry has not resolved successfully yet at that point): {final_metrics:?}",
+        );
+        assert!(
+            final_metrics.resolutions_total.periodic_failed >= 1,
+            "arm 3 unresolvable ticks must increment periodic_failed (last_refresh advanced by arm 2): {final_metrics:?}",
+        );
+        assert!(
+            final_metrics.resolutions_total.periodic_ok >= 1,
+            "arm 4 resolvable ticks must increment periodic_ok: {final_metrics:?}",
+        );
+        assert_eq!(
+            final_metrics.resolutions_total.dial_failure_failed, 0,
+            "dial_failure_* buckets must remain at 0 in this test (no dial-loop interaction triggers DialFailure mark_stale): {final_metrics:?}",
+        );
+
+        assert!(rpc_client.handle_message_id(), "RPC client lost server liveness during the toggle window");
+        rpc_client.disconnect().await.unwrap();
+        drop(rpc_client);
+        kaspad.shutdown();
+    }
+
+    /// Toggle suite seeded RESOLVABLE. Cycles through arms
+    /// `resolvable -> unresolvable -> resolvable -> unresolvable`, each
+    /// arm holding for >= 2 periodic-refresh ticks. Locks the same
+    /// intra-arm-silence contract as the sibling test, exercised from
+    /// the opposite phase: the seeded-resolvable arm produces the
+    /// initial registration info line ("addpeer: resolved <host> ->
+    /// [...]") and every subsequent arm is silent because (a)
+    /// resolvable arms reuse the same socket so deltas are empty, and
+    /// (b) failure arms preserve `last_resolved` unchanged.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn kaspad_resolvable_to_unresolvable_toggle() {
+        init_allocator_with_default_settings();
+        let lines = install_capturing_logger();
+
+        let host = "toggle-r2u.kas947.invalid";
+        let endpoint = PeerEndpoint::from_str(host).expect("parse hostname endpoint");
+        let resolver = Arc::new(FakeHostnameResolver::new());
+        let devnet_p2p_port = NetworkId::new(NetworkType::Devnet).default_p2p_port();
+        let stub: SocketAddr = "127.0.0.1:42301".parse().unwrap();
+        // Seed: resolvable.
+        resolver.set(host, devnet_p2p_port, vec![stub]);
+
+        let refresh_interval_sec = 1u64;
+        let args = Args {
+            devnet: true,
+            disable_upnp: true,
+            add_peers: vec![endpoint],
+            hostname_refresh_interval_sec: refresh_interval_sec,
+            ..Default::default()
+        };
+        let overrides = DaemonOverrides { hostname_resolver: Some(resolver.clone()) };
+        let mut kaspad = Daemon::new_random_with_args_and_overrides(args, overrides, 10);
+        let rpc_client = kaspad.start().await;
+
+        // Daemon::start() completes the initial registration before
+        // returning. The registration discipline for the resolvable
+        // seed is exactly 1 info line ("addpeer: resolved ..."); lock
+        // that here, separately from the per-arm windows below which
+        // only cover post-registration ticks.
+        let after_register = snapshot(&lines);
+        let info_after_register =
+            after_register.iter().filter(|l| l.starts_with("INFO") && l.contains("addpeer:") && l.contains(host)).count();
+        assert_eq!(
+            info_after_register, 1,
+            "registration discipline (resolvable seed): exactly 1 addpeer info line; got {info_after_register}; snapshot = {after_register:?}",
+        );
+
+        // Arm 1: seeded resolvable, ticks all run after registration.
+        // trigger=Periodic, same IP -> delta empty -> silent.
+        let (arm1_transition, arm1_intra) = arm_observe(&lines, host, refresh_interval_sec).await;
+        assert_eq!(
+            arm1_transition, 0,
+            "arm 1 (post-register, resolvable, same IP) tick window must be silent (delta empty); got {arm1_transition}",
+        );
+        assert_eq!(arm1_intra, 0, "arm 1 (resolvable) intra-arm addpeer lines must be zero; got {arm1_intra}");
+
+        let after_arm1 = kaspad.hostname_metrics_snapshot().await.expect("snapshot after resolvable arm");
+        assert!(
+            after_arm1.resolved_addrs >= 1,
+            "after resolvable arm 1: resolved_addrs gauge must be >= 1; got {}",
+            after_arm1.resolved_addrs,
+        );
+
+        // Switch to unresolvable. Arm 2: ticks Periodic_failed, silent,
+        // last_resolved preserved.
+        resolver.set_err(host, devnet_p2p_port, "fake resolver: toggle-r2u.kas947.invalid (toggle to unresolvable)");
+        let (arm2_transition, arm2_intra) = arm_observe(&lines, host, refresh_interval_sec).await;
+        assert_eq!(arm2_transition, 0, "arm 2 (unresolvable) transition addpeer lines must be zero; got {arm2_transition}");
+        assert_eq!(arm2_intra, 0, "arm 2 (unresolvable) intra-arm addpeer lines must be zero; got {arm2_intra}");
+        let after_arm2 = kaspad.hostname_metrics_snapshot().await.expect("snapshot after unresolvable arm");
+        assert_eq!(
+            after_arm2.resolved_addrs, after_arm1.resolved_addrs,
+            "last_resolved invariant broken: failure path cleared the registry across arm 2 (was {} now {})",
+            after_arm1.resolved_addrs, after_arm2.resolved_addrs,
+        );
+
+        // Switch back to resolvable with the SAME socket. Arm 3: ticks
+        // Periodic_ok, delta empty, silent.
+        resolver.set(host, devnet_p2p_port, vec![stub]);
+        let (arm3_transition, arm3_intra) = arm_observe(&lines, host, refresh_interval_sec).await;
+        assert_eq!(arm3_transition, 0, "arm 3 (resolvable, same IP) transition addpeer lines must be zero; got {arm3_transition}");
+        assert_eq!(arm3_intra, 0, "arm 3 (resolvable) intra-arm addpeer lines must be zero; got {arm3_intra}");
+        let after_arm3 = kaspad.hostname_metrics_snapshot().await.expect("snapshot after resolvable arm 3");
+        assert_eq!(
+            after_arm3.resolved_addrs, after_arm2.resolved_addrs,
+            "resolved_addrs unchanged across resolvable arm 3 (same IP): was {} now {}",
+            after_arm2.resolved_addrs, after_arm3.resolved_addrs,
+        );
+
+        // Switch back to unresolvable. Arm 4: ticks Periodic_failed,
+        // silent, last_resolved preserved.
+        resolver.set_err(host, devnet_p2p_port, "fake resolver: toggle-r2u.kas947.invalid (final unresolvable)");
+        let (arm4_transition, arm4_intra) = arm_observe(&lines, host, refresh_interval_sec).await;
+        assert_eq!(arm4_transition, 0, "arm 4 (unresolvable) transition addpeer lines must be zero; got {arm4_transition}");
+        assert_eq!(arm4_intra, 0, "arm 4 (unresolvable) intra-arm addpeer lines must be zero; got {arm4_intra}");
+        let after_arm4 = kaspad.hostname_metrics_snapshot().await.expect("final snapshot");
+        assert_eq!(
+            after_arm4.resolved_addrs, after_arm3.resolved_addrs,
+            "last_resolved invariant broken: failure path cleared the registry across arm 4 (was {} now {})",
+            after_arm3.resolved_addrs, after_arm4.resolved_addrs,
+        );
+
+        // Final metric interleave: initial registration succeeded, the
+        // failure arms moved Periodic_failed, the resolvable arms moved
+        // Periodic_ok. dial_failure_* should remain at 0 (the entry was
+        // never marked stale -- arm 1 succeeded so last_refresh is
+        // never None inside this test).
+        assert!(after_arm4.resolutions_total.initial_ok >= 1, "initial resolvable register: {after_arm4:?}");
+        assert!(
+            after_arm4.resolutions_total.periodic_failed >= 2,
+            "arms 2+4 unresolvable must increment periodic_failed; metrics = {after_arm4:?}",
+        );
+        assert!(
+            after_arm4.resolutions_total.periodic_ok >= 2,
+            "arms 1+3 resolvable must increment periodic_ok; metrics = {after_arm4:?}",
+        );
+        assert_eq!(
+            after_arm4.resolutions_total.dial_failure_failed, 0,
+            "no dial-failure-triggered re-resolution should fire in this test (no dial loop interaction); got {after_arm4:?}",
+        );
+
+        assert!(rpc_client.handle_message_id(), "RPC client lost server liveness during the toggle window");
+        rpc_client.disconnect().await.unwrap();
+        drop(rpc_client);
+        kaspad.shutdown();
+    }
 }
