@@ -46,7 +46,7 @@ impl TransactionValidator {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
 
-        if tx.mass() > 0 {
+        if tx.storage_mass() > 0 {
             return Err(TxRuleError::CoinbaseNonZeroMassCommitment);
         }
 
@@ -89,8 +89,11 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_signature_scripts(&self, tx: &Transaction) -> TxResult<()> {
-        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > self.max_signature_script_len) {
-            return Err(TxRuleError::TooBigSignatureScript(i, self.max_signature_script_len));
+        // TODO(post-toccata): restore this to the const post-activation limit and remove
+        // check_transaction_signature_scripts_in_header_context.
+        let max_signature_script_len = self.max_signature_script_len.upper_bound();
+        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > max_signature_script_len) {
+            return Err(TxRuleError::TooBigSignatureScript(i, max_signature_script_len));
         }
 
         Ok(())
@@ -178,7 +181,7 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
     // - `[namespace (4 bytes), 0×16]`: user lane. Any first byte is allowed.
     //   Since the 19-suffix case is handled above, at least one of
     //   `bytes[1..4]` is non-zero, so the namespace is never all-zero here.
-    //   Gated behind the covenants HF.
+    //   Gated behind the Toccata HF.
     // - Any other shape: rejected.
     match tx.subnetwork_id.as_bytes() {
         // Native and coinbase (reserved) subnetwork IDs are always allowed
@@ -192,13 +195,13 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
 fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
     if tx.version > 0 {
         for (i, input) in tx.inputs.iter().enumerate() {
-            if let Some(sig_op_count) = input.mass.sig_op_count() {
+            if let Some(sig_op_count) = input.compute_commit.sig_op_count() {
                 return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
             }
         }
     } else {
         for (i, input) in tx.inputs.iter().enumerate() {
-            if let Some(compute_budget) = input.mass.compute_budget() {
+            if let Some(compute_budget) = input.compute_commit.compute_budget() {
                 return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
             }
         }
@@ -219,14 +222,14 @@ mod tests {
         constants::{TX_VERSION, TX_VERSION_TOCCATA},
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
         tx::{
-            ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+            ComputeCommit, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
             scriptvec,
         },
     };
     use kaspa_core::assert_match;
 
     use crate::{
-        params::MAINNET_PARAMS,
+        params::{ForkActivation, MAINNET_PARAMS},
         processes::transaction_validator::{TransactionValidator, errors::TxRuleError, tx_validation_in_header_context::LockTimeArg},
     };
 
@@ -238,7 +241,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -292,7 +295,7 @@ mod tests {
                     0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                 ],
                 sequence: u64::MAX,
-                mass: TxInputMass::SigopCount(0.into()),
+                compute_commit: ComputeCommit::SigopCount(0.into()),
             }],
             vec![
                 TransactionOutput {
@@ -347,8 +350,29 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len + 1];
+        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len().upper_bound() + 1];
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
+
+        let mut forked_params = params.clone();
+        forked_params.toccata_activation = ForkActivation::new(100);
+        let forked_tv = TransactionValidator::new_for_tests(
+            forked_params.max_tx_inputs,
+            forked_params.max_tx_outputs,
+            forked_params.max_signature_script_len(),
+            forked_params.max_script_public_key_len,
+            forked_params.coinbase_payload_script_public_key_max_len,
+            forked_params.coinbase_maturity(),
+            forked_params.ghostdag_k(),
+            Default::default(),
+        );
+        let mut tx = valid_tx.clone();
+        tx.inputs[0].signature_script = vec![0; forked_params.prior_max_signature_script_len + 1];
+        assert_match!(forked_tv.validate_tx_in_isolation(&tx), Ok(()));
+        assert_match!(
+            forked_tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 99),
+            Err(TxRuleError::TooBigSignatureScript(_, _))
+        );
+        assert_match!(forked_tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 100), Ok(()));
 
         let mut tx = valid_tx.clone();
         tx.outputs = (0..params.max_tx_outputs + 1).map(|_| valid_tx.outputs[0].clone()).collect();
@@ -372,12 +396,12 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.version = 1;
-        tx.inputs[0].mass = TxInputMass::SigopCount(1.into());
+        tx.inputs[0].compute_commit = ComputeCommit::SigopCount(1.into());
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::SigopCountInV1(_, _)));
 
         let mut tx = valid_tx.clone();
         tx.version = 0;
-        tx.inputs[0].mass = TxInputMass::ComputeBudget(1.into());
+        tx.inputs[0].compute_commit = ComputeCommit::ComputeBudget(1.into());
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::ComputeBudgetInV0(_, _)));
 
         let mut tx = valid_tx.clone();
@@ -385,7 +409,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_)));
 
         // Test prev version upper bound in header context
-        // TODO (covpp): turn back into pure in-isolation test
+        // TODO(post-toccata): turn back into pure in-isolation test
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;
         assert_match!(tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 0), Err(TxRuleError::UnknownTxVersion(_)));
@@ -409,7 +433,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_slice(&[0u8; 32]), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: TxInputMass::SigopCount(0.into()),
+                compute_commit: ComputeCommit::SigopCount(0.into()),
             };
             let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, scriptvec!(0u8)), covenant: None };
             Transaction::new(version, vec![input], vec![output], 0, subnetwork_id, 0, vec![])

@@ -100,7 +100,6 @@ impl Index<usize> for Stack {
 #[cfg(test)]
 impl From<Vec<StackEntry>> for Stack {
     fn from(inner: Vec<StackEntry>) -> Self {
-        // TODO(covpp-mainnet): should have fork logic
         Self { inner, covenants_enabled: true, pushed_bytes: 0 }
     }
 }
@@ -319,9 +318,10 @@ impl Stack {
         self.pushed_bytes = self.pushed_bytes.checked_add(bytes as u64).expect("stack pushed-bytes accounting should never overflow");
     }
 
+    /// Returns the bytes pushed since the previous call and resets the counter.
     #[inline]
-    pub fn pushed_bytes(&self) -> u64 {
-        self.pushed_bytes
+    pub fn pop_pushed_bytes(&mut self) -> u64 {
+        std::mem::take(&mut self.pushed_bytes)
     }
 
     fn max_element_size(&self) -> usize {

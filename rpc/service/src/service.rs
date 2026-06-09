@@ -66,9 +66,9 @@ use kaspa_rpc_core::{
     model::*,
     notify::connection::ChannelConnection,
 };
+use kaspa_system_info::SystemInfo;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
-use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
@@ -403,12 +403,90 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         request: GetCurrentBlockColorRequest,
     ) -> RpcResult<GetCurrentBlockColorResponse> {
+        // unguarded is safe because there's only one consensus call
         let session = self.consensus_manager.consensus().unguarded_session();
 
-        match session.async_get_current_block_color(request.hash).await {
-            Some(blue) => Ok(GetCurrentBlockColorResponse { blue }),
-            None => Err(RpcError::MergerNotFound(request.hash)),
+        match session.async_get_merged_block_context(request.hash).await {
+            Ok(Some(info)) => Ok(GetCurrentBlockColorResponse { blue: info.is_blue }),
+            Ok(None) | Err(_) => Err(RpcError::MergerNotFound(request.hash)),
         }
+    }
+
+    async fn get_block_reward_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetBlockRewardInfoRequest,
+    ) -> RpcResult<GetBlockRewardInfoResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+        let header: RpcHeader = session.async_get_header(request.hash).await?.as_ref().into();
+
+        let Some(merging_chain_block_info) = session.async_get_merged_block_context(request.hash).await? else {
+            return Ok(GetBlockRewardInfoResponse::new(header, RpcBlockColor::Unknown, None, None, None));
+        };
+
+        let merging_chain_block_hash = merging_chain_block_info.merging_chain_block_hash;
+        let merging_chain_block = session.async_get_block(merging_chain_block_hash).await?;
+        let sink_blue_score = session.async_get_sink_blue_score().await;
+        let confirmation_count = sink_blue_score.saturating_sub(merging_chain_block.header.blue_score);
+
+        if !merging_chain_block_info.is_blue {
+            return Ok(GetBlockRewardInfoResponse::new(
+                header,
+                RpcBlockColor::Red,
+                Some(confirmation_count),
+                Some(merging_chain_block_hash),
+                None,
+            ));
+        }
+
+        let merging_chain_block_ghostdag = session.async_get_ghostdag_data(merging_chain_block_hash).await?;
+        let queried_blue_index =
+            merging_chain_block_ghostdag.mergeset_blues.iter().position(|hash| *hash == request.hash).ok_or_else(|| {
+                RpcError::General(format!(
+                    "blue block {} was not found in merging chain block {} mergeset blues",
+                    request.hash, merging_chain_block_hash
+                ))
+            })?;
+
+        // queried blue's reward is the matching output in the merging block coinbase
+        // index maps to the coinbase output index because blue blocks are never non-daa
+        // see CoinbaseManager::expected_coinbase_transaction
+        let mut reward_amount = merging_chain_block.transactions[COINBASE_TRANSACTION_INDEX]
+            .outputs
+            .get(queried_blue_index)
+            .ok_or_else(|| {
+                RpcError::General(format!(
+                    "missing reward output {} in merging chain block {}",
+                    queried_blue_index, merging_chain_block_hash
+                ))
+            })?
+            .value;
+
+        // The merging chain block of queried block is the first selected-chain descendant that merged the queried block, so
+        // the queried block is on-chain iff it is that block's selected parent
+        if merging_chain_block_ghostdag.selected_parent == request.hash {
+            let queried_block = session.async_get_block(request.hash).await?;
+            let queried_ghostdag = session.async_get_ghostdag_data(request.hash).await?;
+            let queried_coinbase = &queried_block.transactions[COINBASE_TRANSACTION_INDEX];
+
+            // only a chain block has its own red-reward coinbase output, as an extra output
+            // see CoinbaseManager::expected_coinbase_transaction
+            if queried_coinbase.outputs.len() == queried_ghostdag.mergeset_blues.len() + 1 {
+                let own_red_reward_output =
+                    queried_coinbase.outputs.last().ok_or_else(|| RpcError::General("missing own red reward output".to_string()))?;
+                reward_amount = reward_amount
+                    .checked_add(own_red_reward_output.value)
+                    .ok_or_else(|| RpcError::General("total reward amount overflowed u64 while adding own red reward".to_string()))?;
+            }
+        }
+
+        Ok(GetBlockRewardInfoResponse::new(
+            header,
+            RpcBlockColor::Blue,
+            Some(confirmation_count),
+            Some(merging_chain_block_hash),
+            Some(reward_amount),
+        ))
     }
 
     async fn get_block_call(&self, _connection: Option<&DynRpcConnection>, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
@@ -1161,7 +1239,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 node_mass_processed_count: processing_counters
                     .storage_mass_counts
                     .max(processing_counters.compute_mass_counts)
-                    .max(processing_counters.transient_mass_counts), // TODO(pre-covpp): mass must be multidimensional
+                    .max(processing_counters.transient_mass_counts), // TODO: mass should be multidimensional
                 // ---
                 node_database_blocks_count: consensus_stats.block_counts.block_count,
                 node_database_headers_count: consensus_stats.block_counts.header_count,

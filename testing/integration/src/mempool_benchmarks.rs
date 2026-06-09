@@ -4,6 +4,7 @@ use crate::{
         args::ArgsBuilder,
         client_notify::ChannelNotify,
         daemon::{ClientManager, Daemon},
+        fee::FEE_RATE,
         utils::CONTRACT_FACTOR,
     },
     tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
@@ -551,7 +552,7 @@ async fn bench_bbt_latency_stark() {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([0u8; 32]), index: 0 },
             signature_script: stark_signature_script.clone(),
             sequence: 0,
-            mass: ComputeBudget(0).into(),
+            compute_commit: ComputeBudget(0).into(),
         };
 
         let tx = Transaction::new(1, vec![input.clone()], vec![], 0, Default::default(), 0, vec![]);
@@ -630,7 +631,7 @@ fn generate_stark_tx_dag(
     let num_outputs = expand_factor;
     let signature_script = Arc::new(signature_script);
     let mass_calculator = MassCalculator::new_with_consensus_params(params);
-    let mass_cofactors = params.block_mass_limits.cofactors();
+    let mass_cofactors = params.block_mass_limits().after().cofactors();
 
     let mut txs = Vec::with_capacity(target_levels * target_width);
     let mut logged_first_provisional_tx = false;
@@ -670,7 +671,7 @@ fn generate_stark_tx_dag(
                 if !logged_first_provisional_tx {
                     let provisional_tx_size = transaction_estimated_serialized_size(&provisional_tx);
                     let provisional_tx_total_budget: u64 =
-                        provisional_tx.inputs.iter().map(|input| u64::from(input.mass.compute_budget().unwrap())).sum();
+                        provisional_tx.inputs.iter().map(|input| u64::from(input.compute_commit.compute_budget().unwrap())).sum();
                     info!(
                         "First provisional tx: non_contextual=({}), normalized_non_contextual_max={}, size={}, total_budget={}",
                         provisional_tx_non_contextual_masses,
@@ -680,7 +681,7 @@ fn generate_stark_tx_dag(
                     );
                     logged_first_provisional_tx = true;
                 }
-                let fee = provisional_tx_mass_normalized;
+                let fee = FEE_RATE * provisional_tx_mass_normalized;
                 let total_out = total_in.saturating_sub(fee);
                 let outputs = (0..num_outputs)
                     .map(|_| TransactionOutput {

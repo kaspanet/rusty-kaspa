@@ -55,6 +55,7 @@ pub struct TestSeqCommitLaneProof {
     pub current_lane: Option<(Hash, u64)>,
     pub smt_proof: OwnedSmtProof,
     pub blue_score: u64,
+    pub inactivity_shortcut: Hash,
 }
 
 impl TestConsensus {
@@ -219,6 +220,11 @@ impl TestConsensus {
         MutableBlock::from_header(self.build_header_with_parents(hash, parents))
     }
 
+    /// Read the stored SMT block metadata (KIP-21) for a block.
+    pub fn smt_block_metadata(&self, block_hash: Hash) -> crate::model::stores::smt_metadata::SmtBlockMetadata {
+        self.consensus.storage.smt_metadata_store.get(block_hash).unwrap()
+    }
+
     pub fn seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> TestSeqCommitLaneProof {
         let header = self.consensus.headers_store.get_header(block_hash).unwrap();
         let selected_parent = header.direct_parents()[0];
@@ -252,15 +258,19 @@ impl TestConsensus {
             .unwrap();
         let metadata = self.consensus.storage.smt_metadata_store.get(block_hash).unwrap();
 
+        let shortcut_block = metadata.inactivity_shortcut_block();
+        let inactivity_shortcut = self.consensus.virtual_processor.inactivity_shortcut(shortcut_block);
+
         TestSeqCommitLaneProof {
             lanes_root,
-            payload_and_ctx_digest: metadata.payload_and_ctx_digest,
+            payload_and_ctx_digest: metadata.payload_and_ctx_digest(),
             parent_seq_commit: parent_header.accepted_id_merkle_root,
             expected_seq_commit: header.accepted_id_merkle_root,
             parent_lane_tip,
             current_lane,
             smt_proof,
             blue_score: header.blue_score,
+            inactivity_shortcut,
         }
     }
 

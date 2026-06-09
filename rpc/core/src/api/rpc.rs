@@ -482,6 +482,15 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetCurrentBlockColorRequest,
     ) -> RpcResult<GetCurrentBlockColorResponse>;
 
+    async fn get_block_reward_info(&self, hash: RpcHash) -> RpcResult<GetBlockRewardInfoResponse> {
+        self.get_block_reward_info_call(None, GetBlockRewardInfoRequest::new(hash)).await
+    }
+    async fn get_block_reward_info_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetBlockRewardInfoRequest,
+    ) -> RpcResult<GetBlockRewardInfoResponse>;
+
     async fn get_virtual_chain_from_block_v2(
         &self,
         start_hash: RpcHash,

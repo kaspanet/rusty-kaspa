@@ -65,6 +65,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_mass(self: &Arc<Self>, block: &Block) -> BlockProcessResult<Mass> {
+        let block_mass_limits = self.block_mass_limits.get(block.header.daa_score);
         let mut total_compute_mass: u64 = 0;
         let mut total_transient_mass: u64 = 0;
         let mut total_storage_mass: u64 = 0;
@@ -76,7 +77,7 @@ impl BlockBodyProcessor {
             // Read the storage mass commitment. This value cannot be computed here w/o UTXO context
             // so we use the commitment. Later on, when the transaction is verified in context, we use
             // the context to calculate the expected storage mass and verify it matches this commitment
-            let storage_mass_commitment = tx.mass();
+            let storage_mass_commitment = tx.storage_mass();
 
             // Sum over the various masses separately
             total_compute_mass = total_compute_mass.saturating_add(compute_mass);
@@ -84,14 +85,14 @@ impl BlockBodyProcessor {
             total_storage_mass = total_storage_mass.saturating_add(storage_mass_commitment);
 
             // Verify each dimension against its own limit
-            if total_compute_mass > self.block_mass_limits.compute {
-                return Err(RuleError::ExceedsComputeMassLimit(total_compute_mass, self.block_mass_limits.compute));
+            if total_compute_mass > block_mass_limits.compute {
+                return Err(RuleError::ExceedsComputeMassLimit(total_compute_mass, block_mass_limits.compute));
             }
-            if total_transient_mass > self.block_mass_limits.transient {
-                return Err(RuleError::ExceedsTransientMassLimit(total_transient_mass, self.block_mass_limits.transient));
+            if total_transient_mass > block_mass_limits.transient {
+                return Err(RuleError::ExceedsTransientMassLimit(total_transient_mass, block_mass_limits.transient));
             }
-            if total_storage_mass > self.block_mass_limits.storage {
-                return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, self.block_mass_limits.storage));
+            if total_storage_mass > block_mass_limits.storage {
+                return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, block_mass_limits.storage));
             }
 
             // Pre-Toccata valid blocks contain only native non-coinbase txs with zero gas,
@@ -176,7 +177,7 @@ mod tests {
         merkle::calc_hash_merkle_root,
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
         tx::{
-            ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass,
+            ComputeCommit, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
             scriptvec,
         },
     };
@@ -192,7 +193,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_slice(&[index; 32]), index: 0 },
             signature_script: vec![],
             sequence: u64::MAX,
-            mass: TxInputMass::ComputeBudget(0.into()),
+            compute_commit: ComputeCommit::ComputeBudget(0.into()),
         };
         let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, scriptvec!(0u8)), covenant: None };
         Transaction::new(TX_VERSION_TOCCATA, vec![input], vec![output], 0, lane, gas, vec![])
@@ -266,7 +267,7 @@ mod tests {
                             },
                             signature_script: vec![],
                             sequence: u64::MAX,
-                            mass: TxInputMass::SigopCount(0.into()),
+                            compute_commit: ComputeCommit::SigopCount(0.into()),
                         },
                         TransactionInput {
                             previous_outpoint: TransactionOutpoint {
@@ -278,7 +279,7 @@ mod tests {
                             },
                             signature_script: vec![],
                             sequence: u64::MAX,
-                            mass: TxInputMass::SigopCount(0.into()),
+                            compute_commit: ComputeCommit::SigopCount(0.into()),
                         },
                     ],
                     vec![],
@@ -311,7 +312,7 @@ mod tests {
                             0x25, 0xf8, 0x7c, 0x16, 0x1b, 0xc6, 0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        mass: TxInputMass::SigopCount(0.into()),
+                        compute_commit: ComputeCommit::SigopCount(0.into()),
                     }],
                     vec![
                         TransactionOutput {
@@ -373,7 +374,7 @@ mod tests {
                             0xa4, 0x63, 0x1e, 0xe3, 0x95, 0x60, 0x63, 0x9d, 0xb4, 0x62, 0xe9, 0xcb, 0x85, 0x0f, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        mass: TxInputMass::SigopCount(0.into()),
+                        compute_commit: ComputeCommit::SigopCount(0.into()),
                     }],
                     vec![
                         TransactionOutput {
@@ -436,7 +437,7 @@ mod tests {
                             0xaa, 0xd3, 0xe0, 0x63, 0xce, 0x6a, 0xf4, 0xcf, 0xaa, 0xea, 0x4e, 0xa1, 0x4f, 0xbb, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        mass: TxInputMass::SigopCount(0.into()),
+                        compute_commit: ComputeCommit::SigopCount(0.into()),
                     }],
                     vec![TransactionOutput {
                         value: 0xf4240,
@@ -470,8 +471,8 @@ mod tests {
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;
-        txs[1].inputs[0].mass = TxInputMass::SigopCount(255.into());
-        txs[1].inputs[1].mass = TxInputMass::SigopCount(255.into());
+        txs[1].inputs[0].compute_commit = ComputeCommit::SigopCount(255.into());
+        txs[1].inputs[1].compute_commit = ComputeCommit::SigopCount(255.into());
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsComputeMassLimit(_, _)));
 

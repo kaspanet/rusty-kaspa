@@ -109,8 +109,8 @@ impl SerializableTransactionInput {
             // signature_script: (!input.signature_script.is_empty()).then_some(input.signature_script.clone()),
             signature_script: input.signature_script.clone(),
             sequence: input.sequence,
-            sig_op_count: input.mass.sig_op_count().unwrap_or(0),
-            compute_budget: input.mass.compute_budget().unwrap_or(0),
+            sig_op_count: input.compute_commit.sig_op_count().unwrap_or(0),
+            compute_budget: input.compute_commit.compute_budget().unwrap_or(0),
             utxo: utxo.clone(),
         }
     }
@@ -149,16 +149,16 @@ impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
             previous_outpoint: cctx::TransactionOutpoint { transaction_id: input.transaction_id, index: input.index },
             signature_script: input.signature_script,
             sequence: input.sequence,
-            mass: if cctx::TxInputMass::version_expects_compute_budget_field(value.version) {
+            compute_commit: if cctx::ComputeCommit::version_expects_compute_budget_field(value.version) {
                 if input.sig_op_count != 0 {
                     return Err(invalid_input_mass_variant("sig_op_count", value.version));
                 }
-                cctx::TxInputMass::ComputeBudget(input.compute_budget.into())
+                cctx::ComputeCommit::ComputeBudget(input.compute_budget.into())
             } else {
                 if input.compute_budget != 0 {
                     return Err(invalid_input_mass_variant("compute_budget", value.version));
                 }
-                cctx::TxInputMass::SigopCount(input.sig_op_count.into())
+                cctx::ComputeCommit::SigopCount(input.sig_op_count.into())
             },
         })
     }
@@ -292,7 +292,7 @@ pub struct SerializableTransaction {
     pub lock_time: u64,
     pub gas: u64,
     #[serde(default)]
-    pub mass: u64,
+    pub storage_mass: u64,
     pub subnetwork_id: SubnetworkId,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
@@ -335,7 +335,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time,
             subnetwork_id: transaction.subnetwork_id,
             gas: transaction.gas,
-            mass: transaction.mass(),
+            storage_mass: transaction.storage_mass(),
             payload: transaction.payload.clone(),
             id: transaction.id(),
         })
@@ -355,7 +355,7 @@ impl SerializableTransaction {
             subnetwork_id: inner.subnetwork_id,
             gas: inner.gas,
             payload: inner.payload.clone(),
-            mass: inner.mass,
+            storage_mass: inner.storage_mass,
             id: inner.id,
         })
     }
@@ -383,7 +383,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time,
             subnetwork_id: transaction.subnetwork_id,
             gas: transaction.gas,
-            mass: transaction.mass(),
+            storage_mass: transaction.storage_mass(),
             payload: transaction.payload.clone(),
         })
     }
@@ -411,7 +411,7 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
             serializable.gas,
             serializable.payload,
         )
-        .with_mass(serializable.mass);
+        .with_storage_mass(serializable.storage_mass);
 
         Ok(Self::with_entries(tx, entries))
     }
@@ -424,6 +424,6 @@ impl TryFrom<SerializableTransaction> for Transaction {
         let inputs: Vec<TransactionInput> = tx.inputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
         let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
 
-        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time, tx.subnetwork_id, tx.gas, tx.payload, tx.mass)
+        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time, tx.subnetwork_id, tx.gas, tx.payload, tx.storage_mass)
     }
 }

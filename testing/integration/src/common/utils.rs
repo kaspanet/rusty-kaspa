@@ -1,4 +1,4 @@
-use super::client::ListeningClient;
+use super::{client::ListeningClient, fee};
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
@@ -33,15 +33,6 @@ use tokio::time::timeout;
 
 pub(crate) const EXPAND_FACTOR: u64 = 2;
 pub(crate) const CONTRACT_FACTOR: u64 = 2;
-
-const fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
-    200 + 34 * num_outputs + 1000 * (num_inputs as u64)
-}
-
-pub const fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
-    const FEE_RATE: u64 = 10;
-    FEE_RATE * estimated_mass(num_inputs, num_outputs)
-}
 
 /// Builds a TX DAG based on the initial UTXO set and on constant params
 pub fn generate_tx_dag(
@@ -79,7 +70,7 @@ pub fn generate_tx_dag(
             .into_par_iter()
             .map(|(inputs, entries)| {
                 let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
-                let total_out = total_in - required_fee(num_inputs, num_outputs);
+                let total_out = total_in - fee::calc_for_plain_standard_tx(num_inputs, num_outputs);
                 let outputs = (0..num_outputs)
                     .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
                     .collect_vec();
@@ -162,7 +153,7 @@ pub fn generate_tx_dag_with_lanes(
             .map(|(j, (inputs, entries))| {
                 let subnetwork = level_lane_assignments[j];
                 let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
-                let total_out = total_in - required_fee(num_inputs, num_outputs);
+                let total_out = total_in - fee::calc_for_plain_standard_tx(num_inputs, num_outputs);
                 let outputs = (0..num_outputs)
                     .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), covenant: None })
                     .collect_vec();
@@ -232,11 +223,16 @@ pub fn generate_tx(
     address: &Address,
 ) -> Transaction {
     let total_in = utxos.iter().map(|x| x.1.amount).sum::<u64>();
-    assert!(amount <= total_in - required_fee(utxos.len(), num_outputs));
+    assert!(amount <= total_in - fee::calc_for_plain_standard_tx(utxos.len(), num_outputs));
     let script_public_key = pay_to_address_script(address);
     let inputs = utxos
         .iter()
-        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, mass: SigopCount(1).into() })
+        .map(|(op, _)| TransactionInput {
+            previous_outpoint: *op,
+            signature_script: vec![],
+            sequence: 0,
+            compute_commit: SigopCount(1).into(),
+        })
         .collect_vec();
 
     let outputs = (0..num_outputs)
@@ -273,8 +269,11 @@ pub fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_
 }
 
 pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[ListeningClient]) {
-    // Discard all unreceived block added notifications in each listening client
-    listening_clients.iter().for_each(|x| x.block_added_listener().unwrap().drain());
+    // Discard notifications from previous blocks so this helper waits only for the block it submits.
+    listening_clients.iter().for_each(|x| {
+        x.block_added_listener().unwrap().drain();
+        x.virtual_daa_score_changed_listener().unwrap().drain();
+    });
 
     // Mine a block
     let template = submitting_client.get_block_template(pay_address.clone(), vec![]).await.unwrap();

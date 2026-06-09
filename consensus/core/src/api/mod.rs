@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     BlockHashSet, BlueWorkType, ChainPath,
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockstatus::BlockStatus,
@@ -69,8 +69,11 @@ pub struct ImportLane {
 
 pub type ImportLaneBatchIterator<'a> = &'a mut (dyn Iterator<Item = Vec<ImportLane>> + Send);
 
-/// SMT metadata for IBD sync — verified against the pruning point header.
-#[derive(Clone, Debug)]
+/// SMT metadata for IBD sync, verified against the pruning point header.
+///
+/// Wire: `lanes_root || payload_and_ctx_digest || parent_seq_commit` (96 bytes).
+/// `inactivity_shortcut_block` is derived by the receiver from chain headers; not transmitted.
+#[derive(Clone, Copy, Debug)]
 pub struct SmtExportMetadata {
     pub lanes_root: Hash,
     pub payload_and_ctx_digest: Hash,
@@ -176,7 +179,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+    fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         unimplemented!()
     }
 
@@ -299,14 +302,15 @@ pub trait ConsensusApi: Send + Sync {
     /// preimages, verifies root matches `lanes_root`, and flushes to DB.
     ///
     /// The iterator yields lane chunks already sized by the wire-level chunker
-    /// — each element is up to `SMT_CHUNK_SIZE` lanes. The importer does not
+    /// each element is up to `SMT_CHUNK_SIZE` lanes. The importer does not
     /// re-batch.
+    ///
+    /// `inactivity_shortcut_block` is resolved by the caller during metadata verification.
     fn import_pruning_point_smt(
         &self,
         _new_pruning_point: Hash,
-        _lanes_root: Hash,
-        _payload_and_ctx_digest: Hash,
-        _expected_lane_count: u64,
+        _metadata: SmtExportMetadata,
+        _inactivity_shortcut_block: Hash,
         _lane_batches: ImportLaneBatchIterator<'_>,
     ) -> PruningImportResult<()> {
         unimplemented!()
@@ -314,6 +318,15 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Compute SMT metadata for the pruning point (for P2P streaming).
     fn get_pruning_point_smt_metadata(&self, _expected_pruning_point: Hash) -> ConsensusResult<SmtExportMetadata> {
+        unimplemented!()
+    }
+
+    /// Resolve the `inactivity_shortcut_block` (the block hash anchoring the
+    /// `activity_root` shortcut) from the POV of `pov_block`. Uses headers +
+    /// reachability only; safe to call at the IBD PP boundary before the SMT
+    /// is imported. Callers resolve to the seq_commit Hash themselves (the
+    /// block-to-seq_commit fold is just a header read + activation check).
+    fn inactivity_shortcut_block_for_pov(&self, _pov_block: Hash) -> ConsensusResult<Hash> {
         unimplemented!()
     }
 

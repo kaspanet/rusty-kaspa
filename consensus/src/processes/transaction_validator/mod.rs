@@ -9,19 +9,23 @@ use kaspa_txscript::{
     caches::{Cache, TxScriptCacheCounters},
 };
 
-use kaspa_consensus_core::{KType, config::params::ForkActivation, mass::MassCalculator};
+use kaspa_consensus_core::{
+    KType,
+    config::params::{ForkActivation, ForkedParam},
+    mass::MassCalculator,
+};
 
 #[derive(Clone)]
 pub struct TransactionValidator {
     max_tx_inputs: usize,
     max_tx_outputs: usize,
-    max_signature_script_len: usize,
+    max_signature_script_len: ForkedParam<usize>,
     max_script_public_key_len: usize,
     coinbase_payload_script_public_key_max_len: u8,
     coinbase_maturity: u64,
     ghostdag_k: KType,
     sig_cache: Cache<SigCacheKey, bool>,
-    covenants_activation: ForkActivation,
+    toccata_activation: ForkActivation,
     mass_per_sig_op: u64,
 
     pub(crate) mass_calculator: MassCalculator,
@@ -32,27 +36,27 @@ impl TransactionValidator {
     pub fn new(
         max_tx_inputs: usize,
         max_tx_outputs: usize,
-        max_signature_script_len: usize,
+        max_signature_script_len: impl Into<ForkedParam<usize>>,
         max_script_public_key_len: usize,
         coinbase_payload_script_public_key_max_len: u8,
         coinbase_maturity: u64,
         ghostdag_k: KType,
         counters: Arc<TxScriptCacheCounters>,
         mass_calculator: MassCalculator,
-        covenants_activation: ForkActivation,
+        toccata_activation: ForkActivation,
         mass_per_sig_op: u64,
     ) -> Self {
         Self {
             max_tx_inputs,
             max_tx_outputs,
-            max_signature_script_len,
+            max_signature_script_len: max_signature_script_len.into(),
             max_script_public_key_len,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator,
-            covenants_activation,
+            toccata_activation,
             mass_per_sig_op,
         }
     }
@@ -60,7 +64,7 @@ impl TransactionValidator {
     pub fn new_for_tests(
         max_tx_inputs: usize,
         max_tx_outputs: usize,
-        max_signature_script_len: usize,
+        max_signature_script_len: impl Into<ForkedParam<usize>>,
         max_script_public_key_len: usize,
         coinbase_payload_script_public_key_max_len: u8,
         coinbase_maturity: u64,
@@ -70,14 +74,14 @@ impl TransactionValidator {
         Self {
             max_tx_inputs,
             max_tx_outputs,
-            max_signature_script_len,
+            max_signature_script_len: max_signature_script_len.into(),
             max_script_public_key_len,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator: MassCalculator::new(0, 0, 0),
-            covenants_activation: ForkActivation::never(),
+            toccata_activation: ForkActivation::never(),
             mass_per_sig_op: 0,
         }
     }

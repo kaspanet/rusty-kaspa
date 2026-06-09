@@ -29,7 +29,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 use crate::utxo::utxo_diff::UtxoDiff;
@@ -37,9 +37,10 @@ use crate::utxo::utxo_diff::UtxoDiff;
 /// Pre-Toccata layout of [`UtxoEntry`]: four fields and no trailing
 /// `covenant_id` tag. Deserializing this type through a derived
 /// `Deserialize` consumes exactly the pre-Toccata byte sequence and
-/// composes inside container types such as `HashMap`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(serde::Serialize))]
+/// composes inside container types such as `HashMap`. `Serialize` is also
+/// derived to let downstream crates write pre-Toccata fixtures for their
+/// own backward-compat regression tests.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PreToccataUtxoEntry {
     pub amount: u64,
     pub script_public_key: ScriptPublicKey,
@@ -49,8 +50,7 @@ pub struct PreToccataUtxoEntry {
 
 /// Pre-Toccata layout of [`UtxoDiff`]. Structurally identical to the live
 /// type except every nested entry is a [`PreToccataUtxoEntry`].
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PreToccataUtxoDiff {
     pub add: HashMap<TransactionOutpoint, PreToccataUtxoEntry>,
     pub remove: HashMap<TransactionOutpoint, PreToccataUtxoEntry>,

@@ -217,7 +217,7 @@ impl Frontier {
     ///        sufficient probability (in constant time). Following each sampling collision we search for a consecutive range of
     ///        top elements which were already sampled and narrow the sampling space to exclude them all. We do this by computing
     ///        the prefix weight up to the top most item which wasn't sampled yet (inclusive) and then continue the sampling process
-    ///        over the narrowed space. This process is repeated until acquiring the desired mass.  
+    ///        over the narrowed space. This process is repeated until acquiring the desired mass.
     ///     4. Numerical stability. Naively, one would simply subtract `total_weight -= top.weight` in order to narrow the sampling
     ///        space. However, if `top.weight` is much larger than the remaining weight, the above f64 subtraction will yield a number
     ///        close or equal to zero. We fix this by implementing a `log(n)` prefix weight operation.
@@ -352,7 +352,7 @@ impl Frontier {
     ///
     /// The above thresholds were selected based on benchmarks. Overall, this dynamic selection provides
     /// full transaction selection in less than 150 µs even if the frontier has 1M entries (!!). See mining/benches
-    /// for more details.  
+    /// for more details.
     pub fn build_selector(&self, policy: &Policy) -> Box<dyn TemplateTransactionSelector> {
         if self.total_mass <= policy.max_block_mass {
             // TakeAll can still filter by LPB/gas, so feed it best-first.
@@ -435,9 +435,11 @@ impl Frontier {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mempool::config::Config;
     use feerate_key::tests::build_feerate_key;
     use itertools::Itertools;
     use kaspa_consensus_core::{
+        mass::BlockMassLimits,
         subnets::SubnetworkId,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
@@ -446,11 +448,11 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    fn build_feerate_key_with_lane(fee: u64, mass: u64, id: u64, lane: SubnetworkId) -> FeerateTransactionKey {
+    fn build_feerate_key_with_lane(fee: u64, mass: u64, id: u64, lane: SubnetworkId, gas: u64) -> FeerateTransactionKey {
         let mut hasher = TransactionID::new();
         let prev = hasher.update(id.to_le_bytes()).clone().finalize();
         let input = TransactionInput::new(TransactionOutpoint::new(prev, 0), vec![], 0, 0);
-        let tx = Arc::new(Transaction::new(0, vec![input], vec![], 0, lane, 0, vec![]));
+        let tx = Arc::new(Transaction::new(0, vec![input], vec![], 0, lane, gas, vec![]));
         FeerateTransactionKey::new(fee, mass, tx)
     }
 
@@ -566,7 +568,7 @@ mod tests {
         for i in 0..90u64 {
             let lane = lanes[(i as usize) % lanes.len()];
             let fee = 1_000_000 - i;
-            frontier.insert(build_feerate_key_with_lane(fee, 100, i, lane)).then_some(()).unwrap();
+            frontier.insert(build_feerate_key_with_lane(fee, 100, i, lane, 0)).then_some(()).unwrap();
         }
 
         let mut policy = Policy::new(1_000, DEFAULT_BLOCK_LANE_LIMITS);
@@ -579,10 +581,31 @@ mod tests {
 
     /// Epsilon used for various test comparisons
     const EPS: f64 = 0.000001;
+    /// Test estimation floors: legacy behavior, current policy, and a higher stress floor.
+    const TEST_MIN_FEERATES: [f64; 3] = [1.0, 100.0, 1000.0];
+
+    fn minimum_standard_feerate() -> f64 {
+        Config::build_default(1_000, false, BlockMassLimits::with_shared_limit(500_000), DEFAULT_BLOCK_LANE_LIMITS).minimum_feerate()
+    }
+
+    fn assert_valid_feerate_buckets(estimations: &crate::feerate::FeerateEstimations, min_feerate: f64) {
+        for bucket in estimations.ordered_buckets() {
+            // Test for the absence of NaN, infinite or zero values in buckets.
+            assert!(
+                bucket.feerate.is_normal() && bucket.feerate >= min_feerate - EPS,
+                "bucket feerate {} must be finite and at least {}",
+                bucket.feerate,
+                min_feerate
+            );
+            assert!(
+                bucket.estimated_seconds.is_normal() && bucket.estimated_seconds > 0.0,
+                "bucket estimated seconds must be a finite number greater than zero"
+            );
+        }
+    }
 
     #[test]
     fn test_feerate_estimator() {
-        const MIN_FEERATE: f64 = 1.0;
         let mut rng = thread_rng();
         let cap = 2000;
         let mut map = HashMap::with_capacity(cap);
@@ -607,63 +630,44 @@ mod tests {
             let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
             // We are testing that the build function actually returns and is not looping indefinitely
             let estimator = frontier.build_feerate_estimator(args);
-            let estimations = estimator.calc_estimations(MIN_FEERATE);
 
-            let buckets = estimations.ordered_buckets();
-            // Test for the absence of NaN, infinite or zero values in buckets
-            for b in buckets.iter() {
-                assert!(
-                    b.feerate.is_normal() && b.feerate >= MIN_FEERATE - EPS,
-                    "bucket feerate must be a finite number greater or equal to the minimum standard feerate"
-                );
-                assert!(
-                    b.estimated_seconds.is_normal() && b.estimated_seconds > 0.0,
-                    "bucket estimated seconds must be a finite number greater than zero"
-                );
+            for min_feerate in TEST_MIN_FEERATES {
+                let estimations = estimator.calc_estimations(min_feerate);
+                assert_valid_feerate_buckets(&estimations, min_feerate);
+                dbg!(len, min_feerate, &estimator);
+                dbg!(estimations);
             }
-            dbg!(len, estimator);
-            dbg!(estimations);
         }
     }
 
     #[test]
     fn test_constant_feerate_estimator() {
-        const MIN_FEERATE: f64 = 1.0;
         let cap = 20_000;
-        let mut map = HashMap::with_capacity(cap);
-        for i in 0..cap as u64 {
-            let mass: u64 = 1650;
-            let fee = (mass as f64 * MIN_FEERATE) as u64;
-            let key = build_feerate_key(fee, mass, i);
-            map.insert(key.tx.id(), key);
-        }
-
-        for len in [0, 1, 10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
-            println!();
-            println!("Testing a frontier with {} txs...", len.min(cap));
-            let mut frontier = Frontier::new(1.0);
-            for item in map.values().take(len).cloned() {
-                frontier.insert(item).then_some(()).unwrap();
+        for min_feerate in TEST_MIN_FEERATES {
+            let mut map = HashMap::with_capacity(cap);
+            for i in 0..cap as u64 {
+                let mass: u64 = 1650;
+                let fee = (mass as f64 * min_feerate) as u64;
+                let key = build_feerate_key(fee, mass, i);
+                map.insert(key.tx.id(), key);
             }
 
-            let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
-            // We are testing that the build function actually returns and is not looping indefinitely
-            let estimator = frontier.build_feerate_estimator(args);
-            let estimations = estimator.calc_estimations(MIN_FEERATE);
-            let buckets = estimations.ordered_buckets();
-            // Test for the absence of NaN, infinite or zero values in buckets
-            for b in buckets.iter() {
-                assert!(
-                    b.feerate.is_normal() && b.feerate >= MIN_FEERATE - EPS,
-                    "bucket feerate must be a finite number greater or equal to the minimum standard feerate"
-                );
-                assert!(
-                    b.estimated_seconds.is_normal() && b.estimated_seconds > 0.0,
-                    "bucket estimated seconds must be a finite number greater than zero"
-                );
+            for len in [0, 1, 10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
+                println!();
+                println!("Testing a frontier with {} txs and min feerate {}...", len.min(cap), min_feerate);
+                let mut frontier = Frontier::new(1.0);
+                for item in map.values().take(len).cloned() {
+                    frontier.insert(item).then_some(()).unwrap();
+                }
+
+                let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
+                // We are testing that the build function actually returns and is not looping indefinitely
+                let estimator = frontier.build_feerate_estimator(args);
+                let estimations = estimator.calc_estimations(min_feerate);
+                assert_valid_feerate_buckets(&estimations, min_feerate);
+                dbg!(len, min_feerate, estimator);
+                dbg!(estimations);
             }
-            dbg!(len, estimator);
-            dbg!(estimations);
         }
     }
 
@@ -719,7 +723,6 @@ mod tests {
 
     #[test]
     fn test_feerate_estimator_with_less_than_block_capacity() {
-        const MIN_FEERATE: f64 = 1.0;
         let mut map = HashMap::new();
         for i in 0..304 {
             let mass: u64 = 1650;
@@ -738,23 +741,71 @@ mod tests {
             let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
             // We are testing that the build function actually returns and is not looping indefinitely
             let estimator = frontier.build_feerate_estimator(args);
-            let estimations = estimator.calc_estimations(MIN_FEERATE);
 
-            let buckets = estimations.ordered_buckets();
-            // Test for the absence of NaN, infinite or zero values in buckets
-            for b in buckets.iter() {
-                // Expect min feerate bcs blocks are not full
+            for min_feerate in TEST_MIN_FEERATES {
+                let estimations = estimator.calc_estimations(min_feerate);
+                let buckets = estimations.ordered_buckets();
+                // Test for the absence of NaN, infinite or zero values in buckets
+                for b in buckets.iter() {
+                    // Expect min feerate bcs blocks are not full
+                    assert!(
+                        (b.feerate - min_feerate).abs() <= EPS,
+                        "bucket feerate is expected to be equal to the minimum standard feerate"
+                    );
+                    assert!(
+                        b.estimated_seconds.is_normal() && b.estimated_seconds > 0.0 && b.estimated_seconds <= 1.0,
+                        "bucket estimated seconds must be a finite number greater than zero & less than 1.0"
+                    );
+                }
+                dbg!(len, min_feerate, &estimator);
+                dbg!(estimations);
+            }
+        }
+    }
+
+    #[test]
+    fn test_feerate_estimator_buckets_never_drop_below_minimum_standard_feerate() {
+        let minimum_feerate = minimum_standard_feerate();
+        let scenarios = [
+            ("empty", vec![]),
+            ("single below-floor transaction", vec![(1, 1000)]),
+            ("single minimum-feerate transaction", vec![((minimum_feerate * 1000.0) as u64, 1000)]),
+            ("less than one block", (0..100).map(|i| (50_000 + i, 1650)).collect_vec()),
+            ("around one block", (0..304).map(|i| (50_000 + i, 1650)).collect_vec()),
+            ("many low-feerate transactions", (0..2000).map(|i| (1 + i, 1650)).collect_vec()),
+            (
+                "high outliers over low-feerate backlog",
+                (0..2000).map(|i| if i < 10 { (50_000_000_000 + i, 1650) } else { (1 + i, 1650) }).collect_vec(),
+            ),
+            (
+                "mixed masses over several blocks",
+                (0..2000)
+                    .map(|i| {
+                        let mass = if i % 5 == 0 { 90_000 } else { 1650 };
+                        let fee = if i % 11 == 0 { 100_000_000 + i } else { 1 + i };
+                        (fee, mass)
+                    })
+                    .collect_vec(),
+            ),
+        ];
+
+        for (name, txs) in scenarios {
+            let mut frontier = Frontier::new(1.0);
+            for (i, (fee, mass)) in txs.into_iter().enumerate() {
+                frontier.insert(build_feerate_key(fee, mass, i as u64)).then_some(()).unwrap();
+            }
+
+            let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
+            let estimator = frontier.build_feerate_estimator(args);
+            let estimations = estimator.calc_estimations(minimum_feerate);
+            assert_valid_feerate_buckets(&estimations, minimum_feerate);
+
+            for (higher, lower) in estimations.ordered_buckets().into_iter().tuple_windows() {
                 assert!(
-                    (b.feerate - MIN_FEERATE).abs() <= EPS,
-                    "bucket feerate is expected to be equal to the minimum standard feerate"
-                );
-                assert!(
-                    b.estimated_seconds.is_normal() && b.estimated_seconds > 0.0 && b.estimated_seconds <= 1.0,
-                    "bucket estimated seconds must be a finite number greater than zero & less than 1.0"
+                    higher.feerate + EPS >= lower.feerate,
+                    "{name}: buckets must remain ordered by decreasing feerate: {higher:?}, {lower:?}"
                 );
             }
-            dbg!(len, estimator);
-            dbg!(estimations);
         }
     }
 }

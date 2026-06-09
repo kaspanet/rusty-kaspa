@@ -14,7 +14,7 @@ build = "build.rs"
 name = "kip-10"
 
 [features]
-wasm32-core = ["dep:kaspa-wasm-core"]
+wasm32-core = ["dep:js-sys", "dep:kaspa-wasm-core"]
 wasm32-sdk = ["wasm32-core", "kaspa-consensus-core/wasm32-sdk"]
 
 [dependencies]
@@ -30,9 +30,9 @@ borsh.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 hexplay.workspace = true
-hex.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
+js-sys = { workspace = true, optional = true }
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
@@ -40,15 +40,12 @@ kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core = { workspace = true, optional = true }
 log.workspace = true
-num-bigint.workspace = true 
 parking_lot.workspace = true
 rand.workspace = true
 risc0-binfmt.workspace = true
 risc0-circuit-recursion.workspace = true
 risc0-core.workspace = true
 risc0-zkp.workspace = true
-risc0-zkvm.workspace = true
-risc0-groth16.workspace = true
 secp256k1.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
@@ -58,7 +55,6 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
-
 
 [build-dependencies]
 cc = { workspace = true }
@@ -70,7 +66,8 @@ rayon.workspace = true
 kaspa-core.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true
-bincode.workspace = true
+wasm-bindgen-test.workspace = true
+
 [[bench]]
 name = "zk_precompiles"
 path = "benches/zk_precompiles.rs"

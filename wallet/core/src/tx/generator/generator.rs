@@ -397,7 +397,13 @@ impl Generator {
                 (
                     outputs
                         .iter()
-                        .map(|output| TransactionOutput::new(output.amount, pay_to_address_script(&output.address)))
+                        .map(|output| {
+                            TransactionOutput::with_covenant(
+                                output.amount,
+                                pay_to_address_script(&output.address),
+                                output.covenant.map(Into::into),
+                            )
+                        })
                         .collect(),
                     Some(outputs.iter().map(|output| output.amount).sum()),
                 )
@@ -616,19 +622,31 @@ impl Generator {
 
     /// Calculate relay transaction mass for the current transaction `data`
     #[inline(always)]
-    fn calc_relay_transaction_mass(&self, data: &Data) -> u64 {
+    fn calc_relay_transaction_compute_mass(&self, data: &Data) -> u64 {
         data.aggregate_mass + self.inner.standard_change_output_compute_mass
     }
 
     /// Calculate relay transaction fees for the current transaction `data`
     #[inline(always)]
     fn calc_relay_transaction_compute_fees(&self, data: &Data) -> u64 {
-        let mass = self.calc_relay_transaction_mass(data);
-        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass).max(self.calc_fee_rate(mass))
+        let compute_mass = self.calc_relay_transaction_compute_mass(data);
+        self.calc_compute_fees(compute_mass)
     }
 
-    fn calc_fees_from_mass(&self, mass: u64) -> u64 {
-        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass).max(self.calc_fee_rate(mass))
+    /// Calculates fees for compute-only contexts where transaction mass equals compute mass.
+    fn calc_compute_fees(&self, compute_mass: u64) -> u64 {
+        self.calc_transaction_fees(compute_mass, compute_mass)
+    }
+
+    /// Calculates the required transaction fee from the mass dimensions.
+    /// - Mempool minimum relay policy prices compute mass.
+    /// - User-provided fee rate follows mempool prioritization by pricing full transaction mass including storage mass.
+    ///
+    /// Note: `compute_mass` is the wallet's minimum-relay mass proxy. It is mostly
+    /// compute mass, but its payload component is hardened to account for normalized
+    /// transient byte mass.
+    fn calc_transaction_fees(&self, compute_mass: u64, transaction_mass: u64) -> u64 {
+        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(compute_mass).max(self.calc_fee_rate(transaction_mass))
     }
 
     /// Main UTXO entry processing loop. This function sources UTXOs from [`Generator::get_utxo_entry()`] and
@@ -868,7 +886,6 @@ impl Generator {
 
                 data.aggregate_mass = calc.combine_mass(compute_mass, storage_mass);
 
-                transaction_fees += change_output_value;
                 data.transaction_fees = transaction_fees;
                 stage.aggregate_fees += transaction_fees;
                 context.aggregate_fees += transaction_fees;
@@ -891,16 +908,15 @@ impl Generator {
 
         let mut absorb_change_to_fees = false;
 
-        let compute_mass_with_change = data.aggregate_mass
-            + self.inner.standard_change_output_compute_mass
-            + self.inner.final_transaction_outputs_compute_mass
-            + self.inner.final_transaction_payload_mass;
+        let compute_mass_no_change =
+            data.aggregate_mass + self.inner.final_transaction_outputs_compute_mass + self.inner.final_transaction_payload_mass;
+        let compute_mass_with_change = compute_mass_no_change + self.inner.standard_change_output_compute_mass;
 
         let storage_mass = if stage.number_of_transactions > 0 {
             // calculate for edge transaction boundaries
             // we know that stage.number_of_transactions > 0 will trigger stage generation
             let edge_compute_mass = data.aggregate_mass + self.inner.standard_change_output_compute_mass; //self.inner.final_transaction_outputs_compute_mass + self.inner.final_transaction_payload_mass;
-            let edge_fees = self.calc_fees_from_mass(edge_compute_mass);
+            let edge_fees = self.calc_compute_fees(edge_compute_mass);
             let edge_output_value = data.aggregate_input_value.saturating_sub(edge_fees);
             if edge_output_value != 0 {
                 let edge_output_harmonic = calc.calc_storage_mass_output_harmonic_single(edge_output_value);
@@ -933,8 +949,14 @@ impl Generator {
                     if storage_mass_with_change < storage_mass_no_change {
                         storage_mass_with_change
                     } else {
-                        let fees_with_change = calc.calc_fee_for_mass(storage_mass_with_change);
-                        let fees_no_change = calc.calc_fee_for_mass(storage_mass_no_change);
+                        let fees_with_change = self.calc_transaction_fees(
+                            compute_mass_with_change,
+                            calc.combine_mass(compute_mass_with_change, storage_mass_with_change),
+                        );
+                        let fees_no_change = self.calc_transaction_fees(
+                            compute_mass_no_change,
+                            calc.combine_mass(compute_mass_no_change, storage_mass_no_change),
+                        );
                         let difference = fees_with_change.saturating_sub(fees_no_change);
 
                         if difference > change_value {
@@ -951,8 +973,9 @@ impl Generator {
         if storage_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
             Err(Error::StorageMassExceedsMaximumTransactionMass { storage_mass })
         } else {
-            let transaction_mass = calc.combine_mass(compute_mass_with_change, storage_mass);
-            let transaction_fees = self.calc_fees_from_mass(transaction_mass); //calc.calc_minimum_transaction_fee_from_mass(transaction_mass) + self.calc_fee_rate(transaction_mass);
+            let compute_mass = if absorb_change_to_fees { compute_mass_no_change } else { compute_mass_with_change };
+            let transaction_mass = calc.combine_mass(compute_mass, storage_mass);
+            let transaction_fees = self.calc_transaction_fees(compute_mass, transaction_mass);
 
             Ok(MassDisposition { transaction_mass, transaction_fees, storage_mass, absorb_change_to_fees })
         }
@@ -967,7 +990,7 @@ impl Generator {
             + self.inner.standard_change_output_compute_mass
             + self.inner.network_params.additional_compound_transaction_mass();
         // let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass) + self.calc_fee_rate(compute_mass);
-        let compute_fees = self.calc_fees_from_mass(compute_mass);
+        let compute_fees = self.calc_compute_fees(compute_mass);
 
         // TODO - consider removing this as calculated storage mass should produce `0` value
         let edge_output_harmonic =
@@ -986,7 +1009,7 @@ impl Generator {
             }
         } else {
             data.aggregate_mass = transaction_mass;
-            data.transaction_fees = self.calc_fees_from_mass(transaction_mass);
+            data.transaction_fees = self.calc_transaction_fees(compute_mass, transaction_mass);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
             Ok(Some(DataKind::Edge))
@@ -1086,7 +1109,7 @@ impl Generator {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
                 }
-                tx.set_mass(transaction_mass);
+                tx.set_storage_mass(transaction_mass);
 
                 context.aggregate_mass += transaction_mass;
                 context.final_transaction_id = Some(tx.id());
@@ -1144,7 +1167,7 @@ impl Generator {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
                 }
-                tx.set_mass(transaction_mass);
+                tx.set_storage_mass(transaction_mass);
 
                 context.aggregate_mass += transaction_mass;
                 context.number_of_transactions += 1;

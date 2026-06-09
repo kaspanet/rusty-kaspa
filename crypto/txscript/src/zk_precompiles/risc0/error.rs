@@ -2,7 +2,7 @@ use kaspa_txscript_errors::TxScriptError;
 use risc0_zkp::verify::VerificationError;
 use thiserror::Error;
 
-use crate::zk_precompiles::fields::error::FieldsError;
+use crate::zk_precompiles::risc0::rcpt::HashFnId;
 
 #[derive(Debug, Error)]
 pub enum R0Error {
@@ -18,35 +18,18 @@ pub enum R0Error {
     InvalidSealLength(usize),
     #[error("Invalid digest list length: {0}")]
     InvalidDigestListLength(usize),
+    #[error("Control inclusion proof length {actual} exceeds maximum {max}")]
+    ControlInclusionProofTooLong { actual: usize, max: usize },
     #[error("Invalid merkle index length: {0}")]
     InvalidMerkleIndexLength(usize),
     #[error("Invalid hash function encoding length: {0}")]
     InvalidHashFnEncoding(usize),
     #[error("Invalid hash function id: {0}")]
     InvalidHashFnId(u8),
+    #[error("Unsupported hash function: {0:?}")]
+    UnsupportedHashFn(HashFnId),
     #[error("Verification failed")]
     VerificationFailed,
     #[error("Merkle proof verification failed")]
     Merkle,
-    #[error("Invalid BabyBearElem in seal")]
-    SealHasInvalidBabyBearElem,
-    #[error("Script builder error: {0}")]
-    ScriptBuilder(#[from] crate::script_builder::ScriptBuilderError),
-
-    #[error("Fields error: {0}")]
-    Fields(#[from] FieldsError),
-
-    #[error("Seal decoding error: {0}")]
-    SealDecoding(String),
-
-    #[error("Bincode VK serialization failed")]
-    BincodeVkSerialization,
-
-    #[error("Point error: {0}")]
-    Point(#[from] crate::zk_precompiles::points::PointError),
-
-    #[error("Ark serialization error: {0}")]
-    ArkSerialization(#[from] ark_serialize::SerializationError),
-    #[error("Parse bigint error: {0}")]
-    ParseBigInt(#[from] num_bigint::ParseBigIntError),
 }

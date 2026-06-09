@@ -1,84 +1,71 @@
 use crate::mempool::{
     Mempool,
+    config::LEGACY_MINIMUM_RELAY_TRANSACTION_FEE,
     errors::{NonStandardError, NonStandardResult},
+    tx::Priority,
 };
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
-    mass,
-    tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
+    tx::MutableTransaction,
 };
-use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, mass::NonContextualMasses};
-use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
+use kaspa_txscript::{post_toccata_p2sh_sig_scanner, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
-const MAX_STANDARD_P2SH_SIG_OPS: u16 = 1000; // TODO(covpp-mainnet)
-
-/// MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE is the maximum size allowed for a
-/// transaction input signature script to be considered standard. This
-/// value allows for a 15-of-15 CHECKMULTISIG pay-to-script-hash with
-/// compressed keys.
 ///
-/// The form of the overall script is: OP_0 <15 signatures> OP_PUSHDATA2
-/// <2 bytes len> [OP_15 <15 pubkeys> OP_15 OP_CHECKMULTISIG]
-///
-/// For the p2sh script portion, each of the 15 compressed pubkeys are
-/// 33 bytes (plus one for the OP_DATA_33 opcode), and the thus it totals
-/// to (15*34)+3 = 513 bytes. Next, each of the 15 signatures is a max
-/// of 73 bytes (plus one for the OP_DATA_73 opcode). Also, there is one
-/// extra byte for the initial extra OP_0 push and 3 bytes for the
-/// OP_PUSHDATA2 needed to specify the 513 bytes for the script push.
-/// That brings the total to 1+(15*74)+3+513 = 1627. This value also
-/// adds a few extra bytes to provide a little buffer.
-/// (1 + 15*74 + 3) + (15*34 + 3) + 23 = 1650
-const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 300_000; // TODO(covpp-mainnet)
+/// The upper-bound execution limit comes from compute mass: some zk opcodes already cost the equivalent
+/// of roughly 140-250 signature operations. However, for classic Schnorr/ECDSA signature operations, this
+/// standardness limit encourages parallelism across inputs rather than concentrating work in one input.
+const MAX_STANDARD_P2SH_SIG_OPS: u16 = 15;
 
-/// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
-/// are considered standard and will therefore be relayed and considered for mining.
-const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 500_000; // TODO(covpp-mainnet)
-const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 1_000_000; // TODO(covpp-mainnet)
+/// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum per-dimension transaction mass considered
+/// standard prior to Toccata. Until the network is about to activate Toccata (see
+/// STANDARD_MASS_RELAXATION_WINDOW_SECONDS), the mempool keeps rejecting higher-mass transactions
+/// as non-standard, so that updated nodes don't admit and relay transactions that not-yet-updated
+/// peers would drop, leaving them stuck unmined.
+pub(crate) const MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA: u64 = 100_000;
+
+/// Window, in seconds, before Toccata activation at which the standard mass cap is relaxed. By this
+/// point the network is expected to be fully updated, so high-mass transactions can be admitted and
+/// primed in mempools ahead of activation.
+const STANDARD_MASS_RELAXATION_WINDOW_SECONDS: u64 = 30 * 60;
 
 impl Mempool {
-    pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
+    /// Returns the per-dimension standard mass cap currently in effect, or `None` once the cap has
+    /// been relaxed (within [`STANDARD_MASS_RELAXATION_WINDOW_SECONDS`] before Toccata activation,
+    /// and ever after). `early_by` keeps `never`/`always` activations untouched, so networks without
+    /// a scheduled Toccata keep the cap and `always`-active ones never apply it.
+    ///
+    /// TODO(post-toccata): once Toccata is active on all networks, delete this helper together with
+    /// MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA, STANDARD_MASS_RELAXATION_WINDOW_SECONDS and the
+    /// cap checks in `check_transaction_standard_in_isolation`/`_in_context`. The block-fit limits in
+    /// check_transaction_limits then remain the only per-tx mass ceiling.
+    fn standard_transaction_mass_cap(&self, virtual_daa_score: u64) -> Option<u64> {
+        let window = STANDARD_MASS_RELAXATION_WINDOW_SECONDS.saturating_mul(self.config.network_blocks_per_second);
+        let relaxation = self.toccata_activation.early_by(window);
+        (!relaxation.is_active(virtual_daa_score)).then_some(MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA)
+    }
+
+    pub(crate) fn check_transaction_standard_in_isolation(
+        &self,
+        transaction: &MutableTransaction,
+        virtual_daa_score: u64,
+    ) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
 
-        // Since extremely large transactions with a lot of inputs can cost
-        // almost as much to process as the sender fees, limit the maximum
-        // size of a transaction. This also helps mitigate CPU exhaustion
-        // attacks.
-        let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
-        if compute_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectComputeMass(transaction_id, compute_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
-        }
-        if transient_mass > MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS {
-            return Err(NonStandardError::RejectTransientMass(
-                transaction_id,
-                transient_mass,
-                MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS,
-            ));
-        }
-        if transaction.tx.gas > self.config.block_lane_limits.gas_per_lane {
-            return Err(NonStandardError::RejectGas(transaction_id, transaction.tx.gas, self.config.block_lane_limits.gas_per_lane));
-        }
-
-        for (i, input) in transaction.tx.inputs.iter().enumerate() {
-            // Each transaction input signature script must not exceed the
-            // maximum size allowed for a standard transaction.
-            //
-            // See the comment on MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE for
-            // more details.
-            let signature_script_len = input.signature_script.len() as u64;
-            if signature_script_len > MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE {
-                return Err(NonStandardError::RejectSignatureScriptSize(
-                    transaction_id,
-                    i,
-                    signature_script_len,
-                    MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE,
-                ));
+        // Until shortly before Toccata activates, keep the legacy per-tx standard mass cap on the
+        // non-contextual dimensions so updated nodes don't relay transactions that peers still reject.
+        if let Some(cap) = self.standard_transaction_mass_cap(virtual_daa_score) {
+            let masses = transaction.calculated_non_contextual_masses.unwrap();
+            if masses.compute_mass > cap {
+                return Err(NonStandardError::RejectComputeMass(transaction_id, masses.compute_mass, cap));
+            }
+            if masses.transient_mass > cap {
+                return Err(NonStandardError::RejectTransientMass(transaction_id, masses.transient_mass, cap));
             }
         }
 
-        // None of the output public key scripts can be a non-standard script or be "dust".
+        // None of the output public key scripts can be a non-standard script.
         for (i, output) in transaction.tx.outputs.iter().enumerate() {
             if output.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                 return Err(NonStandardError::RejectScriptPublicKeyVersion(transaction_id, i));
@@ -87,87 +74,35 @@ impl Mempool {
             if ScriptClass::from_script(&output.script_public_key) == ScriptClass::NonStandard {
                 return Err(NonStandardError::RejectOutputScriptClass(transaction_id, i));
             }
-
-            if self.is_transaction_output_dust(output) {
-                return Err(NonStandardError::RejectDust(transaction_id, i, output.value));
-            }
         }
 
         Ok(())
-    }
-
-    /// is_transaction_output_dust returns whether or not the passed transaction output
-    /// amount is considered dust or not based on the configured minimum transaction
-    /// relay fee.
-    ///
-    /// Dust is defined in terms of the minimum transaction relay fee. In particular,
-    /// if the cost to the network to spend coins is more than 1/3 of the minimum
-    /// transaction relay fee, it is considered dust.
-    ///
-    /// It is exposed by [MiningManager] for use by transaction generators and wallets.
-    pub(crate) fn is_transaction_output_dust(&self, transaction_output: &TransactionOutput) -> bool {
-        // Unspendable outputs are considered dust.
-        if is_unspendable::<PopulatedTransaction, SigHashReusedValuesUnsync>(transaction_output.script_public_key.script()) {
-            return true;
-        }
-
-        // The total serialized size consists of the output and the associated
-        // input script to redeem it. Since there is no input script
-        // to redeem it yet, use the minimum size of a typical input script.
-        //
-        // Pay-to-pubkey bytes breakdown:
-        //
-        //  Output to pubkey (43 bytes):
-        //   8 value, 1 script len, 34 script [1 OP_DATA_32,
-        //   32 pubkey, 1 OP_CHECKSIG]
-        //
-        //  Input (105 bytes):
-        //   36 prev outpoint, 1 script len, 64 script [1 OP_DATA_64,
-        //   64 sig], 4 sequence
-        //
-        // The most common scripts are pay-to-pubkey, and as per the above
-        // breakdown, the minimum size of a p2pk input script is 148 bytes. So
-        // that figure is used.
-        let total_serialized_size = mass::transaction_output_estimated_serialized_size(transaction_output) + 148;
-
-        // The output is considered dust if the cost to the network to spend the
-        // coins is more than 1/3 of the minimum free transaction relay fee.
-        // mp.config.MinimumRelayTransactionFee is in sompi/KB, so multiply
-        // by 1000 to convert to bytes.
-        //
-        // Using the typical values for a pay-to-pubkey transaction from
-        // the breakdown above and the default minimum free transaction relay
-        // fee of 1000, this equates to values less than 546 sompi being
-        // considered dust.
-        //
-        // The following is equivalent to (value/total_serialized_size) * (1/3) * 1000
-        // without needing to do floating point math.
-        //
-        // Since the multiplication may overflow a u64, 2 separate calculation paths
-        // are considered to avoid overflowing.
-        match transaction_output.value.checked_mul(1000) {
-            Some(value_1000) => value_1000 / (3 * total_serialized_size) < self.config.minimum_relay_transaction_fee,
-            None => {
-                (transaction_output.value as u128 * 1000 / (3 * total_serialized_size as u128))
-                    < self.config.minimum_relay_transaction_fee as u128
-            }
-        }
     }
 
     /// check_transaction_standard_in_context performs a series of checks on a transaction's
     /// inputs to ensure they are "standard". A standard transaction input within the
     /// context of this function is one whose referenced public key script is of a
     /// standard form and, for pay-to-script-hash, does not have more than
-    /// maxStandardP2SHSigOps signature operations.
+    /// MAX_STANDARD_P2SH_SIG_OPS signature operations.
     /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
     /// into the mempool and relay.
-    pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
+    pub(crate) fn check_transaction_standard_in_context(
+        &self,
+        transaction: &MutableTransaction,
+        priority: Priority,
+        virtual_daa_score: u64,
+    ) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-        let contextual_mass = transaction.tx.mass();
-        if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectStorageMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
+
+        // Storage mass is only known after contextual population, so the standard mass cap is applied to it here.
+        if let Some(cap) = self.standard_transaction_mass_cap(virtual_daa_score) {
+            let storage_mass = transaction.tx.storage_mass();
+            if storage_mass > cap {
+                return Err(NonStandardError::RejectStorageMass(transaction_id, storage_mass, cap));
+            }
         }
-        for (i, input) in transaction.tx.inputs.iter().enumerate() {
+
+        for i in 0..transaction.tx.inputs.len() {
             // It is safe to elide existence and index checks here since
             // they have already been checked prior to calling this
             // function.
@@ -179,40 +114,63 @@ impl Mempool {
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
                 ScriptClass::ScriptHash => {
-                    // todo relax due to on fly calculation
-                    let num_sig_ops = get_sig_op_count_upper_bound::<PopulatedTransaction, SigHashReusedValuesUnsync>(
-                        &input.signature_script,
-                        &entry.script_public_key,
-                    );
+                    // post-toccata scanner is valid pre-toccata as well
+                    let num_sig_ops =
+                        post_toccata_p2sh_sig_scanner(&transaction.tx.inputs[i].signature_script, &entry.script_public_key);
                     if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
                         return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
                     }
                 }
             }
-
-            // TODO: For now, until wallets adapt, we only require minimum fee as function of compute mass (but the fee/mass ratio will
-            // use the max over all masses and will affect tx selection to block template)
-            let minimum_fee =
-                self.minimum_required_transaction_relay_fee(transaction.calculated_non_contextual_masses.unwrap().compute_mass);
-            if transaction.calculated_fee.unwrap() < minimum_fee {
-                return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
-            }
         }
+
+        // Minimum relay fee applies to normalized non-contextual mass so block-space usage has a
+        // minimum cost, whether dominated by compute or by transient byte footprint.
+        // Storage mass does not require an additional relay-fee floor here since storage growth is
+        // sufficiently protected even under worst-case block-limit usage.
+        // Use raw_post so all networks, including non-scheduled ones, use the same standardness
+        // pricing value and do not fluctuate with activation status.
+        let masses = transaction.calculated_non_contextual_masses.unwrap();
+        let cofactors = self.config.mempool_mass_cofactors.raw_post();
+        let normalized_transient_mass = masses.normalized_transient(&cofactors);
+
+        // TODO(post-toccata): remove `use_prior_p2p_fee_rules` and unconditionally use:
+        //   fee_mass = max(compute_mass, normalized_transient_mass)
+        //   relay_fee = self.config.minimum_relay_transaction_fee
+        // The relaxation allows software to adapt between release and activation, instead of txs being p2p rejected by updated nodes
+        let use_prior_p2p_fee_rules = priority == Priority::Low && !self.toccata_activation.is_active(virtual_daa_score);
+        let (fee_mass, relay_fee) = if use_prior_p2p_fee_rules {
+            // Prior P2P relay-fee policy: legacy base fee over compute mass only.
+            (masses.compute_mass, LEGACY_MINIMUM_RELAY_TRANSACTION_FEE)
+        } else {
+            (masses.compute_mass.max(normalized_transient_mass), self.config.minimum_relay_transaction_fee)
+        };
+        let minimum_fee = self.minimum_required_transaction_relay_fee(fee_mass, relay_fee);
+
+        let fee = transaction.calculated_fee.unwrap();
+        if fee < minimum_fee {
+            return if use_prior_p2p_fee_rules || masses.compute_mass >= normalized_transient_mass {
+                Err(NonStandardError::RejectInsufficientComputeFee(transaction_id, fee, minimum_fee, masses.compute_mass))
+            } else {
+                Err(NonStandardError::RejectInsufficientTransientFee(transaction_id, fee, minimum_fee, normalized_transient_mass))
+            };
+        }
+        // end-TODO
 
         Ok(())
     }
 
     /// minimum_required_transaction_relay_fee returns the minimum transaction fee required
     /// for a transaction with the passed mass to be accepted into the mempool and relayed.
-    fn minimum_required_transaction_relay_fee(&self, mass: u64) -> u64 {
+    fn minimum_required_transaction_relay_fee(&self, mass: u64, minimum_relay_transaction_fee: u64) -> u64 {
         // Calculate the minimum fee for a transaction to be allowed into the
         // mempool and relayed by scaling the base fee. MinimumRelayTransactionFee is in
         // sompi/kg so multiply by mass (which is in grams) and divide by 1000 to get
         // minimum sompis.
-        let mut minimum_fee = (mass * self.config.minimum_relay_transaction_fee) / 1000;
+        let mut minimum_fee = (mass * minimum_relay_transaction_fee) / 1000;
 
         if minimum_fee == 0 {
-            minimum_fee = self.config.minimum_relay_transaction_fee;
+            minimum_fee = minimum_relay_transaction_fee;
         }
 
         // Set the minimum fee to the maximum possible value if the calculated
@@ -232,20 +190,23 @@ mod tests {
     };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
-        config::constants::consensus::DEFAULT_GAS_PER_LANE_LIMIT,
-        config::params::Params,
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        config::params::{ForkActivation, Params},
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
-        tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+        tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
     };
     use kaspa_txscript::{
         opcodes::codes::{OpReturn, OpTrue},
         script_builder::ScriptBuilder,
     };
-    use smallvec::smallvec;
     use std::sync::Arc;
+
+    const RELAY_FEE_TEST_MASS: u64 = 500_000;
+    const fn default_minimum_relay_fee_for_mass(mass: u64) -> u64 {
+        mass * DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE / 1000
+    }
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
@@ -269,13 +230,13 @@ mod tests {
                 name: "100 bytes with default minimum relay fee",
                 size: 100,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-                want: 100,
+                want: default_minimum_relay_fee_for_mass(100),
             },
             Test {
-                name: "max standard tx size with default minimum relay fee",
-                size: MAXIMUM_STANDARD_TRANSACTION_MASS,
+                name: "large relay fee test mass with default minimum relay fee",
+                size: RELAY_FEE_TEST_MASS,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-                want: MAXIMUM_STANDARD_TRANSACTION_MASS,
+                want: default_minimum_relay_fee_for_mass(RELAY_FEE_TEST_MASS),
             },
             Test { name: "1500 bytes with 5000 relay fee", size: 1500, minimum_relay_transaction_fee: 5000, want: 7500 },
             Test { name: "1500 bytes with 3000 relay fee", size: 1500, minimum_relay_transaction_fee: 3000, want: 4500 },
@@ -287,104 +248,22 @@ mod tests {
         for test in tests.iter() {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config =
-                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
+                let mut config = Config::build_default(
+                    params.target_time_per_block(),
+                    false,
+                    params.mempool_block_mass_limits(),
+                    params.block_lane_limits,
+                );
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
+                let minimum_relay_transaction_fee = config.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
-                let mempool = Mempool::new(Arc::new(config), counters);
+                let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
 
-                let got = mempool.minimum_required_transaction_relay_fee(test.size);
+                let got = mempool.minimum_required_transaction_relay_fee(test.size, minimum_relay_transaction_fee);
                 if got != test.want {
                     println!("test_calc_min_required_tx_relay_fee test '{}' failed: got {}, want {}", test.name, got, test.want);
                 }
                 assert_eq!(test.want, got);
-            }
-        }
-    }
-
-    #[test]
-    fn test_is_transaction_output_dust() {
-        let script_public_key = ScriptPublicKey::new(
-            0,
-            smallvec![
-                0x76, 0xa9, 0x21, 0x03, 0x2f, 0x7e, 0x43, 0x0a, 0xa4, 0xc9, 0xd1, 0x59, 0x43, 0x7e, 0x84, 0xb9, 0x75, 0xdc, 0x76,
-                0xd9, 0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
-            ],
-        );
-        let invalid_script_public_key = ScriptPublicKey::new(0, smallvec![0x01]);
-
-        struct Test {
-            name: &'static str,
-            tx_out: TransactionOutput,
-            minimum_relay_transaction_fee: u64,
-            is_dust: bool,
-        }
-
-        let tests = vec![
-            // Any value is allowed with a zero relay fee.
-            Test {
-                name: "zero value with zero relay fee",
-                tx_out: TransactionOutput::new(0, script_public_key.clone()),
-                minimum_relay_transaction_fee: 0,
-                is_dust: false,
-            },
-            // Zero value is dust with any relay fee"
-            Test {
-                name: "zero value with very small tx fee",
-                tx_out: TransactionOutput::new(0, script_public_key.clone()),
-                minimum_relay_transaction_fee: 1,
-                is_dust: true,
-            },
-            Test {
-                name: "36 byte public key script with value 605",
-                tx_out: TransactionOutput::new(605, script_public_key.clone()),
-                minimum_relay_transaction_fee: 1000,
-                is_dust: true,
-            },
-            Test {
-                name: "36 byte public key script with value 606",
-                tx_out: TransactionOutput::new(606, script_public_key.clone()),
-                minimum_relay_transaction_fee: 1000,
-                is_dust: false,
-            },
-            // Maximum allowed value is never dust.
-            Test {
-                name: "max sompi amount is never dust",
-                tx_out: TransactionOutput::new(MAX_SOMPI, script_public_key.clone()),
-                minimum_relay_transaction_fee: 1000,
-                is_dust: false,
-            },
-            // Maximum uint64 value causes NO overflow.
-            // Rust rewrite: caution, this differs from the golang version
-            Test {
-                name: "maximum uint64 value",
-                tx_out: TransactionOutput::new(u64::MAX, script_public_key),
-                minimum_relay_transaction_fee: u64::MAX,
-                is_dust: false,
-            },
-            // Unspendable script_public_key due to an invalid public key script.
-            Test {
-                name: "unspendable script_public_key",
-                tx_out: TransactionOutput::new(5000, invalid_script_public_key),
-                minimum_relay_transaction_fee: 0,
-                is_dust: true,
-            },
-        ];
-        for test in tests {
-            for net in NetworkType::iter() {
-                let params: Params = net.into();
-                let mut config =
-                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
-                config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-                let counters = Arc::new(MiningCounters::default());
-                let mempool = Mempool::new(Arc::new(config), counters);
-
-                println!("test_is_transaction_output_dust test '{}' ", test.name);
-                let res = mempool.is_transaction_output_dust(&test.tx_out);
-                if res != test.is_dust {
-                    println!("test_is_transaction_output_dust test '{}' failed: got {}, want {}", test.name, res, test.is_dust);
-                }
-                assert_eq!(test.is_dust, res);
             }
         }
     }
@@ -447,65 +326,6 @@ mod tests {
                 is_standard: true, // check_transaction_standard_in_isolation does not check version
             },
             Test {
-                name: "Transaction gas exceeds the per-lane limit",
-                mtx: new_mtx(
-                    Transaction::new(
-                        TX_VERSION,
-                        vec![dummy_tx_input.clone()],
-                        vec![dummy_tx_out.clone()],
-                        0,
-                        SUBNETWORK_ID_NATIVE,
-                        DEFAULT_GAS_PER_LANE_LIMIT + 1,
-                        vec![],
-                    ),
-                    1000,
-                ),
-                is_standard: false,
-            },
-            Test {
-                name: "Transaction size is too large",
-                mtx: new_mtx(
-                    Transaction::new(
-                        TX_VERSION,
-                        vec![dummy_tx_input.clone()],
-                        vec![TransactionOutput::new(
-                            0u64,
-                            ScriptPublicKey::new(
-                                MAX_SCRIPT_PUBLIC_KEY_VERSION,
-                                ScriptVec::from_vec(vec![0u8; MAXIMUM_STANDARD_TRANSACTION_MASS as usize + 1]),
-                            ),
-                        )],
-                        0,
-                        SUBNETWORK_ID_NATIVE,
-                        0,
-                        vec![],
-                    ),
-                    1000,
-                ),
-                is_standard: false,
-            },
-            Test {
-                name: "Signature script size is too large",
-                mtx: new_mtx(
-                    Transaction::new(
-                        TX_VERSION + 1,
-                        vec![TransactionInput::new(
-                            dummy_prev_out,
-                            vec![0u8; MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE as usize + 1],
-                            MAX_TX_IN_SEQUENCE_NUM,
-                            1,
-                        )],
-                        vec![dummy_tx_out.clone()],
-                        0,
-                        SUBNETWORK_ID_NATIVE,
-                        0,
-                        vec![],
-                    ),
-                    1000,
-                ),
-                is_standard: false,
-            },
-            Test {
                 name: "Valid but non standard public key script",
                 mtx: new_mtx(
                     Transaction::new(
@@ -518,22 +338,6 @@ mod tests {
                                 ScriptBuilder::new().add_op(OpTrue).unwrap().script().into(),
                             ),
                         )],
-                        0,
-                        SUBNETWORK_ID_NATIVE,
-                        0,
-                        vec![],
-                    ),
-                    1000,
-                ),
-                is_standard: false,
-            },
-            Test {
-                name: "Dust output",
-                mtx: new_mtx(
-                    Transaction::new(
-                        TX_VERSION,
-                        vec![dummy_tx_input.clone()],
-                        vec![TransactionOutput::new(0, dummy_tx_out.script_public_key)],
                         0,
                         SUBNETWORK_ID_NATIVE,
                         0,
@@ -570,14 +374,18 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let config =
-                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
+                let config = Config::build_default(
+                    params.target_time_per_block(),
+                    false,
+                    params.mempool_block_mass_limits(),
+                    params.block_lane_limits,
+                );
                 let counters = Arc::new(MiningCounters::default());
-                let mempool = Mempool::new(Arc::new(config), counters);
+                let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
 
                 // Ensure standard-ness is as expected.
                 println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);
-                let res = mempool.check_transaction_standard_in_isolation(&test.mtx);
+                let res = mempool.check_transaction_standard_in_isolation(&test.mtx, 0);
                 if res.is_ok() && test.is_standard {
                     // Test passes since function returned standard for a
                     // transaction which is intended to be standard.
@@ -595,5 +403,281 @@ mod tests {
                 assert_eq!(res.is_ok(), test.is_standard, "failed for test '{}': {:?}", test.name, res);
             }
         }
+    }
+
+    #[test]
+    fn test_check_transaction_standard_in_context() {
+        let addr = Address::new(Prefix::Testnet, Version::PubKey, &[1u8; 32]);
+        let standard_script_public_key = kaspa_txscript::pay_to_address_script(&addr);
+        let non_standard_script_public_key =
+            ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION, ScriptBuilder::new().add_op(OpTrue).unwrap().script().into());
+
+        enum Expected {
+            Standard,
+            RejectInputScriptClass,
+            RejectInsufficientComputeFee { fee: u64, minimum_fee: u64, compute_mass: u64 },
+            RejectInsufficientTransientFee { fee: u64, minimum_fee: u64, normalized_transient_mass: u64 },
+        }
+
+        struct Test {
+            name: &'static str,
+            mtx: MutableTransaction,
+            expected: Expected,
+        }
+
+        fn new_mtx(script_public_key: ScriptPublicKey, masses: NonContextualMasses, fee: u64) -> MutableTransaction {
+            let prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+            let input = TransactionInput::new(prev_out, vec![], MAX_TX_IN_SEQUENCE_NUM, 1);
+            let tx = Transaction::new(
+                TX_VERSION,
+                vec![input],
+                vec![TransactionOutput::new(SOMPI_PER_KASPA, script_public_key.clone())],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            let mut mtx = MutableTransaction::with_entries(
+                tx.into(),
+                vec![UtxoEntry::new(2 * SOMPI_PER_KASPA, script_public_key, 0, false, None)],
+            );
+            mtx.calculated_non_contextual_masses = Some(masses);
+            mtx.calculated_fee = Some(fee);
+            mtx
+        }
+
+        // Use simnet params so prior and post-activation transient limits differ while the fork is active;
+        // this verifies that relay-fee pricing uses stable post-activation cofactors.
+        let params: Params = NetworkType::Simnet.into();
+        assert_ne!(params.toccata_activation, ForkActivation::never(), "this test requires post-activation cofactors");
+        let cofactors = params.mempool_block_mass_cofactors().after();
+        let transient = |bytes| bytes * TRANSIENT_BYTE_TO_MASS_FACTOR;
+        let normalized_transient = |bytes| NonContextualMasses::new(0, transient(bytes)).normalized_transient(&cofactors);
+
+        let bytes = 5_000;
+        let compute = normalized_transient(bytes);
+        let boundary_fee = default_minimum_relay_fee_for_mass(compute);
+        let insufficient_fee = boundary_fee - 1;
+
+        let tests = vec![
+            Test {
+                name: "standard input with exactly sufficient relay fee",
+                mtx: new_mtx(standard_script_public_key.clone(), NonContextualMasses::new(compute, transient(bytes)), boundary_fee),
+                expected: Expected::Standard,
+            },
+            Test {
+                name: "non-standard input script class",
+                mtx: new_mtx(
+                    non_standard_script_public_key,
+                    NonContextualMasses::new(1_000, 1_000),
+                    DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+                ),
+                expected: Expected::RejectInputScriptClass,
+            },
+            Test {
+                name: "compute mass triggers insufficient relay fee",
+                mtx: new_mtx(
+                    standard_script_public_key.clone(),
+                    NonContextualMasses::new(compute, transient(bytes - 1)),
+                    insufficient_fee,
+                ),
+                expected: Expected::RejectInsufficientComputeFee {
+                    fee: insufficient_fee,
+                    minimum_fee: boundary_fee,
+                    compute_mass: compute,
+                },
+            },
+            Test {
+                name: "transient mass triggers insufficient relay fee",
+                mtx: new_mtx(standard_script_public_key, NonContextualMasses::new(compute - 1, transient(bytes)), insufficient_fee),
+                expected: Expected::RejectInsufficientTransientFee {
+                    fee: insufficient_fee,
+                    minimum_fee: boundary_fee,
+                    normalized_transient_mass: compute,
+                },
+            },
+        ];
+
+        let config =
+            Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
+        let counters = Arc::new(MiningCounters::default());
+        let mempool = Mempool::new(Arc::new(config), params.toccata_activation, counters);
+
+        for test in tests {
+            let res = mempool.check_transaction_standard_in_context(&test.mtx, Priority::High, 0);
+            match test.expected {
+                Expected::Standard => assert_eq!(res, Ok(()), "failed for test '{}'", test.name),
+                Expected::RejectInputScriptClass => {
+                    assert_eq!(res, Err(NonStandardError::RejectInputScriptClass(test.mtx.id(), 0)), "failed for test '{}'", test.name)
+                }
+                Expected::RejectInsufficientComputeFee { fee, minimum_fee, compute_mass } => assert_eq!(
+                    res,
+                    Err(NonStandardError::RejectInsufficientComputeFee(test.mtx.id(), fee, minimum_fee, compute_mass)),
+                    "failed for test '{}'",
+                    test.name
+                ),
+                Expected::RejectInsufficientTransientFee { fee, minimum_fee, normalized_transient_mass } => assert_eq!(
+                    res,
+                    Err(NonStandardError::RejectInsufficientTransientFee(test.mtx.id(), fee, minimum_fee, normalized_transient_mass)),
+                    "failed for test '{}'",
+                    test.name
+                ),
+            }
+        }
+
+        // TODO(post-toccata): remove this temporary test case
+        let params: Params = NetworkType::Mainnet.into();
+
+        let config =
+            Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
+        let toccata_activation = ForkActivation::new(10);
+        let toccata_daa_activation = toccata_activation.daa_score();
+        let cofactors = config.mempool_mass_cofactors.raw_post();
+        let mempool = Mempool::new(Arc::new(config), toccata_activation, Arc::new(MiningCounters::default()));
+
+        let compute_mass = 1_000;
+        let legacy_minimum_fee = LEGACY_MINIMUM_RELAY_TRANSACTION_FEE;
+        let insufficient_legacy_fee = legacy_minimum_fee - 1;
+        let masses = NonContextualMasses::new(compute_mass, compute_mass * 4);
+        let normalized_transient_mass = masses.normalized_transient(&cofactors);
+        assert!(normalized_transient_mass > compute_mass);
+        let new_minimum_fee = default_minimum_relay_fee_for_mass(normalized_transient_mass);
+
+        let addr = Address::new(Prefix::Mainnet, Version::PubKey, &[1u8; 32]);
+        let script_public_key = kaspa_txscript::pay_to_address_script(&addr);
+        let mtx = new_mtx(script_public_key.clone(), masses, legacy_minimum_fee);
+
+        assert_eq!(mempool.check_transaction_standard_in_context(&mtx, Priority::Low, toccata_daa_activation - 1), Ok(()));
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(
+                &new_mtx(script_public_key, masses, insufficient_legacy_fee),
+                Priority::Low,
+                toccata_daa_activation - 1
+            ),
+            Err(NonStandardError::RejectInsufficientComputeFee(mtx.id(), insufficient_legacy_fee, legacy_minimum_fee, compute_mass))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::Low, toccata_daa_activation),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::High, toccata_daa_activation - 1),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&mtx, Priority::High, toccata_daa_activation),
+            Err(NonStandardError::RejectInsufficientTransientFee(
+                mtx.id(),
+                legacy_minimum_fee,
+                new_minimum_fee,
+                normalized_transient_mass
+            ))
+        );
+        // end-TODO
+    }
+
+    #[test]
+    fn test_standard_transaction_mass_cap() {
+        // Toccata score far enough out that the relaxation window (30 min * bps) starts at a positive score.
+        let toccata_activation = ForkActivation::new(1_000_000);
+        let params: Params = NetworkType::Mainnet.into();
+        let config =
+            Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
+        let mempool = Mempool::new(Arc::new(config), toccata_activation, Arc::new(MiningCounters::default()));
+
+        let addr = Address::new(Prefix::Mainnet, Version::PubKey, &[1u8; 32]);
+        let spk = kaspa_txscript::pay_to_address_script(&addr);
+
+        // 0 is before the relaxation window opens; one score below activation is inside it.
+        let before_window = 0;
+        let in_window = toccata_activation.daa_score() - 1;
+        let over = MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA + 1;
+
+        // Non-contextual (compute/transient) dimensions, checked in isolation.
+        let isolation_mtx = |compute, transient| {
+            let input = TransactionInput::new(
+                TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 0),
+                vec![],
+                MAX_TX_IN_SEQUENCE_NUM,
+                0,
+            );
+            let tx = Transaction::new(
+                TX_VERSION,
+                vec![input],
+                vec![TransactionOutput::new(SOMPI_PER_KASPA, spk.clone())],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            let mut mtx = MutableTransaction::from_tx(tx);
+            mtx.calculated_non_contextual_masses = Some(NonContextualMasses::new(compute, transient));
+            mtx
+        };
+
+        let high_compute = isolation_mtx(over, 1_000);
+        assert_eq!(
+            mempool.check_transaction_standard_in_isolation(&high_compute, before_window),
+            Err(NonStandardError::RejectComputeMass(high_compute.id(), over, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA))
+        );
+        assert_eq!(mempool.check_transaction_standard_in_isolation(&high_compute, in_window), Ok(()));
+
+        let high_transient = isolation_mtx(1_000, over);
+        assert_eq!(
+            mempool.check_transaction_standard_in_isolation(&high_transient, before_window),
+            Err(NonStandardError::RejectTransientMass(high_transient.id(), over, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA))
+        );
+        assert_eq!(mempool.check_transaction_standard_in_isolation(&high_transient, in_window), Ok(()));
+
+        // A transaction at the cap is standard even before the window.
+        let within_cap = isolation_mtx(MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA);
+        assert_eq!(mempool.check_transaction_standard_in_isolation(&within_cap, before_window), Ok(()));
+
+        // Contextual storage dimension, checked in context.
+        let context_mtx = |storage: u64, fee: u64| {
+            let input = TransactionInput::new(
+                TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 0),
+                vec![],
+                MAX_TX_IN_SEQUENCE_NUM,
+                0,
+            );
+            let tx = Transaction::new(
+                TX_VERSION,
+                vec![input],
+                vec![TransactionOutput::new(SOMPI_PER_KASPA, spk.clone())],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            tx.set_storage_mass(storage);
+            let mut mtx =
+                MutableTransaction::with_entries(tx.into(), vec![UtxoEntry::new(2 * SOMPI_PER_KASPA, spk.clone(), 0, false, None)]);
+            mtx.calculated_non_contextual_masses = Some(NonContextualMasses::new(1_000, 1_000));
+            mtx.calculated_fee = Some(fee);
+            mtx
+        };
+
+        let high_storage = context_mtx(over, SOMPI_PER_KASPA);
+        assert_eq!(
+            mempool.check_transaction_standard_in_context(&high_storage, Priority::High, before_window),
+            Err(NonStandardError::RejectStorageMass(high_storage.id(), over, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA))
+        );
+        // Within the window the storage cap is lifted; the well-funded, standard tx is accepted.
+        assert_eq!(mempool.check_transaction_standard_in_context(&high_storage, Priority::High, in_window), Ok(()));
     }
 }

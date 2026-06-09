@@ -153,7 +153,7 @@ impl ConsensusConverter {
                 subnetwork_id: transaction.subnetwork_id,
                 gas: transaction.gas,
                 payload: transaction.payload.clone(),
-                mass: transaction.mass(),
+                storage_mass: transaction.storage_mass(),
                 verbose_data,
             })
         } else {
@@ -391,12 +391,12 @@ impl ConsensusConverter {
             },
             sequence: if verbosity.include_sequence.unwrap_or(false) { Some(input.sequence) } else { Default::default() },
             sig_op_count: if verbosity.include_sig_op_count.unwrap_or(false) {
-                Some(input.mass.sig_op_count().unwrap_or(0))
+                Some(input.compute_commit.sig_op_count().unwrap_or(0))
             } else {
                 Default::default()
             },
             compute_budget: if verbosity.include_sig_op_count.unwrap_or(false) {
-                Some(input.mass.compute_budget().unwrap_or(0))
+                Some(input.compute_commit.compute_budget().unwrap_or(0))
             } else {
                 Default::default()
             }, // TODO: consider having a separate flag for compute_mass
@@ -444,7 +444,11 @@ impl ConsensusConverter {
             },
             gas: if verbosity.include_gas.unwrap_or(false) { Some(transaction.gas) } else { Default::default() },
             payload: if verbosity.include_payload.unwrap_or(false) { Some(transaction.payload.clone()) } else { Default::default() },
-            mass: if verbosity.include_mass.unwrap_or(false) { Some(transaction.mass()) } else { Default::default() },
+            storage_mass: if verbosity.include_storage_mass.unwrap_or(false) {
+                Some(transaction.storage_mass())
+            } else {
+                Default::default()
+            },
             verbose_data: if let Some(verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
                 Some(
                     self.get_transaction_verbose_data_with_verbosity(
@@ -499,7 +503,7 @@ impl ConsensusConverter {
             subnetwork_id: Some(transaction.tx.subnetwork_id),
             gas: Some(transaction.tx.gas),
             payload: Some(transaction.tx.payload.clone()),
-            mass: Some(transaction.tx.mass()),
+            storage_mass: Some(transaction.tx.storage_mass()),
             verbose_data: if let Some(verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
                 Some(
                     self.get_transaction_verbose_data_with_verbosity(

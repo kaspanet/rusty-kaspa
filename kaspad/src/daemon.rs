@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
+use kaspa_build_info::git;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
@@ -19,10 +20,9 @@ use kaspa_notify::{address::tracker::Tracker, subscription::context::Subscriptio
 use kaspa_p2p_lib::Hub;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_system_info::SystemInfo;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
-use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
@@ -118,10 +118,15 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
 
 fn request_database_deletion_approval(approve: bool) -> bool {
     let msg = "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
-    get_user_approval_or_exit(msg, approve);
-    info!("Deleting databases from previous Kaspad version");
-    true // if consensus not exited, always return true
+    request_database_deletion_approval_with_message(msg, approve)
 }
+
+fn request_database_deletion_approval_with_message(message: &str, approve: bool) -> bool {
+    get_user_approval_or_exit(message, approve);
+    info!("Deleting databases due to incompatible Kaspad DB version");
+    true // Approval was granted; rejection exits the process above.
+}
+
 fn get_user_approval_or_exit(message: &str, approve: bool) {
     if approve {
         return;
@@ -276,6 +281,7 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
 ///
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
+
     let mut fd_remaining = fd_total_budget;
     let utxo_files_limit = if args.utxoindex {
         let utxo_files_limit = fd_remaining / 10;
@@ -374,7 +380,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             // This worst case usage only considers block space. It does not account for usage of
             // other stores (reachability, block status, mempool, etc.)
             let worst_case_usage = ((total_blocks + finality_depth)
-                * (config.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR)) as f64
+                * (config.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR))
+                as f64
                 / ONE_GIGABYTE;
 
             info!(
@@ -431,14 +438,18 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         }
     }
 
-    // Reset Condition: Need to reset if we're upgrading from kaspad DB version
-    // TEMP: upgrade from Alpha version or any version before this one
-    'db_upgrade: while !is_db_reset_needed
-        && (meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some())
-            || MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap())
-    {
+    // Reset/upgrade condition: Handle mismatches against the current Kaspad DB version.
+    'db_upgrade: while !is_db_reset_needed && MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap() {
         let mut mcms = MultiConsensusManagementStore::new(meta_db.clone());
         let version = mcms.version().unwrap();
+
+        if version > LATEST_DB_VERSION {
+            let msg = format!(
+                "Node database is from a newer Kaspad DB version ({version}) than this node supports ({LATEST_DB_VERSION}). Downgrading requires deleting the database, do you confirm the delete? (y/n)"
+            );
+            is_db_reset_needed = request_database_deletion_approval_with_message(&msg, args.yes);
+            continue 'db_upgrade;
+        }
 
         if version <= 3 {
             is_db_reset_needed = request_database_deletion_approval(args.yes);
@@ -501,6 +512,10 @@ Do you confirm? (y/n)";
                     continue 'db_upgrade;
                 }
             }
+        }
+        // no manual migration needed, but internal schema changes
+        if version <= 6 {
+            mcms.set_version(7).unwrap();
         }
         // if we reached here, db should be upgraded fully and we should exit the loop next
         assert_eq!(mcms.version().unwrap(), LATEST_DB_VERSION);
@@ -603,7 +618,7 @@ Do you confirm? (y/n)";
         Arc::new(perf_monitor_builder.build())
     };
 
-    let system_info = SystemInfo::default();
+    let system_info = SystemInfo::new(git::hash(), git::short_hash(), git::version());
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
@@ -628,7 +643,8 @@ Do you confirm? (y/n)";
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block(),
         false,
-        config.block_mass_limits,
+        config.mempool_block_mass_limits(),
+        config.toccata_activation,
         config.block_lane_limits,
         config.ram_scale,
         config.block_template_cache_lifetime,

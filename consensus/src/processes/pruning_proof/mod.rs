@@ -119,7 +119,7 @@ pub struct PruningProofManager {
     finality_depth: u64,
     ghostdag_k: KType,
     skip_proof_of_work: bool,
-    covenants_activation: ForkActivation,
+    toccata_activation: ForkActivation,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -141,7 +141,7 @@ impl PruningProofManager {
         finality_depth: u64,
         ghostdag_k: KType,
         skip_proof_of_work: bool,
-        covenants_activation: ForkActivation,
+        toccata_activation: ForkActivation,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -177,7 +177,7 @@ impl PruningProofManager {
             finality_depth,
             ghostdag_k,
             skip_proof_of_work,
-            covenants_activation,
+            toccata_activation,
 
             is_consensus_exiting,
         }
@@ -298,7 +298,7 @@ impl PruningProofManager {
                     // send is `daa_window_blocks` which represents the full trusted sub-DAG in the antifuture
                     // of the pruning point which kaspad-rust nodes expect to get when synced with headers proof
                     //
-                    // TODO(pre-covpp): remove the redundant `ghostdag_blocks` field as part of restructuring trusted data sending
+                    // TODO(post-toccata): remove the redundant `ghostdag_blocks` field as part of cleaning up old P2P versions
                     if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                         e.insert(TrustedHeader {
                             header: self.headers_store.get_header(hash).unwrap(),
@@ -339,9 +339,13 @@ impl PruningProofManager {
             }
         }
 
-        if self.covenants_activation.is_active(self.headers_store.get_daa_score(pruning_point).unwrap()) {
+        if self.toccata_activation.is_active(self.headers_store.get_daa_score(pruning_point).unwrap()) {
             let pruning_point_header = self.headers_store.get_header(pruning_point).unwrap();
-            let pruning_point_blue_score = pruning_point_header.blue_score;
+            // Post-Toccata chain qualification enforces first parent = selected parent.
+            let pruning_point_sp = pruning_point_header.direct_parents().first().copied().expect("never called for genesis");
+            // Pruning point txs use this selected parent as seqcommit context, so the syncer must provide
+            // the selected-parent chain segment that can be queried from that context.
+            let context_blue_score = self.headers_store.get_blue_score(pruning_point_sp).unwrap();
 
             // We rely on the fact that finality depth is the interval between pruning points, so this chain segment
             // is always accessible and valid (this function is called before pruning above the prev pruning point)
@@ -354,12 +358,19 @@ impl PruningProofManager {
                 }
 
                 let current_header = self.headers_store.get_compact_header_data(current).unwrap();
-                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
+                // This cutoff also covers the inactivity-shortcut anchor.
+                // Chain qualification gives pp.bs >= pp.sp.bs + 1, so a block failing the check
+                // satisfies `current.bs + F <= pp.sp.bs <= pp.bs - 1`, i.e. `current.bs <= pp.bs - F - 1`.
+                // pp.inactivity_shortcut is by definition the highest chain block with
+                // `bs <= pp.bs - F - 1` (see `compute_inactivity_shortcut_block`), so its bs is at
+                // least the break block's bs. The iteration walks the chain in decreasing bs and
+                // pushes before checking, so pp.inactivity_shortcut is always included in the segment.
+                if !seq_commit_within_threshold(context_blue_score, current_header.blue_score, threshold) {
                     break;
                 }
 
-                if !self.covenants_activation.is_active(current_header.daa_score) {
-                    // We are not demanded to provide the chain segment for blocks below the covenants activation
+                if !self.toccata_activation.is_active(current_header.daa_score) {
+                    // We are not demanded to provide the chain segment for blocks below the Toccata activation
                     // See the chain-qualification check in the utxo validation code for details as well as
                     // code in SeqCommitAccessor
                     break;

@@ -20,7 +20,10 @@ mod tests {
         api::ConsensusApi,
         block::TemplateBuildMode,
         coinbase::MinerData,
-        config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
+        config::{
+            constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
+            params::ForkActivation,
+        },
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::tx::TxRuleError,
         mass::{BlockLaneLimits, BlockMassLimits, NonContextualMasses, transaction_estimated_serialized_size},
@@ -50,6 +53,7 @@ mod tests {
             TARGET_TIME_PER_BLOCK,
             false,
             BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS),
+            ForkActivation::never(),
             BLOCK_LANE_LIMITS,
             None,
             Arc::new(MiningCounters::default()),
@@ -932,7 +936,7 @@ mod tests {
         // Limit the orphan pool to 2 transactions
         config.maximum_orphan_transaction_count = 2;
         let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::with_config(config.clone(), None, counters);
+        let mining_manager = MiningManager::with_config(config.clone(), ForkActivation::never(), None, counters);
 
         // Create pairs of transaction parent-and-child pairs according to the test vector
         let (parent_txs, child_txs) = create_arrays_of_parent_and_children_transactions(&consensus, tests.len());
@@ -1042,7 +1046,7 @@ mod tests {
         consensus.add_transaction(child_tx_2.clone(), 3);
 
         // Add to mempool a transaction that spends child_tx_2 (as high priority)
-        let spending_tx = create_transaction(&child_tx_2, 1_000);
+        let spending_tx = create_transaction(&child_tx_2, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         let result = mining_manager.validate_and_insert_transaction(
             consensus.as_ref(),
             spending_tx.clone(),
@@ -1159,12 +1163,13 @@ mod tests {
         let tx_size = txs[0].mempool_estimated_bytes();
         let size_limit = TX_COUNT * tx_size;
         config.mempool_size_limit = size_limit;
-        let mining_manager = MiningManager::with_config(config, None, counters);
+        let mining_manager = MiningManager::with_config(config, ForkActivation::never(), None, counters);
 
         for tx in txs {
             validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
         }
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
+        let high_fee = MAX_BLOCK_MASS * DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE / 1000;
 
         let heavy_tx_low_fee = {
             let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32, 0);
@@ -1182,7 +1187,7 @@ mod tests {
             let mut inner_tx = (*(heavy_tx.tx)).clone();
             inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
             heavy_tx.tx = inner_tx.into();
-            heavy_tx.calculated_fee = Some(500_000);
+            heavy_tx.calculated_fee = Some(high_fee);
             heavy_tx
         };
         validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx_high_fee.clone()).unwrap();
@@ -1194,10 +1199,35 @@ mod tests {
             let mut inner_tx = (*(heavy_tx.tx)).clone();
             inner_tx.payload = vec![0u8; size_limit];
             heavy_tx.tx = inner_tx.into();
-            heavy_tx.calculated_fee = Some(500_000);
+            heavy_tx.calculated_fee = Some(high_fee);
             heavy_tx
         };
         assert!(validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), too_big_tx.clone()).is_err());
+    }
+
+    #[test]
+    fn test_realtime_feerate_estimations_respect_minimum_standard_feerate() {
+        let minimum_feerate = DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE as f64 / 1000.0;
+
+        for tx_count in [0, 1, 10, 100, 500] {
+            let consensus = Arc::new(ConsensusMock::new());
+            let mining_manager = default_mining_manager();
+
+            for i in 0..tx_count {
+                let tx = create_transaction_with_utxo_entry(i, 0);
+                validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
+            }
+
+            let estimations = mining_manager.get_realtime_feerate_estimations();
+            for bucket in estimations.ordered_buckets() {
+                assert!(
+                    bucket.feerate >= minimum_feerate,
+                    "mempool with {tx_count} txs returned bucket feerate {} below minimum standard feerate {}",
+                    bucket.feerate,
+                    minimum_feerate
+                );
+            }
+        }
     }
 
     fn validate_and_insert_mutable_transaction(
@@ -1470,7 +1500,7 @@ mod tests {
 
     fn create_child_and_parent_txs_and_add_parent_to_consensus(consensus: &Arc<ConsensusMock>) -> Transaction {
         let parent_tx = create_transaction_without_input(vec![500 * SOMPI_PER_KASPA]);
-        let child_tx = create_transaction(&parent_tx, 1000);
+        let child_tx = create_transaction(&parent_tx, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         consensus.add_transaction(parent_tx, 1);
         child_tx
     }

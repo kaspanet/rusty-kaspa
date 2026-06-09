@@ -9,6 +9,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
     api::BlockValidationFuture,
     block::Block,
+    config::params::{ForkActivation, Params},
     header::Header,
     pruning::{PruningPointProof, PruningPointsList, PruningProofMetadata},
     trusted::TrustedBlock,
@@ -147,6 +148,10 @@ impl IbdFlow {
                         pruning_point, self.router
                     );
                     self.sync_new_smt_state(&session, pruning_point).await?;
+                } else {
+                    // TODO(post-toccata): In pre-Toccata nodes there are some edge cases where the SMT stable flag is wrongly set to false at this point.
+                    // Therefore, the below line can be removed post-Toccata.
+                    session.async_set_pruning_smt_stable().await;
                 }
 
                 if !is_utxo_stable
@@ -276,11 +281,11 @@ impl IbdFlow {
 
                 let is_utxo_stable = consensus.async_is_pruning_utxoset_stable().await;
                 let is_pp_anticone_synced = consensus.async_is_pruning_point_anticone_fully_synced().await;
-                // The SMT stable flag is only meaningful once covenants are active at the current
+                // The SMT stable flag is only meaningful once Toccata is active at the current
                 // pruning point. Before activation, `sync_new_smt_state` is a no-op and the flag
                 // is never set, so we treat it as stable to preserve pre-activation IBD behavior.
                 let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-                let is_smt_stable = if self.ctx.config.covenants_activation.is_active(pp_header.daa_score) {
+                let is_smt_stable = if self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
                     consensus.async_is_pruning_smt_stable().await
                 } else {
                     true
@@ -392,6 +397,21 @@ impl IbdFlow {
     }
 
     async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy, relay_block: &Block) -> Result<Hash, ProtocolError> {
+        // [Toccata] Guard IBD from outdated nodes. P2P flow registration does not protect
+        // fresh IBD peers, and the relay block is usually the syncer sink, so reject an unexpected
+        // block version before requesting the pruning proof. The pruning point itself is
+        // checked below by `validate_pruning_point_freshness_for_toccata`.
+        let expected_relay_block_version = self.ctx.config.block_version().get(relay_block.header.daa_score);
+        if relay_block.header.version != expected_relay_block_version {
+            return Err(ProtocolError::OtherOwned(format!(
+                "peer relayed block {} header version mismatch: got {}, expected {} at DAA score {} (Toccata guard)",
+                relay_block.hash(),
+                relay_block.header.version,
+                expected_relay_block_version,
+                relay_block.header.daa_score
+            )));
+        }
+
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -412,7 +432,8 @@ impl IbdFlow {
         let proof =
             consensus.clone().spawn_blocking(move |c| c.validate_pruning_proof(&proof, &proof_metadata).map(|()| proof)).await?;
 
-        let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
+        let proof_pruning_point_header = proof[0].last().expect("was just ensured by validation");
+        let proof_pruning_point = proof_pruning_point_header.hash;
 
         if proof_pruning_point == self.ctx.config.genesis.hash {
             return Err(ProtocolError::Other("the proof pruning point is the genesis block"));
@@ -422,6 +443,15 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the proof pruning point is the same as the current pruning point"));
         }
         drop(consensus);
+
+        // [Toccata] Reject IBD from outdated peers
+        validate_pruning_point_freshness_for_toccata(
+            self.ctx.config.as_ref(),
+            proof_pruning_point_header.hash,
+            proof_pruning_point_header.timestamp,
+            proof_pruning_point_header.daa_score,
+            unix_now(),
+        )?;
 
         self.router
             .enqueue(make_message!(Payload::RequestPruningPointAndItsAnticone, RequestPruningPointAndItsAnticoneMessage {}))
@@ -481,8 +511,8 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the expected trusted entry"));
         }
 
-        // TODO(pre-covpp): this buffering can be heavy on RAM for large chain segments, but is acceptable
-        // for now since syncee memory usage is still low at this phase.
+        // TODO(optimization): this buffering can be heavy on RAM for large chain segments, but is acceptable
+        // since syncee memory usage is still low at this phase.
         let mut entries = vec![pruning_point_entry];
         let mut header_only_chain_segment = Vec::new();
         while let Some(entry) = entry_stream.next().await? {
@@ -658,7 +688,8 @@ impl IbdFlow {
         use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 
         let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-        if !self.ctx.config.covenants_activation.is_active(pp_header.daa_score) {
+        if !self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
+            consensus.async_set_pruning_smt_stable().await;
             return Ok(());
         }
 
@@ -675,32 +706,46 @@ impl IbdFlow {
 
         let mut stream = SmtStream::new(&self.router, &mut self.incoming_route);
 
-        // Phase 0: receive and verify metadata
+        // Phase 0: receive and verify metadata. Single 96-byte wire.
         let md = stream.recv_metadata().await?;
         let parent_header = consensus.async_get_header(pp_header.direct_parents()[0]).await.unwrap();
+
+        // Derive the shortcut block via consensus (uses reachability + headers only; safe at the PP
+        // boundary before the SMT is imported). Then resolve to the seqcommit hash with the same
+        // fold-to-zero rule used by `inactivity_shortcut(block)`.
+        let shortcut_block = consensus
+            .async_inactivity_shortcut_block_for_pov(pruning_point)
+            .await
+            .map_err(|e| ProtocolError::OtherOwned(format!("inactivity_shortcut_block resolution failed: {e}")))?;
+        let shortcut_header = consensus
+            .async_get_header(shortcut_block)
+            .await
+            .map_err(|_| ProtocolError::Other("inactivity_shortcut_block header not found"))?;
+        let inactivity_shortcut = if !self.ctx.config.toccata_activation.is_active(shortcut_header.daa_score) {
+            kaspa_hashes::ZERO_HASH
+        } else {
+            shortcut_header.accepted_id_merkle_root
+        };
+
         verify_smt_metadata(
             &SmtMetadata {
                 lanes_root: &md.lanes_root,
                 payload_and_ctx_digest: &md.payload_and_ctx_digest,
                 parent_seq_commit: &md.parent_seq_commit,
             },
+            inactivity_shortcut,
             pp_header.accepted_id_merkle_root,
             parent_header.accepted_id_merkle_root,
         )
         .map_err(|e| ProtocolError::OtherOwned(format!("SMT metadata verification failed: {e}")))?;
-
-        let lanes_root = md.lanes_root;
-        let payload_and_ctx_digest = md.payload_and_ctx_digest;
-        let expected_count = md.active_lanes_count;
 
         // Small queue of already-chunked batches: one in flight + one being processed
         // by the importer is enough headroom; each chunk holds up to SMT_CHUNK_SIZE lanes.
         let (tx, rx) = tokio::sync::mpsc::channel::<Vec<kaspa_consensus_core::api::ImportLane>>(2);
 
         let consensus_for_import = consensus.clone();
-        let builder_handle = tokio::task::spawn_blocking(move || {
-            consensus_for_import.import_pruning_point_smt(pruning_point, lanes_root, payload_and_ctx_digest, expected_count, rx)
-        });
+        let builder_handle =
+            tokio::task::spawn_blocking(move || consensus_for_import.import_pruning_point_smt(pruning_point, md, shortcut_block, rx));
 
         while let Some(chunk) = stream.next_chunk().await? {
             tx.send(chunk).await.map_err(|_| ProtocolError::Other("streaming SMT builder stopped unexpectedly"))?;
@@ -1029,5 +1074,163 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
         }
         Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
+    }
+}
+
+/// [Toccata] Fresh nodes cannot easily identify outdated peers after activation, so we guard
+/// against syncers advertising pruning points that are clearly stale.
+///
+/// TODO(post-toccata): remove or adjust this stale pruning-point guard once Toccata is cleaned up.
+fn validate_pruning_point_freshness_for_toccata(
+    params: &Params,
+    pp_hash: Hash,
+    pp_timestamp: u64,
+    pp_daa_score: u64,
+    now: u64,
+) -> Result<(), ProtocolError> {
+    // No activation is expected.
+    if params.toccata_activation == ForkActivation::never() {
+        return Ok(());
+    }
+
+    // If the pruning point is post-activation, its header is validated as part of the pruning proof.
+    if params.toccata_activation.is_active(pp_daa_score) {
+        return Ok(());
+    }
+
+    // Otherwise, protect fresh nodes from outdated syncers with stale pre-activation pruning points.
+
+    let activation_daa_score = params.toccata_activation.daa_score();
+
+    // Reject if:
+    // 1. the syncer's pruning point is still pre-activation;
+    // 2. based on its timestamp and DAA score, activation should have happened long enough ago
+    //    for the syncer to already expose a post-activation pruning point.
+    const ONE_DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
+    let millis_per_block = params.target_time_per_block();
+
+    let pp_to_activation_blocks = activation_daa_score.saturating_sub(pp_daa_score);
+    let pp_to_activation_millis = pp_to_activation_blocks.saturating_mul(millis_per_block);
+    let estimated_activation_time = pp_timestamp.saturating_add(pp_to_activation_millis);
+
+    let pruning_period_millis = params.pruning_depth().saturating_add(params.finality_depth()).saturating_mul(millis_per_block);
+    // The oldest activation estimate for which a pre-activation pruning point is still tolerated.
+    let stale_activation_time_cutoff = now.saturating_sub(pruning_period_millis).saturating_sub(ONE_DAY_MILLIS);
+
+    // If activation should have happened before this cutoff, the syncer should already
+    // expose a post-activation pruning point.
+    if estimated_activation_time < stale_activation_time_cutoff {
+        return Err(ProtocolError::OtherOwned(format!(
+            "syncer pruning point {} is stale: DAA score {} is below Toccata activation DAA score {}, but based on its timestamp {} a post-activation pruning point is expected by now",
+            pp_hash, pp_daa_score, activation_daa_score, pp_timestamp
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::config::params::MAINNET_PARAMS;
+
+    fn params_with_toccata_activation(activation_daa_score: u64) -> Params {
+        let mut params = MAINNET_PARAMS.clone();
+        params.toccata_activation = ForkActivation::new(activation_daa_score);
+        params
+    }
+
+    fn params_without_toccata_activation() -> Params {
+        let mut params = MAINNET_PARAMS.clone();
+        params.toccata_activation = ForkActivation::never();
+        params
+    }
+
+    fn pruning_period_millis(params: &Params) -> u64 {
+        params.pruning_depth().saturating_add(params.finality_depth()).saturating_mul(params.target_time_per_block())
+    }
+
+    #[test]
+    fn test_toccata_pruning_point_staleness_guard() {
+        const ONE_DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
+        let activation_daa_score = 10_000_000;
+        let params = params_with_toccata_activation(activation_daa_score);
+        let blocks_per_day = ONE_DAY_MILLIS / params.target_time_per_block();
+        let pp_hash = Hash::from_u64_word(1);
+        let pp_daa_score = activation_daa_score - 10;
+        let pp_timestamp = 1_000_000_000_000;
+        let pp_to_activation_millis = 10 * params.target_time_per_block();
+        let estimated_activation_time = pp_timestamp + pp_to_activation_millis;
+        let stale_after = estimated_activation_time + pruning_period_millis(&params) + ONE_DAY_MILLIS;
+
+        // No activation is configured:
+        // PP(pre-activation by score) ---- estimated activation ---- pruning period + margin ---- now
+        assert!(
+            validate_pruning_point_freshness_for_toccata(
+                &params_without_toccata_activation(),
+                pp_hash,
+                pp_timestamp,
+                pp_daa_score,
+                stale_after + 1
+            )
+            .is_ok()
+        );
+
+        // Normal pre-activation IBD: activation is still ten days away.
+        // PP/now -------- 10d -------- activation
+        let pp_ten_days_before_activation = activation_daa_score - 10 * blocks_per_day;
+        assert!(
+            validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_ten_days_before_activation, pp_timestamp)
+                .is_ok()
+        );
+
+        // The syncer's pruning point is already post-activation, so the staleness guard is done:
+        // PP(post-activation by score) ----------------------------------------------- now
+        assert!(
+            validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, activation_daa_score, stale_after + 1)
+                .is_ok()
+        );
+
+        // Last tolerated instant for a pre-activation pruning point:
+        // PP ---- estimated activation ---- pruning period + margin == now
+        assert!(validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_daa_score, stale_after).is_ok());
+
+        // One millisecond later, the same pre-activation pruning point is stale:
+        // PP ---- estimated activation ---- pruning period + margin < now
+        assert!(validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_daa_score, stale_after + 1).is_err());
+
+        // Stale IBD: the syncer's pruning point is three days before activation, and now is
+        // six days after that pruning point. Activation should have happened long enough ago
+        // for the syncer to already expose a post-activation pruning point.
+        // PP -------- 3d -------- activation -------- 3d -------- now
+        let pp_three_days_before_activation = activation_daa_score - 3 * blocks_per_day;
+        let now_six_days_after_pp = pp_timestamp + 6 * ONE_DAY_MILLIS;
+        assert!(
+            validate_pruning_point_freshness_for_toccata(
+                &params,
+                pp_hash,
+                pp_timestamp,
+                pp_three_days_before_activation,
+                now_six_days_after_pp
+            )
+            .is_err()
+        );
+
+        // Normal IBD: two days after activation, a pruning point just before activation is
+        // still expected because pruning points trail the live chain by the pruning period.
+        // PP - activation -------- 2d -------- now
+        let pp_just_before_activation = activation_daa_score - 1;
+        let pp_just_before_activation_timestamp = pp_timestamp + 3 * ONE_DAY_MILLIS - params.target_time_per_block();
+        let now_two_days_after_activation = pp_timestamp + 5 * ONE_DAY_MILLIS;
+        assert!(
+            validate_pruning_point_freshness_for_toccata(
+                &params,
+                pp_hash,
+                pp_just_before_activation_timestamp,
+                pp_just_before_activation,
+                now_two_days_after_activation
+            )
+            .is_ok()
+        );
     }
 }

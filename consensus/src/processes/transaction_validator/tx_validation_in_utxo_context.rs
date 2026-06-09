@@ -126,7 +126,7 @@ impl TransactionValidator {
     fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let calculated_contextual_mass =
             self.mass_calculator.calc_contextual_masses(tx).ok_or(TxRuleError::MassIncomputable)?.storage_mass;
-        let committed_contextual_mass = tx.tx().mass();
+        let committed_contextual_mass = tx.tx().storage_mass();
         if committed_contextual_mass != calculated_contextual_mass {
             return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));
         }
@@ -168,14 +168,14 @@ impl TransactionValidator {
         seq_commit_accessor: Option<&dyn SeqCommitAccessor>,
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
-        let covenants_enabled = self.covenants_activation.is_active(block_daa_score);
+        let covenants_enabled = self.toccata_activation.is_active(block_daa_score);
         let flags: EngineFlags = EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).into() };
 
         check_scripts(tx, ctx, flags)
     }
 
     fn check_covenant_info(&self, tx: &impl VerifiableTransaction, block_daa_score: u64) -> TxResult<CovenantsContext> {
-        if !self.covenants_activation.is_active(block_daa_score) {
+        if !self.toccata_activation.is_active(block_daa_score) {
             return Ok(Default::default());
         }
 
@@ -195,7 +195,7 @@ pub fn check_scripts(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtx<'_
 
 pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxUnsync<'_>, flags: EngineFlags) -> TxResult<()> {
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        let script_units_limit = input.mass.allowed_script_units();
+        let script_units_limit = input.compute_commit.allowed_script_units();
         let mut vm =
             TxScriptEngine::from_transaction_input_with_script_units_limit(tx, input, i, entry, ctx, flags, script_units_limit);
         vm.execute().map_err(|err| map_script_err(err, input))?;
@@ -206,7 +206,7 @@ pub fn check_scripts_sequential(tx: &impl VerifiableTransaction, ctx: EngineCtxU
 pub fn check_scripts_par_iter(tx: &(impl VerifiableTransaction + Sync), ctx: EngineCtxSync<'_>, flags: EngineFlags) -> TxResult<()> {
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        let script_units_limit = input.mass.allowed_script_units();
+        let script_units_limit = input.compute_commit.allowed_script_units();
         let mut vm =
             TxScriptEngine::from_transaction_input_with_script_units_limit(tx, input, idx, utxo, ctx, flags, script_units_limit);
         vm.execute().map_err(|err| map_script_err(err, input))
@@ -237,8 +237,8 @@ mod tests {
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{
-        MutableTransaction, PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId, TransactionInput,
-        TransactionOutpoint, TransactionOutput, TxInputMass, UtxoEntry,
+        ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId,
+        TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
     };
     use kaspa_consensus_core::{
         config::params::ForkActivation,
@@ -297,7 +297,7 @@ mod tests {
                 signature_script: pay_to_script_hash_signature_script(redeem_script.clone(), signature_prefix.clone())
                     .expect("the script is canonical"),
                 sequence: 0,
-                mass: TxInputMass::ComputeBudget(1.into()),
+                compute_commit: ComputeCommit::ComputeBudget(1.into()),
             })
             .collect_vec();
 
@@ -321,7 +321,7 @@ mod tests {
 
         // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 9999).
         let (mut tx, entries) = build_parallel_push_budget_test_tx(2);
-        tx.inputs[0].mass = ComputeBudget(0).into();
+        tx.inputs[0].compute_commit = ComputeBudget(0).into();
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         let result = check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags);
         assert_match!(
@@ -333,14 +333,14 @@ mod tests {
         // (b) A few inputs together are all independently under budget and should pass.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(1).into());
+        tx.inputs.iter_mut().for_each(|input| input.compute_commit = ComputeBudget(1).into());
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags).expect("should succceed");
 
         // (c) Everything is ok with a larger per-input budget as well.
         let (tx, entries) = build_parallel_push_budget_test_tx(3);
         let mut tx = tx;
-        tx.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(10).into());
+        tx.inputs.iter_mut().for_each(|input| input.compute_commit = ComputeBudget(10).into());
         let populated_tx = PopulatedTransaction::new(&tx, entries);
         check_scripts(&populated_tx, EngineCtx::new(&sig_cache), flags).expect("should succeed");
     }
@@ -351,7 +351,7 @@ mod tests {
         let tv = TransactionValidator::new(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -390,10 +390,10 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: if TxInputMass::version_expects_compute_budget_field(version) {
-                    TxInputMass::ComputeBudget(compute_budget.into())
+                compute_commit: if ComputeCommit::version_expects_compute_budget_field(version) {
+                    ComputeCommit::ComputeBudget(compute_budget.into())
                 } else {
-                    TxInputMass::SigopCount(sig_op_count.into())
+                    ComputeCommit::SigopCount(sig_op_count.into())
                 },
             };
             let output = TransactionOutput {
@@ -414,8 +414,8 @@ mod tests {
             let signed_tx = sign(MutableTransaction::with_entries(tx, vec![utxo_entry]), schnorr_key);
 
             // Verify that `sign` didn't change the sig_op_count and compute_budget values.
-            assert_eq!(signed_tx.tx.inputs[0].mass.sig_op_count().unwrap_or(0), sig_op_count);
-            assert_eq!(signed_tx.tx.inputs[0].mass.compute_budget().unwrap_or(0), compute_budget);
+            assert_eq!(signed_tx.tx.inputs[0].compute_commit.sig_op_count().unwrap_or(0), sig_op_count);
+            assert_eq!(signed_tx.tx.inputs[0].compute_commit.compute_budget().unwrap_or(0), compute_budget);
 
             let verifiable_tx = signed_tx.as_verifiable();
 
@@ -459,7 +459,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([11u8; 32]), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: TxInputMass::SigopCount(1.into()),
+                compute_commit: ComputeCommit::SigopCount(1.into()),
             }],
             vec![TransactionOutput {
                 value: 1,
@@ -482,7 +482,7 @@ mod tests {
 
         let signed_tx = sign(MutableTransaction::with_entries(tx, vec![utxo_entry]), schnorr_key);
         assert_eq!(signed_tx.tx.version, 0);
-        assert_eq!(signed_tx.tx.inputs[0].mass.sig_op_count().unwrap_or(0), 1);
+        assert_eq!(signed_tx.tx.inputs[0].compute_commit.sig_op_count().unwrap_or(0), 1);
 
         let verifiable_tx = signed_tx.as_verifiable();
 
@@ -509,7 +509,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -537,7 +537,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(1.into()),
+                compute_commit: ComputeCommit::SigopCount(1.into()),
             }],
             vec![
                 TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2), covenant: None },
@@ -584,7 +584,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -613,7 +613,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(1.into()),
+                compute_commit: ComputeCommit::SigopCount(1.into()),
             }],
             vec![
                 TransactionOutput {
@@ -664,7 +664,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -694,7 +694,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4.into()),
+                compute_commit: ComputeCommit::SigopCount(4.into()),
             }],
             vec![
                 TransactionOutput {
@@ -745,7 +745,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -775,7 +775,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4.into()),
+                compute_commit: ComputeCommit::SigopCount(4.into()),
             }],
             vec![
                 TransactionOutput {
@@ -828,7 +828,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -858,7 +858,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4.into()),
+                compute_commit: ComputeCommit::SigopCount(4.into()),
             }],
             vec![
                 TransactionOutput {
@@ -911,7 +911,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -941,7 +941,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4.into()),
+                compute_commit: ComputeCommit::SigopCount(4.into()),
             }],
             vec![
                 TransactionOutput {
@@ -993,7 +993,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -1018,7 +1018,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script,
                 sequence: 0,
-                mass: TxInputMass::SigopCount(4.into()),
+                compute_commit: ComputeCommit::SigopCount(4.into()),
             }],
             vec![TransactionOutput {
                 value: 2792999990000,
@@ -1062,7 +1062,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -1084,19 +1084,19 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0.into()),
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    mass: TxInputMass::SigopCount(0.into()),
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    mass: TxInputMass::SigopCount(0.into()),
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
             ],
             vec![

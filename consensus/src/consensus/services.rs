@@ -127,7 +127,7 @@ impl ConsensusServices {
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
             params.bps_history(),
-            params.covenants_activation,
+            params.toccata_activation,
         );
 
         let mass_calculator =
@@ -136,14 +136,14 @@ impl ConsensusServices {
         let transaction_validator = TransactionValidator::new(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
             params.ghostdag_k(),
             tx_script_cache_counters,
             mass_calculator.clone(),
-            params.covenants_activation,
+            params.toccata_activation,
             params.mass_per_sig_op,
         );
 
@@ -182,7 +182,7 @@ impl ConsensusServices {
             params.finality_depth(),
             params.ghostdag_k(),
             params.skip_proof_of_work,
-            params.covenants_activation,
+            params.toccata_activation,
             is_consensus_exiting,
         ));
 

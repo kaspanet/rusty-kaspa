@@ -66,6 +66,7 @@ fn assert_pruning_point_smt_roundtrip(seed: u64) {
 
     let mut params = DEVNET_PARAMS;
     apply_pruning_repro_params(&mut params);
+    params.toccata_activation = ForkActivation::always();
     let config = Arc::new(
         ConfigBuilder::new(params)
             .apply_args(|config| apply_perf_params(&mut config.perf))
@@ -87,6 +88,7 @@ fn assert_pruning_point_smt_roundtrip(seed: u64) {
 
     let pp = consensus.pruning_point();
     let pp_blue_score = consensus.get_header(pp).unwrap().blue_score;
+    // KIP-21: pruning cutoff uses finality_depth.
     let smt_cutoff = pp_blue_score.saturating_sub(FINALITY_DEPTH).saturating_sub(1);
     let metadata = consensus.get_pruning_point_smt_metadata(pp).unwrap();
     let (imported_root, imported_lanes) =
@@ -136,8 +138,8 @@ fn wait_for_smt_pruning_to_settle(consensus: &Consensus, seed: u64) {
 }
 
 fn apply_pruning_repro_params(params: &mut Params) {
-    // Keep this aligned with simpa's `--test-pruning` profile, with covenants
-    // enabled so generated non-native lanes update the sequence-commit SMT.
+    // Keep this aligned with simpa's `--test-pruning` profile, with Toccata
+    // active so generated non-native lanes update the sequence-commit SMT.
     params.max_block_level = BlockLevel::MAX - 1;
     params.coinbase_maturity = 200;
 
@@ -166,7 +168,7 @@ fn apply_pruning_repro_params(params: &mut Params) {
     params.mergeset_size_limit = 32 * 2;
     params.pruning_depth = PRUNING_DEPTH;
 
-    params.covenants_activation = ForkActivation::always();
+    // Toccata activation is set by the caller.
     params.storage_mass_parameter = 10_000;
 }
 

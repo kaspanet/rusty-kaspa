@@ -10,7 +10,7 @@ use crate::{
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     mass::units::GRAMS_PER_SIGOP_COUNT_UNIT,
     subnets::SUBNETWORK_ID_SIZE,
-    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, TxInputMass, UtxoEntry, VerifiableTransaction},
+    tx::{ComputeCommit, ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
 };
 use kaspa_hashes::HASH_SIZE;
 
@@ -178,8 +178,13 @@ impl NonContextualMasses {
     pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
         // Compute mass is already in the reference scale (compute limit).
         let c = self.compute_mass;
-        let t = (self.transient_mass as f64 * cofactors.transient).ceil() as u64;
+        let t = self.normalized_transient(cofactors);
         c.max(t)
+    }
+
+    /// Returns transient mass normalized to the compute-mass scale.
+    pub fn normalized_transient(&self, cofactors: &MassCofactors) -> u64 {
+        (self.transient_mass as f64 * cofactors.transient).ceil() as u64
     }
 }
 
@@ -191,6 +196,7 @@ impl std::fmt::Display for NonContextualMasses {
 
 /// Per-dimension block mass limits grouped into a single struct for convenience.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockMassLimits {
     pub storage: u64,
     pub compute: u64,
@@ -198,6 +204,7 @@ pub struct BlockMassLimits {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockLaneLimits {
     pub lanes_per_block: usize,
     pub gas_per_lane: u64,
@@ -339,17 +346,19 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let script_mass = if TxInputMass::version_expects_compute_budget_field(tx.version) {
+        let script_mass = if ComputeCommit::version_expects_compute_budget_field(tx.version) {
             GRAMS_PER_COMPUTE_BUDGET_UNIT
                 * tx.inputs
                     .iter()
-                    .map(|input| input.mass.compute_budget().expect("v1 transactions are expected to have compute budget") as u64)
+                    .map(|input| {
+                        input.compute_commit.compute_budget().expect("v1 transactions are expected to have compute budget") as u64
+                    })
                     .sum::<u64>()
         } else {
             let total_sigops: u64 = tx
                 .inputs
                 .iter()
-                .map(|input| input.mass.sig_op_count().expect("v0 transactions are expected to have sig op count") as u64)
+                .map(|input| input.compute_commit.sig_op_count().expect("v0 transactions are expected to have sig op count") as u64)
                 .sum();
             total_sigops * GRAMS_PER_SIGOP_COUNT_UNIT
         };
@@ -526,7 +535,7 @@ mod tests {
         for net in NetworkType::iter() {
             let params: Params = net.into();
             let max_spk_len = (params.max_script_public_key_len as u64)
-                .min(params.block_mass_limits.compute.div_ceil(params.mass_per_script_pub_key_byte));
+                .min(params.block_mass_limits().after().compute.div_ceil(params.mass_per_script_pub_key_byte));
             let max_plurality = (UTXO_CONST_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
             // verify C·P^2 can never overflow
@@ -793,7 +802,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: i as u32 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: TxInputMass::SigopCount(0.into()),
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 })
                 .collect(),
             outs.iter()

@@ -63,34 +63,13 @@ pub(super) struct ResolvedLaneUpdate {
     pub is_new: bool,
 }
 
-pub(crate) mod crescendo {
-    use kaspa_core::{info, log::CRESCENDO_KEYWORD};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering},
-    };
-
-    #[derive(Clone)]
-    pub(crate) struct _CrescendoLogger {
-        steps: Arc<AtomicU8>,
-    }
-
-    impl _CrescendoLogger {
-        pub fn _new() -> Self {
-            Self { steps: Arc::new(AtomicU8::new(Self::_ACTIVATE)) }
-        }
-
-        const _ACTIVATE: u8 = 0;
-
-        pub fn _report_activation(&self) -> bool {
-            if self.steps.compare_exchange(Self::_ACTIVATE, Self::_ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-                info!(target: CRESCENDO_KEYWORD, "[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
-                true
-            } else {
-                false
-            }
-        }
-    }
+/// Selected-parent state the current block inherits when building its seq_commit.
+pub(super) struct ParentBlockSeqState {
+    /// `accepted_id_merkle_root` of the selected parent.
+    pub seq_commit: Hash,
+    pub blue_score: u64,
+    pub lanes_root: Hash,
+    pub active_lanes_count: u64,
 }
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
@@ -158,8 +137,14 @@ impl VirtualStateProcessor {
             // The first block in the mergeset is always the selected parent
             let is_selected_parent = i == 0;
 
-            // No need to fully validate selected parent transactions since selected parent txs were already validated
-            // as part of selected parent UTXO state verification with the exact same UTXO context.
+            // No need to fully validate selected parent transactions: they were already fully validated when
+            // the selected parent passed verify_expected_utxo_state, using its own DAA score for both POV and
+            // block DAA score, and its selected parent as the seqcommit context.
+            //
+            // Here we only replay them while building the child's UTXO state. The child's POV DAA score is
+            // safe for non-script checks because maturity and sequence-lock checks are monotonic. Seqcommit
+            // context is not monotonic (the threshold can be crossed), but it is only used by script checks,
+            // which we skip for selected-parent transactions.
             let validation_flags = if is_selected_parent { TxValidationFlags::SkipScriptChecks } else { TxValidationFlags::Full };
             let (validated_transactions, inner_multiset) = self.validate_transactions_with_muhash_in_parallel(
                 &txs,
@@ -222,7 +207,7 @@ impl VirtualStateProcessor {
         }
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
-        let (expected_accepted_id_merkle_root, smt_build) = if self.covenants_activation.is_active(header.daa_score) {
+        let (expected_accepted_id_merkle_root, smt_build) = if self.toccata_activation.is_active(header.daa_score) {
             // KIP-21: compute seq_commit from SMT lane processing
             let (hash, build) = self.recompute_seq_commit(ctx, header)?;
             (hash, Some(build))
@@ -261,7 +246,7 @@ impl VirtualStateProcessor {
         // header-validity. This maintains compatibility with protocols like DAGKNIGHT,
         // which may not compute selected parents for every block, while still securing
         // the pruning point (which is a qualified chain block by definition).
-        if self.covenants_activation.is_active(header.daa_score) {
+        if self.toccata_activation.is_active(header.daa_score) {
             let selected_parent = ctx.ghostdag_data.selected_parent;
             let first_parent = header.direct_parents()[0];
             if first_parent != selected_parent {
@@ -269,7 +254,12 @@ impl VirtualStateProcessor {
             }
         }
 
-        // Verify all transactions are valid in context
+        // Final chain qualification condition: verify all transactions are valid in context.
+        //
+        // We verify this chain block's transactions in the same way they were built and checked by
+        // build_block_template -> validate_block_template_transaction: use the block DAA score as the
+        // POV DAA score, and use the selected parent as the seqcommit context. Later, calculate_utxo_state
+        // relies on this check when replaying this block as a selected parent.
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
         let validated_transactions = self.validate_transactions_in_parallel(
             &txs,
@@ -326,7 +316,7 @@ impl VirtualStateProcessor {
         pov_daa_score: u64,
         block_daa_score: u64,
         flags: TxValidationFlags,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> Vec<(ValidatedTransaction<'a>, u32)> {
         self.thread_pool.install(|| {
             txs
@@ -334,7 +324,7 @@ impl VirtualStateProcessor {
                             // that all txs within each block are independent
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score,block_daa_score, flags, sp).ok().map(|vtx| (vtx, i as u32)))
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score,block_daa_score, flags, selected_parent).ok().map(|vtx| (vtx, i as u32)))
                 .collect()
         })
     }
@@ -348,7 +338,7 @@ impl VirtualStateProcessor {
         pov_daa_score: u64,
         block_daa_score: u64,
         flags: TxValidationFlags,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> (SmallVec<[(ValidatedTransaction<'a>, u32); 2]>, MuHash) {
         self.thread_pool.install(|| {
             txs
@@ -356,7 +346,7 @@ impl VirtualStateProcessor {
                             // that all txs within each block are independent
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, block_daa_score, flags, sp).ok().map(|vtx| {
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, block_daa_score, flags, selected_parent).ok().map(|vtx| {
                     let mh = MuHash::from_transaction(&vtx, pov_daa_score);
                     (smallvec![(vtx, i as u32)], mh)
                 }
@@ -380,7 +370,7 @@ impl VirtualStateProcessor {
         pov_daa_score: u64,
         block_daa_score: u64,
         flags: TxValidationFlags,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> TxResult<ValidatedTransaction<'a>> {
         let mut entries = Vec::with_capacity(transaction.inputs.len());
         for input in transaction.inputs.iter() {
@@ -394,12 +384,12 @@ impl VirtualStateProcessor {
 
         let populated_tx = PopulatedTransaction::new(transaction, entries);
 
-        let seq_commit_accessor = if self.covenants_activation.is_active(pov_daa_score) {
+        let seq_commit_accessor = if self.toccata_activation.is_active(pov_daa_score) {
             Some(SeqCommitAccessor::new(
-                sp,
+                selected_parent,
                 &self.reachability_service,
                 &self.headers_store,
-                self.covenants_activation,
+                self.toccata_activation,
                 self.finality_depth,
             ))
         } else {
@@ -455,7 +445,7 @@ impl VirtualStateProcessor {
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
         args: &TransactionValidationArgs,
-        sp: Hash,
+        selected_parent: Hash,
     ) -> TxResult<()> {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
@@ -467,20 +457,20 @@ impl VirtualStateProcessor {
             .ok_or(TxRuleError::MassIncomputable)?;
 
         // Set the inner mass field
-        mutable_tx.tx.set_mass(contextual_mass.storage_mass);
+        mutable_tx.tx.set_storage_mass(contextual_mass.storage_mass);
 
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
         let mass_and_feerate_threshold = args.feerate_threshold.map(|threshold| {
             let mass = kaspa_consensus_core::mass::Mass::new(mutable_tx.calculated_non_contextual_masses.unwrap(), contextual_mass);
-            (mass.normalized_max(&self.mass_cofactors), threshold)
+            (mass.normalized_max(&self.mempool_mass_cofactors.get(pov_daa_score)), threshold)
         });
 
-        let seq_commit_accessor = if self.covenants_activation.is_active(pov_daa_score) {
+        let seq_commit_accessor = if self.toccata_activation.is_active(pov_daa_score) {
             Some(SeqCommitAccessor::new(
-                sp,
+                selected_parent,
                 &self.reachability_service,
                 &self.headers_store,
-                self.covenants_activation,
+                self.toccata_activation,
                 self.finality_depth,
             ))
         } else {
@@ -580,29 +570,29 @@ impl VirtualStateProcessor {
 
     /// Build the SMT from lane updates + expirations, compute the final seq_commit hash.
     ///
-    /// `parent_lanes_root` is the SMT root inherited from the selected parent block.
     /// Works with an immutable view of DB state. Returns the commit hash and an `SmtBuild`
     /// containing the diff (updated branches, lane versions, score index) for later persistence.
+    ///
+    /// `inactivity_shortcut` is folded into `activity_root` next to the active-lanes root.
     pub(super) fn build_seq_commit(
         &self,
-        parent_seq_commit: Hash,
+        parent: &ParentBlockSeqState,
         context_hash: Hash,
         current_blue_score: u64,
-        parent_blue_score: u64,
-        parent_lanes_root: Hash,
-        parent_active_lanes: u64,
         lane_updates: &[ResolvedLaneUpdate],
         miner_payload_leaves: Vec<Hash>,
         selected_parent: Hash,
+        inactivity_shortcut_block: Hash,
+        inactivity_shortcut: Hash,
     ) -> (Hash, kaspa_smt_store::processor::SmtBuild) {
-        use kaspa_seq_commit::hashing::{miner_payload_root, seq_commit, seq_state_root};
+        use kaspa_seq_commit::hashing::{activity_root_hash, miner_payload_root, seq_commit, seq_state_root};
         use kaspa_seq_commit::types::{SeqCommitInput, SeqState};
         use kaspa_smt_store::processor::SmtProcessor;
 
-        let bounds = SeqCommitBounds::new(parent_blue_score, current_blue_score, self.finality_depth);
+        let bounds = SeqCommitBounds::new(parent.blue_score, current_blue_score, self.finality_depth);
         // 1. Create processor starting from the parent's lanes root
         let mut proc =
-            SmtProcessor::new(&self.smt_stores, current_blue_score, bounds.selected_parent_read_bounds(), parent_lanes_root);
+            SmtProcessor::new(&self.smt_stores, current_blue_score, bounds.selected_parent_read_bounds(), parent.lanes_root);
 
         // 2. Expire stale lanes (scans [parent-F, current-F) for lanes with no newer version)
         let expired_count = self.expire_stale_lanes(&mut proc, bounds, selected_parent);
@@ -610,8 +600,8 @@ impl VirtualStateProcessor {
         // 3. Apply lane updates.
         // A lane at the boundary (bs = current-F-1) gets both expired (step 2) and re-added
         // here as is_new=true. This is not wasteful: BlockLaneChanges uses a BTreeMap keyed
-        // by lane_key, so update_lane overwrites the expire_lane entry — the walk sees only
-        // the final leaf. The two count operations cancel: expired+1, new+1 → net zero.
+        // by lane_key, so update_lane overwrites the expire_lane entry: the walk sees only
+        // the final leaf. The two count operations cancel: expired+1, new+1 net zero.
         let mut new_lane_count = 0;
         for lu in lane_updates {
             if lu.is_new {
@@ -620,18 +610,20 @@ impl VirtualStateProcessor {
             proc.update_lane(lu.lane_key, lu.new_tip);
         }
 
-        // 4. Build SMT (skips entirely when no pending leaves — no expirations, no touches)
+        // 4. Build SMT (skips entirely when no pending leaves: no expirations, no touches)
         let mut build = proc.build(|bh| self.is_smt_canonical(bh, selected_parent)).unwrap();
 
-        // 5. Compute final hash: payload_and_ctx_digest → state_root → seq_commit
+        // 5. Compute final hash: activity_root -> state_root -> seq_commit.
         let payload_root = miner_payload_root(miner_payload_leaves.into_iter());
         let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&context_hash, &payload_root);
-        let state_root = seq_state_root(&SeqState { lanes_root: &build.root, payload_and_ctx_digest: &pd });
-        let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
+        let activity_root = activity_root_hash(&inactivity_shortcut, &build.root);
+        let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
+        let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent.seq_commit, state_root: &state_root });
 
         // 6. Store metadata on the build for persistence
         build.payload_and_ctx_digest = pd;
-        build.active_lanes_count = parent_active_lanes + new_lane_count - expired_count;
+        build.active_lanes_count = parent.active_lanes_count + new_lane_count - expired_count;
+        build.inactivity_shortcut_block = inactivity_shortcut_block;
 
         (commit, build)
     }
@@ -644,18 +636,20 @@ impl VirtualStateProcessor {
         ctx: &UtxoProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<(Hash, kaspa_smt_store::processor::SmtBuild)> {
-        use kaspa_seq_commit::hashing::{mergeset_context_hash, seq_commit_timestamp};
+        use kaspa_seq_commit::hashing::mergeset_context_hash;
         use kaspa_seq_commit::types::MergesetContext;
 
         let selected_parent = ctx.selected_parent();
         let parent_header = self.headers_store.get_header(selected_parent).unwrap();
         let current_blue_score = ctx.ghostdag_data.blue_score;
 
+        let inactivity_shortcut_block = self.compute_inactivity_shortcut_block(&ctx.ghostdag_data);
         let context_hash = mergeset_context_hash(&MergesetContext {
-            timestamp: seq_commit_timestamp(parent_header.timestamp),
+            timestamp: parent_header.timestamp,
             daa_score: header.daa_score,
             blue_score: current_blue_score,
         });
+        let inactivity_shortcut = self.inactivity_shortcut(inactivity_shortcut_block);
 
         let parent_seq_commit = parent_header.accepted_id_merkle_root;
         let data = self.collect_mergeset_seq_data(ctx);
@@ -667,18 +661,23 @@ impl VirtualStateProcessor {
             selected_parent,
             parent_seq_commit,
         );
-        let (parent_lanes_root, parent_active_lanes) = self.get_parent_smt_metadata(selected_parent, parent_header.blue_score);
+        let (parent_lanes_root, parent_active_lanes) = self.get_parent_lanes_root_and_count(selected_parent, parent_header.blue_score);
+        let parent_state = ParentBlockSeqState {
+            seq_commit: parent_seq_commit,
+            blue_score: parent_header.blue_score,
+            lanes_root: parent_lanes_root,
+            active_lanes_count: parent_active_lanes,
+        };
 
         let (hash, build) = self.build_seq_commit(
-            parent_seq_commit,
+            &parent_state,
             context_hash,
             current_blue_score,
-            parent_header.blue_score,
-            parent_lanes_root,
-            parent_active_lanes,
             &lane_updates,
             data.miner_payload_leaves,
             selected_parent,
+            inactivity_shortcut_block,
+            inactivity_shortcut,
         );
 
         Ok((hash, build))

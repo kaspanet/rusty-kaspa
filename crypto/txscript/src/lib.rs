@@ -16,8 +16,24 @@ pub mod zk_precompiles;
 
 pub mod runtime_resource_meter;
 
-use std::io::Write;
+/// Consensus-pinned ZK verifier dependencies used by txscript.
+///
+/// Client applications can import these re-exports to use the same verifier
+/// versions and consensus-compatible behavior as the txscript engine.
+pub mod zk_deps {
+    pub use ark_bn254;
+    pub use ark_ec;
+    pub use ark_groth16;
+    pub use ark_relations;
+    pub use ark_serialize;
+    pub use ark_snark;
+    pub use risc0_binfmt;
+    pub use risc0_circuit_recursion;
+    pub use risc0_core;
+    pub use risc0_zkp;
+}
 
+use std::io::Write;
 use std::ops::Deref;
 
 use crate::caches::Cache;
@@ -113,6 +129,7 @@ pub struct EngineFlags {
 
 impl Default for EngineFlags {
     fn default() -> Self {
+        // TODO(post-toccata): change default values (wasm client is based on this one, no other changes needed)
         Self { covenants_enabled: false, sigop_script_units: Gram(1000).into() }
     }
 }
@@ -233,6 +250,61 @@ pub fn get_sig_op_count<T: VerifiableTransaction>(
     );
     vm.execute()?;
     Ok(vm.used_sig_ops())
+}
+
+/// Counts post-Toccata sigops in a p2sh redeem script.
+///
+/// This includes post-Toccata from-stack signature opcodes and post-Toccata
+/// non-minimal data pushes used as multisig pubkey counts.
+/// Malformed scripts return zero.
+pub fn post_toccata_p2sh_sig_scanner(signature_script: &[u8], spk: &ScriptPublicKey) -> u64 {
+    if !ScriptClass::is_pay_to_script_hash(spk.script()) {
+        return 0;
+    }
+
+    let Ok(signature_script_ops) =
+        parse_script::<PopulatedTransaction, SigHashReusedValuesUnsync>(signature_script).collect::<Result<Vec<_>, _>>()
+    else {
+        return 0;
+    };
+    let Some(p2sh_script_op) = signature_script_ops.last() else {
+        return 0;
+    };
+    let p2sh_script = p2sh_script_op.get_data();
+    let mut sigops = 0u64;
+    let mut prev_opcode_multisig_count = None;
+    for op in parse_script::<PopulatedTransaction, SigHashReusedValuesUnsync>(p2sh_script) {
+        let Ok(op) = op else {
+            return 0;
+        };
+        let opcode_value = op.value();
+        let multisig_count = prev_opcode_multisig_count.take();
+        match opcode_value {
+            // Post-Toccata p2sh sigop scanning includes from-stack variants.
+            codes::OpCheckSig
+            | codes::OpCheckSigVerify
+            | codes::OpCheckSigECDSA
+            | codes::OpCheckSigFromStack
+            | codes::OpCheckSigFromStackECDSA => sigops = sigops.saturating_add(1),
+            codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpCheckMultiSigECDSA => {
+                sigops = sigops.saturating_add(multisig_count.unwrap_or(MAX_PUB_KEYS_PER_MUTLTISIG as u64));
+            }
+            codes::Op1..=codes::Op16 => {
+                prev_opcode_multisig_count = Some((opcode_value - codes::Op1 + 1) as u64);
+            }
+            ..=codes::OpPushData4 => {
+                // Post-Toccata allows non-minimal data pushes, so
+                // OpData*/OpPushData* forms before multisig are counted.
+                prev_opcode_multisig_count = deserialize_i64(op.get_data(), false)
+                    .ok()
+                    .filter(|count| (1..=MAX_PUB_KEYS_PER_MUTLTISIG as i64).contains(count))
+                    .map(|count| count as u64);
+            }
+            _ => {}
+        }
+    }
+
+    sigops
 }
 
 /// Calculates an upper bound of signature operations in a script without executing it.
@@ -377,6 +449,11 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
     parse_script::<T, Reused>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
 }
 
+enum ScriptExecutionOutput {
+    Executed,
+    AcceptedUnknownVersion,
+}
+
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
     pub fn new(ctx: EngineContext<'a, Reused>, flags: EngineFlags) -> Self {
         let runtime_resource_meter = if flags.covenants_enabled {
@@ -411,9 +488,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         self.runtime_resource_meter.used_script_units()
     }
 
-    /// Returns the total bytes pushed into the data and alt stacks so far.
-    pub fn total_pushed_bytes(&self) -> u64 {
-        self.dstack.pushed_bytes().saturating_add(self.astack.pushed_bytes())
+    /// Returns and resets the currently tracked pushed bytes across both stacks.
+    fn pop_pushed_bytes(&mut self) -> u64 {
+        self.dstack.pop_pushed_bytes().saturating_add(self.astack.pop_pushed_bytes())
     }
 
     pub fn with_opcode_execution_log_buffer(mut self, buffer: &'a mut dyn Write) -> Self {
@@ -465,7 +542,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         let runtime_resource_meter = if flags.covenants_enabled {
             RuntimeResourceMeter::new_script_units(flags.sigop_script_units, script_units_limit)
         } else {
-            RuntimeResourceMeter::new_sigops(input.mass.sig_op_count().unwrap_or(0))
+            RuntimeResourceMeter::new_sigops(input.compute_commit.sig_op_count().unwrap_or(0))
         };
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -551,7 +628,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 opcode.check_minimal_data_push()?;
             }
             opcode.execute(self)?;
-            self.runtime_resource_meter.charge_newly_pushed_bytes(self.total_pushed_bytes())?;
+            let pushed_bytes = self.pop_pushed_bytes();
+            self.runtime_resource_meter.charge_newly_pushed_bytes(pushed_bytes)?;
             Ok(())
         } else {
             Ok(())
@@ -611,12 +689,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         script_result
     }
 
-    fn execute_inner(&mut self) -> Result<(), TxScriptError> {
+    fn execute_inner(&mut self) -> Result<ScriptExecutionOutput, TxScriptError> {
         let (scripts, is_p2sh, utxo_spk_script_units) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                     trace!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
-                    return Ok(());
+                    return Ok(ScriptExecutionOutput::AcceptedUnknownVersion);
                 }
 
                 // To avoid breaking the old pricing, we only charge for the part of the script public key
@@ -670,18 +748,20 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             let script = self.dstack.pop()?;
             self.execute_script(script.as_slice(), false)?
         }
-        Ok(())
+        Ok(ScriptExecutionOutput::Executed)
     }
 
     pub fn execute(&mut self) -> Result<(), TxScriptError> {
-        self.execute_inner()?;
-        self.check_error_condition(true)?;
-        Ok(())
+        match self.execute_inner()? {
+            ScriptExecutionOutput::Executed => self.check_error_condition(true),
+            // Unknown script versions are accepted without execution, indepedently of the stack state. There's no need to check the error condition.
+            ScriptExecutionOutput::AcceptedUnknownVersion => Ok(()),
+        }
     }
 
     /// Executes the scripts without the final error condition checks and returns both stacks in raw vector form.
     pub fn execute_and_return_stacks(mut self) -> Result<ExecutionStacks, TxScriptError> {
-        self.execute_inner()?;
+        let _ = self.execute_inner()?;
         Ok(ExecutionStacks { dstack: self.dstack.into(), astack: self.astack.into() })
     }
 
@@ -774,9 +854,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
                 // We don't pass 'enforce_nullfail=true' because we manually enforce it below
                 let check_signature_result = if ecdsa {
-                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature, false)
+                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature)
                 } else {
-                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature, false)
+                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature)
                 };
 
                 match check_signature_result {
@@ -793,16 +873,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             }
         }
 
-        if self.flags.covenants_enabled {
-            if failed
-                && !signatures.iter().all(|sig| {
-                    // We check whether it's empty or the stripped sig is all zeros.
-                    sig.split_last().map(|(_, sig_without_type)| sig_without_type == ZERO_SIG).unwrap_or(true)
-                })
-            {
-                return Err(TxScriptError::NullFail);
-            }
-        } else if failed && signatures.iter().any(|sig| !sig.is_empty()) {
+        if failed && signatures.iter().any(|sig| !sig.is_empty()) {
             return Err(TxScriptError::NullFail);
         }
 
@@ -811,107 +882,62 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     #[inline]
-    fn check_schnorr_signature(
-        &mut self,
-        hash_type: SigHashType,
-        key: &[u8],
-        sig: &[u8],
-        enforce_nullfail: bool,
-    ) -> Result<bool, TxScriptError> {
+    fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
-            ScriptSource::TxInput { tx, idx, .. } => {
-                let sig_hash = calc_schnorr_signature_hash(tx, idx, hash_type, self.reused_values);
-                self.check_schnorr_signature_for_msg_hash(sig_hash, key, sig, enforce_nullfail)
-            }
+            ScriptSource::TxInput { tx, idx, .. } => self.check_schnorr_signature_with_msg_hash(key, sig, |reused_values| {
+                calc_schnorr_signature_hash(tx, idx, hash_type, reused_values)
+            }),
             _ => Err(TxScriptError::NotATransactionInput),
         }
     }
 
-    fn check_schnorr_signature_for_msg_hash(
-        &mut self,
-        msg_hash: Hash,
-        key: &[u8],
-        sig: &[u8],
-        enforce_nullfail: bool,
-    ) -> Result<bool, TxScriptError> {
+    fn check_schnorr_signature_with_msg_hash<F>(&mut self, key: &[u8], sig: &[u8], msg_hash: F) -> Result<bool, TxScriptError>
+    where
+        F: FnOnce(&Reused) -> Hash,
+    {
         self.consume_sig_op_cost(1)?;
-        if sig == ZERO_SIG {
-            return Ok(false);
-        }
-
         let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidPubkey)?;
         let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
+        let msg_hash = msg_hash(self.reused_values);
         let secp_msg = secp256k1::Message::from_digest(msg_hash.into());
         let sig_cache_key = SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: secp_msg };
 
-        match self.sig_cache.get(&sig_cache_key) {
-            Some(valid) => Ok(valid),
-            None => {
-                // TODO: Find a way to parallelize this part.
-                match sig.verify(&secp_msg, &pk) {
-                    Ok(()) => {
-                        self.sig_cache.insert(sig_cache_key, true);
-                        Ok(true)
-                    }
-                    Err(_) => {
-                        self.sig_cache.insert(sig_cache_key, false);
-                        if enforce_nullfail { Err(TxScriptError::NullFail) } else { Ok(false) }
-                    }
-                }
-            }
+        if let Some(valid) = self.sig_cache.get(&sig_cache_key) {
+            Ok(valid)
+        } else {
+            let valid = sig.verify(&secp_msg, &pk).is_ok();
+            self.sig_cache.insert(sig_cache_key, valid);
+            Ok(valid)
         }
     }
 
-    fn check_ecdsa_signature(
-        &mut self,
-        hash_type: SigHashType,
-        key: &[u8],
-        sig: &[u8],
-        enforce_nullfail: bool,
-    ) -> Result<bool, TxScriptError> {
+    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
-            ScriptSource::TxInput { tx, idx, .. } => {
-                let sig_hash = calc_ecdsa_signature_hash(tx, idx, hash_type, self.reused_values);
-
-                self.check_ecdsa_signature_for_msg_hash(sig_hash, key, sig, enforce_nullfail)
-            }
+            ScriptSource::TxInput { tx, idx, .. } => self.check_ecdsa_signature_with_msg_hash(key, sig, |reused_values| {
+                calc_ecdsa_signature_hash(tx, idx, hash_type, reused_values)
+            }),
             _ => Err(TxScriptError::NotATransactionInput),
         }
     }
 
-    fn check_ecdsa_signature_for_msg_hash(
-        &mut self,
-        msg_hash: Hash,
-        key: &[u8],
-        sig: &[u8],
-        enforce_nullfail: bool,
-    ) -> Result<bool, TxScriptError> {
+    fn check_ecdsa_signature_with_msg_hash<F>(&mut self, key: &[u8], sig: &[u8], msg_hash: F) -> Result<bool, TxScriptError>
+    where
+        F: FnOnce(&Reused) -> Hash,
+    {
         self.consume_sig_op_cost(1)?;
-        if sig.is_empty() || sig == ZERO_SIG {
-            return Ok(false);
-        }
-
         Self::check_pub_key_encoding_ecdsa(key)?;
         let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidPubkey)?;
         let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
-        let secp_msg = secp256k1::Message::from_digest_slice(msg_hash.as_bytes().as_slice()).unwrap();
+        let msg_hash = msg_hash(self.reused_values);
+        let secp_msg = secp256k1::Message::from_digest(msg_hash.into());
         let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: secp_msg };
 
-        match self.sig_cache.get(&sig_cache_key) {
-            Some(valid) => Ok(valid),
-            None => {
-                // TODO: Find a way to parallelize this part.
-                match sig.verify(&secp_msg, &pk) {
-                    Ok(()) => {
-                        self.sig_cache.insert(sig_cache_key, true);
-                        Ok(true)
-                    }
-                    Err(_) => {
-                        self.sig_cache.insert(sig_cache_key, false);
-                        if enforce_nullfail { Err(TxScriptError::NullFail) } else { Ok(false) }
-                    }
-                }
-            }
+        if let Some(valid) = self.sig_cache.get(&sig_cache_key) {
+            Ok(valid)
+        } else {
+            let valid = sig.verify(&secp_msg, &pk).is_ok();
+            self.sig_cache.insert(sig_cache_key, valid);
+            Ok(valid)
         }
     }
 }
@@ -932,7 +958,7 @@ mod tests {
 
     use crate::opcodes::codes::{
         OpBlake2b, OpBlake2bWithKey, OpBlake3, OpBlake3WithKey, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigFromStack,
-        OpCheckSigFromStackECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDrop, OpDup, OpEndIf, OpEqual, OpFalse, OpIf,
+        OpCheckSigFromStackECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDrop, OpDup, OpEndIf, OpEqual, OpFalse, OpIf, OpNop,
         OpPushData1, OpSHA256, OpTrue, OpVerify,
     };
 
@@ -946,8 +972,8 @@ mod tests {
         ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits, SigopCount,
     };
     use kaspa_consensus_core::tx::{
-        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-        TransactionOutput, TxInputMass,
+        ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput,
+        TransactionOutpoint, TransactionOutput,
     };
     use kaspa_core::assert_match;
     use kaspa_utils::hex::FromHex;
@@ -996,7 +1022,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 4294967295,
-                mass: ComputeBudget(0).into(),
+                compute_commit: ComputeBudget(0).into(),
             };
             let output = TransactionOutput {
                 value: 1000000000,
@@ -1048,7 +1074,7 @@ mod tests {
                 EngineFlags { covenants_enabled: true, ..Default::default() },
             );
         assert!(vm_exact_budget.execute().is_ok());
-        assert_eq!(vm_exact_budget.total_pushed_bytes(), 3);
+        assert_eq!(vm_exact_budget.used_script_units(), exact_budget);
     }
 
     #[test]
@@ -1095,7 +1121,6 @@ mod tests {
         );
         assert!(vm.execute().is_ok());
         assert_eq!(vm.used_script_units(), 0.into());
-        assert_eq!(vm.total_pushed_bytes(), 0);
     }
 
     #[test]
@@ -1113,7 +1138,51 @@ mod tests {
         );
         assert!(vm.execute().is_ok());
         assert_eq!(vm.used_script_units(), 0.into());
-        assert_eq!(vm.total_pushed_bytes(), 0);
+    }
+
+    #[test]
+    fn test_direct_push_above_post_toccata_element_limit_is_rejected() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let element_size = MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA + 1;
+        let data = vec![0u8; element_size];
+        let oversized_push = ScriptBuilder::new().add_data_unchecked(&data).drain();
+        let non_executed_branch_script = {
+            let mut builder = ScriptBuilder::new();
+            builder.add_op(OpFalse).unwrap().add_op(OpIf).unwrap();
+            builder.script_mut().extend_from_slice(&oversized_push);
+            builder.script_mut().push(OpEndIf);
+            builder.script_mut().push(OpTrue);
+            builder.drain()
+        };
+        let too_many_ops_script = vec![OpNop; MAX_OPS_PER_SCRIPT_POST_TOCCATA as usize + 1];
+        let non_executed_too_many_ops_script = {
+            let mut builder = ScriptBuilder::new();
+            builder.add_op(OpFalse).unwrap().add_op(OpIf).unwrap();
+            builder.script_mut().extend(std::iter::repeat_n(OpNop, MAX_OPS_PER_SCRIPT_POST_TOCCATA as usize + 1));
+            builder.script_mut().push(OpEndIf);
+            builder.script_mut().push(OpTrue);
+            builder.drain()
+        };
+        let oversized_script = vec![OpTrue; MAX_SCRIPTS_SIZE_POST_TOCCATA + 1];
+
+        for script in
+            [oversized_push, non_executed_branch_script, too_many_ops_script, non_executed_too_many_ops_script, oversized_script]
+        {
+            let mut vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
+                &script,
+                &reused_values,
+                &sig_cache,
+                EngineFlags { covenants_enabled: true, ..Default::default() },
+            );
+
+            // Since the post-Toccata script size and element size limits are both 1M, a direct
+            // push above the element limit necessarily exceeds the script size limit as well.
+            // Similarly, MAX_OPS_PER_SCRIPT_POST_TOCCATA + 1 one-byte opcodes exceed the
+            // script size limit. We cannot reach these execution checks directly here, but
+            // we still want to verify that such scripts are rejected by the engine.
+            assert_eq!(vm.execute(), Err(TxScriptError::ScriptSize(script.len(), MAX_SCRIPTS_SIZE_POST_TOCCATA)));
+        }
     }
 
     #[test]
@@ -1147,7 +1216,7 @@ mod tests {
             &script,
             &reused_values,
             &sig_cache,
-            TxInputMass::from(ComputeBudget(1)).allowed_script_units(),
+            ComputeCommit::from(ComputeBudget(1)).allowed_script_units(),
             flags,
         );
         assert!(exact_vm.execute().is_ok());
@@ -1157,7 +1226,7 @@ mod tests {
                 &script,
                 &reused_values,
                 &sig_cache,
-                TxInputMass::from(ComputeBudget(0)).allowed_script_units(),
+                ComputeCommit::from(ComputeBudget(0)).allowed_script_units(),
                 flags,
             );
         assert_eq!(
@@ -1263,7 +1332,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(0).into(),
+                compute_commit: SigopCount(0).into(),
             };
             let output =
                 TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
@@ -1298,7 +1367,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([7u8; 32]), index: 0 },
             signature_script: vec![OpTrue, OpTrue],
             sequence: 0,
-            mass: ComputeBudget(0).into(),
+            compute_commit: ComputeBudget(0).into(),
         };
 
         let output =
@@ -1370,7 +1439,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([9u8; 32]), index: 0 },
             signature_script: vec![],
             sequence: 0,
-            mass: ComputeBudget(0).into(), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
+            compute_commit: ComputeBudget(0).into(), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
         };
 
         let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
@@ -1440,6 +1509,35 @@ mod tests {
         ];
 
         run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_unknown_script_public_key_version_skips_final_stack_check() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([1u8; 32]), index: 0 },
+            signature_script: vec![],
+            sequence: 0,
+            compute_commit: ComputeBudget(0).into(),
+        };
+        let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
+        let tx = Transaction::new(1, vec![input.clone()], vec![output], 0, Default::default(), 0, vec![]);
+        let unknown_version_spk = ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION + 1, vec![OpFalse].into());
+        let utxo_entry = UtxoEntry::new(1, unknown_version_spk, 0, false, None);
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &populated_tx,
+            &input,
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            Default::default(),
+        );
+
+        assert_eq!(vm.execute(), Ok(()));
     }
 
     #[test]
@@ -1762,6 +1860,93 @@ mod tests {
     }
 
     #[test]
+    fn test_post_toccata_p2sh_sig_scanner() {
+        struct Test {
+            name: String,
+            redeem_script: Vec<u8>,
+            signature_prefix: Vec<u8>,
+            expected_sig_ops: u64,
+        }
+
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
+        // OpPushData1 declares a two-byte payload, but only one payload byte follows the length byte.
+        let malformed_push = [OpPushData1, 2, 1];
+
+        let mut tests = vec![
+            Test {
+                name: "from-stack sigops are counted".to_string(),
+                redeem_script: ScriptBuilder::new()
+                    .add_op(OpCheckSigFromStack)
+                    .unwrap()
+                    .add_op(OpCheckSigFromStackECDSA)
+                    .unwrap()
+                    .drain(),
+                signature_prefix: vec![],
+                expected_sig_ops: 2,
+            },
+            Test {
+                name: "canonical multisig count".to_string(),
+                redeem_script: ScriptBuilder::new().add_op(codes::Op2).unwrap().add_op(OpCheckMultiSig).unwrap().drain(),
+                signature_prefix: vec![],
+                expected_sig_ops: 2,
+            },
+            Test {
+                name: "missing multisig count falls back to max".to_string(),
+                redeem_script: ScriptBuilder::new().add_op(OpCheckMultiSig).unwrap().drain(),
+                signature_prefix: vec![],
+                expected_sig_ops: MAX_PUB_KEYS_PER_MUTLTISIG as u64,
+            },
+            Test {
+                name: "signature prefix is ignored".to_string(),
+                redeem_script: ScriptBuilder::new().add_op(OpCheckSig).unwrap().drain(),
+                signature_prefix: ScriptBuilder::new().add_op(OpTrue).unwrap().drain(),
+                expected_sig_ops: 1,
+            },
+            Test {
+                name: "malformed redeem script returns zero".to_string(),
+                redeem_script: [OpCheckSig].into_iter().chain(malformed_push).collect(),
+                signature_prefix: vec![],
+                expected_sig_ops: 0,
+            },
+        ];
+
+        for count in 1u8..=MAX_PUB_KEYS_PER_MUTLTISIG as u8 + 1 {
+            let expected_sig_ops = u64::from(count).min(MAX_PUB_KEYS_PER_MUTLTISIG as u64);
+
+            let canonical_redeem_script = ScriptBuilder::new().add_data(&[count]).unwrap().add_op(OpCheckMultiSig).unwrap().drain();
+            tests.push(Test {
+                name: format!("canonical multisig count {count}"),
+                redeem_script: canonical_redeem_script,
+                signature_prefix: vec![],
+                expected_sig_ops,
+            });
+
+            let explicit_redeem_script =
+                ScriptBuilder::with_flags(flags).add_data_with_push_opcode(&[count]).unwrap().add_op(OpCheckMultiSig).unwrap().drain();
+            tests.push(Test {
+                name: format!("explicit push multisig count {count}"),
+                redeem_script: explicit_redeem_script,
+                signature_prefix: vec![],
+                expected_sig_ops,
+            });
+        }
+
+        for test in tests {
+            let spk = pay_to_script_hash_script(&test.redeem_script);
+            let signature_script = pay_to_script_hash_signature_script_with_flags(test.redeem_script, test.signature_prefix, flags)
+                .expect("p2sh script build");
+            assert_eq!(post_toccata_p2sh_sig_scanner(&signature_script, &spk), test.expected_sig_ops, "{}", test.name);
+        }
+
+        let non_p2sh = ScriptPublicKey::new(0, SmallVec::from_slice(&[OpTrue]));
+        assert_eq!(post_toccata_p2sh_sig_scanner(&[], &non_p2sh), 0, "non-p2sh spk");
+
+        let redeem_script = ScriptBuilder::new().add_op(OpCheckSig).unwrap().drain();
+        let p2sh = pay_to_script_hash_script(&redeem_script);
+        assert_eq!(post_toccata_p2sh_sig_scanner(&malformed_push, &p2sh), 0, "malformed sigscript");
+    }
+
+    #[test]
     fn test_is_unspendable() {
         struct Test<'a> {
             name: &'a str,
@@ -1977,7 +2162,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: SigopCount(test.sig_op_limit).into(),
+                    compute_commit: SigopCount(test.sig_op_limit).into(),
                 }],
                 vec![],
                 0,
@@ -2054,7 +2239,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(2).into(),
+                compute_commit: SigopCount(2).into(),
             }],
             vec![],
             0,
@@ -2094,6 +2279,52 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_invalid_schnorr_signature_cache_stays_invalid() {
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+        let public_key = keypair.x_only_public_key().0.serialize();
+        let valid_msg = secp256k1::Message::from_digest(Hash::from_bytes([1; 32]).into());
+        let invalid_msg_hash = Hash::from_bytes([2; 32]);
+        let signature = keypair.sign_schnorr(valid_msg);
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
+        let mut vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
+            &[],
+            &reused_values,
+            &sig_cache,
+            flags,
+        );
+
+        assert_eq!(vm.check_schnorr_signature_with_msg_hash(&public_key, signature.as_ref(), |_| invalid_msg_hash), Ok(false));
+        assert_eq!(vm.check_schnorr_signature_with_msg_hash(&public_key, signature.as_ref(), |_| invalid_msg_hash), Ok(false));
+    }
+
+    #[test]
+    fn test_valid_schnorr_signature_cache_stays_valid() {
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+        let public_key = keypair.x_only_public_key().0.serialize();
+        let valid_msg_hash = Hash::from_bytes([1; 32]);
+        let valid_msg = secp256k1::Message::from_digest(valid_msg_hash.into());
+        let signature = keypair.sign_schnorr(valid_msg);
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
+        let mut vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
+            &[],
+            &reused_values,
+            &sig_cache,
+            flags,
+        );
+
+        assert_eq!(vm.check_schnorr_signature_with_msg_hash(&public_key, signature.as_ref(), |_| valid_msg_hash), Ok(true));
+        assert_eq!(vm.check_schnorr_signature_with_msg_hash(&public_key, signature.as_ref(), |_| valid_msg_hash), Ok(true));
+    }
+
     // This test checks that valid signatures for OpCheckSigECDSA are also valid signatures for OpCheckSigFromStackECDSA
     #[test]
     fn test_checksig_and_checksigfromstack_match_for_ecdsa() -> ScriptBuilderResult<()> {
@@ -2120,7 +2351,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(3).into(),
+                compute_commit: SigopCount(3).into(),
             }],
             vec![],
             0,
@@ -2158,6 +2389,52 @@ mod tests {
         .execute();
         assert_eq!(result, Ok(()));
         Ok(())
+    }
+
+    #[test]
+    fn test_invalid_ecdsa_signature_cache_stays_invalid() {
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+        let public_key = keypair.public_key().serialize();
+        let valid_msg = secp256k1::Message::from_digest(Hash::from_bytes([1; 32]).into());
+        let invalid_msg_hash = Hash::from_bytes([2; 32]);
+        let signature = keypair.secret_key().sign_ecdsa(valid_msg).serialize_compact();
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
+        let mut vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
+            &[],
+            &reused_values,
+            &sig_cache,
+            flags,
+        );
+
+        assert_eq!(vm.check_ecdsa_signature_with_msg_hash(&public_key, &signature, |_| invalid_msg_hash), Ok(false));
+        assert_eq!(vm.check_ecdsa_signature_with_msg_hash(&public_key, &signature, |_| invalid_msg_hash), Ok(false));
+    }
+
+    #[test]
+    fn test_valid_ecdsa_signature_cache_stays_valid() {
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+        let public_key = keypair.public_key().serialize();
+        let valid_msg_hash = Hash::from_bytes([1; 32]);
+        let valid_msg = secp256k1::Message::from_digest(valid_msg_hash.into());
+        let signature = keypair.secret_key().sign_ecdsa(valid_msg).serialize_compact();
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let flags = EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() };
+        let mut vm = TxScriptEngine::<VerifiableTransactionMock, SigHashReusedValuesUnsync>::from_script(
+            &[],
+            &reused_values,
+            &sig_cache,
+            flags,
+        );
+
+        assert_eq!(vm.check_ecdsa_signature_with_msg_hash(&public_key, &signature, |_| valid_msg_hash), Ok(true));
+        assert_eq!(vm.check_ecdsa_signature_with_msg_hash(&public_key, &signature, |_| valid_msg_hash), Ok(true));
     }
 }
 

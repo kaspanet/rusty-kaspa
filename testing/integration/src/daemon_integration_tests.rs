@@ -2,7 +2,8 @@ use crate::common::{
     client::ListeningClient,
     client_notify::ChannelNotify,
     daemon::Daemon,
-    utils::{fetch_spendable_utxos, mine_block, required_fee, wait_for},
+    fee,
+    utils::{fetch_spendable_utxos, mine_block, wait_for},
 };
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
@@ -20,13 +21,16 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_hashes::Hash;
-use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope};
+use kaspa_notify::{
+    events::EventType,
+    scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope},
+};
 use kaspa_rpc_core::{Notification, RpcTransaction, RpcTransactionId, api::rpc::RpcApi};
 use kaspa_txscript::{
     opcodes::codes, pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script,
     script_builder::ScriptBuilder,
 };
-use kaspad_lib::args::Args;
+use kaspad_lib::{args::Args, daemon::Runtime as KaspadRuntime};
 use rand::thread_rng;
 use serde_json;
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
@@ -59,6 +63,72 @@ async fn is_ancestor_in_selected_parent_chain(client: &GrpcClient, mut descendan
         };
         descendant = *parent;
     }
+}
+
+// Ignored since it might fail to initialize the logger if another test already initialized it. Run it specifically with `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_toccata_activation_log_file_test --ignored`
+#[ignore]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_toccata_activation_log_file_test() {
+    init_allocator_with_default_settings();
+
+    let test_dir = tempfile::tempdir().unwrap();
+    let log_dir = test_dir.path().join("logs");
+    let params_path = test_dir.path().join("params.json");
+    fs::create_dir_all(&log_dir).unwrap();
+    fs::write(&params_path, r#"{"skip_proof_of_work":true,"toccata_activation":1}"#).unwrap();
+
+    let args = Args {
+        simnet: true,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        disable_upnp: true,
+        disable_dns_seeding: true,
+        outbound_target: 0,
+        logdir: Some(log_dir.to_string_lossy().to_string()),
+        override_params_file: Some(params_path.to_string_lossy().to_string()),
+        ..Default::default()
+    };
+
+    let _runtime = KaspadRuntime::from_args(&args);
+    let mut kaspad = Daemon::new_random_with_args(args, 10);
+    let rpc_client = kaspad.start().await;
+    let log_path = log_dir.join("rusty-kaspa.log");
+
+    let initial_log = fs::read_to_string(&log_path).unwrap_or_default();
+    assert!(!initial_log.contains("[Toccata] Activated for"), "Toccata activation logs were emitted before activation");
+
+    let miner_address = Address::new(kaspad.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
+    for target_daa_score in 1..=2 {
+        let template = rpc_client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client.submit_block(template.block, false).await.unwrap();
+
+        let activation_check_client = rpc_client.clone();
+        wait_for(
+            50,
+            100,
+            move || {
+                let client = activation_check_client.clone();
+                Box::pin(async move { client.get_server_info().await.unwrap().virtual_daa_score >= target_daa_score })
+            },
+            "daemon did not reach Toccata activation",
+        )
+        .await;
+    }
+
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    kaspad.shutdown();
+
+    let log = fs::read_to_string(&log_path).unwrap();
+    let header_log_count = log.matches("[Toccata] Activated for header in context validation").count();
+    assert_eq!(header_log_count, 1, "Toccata activation log for header in context validation should be emitted exactly once");
+    let virtual_state_log_count = log.matches("[Toccata] Activated for virtual state processing rules").count();
+    assert_eq!(virtual_state_log_count, 1, "Toccata activation log for virtual state processing rules should be emitted exactly once");
+    assert_eq!(
+        log.matches("TOCCATA").count(),
+        virtual_state_log_count,
+        "Toccata ASCII art should only be emitted by the virtual state logger"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -226,6 +296,15 @@ async fn daemon_utxos_propagation_test() {
     // Some dummy non-monitored address
     let blank_address = Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
 
+    // Create a multi-listener RPC client on each node. Multi-listener subscriptions are propagated
+    // upstream asynchronously, so subscribe to the streams used by mine_block before the long initial
+    // mining run and later verify that notifications actually flowed through both listeners.
+    let mut clients = vec![ListeningClient::connect(&kaspad2).await, ListeningClient::connect(&kaspad1).await];
+    for x in clients.iter_mut() {
+        x.start_notify(BlockAddedScope {}.into()).await.unwrap();
+        x.start_notify(VirtualDaaScoreChangedScope {}.into()).await.unwrap();
+    }
+
     // Mine 1000 blocks to daemon #1
     let initial_blocks = coinbase_maturity;
     let mut last_block_hash = None;
@@ -282,14 +361,28 @@ async fn daemon_utxos_propagation_test() {
         assert_eq!(accepted_txs_pair.accepted_transaction_ids.len(), 1);
     }
 
-    // Create a multi-listener RPC client on each node...
-    let mut clients = vec![ListeningClient::connect(&kaspad2).await, ListeningClient::connect(&kaspad1).await];
+    // Use the initial mining run as a readiness barrier for the multi-listener notification stack,
+    // then consume the warm-up history through the final block and virtual DAA notifications so
+    // the following mine_block calls observe only fresh notifications.
+    let last_block_hash = last_block_hash.unwrap();
+    let timeout_per_notification = Duration::from_secs(10);
+    for x in clients.iter() {
+        x.wait_for_notification(EventType::BlockAdded, timeout_per_notification, |notification| {
+            matches!(notification, Notification::BlockAdded(notification) if notification.block.header.hash == last_block_hash)
+        })
+        .await;
+        x.wait_for_notification(EventType::VirtualDaaScoreChanged, timeout_per_notification, |notification| {
+            matches!(notification, Notification::VirtualDaaScoreChanged(notification) if notification.virtual_daa_score == initial_blocks)
+        })
+        .await;
+        x.block_added_listener().unwrap().drain();
+        x.virtual_daa_score_changed_listener().unwrap().drain();
+    }
 
-    // ...and subscribe each to some notifications
+    // Subscribe to address-filtered UTXO notifications only after the initial maturity mining, so
+    // the UTXO listener does not accumulate the 1000 coinbase notifications above.
     for x in clients.iter_mut() {
-        x.start_notify(BlockAddedScope {}.into()).await.unwrap();
         x.start_notify(UtxosChangedScope::new(vec![miner_address.clone(), user_address.clone()]).into()).await.unwrap();
-        x.start_notify(VirtualDaaScoreChangedScope {}.into()).await.unwrap();
     }
 
     // Mine some extra blocks so the latest miner reward is added to its balance and some UTXOs reach maturity
@@ -330,7 +423,7 @@ async fn daemon_utxos_propagation_test() {
             previous_outpoint: *op,
             signature_script: vec![],
             sequence: 0,
-            mass: ComputeBudget(0).into(),
+            compute_commit: ComputeBudget(0).into(),
         })
         .collect();
     let outputs = (0..NUMBER_OUTPUTS)
@@ -348,7 +441,7 @@ async fn daemon_utxos_propagation_test() {
     .unwrap();
     let mut transaction = signed_tx.tx;
     let per_input_compute_budget_commitment: u16 = 300; // ~30k-gram per-input upper bound
-    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(per_input_compute_budget_commitment).into());
+    transaction.inputs.iter_mut().for_each(|input| input.compute_commit = ComputeBudget(per_input_compute_budget_commitment).into());
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -427,8 +520,7 @@ async fn daemon_compute_budget_relay_test() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
 
     let args = Args {
-        testnet: true,
-        testnet_suffix: 12,
+        simnet: true,
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true,
@@ -551,35 +643,50 @@ async fn daemon_compute_budget_relay_test() {
     let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), coinbase_maturity).await;
     const NUMBER_INPUTS: u64 = 2;
     const NUMBER_OUTPUTS: u64 = 2;
+    const PER_INPUT_COMPUTE_BUDGET: u16 = 30;
     const EXTRA_FEE: u64 = 10_000;
     let oldest_utxos_start = utxos.len() - NUMBER_INPUTS as usize;
     let selected_utxos = &utxos[oldest_utxos_start..];
     let total_in = selected_utxos.iter().map(|x| x.1.amount).sum::<u64>();
-    let tx_fee = required_fee(selected_utxos.len(), NUMBER_OUTPUTS).saturating_add(EXTRA_FEE);
-    let tx_amount = total_in.checked_sub(tx_fee).expect("expected enough input value for test transaction fee");
     let script_public_key = pay_to_address_script(&user_address);
-    let inputs = selected_utxos
-        .iter()
-        .map(|(op, _)| TransactionInput {
-            previous_outpoint: *op,
-            signature_script: vec![],
-            sequence: 0,
-            mass: ComputeBudget(0).into(),
-        })
-        .collect();
-    let outputs = (0..NUMBER_OUTPUTS)
-        .map(|_| TransactionOutput { value: tx_amount / NUMBER_OUTPUTS, script_public_key: script_public_key.clone(), covenant: None })
-        .collect();
-    let unsigned_tx = Transaction::new(TX_VERSION_TOCCATA, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
-    let signed_tx = sign_with_multiple_v2(
-        MutableTransaction::with_entries(unsigned_tx, selected_utxos.iter().map(|(_, entry)| entry.clone()).collect()),
-        &[miner_sk.secret_bytes()],
-    )
-    .unwrap();
-    let mut transaction = signed_tx.tx;
-    transaction.inputs.iter_mut().for_each(|input| input.mass = ComputeBudget(30).into());
+    let build_transaction = |tx_output_amount: u64| {
+        let inputs = selected_utxos
+            .iter()
+            .map(|(op, _)| TransactionInput {
+                previous_outpoint: *op,
+                signature_script: vec![],
+                sequence: 0,
+                compute_commit: ComputeBudget(0).into(),
+            })
+            .collect();
+        let outputs = (0..NUMBER_OUTPUTS)
+            .map(|_| TransactionOutput {
+                value: tx_output_amount / NUMBER_OUTPUTS,
+                script_public_key: script_public_key.clone(),
+                covenant: None,
+            })
+            .collect();
+        let unsigned_tx = Transaction::new(TX_VERSION_TOCCATA, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+        sign_with_multiple_v2(
+            MutableTransaction::with_entries(unsigned_tx, selected_utxos.iter().map(|(_, entry)| entry.clone()).collect()),
+            &[miner_sk.secret_bytes()],
+        )
+        .unwrap()
+        .tx
+    };
+
+    let tx_fee = fee::calc_from_probe(|| {
+        let mut tx = build_transaction(total_in);
+        tx.inputs.iter_mut().for_each(|input| input.compute_commit = ComputeBudget(PER_INPUT_COMPUTE_BUDGET).into());
+        tx
+    })
+    .saturating_add(EXTRA_FEE);
+    let tx_amount = total_in.checked_sub(tx_fee).expect("expected enough input value for test transaction fee");
+
+    let mut transaction = build_transaction(tx_amount);
+    transaction.inputs.iter_mut().for_each(|input| input.compute_commit = ComputeBudget(PER_INPUT_COMPUTE_BUDGET).into());
     assert!(
-        transaction.inputs.iter().any(|input| input.mass.compute_budget().unwrap() > 0),
+        transaction.inputs.iter().any(|input| input.compute_commit.compute_budget().unwrap() > 0),
         "expected non-zero compute_budget commitment for v1 transaction"
     );
     let transaction_id = transaction.id();
@@ -649,8 +756,7 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     let compute_budget_relay_test_params =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
     let args = Args {
-        testnet: true,
-        testnet_suffix: 12,
+        simnet: true,
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true,
@@ -679,12 +785,12 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     assert!(utxos.len() >= 2, "expected enough spendable UTXOs for malformed transaction tests");
 
     let build_single_input_tx = |version: u16, selected_utxo: &(TransactionOutpoint, UtxoEntry)| {
-        let fee = required_fee(1, 1);
+        let fee = fee::calc_for_plain_standard_tx(1, 1);
         let output_value = selected_utxo.1.amount.checked_sub(fee).expect("expected enough input value for test fee");
-        let mass = ComputeBudget(0).into(); // set correctly by sign below
+        let compute_commit = ComputeBudget(0).into(); // set correctly by sign below
         let tx = Transaction::new(
             version,
-            vec![TransactionInput { previous_outpoint: selected_utxo.0, signature_script: vec![], sequence: 0, mass }],
+            vec![TransactionInput { previous_outpoint: selected_utxo.0, signature_script: vec![], sequence: 0, compute_commit }],
             vec![TransactionOutput { value: output_value, script_public_key: pay_spk.clone(), covenant: None }],
             0,
             SUBNETWORK_ID_NATIVE,
@@ -748,7 +854,8 @@ async fn daemon_pruning_seqcommit_sync_test() {
 
     // Step 1: advance the chain to ~1.5 * finality depth from genesis.
     // We will create a seqcommit transaction at that height, referencing a block
-    // almost a full finality depth below the tip.
+    // almost a full finality_depth below the tip (KIP-21 seqcommit look-back is
+    // bounded by `finality_depth`).
     let finality_depth = params.finality_depth();
     let initial_blocks = finality_depth.saturating_mul(3).saturating_div(2) as usize;
     for _ in 0..initial_blocks {
@@ -768,7 +875,7 @@ async fn daemon_pruning_seqcommit_sync_test() {
     )
     .await;
 
-    // Choose a target almost a full finality depth below the current tip, leaving
+    // Choose a target almost a full finality_depth below the current tip, leaving
     // a small buffer for the confirmation and spend blocks.
     let dag_info = rpc_client1.get_block_dag_info().await.unwrap();
     let remaining = finality_depth.saturating_sub(3);
@@ -787,7 +894,7 @@ async fn daemon_pruning_seqcommit_sync_test() {
     let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), 10).await;
     let input_utxos = &utxos[0..1];
     let total_in = input_utxos.iter().map(|x| x.1.amount).sum::<u64>();
-    let fee = required_fee(input_utxos.len(), 1);
+    let fee = fee::calc_for_plain_standard_tx(input_utxos.len(), 1);
     let outputs = vec![TransactionOutput { value: total_in - fee, script_public_key: seqcommit_spk.clone(), covenant: None }];
     let inputs = input_utxos.iter().map(|(op, _)| TransactionInput::new(*op, vec![], 0, 1)).collect();
     let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
@@ -816,9 +923,9 @@ async fn daemon_pruning_seqcommit_sync_test() {
     // still within the finality depth of the spending block.
     let outpoint = TransactionOutpoint::new(seqcommit_tx.id(), 0);
     let pay_spk = pay_to_address_script(&miner_address);
-    let spend_fee = required_fee(1, 1);
-    let spend_value = total_in - fee - spend_fee;
     let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("canonical signature script");
+    let spend_fee = fee::calc_for_plain_standard_tx_with_extra_serialized_bytes(1, 1, signature_script.len() as u64);
+    let spend_value = total_in - fee - spend_fee;
     let spend_tx = Transaction::new(
         TX_VERSION,
         vec![TransactionInput::new(outpoint, signature_script, 0, 1)],
@@ -835,9 +942,13 @@ async fn daemon_pruning_seqcommit_sync_test() {
 
     // Step 2: advance the pruning point so it moves off genesis and ends up above the
     // target block that the seqcommit script references.
+    //
+    // KIP-21: the seqcommit look-back is `finality_depth`, so the target sits at
+    // depth ≈ F below the initial tip. Pruning samples space by F in blue_score, so
+    // PP may need to advance to climb past the target.
     let mut dag_info = rpc_client1.get_block_dag_info().await.unwrap();
     let mut extra_blocks = 0usize;
-    let extra_blocks_limit = params.pruning_depth().saturating_add(30) as usize;
+    let extra_blocks_limit = params.pruning_depth().saturating_add(params.finality_depth()).saturating_add(30) as usize;
     while (dag_info.pruning_point_hash == SIMNET_GENESIS.hash
         || !is_ancestor_in_selected_parent_chain(&rpc_client1, dag_info.pruning_point_hash, target_block).await)
         && extra_blocks < extra_blocks_limit
@@ -995,7 +1106,7 @@ async fn daemon_ibd_smt_state_sync_test() {
         subnet_bytes[3] = (i as u8) + 1;
         let lane_subnet = SubnetworkId::from_bytes(subnet_bytes);
 
-        let fee = required_fee(1, 1);
+        let fee = fee::calc_for_plain_standard_tx(1, 1);
         assert!(entry.amount > fee, "coinbase utxo is too small to cover a tx fee");
         let out_value = entry.amount - fee;
         let unsigned_tx = Transaction::new(
@@ -1090,6 +1201,36 @@ async fn daemon_ibd_smt_state_sync_test() {
             })
         },
         "syncee did not complete SMT-era IBD within timeout (suspected sync_new_smt_state stall)",
+    )
+    .await;
+
+    // Phase 6: mine finality_depth + buffer blocks on the syncer and assert
+    // the syncee catches up. Verifies syncer/syncee shortcut agreement for live
+    // blocks whose target_bs lands in the IBD-imported lane range.
+    let finality_depth = params.finality_depth() as usize;
+    let post_ibd_blocks = finality_depth + 30;
+    for _ in 0..post_ibd_blocks {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+
+    let post_ibd_target_score = rpc_client1.get_server_info().await.unwrap().virtual_daa_score;
+    let post_ibd_target_pp = rpc_client1.get_block_dag_info().await.unwrap().pruning_point_hash;
+    let post_ibd_check = rpc_client2.clone();
+    wait_for(
+        100,
+        600,
+        move || {
+            let client = post_ibd_check.clone();
+            Box::pin(async move {
+                let server_info = client.get_server_info().await.unwrap();
+                if server_info.virtual_daa_score < post_ibd_target_score {
+                    return false;
+                }
+                client.get_block_dag_info().await.unwrap().pruning_point_hash == post_ibd_target_pp
+            })
+        },
+        "syncee did not accept post-IBD blocks",
     )
     .await;
 
