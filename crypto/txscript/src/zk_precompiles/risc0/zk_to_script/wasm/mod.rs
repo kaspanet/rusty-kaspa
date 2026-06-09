@@ -1,13 +1,13 @@
 mod commit;
 mod proof;
 
+use crate::EngineFlags;
 use crate::error::Error;
 use crate::result::Result;
 use crate::wasm::builder::ScriptBuilderOptions;
 use crate::zk_precompiles::risc0::zk_to_script::{
     BoundedR0Groth16Script, BoundedR0SuccinctScript, R0ScriptBuilder as NativeR0ScriptBuilder, UnboundedR0Script,
 };
-use crate::EngineFlags;
 use kaspa_wasm_core::types::HexString;
 use wasm_bindgen::prelude::wasm_bindgen;
 
