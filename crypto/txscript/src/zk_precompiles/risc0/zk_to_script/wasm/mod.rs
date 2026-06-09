@@ -3,9 +3,11 @@ mod proof;
 
 use crate::error::Error;
 use crate::result::Result;
+use crate::wasm::builder::ScriptBuilderOptions;
 use crate::zk_precompiles::risc0::zk_to_script::{
     BoundedR0Groth16Script, BoundedR0SuccinctScript, R0ScriptBuilder as NativeR0ScriptBuilder, UnboundedR0Script,
 };
+use crate::EngineFlags;
 use kaspa_wasm_core::types::HexString;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -72,9 +74,14 @@ impl R0ScriptBuilder {
 
 #[wasm_bindgen]
 impl R0ScriptBuilder {
+    /// Constructs a new R0ScriptBuilder. Accepts an optional
+    /// `ScriptBuilderOptions` object
+    /// whose `flags` are forwarded to the underlying native builder. When
+    /// omitted, the native default `EngineFlags` are used.
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(options: Option<ScriptBuilderOptions>) -> Result<R0ScriptBuilder> {
+        let flags = options.map(EngineFlags::try_from).transpose()?.unwrap_or_default();
+        Ok(Self { inner: InnerState::Unbounded(NativeR0ScriptBuilder::with_flags(flags)) })
     }
 
     /// Drains (empties) the builder and returns the script bytes as a hex

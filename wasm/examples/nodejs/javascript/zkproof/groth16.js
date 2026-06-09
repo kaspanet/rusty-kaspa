@@ -96,7 +96,7 @@ async function groth16VerifyNoBuilder() {
         }
         // Create COMMIT transaction
         const utxoToSpend = matureUtxos[0];
-        const commitAmount = utxoToSpend.amount - 10000n;
+        const commitAmount = utxoToSpend.amount - 163500n;
 
         const utxoEntries = [{
             address: sourceAddress,
@@ -186,7 +186,7 @@ async function groth16VerifyNoBuilder() {
             [p2shUtxoEntry],
             [{
                 address: sourceAddress,
-                amount: commitAmount - 142000n
+                amount: commitAmount - 16128700n
             }],
             0n,
             '',
@@ -195,7 +195,7 @@ async function groth16VerifyNoBuilder() {
 
         // Set the signature script & compute budget
         redeemTx.inputs[0].signatureScript = signatureScript;
-        redeemTx.inputs[0].computeBudget = 1400;
+        redeemTx.inputs[0].computeBudget = 1600;
         redeemTx.version=1;
         
         console.log('Redeem transaction created');

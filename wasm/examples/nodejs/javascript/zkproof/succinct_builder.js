@@ -49,7 +49,7 @@ async function succinctVerify() {
         console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
 
-        const r0ScriptBuilder = new R0ScriptBuilder();
+        const r0ScriptBuilder = new R0ScriptBuilder({ flags: { covenantsEnabled: true } });
         r0ScriptBuilder.commitToSuccinct("1ade4c062dee368276ef6610bd7de59d9b63c7ebe87d8d75a63c0e288895cb7d","1ca3ca03030719064ba61b3125bdd326fc57f74e799ef860bdea6f3227381e16")
         const redeemScript = r0ScriptBuilder.script();
         const signatureScript = r0ScriptBuilder.finalizeWithSuccinctProof(SUCCINCT_SER_RCPT, "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456");

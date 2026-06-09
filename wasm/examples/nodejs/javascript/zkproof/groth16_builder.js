@@ -50,7 +50,7 @@ async function groth16Verify() {
         console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
 
-        const r0ScriptBuilder = new R0ScriptBuilder();
+        const r0ScriptBuilder = new R0ScriptBuilder({ flags: { covenantsEnabled: true } });
         r0ScriptBuilder.commitToGroth16("75641a540ee2ad9ee5902bcdcdb8b55c0bef4a28287309b858f97b1356c6c2e0")
         const redeemScript = r0ScriptBuilder.script();
         const signatureScript = r0ScriptBuilder.finalizeWithGroth16Proof(GROTH16_SER_RCPT, "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456");
@@ -70,7 +70,7 @@ async function groth16Verify() {
 
         // Create COMMIT transaction
         const utxoToSpend = matureUtxos[0];
-        const commitAmount = utxoToSpend.amount - 10000n;
+        const commitAmount = utxoToSpend.amount - 163500n;
 
         const utxoEntries = [{
             address: sourceAddress,
@@ -131,7 +131,7 @@ async function groth16Verify() {
             [p2shUtxoEntry],
             [{
                 address: sourceAddress,
-                amount: commitAmount - 142000n
+                amount: commitAmount - 16153300n
             }],
             0n,
             '',
@@ -140,7 +140,7 @@ async function groth16Verify() {
 
         // Set the signature script & compute budget
         redeemTx.inputs[0].signatureScript = signatureScript.sigScript;
-        redeemTx.inputs[0].computeBudget = 1400;
+        redeemTx.inputs[0].computeBudget = 1600;
         redeemTx.version=1;
 
         console.log('Redeem transaction created');

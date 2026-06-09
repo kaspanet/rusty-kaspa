@@ -88,7 +88,11 @@ async function succinctVerifyNoBuilder() {
     console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
     // Create P2SH redeem script
-    const redeemScript = new ScriptBuilder()
+    const redeemScript = new ScriptBuilder({
+      flags: {
+        covenantsEnabled:true
+      }
+    })
       .addData(imageId)
       .addData(controlId)
       .addData(hashfn)
@@ -110,7 +114,7 @@ async function succinctVerifyNoBuilder() {
 
     // Create COMMIT transaction
     const utxoToSpend = matureUtxos[0];
-    const commitAmount = utxoToSpend.amount - 10000n;
+    const commitAmount = utxoToSpend.amount - 163500n;
 
     // Convert UTXO to IUtxoEntry format
     const utxoEntries = [{
@@ -160,7 +164,11 @@ async function succinctVerifyNoBuilder() {
     // Build signature script for P2SH spending.
     // Push proof components that are NOT in the redeem script, then the redeem script itself.
     // These go onto the stack before the redeem script executes.
-    const signatureScript = new ScriptBuilder()
+    const signatureScript = new ScriptBuilder({
+      flags:{
+        covenantsEnabled:true
+      }
+    })
       .addData(claim)
       .addData(controlIndex)
       .addData(controlDigests)
@@ -189,7 +197,7 @@ async function succinctVerifyNoBuilder() {
       [p2shUtxoEntry],
       [{
         address: sourceAddress,
-        amount: commitAmount - 473634n
+        amount: commitAmount - 47363400n
       }],
       0n,
       '',
