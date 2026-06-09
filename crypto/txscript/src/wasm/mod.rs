@@ -11,5 +11,6 @@ cfg_if! {
 
         pub use self::opcodes::*;
         pub use self::builder::*;
+        pub use crate::zk_precompiles::risc0::zk_to_script::wasm::R0ScriptBuilder;
     }
 }
