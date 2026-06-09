@@ -700,7 +700,13 @@ impl MiningManager {
                     None
                 } else if mempool.has_transaction(&transaction_id, TransactionQuery::TransactionsOnly) {
                     x.clear_entries();
-                    mempool.populate_mempool_entries(&mut x);
+
+                    // invalid Priority::High transactions erroring on mempool-local utxo population should be discarded
+                    if mempool.populate_mempool_entries(&mut x).is_err() {
+                        other += 1;
+                        return None;
+                    }
+
                     match x.is_fully_populated() {
                         false => Some(x),
                         true => {

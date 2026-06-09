@@ -100,6 +100,10 @@ impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
 impl TryFrom<Vec<(u8, Vec<Hash>)>> for CompressedParents {
     type Error = CompressedParentsError;
     fn try_from(parents: Vec<(u8, Vec<Hash>)>) -> Result<Self, Self::Error> {
+        if matches!(parents.first(), Some((0, _))) {
+            return Err(CompressedParentsError::LevelsNotStrictlyIncreasing);
+        }
+
         for ((last_cumulative_level, last_parents), (cumulative_level, parents)) in parents.iter().tuple_windows() {
             // Make sure any next cumulative_level is strictly greater than the last
             if cumulative_level <= last_cumulative_level {
