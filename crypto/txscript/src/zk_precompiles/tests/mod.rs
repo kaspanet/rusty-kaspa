@@ -7,9 +7,10 @@ mod fast_zk_tests {
         execute_zk_script, load_groth_fields, load_stark_fields,
     };
     use crate::{
+        EngineFlags,
         caches::Cache,
-        get_zk_script_units_upper_bound,
-        zk_precompiles::{groth16::Groth16Error, tags::ZkTag},
+        get_zk_script_units_upper_bound, hex,
+        zk_precompiles::{groth16::Groth16Error, risc0::zk_to_script::R0ScriptBuilder, tags::ZkTag, tests::helpers::execute_p2sh},
     };
     use ark_bn254::{Bn254, G1Affine};
     use ark_groth16::{Proof, VerifyingKey};
@@ -21,6 +22,7 @@ mod fast_zk_tests {
     use kaspa_txscript_errors::TxScriptError;
     use risc0_circuit_recursion::CircuitImpl;
     use risc0_zkp::adapter::CircuitInfo;
+    use risc0_zkvm::{Digest, Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 
     fn r0_script_with_seal(seal: &[u8]) -> Vec<u8> {
         let mut fields = R0Fields::from_fixture();
@@ -328,7 +330,11 @@ mod fast_zk_tests {
         let groth_receipt_raw = include_str!("data/zk_builder_tests/groth.rcpt.hex");
         let rcpt: Groth16Receipt<ReceiptClaim> = borsh::from_slice(&hex::decode(groth_receipt_raw).unwrap()).unwrap();
 
-        let finalized = R0ScriptBuilder::new().commit_to_groth16(image_id).unwrap().finalize_with_proof(rcpt, journal_hash).unwrap();
+        let finalized = R0ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+            .commit_to_groth16(image_id)
+            .unwrap()
+            .finalize_with_proof(rcpt, journal_hash)
+            .unwrap();
 
         execute_p2sh(finalized.sig_script, &finalized.redeem_script).unwrap();
     }
@@ -343,7 +349,11 @@ mod fast_zk_tests {
         let groth_receipt_raw = include_str!("data/zk_builder_tests/groth.rcpt.hex");
         let rcpt: Groth16Receipt<ReceiptClaim> = borsh::from_slice(&hex::decode(groth_receipt_raw).unwrap()).unwrap();
 
-        let finalized = R0ScriptBuilder::new().commit_to_groth16(image_id).unwrap().finalize_with_proof(rcpt, journal_hash).unwrap();
+        let finalized = R0ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+            .commit_to_groth16(image_id)
+            .unwrap()
+            .finalize_with_proof(rcpt, journal_hash)
+            .unwrap();
 
         match execute_p2sh(finalized.sig_script, &finalized.redeem_script) {
             Ok(_) => panic!("Expected verification to fail due to broken image_id, but it succeeded"),
@@ -362,7 +372,11 @@ mod fast_zk_tests {
         let groth_receipt_raw = include_str!("data/zk_builder_tests/groth.rcpt.hex");
         let rcpt: Groth16Receipt<ReceiptClaim> = borsh::from_slice(&hex::decode(groth_receipt_raw).unwrap()).unwrap();
 
-        let finalized = R0ScriptBuilder::new().commit_to_groth16(image_id).unwrap().finalize_with_proof(rcpt, journal_hash).unwrap();
+        let finalized = R0ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+            .commit_to_groth16(image_id)
+            .unwrap()
+            .finalize_with_proof(rcpt, journal_hash)
+            .unwrap();
 
         match execute_p2sh(finalized.sig_script, &finalized.redeem_script) {
             Ok(_) => panic!("Expected verification to fail due to broken journal_hash, but it succeeded"),
@@ -380,7 +394,7 @@ mod fast_zk_tests {
         let journal: Digest = hex::decode(journal_raw).unwrap().try_into().unwrap();
         let rcpt: SuccinctReceipt<ReceiptClaim> = borsh::from_slice(&hex::decode(succinct_receipt_raw).unwrap()).unwrap();
 
-        let finalized = R0ScriptBuilder::new()
+        let finalized = R0ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
             .commit_to_succinct(image_id.as_bytes().try_into().unwrap(), rcpt.control_id.as_bytes().try_into().unwrap(), None)
             .unwrap()
             .finalize_with_proof(rcpt, journal)

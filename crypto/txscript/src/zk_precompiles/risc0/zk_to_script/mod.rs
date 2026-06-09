@@ -1,5 +1,5 @@
 use super::result::Result;
-use crate::script_builder::ScriptBuilder;
+use crate::{EngineFlags, script_builder::ScriptBuilder};
 use std::marker::PhantomData;
 mod builder;
 #[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))]
@@ -35,6 +35,10 @@ pub struct R0ScriptBuilder<State> {
 impl R0ScriptBuilder<UnboundedR0Script> {
     pub fn new() -> Self {
         Self { builder: ScriptBuilder::new(), _state: PhantomData }
+    }
+
+    pub fn with_flags(flags: EngineFlags) -> Self {
+        Self { builder: ScriptBuilder::with_flags(flags), _state: PhantomData }
     }
 }
 

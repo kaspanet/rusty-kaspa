@@ -1,7 +1,9 @@
 use kaspa_consensus_core::{
     hashing::sighash::SigHashReusedValuesUnsync,
-    tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry},
+    subnets::SubnetworkId,
+    tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
+use kaspa_hashes::Hash;
 use kaspa_txscript_errors::TxScriptError;
 
 use crate::{

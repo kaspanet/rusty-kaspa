@@ -1,8 +1,12 @@
+use ark_serialize::SerializationError;
 use kaspa_txscript_errors::TxScriptError;
 use risc0_zkp::verify::VerificationError;
 use thiserror::Error;
 
-use crate::zk_precompiles::risc0::rcpt::HashFnId;
+use crate::{
+    script_builder::ScriptBuilderError,
+    zk_precompiles::{points::PointError, risc0::rcpt::HashFnId},
+};
 
 #[derive(Debug, Error)]
 pub enum R0Error {
@@ -32,4 +36,19 @@ pub enum R0Error {
     VerificationFailed,
     #[error("Merkle proof verification failed")]
     Merkle,
+
+    #[error("Point error: {0}")]
+    PointError(#[from] PointError),
+
+    #[error("Seal decoding error: {0}")]
+    SealDecoding(String),
+
+    #[error("Ark serialization error: {0}")]
+    ArkSerialization(#[from] SerializationError),
+
+    #[error("Script builder error: {0}")]
+    ScriptBuilder(#[from] ScriptBuilderError),
+
+    #[error("Bincode VK serialization error")]
+    BincodeVkSerialization,
 }
