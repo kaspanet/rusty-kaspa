@@ -387,7 +387,7 @@ mod mockery {
                 include_subnetwork_id: mock(),
                 include_gas: mock(),
                 include_payload: mock(),
-                include_mass: mock(),
+                include_storage_mass: mock(),
                 verbose_data_verbosity: mock(),
             }
         }
@@ -403,7 +403,7 @@ mod mockery {
                 subnetwork_id: mock(),
                 gas: mock(),
                 payload: Hash::mock().as_bytes().to_vec(),
-                mass: mock(),
+                storage_mass: mock(),
                 verbose_data: mock(),
             }
         }
@@ -419,7 +419,7 @@ mod mockery {
                 subnetwork_id: mock(),
                 gas: mock(),
                 payload: Some(Hash::mock().as_bytes().to_vec()),
-                mass: mock(),
+                storage_mass: mock(),
                 verbose_data: mock(),
             }
         }
@@ -1295,6 +1295,34 @@ mod mockery {
 
     test!(GetDaaScoreTimestampEstimateResponse);
 
+    impl Mock for RpcBlockColor {
+        fn mock() -> Self {
+            RpcBlockColor::Blue
+        }
+    }
+
+    impl Mock for GetBlockRewardInfoRequest {
+        fn mock() -> Self {
+            GetBlockRewardInfoRequest { hash: mock() }
+        }
+    }
+
+    test!(GetBlockRewardInfoRequest);
+
+    impl Mock for GetBlockRewardInfoResponse {
+        fn mock() -> Self {
+            GetBlockRewardInfoResponse {
+                block_color: mock(),
+                header: mock(),
+                confirmation_count: mock(),
+                merging_chain_block_hash: mock(),
+                reward_amount: mock(),
+            }
+        }
+    }
+
+    test!(GetBlockRewardInfoResponse);
+
     impl Mock for GetVirtualChainFromBlockV2Request {
         fn mock() -> Self {
             GetVirtualChainFromBlockV2Request { start_hash: mock(), data_verbosity_level: None, min_confirmation_count: mock() }
@@ -1649,7 +1677,7 @@ mod mockery {
                 subnetwork_id: mock(),
                 gas: 0,
                 payload: vec![],
-                mass: 0,
+                storage_mass: 0,
                 verbose_data: None,
             };
 
@@ -1674,7 +1702,7 @@ mod mockery {
             store!(RpcSubnetworkId, &tx.subnetwork_id, &mut buffer).unwrap();
             store!(u64, &tx.gas, &mut buffer).unwrap();
             store!(Vec<u8>, &tx.payload, &mut buffer).unwrap();
-            store!(u64, &tx.mass, &mut buffer).unwrap();
+            store!(u64, &tx.storage_mass, &mut buffer).unwrap();
             serialize!(Option<RpcTransactionVerboseData>, &tx.verbose_data, &mut buffer).unwrap();
 
             let decoded = RpcTransaction::deserialize(&mut buffer.as_slice()).unwrap();
@@ -1683,8 +1711,8 @@ mod mockery {
             assert_eq!(decoded.inputs[0].compute_budget, 0);
 
             let consensus_tx: kaspa_consensus_core::tx::Transaction = decoded.try_into().unwrap();
-            assert_eq!(consensus_tx.inputs[0].mass.sig_op_count(), Some(9));
-            assert_eq!(consensus_tx.inputs[0].mass.compute_budget(), None);
+            assert_eq!(consensus_tx.inputs[0].compute_commit.sig_op_count(), Some(9));
+            assert_eq!(consensus_tx.inputs[0].compute_commit.compute_budget(), None);
         }
 
         #[test]

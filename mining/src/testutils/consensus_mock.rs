@@ -139,7 +139,7 @@ impl ConsensusApi for ConsensusMock {
         // At this point we know all UTXO entries are populated, so we can safely calculate the fee
         let total_in: u64 = mutable_tx.entries.iter().map(|x| x.as_ref().unwrap().amount).sum();
         let total_out: u64 = mutable_tx.tx.outputs.iter().map(|x| x.value).sum();
-        mutable_tx.tx.set_mass(self.calculate_transaction_contextual_masses(mutable_tx).unwrap().storage_mass);
+        mutable_tx.tx.set_storage_mass(self.calculate_transaction_contextual_masses(mutable_tx).unwrap().storage_mass);
 
         if mutable_tx.calculated_fee.is_none() {
             let calculated_fee = total_in - total_out;

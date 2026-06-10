@@ -30,14 +30,14 @@ message TransactionMessage{
   SubnetworkId subnetworkId = 5;
   uint64 gas = 6;
   bytes payload = 8;
-  uint64 mass = 9;
+  uint64 storage_mass = 9;
 }
 
 message TransactionInput{
   Outpoint previousOutpoint = 1;
   bytes signatureScript = 2;
   uint64 sequence = 3;
-  uint32 mass = 4;
+  uint32 compute_commit = 4;
 }
 
 message Outpoint{

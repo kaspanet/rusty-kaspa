@@ -103,8 +103,8 @@ impl SerializableTransactionInput {
             index: input.previous_outpoint.index,
             signature_script: input.signature_script.clone(),
             sequence: input.sequence.to_string(),
-            sig_op_count: input.mass.sig_op_count().unwrap_or(0),
-            compute_budget: input.mass.compute_budget().unwrap_or(0),
+            sig_op_count: input.compute_commit.sig_op_count().unwrap_or(0),
+            compute_budget: input.compute_commit.compute_budget().unwrap_or(0),
             utxo: utxo.clone(),
         }
     }
@@ -143,16 +143,16 @@ impl TryFrom<SerializableInputWithVersion> for cctx::TransactionInput {
             previous_outpoint: cctx::TransactionOutpoint { transaction_id: input.transaction_id, index: input.index },
             signature_script: input.signature_script,
             sequence: input.sequence.parse()?,
-            mass: if cctx::TxInputMass::version_expects_compute_budget_field(value.version) {
+            compute_commit: if cctx::ComputeCommit::version_expects_compute_budget_field(value.version) {
                 if input.sig_op_count != 0 {
                     return Err(invalid_input_mass_variant("sig_op_count", value.version));
                 }
-                cctx::TxInputMass::ComputeBudget(input.compute_budget.into())
+                cctx::ComputeCommit::ComputeBudget(input.compute_budget.into())
             } else {
                 if input.compute_budget != 0 {
                     return Err(invalid_input_mass_variant("compute_budget", value.version));
                 }
-                cctx::TxInputMass::SigopCount(input.sig_op_count.into())
+                cctx::ComputeCommit::SigopCount(input.sig_op_count.into())
             },
         })
     }
@@ -286,7 +286,7 @@ pub struct SerializableTransaction {
     pub lock_time: String,
     pub gas: String,
     #[serde(default)]
-    pub mass: String,
+    pub storage_mass: String,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
 }
@@ -328,7 +328,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time.to_string(),
             subnetwork_id: transaction.subnetwork_id,
             gas: transaction.gas.to_string(),
-            mass: transaction.mass().to_string(),
+            storage_mass: transaction.storage_mass().to_string(),
             payload: transaction.payload.clone(),
         })
     }
@@ -346,7 +346,7 @@ impl SerializableTransaction {
             lock_time: inner.lock_time.to_string(),
             subnetwork_id: inner.subnetwork_id,
             gas: inner.gas.to_string(),
-            mass: inner.mass.to_string(),
+            storage_mass: inner.storage_mass.to_string(),
             payload: inner.payload.clone(),
             id: inner.id,
         })
@@ -375,7 +375,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time.to_string(),
             subnetwork_id: transaction.subnetwork_id,
             gas: transaction.gas.to_string(),
-            mass: transaction.mass().to_string(),
+            storage_mass: transaction.storage_mass().to_string(),
             payload: transaction.payload.clone(),
         })
     }
@@ -403,7 +403,7 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
             signable.gas.parse()?,
             signable.payload,
         )
-        .with_mass(signable.mass.parse().unwrap_or_default());
+        .with_storage_mass(signable.storage_mass.parse().unwrap_or_default());
 
         Ok(Self::with_entries(tx, entries))
     }
@@ -425,7 +425,7 @@ impl TryFrom<SerializableTransaction> for crate::Transaction {
             tx.subnetwork_id,
             tx.gas.parse()?,
             tx.payload,
-            tx.mass.parse().unwrap_or_default(),
+            tx.storage_mass.parse().unwrap_or_default(),
         )
     }
 }

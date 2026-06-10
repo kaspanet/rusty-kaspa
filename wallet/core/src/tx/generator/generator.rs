@@ -397,7 +397,13 @@ impl Generator {
                 (
                     outputs
                         .iter()
-                        .map(|output| TransactionOutput::new(output.amount, pay_to_address_script(&output.address)))
+                        .map(|output| {
+                            TransactionOutput::with_covenant(
+                                output.amount,
+                                pay_to_address_script(&output.address),
+                                output.covenant.map(Into::into),
+                            )
+                        })
                         .collect(),
                     Some(outputs.iter().map(|output| output.amount).sum()),
                 )
@@ -1103,7 +1109,7 @@ impl Generator {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
                 }
-                tx.set_mass(transaction_mass);
+                tx.set_storage_mass(transaction_mass);
 
                 context.aggregate_mass += transaction_mass;
                 context.final_transaction_id = Some(tx.id());
@@ -1161,7 +1167,7 @@ impl Generator {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
                 }
-                tx.set_mass(transaction_mass);
+                tx.set_storage_mass(transaction_mass);
 
                 context.aggregate_mass += transaction_mass;
                 context.number_of_transactions += 1;
