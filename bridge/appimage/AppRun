@@ -1,0 +1,48 @@
+#!/bin/bash
+# AppImage entry: run stratum-bridge with optional config in a writable location
+# (AppImage mounts are read-only; config lives under XDG_CONFIG_HOME.)
+set -euo pipefail
+
+# When opened from a file manager there is usually no TTY — reopen inside a terminal
+# so users see logs and know the bridge is running. Set RKSTRATUM_NO_AUTO_TERMINAL=1 to skip.
+# APPIMAGE is set by the AppImage runtime to the outer .AppImage path.
+if [[ -z "${RKSTRATUM_NO_AUTO_TERMINAL:-}" ]] && ([[ -n "${DISPLAY:-}" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]) && ! [[ -t 0 ]] && [[ -n "${APPIMAGE:-}" ]]; then
+  quote_cmd() {
+    printf '%q' "$1"
+    shift || true
+    for a in "$@"; do printf ' %q' "$a"; done
+  }
+  _cmd=$(quote_cmd "$APPIMAGE" "$@")
+  if command -v x-terminal-emulator >/dev/null 2>&1; then
+    exec x-terminal-emulator -e bash -lc "exec $_cmd"
+  elif command -v gnome-terminal >/dev/null 2>&1; then
+    exec gnome-terminal --title="RKStratum Bridge" -- bash -lc "exec $_cmd"
+  elif command -v konsole >/dev/null 2>&1; then
+    exec konsole -p tabtitle="RKStratum Bridge" -e bash -lc "exec $_cmd"
+  elif command -v xfce4-terminal >/dev/null 2>&1; then
+    exec xfce4-terminal --title="RKStratum Bridge" -e bash -lc "exec $_cmd"
+  elif command -v xterm >/dev/null 2>&1; then
+    exec xterm -title "RKStratum Bridge" -e bash -lc "exec $_cmd"
+  fi
+fi
+
+HERE="$(dirname "$(readlink -f "${0}")")"
+BIN="${HERE}/usr/bin/stratum-bridge"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/stratum-bridge"
+CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+mkdir -p "${CONFIG_DIR}"
+# Do not inject --config if the user passed one (clap rejects duplicate --config).
+inject_config=true
+for a in "$@"; do
+  case "$a" in
+    --config | --config=*)
+      inject_config=false
+      break
+      ;;
+  esac
+done
+EXTRA_ARGS=()
+if [[ "${inject_config}" == true ]] && [[ -f "${CONFIG_FILE}" ]]; then
+  EXTRA_ARGS+=(--config "${CONFIG_FILE}")
+fi
+exec "${BIN}" "${EXTRA_ARGS[@]}" "$@"

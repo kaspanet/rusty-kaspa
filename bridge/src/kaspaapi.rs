@@ -8,14 +8,16 @@ use kaspa_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_core::{
     GetBlockDagInfoRequest, GetBlockTemplateRequest, GetConnectedPeerInfoRequest, GetCurrentBlockColorRequest, GetInfoRequest,
-    GetServerInfoRequest, Notification, RpcHash, RpcRawBlock, SubmitBlockRequest, SubmitBlockResponse, api::rpc::RpcApi,
+    GetServerInfoRequest, GetSinkBlueScoreRequest, Notification, RpcHash, RpcRawBlock, SubmitBlockRequest, SubmitBlockResponse,
+    api::rpc::RpcApi,
 };
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::time::sleep;
@@ -23,6 +25,11 @@ use tracing::{debug, error, info, warn};
 
 const STRATUM_COINBASE_TAG_BYTES: &[u8] = b"RK-Stratum";
 const MAX_COINBASE_TAG_SUFFIX_LEN: usize = 64;
+
+/// Mining-ready must hold continuously at least this long before binding stratum. From disk the node
+/// can report parity + no IBD peer for a short window before P2P schedules IBD (race on cold/extra connect).
+const MIN_MINING_READY_STABLE: Duration = Duration::from_secs(2);
+const MINING_READY_STABLE_POLL: Duration = Duration::from_millis(400);
 
 fn sanitize_coinbase_tag_suffix(suffix: &str) -> Option<String> {
     let suffix = suffix.trim().trim_start_matches('/');
@@ -113,11 +120,14 @@ static BLOCK_SUBMIT_GUARD: Lazy<Mutex<BlockSubmitGuard>> =
 #[derive(Clone, Debug, Default)]
 pub struct NodeStatusSnapshot {
     pub last_updated: Option<std::time::Instant>,
+    /// Wall clock ms since UNIX epoch when the snapshot was last refreshed (for dashboards).
+    pub last_updated_unix_ms: Option<u64>,
     pub is_connected: bool,
     pub is_synced: Option<bool>,
     pub network_id: Option<String>,
     pub server_version: Option<String>,
     pub virtual_daa_score: Option<u64>,
+    pub sink_blue_score: Option<u64>,
     pub block_count: Option<u64>,
     pub header_count: Option<u64>,
     pub difficulty: Option<f64>,
@@ -127,6 +137,75 @@ pub struct NodeStatusSnapshot {
 }
 
 pub static NODE_STATUS: Lazy<Mutex<NodeStatusSnapshot>> = Lazy::new(|| Mutex::new(NodeStatusSnapshot::default()));
+
+/// JSON-friendly node snapshot for `/api/status` (camelCase matches prior dashboard conventions for nested objects).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeStatusApi {
+    pub is_connected: bool,
+    pub is_synced: Option<bool>,
+    pub network_id: Option<String>,
+    pub network_display: Option<String>,
+    pub server_version: Option<String>,
+    pub virtual_daa_score: Option<u64>,
+    pub sink_blue_score: Option<u64>,
+    pub block_count: Option<u64>,
+    pub header_count: Option<u64>,
+    /// DAG difficulty from the node (RPC); distinct from Prometheus-estimated network difficulty on the dashboard.
+    pub difficulty: Option<f64>,
+    pub tip_hash: Option<String>,
+    pub peers: Option<usize>,
+    pub mempool_size: Option<u64>,
+    pub last_updated_unix_ms: Option<u64>,
+}
+
+/// Short network label for UI (same parsing idea as the `[NODE]` log line).
+pub fn network_display_from_id(network_id: Option<&str>) -> Option<String> {
+    let net = network_id?.trim();
+    if net.is_empty() || net == "-" {
+        return None;
+    }
+    let mut network_type = None;
+    let mut suffix = None;
+    if let Some(pos) = net.find("network_type:") {
+        let s = &net[pos + "network_type:".len()..];
+        let s = s.trim_start();
+        network_type = s.split(&[',', '}'][..]).next().map(|v| v.trim());
+    }
+    if let Some(pos) = net.find("suffix:") {
+        let s = &net[pos + "suffix:".len()..];
+        let s = s.trim_start();
+        let raw = s.split(&[',', '}'][..]).next().map(|v| v.trim());
+        if raw != Some("None") {
+            suffix = raw;
+        }
+    }
+    Some(match (network_type, suffix) {
+        (Some(nt), Some(suf)) => format!("{}-{}", nt, suf),
+        (Some(nt), None) => nt.to_string(),
+        _ => net.to_string(),
+    })
+}
+
+pub fn node_status_for_api() -> NodeStatusApi {
+    let s = NODE_STATUS.lock();
+    NodeStatusApi {
+        is_connected: s.is_connected,
+        is_synced: s.is_synced,
+        network_id: s.network_id.clone(),
+        network_display: network_display_from_id(s.network_id.as_deref()),
+        server_version: s.server_version.clone(),
+        virtual_daa_score: s.virtual_daa_score,
+        sink_blue_score: s.sink_blue_score,
+        block_count: s.block_count,
+        header_count: s.header_count,
+        difficulty: s.difficulty,
+        tip_hash: s.tip_hash.clone(),
+        peers: s.peers,
+        mempool_size: s.mempool_size,
+        last_updated_unix_ms: s.last_updated_unix_ms,
+    }
+}
 
 /// Kaspa API client wrapper using RPC client
 /// Both use gRPC under the hood, but through an RPC client wrapper abstraction
@@ -331,59 +410,96 @@ impl KaspaApi {
         }
     }
 
+    /// One RPC round-trip to refresh [`NODE_STATUS`] (console `[NODE]` line and `/api/status`).
+    /// The background poller runs every 10s; call this when mining-ready flips so the snapshot
+    /// matches [`is_node_synced_for_mining`] instead of lagging by up to one interval.
+    async fn refresh_node_status_snapshot(&self) {
+        let connected = self.client.is_connected();
+
+        let server_info_fut = self.client.get_server_info_call(None, GetServerInfoRequest {});
+        let dag_info_fut = self.client.get_block_dag_info_call(None, GetBlockDagInfoRequest {});
+        let peers_fut = self.client.get_connected_peer_info_call(None, GetConnectedPeerInfoRequest {});
+        let info_fut = self.client.get_info_call(None, GetInfoRequest {});
+        let sink_bs_fut = self.client.get_sink_blue_score_call(None, GetSinkBlueScoreRequest {});
+        let sync_fut = self.client.get_sync_status();
+
+        let (server_info, dag_info, peers_info, info_resp, sink_bs_resp, sync_res) =
+            tokio::join!(server_info_fut, dag_info_fut, peers_fut, info_fut, sink_bs_fut, sync_fut);
+
+        let mut snapshot = NODE_STATUS.lock();
+        snapshot.last_updated = Some(Instant::now());
+        snapshot.last_updated_unix_ms = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as u64);
+        snapshot.is_connected = connected;
+
+        // Prefer `getSyncStatus` over `getServerInfo.is_synced`; clear "synced" while any peer is
+        // the P2P IBD peer, or while DAG bodies lag headers (`block_count != header_count`).
+        let mut synced = match sync_res {
+            Ok(v) => Some(v),
+            Err(_) => server_info.as_ref().ok().map(|s| s.is_synced),
+        };
+        if let Ok(peers) = &peers_info
+            && synced == Some(true)
+            && peers.peer_info.iter().any(|p| p.is_ibd_peer)
+        {
+            synced = Some(false);
+        }
+        if let Ok(dag) = &dag_info
+            && synced == Some(true)
+            && dag.block_count != dag.header_count
+        {
+            synced = Some(false);
+        }
+        snapshot.is_synced = synced;
+
+        if let Ok(server_info) = server_info {
+            snapshot.network_id = Some(format!("{:?}", server_info.network_id));
+            snapshot.server_version = Some(server_info.server_version);
+            snapshot.virtual_daa_score = Some(server_info.virtual_daa_score);
+        }
+
+        if let Ok(dag) = dag_info {
+            snapshot.block_count = Some(dag.block_count);
+            snapshot.header_count = Some(dag.header_count);
+            snapshot.difficulty = Some(dag.difficulty);
+            snapshot.tip_hash = dag.tip_hashes.first().map(|h| format!("{}", h));
+            if snapshot.virtual_daa_score.is_none() {
+                snapshot.virtual_daa_score = Some(dag.virtual_daa_score);
+            }
+            if snapshot.network_id.is_none() {
+                snapshot.network_id = Some(format!("{:?}", dag.network));
+            }
+        }
+
+        if let Ok(peers) = peers_info {
+            snapshot.peers = Some(peers.peer_info.len());
+        }
+
+        if let Ok(info) = info_resp {
+            snapshot.mempool_size = Some(info.mempool_size);
+            if snapshot.server_version.is_none() {
+                snapshot.server_version = Some(info.server_version);
+            }
+        }
+
+        snapshot.sink_blue_score = sink_bs_resp.ok().map(|r| r.blue_score);
+    }
+
     async fn start_node_status_thread(self: Arc<Self>) {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             interval.tick().await;
-
-            let connected = self.client.is_connected();
-
-            let server_info_fut = self.client.get_server_info_call(None, GetServerInfoRequest {});
-            let dag_info_fut = self.client.get_block_dag_info_call(None, GetBlockDagInfoRequest {});
-            let peers_fut = self.client.get_connected_peer_info_call(None, GetConnectedPeerInfoRequest {});
-            let info_fut = self.client.get_info_call(None, GetInfoRequest {});
-
-            let (server_info, dag_info, peers_info, info_resp) = tokio::join!(server_info_fut, dag_info_fut, peers_fut, info_fut);
-
-            let mut snapshot = NODE_STATUS.lock();
-            snapshot.last_updated = Some(std::time::Instant::now());
-            snapshot.is_connected = connected;
-
-            if let Ok(server_info) = server_info {
-                snapshot.is_synced = Some(server_info.is_synced);
-                snapshot.network_id = Some(format!("{:?}", server_info.network_id));
-                snapshot.server_version = Some(server_info.server_version);
-                snapshot.virtual_daa_score = Some(server_info.virtual_daa_score);
-            }
-
-            if let Ok(dag) = dag_info {
-                snapshot.block_count = Some(dag.block_count);
-                snapshot.header_count = Some(dag.header_count);
-                snapshot.difficulty = Some(dag.difficulty);
-                snapshot.tip_hash = dag.tip_hashes.first().map(|h| format!("{}", h));
-                if snapshot.virtual_daa_score.is_none() {
-                    snapshot.virtual_daa_score = Some(dag.virtual_daa_score);
-                }
-                if snapshot.network_id.is_none() {
-                    snapshot.network_id = Some(format!("{:?}", dag.network));
-                }
-            }
-
-            if let Ok(peers) = peers_info {
-                snapshot.peers = Some(peers.peer_info.len());
-            }
-
-            if let Ok(info) = info_resp {
-                snapshot.mempool_size = Some(info.mempool_size);
-                if snapshot.server_version.is_none() {
-                    snapshot.server_version = Some(info.server_version);
-                }
-            }
+            self.refresh_node_status_snapshot().await;
         }
     }
 
     /// Submit a block
     pub async fn submit_block(&self, block: Block) -> Result<SubmitBlockResponse> {
+        if !self.is_node_synced_for_mining().await {
+            return Err(anyhow::anyhow!(
+                "refusing block submit: node not mining-ready (sync, P2P IBD, or DAG block/header count mismatch)"
+            ));
+        }
+
         // Use kaspa_consensus_core::hashing::header::hash() for block hash calculation
         // In Kaspa, the block hash is the header hash (transactions are represented by hash_merkle_root in header)
         use kaspa_consensus_core::hashing::header;
@@ -579,60 +695,114 @@ impl KaspaApi {
         result
     }
 
-    /// Wait for node to sync
-    async fn wait_for_sync(&self) -> Result<()> {
+    /// Mining-safe sync: node's `getSyncStatus` (sink recent + not in transitional IBD), no active
+    /// P2P IBD peer (`getConnectedPeerInfo`: `is_ibd_peer`), and `getBlockDagInfo` **block/header
+    /// parity** (`block_count == header_count`). Headers can run ahead of bodies during catch-up; the
+    /// dashboard `blk=a/b` line reflects the same counts.
+    pub async fn is_node_synced_for_mining(&self) -> bool {
+        if !self.client.get_sync_status().await.unwrap_or(false) {
+            return false;
+        }
+
+        let peers_fut = self.client.get_connected_peer_info_call(None, GetConnectedPeerInfoRequest {});
+        let dag_fut = self.client.get_block_dag_info_call(None, GetBlockDagInfoRequest {});
+        let (peers_res, dag_res) = tokio::join!(peers_fut, dag_fut);
+
+        let ibd_peer_active = match &peers_res {
+            Ok(resp) => resp.peer_info.iter().any(|p| p.is_ibd_peer),
+            Err(e) => {
+                debug!("getConnectedPeerInfo failed while checking P2P IBD; ignoring IBD-peer gate: {}", e);
+                false
+            }
+        };
+        if ibd_peer_active {
+            return false;
+        }
+
+        match &dag_res {
+            Ok(dag) => dag.block_count == dag.header_count,
+            Err(e) => {
+                debug!("getBlockDagInfo failed while checking block/header parity; not mining-ready: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Wait until [`is_node_synced_for_mining`] stays true for [`MIN_MINING_READY_STABLE`]. If
+    /// `shutdown_rx` is set, returns `false` when shutdown is requested; otherwise only returns `true`.
+    async fn wait_until_mining_ready_stable(&self, mut shutdown_rx: Option<&mut watch::Receiver<bool>>) -> bool {
+        let mut stable_since: Option<Instant> = None;
+        // So the first "not synced" path can warn without waiting 10s from process start.
+        let mut last_slow_warn = Instant::now() - Duration::from_secs(30);
+
         loop {
-            match self.client.get_sync_status().await {
-                Ok(is_synced) => {
-                    if is_synced {
-                        break;
+            if let Some(rx) = shutdown_rx.as_mut()
+                && *rx.borrow()
+            {
+                return false;
+            }
+
+            let ready_fut = self.is_node_synced_for_mining();
+            let ready = match shutdown_rx.as_mut() {
+                Some(rx) => {
+                    tokio::select! {
+                        _ = rx.wait_for(|v| *v) => return false,
+                        r = ready_fut => r,
                     }
                 }
-                Err(e) => {
-                    debug!("failed to get sync status: {}, retrying...", e);
+                None => ready_fut.await,
+            };
+
+            let now = Instant::now();
+            if ready {
+                match stable_since {
+                    None => stable_since = Some(now),
+                    Some(t0) if now.duration_since(t0) >= MIN_MINING_READY_STABLE => {
+                        self.refresh_node_status_snapshot().await;
+                        return true;
+                    }
+                    Some(_) => {}
+                }
+            } else {
+                if stable_since.take().is_some() {
+                    warn!(
+                        "{} {}",
+                        LogColors::api("[API]"),
+                        LogColors::label(
+                            "Mining-ready dropped before stability window elapsed; continuing to wait (avoids opening stratum right before P2P IBD)"
+                        )
+                    );
+                }
+                if now.duration_since(last_slow_warn) >= Duration::from_secs(10) {
+                    warn!("Kaspa is not synced (or P2P IBD still active), waiting before starting bridge");
+                    last_slow_warn = now;
                 }
             }
 
-            sleep(Duration::from_secs(10)).await;
+            match shutdown_rx.as_mut() {
+                Some(rx) => {
+                    tokio::select! {
+                        _ = rx.wait_for(|v| *v) => return false,
+                        _ = sleep(MINING_READY_STABLE_POLL) => {}
+                    }
+                }
+                None => sleep(MINING_READY_STABLE_POLL).await,
+            }
         }
+    }
 
+    /// Block until the node reports fully synced. Logs at WARN on each wait cycle (same message as startup).
+    async fn wait_for_sync(&self) -> Result<()> {
+        self.wait_until_mining_ready_stable(None).await;
         Ok(())
     }
 
     pub async fn wait_for_sync_with_shutdown(&self, mut shutdown_rx: watch::Receiver<bool>) -> Result<()> {
         debug!("checking kaspad sync state");
-
-        loop {
-            let sync_fut = self.client.get_sync_status();
-            let sync_res = tokio::select! {
-                _ = shutdown_rx.wait_for(|v| *v) => {
-                    return Err(anyhow::anyhow!("shutdown requested"));
-                }
-                res = sync_fut => res,
-            };
-
-            match sync_res {
-                Ok(is_synced) => {
-                    if is_synced {
-                        debug!("kaspad synced, starting server");
-                        break;
-                    }
-                }
-                Err(e) => {
-                    warn!("failed to get sync status: {}, retrying...", e);
-                }
-            }
-
-            warn!("Kaspa is not synced, waiting for sync before starting bridge");
-
-            tokio::select! {
-                _ = shutdown_rx.wait_for(|v| *v) => {
-                    return Err(anyhow::anyhow!("shutdown requested"));
-                }
-                _ = sleep(Duration::from_secs(10)) => {}
-            }
+        if !self.wait_until_mining_ready_stable(Some(&mut shutdown_rx)).await {
+            return Err(anyhow::anyhow!("shutdown requested"));
         }
-
+        debug!("kaspad mining-ready (stable window passed), starting stratum");
         Ok(())
     }
 
@@ -643,6 +813,12 @@ impl KaspaApi {
 
     /// Get block template for a client
     pub async fn get_block_template(&self, wallet_addr: &str, _remote_app: &str, _canxium_addr: &str) -> Result<Block> {
+        if !self.is_node_synced_for_mining().await {
+            return Err(anyhow::anyhow!(
+                "refusing block template: node not mining-ready (sync, P2P IBD, or DAG block/header count mismatch)"
+            ));
+        }
+
         // Retry up to 3 times if we get "Odd number of digits" error
         // This error can occur if the block template has malformed hash fields
         let max_retries = 3;
@@ -772,9 +948,43 @@ impl KaspaApi {
         Ok(resp.blue)
     }
 
+    /// Block until mining-ready or shutdown. No extra stability window here: [`wait_for_sync_with_shutdown`]
+    /// in `main` already enforces [`MIN_MINING_READY_STABLE`]; repeating it would delay template jobs ~2s after
+    /// TCP accepts miners on each outer-loop re-entry.
+    async fn block_until_synced_or_shutdown(api: Arc<Self>, shutdown_rx: &mut watch::Receiver<bool>) -> bool {
+        loop {
+            if *shutdown_rx.borrow() {
+                return false;
+            }
+
+            let ready_fut = api.is_node_synced_for_mining();
+            let ready = tokio::select! {
+                _ = shutdown_rx.wait_for(|v| *v) => {
+                    return false;
+                }
+                r = ready_fut => r,
+            };
+
+            if ready {
+                return true;
+            }
+            warn!("Kaspa is not synced (or P2P IBD still active), waiting for sync before starting bridge");
+
+            tokio::select! {
+                _ = shutdown_rx.wait_for(|v| *v) => {
+                    return false;
+                }
+                _ = sleep(Duration::from_secs(10)) => {}
+            }
+        }
+    }
+
     /// Start listening for block template notifications
     /// Uses RegisterForNewBlockTemplateNotifications with ticker fallback
     /// This provides immediate notifications when new blocks are available, with polling as fallback
+    ///
+    /// **Sync safety:** templates are only dispatched while the node is mining-ready (same as
+    /// [`is_node_synced_for_mining`]). If sync is lost or P2P IBD resumes, we stop calling the callback.
     pub async fn start_block_template_listener<F>(self: Arc<Self>, block_wait_time: Duration, mut block_cb: F) -> Result<()>
     where
         F: FnMut() + Send + 'static,
@@ -783,59 +993,67 @@ impl KaspaApi {
 
         let api_clone = Arc::clone(&self);
         tokio::spawn(async move {
-            let mut restart_channel = true;
-            let mut ticker = tokio::time::interval(block_wait_time);
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut log_sync_resume = true;
 
-            loop {
-                // Check sync state and reconnect if needed
-                if let Err(e) = api_clone.wait_for_sync().await {
-                    error!("error checking kaspad sync state, attempting reconnect: {}", e);
-                    // Note: gRPC client handles reconnection automatically, but we log it
-                    // In Go, reconnect() is called explicitly, but Rust gRPC handles it
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    restart_channel = true;
+            'outer: loop {
+                let _ = api_clone.wait_for_sync().await;
+
+                if std::mem::take(&mut log_sync_resume) {
+                    info!(
+                        "{} {}",
+                        LogColors::api("[API]"),
+                        LogColors::label("Node fully synced — distributing block templates to stratum miners")
+                    );
                 }
 
-                // Re-register for notifications if needed
-                if restart_channel {
-                    // In Go, RegisterForNewBlockTemplateNotifications is called here when restartChannel is true
-                    // In Rust, we already subscribed in new(), and the notification channel persists
-                    // If the connection is lost, the gRPC client handles reconnection automatically
-                    // The notification subscription should be maintained by the gRPC client
-                    // If notifications stop working, we'll fall back to ticker polling
-                    restart_channel = false;
-                }
+                let mut ticker = tokio::time::interval(block_wait_time);
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-                // Wait for either notification or ticker timeout
-                tokio::select! {
-                    // Notification received
-                    notification_result = rx.recv() => {
-                        match notification_result {
-                            Some(Notification::NewBlockTemplate(_)) => {
-                                // Drain any additional notifications
-                                while rx.try_recv().is_ok() {}
+                'inner: loop {
+                    tokio::select! {
+                        notification_result = rx.recv() => {
+                            match notification_result {
+                                Some(Notification::NewBlockTemplate(_)) => {
+                                    while rx.try_recv().is_ok() {}
+                                }
+                                Some(_) => continue,
+                                None => {
+                                    warn!("Block template notification channel closed");
+                                    break 'outer;
+                                }
+                            }
 
-                                // Call callback
-                                block_cb();
+                            if !api_clone.is_node_synced_for_mining().await {
+                                warn!(
+                                    "{} {}",
+                                    LogColors::api("[API]"),
+                                    LogColors::label(
+                                        "Node left fully-synced state; pausing stratum jobs until sync completes (IBD / catch-up)"
+                                    )
+                                );
+                                log_sync_resume = true;
+                                break 'inner;
+                            }
 
-                                // Reset ticker
-                                ticker = tokio::time::interval(block_wait_time);
-                                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                            }
-                            Some(_) => {
-                                // Other notification types - ignore
-                            }
-                            None => {
-                                // Channel closed - exit loop
-                                warn!("Block template notification channel closed");
-                                break;
-                            }
+                            block_cb();
+                            ticker = tokio::time::interval(block_wait_time);
+                            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                         }
-                    }
-                    // Ticker timeout - manually check for new blocks
-                    _ = ticker.tick() => {
-                        block_cb();
+                        _ = ticker.tick() => {
+                            if !api_clone.is_node_synced_for_mining().await {
+                                warn!(
+                                    "{} {}",
+                                    LogColors::api("[API]"),
+                                    LogColors::label(
+                                        "Node left fully-synced state; pausing stratum jobs until sync completes (IBD / catch-up)"
+                                    )
+                                );
+                                log_sync_resume = true;
+                                break 'inner;
+                            }
+
+                            block_cb();
+                        }
                     }
                 }
             }
@@ -857,48 +1075,86 @@ impl KaspaApi {
 
         let api_clone = Arc::clone(&self);
         tokio::spawn(async move {
-            let mut restart_channel = true;
-            let mut ticker = tokio::time::interval(block_wait_time);
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut log_sync_resume = true;
 
-            loop {
-                if *shutdown_rx.borrow() {
+            'outer: loop {
+                if !KaspaApi::block_until_synced_or_shutdown(Arc::clone(&api_clone), &mut shutdown_rx).await {
                     break;
                 }
 
-                if let Err(e) = api_clone.wait_for_sync().await {
-                    error!("error checking kaspad sync state, attempting reconnect: {}", e);
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    restart_channel = true;
+                if std::mem::take(&mut log_sync_resume) {
+                    info!(
+                        "{} {}",
+                        LogColors::api("[API]"),
+                        LogColors::label("Node fully synced — distributing block templates to stratum miners")
+                    );
                 }
 
-                if restart_channel {
-                    restart_channel = false;
-                }
+                let mut ticker = tokio::time::interval(block_wait_time);
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-                tokio::select! {
-                    _ = shutdown_rx.changed() => {
-                        if *shutdown_rx.borrow() {
-                            break;
-                        }
+                'inner: loop {
+                    if *shutdown_rx.borrow() {
+                        break 'outer;
                     }
-                    notification_result = rx.recv() => {
-                        match notification_result {
-                            Some(Notification::NewBlockTemplate(_)) => {
-                                while rx.try_recv().is_ok() {}
-                                block_cb();
-                                ticker = tokio::time::interval(block_wait_time);
-                                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                            }
-                            Some(_) => {}
-                            None => {
-                                warn!("Block template notification channel closed");
-                                break;
+
+                    tokio::select! {
+                        _ = shutdown_rx.changed() => {
+                            if *shutdown_rx.borrow() {
+                                break 'outer;
                             }
                         }
-                    }
-                    _ = ticker.tick() => {
-                        block_cb();
+                        notification_result = rx.recv() => {
+                            match notification_result {
+                                Some(Notification::NewBlockTemplate(_)) => {
+                                    while rx.try_recv().is_ok() {}
+                                }
+                                Some(_) => continue,
+                                None => {
+                                    warn!("Block template notification channel closed");
+                                    break 'outer;
+                                }
+                            }
+
+                            if *shutdown_rx.borrow() {
+                                break 'outer;
+                            }
+
+                            if !api_clone.is_node_synced_for_mining().await {
+                                warn!(
+                                    "{} {}",
+                                    LogColors::api("[API]"),
+                                    LogColors::label(
+                                        "Node left fully-synced state; pausing stratum jobs until sync completes (IBD / catch-up)"
+                                    )
+                                );
+                                log_sync_resume = true;
+                                break 'inner;
+                            }
+
+                            block_cb();
+                            ticker = tokio::time::interval(block_wait_time);
+                            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        }
+                        _ = ticker.tick() => {
+                            if *shutdown_rx.borrow() {
+                                break 'outer;
+                            }
+
+                            if !api_clone.is_node_synced_for_mining().await {
+                                warn!(
+                                    "{} {}",
+                                    LogColors::api("[API]"),
+                                    LogColors::label(
+                                        "Node left fully-synced state; pausing stratum jobs until sync completes (IBD / catch-up)"
+                                    )
+                                );
+                                log_sync_resume = true;
+                                break 'inner;
+                            }
+
+                            block_cb();
+                        }
                     }
                 }
             }
@@ -944,5 +1200,9 @@ impl KaspaApiTrait for KaspaApi {
         KaspaApi::get_current_block_color(self, block_hash)
             .await
             .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn is_node_synced_for_mining(&self) -> bool {
+        KaspaApi::is_node_synced_for_mining(self).await
     }
 }
