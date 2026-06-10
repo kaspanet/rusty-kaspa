@@ -217,7 +217,6 @@ pub struct SmtProof<'a> {
     pub siblings: &'a [Hash],
     /// How proof traversal ended. Determines verification loop bounds and initial hash seed.
     pub terminal: ProofTerminal,
-    _marker: core::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> SmtProof<'a> {
@@ -372,7 +371,7 @@ impl OwnedSmtProof {
 
     /// Borrow as a [`SmtProof`] for zero-copy verification.
     pub fn as_proof(&self) -> SmtProof<'_> {
-        SmtProof { bitmap: &self.bitmap, siblings: &self.siblings, terminal: self.terminal, _marker: core::marker::PhantomData }
+        SmtProof { bitmap: &self.bitmap, siblings: &self.siblings, terminal: self.terminal }
     }
 
     /// Reconstruct the Merkle root. Delegates to [`SmtProof::compute_root`].
