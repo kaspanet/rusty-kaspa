@@ -94,11 +94,11 @@ pub enum ProofTerminal {
 
 impl ProofTerminal {
     /// Wire-format tag for [`Full`](Self::Full).
-    const FULL_TAG: u8 = 0;
+    pub const FULL_TAG: u8 = 0;
     /// Wire-format tag for [`Collapsed`](Self::Collapsed).
-    const COLLAPSED_TAG: u8 = 1;
+    pub const COLLAPSED_TAG: u8 = 1;
     /// Wire-format tag for [`CollapsedOther`](Self::CollapsedOther).
-    const COLLAPSED_OTHER_TAG: u8 = 2;
+    pub const COLLAPSED_OTHER_TAG: u8 = 2;
 
     /// The tree depth at which this proof terminates.
     ///
@@ -108,7 +108,7 @@ impl ProofTerminal {
     /// The verifier uses this to determine:
     /// - how many siblings to expect (only levels `0..depth()` are present), and
     /// - the starting level for the upward hashing loop (`depth() - 1`).
-    fn depth(self) -> usize {
+    pub fn depth(self) -> usize {
         match self {
             Self::Full => DEPTH,
             Self::Collapsed { depth } | Self::CollapsedOther { depth, .. } => depth as usize,
