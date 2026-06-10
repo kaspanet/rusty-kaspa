@@ -32,3 +32,16 @@ pub fn bind_addr_from_port(port_or_addr: &str) -> String {
     }
     if s.starts_with(':') { format!("0.0.0.0{}", s) } else { s }
 }
+
+/// Convert a port-or-address string into a localhost bind address suitable for `SocketAddr::parse()`.
+///
+/// Unlike `bind_addr_from_port`, bare ports default to `127.0.0.1` instead of `0.0.0.0`,
+/// so the dashboard/admin surface is only accessible locally unless explicitly overridden.
+/// `":3030"` becomes `"127.0.0.1:3030"`; `"0.0.0.0:3030"` stays as-is.
+pub fn bind_dashboard_addr_from_port(port_or_addr: &str) -> String {
+    let s = normalize_port(port_or_addr);
+    if s.is_empty() {
+        return s;
+    }
+    if s.starts_with(':') { format!("127.0.0.1{}", s) } else { s }
+}
