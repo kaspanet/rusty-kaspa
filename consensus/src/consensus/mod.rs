@@ -1531,7 +1531,7 @@ impl ConsensusApi for Consensus {
             return Err(ConsensusError::GeneralOwned(format!("toccata is not active at block {block_hash}")));
         }
 
-        let selected_parent = header.direct_parents()[0];
+        let selected_parent = header.post_toccata_chainblock_selected_parent();
         let parent_header = self.headers_store.get_header(selected_parent).unwrap();
 
         let finality_depth = self.config.params.finality_depth();
@@ -1552,7 +1552,11 @@ impl ConsensusApi for Consensus {
             self.storage.smt_metadata_store.get(block_hash).map_err(|e| ConsensusError::GeneralOwned(format!("smt_metadata: {e}")))?;
 
         // Toccata is active (checked above), so the metadata carries a concrete
-        // shortcut block. Fold to seq_commit via the virtual processor.
+        // shortcut block. Its header must exist: block_hash was verified to be a
+        // chain block between the pruning point and sink, so its shortcut block
+        // lies on the chain segment [pp - F, sink] which is not pruned (and we
+        // hold the pruning lock read guard). Fold to seq_commit via the virtual
+        // processor.
         let inactivity_shortcut_block = metadata.inactivity_shortcut_block();
         let inactivity_shortcut = self.virtual_processor.inactivity_shortcut(inactivity_shortcut_block);
 

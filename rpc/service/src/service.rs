@@ -506,7 +506,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         request: GetSeqCommitLaneProofRequest,
     ) -> RpcResult<GetSeqCommitLaneProofResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         let proof = session.async_get_seq_commit_lane_proof(request.block_hash, request.lane_key).await?;
         Ok(GetSeqCommitLaneProofResponse {
             smt_proof: proof.smt_proof.to_bytes(),

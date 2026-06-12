@@ -195,6 +195,14 @@ impl Header {
         }
     }
 
+    /// Returns the selected parent of this header, relying on the post-Toccata
+    /// rule that the first direct parent of a virtual selected chain block is
+    /// its selected parent. Callers must verify the header is a post-Toccata
+    /// chain block before using this.
+    pub fn post_toccata_chainblock_selected_parent(&self) -> Hash {
+        self.direct_parents()[0]
+    }
+
     /// WARNING: To be used for test purposes only
     pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Header {
         Header {
