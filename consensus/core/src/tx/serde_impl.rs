@@ -19,7 +19,7 @@
 //! `#[serde(transparent)]` over `u8` / `u16`, the two sides share the exact
 //! same wire format by construction.
 
-use super::{CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, TxInputMass};
+use super::{ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use crate::mass::{ComputeBudget, SigopCount};
 use kaspa_utils::serde_bytes::{self, ByteBuf, Bytes};
 use serde::{
@@ -106,7 +106,7 @@ impl From<TxInputV0Owned> for TransactionInput {
             previous_outpoint: value.previous_outpoint,
             signature_script: value.signature_script,
             sequence: value.sequence,
-            mass: TxInputMass::SigopCount(value.sig_op_count),
+            compute_commit: ComputeCommit::SigopCount(value.sig_op_count),
         }
     }
 }
@@ -117,7 +117,7 @@ impl From<TxInputV1Owned> for TransactionInput {
             previous_outpoint: value.previous_outpoint,
             signature_script: value.signature_script,
             sequence: value.sequence,
-            mass: TxInputMass::ComputeBudget(value.compute_budget),
+            compute_commit: ComputeCommit::ComputeBudget(value.compute_budget),
         }
     }
 }
@@ -155,7 +155,7 @@ impl Serialize for InputsRef<'_> {
                         previous_outpoint: &input.previous_outpoint,
                         signature_script: input.signature_script.as_slice(),
                         sequence: input.sequence,
-                        sig_op_count: input.mass.sig_op_count().expect("v0 transaction inputs must carry a SigopCount mass"),
+                        sig_op_count: input.compute_commit.sig_op_count().expect("v0 transaction inputs must carry a SigopCount mass"),
                     })?;
                 }
             }
@@ -165,7 +165,10 @@ impl Serialize for InputsRef<'_> {
                         previous_outpoint: &input.previous_outpoint,
                         signature_script: input.signature_script.as_slice(),
                         sequence: input.sequence,
-                        compute_budget: input.mass.compute_budget().expect("v1+ transaction inputs must carry a ComputeBudget mass"),
+                        compute_budget: input
+                            .compute_commit
+                            .compute_budget()
+                            .expect("v1+ transaction inputs must carry a ComputeBudget mass"),
                     })?;
                 }
             }
@@ -213,7 +216,7 @@ impl Serialize for Transaction {
         state.serialize_field("subnetworkId", &self.subnetwork_id)?;
         state.serialize_field("gas", &self.gas)?;
         state.serialize_field("payload", &Bytes(&self.payload))?;
-        state.serialize_field("mass", &self.mass)?;
+        state.serialize_field("mass", &self.storage_mass)?;
         state.serialize_field("id", &self.id)?;
         state.end()
     }
@@ -287,7 +290,7 @@ impl<'de> Visitor<'de> for TransactionVisitor {
         let mass = seq.next_element()?.unwrap_or_default();
         let id = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(8, &self))?;
 
-        Ok(Transaction { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, id })
+        Ok(Transaction { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass: mass, id })
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
@@ -397,7 +400,17 @@ impl<'de> Visitor<'de> for TransactionVisitor {
 
         // `mass` keeps its historical `#[serde(default)]` leniency; `id` is required and
         // read verbatim — serde does not recompute the txid on deserialization.
-        Ok(Transaction { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: mass.unwrap_or_default(), id })
+        Ok(Transaction {
+            version,
+            inputs,
+            outputs,
+            lock_time,
+            subnetwork_id,
+            gas,
+            payload,
+            storage_mass: mass.unwrap_or_default(),
+            id,
+        })
     }
 }
 

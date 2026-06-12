@@ -382,6 +382,6 @@ impl PSKT {
         let tx = extractor
             .extract_tx_unchecked(&network_id.into())
             .map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
-        Ok(tx.tx.mass())
+        Ok(tx.tx.storage_mass())
     }
 }

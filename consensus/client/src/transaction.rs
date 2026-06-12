@@ -24,7 +24,7 @@ use kaspa_utils::hex::*;
 const TS_TRANSACTION: &'static str = r#"
 /**
  * Interface defining the structure of a transaction.
- * 
+ *
  * @category Consensus
  */
 export interface ITransaction {
@@ -35,8 +35,14 @@ export interface ITransaction {
     subnetworkId: HexString;
     gas: bigint;
     payload: HexString;
-    /** The mass of the transaction (the mass is undefined or zero unless explicitly set or obtained from the node) */
+
+    /**
+     * @deprecated since version 1.3.0, use `storageMass`
+    */
     mass?: bigint;
+
+    /** The mass of the transaction (the mass is undefined or zero unless explicitly set or obtained from the node) */
+    storageMass?: bigint;
 
     /** Optional verbose data provided by RPC */
     verboseData?: ITransactionVerboseData;
@@ -44,7 +50,7 @@ export interface ITransaction {
 
 /**
  * Optional transaction verbose data.
- * 
+ *
  * @category Node RPC
  */
 export interface ITransactionVerboseData {
@@ -75,7 +81,7 @@ pub struct TransactionInner {
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
     pub payload: Vec<u8>,
-    pub mass: u64,
+    pub storage_mass: u64,
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
@@ -103,7 +109,7 @@ impl Transaction {
         subnetwork_id: SubnetworkId,
         gas: u64,
         payload: Vec<u8>,
-        mass: u64,
+        storage_mass: u64,
     ) -> Result<Self> {
         let finalize = id.is_none();
         let tx = Self {
@@ -116,7 +122,7 @@ impl Transaction {
                 subnetwork_id,
                 gas,
                 payload,
-                mass,
+                storage_mass,
             })),
         };
         if finalize {
@@ -268,14 +274,26 @@ impl Transaction {
         self.inner.lock().unwrap().payload = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("payload value error: {err}"));
     }
 
+    /// @deprecated Use `storageMass` instead
     #[wasm_bindgen(getter = mass)]
     pub fn get_mass(&self) -> u64 {
-        self.inner().mass
+        self.inner().storage_mass
     }
 
+    /// @deprecated Use `storageMass` instead
     #[wasm_bindgen(setter = mass)]
     pub fn set_mass(&self, v: u64) {
-        self.inner().mass = v;
+        self.inner().storage_mass = v;
+    }
+
+    #[wasm_bindgen(getter = storageMass)]
+    pub fn get_storage_mass(&self) -> u64 {
+        self.inner().storage_mass
+    }
+
+    #[wasm_bindgen(setter = storageMass)]
+    pub fn set_storage_mass(&self, v: u64) {
+        self.inner().storage_mass = v;
     }
 
     #[wasm_bindgen(js_name = populateGenesisCovenants)]
@@ -302,8 +320,12 @@ impl TryCastFromJs for Transaction {
                     let lock_time = object.get_u64("lockTime")?;
                     let gas = object.get_u64("gas")?;
                     let payload = object.get_vec_u8("payload")?;
+
                     // mass field is optional
                     let mass = object.get_u64("mass").unwrap_or_default();
+                    // storage mass is the new name for legacy `mass`, take the max between both
+                    let storage_mass = object.get_u64("storageMass").unwrap_or_default().max(mass);
+
                     let subnetwork_id = object.get_vec_u8("subnetworkId")?;
                     if subnetwork_id.len() != subnets::SUBNETWORK_ID_SIZE {
                         return Err(Error::Custom("subnetworkId must be 20 bytes long".into()));
@@ -322,7 +344,8 @@ impl TryCastFromJs for Transaction {
                         .iter()
                         .map(TryCastFromJs::try_owned_from)
                         .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
-                    Transaction::new(id, version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass).map(Into::into)
+                    Transaction::new(id, version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass)
+                        .map(Into::into)
                 }
             } else {
                 Err("Transaction must be an object".into())
@@ -335,7 +358,7 @@ impl TryCastFromJs for Transaction {
 impl From<cctx::Transaction> for Transaction {
     fn from(tx: cctx::Transaction) -> Self {
         let id = tx.id();
-        let mass = tx.mass();
+        let storage_mass = tx.storage_mass();
         let inputs: Vec<TransactionInput> = tx.inputs.into_iter().map(|input| input.into()).collect::<Vec<TransactionInput>>();
         let outputs: Vec<TransactionOutput> = tx.outputs.into_iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
         Self::new_with_inner(TransactionInner {
@@ -345,7 +368,7 @@ impl From<cctx::Transaction> for Transaction {
             lock_time: tx.lock_time,
             gas: tx.gas,
             payload: tx.payload,
-            mass,
+            storage_mass,
             subnetwork_id: tx.subnetwork_id,
             id,
         })
@@ -364,7 +387,7 @@ impl From<&Transaction> for cctx::Transaction {
         let outputs: Vec<cctx::TransactionOutput> =
             inner.outputs.clone().into_iter().map(|output| output.as_ref().into()).collect::<Vec<cctx::TransactionOutput>>();
         cctx::Transaction::new(inner.version, inputs, outputs, inner.lock_time, inner.subnetwork_id, inner.gas, inner.payload.clone())
-            .with_mass(inner.mass)
+            .with_storage_mass(inner.storage_mass)
     }
 }
 
@@ -380,8 +403,8 @@ impl Transaction {
                     previous_outpoint,
                     Some(input.signature_script.clone()),
                     input.sequence,
-                    input.mass.sig_op_count().unwrap_or(0),
-                    input.mass.compute_budget().unwrap_or(0),
+                    input.compute_commit.sig_op_count().unwrap_or(0),
+                    input.compute_commit.compute_budget().unwrap_or(0),
                     utxo,
                 )
             })
@@ -396,7 +419,7 @@ impl Transaction {
             lock_time: tx.lock_time,
             gas: tx.gas,
             payload: tx.payload.clone(),
-            mass: tx.mass(),
+            storage_mass: tx.storage_mass(),
             subnetwork_id: tx.subnetwork_id,
         })
     }
@@ -424,7 +447,7 @@ impl Transaction {
             inner.gas,
             inner.payload.clone(),
         )
-        .with_mass(inner.mass);
+        .with_storage_mass(inner.storage_mass);
 
         Ok((tx, utxos))
     }

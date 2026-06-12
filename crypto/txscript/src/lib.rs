@@ -129,6 +129,7 @@ pub struct EngineFlags {
 
 impl Default for EngineFlags {
     fn default() -> Self {
+        // TODO(post-toccata): change default values (wasm client is based on this one, no other changes needed)
         Self { covenants_enabled: false, sigop_script_units: Gram(1000).into() }
     }
 }
@@ -448,6 +449,11 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
     parse_script::<T, Reused>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
 }
 
+enum ScriptExecutionOutput {
+    Executed,
+    AcceptedUnknownVersion,
+}
+
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
     pub fn new(ctx: EngineContext<'a, Reused>, flags: EngineFlags) -> Self {
         let runtime_resource_meter = if flags.covenants_enabled {
@@ -536,7 +542,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         let runtime_resource_meter = if flags.covenants_enabled {
             RuntimeResourceMeter::new_script_units(flags.sigop_script_units, script_units_limit)
         } else {
-            RuntimeResourceMeter::new_sigops(input.mass.sig_op_count().unwrap_or(0))
+            RuntimeResourceMeter::new_sigops(input.compute_commit.sig_op_count().unwrap_or(0))
         };
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -683,12 +689,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         script_result
     }
 
-    fn execute_inner(&mut self) -> Result<(), TxScriptError> {
+    fn execute_inner(&mut self) -> Result<ScriptExecutionOutput, TxScriptError> {
         let (scripts, is_p2sh, utxo_spk_script_units) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                     trace!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
-                    return Ok(());
+                    return Ok(ScriptExecutionOutput::AcceptedUnknownVersion);
                 }
 
                 // To avoid breaking the old pricing, we only charge for the part of the script public key
@@ -742,18 +748,20 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             let script = self.dstack.pop()?;
             self.execute_script(script.as_slice(), false)?
         }
-        Ok(())
+        Ok(ScriptExecutionOutput::Executed)
     }
 
     pub fn execute(&mut self) -> Result<(), TxScriptError> {
-        self.execute_inner()?;
-        self.check_error_condition(true)?;
-        Ok(())
+        match self.execute_inner()? {
+            ScriptExecutionOutput::Executed => self.check_error_condition(true),
+            // Unknown script versions are accepted without execution, indepedently of the stack state. There's no need to check the error condition.
+            ScriptExecutionOutput::AcceptedUnknownVersion => Ok(()),
+        }
     }
 
     /// Executes the scripts without the final error condition checks and returns both stacks in raw vector form.
     pub fn execute_and_return_stacks(mut self) -> Result<ExecutionStacks, TxScriptError> {
-        self.execute_inner()?;
+        let _ = self.execute_inner()?;
         Ok(ExecutionStacks { dstack: self.dstack.into(), astack: self.astack.into() })
     }
 
@@ -964,8 +972,8 @@ mod tests {
         ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits, SigopCount,
     };
     use kaspa_consensus_core::tx::{
-        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-        TransactionOutput, TxInputMass,
+        ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput,
+        TransactionOutpoint, TransactionOutput,
     };
     use kaspa_core::assert_match;
     use kaspa_utils::hex::FromHex;
@@ -1014,7 +1022,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 4294967295,
-                mass: ComputeBudget(0).into(),
+                compute_commit: ComputeBudget(0).into(),
             };
             let output = TransactionOutput {
                 value: 1000000000,
@@ -1208,7 +1216,7 @@ mod tests {
             &script,
             &reused_values,
             &sig_cache,
-            TxInputMass::from(ComputeBudget(1)).allowed_script_units(),
+            ComputeCommit::from(ComputeBudget(1)).allowed_script_units(),
             flags,
         );
         assert!(exact_vm.execute().is_ok());
@@ -1218,7 +1226,7 @@ mod tests {
                 &script,
                 &reused_values,
                 &sig_cache,
-                TxInputMass::from(ComputeBudget(0)).allowed_script_units(),
+                ComputeCommit::from(ComputeBudget(0)).allowed_script_units(),
                 flags,
             );
         assert_eq!(
@@ -1324,7 +1332,7 @@ mod tests {
                 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(0).into(),
+                compute_commit: SigopCount(0).into(),
             };
             let output =
                 TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
@@ -1359,7 +1367,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([7u8; 32]), index: 0 },
             signature_script: vec![OpTrue, OpTrue],
             sequence: 0,
-            mass: ComputeBudget(0).into(),
+            compute_commit: ComputeBudget(0).into(),
         };
 
         let output =
@@ -1431,7 +1439,7 @@ mod tests {
             previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([9u8; 32]), index: 0 },
             signature_script: vec![],
             sequence: 0,
-            mass: ComputeBudget(0).into(), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
+            compute_commit: ComputeBudget(0).into(), // We set the allowed units directly in the engine, so we skip setting sig_op_count and compute_budget.
         };
 
         let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
@@ -1501,6 +1509,35 @@ mod tests {
         ];
 
         run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_unknown_script_public_key_version_skips_final_stack_check() {
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([1u8; 32]), index: 0 },
+            signature_script: vec![],
+            sequence: 0,
+            compute_commit: ComputeBudget(0).into(),
+        };
+        let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, vec![OpTrue].into()), covenant: None };
+        let tx = Transaction::new(1, vec![input.clone()], vec![output], 0, Default::default(), 0, vec![]);
+        let unknown_version_spk = ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION + 1, vec![OpFalse].into());
+        let utxo_entry = UtxoEntry::new(1, unknown_version_spk, 0, false, None);
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &populated_tx,
+            &input,
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            Default::default(),
+        );
+
+        assert_eq!(vm.execute(), Ok(()));
     }
 
     #[test]
@@ -2125,7 +2162,7 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    mass: SigopCount(test.sig_op_limit).into(),
+                    compute_commit: SigopCount(test.sig_op_limit).into(),
                 }],
                 vec![],
                 0,
@@ -2202,7 +2239,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(2).into(),
+                compute_commit: SigopCount(2).into(),
             }],
             vec![],
             0,
@@ -2314,7 +2351,7 @@ mod tests {
                 previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
                 signature_script: vec![],
                 sequence: 0,
-                mass: SigopCount(3).into(),
+                compute_commit: SigopCount(3).into(),
             }],
             vec![],
             0,

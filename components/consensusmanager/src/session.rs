@@ -4,7 +4,7 @@
 
 use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, Hash,
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::{
         BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ImportLane, ImportLaneBatchIterator,
         SeqCommitLaneProof,
@@ -12,8 +12,7 @@ use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
-    errors::pruning::PruningImportResult,
-    errors::{consensus::ConsensusResult, tx::TxResult},
+    errors::{consensus::ConsensusResult, pruning::PruningImportResult, tx::TxResult},
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
@@ -261,8 +260,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_sink_daa_score_timestamp()).await
     }
 
-    pub async fn async_get_current_block_color(&self, hash: Hash) -> Option<bool> {
-        self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
+    pub async fn async_get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
+        self.clone().spawn_blocking(move |c| c.get_merged_block_context(hash)).await
     }
 
     /// retention period root refers to the earliest block from which the current node has full header & block data
