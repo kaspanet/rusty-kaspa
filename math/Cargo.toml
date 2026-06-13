@@ -27,14 +27,15 @@ workflow-wasm.workspace = true
 [dev-dependencies]
 rand_chacha.workspace = true
 criterion.workspace = true
-# candidate for replacing the malachite-* deps (bench-only, see benches/candidates.rs).
-# the mul tuning from https://github.com/cmpute/dashu/pull/74 was also benched (via a local
-# clone, the branch has a broken gitlink) and showed no effect at 48 limbs: 22.8 vs 22.4 us/inv
-dashu-int = "0.4"
-crypto-bigint = "0.7"
-# ruled out by earlier runs (4.5x-31x slower than dashu at 3072-bit modinv):
-# num-bigint = "0.4"
-# ruint = "1"
+# The modinv-candidate comparison is settled (Lehmer ext-gcd won), so the third-party candidate
+# deps are removed. Their bench arms in benches/candidates.rs are commented out and can be revived
+# by re-adding the deps:
+#   dashu-int = "0.4"      # gcd_ext modinv (~23us) + the Uint192/256/320 production-pattern comparator.
+#                          # the mul tuning from https://github.com/cmpute/dashu/pull/74 was also
+#                          # benched (local clone; broken gitlink) and showed no effect at 48 limbs.
+#   crypto-bigint = "0.7"  # safegcd vartime/const-time modinv (~114/126us, 7-8x slower)
+#   num-bigint = "0.4"     # ~513us, ruled out
+#   ruint = "1"            # ~72us, ruled out
 
 [features]
 # Bench/diagnostics only: accumulate per-inverse operation counts in `lehmer`
