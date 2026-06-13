@@ -27,6 +27,14 @@ workflow-wasm.workspace = true
 [dev-dependencies]
 rand_chacha.workspace = true
 criterion.workspace = true
+# candidate for replacing the malachite-* deps (bench-only, see benches/candidates.rs).
+# the mul tuning from https://github.com/cmpute/dashu/pull/74 was also benched (via a local
+# clone, the branch has a broken gitlink) and showed no effect at 48 limbs: 22.8 vs 22.4 us/inv
+dashu-int = "0.4"
+crypto-bigint = "0.7"
+# ruled out by earlier runs (4.5x-31x slower than dashu at 3072-bit modinv):
+# num-bigint = "0.4"
+# ruint = "1"
 
 [features]
 # Bench/diagnostics only: accumulate per-inverse operation counts in `lehmer`
@@ -36,6 +44,10 @@ lehmer-instrument = []
 
 [[bench]]
 name = "bench"
+harness = false
+
+[[bench]]
+name = "candidates"
 harness = false
 
 [lints]
