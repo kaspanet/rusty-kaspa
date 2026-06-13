@@ -1,5 +1,5 @@
 # ---------------------------------------- Chef image -------------------------------------------
-FROM rust:1.91-alpine3.23 AS chef
+FROM rust:1.95-alpine3.23 AS chef
 RUN apk --no-cache add \
   musl-dev \
   protobuf-dev \
