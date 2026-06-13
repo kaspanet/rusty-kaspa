@@ -3,6 +3,7 @@ use wasm_bindgen::JsValue;
 use workflow_core::sendable::Sendable;
 
 pub mod int;
+pub mod lehmer;
 pub mod uint;
 pub mod wasm;
 

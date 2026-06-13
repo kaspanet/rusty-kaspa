@@ -28,6 +28,12 @@ workflow-wasm.workspace = true
 rand_chacha.workspace = true
 criterion.workspace = true
 
+[features]
+# Bench/diagnostics only: accumulate per-inverse operation counts in `lehmer`
+# (matrices, divides, apply-limb iterations) into atomics. Off by default; has
+# zero effect on the production path.
+lehmer-instrument = []
+
 [[bench]]
 name = "bench"
 harness = false
