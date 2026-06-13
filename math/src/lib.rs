@@ -11,6 +11,16 @@ construct_uint!(Uint256, 4);
 construct_uint!(Uint320, 5);
 construct_uint!(Uint3072, 48);
 
+/// Returns the ceiling of the base-2 logarithm of `x`, i.e. the smallest `k` such that `2^k >= x`.
+///
+/// # Panics
+/// Panics if `x` is 0 (the base-2 logarithm of 0 is undefined).
+#[inline]
+pub const fn ceil_log_2(x: u64) -> u64 {
+    // power of two -> floor; not a power of two -> floor + 1
+    x.ilog2() as u64 + (!x.is_power_of_two()) as u64
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("{0:?}")]
@@ -185,5 +195,79 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]);
         assert_eq!(r / newr, expected);
+    }
+}
+
+#[cfg(test)]
+mod ceil_log_2_tests {
+    use crate::ceil_log_2;
+
+    /// Independent reference: the smallest `k` such that `2^k >= x`. Computed in `u128` so it
+    /// stays correct for `x` near `u64::MAX` (where the answer is 64).
+    fn oracle(x: u64) -> u64 {
+        assert!(x != 0);
+        let mut k = 0u64;
+        while (1u128 << k) < x as u128 {
+            k += 1;
+        }
+        k
+    }
+
+    /// A spread of inputs exercising the dense low range, every power-of-2 boundary, and the top.
+    fn sample_inputs() -> impl Iterator<Item = u64> {
+        let dense = 1..=8192u64;
+        let boundaries = (0..64u32).flat_map(|k| {
+            let p = 1u64 << k;
+            // p-1 (clamped away from 0), p, p+1
+            [p.saturating_sub(1).max(1), p, p + 1]
+        });
+        dense.chain(boundaries).chain([u64::MAX])
+    }
+
+    #[test]
+    fn known_values() {
+        for (x, expected) in [
+            (1u64, 0u64),
+            (2, 1),
+            (3, 2),
+            (4, 2),
+            (5, 3),
+            (7, 3),
+            (8, 3),
+            (9, 4),
+            (1023, 10),
+            (1024, 10),
+            (1025, 11),
+            (1u64 << 63, 63),
+            ((1u64 << 63) + 1, 64),
+            (u64::MAX, 64),
+        ] {
+            assert_eq!(ceil_log_2(x), expected, "ceil_log_2({x})");
+        }
+    }
+
+    #[test]
+    fn correctness_matches_oracle() {
+        for x in sample_inputs() {
+            assert_eq!(ceil_log_2(x), oracle(x), "x={x}");
+        }
+    }
+
+    #[test]
+    fn compatibility_matches_malachite() {
+        // Direct equivalence with the malachite `CeilingLogBase2` this replaced. Tied to the
+        // malachite dependency; remove alongside it once `mod_inverse` is migrated off malachite.
+        // Permanent correctness coverage is provided by `correctness_matches_oracle`.
+        use crate::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
+        for x in sample_inputs() {
+            assert_eq!(ceil_log_2(x), x.ceiling_log_base_2(), "x={x}");
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_zero() {
+        // Matches malachite's "Cannot take the base-2 logarithm of 0." panic.
+        let _ = ceil_log_2(0);
     }
 }
