@@ -130,7 +130,9 @@ fn bench_uint3072(c: &mut Criterion) {
     uint3072_c.bench_function("mod_inv Muhash prime", |b| {
         b.iter(|| {
             for &a in &uint3072_one[..uint3072_one.len() / 4] {
-                black_box(a.mod_inverse(PRIME));
+                // generic mod_inverse was removed; inverse the reduced value via lehmer::invert
+                let mut out = [0u64; 48];
+                black_box(kaspa_math::lehmer::invert((a % PRIME).0, PRIME.0, &mut out));
             }
         });
     });

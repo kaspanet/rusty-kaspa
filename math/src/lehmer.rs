@@ -889,8 +889,19 @@ mod tests {
         invert(value, modulus, &mut out).then_some(out)
     }
 
+    // Malachite reference oracle. The generic `Uint::mod_inverse` was removed, so this calls
+    // malachite's `Natural::mod_inverse` directly (malachite is a dev-dependency, available here).
     fn malachite_inv(value: [u64; N], modulus: [u64; N]) -> Option<[u64; N]> {
-        Uint3072(value).mod_inverse(Uint3072(modulus)).map(|inv| inv.0)
+        use malachite_base::num::arithmetic::traits::ModInverse;
+        use malachite_nz::natural::Natural;
+        let x = Natural::from_limbs_asc(&value);
+        let m = Natural::from_limbs_asc(&modulus);
+        x.mod_inverse(m).map(|inv| {
+            let mut out = [0u64; N];
+            let limbs = inv.into_limbs_asc();
+            out[..limbs.len()].copy_from_slice(&limbs);
+            out
+        })
     }
 
     fn addmod(a: Uint3072, b: Uint3072, m: Uint3072) -> Uint3072 {

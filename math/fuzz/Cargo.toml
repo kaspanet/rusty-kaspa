@@ -38,3 +38,9 @@ name = "u192"
 path = "fuzz_targets/u192.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "u3072"
+path = "fuzz_targets/u3072.rs"
+test = false
+doc = false

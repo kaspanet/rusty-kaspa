@@ -1,5 +1,5 @@
 #[doc(hidden)]
-pub use {faster_hex, malachite_base, malachite_nz, serde};
+pub use {faster_hex, serde};
 
 // TODO: Add u32 support for optimization on 32 bit machines.
 
@@ -342,23 +342,9 @@ macro_rules! construct_uint {
                 (Self(ret), sub_copy)
             }
 
-            /// Assumes self < prime
-            #[inline]
-            pub fn mod_inverse(self, prime: Self) -> Option<Self> {
-                use $crate::uint::malachite_nz::natural::Natural;
-                use $crate::uint::malachite_base::num::arithmetic::traits::ModInverse;
-
-                let x = Natural::from_limbs_asc(&self.0);
-                let p = Natural::from_limbs_asc(&prime.0);
-                let mod_inv = x.mod_inverse(p);
-
-                mod_inv.map(|n| {
-                    let mut res = [0u64; Self::LIMBS];
-                    let limbs = n.into_limbs_asc();
-                    res[..limbs.len()].copy_from_slice(&limbs);
-                    Self(res)
-                })
-            }
+            // The general malachite-backed `mod_inverse` was removed: the only production caller
+            // is muhash's 3072-bit inverse, now served by the in-repo `lehmer::invert`
+            // (`math/src/lehmer.rs`, MIT, faster than malachite). No other Uint size needs it.
 
             #[inline]
             pub fn iter_be_bits(self) -> impl ExactSizeIterator<Item = bool> + core::iter::FusedIterator {
@@ -1175,6 +1161,11 @@ mod tests {
         assert_eq!(u2.saturating_add(Uint128::from_u64(1)), Uint128::from_u128(u64::MAX as u128 + 1));
     }
 
+    // `test_mod_inv` is commented out: it exercised the generic `mod_inverse` (Uint128), which was
+    // removed along with the malachite-backed implementation. The only production inverse is the
+    // 3072-bit MuHash case, now covered by the `lehmer.rs` unit tests (bit-for-bit vs malachite +
+    // `v * inv == 1` self-check) and the `math/fuzz` `u3072` target. Kept here for history.
+    /*
     #[test]
     fn test_mod_inv() {
         use core::cmp::Ordering;
@@ -1214,4 +1205,5 @@ mod tests {
             res
         }
     }
+    */
 }

@@ -62,9 +62,19 @@ fn inputs() -> Vec<[u64; LIMBS]> {
 
 mod current_malachite {
     use super::*;
+    use malachite_base::num::arithmetic::traits::ModInverse;
+    use malachite_nz::natural::Natural;
 
+    // The generic `Uint::mod_inverse` was removed; the malachite baseline now calls
+    // `Natural::mod_inverse` directly (this is exactly what the removed method did internally).
     pub fn modinv(limbs: &[u64; LIMBS]) -> [u64; LIMBS] {
-        Uint3072(*limbs).mod_inverse(PRIME).expect("0 < a < prime").0
+        let x = Natural::from_limbs_asc(limbs);
+        let p = Natural::from_limbs_asc(&PRIME.0);
+        let inv = x.mod_inverse(p).expect("0 < a < prime");
+        let mut out = [0u64; LIMBS];
+        let limbs = inv.into_limbs_asc();
+        out[..limbs.len()].copy_from_slice(&limbs);
+        out
     }
 }
 
@@ -209,7 +219,7 @@ fn bench_modinv_3072(c: &mut Criterion) {
 // The other malachite usage (consensus/src/processes/sync/mod.rs) is CeilingLogBase2 on a u64,
 // replaced on this branch with std; benched here to confirm std is no slower.
 fn bench_ceil_log2(c: &mut Criterion) {
-    use kaspa_math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
+    use malachite_base::num::arithmetic::traits::CeilingLogBase2;
 
     let mut rng = ChaCha8Rng::from_seed([42u8; 32]);
     let values: Vec<u64> = (0..1024).map(|_| rng.next_u64() | 1).collect();

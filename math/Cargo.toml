@@ -14,8 +14,6 @@ borsh.workspace = true
 faster-hex.workspace = true
 js-sys.workspace = true
 kaspa-utils = { workspace = true, features = ["mem_size"] }
-malachite-base.workspace = true
-malachite-nz.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
 thiserror.workspace = true
@@ -27,6 +25,11 @@ workflow-wasm.workspace = true
 [dev-dependencies]
 rand_chacha.workspace = true
 criterion.workspace = true
+# malachite (LGPL) is no longer a production dependency: it backed only `mod_inverse` (now the
+# in-repo MIT `lehmer::invert`) and `CeilingLogBase2` (now std). It remains a dev-dependency purely
+# as the cross-check oracle for `lehmer.rs` / `lib.rs` tests and the `candidates` bench baseline.
+malachite-base.workspace = true
+malachite-nz.workspace = true
 # The modinv-candidate comparison is settled (Lehmer ext-gcd won), so the third-party candidate
 # deps are removed. Their bench arms in benches/candidates.rs are commented out and can be revived
 # by re-adding the deps:

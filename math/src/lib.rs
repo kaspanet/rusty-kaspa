@@ -256,10 +256,9 @@ mod ceil_log_2_tests {
 
     #[test]
     fn compatibility_matches_malachite() {
-        // Direct equivalence with the malachite `CeilingLogBase2` this replaced. Tied to the
-        // malachite dependency; remove alongside it once `mod_inverse` is migrated off malachite.
-        // Permanent correctness coverage is provided by `correctness_matches_oracle`.
-        use crate::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
+        // Direct equivalence with the malachite `CeilingLogBase2` this replaced. malachite is a
+        // dev-dependency only (the oracle); permanent coverage is `correctness_matches_oracle`.
+        use malachite_base::num::arithmetic::traits::CeilingLogBase2;
         for x in sample_inputs() {
             assert_eq!(ceil_log_2(x), x.ceiling_log_base_2(), "x={x}");
         }
