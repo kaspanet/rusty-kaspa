@@ -401,7 +401,7 @@ impl Generator {
                             TransactionOutput::with_covenant(
                                 output.amount,
                                 pay_to_address_script(&output.address),
-                                output.covenant.map(Into::into),
+                                output.covenant.clone().map(Into::into),
                             )
                         })
                         .collect(),
