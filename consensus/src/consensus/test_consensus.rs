@@ -34,6 +34,7 @@ use crate::{
     pipeline::{ProcessingCounters, body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor},
     test_helpers::header_from_precomputed_hash,
 };
+use kaspa_consensus_core::api::SeqCommitLaneEntry;
 use kaspa_database::create_temp_db;
 use kaspa_database::prelude::ConnBuilder;
 use std::future::Future;
@@ -52,7 +53,7 @@ pub struct TestSeqCommitLaneProof {
     pub parent_seq_commit: Hash,
     pub expected_seq_commit: Hash,
     pub parent_lane_tip: Option<Hash>,
-    pub current_lane: Option<(Hash, u64)>,
+    pub current_lane: Option<SeqCommitLaneEntry>,
     pub smt_proof: OwnedSmtProof,
     pub blue_score: u64,
     pub inactivity_shortcut: Hash,
@@ -244,7 +245,7 @@ impl TestConsensus {
             .storage
             .smt_stores
             .get_lane(lane_key, current_bounds, |bh| self.consensus.virtual_processor.is_smt_canonical(bh, block_hash))
-            .map(|verified| (*verified.data(), verified.blue_score()));
+            .map(|verified| SeqCommitLaneEntry { tip: *verified.data(), blue_score: verified.blue_score() });
         let lanes_root = self
             .consensus
             .storage

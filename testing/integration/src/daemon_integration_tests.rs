@@ -1148,6 +1148,7 @@ async fn daemon_ibd_smt_state_sync_test() {
     // Phase 3: mine enough additional blocks that the lane transactions land on
     // chain and the pruning point then advances off genesis. `pruning_depth` + a
     // comfortable margin guarantees the pruning point covers the lane txs.
+    let finality_depth = params.finality_depth();
     let pruning_depth = params.pruning_depth();
     let blocks_after_txs = pruning_depth as usize + 60;
     for _ in 0..blocks_after_txs {
@@ -1156,14 +1157,27 @@ async fn daemon_ibd_smt_state_sync_test() {
     }
 
     let mut dag_info = rpc_client1.get_block_dag_info().await.unwrap();
+    let mut pruning_point_blue_score = rpc_client1.get_block(dag_info.pruning_point_hash, false).await.unwrap().header.blue_score;
     let mut extra_blocks = 0usize;
-    while dag_info.pruning_point_hash == SIMNET_GENESIS.hash && extra_blocks < 100 {
+    let extra_blocks_limit = finality_depth as usize + 100;
+    // The pruning point's blue_score must exceed finality_depth so the IBD
+    // metadata call to `inactivity_shortcut_block_for_pov(pruning_point)` takes
+    // the backward chain-walk branch instead of the shallow `Ok(genesis)`
+    // early-return (which triggers when blue_score < finality_depth + 1).
+    while (dag_info.pruning_point_hash == SIMNET_GENESIS.hash || pruning_point_blue_score <= finality_depth)
+        && extra_blocks < extra_blocks_limit
+    {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
         rpc_client1.submit_block(template.block, false).await.unwrap();
         extra_blocks += 1;
         dag_info = rpc_client1.get_block_dag_info().await.unwrap();
+        pruning_point_blue_score = rpc_client1.get_block(dag_info.pruning_point_hash, false).await.unwrap().header.blue_score;
     }
     assert_ne!(dag_info.pruning_point_hash, SIMNET_GENESIS.hash, "syncer pruning point did not advance off genesis");
+    assert!(
+        pruning_point_blue_score > finality_depth,
+        "syncer pruning point did not advance past finality depth: pp_bs={pruning_point_blue_score}, finality_depth={finality_depth}"
+    );
 
     let target_daa_score = rpc_client1.get_server_info().await.unwrap().virtual_daa_score;
     let target_pruning_point = dag_info.pruning_point_hash;
@@ -1207,8 +1221,7 @@ async fn daemon_ibd_smt_state_sync_test() {
     // Phase 6: mine finality_depth + buffer blocks on the syncer and assert
     // the syncee catches up. Verifies syncer/syncee shortcut agreement for live
     // blocks whose target_bs lands in the IBD-imported lane range.
-    let finality_depth = params.finality_depth() as usize;
-    let post_ibd_blocks = finality_depth + 30;
+    let post_ibd_blocks = finality_depth as usize + 30;
     for _ in 0..post_ibd_blocks {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
         rpc_client1.submit_block(template.block, false).await.unwrap();
