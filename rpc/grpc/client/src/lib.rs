@@ -279,6 +279,7 @@ impl RpcApi for GrpcClient {
     route!(get_block_reward_info_call, GetBlockRewardInfo);
     route!(get_utxo_return_address_call, GetUtxoReturnAddress);
     route!(get_virtual_chain_from_block_v2_call, GetVirtualChainFromBlockV2);
+    route!(get_seq_commit_lane_proof_call, GetSeqCommitLaneProof);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

@@ -71,6 +71,7 @@ impl Router {
                 GetUtxosByAddresses,
                 GetVirtualChainFromBlock,
                 GetVirtualChainFromBlockV2,
+                GetSeqCommitLaneProof,
                 ResolveFinalityConflict,
                 Shutdown,
                 SubmitBlock,

@@ -501,6 +501,22 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    async fn get_seq_commit_lane_proof_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetSeqCommitLaneProofRequest,
+    ) -> RpcResult<GetSeqCommitLaneProofResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let proof = session.async_get_seq_commit_lane_proof(request.block_hash, request.lane_key).await?;
+        Ok(GetSeqCommitLaneProofResponse {
+            smt_proof: proof.smt_proof.to_bytes(),
+            lane: proof.lane.map(|l| RpcLaneEntry { tip: l.tip, blue_score: l.blue_score }),
+            payload_and_ctx_digest: proof.payload_and_ctx_digest,
+            parent_seq_commit: proof.parent_seq_commit,
+            inactivity_shortcut: proof.inactivity_shortcut,
+        })
+    }
+
     async fn get_blocks_call(
         &self,
         _connection: Option<&DynRpcConnection>,

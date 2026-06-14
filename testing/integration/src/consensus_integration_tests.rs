@@ -22,7 +22,7 @@ use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::api::args::TransactionValidationArgs;
-use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
+use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi, SeqCommitLaneEntry};
 use kaspa_consensus_core::block::{Block, MutableBlock};
 use kaspa_consensus_core::blockhash::{self, new_unique};
 use kaspa_consensus_core::blockstatus::BlockStatus;
@@ -1500,7 +1500,9 @@ fn assert_chain_seq_commit_lane(consensus: &TestConsensus, accepting_block: Hash
     .unwrap();
 
     let leaf = if activity.activity_leaves.is_empty() {
-        proof.current_lane.map(|(lane_tip, blue_score)| smt_leaf_hash(&SmtLeafInput { lane_tip: &lane_tip, blue_score }))
+        proof
+            .current_lane
+            .map(|SeqCommitLaneEntry { tip: lane_tip, blue_score }| smt_leaf_hash(&SmtLeafInput { lane_tip: &lane_tip, blue_score }))
     } else {
         let parent_ref = proof.parent_lane_tip.unwrap_or(proof.parent_seq_commit);
         let activity_digest = activity_digest_lane(activity.activity_leaves.iter().copied());
@@ -1511,10 +1513,10 @@ fn assert_chain_seq_commit_lane(consensus: &TestConsensus, accepting_block: Hash
             activity_digest: &activity_digest,
             context_hash: &context_hash,
         });
-        let (stored_tip, stored_blue_score) = proof.current_lane.expect("accepted lane activity must have a persisted SMT lane");
-        assert_eq!(stored_tip, lane_tip);
-        assert_eq!(stored_blue_score, proof.blue_score);
-        Some(smt_leaf_hash(&SmtLeafInput { lane_tip: &lane_tip, blue_score: stored_blue_score }))
+        let stored_lane = proof.current_lane.expect("accepted lane activity must have a persisted SMT lane");
+        assert_eq!(stored_lane.tip, lane_tip);
+        assert_eq!(stored_lane.blue_score, proof.blue_score);
+        Some(smt_leaf_hash(&SmtLeafInput { lane_tip: &lane_tip, blue_score: stored_lane.blue_score }))
     };
 
     assert!(proof.smt_proof.verify::<SeqCommitActiveNode>(&activity.lane_key, leaf, proof.lanes_root).unwrap());

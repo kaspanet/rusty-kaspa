@@ -90,6 +90,7 @@ pub enum KaspadPayloadOps {
     GetUtxoReturnAddress,
     GetVirtualChainFromBlockV2,
     GetBlockRewardInfo,
+    GetSeqCommitLaneProof,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,

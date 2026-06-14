@@ -142,6 +142,8 @@ pub enum RpcApiOps {
     GetVirtualChainFromBlockV2 = 151,
     /// Get block reward information
     GetBlockRewardInfo = 152,
+    /// Get Seq-Commit Lane Proof
+    GetSeqCommitLaneProof = 153,
 }
 
 impl RpcApiOps {

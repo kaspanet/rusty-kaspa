@@ -1585,6 +1585,34 @@ mod mockery {
 
     test!(UnsubscribeResponse);
 
+    impl Mock for GetSeqCommitLaneProofRequest {
+        fn mock() -> Self {
+            GetSeqCommitLaneProofRequest { block_hash: mock(), lane_key: mock() }
+        }
+    }
+
+    test!(GetSeqCommitLaneProofRequest);
+
+    impl Mock for RpcLaneEntry {
+        fn mock() -> Self {
+            RpcLaneEntry { tip: mock(), blue_score: mock() }
+        }
+    }
+
+    impl Mock for GetSeqCommitLaneProofResponse {
+        fn mock() -> Self {
+            GetSeqCommitLaneProofResponse {
+                smt_proof: vec![mock(), mock(), mock(), mock()],
+                lane: mock(),
+                payload_and_ctx_digest: mock(),
+                parent_seq_commit: mock(),
+                inactivity_shortcut: mock(),
+            }
+        }
+    }
+
+    test!(GetSeqCommitLaneProofResponse);
+
     struct Misalign;
 
     impl Mock for Misalign {

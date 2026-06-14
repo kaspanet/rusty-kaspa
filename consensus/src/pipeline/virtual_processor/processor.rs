@@ -882,11 +882,21 @@ impl VirtualStateProcessor {
             return Ok(self.genesis.hash);
         }
         let target_bs = pov_header.blue_score - self.finality_depth - 1;
-        Ok(self
-            .reachability_service
+        self.reachability_service
             .default_backward_chain_iterator(pov_block)
-            .find(|&h| h == self.genesis.hash || self.headers_store.get_blue_score(h).unwrap() <= target_bs)
-            .unwrap_or(self.genesis.hash))
+            .find(|&h| {
+                h == self.genesis.hash
+                    || self.headers_store.get_blue_score(h).unwrap() <= target_bs
+                    // Mirror `compute_inactivity_shortcut_block`: before a real
+                    // seqcommit-bearing shortcut is reachable, a pre-Toccata
+                    // ancestor is a valid shortcut block and folds to ZERO_HASH.
+                    || !self.toccata_activation.is_active(self.headers_store.get_daa_score(h).unwrap())
+            })
+            .ok_or_else(|| {
+                ConsensusError::GeneralOwned(format!(
+                    "selected chain exhausted before shortcut anchor for {pov_block} (target_bs={target_bs})"
+                ))
+            })
     }
 
     /// Get the parent's lanes_root, active_lanes_count.
