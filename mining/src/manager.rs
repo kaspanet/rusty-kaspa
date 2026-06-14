@@ -34,7 +34,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId},
 };
 use kaspa_consensusmanager::{ConsensusProxy, spawn_blocking};
-use kaspa_core::{debug, error, info, time::Stopwatch, warn};
+use kaspa_core::{debug, error, info, task::blocking::join_blocking_or_park, time::Stopwatch, warn};
 use kaspa_mining_errors::{manager::MiningManagerError, mempool::RuleError};
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -868,7 +868,7 @@ impl MiningManagerProxy {
 
     /// Returns realtime feerate estimations based on internal mempool state
     pub async fn get_realtime_feerate_estimations(self) -> FeerateEstimations {
-        spawn_blocking(move || self.inner.get_realtime_feerate_estimations()).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.get_realtime_feerate_estimations())).await
     }
 
     /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
@@ -951,20 +951,20 @@ impl MiningManagerProxy {
     ///
     /// Note: the transaction is an orphan if tx.is_fully_populated() returns false.
     pub async fn get_transaction(self, transaction_id: TransactionId, query: TransactionQuery) -> Option<MutableTransaction> {
-        spawn_blocking(move || self.inner.get_transaction(&transaction_id, query)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.get_transaction(&transaction_id, query))).await
     }
 
     /// Returns whether the mempool holds this transaction in any form.
     pub async fn has_transaction(self, transaction_id: TransactionId, query: TransactionQuery) -> bool {
-        spawn_blocking(move || self.inner.has_transaction(&transaction_id, query)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.has_transaction(&transaction_id, query))).await
     }
 
     pub async fn transaction_count(self, query: TransactionQuery) -> usize {
-        spawn_blocking(move || self.inner.transaction_count(query)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.transaction_count(query))).await
     }
 
     pub async fn get_all_transactions(self, query: TransactionQuery) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
-        spawn_blocking(move || self.inner.get_all_transactions(query)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.get_all_transactions(query))).await
     }
 
     /// get_transactions_by_addresses returns the sending and receiving transactions for
@@ -976,7 +976,7 @@ impl MiningManagerProxy {
         script_public_keys: ScriptPublicKeySet,
         query: TransactionQuery,
     ) -> GroupedOwnerTransactions {
-        spawn_blocking(move || self.inner.get_transactions_by_addresses(&script_public_keys, query)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.get_transactions_by_addresses(&script_public_keys, query))).await
     }
 
     /// Returns whether a transaction id was registered as accepted in the mempool, meaning
@@ -988,19 +988,19 @@ impl MiningManagerProxy {
     /// a false means either the transaction was never accepted or it was but beyond the expiration
     /// delay.
     pub async fn has_accepted_transaction(self, transaction_id: TransactionId) -> bool {
-        spawn_blocking(move || self.inner.has_accepted_transaction(&transaction_id)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.has_accepted_transaction(&transaction_id))).await
     }
 
     /// Returns a vector of unaccepted transactions.
     /// For more details, see [`Self::has_accepted_transaction()`].
     pub async fn unaccepted_transactions(self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
-        spawn_blocking(move || self.inner.unaccepted_transactions(transactions)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.unaccepted_transactions(transactions))).await
     }
 
     /// Returns a vector with all transaction ids that are neither in the mempool, nor in the orphan pool
     /// nor accepted.
     pub async fn unknown_transactions(self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
-        spawn_blocking(move || self.inner.unknown_transactions(transactions)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.unknown_transactions(transactions))).await
     }
 
     pub fn snapshot(&self) -> MempoolCountersSnapshot {
