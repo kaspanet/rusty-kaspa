@@ -68,6 +68,7 @@ message KaspadRequest {
     GetUtxoReturnAddressRequestMessage getUtxoReturnAddressRequest = 1112;
     GetVirtualChainFromBlockV2RequestMessage getVirtualChainFromBlockV2Request = 1114;
     GetBlockRewardInfoRequestMessage getBlockRewardInfoRequest = 1116;
+    GetSeqCommitLaneProofRequestMessage getSeqCommitLaneProofRequest = 1118;
   }
 }
 
@@ -136,6 +137,7 @@ message KaspadResponse {
     GetUtxoReturnAddressResponseMessage getUtxoReturnAddressResponse = 1113;
     GetVirtualChainFromBlockV2ResponseMessage getVirtualChainFromBlockV2Response = 1115;
     GetBlockRewardInfoResponseMessage getBlockRewardInfoResponse = 1117;
+    GetSeqCommitLaneProofResponseMessage getSeqCommitLaneProofResponse = 1119;
   }
 }
 

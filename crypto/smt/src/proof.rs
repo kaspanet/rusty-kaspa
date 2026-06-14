@@ -94,11 +94,11 @@ pub enum ProofTerminal {
 
 impl ProofTerminal {
     /// Wire-format tag for [`Full`](Self::Full).
-    const FULL_TAG: u8 = 0;
+    pub const FULL_TAG: u8 = 0;
     /// Wire-format tag for [`Collapsed`](Self::Collapsed).
-    const COLLAPSED_TAG: u8 = 1;
+    pub const COLLAPSED_TAG: u8 = 1;
     /// Wire-format tag for [`CollapsedOther`](Self::CollapsedOther).
-    const COLLAPSED_OTHER_TAG: u8 = 2;
+    pub const COLLAPSED_OTHER_TAG: u8 = 2;
 
     /// The tree depth at which this proof terminates.
     ///
@@ -108,7 +108,7 @@ impl ProofTerminal {
     /// The verifier uses this to determine:
     /// - how many siblings to expect (only levels `0..depth()` are present), and
     /// - the starting level for the upward hashing loop (`depth() - 1`).
-    fn depth(self) -> usize {
+    pub fn depth(self) -> usize {
         match self {
             Self::Full => DEPTH,
             Self::Collapsed { depth } | Self::CollapsedOther { depth, .. } => depth as usize,
@@ -217,7 +217,6 @@ pub struct SmtProof<'a> {
     pub siblings: &'a [Hash],
     /// How proof traversal ended. Determines verification loop bounds and initial hash seed.
     pub terminal: ProofTerminal,
-    _marker: core::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> SmtProof<'a> {
@@ -372,7 +371,7 @@ impl OwnedSmtProof {
 
     /// Borrow as a [`SmtProof`] for zero-copy verification.
     pub fn as_proof(&self) -> SmtProof<'_> {
-        SmtProof { bitmap: &self.bitmap, siblings: &self.siblings, terminal: self.terminal, _marker: core::marker::PhantomData }
+        SmtProof { bitmap: &self.bitmap, siblings: &self.siblings, terminal: self.terminal }
     }
 
     /// Reconstruct the Merkle root. Delegates to [`SmtProof::compute_root`].

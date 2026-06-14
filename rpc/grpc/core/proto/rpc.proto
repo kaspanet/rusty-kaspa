@@ -1130,3 +1130,35 @@ message GetBlockRewardInfoResponseMessage {
 
   RPCError error = 1000;
 }
+
+// GetSeqCommitLaneProofRequestMessage requests the witness needed to prove a
+// single KIP-21 lane against the seq_commit carried in blockHash's header.
+//
+// blockHash must be a chain (selected-parent-chain) block at or after the
+// current pruning point.
+message GetSeqCommitLaneProofRequestMessage {
+  // Block hash whose header carries the seq_commit to verify against (32 bytes).
+  bytes blockHash = 1;
+  // The 32-byte lane key.
+  bytes laneKey = 2;
+}
+
+message GetSeqCommitLaneProofResponseMessage {
+  // OwnedSmtProof wire format (bitmap || terminal || siblings).
+  bytes smtProof = 1;
+  // 32 bytes iff the lane has an entry in the active-lanes SMT at this POV,
+  // otherwise None (non-inclusion proof).
+  optional bytes laneTip = 2;
+  // Only meaningful when laneTip is present.
+  optional uint64 laneBlueScore = 3;
+  // H_seq(mergeset_context_hash, miner_payload_root) for the block (32 bytes).
+  bytes payloadAndCtxDigest = 4;
+  // seq_commit of the selected parent (= parent header's accepted_id_merkle_root, 32 bytes).
+  bytes parentSeqCommit = 5;
+  // KIP-21 activity_root anchor: the accepted_id_merkle_root of the
+  // inactivity-shortcut block (32 bytes). Folded as
+  // activity_root = H_activity_root(inactivityShortcut, lanes_root).
+  bytes inactivityShortcut = 6;
+
+  RPCError error = 1000;
+}
