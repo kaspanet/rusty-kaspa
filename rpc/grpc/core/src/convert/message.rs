@@ -597,8 +597,8 @@ from!(item: &kaspa_rpc_core::GetSeqCommitLaneProofRequest, protowire::GetSeqComm
 from!(item: RpcResult<&kaspa_rpc_core::GetSeqCommitLaneProofResponse>, protowire::GetSeqCommitLaneProofResponseMessage, {
     Self {
         smt_proof: item.smt_proof.clone(),
-        lane_tip: item.lane_tip.map(|h| h.as_bytes().to_vec()).unwrap_or_default(),
-        lane_blue_score: item.lane_blue_score.unwrap_or(0),
+        lane_tip: item.lane.as_ref().map(|l| l.tip.as_bytes().to_vec()),
+        lane_blue_score: item.lane.as_ref().map(|l| l.blue_score),
         payload_and_ctx_digest: item.payload_and_ctx_digest.as_bytes().to_vec(),
         parent_seq_commit: item.parent_seq_commit.as_bytes().to_vec(),
         inactivity_shortcut: item.inactivity_shortcut.as_bytes().to_vec(),
@@ -1144,11 +1144,13 @@ try_from!(item: &protowire::GetSeqCommitLaneProofRequestMessage, kaspa_rpc_core:
     Self { block_hash: hash_from_bytes(&item.block_hash)?, lane_key: hash_from_bytes(&item.lane_key)? }
 });
 try_from!(item: &protowire::GetSeqCommitLaneProofResponseMessage, RpcResult<kaspa_rpc_core::GetSeqCommitLaneProofResponse>, {
-    let has_lane_tip = !item.lane_tip.is_empty();
     Self {
         smt_proof: item.smt_proof.clone(),
-        lane_tip: if has_lane_tip { Some(hash_from_bytes(&item.lane_tip)?) } else { None },
-        lane_blue_score: if has_lane_tip { Some(item.lane_blue_score) } else { None },
+        lane: if let (Some(tip), Some(blue_score)) = (item.lane_tip.as_ref(), item.lane_blue_score) {
+            Some(kaspa_rpc_core::RpcLaneEntry { tip: hash_from_bytes(tip)?, blue_score })
+        } else {
+            None
+        },
         payload_and_ctx_digest: hash_from_bytes(&item.payload_and_ctx_digest)?,
         parent_seq_commit: hash_from_bytes(&item.parent_seq_commit)?,
         inactivity_shortcut: hash_from_bytes(&item.inactivity_shortcut)?,

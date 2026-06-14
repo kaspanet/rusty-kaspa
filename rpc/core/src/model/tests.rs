@@ -1593,12 +1593,17 @@ mod mockery {
 
     test!(GetSeqCommitLaneProofRequest);
 
+    impl Mock for RpcLaneEntry {
+        fn mock() -> Self {
+            RpcLaneEntry { tip: mock(), blue_score: mock() }
+        }
+    }
+
     impl Mock for GetSeqCommitLaneProofResponse {
         fn mock() -> Self {
             GetSeqCommitLaneProofResponse {
                 smt_proof: vec![mock(), mock(), mock(), mock()],
-                lane_tip: mock(),
-                lane_blue_score: mock(),
+                lane: mock(),
                 payload_and_ctx_digest: mock(),
                 parent_seq_commit: mock(),
                 inactivity_shortcut: mock(),

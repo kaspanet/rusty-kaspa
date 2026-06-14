@@ -3747,9 +3747,33 @@ impl Deserializer for GetSeqCommitLaneProofRequest {
 /// `smt_proof` is the `OwnedSmtProof` wire format (`bitmap || terminal || siblings`),
 /// parsed via `kaspa_smt::proof::OwnedSmtProof::from_bytes`.
 ///
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcLaneEntry {
+    pub tip: RpcHash,
+    pub blue_score: u64,
+}
+
+impl Serializer for RpcLaneEntry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(RpcHash, &self.tip, writer)?;
+        store!(u64, &self.blue_score, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcLaneEntry {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let tip = load!(RpcHash, reader)?;
+        let blue_score = load!(u64, reader)?;
+        Ok(Self { tip, blue_score })
+    }
+}
+
 /// When the lane has no entry in the active-lanes SMT at this block's POV,
-/// `lane_tip` and `lane_blue_score` are both `None` and `smt_proof` is a
-/// non-inclusion proof.
+/// `lane` is `None` and `smt_proof` is a non-inclusion proof.
 ///
 /// `inactivity_shortcut` (KIP-21): the `accepted_id_merkle_root` of the anchor
 /// block. Folded into `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`
@@ -3758,8 +3782,7 @@ impl Deserializer for GetSeqCommitLaneProofRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetSeqCommitLaneProofResponse {
     pub smt_proof: Vec<u8>,
-    pub lane_tip: Option<RpcHash>,
-    pub lane_blue_score: Option<u64>,
+    pub lane: Option<RpcLaneEntry>,
     pub payload_and_ctx_digest: RpcHash,
     pub parent_seq_commit: RpcHash,
     pub inactivity_shortcut: RpcHash,
@@ -3769,8 +3792,7 @@ impl Serializer for GetSeqCommitLaneProofResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
         store!(Vec<u8>, &self.smt_proof, writer)?;
-        store!(Option<RpcHash>, &self.lane_tip, writer)?;
-        store!(Option<u64>, &self.lane_blue_score, writer)?;
+        serialize!(Option<RpcLaneEntry>, &self.lane, writer)?;
         store!(RpcHash, &self.payload_and_ctx_digest, writer)?;
         store!(RpcHash, &self.parent_seq_commit, writer)?;
         store!(RpcHash, &self.inactivity_shortcut, writer)?;
@@ -3782,11 +3804,10 @@ impl Deserializer for GetSeqCommitLaneProofResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let smt_proof = load!(Vec<u8>, reader)?;
-        let lane_tip = load!(Option<RpcHash>, reader)?;
-        let lane_blue_score = load!(Option<u64>, reader)?;
+        let lane = deserialize!(Option<RpcLaneEntry>, reader)?;
         let payload_and_ctx_digest = load!(RpcHash, reader)?;
         let parent_seq_commit = load!(RpcHash, reader)?;
         let inactivity_shortcut = load!(RpcHash, reader)?;
-        Ok(Self { smt_proof, lane_tip, lane_blue_score, payload_and_ctx_digest, parent_seq_commit, inactivity_shortcut })
+        Ok(Self { smt_proof, lane, payload_and_ctx_digest, parent_seq_commit, inactivity_shortcut })
     }
 }

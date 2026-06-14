@@ -901,8 +901,7 @@ async fn seq_commit_lane_proof_test() {
 
     // Sanity: both transports returned the same proof.
     assert_eq!(grpc_proof.smt_proof, wrpc_proof.smt_proof);
-    assert_eq!(grpc_proof.lane_tip, wrpc_proof.lane_tip);
-    assert_eq!(grpc_proof.lane_blue_score, wrpc_proof.lane_blue_score);
+    assert_eq!(grpc_proof.lane, wrpc_proof.lane);
     assert_eq!(grpc_proof.payload_and_ctx_digest, wrpc_proof.payload_and_ctx_digest);
     assert_eq!(grpc_proof.parent_seq_commit, wrpc_proof.parent_seq_commit);
     assert_eq!(grpc_proof.inactivity_shortcut, wrpc_proof.inactivity_shortcut);
@@ -957,8 +956,7 @@ async fn seq_commit_lane_proof_test() {
         .get_seq_commit_lane_proof_call(None, GetSeqCommitLaneProofRequest { block_hash: block_hash2, lane_key: coinbase_lane_key })
         .await
         .unwrap();
-    assert!(coinbase_proof.lane_tip.is_some(), "coinbase lane must be populated at B2");
-    assert!(coinbase_proof.lane_blue_score.is_some());
+    assert!(coinbase_proof.lane.is_some(), "coinbase lane must be populated at B2");
     verify_lane_proof_locally(&header2, coinbase_lane_key, &coinbase_proof);
 
     wrpc.disconnect().await.unwrap();
@@ -981,8 +979,7 @@ fn verify_lane_proof_locally(header: &Header, lane_key: Hash, response: &GetSeqC
     let proof = OwnedSmtProof::from_bytes(&response.smt_proof).expect("proof wire format");
 
     // Reconstruct the SMT leaf (None = non-inclusion proof).
-    let leaf =
-        response.lane_tip.zip(response.lane_blue_score).map(|(t, bs)| smt_leaf_hash(&SmtLeafInput { lane_tip: &t, blue_score: bs }));
+    let leaf = response.lane.as_ref().map(|l| smt_leaf_hash(&SmtLeafInput { lane_tip: &l.tip, blue_score: l.blue_score }));
 
     // Compute lanes_root from the proof.
     let lanes_root = proof.as_proof().compute_root::<SeqCommitActiveNode>(&lane_key, leaf).expect("compute_root");

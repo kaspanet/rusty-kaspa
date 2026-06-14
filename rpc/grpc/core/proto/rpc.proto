@@ -1147,10 +1147,10 @@ message GetSeqCommitLaneProofResponseMessage {
   // OwnedSmtProof wire format (bitmap || terminal || siblings).
   bytes smtProof = 1;
   // 32 bytes iff the lane has an entry in the active-lanes SMT at this POV,
-  // otherwise empty (non-inclusion proof).
-  bytes laneTip = 2;
-  // Only meaningful when laneTip is non-empty; 0 otherwise.
-  uint64 laneBlueScore = 3;
+  // otherwise None (non-inclusion proof).
+  optional bytes laneTip = 2;
+  // Only meaningful when laneTip is present.
+  optional uint64 laneBlueScore = 3;
   // H_seq(mergeset_context_hash, miner_payload_root) for the block (32 bytes).
   bytes payloadAndCtxDigest = 4;
   // seq_commit of the selected parent (= parent header's accepted_id_merkle_root, 32 bytes).

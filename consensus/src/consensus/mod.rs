@@ -98,6 +98,8 @@ use kaspa_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rocksdb::WriteBatch;
 
+use self::{services::ConsensusServices, storage::ConsensusStorage};
+use kaspa_consensus_core::api::SeqCommitLaneEntry;
 use std::{
     cmp,
     cmp::Reverse,
@@ -112,8 +114,6 @@ use std::{
     thread::{self, JoinHandle},
 };
 use tokio::sync::oneshot;
-
-use self::{services::ConsensusServices, storage::ConsensusStorage};
 
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
 
@@ -1545,8 +1545,11 @@ impl ConsensusApi for Consensus {
             .prove_lane(&lane_key, current_bounds, is_canonical)
             .map_err(|e| ConsensusError::GeneralOwned(format!("prove_lane: {e}")))?;
 
-        let lane = self.storage.smt_stores.get_lane(lane_key, current_bounds, is_canonical);
-        let (lane_tip, lane_blue_score) = lane.map(|v| (Some(*v.data()), Some(v.blue_score()))).unwrap_or((None, None));
+        let lane = self
+            .storage
+            .smt_stores
+            .get_lane(lane_key, current_bounds, is_canonical)
+            .map(|v| SeqCommitLaneEntry { tip: *v.data(), blue_score: v.blue_score() });
 
         let metadata =
             self.storage.smt_metadata_store.get(block_hash).map_err(|e| ConsensusError::GeneralOwned(format!("smt_metadata: {e}")))?;
@@ -1572,7 +1575,7 @@ impl ConsensusApi for Consensus {
                 verify::{SmtMetadata, verify_smt_metadata},
             };
             let lanes_root = self.storage.smt_stores.get_lanes_root(current_bounds, is_canonical);
-            let leaf = lane_tip.zip(lane_blue_score).map(|(t, bs)| smt_leaf_hash(&SmtLeafInput { lane_tip: &t, blue_score: bs }));
+            let leaf = lane.as_ref().map(|l| smt_leaf_hash(&SmtLeafInput { lane_tip: &l.tip, blue_score: l.blue_score }));
             let computed_root = smt_proof.as_proof().compute_root::<SeqCommitActiveNode>(&lane_key, leaf).unwrap();
             let payload_and_ctx_digest = metadata.payload_and_ctx_digest();
             let md = SmtMetadata {
@@ -1586,8 +1589,7 @@ impl ConsensusApi for Consensus {
 
         Ok(SeqCommitLaneProof {
             smt_proof,
-            lane_tip,
-            lane_blue_score,
+            lane,
             payload_and_ctx_digest: metadata.payload_and_ctx_digest(),
             parent_seq_commit,
             inactivity_shortcut,

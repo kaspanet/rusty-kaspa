@@ -81,13 +81,19 @@ pub struct SmtExportMetadata {
     pub active_lanes_count: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct SeqCommitLaneEntry {
+    pub tip: Hash,
+    pub blue_score: u64,
+}
+
 /// Witness for verifying a single lane against the `seq_commit` of a canonical block.
 ///
 /// Given the block's header (which carries `seq_commit` in `accepted_id_merkle_root`),
 /// a client can reconstruct the lane's SMT leaf and verify the proof chain:
 /// `smt_leaf → compute_root → lanes_root → activity_root → seq_state_root → seq_commit`.
 ///
-/// `lane_tip`/`lane_blue_score` are both `None` when the lane is absent at this POV;
+/// `lane` is `None` when the lane is absent at this POV;
 /// the SMT proof is then a non-inclusion proof.
 ///
 /// `inactivity_shortcut` (KIP-21 activity_root level): the `accepted_id_merkle_root`
@@ -96,8 +102,7 @@ pub struct SmtExportMetadata {
 #[derive(Clone, Debug)]
 pub struct SeqCommitLaneProof {
     pub smt_proof: kaspa_smt::proof::OwnedSmtProof,
-    pub lane_tip: Option<Hash>,
-    pub lane_blue_score: Option<u64>,
+    pub lane: Option<SeqCommitLaneEntry>,
     pub payload_and_ctx_digest: Hash,
     pub parent_seq_commit: Hash,
     pub inactivity_shortcut: Hash,
