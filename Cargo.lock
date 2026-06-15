@@ -3582,6 +3582,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-rocknroll"
+version = "2.0.0"
+dependencies = [
+ "clap",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-smt-store",
+ "kaspad",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "kaspa-rpc-core"
 version = "2.0.0"
 dependencies = [
