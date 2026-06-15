@@ -9,7 +9,8 @@ use crate::{
         config::Config,
         model::tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
         populate_entries_and_try_validate::{
-            populate_mempool_transactions_in_parallel, validate_mempool_transaction, validate_mempool_transactions_in_parallel,
+            PopulateError, populate_mempool_transactions_in_parallel, validate_mempool_transaction,
+            validate_mempool_transactions_in_parallel,
         },
         tx::{Orphan, Priority, RbfPolicy},
     },
@@ -700,7 +701,15 @@ impl MiningManager {
                     None
                 } else if mempool.has_transaction(&transaction_id, TransactionQuery::TransactionsOnly) {
                     x.clear_entries();
-                    mempool.populate_mempool_entries(&mut x);
+
+                    match mempool.populate_mempool_entries(&mut x) {
+                        Ok(()) => {}
+                        Err(PopulateError::ImpossibleOutpoint) => {
+                            // Impossible for txs admitted to the pool: they were fully populated before insertion.
+                            // Fall through to the default missing-outpoints path.
+                        }
+                    }
+
                     match x.is_fully_populated() {
                         false => Some(x),
                         true => {

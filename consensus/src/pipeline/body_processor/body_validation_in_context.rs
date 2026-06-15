@@ -23,6 +23,10 @@ impl BlockBodyProcessor {
         self.check_block_transactions_in_context(block)
     }
 
+    pub fn validate_trusted_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
+        self.check_coinbase_blue_score_and_subsidy(block)
+    }
+
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         // Use lazy evaluation to avoid unnecessary work, as most of the time we expect the txs not to have lock time.
         let lazy_pmt_res = Lazy::new(|| self.window_manager.calc_past_median_time_for_known_hash(block.hash()));
