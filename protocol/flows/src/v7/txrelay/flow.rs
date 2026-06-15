@@ -106,12 +106,13 @@ impl RelayTransactionsFlow {
             }
 
             // Loop over incoming block inv messages
-            let inv: Vec<TransactionId> = dequeue!(self.invs_route, Payload::InvTransactions)?.try_into()?;
-            // trace!("Receive an inv message from {} with {} transaction ids", self.router.identity(), inv.len());
+            let msg = dequeue!(self.invs_route, Payload::InvTransactions)?;
+            // trace!("Receive an inv message from {} with {} transaction ids", self.router.identity(), msg.ids.len());
 
-            if inv.len() > MAX_INV_PER_TX_INV_MSG {
+            if msg.ids.len() > MAX_INV_PER_TX_INV_MSG {
                 return Err(ProtocolError::Other("Number of invs in tx inv message is over the limit"));
             }
+            let inv: Vec<TransactionId> = msg.try_into()?;
 
             let session = self.ctx.consensus().unguarded_session();
 
@@ -281,6 +282,9 @@ impl RequestTransactionsFlow {
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
             let msg = dequeue!(self.incoming_route, Payload::RequestTransactions)?;
+            if msg.ids.len() > MAX_INV_PER_TX_INV_MSG {
+                return Err(ProtocolError::Other("Number of tx ids in request transactions message is over the limit"));
+            }
             let tx_ids: Vec<_> = msg.try_into()?;
             for transaction_id in tx_ids {
                 if let Some(mutable_tx) =

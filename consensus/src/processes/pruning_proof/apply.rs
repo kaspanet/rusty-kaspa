@@ -94,7 +94,12 @@ impl PruningProofManager {
         });
 
         // Build selected-parent mapping for the PP chain segment
-        let chain_segment_map = self.verify_and_build_chain_segment_map(pruning_point, &pruning_point_header, &trusted_header_map)?;
+        let chain_segment_map = self.verify_and_build_chain_segment_map(
+            pruning_point,
+            &pruning_point_header,
+            &trusted_header_map,
+            header_only_chain_segment,
+        )?;
 
         // Populate headers/reachability (using the PP chain segment mapping)
         self.populate_reachability_and_headers(&expanded_proof, header_only_chain_segment, &chain_segment_map)?;
@@ -296,8 +301,10 @@ impl PruningProofManager {
         pruning_point: Hash,
         pruning_point_header: &Arc<Header>,
         trusted_header_map: &BlockHashMap<Arc<Header>>,
+        header_only_chain_segment: &[Arc<Header>],
     ) -> PruningImportResult<BlockHashMap<Hash>> {
         let mut chain_segment_map: BlockHashMap<Hash> = BlockHashMap::new();
+        let mut expected_chain_segment_hashes = BlockHashSet::new();
 
         if self.toccata_activation.is_active(pruning_point_header.daa_score) {
             // Pruning point txs are validated with the pruning point selected parent as seqcommit context.
@@ -310,6 +317,7 @@ impl PruningProofManager {
             let threshold = self.finality_depth;
             let mut current = pruning_point;
             loop {
+                expected_chain_segment_hashes.insert(current);
                 let current_header =
                     trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
 
@@ -343,6 +351,12 @@ impl PruningProofManager {
                         return Err(PruningImportError::MissingPruningPointChainSegment(current));
                     }
                 }
+            }
+        }
+
+        for header in header_only_chain_segment {
+            if !expected_chain_segment_hashes.contains(&header.hash) {
+                return Err(PruningImportError::UnexpectedPruningPointChainSegmentBlock(header.hash));
             }
         }
 

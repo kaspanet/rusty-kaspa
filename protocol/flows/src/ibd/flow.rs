@@ -515,6 +515,10 @@ impl IbdFlow {
         // since syncee memory usage is still low at this phase.
         let mut entries = vec![pruning_point_entry];
         let mut header_only_chain_segment = Vec::new();
+        // Each selected-chain block contributes at least one blue score, so F blue-depth back is bounded
+        // by F chain blocks (plus 2K for noise/robustness).
+        let max_header_only_chain_segment_len =
+            self.ctx.config.finality_depth().saturating_add(2 * self.ctx.config.ghostdag_k() as u64 + 1);
         while let Some(entry) = entry_stream.next().await? {
             match entry.block.is_header_only() {
                 true => {
@@ -525,6 +529,14 @@ impl IbdFlow {
                     header_only_chain_segment.push(entry.block.header.clone());
                     if header_only_chain_segment.len().is_multiple_of(1000) {
                         info!("Downloaded {} headers from the pruning point chain segment", header_only_chain_segment.len());
+
+                        if header_only_chain_segment.len() as u64 > max_header_only_chain_segment_len {
+                            return Err(ProtocolError::OtherOwned(format!(
+                                "pruning point chain segment length {} exceeds maximum {}",
+                                header_only_chain_segment.len(),
+                                max_header_only_chain_segment_len
+                            )));
+                        }
                     }
                 }
                 // We expect all header-only entries to be sent after all non-header-only entries
