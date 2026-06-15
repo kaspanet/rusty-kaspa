@@ -4295,6 +4295,7 @@ version = "2.0.0"
 dependencies = [
  "futures",
  "kaspa-addresses",
+ "kaspa-consensus-core",
  "kaspa-rpc-core",
  "kaspa-wrpc-client",
  "tokio",
@@ -6015,6 +6016,7 @@ dependencies = [
  "log",
  "parking_lot",
  "rand 0.8.6",
+ "rand_distr 0.4.3",
  "rayon",
  "secp256k1",
  "tokio",
