@@ -7753,9 +7753,9 @@ dependencies = [
 
 [[package]]
 name = "wide"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9479f84a757f819cfab37295955906479181395de83add28f74975fde083141"
+checksum = "dfdfe6a32973f2d1b268b8895845a8a96cac2f0191e72c27cc929036060dbf89"
 dependencies = [
  "bytemuck",
  "safe_arch",

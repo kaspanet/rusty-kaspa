@@ -4,7 +4,6 @@ mod utils;
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
 use kaspa_math::construct_uint;
 use libfuzzer_sys::fuzz_target;
-use std::convert::TryInto;
 use utils::{consume, try_opt};
 
 construct_uint!(Uint128, 2);
@@ -12,13 +11,6 @@ construct_uint!(Uint128, 2);
 // Consumes 16 bytes
 fn generate_ints(data: &mut &[u8]) -> Option<(Uint128, u128)> {
     let buf = consume(data)?;
-    Some((Uint128::from_le_bytes(buf), u128::from_le_bytes(buf)))
-}
-
-// Consumes 16 bytes
-fn generate_ints_top_bit_cleared(data: &mut &[u8]) -> Option<(Uint128, u128)> {
-    let mut buf = consume(data)?;
-    buf[15] &= 0b01111111; // clear the top/sign bit.
     Some((Uint128::from_le_bytes(buf), u128::from_le_bytes(buf)))
 }
 
@@ -131,42 +123,6 @@ fuzz_target!(|data: &[u8]| {
             assert_eq!(lib_bit, native_bit, "native: {native}");
         }
     }
-    // mod_inv
-    {
-        // the modular inverse of 1 in Z/1Z is weird, should it be 1 or 0?
-        // Also, 0 never has a mod_inverse
-        let ((lib1, native1), (lib2, native2)) = loop {
-            let (lib1, native1) = try_opt!(generate_ints_top_bit_cleared(&mut data));
-            let (lib2, native2) = try_opt!(generate_ints_top_bit_cleared(&mut data));
-            if lib1 < lib2 && lib1 != 0u64 {
-                break ((lib1, native1), (lib2, native2));
-            }
-        };
-        let lib_inv = lib1.mod_inverse(lib2);
-        let native_inv = naive_mod_inv(native1, native2);
-        assert_eq!(lib_inv.is_some(), native_inv.is_some());
-        if let Some(lib_inv) = lib_inv {
-            assert_eq!(lib_inv, native_inv.unwrap(), "lib1: {lib1}, lib2: {lib2}");
-        }
-    }
+    // mod_inv was removed with the generic `Uint::mod_inverse`; the 3072-bit MuHash inverse
+    // (the only production case) is fuzzed in `u3072.rs` against a num-bigint reference.
 });
-
-fn naive_mod_inv(x: u128, p: u128) -> Option<u128> {
-    let mut t = 0;
-    let mut newt = 1;
-    let p: i128 = p.try_into().unwrap();
-    let mut r: i128 = p;
-    let mut newr: i128 = x.try_into().unwrap();
-
-    while newr != 0 {
-        let quotient = r / newr;
-        (t, newt) = (newt, t - quotient * newt);
-        (r, newr) = (newr, r - quotient * newr);
-    }
-    if r > 1 {
-        return None;
-    } else if t < 0 {
-        t += p;
-    }
-    Some(t.try_into().unwrap())
-}

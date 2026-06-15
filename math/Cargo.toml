@@ -14,8 +14,6 @@ borsh.workspace = true
 faster-hex.workspace = true
 js-sys.workspace = true
 kaspa-utils = { workspace = true, features = ["mem_size"] }
-malachite-base.workspace = true
-malachite-nz.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
 thiserror.workspace = true
@@ -27,9 +25,33 @@ workflow-wasm.workspace = true
 [dev-dependencies]
 rand_chacha.workspace = true
 criterion.workspace = true
+# malachite (LGPL) is no longer a production dependency: it backed only `mod_inverse` (now the
+# in-repo MIT `lehmer::invert`) and `CeilingLogBase2` (now std). It remains a dev-dependency purely
+# as the cross-check oracle for `lehmer.rs` / `lib.rs` tests and the `candidates` bench baseline.
+malachite-base.workspace = true
+malachite-nz.workspace = true
+# The modinv-candidate comparison is settled (Lehmer ext-gcd won), so the third-party candidate
+# deps are removed. Their bench arms in benches/candidates.rs are commented out and can be revived
+# by re-adding the deps:
+#   dashu-int = "0.4"      # gcd_ext modinv (~23us) + the Uint192/256/320 production-pattern comparator.
+#                          # the mul tuning from https://github.com/cmpute/dashu/pull/74 was also
+#                          # benched (local clone; broken gitlink) and showed no effect at 48 limbs.
+#   crypto-bigint = "0.7"  # safegcd vartime/const-time modinv (~114/126us, 7-8x slower)
+#   num-bigint = "0.4"     # ~513us, ruled out
+#   ruint = "1"            # ~72us, ruled out
+
+[features]
+# Bench/diagnostics only: accumulate per-inverse operation counts in `lehmer`
+# (matrices, divides, apply-limb iterations) into atomics. Off by default; has
+# zero effect on the production path.
+lehmer-instrument = []
 
 [[bench]]
 name = "bench"
+harness = false
+
+[[bench]]
+name = "candidates"
 harness = false
 
 [lints]
