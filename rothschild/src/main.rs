@@ -148,7 +148,7 @@ pub fn cli() -> Command {
                 .value_name("randomize-fee")
                 .action(ArgAction::SetTrue)
                 .default_value("false")
-                .help("Randomize transaction priority fee"),
+                .help("Randomize transaction priority fee."),
         )
         .arg(
             Arg::new("payload-size")
@@ -175,7 +175,7 @@ pub fn cli() -> Command {
                 .value_name("randomize-tx-version")
                 .action(ArgAction::SetTrue)
                 .default_value("false")
-                .help("Randomize transaction version between 0 and 1"),
+                .help("Randomize the transaction version between 0 and 1. Using this parameter with other probabilistic-based selection parameters can skew expectations."),
         )
         .arg(
             Arg::new("lps")
