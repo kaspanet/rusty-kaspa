@@ -24,8 +24,8 @@ pub struct NetworkArgs {
 impl NetworkArgs {
     pub fn to_kaspad_args(&self, appdir: Option<String>) -> Result<KaspadArgs> {
         let selected = [self.testnet, self.devnet, self.simnet].into_iter().filter(|selected| *selected).count();
-        if selected != 1 {
-            return Err(Error::InvalidArgs("select exactly one network flag: --testnet, --devnet, or --simnet".to_string()));
+        if selected > 1 {
+            return Err(Error::InvalidArgs("select at most one network flag: --testnet, --devnet, or --simnet".to_string()));
         }
 
         Ok(KaspadArgs {
