@@ -1,11 +1,13 @@
-use crate::constants::{MAX_SOMPI, TX_VERSION};
-use kaspa_consensus_core::tx::Transaction;
-use std::collections::HashSet;
-
 use super::{
     TransactionValidator,
     errors::{TxResult, TxRuleError},
 };
+use crate::constants::{MAX_SOMPI, TX_VERSION_TOCCATA};
+use kaspa_consensus_core::subnets::{
+    CoinbaseSubnetwork, NativeSubnetwork, SUBNETWORK_NAMESPACE_LEN, SUBNETWORK_ZERO_TAIL_LEN, Subnetwork,
+};
+use kaspa_consensus_core::tx::Transaction;
+use std::collections::HashSet;
 
 impl TransactionValidator {
     /// Performs a variety of transaction validation checks which are independent of any
@@ -22,7 +24,8 @@ impl TransactionValidator {
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
         check_transaction_subnetwork(tx)?;
-        check_transaction_version(tx)
+        check_transaction_version(tx)?;
+        check_tx_version_specific_fields(tx)
     }
 
     fn check_transaction_inputs_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
@@ -43,7 +46,7 @@ impl TransactionValidator {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
 
-        if tx.mass() > 0 {
+        if tx.storage_mass() > 0 {
             return Err(TxRuleError::CoinbaseNonZeroMassCommitment);
         }
 
@@ -86,8 +89,11 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_signature_scripts(&self, tx: &Transaction) -> TxResult<()> {
-        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > self.max_signature_script_len) {
-            return Err(TxRuleError::TooBigSignatureScript(i, self.max_signature_script_len));
+        // TODO(post-toccata): restore this to the const post-activation limit and remove
+        // check_transaction_signature_scripts_in_header_context.
+        let max_signature_script_len = self.max_signature_script_len.upper_bound();
+        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > max_signature_script_len) {
+            return Err(TxRuleError::TooBigSignatureScript(i, max_signature_script_len));
         }
 
         Ok(())
@@ -113,16 +119,28 @@ fn check_duplicate_transaction_inputs(tx: &Transaction) -> TxResult<()> {
     Ok(())
 }
 
+const ZEROES_19: &[u8; 19] = &[0; 19];
+
 fn check_gas(tx: &Transaction) -> TxResult<()> {
-    // This should be revised if subnetworks are activated (along with other validations that weren't copied from kaspad)
-    if tx.gas > 0 {
-        return Err(TxRuleError::TxHasGas);
+    if tx.gas == 0 {
+        return Ok(());
     }
-    Ok(())
+
+    if tx.version < TX_VERSION_TOCCATA {
+        return Err(TxRuleError::TxHasGas("gas is only allowed for Toccata-or-newer tx versions"));
+    }
+
+    // Only post-Toccata non-system lanes may carry gas; reserved system lanes
+    // have a 19-byte zero suffix and must remain gas-free.
+    if !matches!(tx.subnetwork_id.as_bytes(), [_x, rest @ ..] if rest == ZEROES_19) {
+        return Ok(());
+    }
+
+    Err(TxRuleError::TxHasGas("native / system subnetworks must use zero gas"))
 }
 
 fn check_transaction_version(tx: &Transaction) -> TxResult<()> {
-    if tx.version != TX_VERSION {
+    if tx.version > TX_VERSION_TOCCATA {
         return Err(TxRuleError::UnknownTxVersion(tx.version));
     }
     Ok(())
@@ -154,25 +172,65 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
-    if tx.is_coinbase() || tx.subnetwork_id.is_native() {
-        Ok(())
-    } else {
-        Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id.clone()))
+    const ZEROES_16: &[u8; SUBNETWORK_ZERO_TAIL_LEN] = &[0; SUBNETWORK_ZERO_TAIL_LEN];
+
+    // KIP-21 subnetwork ID shape, checked in priority order:
+    // - `[x, 0×19]` (19-byte zero suffix): reserved system ID. Only NATIVE and
+    //   COINBASE first bytes are valid; every other `x` is reserved for future
+    //   system use and rejected.
+    // - `[namespace (4 bytes), 0×16]`: user lane. Any first byte is allowed.
+    //   Since the 19-suffix case is handled above, at least one of
+    //   `bytes[1..4]` is non-zero, so the namespace is never all-zero here.
+    //   Gated behind the Toccata HF.
+    // - Any other shape: rejected.
+    match tx.subnetwork_id.as_bytes() {
+        // Native and coinbase (reserved) subnetwork IDs are always allowed
+        [NativeSubnetwork::FIRST_BYTE, rest @ ..] | [CoinbaseSubnetwork::FIRST_BYTE, rest @ ..] if rest == ZEROES_19 => Ok(()),
+        [_x, rest @ ..] if rest == ZEROES_19 => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
+        bytes if tx.version >= TX_VERSION_TOCCATA && &bytes[SUBNETWORK_NAMESPACE_LEN..] == ZEROES_16 => Ok(()),
+        _ => Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)),
     }
+}
+
+fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
+    if tx.version > 0 {
+        for (i, input) in tx.inputs.iter().enumerate() {
+            if let Some(sig_op_count) = input.compute_commit.sig_op_count() {
+                return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
+            }
+        }
+    } else {
+        for (i, input) in tx.inputs.iter().enumerate() {
+            if let Some(compute_budget) = input.compute_commit.compute_budget() {
+                return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
+            }
+        }
+
+        for (i, output) in tx.outputs.iter().enumerate() {
+            if output.covenant.is_some() {
+                return Err(TxRuleError::CovenantBindingInV0(i));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use kaspa_consensus_core::{
+        constants::{TX_VERSION, TX_VERSION_TOCCATA},
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
-        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec},
+        tx::{
+            ComputeCommit, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+            scriptvec,
+        },
     };
     use kaspa_core::assert_match;
 
     use crate::{
-        constants::TX_VERSION,
-        params::MAINNET_PARAMS,
-        processes::transaction_validator::{TransactionValidator, errors::TxRuleError},
+        params::{ForkActivation, MAINNET_PARAMS},
+        processes::transaction_validator::{TransactionValidator, errors::TxRuleError, tx_validation_in_header_context::LockTimeArg},
     };
 
     #[test]
@@ -183,7 +241,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len,
+            params.max_signature_script_len(),
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -203,6 +261,7 @@ mod tests {
                         0x30, 0xcd, 0x5a, 0x4b, 0x87
                     ),
                 ),
+                covenant: None,
             }],
             0,
             SUBNETWORK_ID_COINBASE,
@@ -236,7 +295,7 @@ mod tests {
                     0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                 ],
                 sequence: u64::MAX,
-                sig_op_count: 0,
+                compute_commit: ComputeCommit::SigopCount(0.into()),
             }],
             vec![
                 TransactionOutput {
@@ -252,6 +311,7 @@ mod tests {
                             0xac  // OP_CHECKSIG
                         ),
                     ),
+                    covenant: None,
                 },
                 TransactionOutput {
                     value: 0x108e20f00,
@@ -266,6 +326,7 @@ mod tests {
                             0xac  // OP_CHECKSIG
                         ),
                     ),
+                    covenant: None,
                 },
             ],
             0,
@@ -289,8 +350,29 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len + 1];
+        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len().upper_bound() + 1];
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
+
+        let mut forked_params = params.clone();
+        forked_params.toccata_activation = ForkActivation::new(100);
+        let forked_tv = TransactionValidator::new_for_tests(
+            forked_params.max_tx_inputs,
+            forked_params.max_tx_outputs,
+            forked_params.max_signature_script_len(),
+            forked_params.max_script_public_key_len,
+            forked_params.coinbase_payload_script_public_key_max_len,
+            forked_params.coinbase_maturity(),
+            forked_params.ghostdag_k(),
+            Default::default(),
+        );
+        let mut tx = valid_tx.clone();
+        tx.inputs[0].signature_script = vec![0; forked_params.prior_max_signature_script_len + 1];
+        assert_match!(forked_tv.validate_tx_in_isolation(&tx), Ok(()));
+        assert_match!(
+            forked_tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 99),
+            Err(TxRuleError::TooBigSignatureScript(_, _))
+        );
+        assert_match!(forked_tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 100), Ok(()));
 
         let mut tx = valid_tx.clone();
         tx.outputs = (0..params.max_tx_outputs + 1).map(|_| valid_tx.outputs[0].clone()).collect();
@@ -306,14 +388,114 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.gas = 1;
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TxHasGas));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TxHasGas(_)));
 
         let mut tx = valid_tx.clone();
         tx.payload = vec![0];
         assert_match!(tv.validate_tx_in_isolation(&tx), Ok(()));
 
+        let mut tx = valid_tx.clone();
+        tx.version = 1;
+        tx.inputs[0].compute_commit = ComputeCommit::SigopCount(1.into());
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::SigopCountInV1(_, _)));
+
+        let mut tx = valid_tx.clone();
+        tx.version = 0;
+        tx.inputs[0].compute_commit = ComputeCommit::ComputeBudget(1.into());
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::ComputeBudgetInV0(_, _)));
+
+        let mut tx = valid_tx.clone();
+        tx.version = TX_VERSION_TOCCATA + 1;
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_)));
+
+        // Test prev version upper bound in header context
+        // TODO(post-toccata): turn back into pure in-isolation test
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_)));
+        assert_match!(tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 0), Err(TxRuleError::UnknownTxVersion(_)));
+    }
+
+    #[test]
+    fn check_transaction_subnetwork_shape() {
+        use kaspa_consensus_core::subnets::{SUBNETWORK_ID_SIZE, SUBNETWORK_NAMESPACE_LEN, SUBNETWORK_ZERO_TAIL_LEN, SubnetworkId};
+        use kaspa_consensus_core::tx::TransactionOutpoint;
+
+        fn sid(namespace: [u8; SUBNETWORK_NAMESPACE_LEN], tail: [u8; SUBNETWORK_ZERO_TAIL_LEN]) -> SubnetworkId {
+            let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
+            bytes[..SUBNETWORK_NAMESPACE_LEN].copy_from_slice(&namespace);
+            bytes[SUBNETWORK_NAMESPACE_LEN..].copy_from_slice(&tail);
+            SubnetworkId::from_bytes(bytes)
+        }
+
+        fn tx_with(subnetwork_id: SubnetworkId, version: u16) -> Transaction {
+            // Minimal tx: one input + one output so only the subnetwork check is exercised here.
+            let input = TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_slice(&[0u8; 32]), index: 0 },
+                signature_script: vec![],
+                sequence: 0,
+                compute_commit: ComputeCommit::SigopCount(0.into()),
+            };
+            let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, scriptvec!(0u8)), covenant: None };
+            Transaction::new(version, vec![input], vec![output], 0, subnetwork_id, 0, vec![])
+        }
+
+        // Reserved IDs (19-byte zero suffix): native/coinbase only, allowed at any version.
+        for version in [TX_VERSION, TX_VERSION_TOCCATA] {
+            super::check_transaction_subnetwork(&tx_with(SUBNETWORK_ID_NATIVE, version)).unwrap();
+            super::check_transaction_subnetwork(&tx_with(SUBNETWORK_ID_COINBASE, version)).unwrap();
+        }
+
+        // [x, 0×19] for any x ∉ {NATIVE, COINBASE} → rejected at every version.
+        // The 19-suffix shape is reserved for system use; only the two system
+        // first bytes are valid. A namespace of `[x, 0, 0, 0]` must NOT sneak
+        // through to the user-lane arm.
+        for byte in [0x02u8, 0x07, 0xff] {
+            let reserved_shape = SubnetworkId::from_byte(byte);
+            for version in [TX_VERSION, TX_VERSION_TOCCATA] {
+                assert_match!(
+                    super::check_transaction_subnetwork(&tx_with(reserved_shape, version)),
+                    Err(TxRuleError::SubnetworksDisabled(_))
+                );
+            }
+        }
+
+        // User lane [namespace, 0×16] with a non-zero byte in bytes[1..4]
+        // — any first byte (including native/coinbase) is accepted post-cov-HF.
+        for namespace in [[0x11, 0x22, 0x33, 0x44], [0x00, 0x00, 0x00, 0x01], [0xde, 0xad, 0xbe, 0xef], [0x07, 0x01, 0, 0]] {
+            let lane = sid(namespace, [0; SUBNETWORK_ZERO_TAIL_LEN]);
+            super::check_transaction_subnetwork(&tx_with(lane, TX_VERSION_TOCCATA)).unwrap();
+            // Pre-HF: user lanes are forbidden.
+            assert_match!(super::check_transaction_subnetwork(&tx_with(lane, TX_VERSION)), Err(TxRuleError::SubnetworksDisabled(_)));
+        }
+
+        // Non-zero tail → rejected even post-HF.
+        let mut dirty_tail = [0u8; SUBNETWORK_ZERO_TAIL_LEN];
+        dirty_tail[0] = 1;
+        let tail_byte_set = sid([0x11, 0, 0, 0], dirty_tail);
+        assert_match!(
+            super::check_transaction_subnetwork(&tx_with(tail_byte_set, TX_VERSION_TOCCATA)),
+            Err(TxRuleError::SubnetworksDisabled(_))
+        );
+        let mut dirty_tail_last = [0u8; SUBNETWORK_ZERO_TAIL_LEN];
+        *dirty_tail_last.last_mut().unwrap() = 0xff;
+        let tail_last_set = sid([0, 0, 0, 1], dirty_tail_last);
+        assert_match!(
+            super::check_transaction_subnetwork(&tx_with(tail_last_set, TX_VERSION_TOCCATA)),
+            Err(TxRuleError::SubnetworksDisabled(_))
+        );
+
+        let user_lane = sid([0, 0, 0, 1], [0; SUBNETWORK_ZERO_TAIL_LEN]);
+        let reserved_shape = SubnetworkId::from_byte(2);
+        for (subnetwork_id, version, gas_allowed) in [
+            (SUBNETWORK_ID_NATIVE, TX_VERSION_TOCCATA, false),
+            (SUBNETWORK_ID_COINBASE, TX_VERSION_TOCCATA, false),
+            (reserved_shape, TX_VERSION_TOCCATA, false),
+            (user_lane, TX_VERSION, false),
+            (user_lane, TX_VERSION_TOCCATA, true),
+        ] {
+            let mut tx = tx_with(subnetwork_id, version);
+            tx.gas = 1;
+            assert_match!((super::check_gas(&tx), gas_allowed), (Ok(()), true) | (Err(TxRuleError::TxHasGas(_)), false));
+        }
     }
 }

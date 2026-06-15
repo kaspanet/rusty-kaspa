@@ -43,7 +43,7 @@ where
             *prev = cum;
             Some((count, item))
         })
-        .flat_map(|(count, item)| std::iter::repeat_n(item, count))
+        .flat_map(|(count, item)| core::iter::repeat_n(item, count))
     }
 }
 
@@ -66,30 +66,31 @@ impl<'a, I> ReusableIterFormat<'a, I> {
     }
 }
 
-impl<I> std::fmt::Display for ReusableIterFormat<'_, I>
+impl<I> core::fmt::Display for ReusableIterFormat<'_, I>
 where
-    I: std::clone::Clone,
+    I: core::clone::Clone,
     I: Iterator,
-    I::Item: std::fmt::Display,
+    I::Item: core::fmt::Display,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Clone the inner format to workaround the `Format: was already formatted once` internal error
         self.inner.clone().fmt(f)
     }
 }
 
-impl<I> std::fmt::Debug for ReusableIterFormat<'_, I>
+impl<I> core::fmt::Debug for ReusableIterFormat<'_, I>
 where
-    I: std::clone::Clone,
+    I: core::clone::Clone,
     I: Iterator,
-    I::Item: std::fmt::Debug,
+    I::Item: core::fmt::Debug,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Clone the inner format to workaround the `Format: was already formatted once` internal error
         self.inner.clone().fmt(f)
     }
 }
 
+#[cfg(feature = "std")]
 /// Returns an iterator over powers of two up to (the rounded up) available parallelism: `2, 4, 8, ..., 2^(available_parallelism.log2().ceil())`,
 /// i.e., for `std::thread::available_parallelism = 15` the function will return `2, 4, 8, 16`
 pub fn parallelism_in_power_steps() -> impl Iterator<Item = usize> {

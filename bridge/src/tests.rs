@@ -532,6 +532,15 @@ fn test_append_line_data_accepts_exactly_at_limit() {
     assert!(!append_line_data(&mut buf, "y"));
 }
 
+#[cfg(test)]
+#[test]
+fn test_total_row_spm_uses_worker_average() {
+    use kaspa_stratum_bridge::average_worker_spm;
+    assert_eq!(average_worker_spm(0.0, 0), 0.0);
+    assert!((average_worker_spm(30.0, 2) - 15.0).abs() < f64::EPSILON);
+    assert!((average_worker_spm(12.5, 1) - 12.5).abs() < f64::EPSILON);
+}
+
 // JSON-RPC event tests
 #[cfg(test)]
 #[test]
@@ -1074,6 +1083,17 @@ mod integration {
     use tokio::sync::watch;
     use tokio::time::timeout;
 
+    // Mirrors testing/integration/src/common/daemon.rs::free_port.
+    fn free_port() -> u16 {
+        loop {
+            let port = rand::random::<u16>() % (u16::MAX - 1024) + 1024;
+            if let Ok(listener) = std::net::TcpListener::bind(format!("127.0.0.1:{port}")) {
+                drop(listener);
+                return port;
+            }
+        }
+    }
+
     #[tokio::test]
     async fn test_bridge_startup_with_inprocess_node() {
         init_allocator_with_default_settings();
@@ -1082,16 +1102,17 @@ mod integration {
         let temp_dir = std::env::temp_dir().join(format!("kaspad_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        // Start an in-process node with simnet/testnet settings
-        // Use a random port to avoid conflicts
-        let rpc_port = 16110 + (std::process::id() % 1000) as u16;
-        let rpc_address = format!("127.0.0.1:{}", rpc_port);
+        // Start an in-process devnet node with random listener ports to avoid conflicts
+        // with a locally running node.
+        let rpc_address = format!("127.0.0.1:{}", free_port());
         let argv: Vec<OsString> = vec![
             "kaspad".into(),
-            "--testnet".into(),
+            "--devnet".into(),
             "--appdir".into(),
             temp_dir.to_string_lossy().to_string().into(),
-            format!("--rpclisten={}", rpc_address).into(),
+            format!("--rpclisten={rpc_address}").into(),
+            format!("--listen=127.0.0.1:{}", free_port()).into(),
+            "--disable-upnp".into(),
             "--utxoindex".into(),
         ];
 
@@ -1153,16 +1174,18 @@ mod integration {
         let temp_dir = std::env::temp_dir().join(format!("kaspad_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        // Start an in-process node with simnet/testnet settings
-        // Use a random port to avoid conflicts
-        let rpc_port = 16110 + (std::process::id() % 1000) as u16;
+        // Start an in-process devnet node with random listener ports to avoid conflicts
+        // with a locally running node.
+        let rpc_port = free_port();
         let rpc_address = format!("127.0.0.1:{}", rpc_port);
         let argv: Vec<OsString> = vec![
             "kaspad".into(),
-            "--testnet".into(),
+            "--devnet".into(),
             "--appdir".into(),
             temp_dir.to_string_lossy().to_string().into(),
-            format!("--rpclisten={}", rpc_address).into(),
+            format!("--rpclisten={rpc_address}").into(),
+            format!("--listen=127.0.0.1:{}", free_port()).into(),
+            "--disable-upnp".into(),
             "--utxoindex".into(),
         ];
 

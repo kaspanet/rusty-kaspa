@@ -3,14 +3,15 @@ use crate::flowcontext::{
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
-use crate::{v7, v8};
+use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
+use crate::{v7, v8, v10};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::config::{Config, params::ForkActivation};
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_notify::{
@@ -59,7 +60,7 @@ use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 9;
+const PROTOCOL_VERSION: u32 = 10;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -74,9 +75,9 @@ const REQUEST_SCOPE_WAIT_TIME: Duration = Duration::from_secs(1);
 #[derive(Debug, PartialEq)]
 pub enum BlockLogEvent {
     /// Accepted block via *relay*
-    Relay(Hash),
+    Relay(Hash, u64),
     /// Accepted block via *submit block*
-    Submit(Hash),
+    Submit(Hash, u64),
     /// Orphaned block with x missing roots
     Orphaned(Hash, usize),
     /// Unorphaned x blocks with hash being a representative
@@ -85,14 +86,27 @@ pub enum BlockLogEvent {
 
 pub struct BlockEventLogger {
     bps: usize,
+    countdown_activation: CountdownActivation,
     sender: UnboundedSender<BlockLogEvent>,
     receiver: Mutex<Option<UnboundedReceiver<BlockLogEvent>>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CountdownActivation {
+    name: &'static str,
+    activation: ForkActivation,
+}
+
+impl CountdownActivation {
+    fn toccata(toccata_activation: ForkActivation) -> Self {
+        Self { name: "Toccata", activation: toccata_activation }
+    }
+}
+
 impl BlockEventLogger {
-    pub fn new(bps: usize) -> Self {
+    fn new(bps: usize, countdown_activation: CountdownActivation) -> Self {
         let (sender, receiver) = unbounded_channel();
-        Self { bps, sender, receiver: Mutex::new(Some(receiver)) }
+        Self { bps, countdown_activation, sender, receiver: Mutex::new(Some(receiver)) }
     }
 
     pub fn log(&self, event: BlockLogEvent) {
@@ -103,6 +117,7 @@ impl BlockEventLogger {
     fn start(&self) {
         let chunk_limit = self.bps * 10; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
         let receiver = self.receiver.lock().take().expect("expected to be called once");
+        let countdown_activation = self.countdown_activation;
         tokio::spawn(async move {
             let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
             tokio::pin!(chunk_stream);
@@ -110,8 +125,8 @@ impl BlockEventLogger {
                 #[derive(Default)]
                 struct LogSummary {
                     // Representatives
-                    relay_rep: Option<Hash>,
-                    submit_rep: Option<Hash>,
+                    relay_rep: Option<(Hash, u64)>,
+                    submit_rep: Option<(Hash, u64)>,
                     orphan_rep: Option<Hash>,
                     unorphan_rep: Option<Hash>,
                     // Counts
@@ -138,13 +153,28 @@ impl BlockEventLogger {
                     }
                 }
 
+                fn activation_countdown_suffix(countdown: CountdownActivation, daa_score: Option<u64>) -> String {
+                    daa_score
+                        .and_then(|daa_score| countdown.activation.is_within_range_before_activation(daa_score, 36_000))
+                        .map(|dist| format!(" \t [{} countdown: -{}]", countdown.name, dist))
+                        .unwrap_or_default()
+                }
+
                 impl LogSummary {
                     fn relay(&self) -> LogHash {
-                        self.relay_rep.into()
+                        self.relay_rep.map(|(hash, _)| hash).into()
                     }
 
                     fn submit(&self) -> LogHash {
-                        self.submit_rep.into()
+                        self.submit_rep.map(|(hash, _)| hash).into()
+                    }
+
+                    fn relay_rep_daa_score(&self) -> Option<u64> {
+                        self.relay_rep.map(|(_, daa_score)| daa_score)
+                    }
+
+                    fn submit_rep_daa_score(&self) -> Option<u64> {
+                        self.submit_rep.map(|(_, daa_score)| daa_score)
                     }
 
                     fn orphan(&self) -> LogHash {
@@ -158,13 +188,13 @@ impl BlockEventLogger {
 
                 let summary = chunk.into_iter().fold(LogSummary::default(), |mut summary, ev| {
                     match ev {
-                        BlockLogEvent::Relay(hash) => {
+                        BlockLogEvent::Relay(hash, daa_score) => {
                             summary.relay_count += 1;
-                            summary.relay_rep = Some(hash)
+                            summary.relay_rep = Some((hash, daa_score));
                         }
-                        BlockLogEvent::Submit(hash) => {
+                        BlockLogEvent::Submit(hash, daa_score) => {
                             summary.submit_count += 1;
-                            summary.submit_rep = Some(hash)
+                            summary.submit_rep = Some((hash, daa_score));
                         }
                         BlockLogEvent::Orphaned(hash, roots_count) => {
                             summary.orphan_roots_count += roots_count;
@@ -181,12 +211,37 @@ impl BlockEventLogger {
 
                 match (summary.submit_count, summary.relay_count) {
                     (0, 0) => {}
-                    (1, 0) => info!("Accepted block {} via submit block", summary.submit()),
-                    (n, 0) => info!("Accepted {} blocks ...{} via submit block", n, summary.submit()),
-                    (0, 1) => info!("Accepted block {} via relay", summary.relay()),
-                    (0, m) => info!("Accepted {} blocks ...{} via relay", m, summary.relay()),
+                    (1, 0) => info!(
+                        "Accepted block {} via submit block{}",
+                        summary.submit(),
+                        activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
+                    ),
+                    (n, 0) => info!(
+                        "Accepted {} blocks ...{} via submit block{}",
+                        n,
+                        summary.submit(),
+                        activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
+                    ),
+                    (0, 1) => info!(
+                        "Accepted block {} via relay{}",
+                        summary.relay(),
+                        activation_countdown_suffix(countdown_activation, summary.relay_rep_daa_score())
+                    ),
+                    (0, m) => info!(
+                        "Accepted {} blocks ...{} via relay{}",
+                        m,
+                        summary.relay(),
+                        activation_countdown_suffix(countdown_activation, summary.relay_rep_daa_score())
+                    ),
                     (n, m) => {
-                        info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, summary.submit(), m, n)
+                        info!(
+                            "Accepted {} blocks ...{}, {} via relay and {} via submit block{}",
+                            n + m,
+                            summary.submit(),
+                            m,
+                            n,
+                            activation_countdown_suffix(countdown_activation, summary.submit_rep_daa_score())
+                        )
                     }
                 }
 
@@ -221,6 +276,7 @@ pub struct FlowContextInner {
     mining_manager: MiningManagerProxy,
     pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
+    user_agent_rules: UserAgentRuleSet,
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
@@ -310,6 +366,7 @@ impl FlowContext {
     ) -> Self {
         let bps = config.bps() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
+        let user_agent_rules = UserAgentRuleSet::parse_lossy(&config.user_agent_rules);
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
@@ -330,7 +387,8 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
-                block_event_logger: Some(BlockEventLogger::new(bps)),
+                user_agent_rules,
+                block_event_logger: Some(BlockEventLogger::new(bps, CountdownActivation::toccata(config.toccata_activation))),
                 bps,
                 orphan_resolution_range,
                 max_orphans,
@@ -492,8 +550,9 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) }), None).await;
 
+        let daa_score = block.header.daa_score;
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
-        self.log_block_event(BlockLogEvent::Submit(hash));
+        self.log_block_event(BlockLogEvent::Submit(hash, daa_score));
 
         Ok(())
     }
@@ -503,8 +562,8 @@ impl FlowContext {
             logger.log(event)
         } else {
             match event {
-                BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
-                BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
+                BlockLogEvent::Relay(hash, _) => info!("Accepted block {} via relay", hash),
+                BlockLogEvent::Submit(hash, _) => info!("Accepted block {} via submit block", hash),
                 BlockLogEvent::Orphaned(orphan, roots_count) => {
                     info!("Received a block with {} missing ancestors, adding to orphan pool: {}", roots_count, orphan)
                 }
@@ -538,7 +597,7 @@ impl FlowContext {
         blocks.sort_by(|a, b| a.0.header.blue_work.partial_cmp(&b.0.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks.into_iter()) {
+        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks) {
             // We only care about waiting for virtual to process the block at this point, before proceeding with post-processing
             // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
             let _ = virtual_state_task.await;
@@ -708,11 +767,16 @@ impl ConnectionInitializer for FlowContext {
 
         let local_address = self.address_manager.lock().best_local_address();
 
+        // Networks with a scheduled Toccata activation advertise the current protocol version.
+        // Other networks still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
+        let advertise_toccata_p2p = self.config.toccata_activation != ForkActivation::never();
+        let advertised_protocol_version = if advertise_toccata_p2p { PROTOCOL_VERSION } else { 9 };
+
         // Build the local version message
         // Subnets are not currently supported
-        let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
+        let mut self_version_message =
+            Version::new(local_address, self.node_id, network_name.clone(), None, advertised_protocol_version);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
-        // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd
 
         // Perform the handshake
@@ -735,23 +799,65 @@ impl ConnectionInitializer for FlowContext {
             return Err(ProtocolError::WrongNetwork(network_name, peer_version.network));
         }
 
+        if let Some(reason) = self.user_agent_rules.reject_reason(&peer_version.user_agent) {
+            match reason {
+                UserAgentRuleRejectReason::AllowanceExcluded => {
+                    info!(
+                        "Rejecting peer {} because user agent is outside configured allowance rules: {}",
+                        router, peer_version.user_agent
+                    );
+                }
+                UserAgentRuleRejectReason::Rejection(rule) => {
+                    info!(
+                        "Rejecting peer {} because user agent matched rejection rule `{}`: {}",
+                        router,
+                        rule.source(),
+                        peer_version.user_agent
+                    );
+                }
+            }
+            return Err(ProtocolError::OtherOwned(format!("peer user agent rejected: {}", peer_version.user_agent)));
+        }
+
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
-        // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
-            8 => (v8::register(self.clone(), router.clone(), 8), 8),
-            7 => (v7::register(self.clone(), router.clone()), 7),
-            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+        let peer_protocol_version = peer_version.protocol_version;
+
+        // One day before activation, upgraded nodes start disconnecting outdated peers from the P2P network.
+        const ONE_DAY_SECONDS: u64 = 24 * 60 * 60;
+        let daa_threshold = ONE_DAY_SECONDS * self.config.bps();
+        let virtual_daa_score = self.consensus().unguarded_session().get_virtual_daa_score();
+        let connect_only_new_versions = self.config.toccata_activation.is_active(virtual_daa_score.saturating_add(daa_threshold));
+
+        // Until the one-day pre-activation threshold is reached, older protocol versions remain accepted.
+        // Once it is reached, peers must advertise protocol 10.
+        //
+        // Note: post-activation fresh nodes with virtual DAA score near genesis are not covered here and
+        // are guarded later during IBD by `validate_pruning_point_freshness_for_toccata`.
+        let (flows, applied_protocol_version) = if connect_only_new_versions {
+            // Register all flows according to version
+            match peer_protocol_version {
+                v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
+        } else {
+            // Register all flows according to version
+            match peer_protocol_version {
+                v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+                9 => (v8::register(self.clone(), router.clone(), 9), 9),
+                8 => (v8::register(self.clone(), router.clone(), 8), 8),
+                7 => (v7::register(self.clone(), router.clone()), 7),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
         };
 
         // Build and register the peer properties
         let peer_properties = Arc::new(PeerProperties {
-            user_agent: peer_version.user_agent.to_owned(),
+            user_agent: peer_version.user_agent,
             advertised_protocol_version: peer_version.protocol_version,
             protocol_version: applied_protocol_version,
             disable_relay_tx: peer_version.disable_relay_tx,
-            subnetwork_id: peer_version.subnetwork_id.to_owned(),
+            subnetwork_id: peer_version.subnetwork_id,
             time_offset,
         });
         router.set_properties(peer_properties);

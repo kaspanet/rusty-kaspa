@@ -30,14 +30,14 @@ message TransactionMessage{
   SubnetworkId subnetworkId = 5;
   uint64 gas = 6;
   bytes payload = 8;
-  uint64 mass = 9;
+  uint64 storage_mass = 9;
 }
 
 message TransactionInput{
   Outpoint previousOutpoint = 1;
   bytes signatureScript = 2;
   uint64 sequence = 3;
-  uint32 sigOpCount = 4;
+  uint32 compute_commit = 4;
 }
 
 message Outpoint{
@@ -53,9 +53,15 @@ message ScriptPublicKey {
   uint32 version = 2;
 }
 
+message CovenantBinding{
+  uint32 authorizingInput = 1;
+  Hash covenantId = 2;
+}
+
 message TransactionOutput{
   uint64 value = 1;
   ScriptPublicKey scriptPublicKey = 2;
+  CovenantBinding covenant = 3;
 }
 
 message BlockMessage{
@@ -176,6 +182,7 @@ message UtxoEntry {
   ScriptPublicKey scriptPublicKey = 2;
   uint64 blockDaaScore = 3;
   bool isCoinbase = 4;
+  Hash covenantId = 5;
 }
 
 message RequestNextPruningPointUtxoSetChunkMessage {
@@ -302,4 +309,28 @@ message BlockWithTrustedDataV4Message {
 message TrustedDataMessage {
   repeated DaaBlockV4 daaWindow = 1; // TODO: rename to `trustedSubDag` once v5 is obsolete
   repeated BlockGhostdagDataHashPair ghostdagData = 2; // TODO: remove once v5 is obsolete
+}
+
+// SMT state sync (KIP-21 IBD)
+
+message RequestPruningPointSmtStateMessage {
+  Hash pruningPointHash = 1;
+}
+
+message SmtMetadataMessage {
+  bytes data = 1;                  // 96 bytes: lanes_root || payload_and_ctx_digest || parent_seq_commit
+  uint64 activeLanesCount = 2;     // number of active lanes
+}
+
+message SmtLaneEntry {
+  bytes data = 1;         // 64 bytes: lane_key[32] || lane_tip[32]
+  uint64 blueScore = 2;
+  bytes proof = 3;        // optional: bitmap[32] || terminal_tag[1] || terminal_payload || siblings[N * 32]
+}
+
+message SmtLaneChunkMessage {
+  repeated SmtLaneEntry entries = 1;   // up to SMT_CHUNK_SIZE lane entries per chunk
+}
+
+message RequestNextPruningPointSmtChunkMessage {
 }

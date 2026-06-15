@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     BlockHashSet, BlueWorkType, ChainPath,
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockstatus::BlockStatus,
@@ -45,6 +45,67 @@ pub struct BlockValidationFutures {
     /// (exceptions are header-only blocks and trusted blocks which have the future completed before virtual
     /// processing along with the `block_task`)
     pub virtual_state_task: BlockValidationFuture,
+}
+
+/// A proof is attached to the first lane and every `SMT_PROOF_INTERVAL`-th lane
+/// during IBD SMT export. The importer verifies these against `lanes_root`.
+///
+/// The end-to-end correctness of the import is already guaranteed by the final
+/// `computed_root == lanes_root` check in `streaming_import`. Inline proofs
+/// only exist so the receiver can abort a misbehaving peer mid-stream before
+/// downloading everything, so a sparse stride is enough — one every ~1M lanes
+/// bounds wasted bandwidth and eliminates per-lane `prove_lane` cost on the
+/// sender
+pub const SMT_PROOF_INTERVAL: usize = 1 << 20;
+
+/// A lane to import during IBD SMT sync.
+#[derive(Clone, Debug)]
+pub struct ImportLane {
+    pub lane_key: Hash,
+    pub lane_tip: Hash,
+    pub blue_score: u64,
+    pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
+}
+
+pub type ImportLaneBatchIterator<'a> = &'a mut (dyn Iterator<Item = Vec<ImportLane>> + Send);
+
+/// SMT metadata for IBD sync, verified against the pruning point header.
+///
+/// Wire: `lanes_root || payload_and_ctx_digest || parent_seq_commit` (96 bytes).
+/// `inactivity_shortcut_block` is derived by the receiver from chain headers; not transmitted.
+#[derive(Clone, Copy, Debug)]
+pub struct SmtExportMetadata {
+    pub lanes_root: Hash,
+    pub payload_and_ctx_digest: Hash,
+    pub parent_seq_commit: Hash,
+    pub active_lanes_count: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct SeqCommitLaneEntry {
+    pub tip: Hash,
+    pub blue_score: u64,
+}
+
+/// Witness for verifying a single lane against the `seq_commit` of a canonical block.
+///
+/// Given the block's header (which carries `seq_commit` in `accepted_id_merkle_root`),
+/// a client can reconstruct the lane's SMT leaf and verify the proof chain:
+/// `smt_leaf → compute_root → lanes_root → activity_root → seq_state_root → seq_commit`.
+///
+/// `lane` is `None` when the lane is absent at this POV;
+/// the SMT proof is then a non-inclusion proof.
+///
+/// `inactivity_shortcut` (KIP-21 activity_root level): the `accepted_id_merkle_root`
+/// (= seq_commit) of the anchor block resolved per KIP-21. Folded into
+/// `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`.
+#[derive(Clone, Debug)]
+pub struct SeqCommitLaneProof {
+    pub smt_proof: kaspa_smt::proof::OwnedSmtProof,
+    pub lane: Option<SeqCommitLaneEntry>,
+    pub payload_and_ctx_digest: Hash,
+    pub parent_seq_commit: Hash,
+    pub inactivity_shortcut: Hash,
 }
 
 /// Abstracts the consensus external API
@@ -93,7 +154,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
         unimplemented!()
     }
 
@@ -145,7 +206,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+    fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         unimplemented!()
     }
 
@@ -243,7 +304,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+    fn apply_pruning_proof(
+        &self,
+        proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        header_only_chain_segment: &[Arc<Header>],
+    ) -> PruningImportResult<()> {
         unimplemented!()
     }
 
@@ -256,6 +322,54 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    /// Import SMT lane state at the pruning point. Builds the tree from lane
+    /// preimages, verifies root matches `lanes_root`, and flushes to DB.
+    ///
+    /// The iterator yields lane chunks already sized by the wire-level chunker
+    /// each element is up to `SMT_CHUNK_SIZE` lanes. The importer does not
+    /// re-batch.
+    ///
+    /// `inactivity_shortcut_block` is resolved by the caller during metadata verification.
+    fn import_pruning_point_smt(
+        &self,
+        _new_pruning_point: Hash,
+        _metadata: SmtExportMetadata,
+        _inactivity_shortcut_block: Hash,
+        _lane_batches: ImportLaneBatchIterator<'_>,
+    ) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    /// Compute SMT metadata for the pruning point (for P2P streaming).
+    fn get_pruning_point_smt_metadata(&self, _expected_pruning_point: Hash) -> ConsensusResult<SmtExportMetadata> {
+        unimplemented!()
+    }
+
+    /// Resolve the `inactivity_shortcut_block` (the block hash anchoring the
+    /// `activity_root` shortcut) from the POV of `pov_block`. Uses headers +
+    /// reachability only; safe to call at the IBD PP boundary before the SMT
+    /// is imported. Callers resolve to the seq_commit Hash themselves (the
+    /// block-to-seq_commit fold is just a header read + activation check).
+    fn inactivity_shortcut_block_for_pov(&self, _pov_block: Hash) -> ConsensusResult<Hash> {
+        unimplemented!()
+    }
+
+    /// Open a live canonical-lane stream for the pruning point. The returned
+    /// iterator yields every canonical lane once, holds its own owned
+    /// pruning-lock guard internally so data stays pinned for its full
+    /// lifetime, and can be moved across `spawn_blocking` boundaries.
+    ///
+    /// Every [`SMT_PROOF_INTERVAL`]-th lane carries an inline SMT proof so the
+    /// receiver can abort a misbehaving peer mid-stream. Correctness is still
+    /// anchored by the final `lanes_root == computed_root` check in the
+    /// importer.
+    fn open_pruning_point_smt_lane_stream(
+        &self,
+        _expected_pruning_point: Hash,
+    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<ImportLane>> + Send + 'static>> {
         unimplemented!()
     }
 
@@ -358,6 +472,16 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    /// Returns a self-contained witness for verifying the lane `lane_key` against
+    /// the `seq_commit` carried in `block_hash`'s header. The block must be a
+    /// chain (selected-parent) block at or after the current pruning point;
+    /// non-canonical blocks are rejected with [`ConsensusError::BlockNotInSelectedChain`],
+    /// too-deep blocks with [`ConsensusError::BlockTooDeep`], and genesis with
+    /// [`ConsensusError::BlockIsGenesis`].
+    fn get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
+        unimplemented!()
+    }
+
     fn get_pruning_point_utxos(
         &self,
         expected_pruning_point: Hash,
@@ -403,6 +527,18 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn clear_pruning_utxo_set(&self) {
+        unimplemented!()
+    }
+
+    fn clear_pruning_smt_stores(&self) {
+        unimplemented!()
+    }
+
+    fn set_pruning_smt_stable_flag(&self, _val: bool) {
+        unimplemented!()
+    }
+
+    fn is_pruning_smt_stable(&self) -> bool {
         unimplemented!()
     }
 
