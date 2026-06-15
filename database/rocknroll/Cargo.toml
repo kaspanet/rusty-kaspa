@@ -1,5 +1,5 @@
 [package]
-name = "rocknroll"
+name = "kaspa-rocknroll"
 description = "Kaspa RocksDB developer scanning tools"
 version.workspace = true
 edition.workspace = true

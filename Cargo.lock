@@ -3582,6 +3582,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-rocknroll"
+version = "2.0.0"
+dependencies = [
+ "clap",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-smt-store",
+ "kaspad",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "kaspa-rpc-core"
 version = "2.0.0"
 dependencies = [
@@ -5984,20 +5998,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7043b63bd0cd1aaa628e476b80e6d4023a3b50eb32789f2728908107bd0c793a"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "rocknroll"
-version = "1.1.1-toc.1"
-dependencies = [
- "clap",
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-database",
- "kaspa-hashes",
- "kaspa-smt-store",
- "kaspad",
- "thiserror 2.0.18",
 ]
 
 [[package]]

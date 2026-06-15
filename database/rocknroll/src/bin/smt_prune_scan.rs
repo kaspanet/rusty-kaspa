@@ -10,12 +10,12 @@ use kaspa_consensus::model::stores::{
 };
 use kaspa_consensus::{config::ConfigBuilder, params::Params};
 use kaspa_database::prelude::CachePolicy;
-use kaspa_smt_store::processor::{SmtStores, StaleSmtEntriesCount};
-use rocknroll::{
+use kaspa_rocknroll::{
     Result,
     args::DbSourceArgs,
     db::{ResolvedConsensusDb, resolve_consensus_db},
 };
+use kaspa_smt_store::processor::{SmtStores, StaleSmtEntriesCount};
 
 #[derive(Parser, Debug)]
 #[command(about = "Scan a consensus DB for stale SMT pruning entries")]
