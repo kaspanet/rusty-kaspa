@@ -56,6 +56,7 @@ members = [
     "components/consensusmanager",
     "bridge",
     "database",
+    "database/rocknroll",
     "crypto/txscript",
     "crypto/txscript/errors",
     "testing/integration",
