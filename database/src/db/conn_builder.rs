@@ -169,8 +169,16 @@ impl ConnBuilder<PathBuf, false, Unspecified, i32> {
     }
 
     pub fn build_readonly(self) -> Result<Arc<DB>, Box<dyn std::error::Error>> {
-        let (opts, guard) =
+        if !self.db_path.exists() {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("database path does not exist: {}", self.db_path.display()),
+            )));
+        }
+
+        let (mut opts, guard) =
             default_opts!(self).map_err(|err: kaspa_utils::fd_budget::Error| -> Box<dyn std::error::Error> { Box::new(err) })?;
+        opts.create_if_missing(false);
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open_for_read_only(&opts, &self.db_path, false)?, guard));
         Ok(db)
     }

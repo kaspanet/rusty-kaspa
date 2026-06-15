@@ -1,10 +1,9 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use kaspa_consensus::consensus::factory::MultiConsensusManagementStore;
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_database::prelude::{ConnBuilder, DB};
 use kaspad_lib::daemon::get_app_dir_from_args;
-use std::sync::Arc;
 
 use crate::{Error, Result, args::DbSourceArgs};
 
@@ -69,6 +68,14 @@ pub fn resolve_consensus_db(args: &DbSourceArgs) -> Result<ResolvedConsensusDb> 
     })
 }
 
+/// Opens a RocksDB instance in read-only mode for diagnostics.
+///
+/// RocksDB documents read-only opens against a concurrently open read-write DB
+/// as undefined. This diagnostic still uses read-only mode because secondary
+/// opens can stall on large kaspad DBs; live-node scans are therefore best-effort.
+///
+/// Custom WAL directories are not wired here, so scan such nodes only after a
+/// clean shutdown if authoritative results are required.
 pub fn open_readonly_db(db_path: PathBuf, files_limit: i32) -> Result<Arc<DB>> {
     Ok(ConnBuilder::default().with_db_path(db_path).with_files_limit(files_limit).build_readonly()?)
 }
