@@ -638,8 +638,8 @@ mod tests {
         let json = r#"{"id":"0000000000000000000000000000000000000000000000000000000000000000","version":0,"inputs":[{"transactionId":"0101010101010101010101010101010101010101010101010101010101010101","index":0,"sequence":0,"sigOpCount":1,"signatureScript":"01","utxo":{"amount":1,"scriptPublicKey":"000001","blockDaaScore":0,"isCoinbase":false}}],"outputs":[],"subnetworkId":"0000000000000000000000000000000000000000","lockTime":0,"gas":0,"mass":1,"payload":""}"#;
 
         for tx in [
-            Transaction::deserialize_from_safe_json(safe_json).expect("legacy safe JSON should deserialize"),
-            Transaction::deserialize_from_json(json).expect("legacy JSON should deserialize"),
+            Transaction::deserialize_from_safe_json(safe_json).expect("txv0 safe JSON should deserialize"),
+            Transaction::deserialize_from_json(json).expect("txv0 JSON should deserialize"),
         ] {
             let inner = tx.inner();
             assert_eq!(inner.version, 0);
