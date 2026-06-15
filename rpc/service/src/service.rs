@@ -1348,6 +1348,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetVirtualChainFromBlockV2Request,
     ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
         let session = self.consensus_manager.consensus().session().await;
+        // This RPC call attempts to retrieve transactions on route from the block to the virtual.
+        // These transactions may not be present during a transitional state where the sink is missing a block body.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
         // sets to full by default
         let data_verbosity_level = request.data_verbosity_level.or(Some(RpcDataVerbosityLevel::Full));
         let verbosity: RpcAcceptanceDataVerbosity = data_verbosity_level.map(RpcAcceptanceDataVerbosity::from).unwrap_or_default();

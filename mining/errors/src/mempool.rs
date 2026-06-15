@@ -15,8 +15,11 @@ pub enum RuleError {
     #[error(transparent)]
     RejectTxRule(TxRuleError),
 
-    #[error("at least one outpoint of transaction is lacking a matching UTXO entry")]
+    #[error("at least one outpoint of the transaction is lacking a matching UTXO entry")]
     RejectMissingOutpoint,
+
+    #[error("at least one outpoint of the transaction is impossible to have a matching UTXO entry")]
+    RejectImpossibleOutpoint,
 
     #[error("transaction {0} was already accepted by the consensus")]
     RejectAlreadyAccepted(TransactionId),

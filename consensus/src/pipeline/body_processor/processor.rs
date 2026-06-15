@@ -228,6 +228,8 @@ impl BlockBodyProcessor {
         let mass = self.validate_body_in_isolation(block)?;
         if !is_trusted {
             self.validate_body_in_context(block)?;
+        } else {
+            self.validate_trusted_body_in_context(block)?;
         }
         Ok(mass)
     }

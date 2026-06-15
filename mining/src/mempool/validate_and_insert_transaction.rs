@@ -32,7 +32,7 @@ impl Mempool {
         self.validate_transaction_limits_in_isolation(&transaction, virtual_daa_score)?;
         self.validate_transaction_std_in_isolation(&transaction, virtual_daa_score)?;
         let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy, virtual_daa_score)?;
-        self.populate_mempool_entries(&mut transaction);
+        self.populate_mempool_entries(&mut transaction)?;
         Ok(TransactionPreValidation { transaction, feerate_threshold })
     }
 

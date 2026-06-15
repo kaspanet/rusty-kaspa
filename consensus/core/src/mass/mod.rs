@@ -503,7 +503,7 @@ pub fn calc_storage_mass(
         inputs.fold((0u64, 0u64), |(acc_plur, acc_amt), UtxoCell { plurality, amount }| (acc_plur + plurality, acc_amt + amount));
 
     // mean_ins = (Σ amounts) / (Σ plurality)
-    let mean_ins = sum_ins / ins_plurality;
+    let mean_ins = (sum_ins / ins_plurality).max(1);
 
     // arithmetic_ins:  C · (|I| / A(I)) = |I| · (C / mean_ins)
     let arithmetic_ins = ins_plurality.saturating_mul(storm_param / mean_ins);
@@ -524,6 +524,7 @@ mod tests {
     use std::str::FromStr;
 
     const UTXO_CONST_STORAGE: u64 = 63;
+    const UTXO_COVENANT_STORAGE: u64 = HASH_SIZE as u64;
     const UTXO_UNIT_SIZE: u64 = 100;
 
     #[test]
@@ -536,7 +537,7 @@ mod tests {
             let params: Params = net.into();
             let max_spk_len = (params.max_script_public_key_len as u64)
                 .min(params.block_mass_limits().after().compute.div_ceil(params.mass_per_script_pub_key_byte));
-            let max_plurality = (UTXO_CONST_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
+            let max_plurality = (UTXO_CONST_STORAGE + UTXO_COVENANT_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
             // verify C·P^2 can never overflow
             assert!(product.is_some());
@@ -544,10 +545,23 @@ mod tests {
 
         // verify P >= 1 also when the script is empty
         assert!(utxo_plurality(&ScriptPublicKey::new(0, ScriptVec::from_slice(&[])), false) == 1);
-        // Assert the UTXO_CONST_STORAGE=63, UTXO_UNIT_SIZE=100 constants
+        // Assert the UTXO_CONST_STORAGE=63, UTXO_COVENANT_STORAGE=32, UTXO_UNIT_SIZE=100 constants
         assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE) as usize]), false) == 1);
         assert!(
             utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE + 1) as usize]), false) == 2
+        );
+        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE) as usize]), true) == 2);
+        assert!(
+            utxo_plurality(
+                &ScriptPublicKey::from_vec(0, vec![1; (2 * UTXO_UNIT_SIZE - UTXO_CONST_STORAGE - UTXO_COVENANT_STORAGE) as usize]),
+                true
+            ) == 2
+        );
+        assert!(
+            utxo_plurality(
+                &ScriptPublicKey::from_vec(0, vec![1; (2 * UTXO_UNIT_SIZE - UTXO_CONST_STORAGE - UTXO_COVENANT_STORAGE + 1) as usize]),
+                true
+            ) == 3
         );
     }
 
