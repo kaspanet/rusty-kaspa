@@ -219,8 +219,7 @@ impl MultiConsensusManagementStore {
         let mut metadata = self.metadata.read().unwrap();
         if metadata.is_archival_node != is_archival_node {
             metadata.is_archival_node = is_archival_node;
-            let mut batch = WriteBatch::default();
-            self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
+            self.metadata.write(DirectDbWriter::new(&self.db), &metadata).unwrap();
         }
     }
 
@@ -447,5 +446,31 @@ impl ConsensusFactory for Factory {
             };
             write_guard.cancel_staging_consensus().unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MultiConsensusManagementStore;
+    use kaspa_database::{prelude::ConnBuilder, utils::get_kaspa_tempdir};
+
+    #[test]
+    fn archival_node_flag_persists_after_reopen() {
+        let db_tempdir = get_kaspa_tempdir();
+        let db_path = db_tempdir.path().to_owned();
+        let db = ConnBuilder::default().with_db_path(db_path.clone()).with_files_limit(10).build().unwrap();
+        let mut store = MultiConsensusManagementStore::new(db.clone());
+
+        store.set_is_archival_node(true);
+        assert!(store.is_archival_node().unwrap());
+        drop(store);
+        drop(db);
+
+        let db = ConnBuilder::default().with_db_path(db_path).with_create_if_missing(false).with_files_limit(10).build().unwrap();
+        let store = MultiConsensusManagementStore::new_readonly(db.clone());
+
+        assert!(store.is_archival_node().unwrap());
+        drop(store);
+        drop(db);
     }
 }
