@@ -631,4 +631,21 @@ mod tests {
             assert_eq!(output.get_script_public_key(), spk);
         }
     }
+
+    #[wasm_bindgen_test]
+    fn deserialize_from_json_accepts_v0_shape() {
+        let safe_json = r#"{"id":"0000000000000000000000000000000000000000000000000000000000000000","version":0,"inputs":[{"transactionId":"0101010101010101010101010101010101010101010101010101010101010101","index":0,"sequence":"0","sigOpCount":1,"signatureScript":"01","utxo":{"amount":"1","scriptPublicKey":"000001","blockDaaScore":"0","isCoinbase":false}}],"outputs":[],"subnetworkId":"0000000000000000000000000000000000000000","lockTime":"0","gas":"0","mass":"1","payload":""}"#;
+        let json = r#"{"id":"0000000000000000000000000000000000000000000000000000000000000000","version":0,"inputs":[{"transactionId":"0101010101010101010101010101010101010101010101010101010101010101","index":0,"sequence":0,"sigOpCount":1,"signatureScript":"01","utxo":{"amount":1,"scriptPublicKey":"000001","blockDaaScore":0,"isCoinbase":false}}],"outputs":[],"subnetworkId":"0000000000000000000000000000000000000000","lockTime":0,"gas":0,"mass":1,"payload":""}"#;
+
+        for tx in [
+            Transaction::deserialize_from_safe_json(safe_json).expect("legacy safe JSON should deserialize"),
+            Transaction::deserialize_from_json(json).expect("legacy JSON should deserialize"),
+        ] {
+            let inner = tx.inner();
+            assert_eq!(inner.version, 0);
+            assert_eq!(inner.storage_mass, 1);
+            assert_eq!(inner.inputs[0].get_compute_budget(), 0);
+            assert_eq!(inner.inputs[0].get_sig_op_count(), 1);
+        }
+    }
 }

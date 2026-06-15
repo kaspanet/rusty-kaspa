@@ -88,6 +88,7 @@ pub struct SerializableTransactionInput {
     pub index: SignedTransactionIndexType,
     pub sequence: String,
     pub sig_op_count: u8,
+    #[serde(default)]
     pub compute_budget: u16,
     #[serde(with = "hex::serde")]
     pub signature_script: Vec<u8>,
@@ -285,7 +286,7 @@ pub struct SerializableTransaction {
     pub subnetwork_id: SubnetworkId,
     pub lock_time: String,
     pub gas: String,
-    #[serde(default)]
+    #[serde(default, alias = "mass")]
     pub storage_mass: String,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
