@@ -77,12 +77,26 @@ use std::collections::VecDeque;
 // and the total mass is below this threshold (as well as
 // other conditions), we attempt to accumulate additional
 // inputs to reduce storage mass/fees
-const TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION: u64 = MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4;
+//
+// TODO(post-toccata): remove this const and cleanup pre toccata path
+const TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION_PRE_TOCCATA: u64 =
+    MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA / 5 * 4;
+const TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION_POST_TOCCATA: u64 =
+    MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA / 5 * 4;
+
 // optimization boundary - when aggregating inputs,
 // we don't perform any checks until we reach this mass
 // or the aggregate input amount reaches the requested
 // output amount
-const TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION: u64 = MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4;
+//
+// TODO(post-toccata): remove this const and cleanup pre toccata path
+const TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION_PRE_TOCCATA: u64 = MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA / 5 * 4;
+const TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION_POST_TOCCATA: u64 =
+    MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA / 5 * 4;
+
+// TODO(post-toccata): remove this const and cleanup pre toccata path
+const MAXIMUM_TRANSACTION_CRITERIA_MASS_SANITY_CHECK_PRE_TOCCATA: u64 = MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA / 5 * 4;
+const MAXIMUM_TRANSACTION_CRITERIA_MASS_SANITY_CHECK_POST_TOCCATA: u64 = MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA / 5 * 4;
 
 /// Mutable [`Generator`] state used to track the current transaction generation process.
 struct Context {
@@ -312,6 +326,10 @@ struct Inner {
     final_transaction_payload_mass: u64,
     // execution context
     context: Mutex<Context>,
+    // @TODO(post-toccata): remove
+    // TODO: ideally this gets replaced with all used/hardcoded parameter
+    // so the engine doesn't implement specificities within it
+    is_toccata_active: bool,
 }
 
 impl std::fmt::Debug for Inner {
@@ -365,6 +383,7 @@ impl Generator {
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context,
+            is_toccata_active,
         } = settings;
 
         let network_type = NetworkType::from(network_id);
@@ -436,7 +455,14 @@ impl Generator {
         });
 
         let mass_sanity_check = standard_change_output_mass + final_transaction_outputs_compute_mass + final_transaction_payload_mass;
-        if mass_sanity_check > MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4 {
+
+        let max_sanity_check_mass = if is_toccata_active {
+            MAXIMUM_TRANSACTION_CRITERIA_MASS_SANITY_CHECK_POST_TOCCATA
+        } else {
+            MAXIMUM_TRANSACTION_CRITERIA_MASS_SANITY_CHECK_PRE_TOCCATA
+        };
+
+        if mass_sanity_check > max_sanity_check_mass {
             return Err(Error::GeneratorTransactionOutputsAreTooHeavy { mass: mass_sanity_check, kind: "compute mass" });
         }
 
@@ -482,6 +508,7 @@ impl Generator {
             final_transaction_payload,
             final_transaction_payload_mass,
             destination_utxo_context,
+            is_toccata_active,
         };
 
         Ok(Self { inner: Arc::new(inner) })
@@ -633,6 +660,16 @@ impl Generator {
         self.calc_compute_fees(compute_mass)
     }
 
+    /// Returns the maximum standard transaction mass
+    #[inline(always)]
+    fn maximum_standard_transaction_mass(&self) -> u64 {
+        if self.inner.is_toccata_active {
+            MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA
+        } else {
+            MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA
+        }
+    }
+
     /// Calculates fees for compute-only contexts where transaction mass equals compute mass.
     fn calc_compute_fees(&self, compute_mass: u64) -> u64 {
         self.calc_transaction_fees(compute_mass, compute_mass)
@@ -669,6 +706,12 @@ impl Generator {
         let calc = &self.inner.mass_calculator;
         let mut data = Data::new(calc);
 
+        let max_tx_mass_boundary = if self.inner.is_toccata_active {
+            TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION_POST_TOCCATA
+        } else {
+            TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION_PRE_TOCCATA
+        };
+
         loop {
             if let Some(abortable) = self.inner.abortable.as_ref() {
                 abortable.check()?;
@@ -697,7 +740,7 @@ impl Generator {
             if let Some(final_transaction) = &self.inner.final_transaction {
                 // try finish a stage or produce a final transaction with target value
                 // use basic condition checks to avoid unnecessary processing
-                if (data.aggregate_mass > TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION
+                if (data.aggregate_mass > max_tx_mass_boundary
                     || (self.inner.final_transaction_priority_fee.sender_pays()
                         && stage.aggregate_input_value >= final_transaction.value_with_priority_fee)
                     || (self.inner.final_transaction_priority_fee.receiver_pays()
@@ -736,13 +779,15 @@ impl Generator {
         let input_amount = utxo.amount();
         let input_compute_mass = calc.calc_compute_mass_for_client_transaction_input(&input) + self.inner.signature_mass_per_input;
 
+        let max_std_mass = self.maximum_standard_transaction_mass();
+
         // NOTE: relay transactions have no storage mass
         // mass threshold reached, yield transaction
         if data.aggregate_mass
             + input_compute_mass
             + self.inner.standard_change_output_compute_mass
             + self.inner.network_params.additional_compound_transaction_mass()
-            > MAXIMUM_STANDARD_TRANSACTION_MASS
+            > max_std_mass
         {
             // note, we've used input for mass boundary calc and now abandon it
             // while preserving the UTXO entry reference to be used in the next iteration
@@ -833,10 +878,18 @@ impl Generator {
             Fees::None => unreachable!("Fees::None can not occur for final transaction"),
         };
 
+        let max_std_mass = self.maximum_standard_transaction_mass();
+
+        let max_tx_mass_for_additional_inputs = if self.inner.is_toccata_active {
+            TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION_POST_TOCCATA
+        } else {
+            TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION_PRE_TOCCATA
+        };
+
         if reject {
             // need more value, reject finalization (try adding more inputs)
             Ok(None)
-        } else if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS || stage.number_of_transactions > 0 {
+        } else if transaction_mass > max_std_mass || stage.number_of_transactions > 0 {
             self.generate_edge_transaction(context, stage, data)
         } else {
             // ---
@@ -847,7 +900,7 @@ impl Generator {
             // in additional fees for the user.
             if storage_mass > 0
                 && data.inputs.len() < self.inner.final_transaction_outputs.len() * 2
-                && transaction_mass < TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION
+                && transaction_mass < max_tx_mass_for_additional_inputs
             {
                 // fetch UTXO from the iterator and if exists, make it available on the next iteration via utxo_stash.
                 if self.has_utxo_entries(context, stage) {
@@ -970,7 +1023,9 @@ impl Generator {
             }
         };
 
-        if storage_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+        let max_std_mass = self.maximum_standard_transaction_mass();
+
+        if storage_mass > max_std_mass {
             Err(Error::StorageMassExceedsMaximumTransactionMass { storage_mass })
         } else {
             let compute_mass = if absorb_change_to_fees { compute_mass_no_change } else { compute_mass_with_change };
@@ -998,7 +1053,9 @@ impl Generator {
         let storage_mass = self.calc_storage_mass(data, edge_output_harmonic);
         let transaction_mass = calc.combine_mass(compute_mass, storage_mass);
 
-        if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+        let max_std_mass = self.maximum_standard_transaction_mass();
+
+        if transaction_mass > max_std_mass {
             // transaction mass is too high... if we have additional
             // UTXOs, reject and try to accumulate more inputs...
             if self.has_utxo_entries(context, stage) {
@@ -1037,6 +1094,8 @@ impl Generator {
         let mut stage = context.stage.take().unwrap();
         let (kind, data) = self.generate_transaction_data(&mut context, &mut stage)?;
         context.stage.replace(stage);
+
+        let max_std_mass = self.maximum_standard_transaction_mass();
 
         match (kind, data) {
             (DataKind::NoOp, _) => {
@@ -1105,7 +1164,7 @@ impl Generator {
                     &utxo_entry_references,
                     self.inner.minimum_signatures,
                 )?;
-                if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+                if transaction_mass > max_std_mass {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
                 }
@@ -1163,7 +1222,7 @@ impl Generator {
                     self.inner.minimum_signatures,
                 )?;
                 transaction_mass = transaction_mass.saturating_add(self.inner.network_params.additional_compound_transaction_mass());
-                if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+                if transaction_mass > max_std_mass {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
                 }

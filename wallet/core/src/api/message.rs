@@ -534,6 +534,8 @@ pub struct AccountsPskbSignResponse {
 pub struct AccountsPskbBroadcastRequest {
     pub account_id: AccountId,
     pub pskb: String,
+    // @TODO(post-toccata): remove
+    pub is_toccata_active: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -550,6 +552,8 @@ pub struct AccountsPskbSendRequest {
     pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
     pub sign_for_address: Option<Address>,
+    // @TODO(post-toccata): remove
+    pub is_toccata_active: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -823,6 +827,8 @@ pub struct AccountsCommitRevealManualRequest {
     pub fee_rate: Option<f64>,
     pub reveal_fee_sompi: u64,
     pub payload: Option<Vec<u8>>,
+    // TODO(post-toccata): remove
+    pub is_toccata_active: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -869,6 +875,8 @@ pub struct AccountsCommitRevealRequest {
     pub fee_rate: Option<f64>,
     pub reveal_fee_sompi: u64,
     pub payload: Option<Vec<u8>>,
+    // TODO(post-toccata): remove
+    pub is_toccata_active: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

@@ -1550,6 +1550,8 @@ declare! {
     export interface IAccountsPskbBroadcastRequest {
         accountId : HexString;
         pskb : string;
+        // TODO(post-toccata): remove
+        isToccataActive?: boolean;
     }
     "#,
 }
@@ -1557,7 +1559,8 @@ declare! {
 try_from! ( args: IAccountsPskbBroadcastRequest, AccountsPskbBroadcastRequest, {
     let account_id = args.get_account_id("accountId")?;
     let pskb = args.get_string("pskb")?;
-    Ok(AccountsPskbBroadcastRequest { account_id, pskb })
+    let is_toccata_active = args.try_get_bool("isToccataActive").unwrap_or_default();
+    Ok(AccountsPskbBroadcastRequest { account_id, pskb, is_toccata_active })
 });
 
 declare! {
@@ -1609,6 +1612,9 @@ declare! {
          * Address to sign for.
          */
         signForAddress? : Address | string;
+
+        // TODO(post-toccata): remove
+        isToccataActive?: boolean;
     }
     "#,
 }
@@ -1622,7 +1628,8 @@ try_from! ( args: IAccountsPskbSendRequest, AccountsPskbSendRequest, {
         Some(v) => Some(Address::try_cast_from(&v)?.into_owned()),
         None => None,
     };
-    Ok(AccountsPskbSendRequest { account_id, wallet_secret, payment_secret, pskb, sign_for_address })
+    let is_toccata_active = args.try_get_bool("isToccataActive").unwrap_or_default();
+    Ok(AccountsPskbSendRequest { account_id, wallet_secret, payment_secret, pskb, sign_for_address, is_toccata_active })
 });
 
 // ---
@@ -2187,6 +2194,8 @@ declare! {
         feeRate? : number;
         revealFeeSompi : bigint;
         payload? : Uint8Array | HexString;
+        // TODO(post-toccata): remove
+        isToccataActive?: boolean;
     }
     "#,
 }
@@ -2212,6 +2221,8 @@ try_from! ( args: IAccountsCommitRevealRequest, AccountsCommitRevealRequest, {
 
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
+    let is_toccata_active = args.try_get_bool("isToccataActive").unwrap_or_default();
+
     Ok(AccountsCommitRevealRequest {
         account_id,
         address_type,
@@ -2223,6 +2234,7 @@ try_from! ( args: IAccountsCommitRevealRequest, AccountsCommitRevealRequest, {
         fee_rate,
         reveal_fee_sompi,
         payload,
+        is_toccata_active
     })
 });
 
@@ -2278,6 +2290,8 @@ declare! {
         feeRate? : number;
         revealFeeSompi : bigint;
         payload? : Uint8Array | HexString;
+        // TODO(post-toccata): remove
+        isToccataActive?: boolean;
     }
     "#,
 }
@@ -2301,6 +2315,8 @@ try_from! ( args: IAccountsCommitRevealManualRequest, AccountsCommitRevealManual
 
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
+    let is_toccata_active = args.try_get_bool("isToccataActive").unwrap_or_default();
+
     Ok(AccountsCommitRevealManualRequest {
         account_id,
         script_sig,
@@ -2311,6 +2327,7 @@ try_from! ( args: IAccountsCommitRevealManualRequest, AccountsCommitRevealManual
         fee_rate,
         reveal_fee_sompi,
         payload,
+        is_toccata_active
     })
 });
 
