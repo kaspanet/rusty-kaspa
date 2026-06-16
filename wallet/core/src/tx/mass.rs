@@ -20,9 +20,12 @@ pub const SIGNATURE_SIZE: u64 = 1 + 64 + 1; //1 byte for OP_DATA_65 + 64 (length
 /// The default is 100 sompi per gram.
 pub(crate) const MINIMUM_RELAY_TRANSACTION_FEE: u64 = 100_000;
 
-/// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
-/// are considered standard and will therefore be relayed and considered for mining.
-pub const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 100_000;
+// TODO(post-toccata): remove this const and cleaup calling site, only use new 500_000 mass limit
+/// MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA is the maximum mass allowed for transactions that
+/// are considered standard and will therefore be relayed and considered for mining, before toccata activtion.
+pub const MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA: u64 = 100_000;
+
+pub const MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA: u64 = 500_000;
 
 /// minimum_required_transaction_relay_fee returns the minimum transaction fee required
 /// for a transaction with the passed mass to be accepted into the mempool and relayed.

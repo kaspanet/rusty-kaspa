@@ -418,13 +418,13 @@ impl WalletApi for super::Wallet {
         self: Arc<Self>,
         request: AccountsPskbBroadcastRequest,
     ) -> Result<AccountsPskbBroadcastResponse> {
-        let AccountsPskbBroadcastRequest { account_id, pskb } = request;
+        let AccountsPskbBroadcastRequest { account_id, pskb, is_toccata_active } = request;
         let pskb = Bundle::deserialize(&pskb)?;
         let guard = self.guard();
         let guard = guard.lock().await;
 
         let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
-        let transaction_ids = account.pskb_broadcast(&pskb).await?;
+        let transaction_ids = account.pskb_broadcast(&pskb, is_toccata_active).await?;
         Ok(AccountsPskbBroadcastResponse { transaction_ids })
     }
 
@@ -438,14 +438,14 @@ impl WalletApi for super::Wallet {
     }
 
     async fn accounts_pskb_send_call(self: Arc<Self>, request: AccountsPskbSendRequest) -> Result<AccountsPskbSendResponse> {
-        let AccountsPskbSendRequest { account_id, pskb, wallet_secret, payment_secret, sign_for_address } = request;
+        let AccountsPskbSendRequest { account_id, pskb, wallet_secret, payment_secret, sign_for_address, is_toccata_active } = request;
         let pskb = Bundle::deserialize(&pskb)?;
         let guard = self.guard();
         let guard = guard.lock().await;
 
         let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
         let pskb = account.clone().pskb_sign(&pskb, wallet_secret, payment_secret, sign_for_address.as_ref()).await?;
-        let transaction_ids = account.pskb_broadcast(&pskb).await?;
+        let transaction_ids = account.pskb_broadcast(&pskb, is_toccata_active).await?;
         Ok(AccountsPskbSendResponse { transaction_ids })
     }
 
@@ -498,6 +498,7 @@ impl WalletApi for super::Wallet {
             fee_rate,
             reveal_fee_sompi,
             payload,
+            is_toccata_active,
         } = request;
 
         let guard = self.guard();
@@ -519,10 +520,11 @@ impl WalletApi for super::Wallet {
                 reveal_fee_sompi,
                 payload,
                 &abortable,
+                is_toccata_active,
             )
             .await?;
 
-        let transaction_ids = account.pskb_broadcast(&bundle).await?;
+        let transaction_ids = account.pskb_broadcast(&bundle, is_toccata_active).await?;
         Ok(AccountsCommitRevealManualResponse { transaction_ids })
     }
 
@@ -541,6 +543,7 @@ impl WalletApi for super::Wallet {
             fee_rate,
             reveal_fee_sompi,
             payload,
+            is_toccata_active,
         } = request;
 
         let guard = self.guard();
@@ -579,10 +582,11 @@ impl WalletApi for super::Wallet {
                 reveal_fee_sompi,
                 payload,
                 &abortable,
+                is_toccata_active,
             )
             .await?;
 
-        let transaction_ids = account.pskb_broadcast(&bundle).await?;
+        let transaction_ids = account.pskb_broadcast(&bundle, is_toccata_active).await?;
         Ok(AccountsCommitRevealResponse { transaction_ids })
     }
 
