@@ -100,6 +100,7 @@ impl GeneratorSettings {
         Ok(settings)
     }
 
+    #[allow(clippy::too_many_arguments)]
     /// Get generator settings from a UtxoContext.
     pub fn try_new_with_context(
         utxo_context: UtxoContext,
