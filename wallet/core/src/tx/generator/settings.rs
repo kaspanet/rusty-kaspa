@@ -38,6 +38,8 @@ pub struct GeneratorSettings {
     pub final_transaction_payload: Option<Vec<u8>>,
     // transaction is a transfer between accounts
     pub destination_utxo_context: Option<UtxoContext>,
+    // TODO(post-toccata): remove this parameter
+    pub is_toccata_active: bool,
 }
 
 // impl std::fmt::Debug for GeneratorSettings {
@@ -59,12 +61,16 @@ pub struct GeneratorSettings {
 // }
 
 impl GeneratorSettings {
+    /// Get generator settings from an Account.
+    ///
+    /// Passed account is assumed not RPC-connected.
     pub fn try_new_with_account(
         account: Arc<dyn Account>,
         final_transaction_destination: PaymentDestination,
         fee_rate: Option<f64>,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
+        is_toccata_active: Option<bool>,
     ) -> Result<Self> {
         let network_id = account.utxo_context().processor().network_id()?;
         let change_address = account.change_address()?;
@@ -83,17 +89,18 @@ impl GeneratorSettings {
             utxo_iterator: Box::new(utxo_iterator),
             source_utxo_context: Some(account.utxo_context().clone()),
             priority_utxo_entries: None,
-
             fee_rate,
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
+            is_toccata_active: is_toccata_active.unwrap_or_default(),
         };
 
         Ok(settings)
     }
 
+    /// Get generator settings from a UtxoContext.
     pub fn try_new_with_context(
         utxo_context: UtxoContext,
         priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
@@ -105,6 +112,7 @@ impl GeneratorSettings {
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
+        is_toccata_active: Option<bool>,
     ) -> Result<Self> {
         let network_id = utxo_context.processor().network_id()?;
         let utxo_iterator = UtxoIterator::new(&utxo_context);
@@ -118,18 +126,19 @@ impl GeneratorSettings {
             utxo_iterator: Box::new(utxo_iterator),
             source_utxo_context: Some(utxo_context),
             priority_utxo_entries,
-
             fee_rate,
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
+            is_toccata_active: is_toccata_active.unwrap_or_default(),
         };
 
         Ok(settings)
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Get generator settings from an Iter<UtxoEntryReference>.
     pub fn try_new_with_iterator(
         network_id: NetworkId,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
@@ -142,6 +151,7 @@ impl GeneratorSettings {
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
+        is_toccata_active: Option<bool>,
     ) -> Result<Self> {
         let settings = GeneratorSettings {
             network_id,
@@ -152,12 +162,12 @@ impl GeneratorSettings {
             utxo_iterator: Box::new(utxo_iterator),
             source_utxo_context: None,
             priority_utxo_entries,
-
             fee_rate,
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
+            is_toccata_active: is_toccata_active.unwrap_or_default(),
         };
 
         Ok(settings)

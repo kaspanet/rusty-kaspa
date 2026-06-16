@@ -464,6 +464,7 @@ where
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
         final_transaction_payload,
+        is_toccata_active: false,
     };
 
     Generator::try_new(settings, None, None)
