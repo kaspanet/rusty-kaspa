@@ -1,13 +1,17 @@
 mod commit;
+mod fragments;
 mod proof;
 
-use crate::EngineFlags;
-use crate::error::Error;
-use crate::result::Result;
-use crate::wasm::builder::ScriptBuilderOptions;
-use crate::zk_precompiles::risc0::zk_to_script::{
+pub use fragments::{R0SuccinctWitnessParts, prepare_r0_groth16_proof_wasm, prepare_r0_succinct_witness_wasm};
+
+use crate::zk_to_script::{
     BoundedR0Groth16Script, BoundedR0SuccinctScript, R0ScriptBuilder as NativeR0ScriptBuilder, UnboundedR0Script,
 };
+use kaspa_txscript::EngineFlags;
+use kaspa_txscript::error::Error;
+use kaspa_txscript::result::Result;
+use kaspa_txscript::script_builder::ScriptBuilder;
+use kaspa_txscript::wasm::builder::ScriptBuilderOptions;
 use kaspa_wasm_core::types::HexString;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -37,6 +41,15 @@ impl InnerState {
             InnerState::BoundedGroth16(b) => b.drain(),
             InnerState::BoundedSuccinct(b) => b.drain(),
             InnerState::Taken => Vec::new(),
+        }
+    }
+
+    pub(super) fn builder_mut(&mut self) -> Result<&mut ScriptBuilder> {
+        match self {
+            InnerState::Unbounded(b) => Ok(b.builder_mut()),
+            InnerState::BoundedGroth16(b) => Ok(b.builder_mut()),
+            InnerState::BoundedSuccinct(b) => Ok(b.builder_mut()),
+            InnerState::Taken => Err(Error::custom("builder has been consumed")),
         }
     }
 }

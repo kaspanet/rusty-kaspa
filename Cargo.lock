@@ -4056,7 +4056,6 @@ dependencies = [
  "ark-relations 0.6.0",
  "ark-serialize 0.6.0",
  "ark-snark 0.6.0",
- "bincode",
  "blake2b_simd",
  "blake3",
  "borsh",
@@ -4083,9 +4082,7 @@ dependencies = [
  "risc0-binfmt",
  "risc0-circuit-recursion",
  "risc0-core",
- "risc0-groth16",
  "risc0-zkp",
- "risc0-zkvm",
  "secp256k1",
  "serde",
  "serde-wasm-bindgen",
@@ -4106,6 +4103,31 @@ dependencies = [
  "kaspa-hashes",
  "secp256k1",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "kaspa-txscript-zk-sdk"
+version = "2.0.0"
+dependencies = [
+ "ark-bn254 0.6.0",
+ "ark-ec 0.6.0",
+ "ark-groth16 0.6.0",
+ "ark-serialize 0.6.0",
+ "bincode",
+ "borsh",
+ "js-sys",
+ "kaspa-consensus-core",
+ "kaspa-hashes",
+ "kaspa-txscript",
+ "kaspa-txscript-errors",
+ "kaspa-wasm-core",
+ "risc0-binfmt",
+ "risc0-groth16",
+ "risc0-zkvm",
+ "sha2",
+ "thiserror 2.0.18",
+ "wasm-bindgen",
+ "workflow-wasm",
 ]
 
 [[package]]
@@ -4375,6 +4397,7 @@ dependencies = [
  "kaspa-pow",
  "kaspa-rpc-core",
  "kaspa-txscript",
+ "kaspa-txscript-zk-sdk",
  "kaspa-utils",
  "kaspa-wallet-core",
  "kaspa-wallet-keys",

@@ -44,19 +44,6 @@ impl TryFrom<u8> for HashFnId {
     }
 }
 
-impl TryFrom<&str> for HashFnId {
-    type Error = R0Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "blake2b" => Ok(HashFnId::Blake2b),
-            "poseidon2" => Ok(HashFnId::Poseidon2),
-            "sha-256" => Ok(HashFnId::Sha256),
-            _ => Err(R0Error::InvalidHashFnId(value.as_bytes().first().copied().unwrap_or(255))),
-        }
-    }
-}
-
 impl From<HashFnId> for u8 {
     fn from(value: HashFnId) -> Self {
         value as u8

@@ -16,8 +16,6 @@ mod error;
 pub mod merkle;
 pub mod rcpt;
 pub mod receipt_claim;
-mod result;
-pub mod zk_to_script;
 
 pub struct R0SuccinctPrecompile;
 pub use error::R0Error;

@@ -1,7 +1,6 @@
 mod error;
 mod fields;
 pub mod groth16;
-mod points;
 pub mod risc0;
 pub mod tags;
 pub mod tests;

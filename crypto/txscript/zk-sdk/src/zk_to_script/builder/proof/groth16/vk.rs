@@ -37,7 +37,7 @@ mod tests {
     use ark_bn254::Bn254;
     use ark_serialize::CanonicalDeserialize;
 
-    use crate::zk_precompiles::risc0::zk_to_script::builder::proof::groth16::vk::R0_SERIALIZED_UNCOMPRESSED_VK;
+    use crate::zk_to_script::builder::proof::groth16::vk::R0_SERIALIZED_UNCOMPRESSED_VK;
 
     #[test]
     fn verify_upstream_vk_roundtrip() {

@@ -1,9 +1,7 @@
 use kaspa_consensus_core::{
     hashing::sighash::SigHashReusedValuesUnsync,
-    subnets::SubnetworkId,
-    tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
+    tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry},
 };
-use kaspa_hashes::Hash;
 use kaspa_txscript_errors::TxScriptError;
 
 use crate::{
@@ -68,35 +66,6 @@ pub fn execute_p2sh_script(
         zk_test_flags(),
     );
 
-    vm.execute()
-}
-
-/// helper for executing p2sh script
-pub fn execute_p2sh(sig_script: Vec<u8>, redeem_script: &[u8]) -> Result<(), TxScriptError> {
-    // compute spk from redeem script (commit script)
-    let spk = pay_to_script_hash_script(redeem_script);
-
-    // Create dummy p2sh outpoint and utxo entry
-    let dummy_outpoint = TransactionOutpoint::new(Hash::from_u64_word(0), 0);
-    let input = TransactionInput::new(dummy_outpoint, sig_script, 0, 0);
-    let output = TransactionOutput::new(1_000_000, spk.clone());
-    let mut tx = Transaction::new(0, vec![input], vec![output], 0, SubnetworkId::default(), 0, vec![]);
-    tx.finalize();
-
-    let utxo_entry = UtxoEntry::new(1_000_000, spk, 0, false, None);
-
-    let sig_cache: Cache<SigCacheKey, bool> = Cache::new(10_000);
-    let reused_values = SigHashReusedValuesUnsync::new();
-    let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
-    let populated = PopulatedTransaction::new(&tx, vec![utxo_entry]);
-    let mut vm = TxScriptEngine::from_transaction_input(
-        &populated,
-        &tx.inputs[0],
-        0,
-        &populated.entries[0],
-        EngineCtx::new(&sig_cache).with_reused(&reused_values),
-        flags,
-    );
     vm.execute()
 }
 

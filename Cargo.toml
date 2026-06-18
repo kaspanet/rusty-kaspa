@@ -57,6 +57,7 @@ members = [
     "bridge",
     "database",
     "crypto/txscript",
+    "crypto/txscript/zk-sdk",
     "crypto/txscript/errors",
     "testing/integration",
     "utils",
@@ -129,6 +130,7 @@ kaspa-rpc-macros = { version = "2.0.0", path = "rpc/macros" }
 kaspa-rpc-service = { version = "2.0.0", path = "rpc/service" }
 kaspa-txscript = { version = "2.0.0", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "2.0.0", path = "crypto/txscript/errors" }
+kaspa-txscript-zk-sdk = { version = "2.0.0", path = "crypto/txscript/zk-sdk" }
 kaspa-utils = { version = "2.0.0", path = "utils", default-features = false }
 kaspa-utils-tower = { version = "2.0.0", path = "utils/tower" }
 kaspa-system-info = { version = "2.0.0", path = "system-info" }

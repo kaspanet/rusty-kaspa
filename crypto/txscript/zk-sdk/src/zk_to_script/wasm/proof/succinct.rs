@@ -1,7 +1,7 @@
-use crate::error::Error;
-use crate::result::Result;
-use crate::zk_precompiles::risc0::zk_to_script::wasm::proof::FinalizedR0Script;
-use crate::zk_precompiles::risc0::zk_to_script::wasm::{InnerState, R0ScriptBuilder};
+use crate::zk_to_script::wasm::proof::FinalizedR0Script;
+use crate::zk_to_script::wasm::{InnerState, R0ScriptBuilder};
+use kaspa_txscript::error::Error;
+use kaspa_txscript::result::Result;
 use kaspa_wasm_core::types::BinaryT;
 use risc0_zkvm::{Digest, ReceiptClaim, SuccinctReceipt};
 use wasm_bindgen::prelude::wasm_bindgen;
