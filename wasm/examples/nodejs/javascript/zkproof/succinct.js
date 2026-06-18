@@ -138,7 +138,7 @@ async function succinctVerifyNoBuilder() {
       }],
       0n,
       '',
-      1
+      { type: "sigOpCount", value: 1 }
     );
 
     console.log('Commit transaction created');
@@ -201,15 +201,14 @@ async function succinctVerifyNoBuilder() {
       }],
       0n,
       '',
-      0
+      { type: "computeBudget", value: 2500 },
+      1
     );
 
     console.log(redeemTx)
 
-    // Set the signature script & compute budget
+    // Set the signature script
     redeemTx.inputs[0].signatureScript = signatureScript;
-    redeemTx.inputs[0].computeBudget = 2500;
-    redeemTx.version = 1;
 
     console.log('Redeem transaction created');
     console.log('Redeem script contains:');
