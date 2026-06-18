@@ -140,7 +140,7 @@ async function zktest() {
       ],
       0n,
       "",
-      1,
+      { type: "sigOpCount", value: 1 },
     );
 
     console.log("Commit transaction created");
@@ -207,7 +207,7 @@ async function zktest() {
       ],
       0n,
       "",
-      250,
+      { type: "sigOpCount", value: 250 },
     );
 
     console.log(redeemTx);

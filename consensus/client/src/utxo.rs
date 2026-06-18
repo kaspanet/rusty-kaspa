@@ -35,6 +35,8 @@ export interface IUtxoEntry {
     blockDaaScore: bigint;
     /** @readonly */
     isCoinbase: boolean;
+    /** @readonly */
+    covenantId?: HexString;
 }
 
 "#;
@@ -116,6 +118,9 @@ impl UtxoEntry {
         obj.set("scriptPublicKey", &workflow_wasm::serde::to_value(&self.script_public_key)?)?;
         obj.set("blockDaaScore", &self.block_daa_score.to_string().into())?;
         obj.set("isCoinbase", &self.is_coinbase.into())?;
+        if let Some(covenant_id) = self.covenant_id {
+            obj.set("covenantId", &covenant_id.to_string().into())?;
+        }
 
         Ok(obj)
     }
@@ -441,7 +446,13 @@ impl TryCastFromJs for UtxoEntryReference {
                         )
                     })?;
                     let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
-                    let covenant_id = utxo_entry.try_get_value("covenant_id")?.map(|v| v.try_into_owned()).transpose()?;
+                    let covenant_id = if let Some(covenant_id) = utxo_entry.try_get_value("covenantId")? {
+                        Some(covenant_id)
+                    } else {
+                        utxo_entry.try_get_value("covenant_id")?
+                    }
+                    .map(|v| v.try_into_owned())
+                    .transpose()?;
                     UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase, covenant_id }
                 } else {
                     let amount = object.get_u64("amount").map_err(|_| {
@@ -453,7 +464,13 @@ impl TryCastFromJs for UtxoEntryReference {
                         Error::custom("Supplied object does not contain `blockDaaScore` property (or it is not a numerical value)")
                     })?;
                     let is_coinbase = object.try_get_bool("isCoinbase")?.unwrap_or(false);
-                    let covenant_id = object.try_get_value("covenant_id")?.map(|v| v.try_into_owned()).transpose()?;
+                    let covenant_id = if let Some(covenant_id) = object.try_get_value("covenantId")? {
+                        Some(covenant_id)
+                    } else {
+                        object.try_get_value("covenant_id")?
+                    }
+                    .map(|v| v.try_into_owned())
+                    .transpose()?;
 
                     UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase, covenant_id }
                 };
@@ -490,5 +507,36 @@ impl UtxoEntryReference {
         };
 
         UtxoEntryReference::from(utxo_entry)
+    }
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use kaspa_hashes::Hash;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn test_utxo_entry_reference_roundtrips_covenant_id_js_field() {
+        let covenant_id = Hash::from_bytes([0x5a; 32]);
+        let mut utxo = UtxoEntryReference::simulated(1_000).as_ref().clone();
+        utxo.covenant_id = Some(covenant_id);
+
+        let exported = utxo.to_js_object().expect("to_js_object should succeed");
+        assert_eq!(exported.get_string("covenantId").expect("covenantId should be present"), covenant_id.to_string());
+
+        let object = Object::new();
+        let outpoint = Object::new();
+        outpoint.set("transactionId", &utxo.outpoint.transaction_id().to_string().into()).unwrap();
+        outpoint.set("index", &utxo.outpoint.index().into()).unwrap();
+        object.set("outpoint", &outpoint.into()).unwrap();
+        object.set("amount", &JsValue::from(utxo.amount)).unwrap();
+        object.set("scriptPublicKey", &workflow_wasm::serde::to_value(&utxo.script_public_key).unwrap()).unwrap();
+        object.set("blockDaaScore", &JsValue::from(utxo.block_daa_score)).unwrap();
+        object.set("isCoinbase", &utxo.is_coinbase.into()).unwrap();
+        object.set("covenantId", &covenant_id.to_string().into()).unwrap();
+
+        let reference = UtxoEntryReference::try_owned_from(object).expect("try_cast_from should accept covenantId");
+        assert_eq!(reference.as_ref().covenant_id, Some(covenant_id));
     }
 }

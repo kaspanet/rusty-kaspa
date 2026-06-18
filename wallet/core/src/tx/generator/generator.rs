@@ -68,8 +68,7 @@ use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-use kaspa_hashes::Hash;
+use kaspa_consensus_core::tx::{ComputeCommit, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
 use std::collections::VecDeque;
 
@@ -290,15 +289,16 @@ struct Inner {
     network_id: NetworkId,
     // Current network params
     network_params: &'static NetworkParams,
-
+    // transaction version
+    version: u16,
     // Source Utxo Context (Used for source UtxoEntry aggregation)
     source_utxo_context: Option<UtxoContext>,
     // Destination Utxo Context (Used only during transfer transactions)
     destination_utxo_context: Option<UtxoContext>,
     // Event multiplexer
     multiplexer: Option<Multiplexer<Box<Events>>>,
-    // typically a number of keys required to sign the transaction
-    sig_op_count: u8,
+    // input script execution budget commitment
+    compute_commit: ComputeCommit,
     // number of minimum signatures required to sign the transaction
     minimum_signatures: u16,
     // change address
@@ -337,10 +337,11 @@ impl std::fmt::Debug for Inner {
         f.debug_struct("Inner")
             .field("network_id", &self.network_id)
             .field("network_params", &self.network_params)
+            .field("version", &self.version)
             // .field("source_utxo_context", &self.source_utxo_context)
             // .field("destination_utxo_context", &self.destination_utxo_context)
             // .field("multiplexer", &self.multiplexer)
-            .field("sig_op_count", &self.sig_op_count)
+            .field("compute_commit", &self.compute_commit)
             .field("minimum_signatures", &self.minimum_signatures)
             .field("change_address", &self.change_address)
             .field("standard_change_output_compute_mass", &self.standard_change_output_compute_mass)
@@ -370,12 +371,13 @@ impl Generator {
     /// Create a new [`Generator`] instance using [`GeneratorSettings`].
     pub fn try_new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: Option<&Abortable>) -> Result<Self> {
         let GeneratorSettings {
+            version,
             network_id,
             multiplexer,
             utxo_iterator,
             source_utxo_context: utxo_context,
             priority_utxo_entries,
-            sig_op_count,
+            compute_commit,
             minimum_signatures,
             change_address,
             fee_rate,
@@ -389,6 +391,14 @@ impl Generator {
         let network_type = NetworkType::from(network_id);
         let network_params = NetworkParams::from(network_id);
         let mass_calculator = MassCalculator::new(&network_id.into());
+
+        if ComputeCommit::version_expects_compute_budget_field(version) && compute_commit.compute_budget().is_none() {
+            return Err(Error::custom(format!("transaction version {version} requires computeBudget commit")));
+        }
+
+        if ComputeCommit::version_expects_sig_op_count_field(version) && compute_commit.sig_op_count().is_none() {
+            return Err(Error::custom(format!("transaction version {version} requires sigOpCount commit")));
+        }
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
             PaymentDestination::Change => {
@@ -411,18 +421,15 @@ impl Generator {
                     if output.amount == 0 {
                         return Err(Error::GeneratorPaymentOutputZeroAmount);
                     }
+                    if output.covenant.is_some() {
+                        return Err(Error::GeneratorPaymentOutputCovenantNotAllowed);
+                    }
                 }
 
                 (
                     outputs
                         .iter()
-                        .map(|output| {
-                            TransactionOutput::with_covenant(
-                                output.amount,
-                                pay_to_address_script(&output.address),
-                                output.covenant.clone().map(Into::into),
-                            )
-                        })
+                        .map(|output| TransactionOutput::new(output.amount, pay_to_address_script(&output.address)))
                         .collect(),
                     Some(outputs.iter().map(|output| output.amount).sum()),
                 )
@@ -494,7 +501,8 @@ impl Generator {
             abortable: abortable.cloned(),
             mass_calculator,
             source_utxo_context: utxo_context,
-            sig_op_count,
+            version,
+            compute_commit,
             minimum_signatures,
             change_address,
             standard_change_output_compute_mass: standard_change_output_mass,
@@ -539,8 +547,8 @@ impl Generator {
     }
 
     #[inline(always)]
-    pub fn sig_op_count(&self) -> u8 {
-        self.inner.sig_op_count
+    pub fn compute_commit(&self) -> ComputeCommit {
+        self.inner.compute_commit
     }
 
     /// The underlying [`UtxoContext`] (if available).
@@ -618,27 +626,51 @@ impl Generator {
     /// 2. From the current stage
     /// 3. From priority UTXO entries
     /// 4. From the UTXO source iterator (while filtering against priority UTXO entries)
+    ///
+    /// It skips entries that has a covenant_id defined, this is to avoid unintended lineage discontinuation
     fn get_utxo_entry(&self, context: &mut Context, stage: &mut Stage) -> Option<UtxoEntryReference> {
-        context
-            .utxo_stash
-            .pop_front()
-            .or_else(|| stage.utxo_iterator.as_mut().and_then(|utxo_stage_iterator| utxo_stage_iterator.next()))
-            .or_else(|| context.priority_utxo_entries.as_mut().and_then(|entries| entries.pop_front()))
-            .or_else(|| {
-                loop {
-                    let utxo_entry = context.utxo_source_iterator.next()?;
-
-                    if let Some(filter) = context.priority_utxo_entry_filter.as_ref()
-                        && filter.contains(&utxo_entry)
-                    {
-                        // skip the entry from the iterator intake
-                        // if it has been supplied as a priority entry
-                        continue;
-                    }
-
-                    break Some(utxo_entry);
+        loop {
+            // 1. from the stash
+            if let Some(utxo_entry) = context.utxo_stash.pop_front() {
+                if utxo_entry.as_ref().covenant_id.is_none() {
+                    return Some(utxo_entry);
                 }
-            })
+                continue;
+            }
+
+            // 2. from the current stage
+            if let Some(utxo_entry) = stage.utxo_iterator.as_mut().and_then(|utxo_stage_iterator| utxo_stage_iterator.next()) {
+                if utxo_entry.as_ref().covenant_id.is_none() {
+                    return Some(utxo_entry);
+                }
+                continue;
+            }
+
+            // 3. from priority entries
+            if let Some(utxo_entry) = context.priority_utxo_entries.as_mut().and_then(|entries| entries.pop_front()) {
+                if utxo_entry.as_ref().covenant_id.is_none() {
+                    return Some(utxo_entry);
+                }
+                continue;
+            }
+
+            // 4. from utxo source
+            let utxo_entry = context.utxo_source_iterator.next()?;
+
+            if let Some(filter) = context.priority_utxo_entry_filter.as_ref()
+                && filter.contains(&utxo_entry)
+            {
+                // skip the entry from the iterator intake
+                // if it has been supplied as a priority entry
+                continue;
+            }
+
+            if utxo_entry.as_ref().covenant_id.is_some() {
+                continue;
+            }
+
+            return Some(utxo_entry);
+        }
     }
 
     /// Adds a [`UtxoEntryReference`] to the UTXO stash. UTXO stash
@@ -775,7 +807,7 @@ impl Generator {
     ) -> Option<DataKind> {
         let UtxoEntryReference { utxo } = &utxo_entry_reference;
 
-        let input = TransactionInput::new(utxo.outpoint.clone().into(), vec![], 0, self.inner.sig_op_count);
+        let input = TransactionInput::new_with_mass(utxo.outpoint.clone().into(), vec![], 0, self.inner.compute_commit);
         let input_amount = utxo.amount();
         let input_compute_mass = calc.calc_compute_mass_for_client_transaction_input(&input) + self.inner.signature_mass_per_input;
 
@@ -1150,7 +1182,7 @@ impl Generator {
                 }
 
                 let tx = Transaction::new(
-                    0,
+                    self.inner.version,
                     inputs,
                     final_outputs,
                     0,
@@ -1191,6 +1223,7 @@ impl Generator {
                     kind,
                 )?))
             }
+            // intermediary compound transaction
             (kind, data) => {
                 let Data {
                     inputs,
@@ -1212,9 +1245,8 @@ impl Generator {
                 let output_value = aggregate_input_value.saturating_sub(transaction_fees);
                 let script_public_key = pay_to_address_script(&self.inner.change_address);
 
-                // todo add param to support covenants as part of output
                 let output = TransactionOutput::new(output_value, script_public_key.clone());
-                let tx = Transaction::new(0, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+                let tx = Transaction::new(self.inner.version, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
                 let mut transaction_mass = self.inner.mass_calculator.calc_overall_mass_for_unsigned_consensus_transaction(
                     &tx,
@@ -1231,13 +1263,8 @@ impl Generator {
                 context.aggregate_mass += transaction_mass;
                 context.number_of_transactions += 1;
 
-                let previous_batch_utxo_entry_reference = Self::create_batch_utxo_entry_reference(
-                    tx.id(),
-                    output_value,
-                    script_public_key,
-                    &self.inner.change_address,
-                    tx.outputs.first().as_ref().and_then(|output| output.covenant.map(|c| c.covenant_id)),
-                );
+                let previous_batch_utxo_entry_reference =
+                    Self::create_batch_utxo_entry_reference(tx.id(), output_value, script_public_key, &self.inner.change_address);
 
                 match kind {
                     DataKind::Node => {
@@ -1281,7 +1308,6 @@ impl Generator {
         amount: u64,
         script_public_key: ScriptPublicKey,
         address: &Address,
-        covenant_id: Option<Hash>,
     ) -> UtxoEntryReference {
         let outpoint = TransactionOutpoint::new(txid, 0);
         let utxo = UtxoEntry {
@@ -1291,7 +1317,8 @@ impl Generator {
             script_public_key,
             block_daa_score: UNACCEPTED_DAA_SCORE,
             is_coinbase: false, // entry
-            covenant_id,
+            // covenant_id is not allowed by generator
+            covenant_id: None,
         };
         UtxoEntryReference { utxo: Arc::new(utxo) }
     }

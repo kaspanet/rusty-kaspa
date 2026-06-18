@@ -12,7 +12,7 @@ use kaspa_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
 use kaspa_consensus_client::UtxoEntry as ClientUTXO;
 use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
 use kaspa_consensus_core::tx::VerifiableTransaction;
-use kaspa_consensus_core::tx::{TransactionInput, UtxoEntry};
+use kaspa_consensus_core::tx::{ComputeCommit, TransactionInput, UtxoEntry};
 use kaspa_txscript::extract_script_pub_key_address;
 use kaspa_txscript::opcodes::codes::OpData65;
 use kaspa_txscript::script_builder::ScriptBuilder;
@@ -363,9 +363,12 @@ pub fn pskt_to_pending_transaction(
     let final_transaction_destination = PaymentDestination::PaymentOutputs(PaymentOutputs::from((recipient, output[0].value)));
 
     let settings = GeneratorSettings {
+        // this generator only used for context access, such as
+        // network type and UTXO submission bookkeeping, we can hardcode the rest.
+        version: 0,
+        compute_commit: ComputeCommit::SigopCount(1.into()),
         network_id,
         multiplexer: None,
-        sig_op_count: 1,
         minimum_signatures: 1,
         change_address: change_address.clone(),
         utxo_iterator,

@@ -127,7 +127,7 @@ async function groth16Verify() {
       ],
       0n,
       "",
-      1,
+      { type: "sigOpCount", value: 1 },
     );
 
     console.log("Commit transaction created");
@@ -209,7 +209,7 @@ async function groth16Verify() {
       ],
       0n,
       "",
-      104,
+      { type: "sigOpCount", value: 104 },
     );
 
     // Set the signature script

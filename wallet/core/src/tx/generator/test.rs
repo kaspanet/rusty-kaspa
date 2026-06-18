@@ -9,7 +9,7 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::mass::{UtxoCell, transaction_estimated_serialized_size};
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
-use kaspa_consensus_core::tx::{CovenantBinding, Transaction};
+use kaspa_consensus_core::tx::{ComputeCommit, CovenantBinding, Transaction};
 use kaspa_hashes::Hash;
 use rand::prelude::*;
 use std::cell::RefCell;
@@ -441,7 +441,6 @@ where
 
     let utxo_entries: Vec<UtxoEntryReference> = values.into_iter().map(kaspa_to_sompi).map(UtxoEntryReference::simulated).collect();
     let multiplexer = None;
-    let sig_op_count = 1;
     let minimum_signatures = 1;
     let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> = Box::new(utxo_entries.into_iter());
     let priority_utxo_entries = None;
@@ -451,9 +450,10 @@ where
     let change_address = change_address(network_id.into());
 
     let settings = GeneratorSettings {
+        version: 0,
         network_id,
         multiplexer,
-        sig_op_count,
+        compute_commit: ComputeCommit::SigopCount(1.into()),
         minimum_signatures,
         change_address,
         utxo_iterator,
@@ -882,18 +882,49 @@ fn test_generator_fan_out_1() -> Result<()> {
 }
 
 #[test]
-fn test_generator_preserves_output_covenant_binding() -> Result<()> {
+fn test_generator_rejects_output_covenant_binding() -> () {
     let network_id = test_network_id();
     let covenant = CovenantBinding::new(0, Hash::from_u64_word(1));
     let output = PaymentOutput::with_covenant(output_address(network_id.into()), kaspa_to_sompi(10.0), covenant.into());
     let destination = PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![output] });
 
-    let generator = make_generator(network_id, &[20.0], &[], None, Fees::sender(Kaspa(0.0)), change_address, destination)?;
+    assert!(make_generator(network_id, &[20.0], &[], None, Fees::sender(Kaspa(0.0)), change_address, destination.clone()).is_err());
+}
+
+#[test]
+fn test_generator_skips_utxos_with_defined_covenant_id() -> Result<()> {
+    let network_id = test_network_id();
+    let mut covenanted_utxo = UtxoEntryReference::simulated(kaspa_to_sompi(100.0)).as_ref().clone();
+    covenanted_utxo.covenant_id = Some(Hash::from_u64_word(2));
+    let covenanted_entry = UtxoEntryReference::from(covenanted_utxo);
+    let selected_entry = UtxoEntryReference::simulated(kaspa_to_sompi(20.0));
+    let output = PaymentOutput::new(output_address(network_id.into()), kaspa_to_sompi(10.0));
+    let destination = PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![output] });
+
+    let settings = GeneratorSettings {
+        version: 0,
+        network_id,
+        multiplexer: None,
+        compute_commit: ComputeCommit::SigopCount(1.into()),
+        minimum_signatures: 1,
+        change_address: change_address(network_id.into()),
+        // covenant entry is first in the iterator, processed first by the generator
+        utxo_iterator: Box::new(vec![covenanted_entry, selected_entry.clone()].into_iter()),
+        source_utxo_context: None,
+        priority_utxo_entries: None,
+        destination_utxo_context: None,
+        fee_rate: None,
+        final_transaction_priority_fee: Fees::sender(Kaspa(0.0)),
+        final_transaction_destination: destination,
+        final_transaction_payload: None,
+        is_toccata_active: false,
+    };
+    let generator = Generator::try_new(settings, None, None)?;
     let pending = generator.generate_transaction()?.expect("expected transaction");
     let tx = pending.transaction();
 
-    assert_eq!(tx.outputs.first().and_then(|output| output.covenant), Some(covenant));
-    assert!(generator.generate_transaction()?.is_none(), "expected no additional transactions");
+    assert_eq!(tx.inputs.len(), 1);
+    assert_eq!(tx.inputs[0].previous_outpoint, selected_entry.utxo.outpoint.clone().into());
 
     Ok(())
 }

@@ -9,9 +9,12 @@ use crate::result::Result;
 use crate::tx::{Fees, PaymentDestination};
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoIterator};
 use kaspa_addresses::Address;
+use kaspa_consensus_core::tx::ComputeCommit;
 use workflow_core::channel::Multiplexer;
 
 pub struct GeneratorSettings {
+    // Transaction version
+    pub version: u16,
     // Network type
     pub network_id: NetworkId,
     // Event multiplexer
@@ -22,8 +25,8 @@ pub struct GeneratorSettings {
     pub source_utxo_context: Option<UtxoContext>,
     // Priority utxo entries that are consumed before others
     pub priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
-    // typically a number of keys required to sign the transaction
-    pub sig_op_count: u8,
+    // input script execution budget commitment
+    pub compute_commit: ComputeCommit,
     // number of minimum signatures required to sign the transaction
     pub minimum_signatures: u16,
     // change address
@@ -49,7 +52,8 @@ pub struct GeneratorSettings {
 //             // .field("multiplexer", &self.multiplexer)
 //             .field("utxo_iterator", &"Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>")
 //             // .field("source_utxo_context", &self.source_utxo_context)
-//             .field("sig_op_count", &self.sig_op_count)
+//             .field("version", &self.version)
+//             .field("compute_commit", &self.compute_commit)
 //             .field("minimum_signatures", &self.minimum_signatures)
 //             .field("change_address", &self.change_address)
 //             .field("final_transaction_priority_fee", &self.final_transaction_priority_fee)
@@ -75,15 +79,16 @@ impl GeneratorSettings {
         let network_id = account.utxo_context().processor().network_id()?;
         let change_address = account.change_address()?;
         let multiplexer = account.wallet().multiplexer().clone();
-        let sig_op_count = account.sig_op_count();
+        let compute_commit = ComputeCommit::SigopCount(account.sig_op_count().into());
         let minimum_signatures = account.minimum_signatures();
 
         let utxo_iterator = UtxoIterator::new(account.utxo_context());
 
         let settings = GeneratorSettings {
+            version: 0,
             network_id,
             multiplexer: Some(multiplexer),
-            sig_op_count,
+            compute_commit,
             minimum_signatures,
             change_address,
             utxo_iterator: Box::new(utxo_iterator),
@@ -119,9 +124,10 @@ impl GeneratorSettings {
         let utxo_iterator = UtxoIterator::new(&utxo_context);
 
         let settings = GeneratorSettings {
+            version: 0,
             network_id,
             multiplexer,
-            sig_op_count,
+            compute_commit: ComputeCommit::SigopCount(sig_op_count.into()),
             minimum_signatures,
             change_address,
             utxo_iterator: Box::new(utxo_iterator),
@@ -155,9 +161,10 @@ impl GeneratorSettings {
         is_toccata_active: Option<bool>,
     ) -> Result<Self> {
         let settings = GeneratorSettings {
+            version: 0,
             network_id,
             multiplexer,
-            sig_op_count,
+            compute_commit: ComputeCommit::SigopCount(sig_op_count.into()),
             minimum_signatures,
             change_address,
             utxo_iterator: Box::new(utxo_iterator),

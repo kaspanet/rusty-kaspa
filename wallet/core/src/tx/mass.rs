@@ -7,7 +7,7 @@ use crate::result::Result;
 use kaspa_consensus_client as kcc;
 use kaspa_consensus_client::UtxoEntryReference;
 use kaspa_consensus_core::mass::calc_storage_mass as consensus_calc_storage_mass;
-use kaspa_consensus_core::tx::{SCRIPT_VECTOR_SIZE, Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_core::tx::{ComputeCommit, SCRIPT_VECTOR_SIZE, Transaction, TransactionInput, TransactionOutput};
 use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
 use kaspa_hashes::HASH_SIZE;
 
@@ -272,8 +272,12 @@ impl MassCalculator {
     }
 
     pub(crate) fn calc_compute_mass_for_client_transaction_input(&self, input: &TransactionInput) -> u64 {
-        input.compute_commit.sig_op_count().unwrap_or(0) as u64 * self.mass_per_sig_op
-            + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte // TODO: Add support for v1 transactions.
+        let compute_commit_mass = match input.compute_commit {
+            ComputeCommit::SigopCount(sig_op_count) => u8::from(sig_op_count) as u64 * self.mass_per_sig_op,
+            ComputeCommit::ComputeBudget(compute_budget) => compute_budget.to_grams().value(),
+        };
+
+        compute_commit_mass + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte
     }
 
     pub(crate) fn calc_compute_mass_for_signature(&self, minimum_signatures: u16) -> u64 {
