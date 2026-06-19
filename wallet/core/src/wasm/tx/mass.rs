@@ -42,11 +42,14 @@ pub fn calculate_unsigned_transaction_mass(network_id: NetworkIdT, tx: &Transact
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
     let mc = mass::MassCalculator::new(&consensus_params);
-    mc.calc_overall_mass_for_unsigned_client_transaction(tx.as_ref(), minimum_signatures.unwrap_or(1))
+
+    let masses = mc.calc_unsigned_client_transaction_masses(tx.as_ref(), minimum_signatures.unwrap_or(1))?;
+
+    Ok(mc.calc_standard_mass(&masses))
 }
 
 // @TODO(post-toccata): remove the optional parameter is_toccata_active
-/// `updateTransactionMass()` updates the mass property of the passed transaction.
+/// `updateTransactionMass()` updates the storage mass property of the passed transaction.
 /// If the transaction is invalid, the function throws an error.
 ///
 /// The function returns `true` if the mass is within the maximum standard transaction mass and
@@ -70,14 +73,16 @@ pub fn update_unsigned_transaction_mass(
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
     let mc = mass::MassCalculator::new(&consensus_params);
-    let mass = mc.calc_overall_mass_for_unsigned_client_transaction(tx, minimum_signatures.unwrap_or(1))?;
+
+    let masses = mc.calc_unsigned_client_transaction_masses(tx, minimum_signatures.unwrap_or(1))?;
+    let mass = mc.calc_standard_mass(&masses);
 
     let max_std_mass = maximum_standard_transaction_mass(is_toccata_active);
 
     if mass > max_std_mass {
         Ok(false)
     } else {
-        tx.set_storage_mass(mass);
+        tx.set_storage_mass(masses.contextual.storage_mass);
         Ok(true)
     }
 }
@@ -104,11 +109,12 @@ pub fn calculate_unsigned_transaction_fee(
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
     let mc = mass::MassCalculator::new(&consensus_params);
-    let mass = mc.calc_overall_mass_for_unsigned_client_transaction(tx.as_ref(), minimum_signatures.unwrap_or(1))?;
+    let masses = mc.calc_unsigned_client_transaction_masses(tx.as_ref(), minimum_signatures.unwrap_or(1))?;
+    let mass = mc.calc_standard_mass(&masses);
 
     let max_std_mass = maximum_standard_transaction_mass(is_toccata_active);
 
-    if mass > max_std_mass { Ok(None) } else { Ok(Some(mc.calc_fee_for_mass(mass))) }
+    if mass > max_std_mass { Ok(None) } else { Ok(Some(mc.calc_minimum_relay_fee(&masses))) }
 }
 
 /// `calculateStorageMass()` is a helper function to compute the storage mass of inputs and outputs.
@@ -141,7 +147,8 @@ pub fn calculate_storage_mass(network_id: NetworkIdT, input_values: &NumberArray
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::*;
-    use kaspa_consensus_core::{network::NetworkType, subnets::SUBNETWORK_ID_NATIVE};
+    use kaspa_consensus_core::{network::NetworkType, subnets::SUBNETWORK_ID_NATIVE, tx::ScriptPublicKey};
+    use kaspa_hashes::Hash;
     use wasm_bindgen::{JsCast, JsValue};
     use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -169,5 +176,38 @@ mod tests {
         let post_toccata_fee = calculate_unsigned_transaction_fee(network_id(), tx, Some(1), Some(true))
             .expect("post-toccata fee calculation should not error");
         assert!(post_toccata_fee.is_some());
+    }
+
+    #[wasm_bindgen_test]
+    fn calculate_transaction_fee_uses_relay_mass_while_update_commits_storage_mass() {
+        let mut utxo_entry = UtxoEntryReference::simulated(15_795_564_323_475).as_ref().clone();
+        utxo_entry.script_public_key = ScriptPublicKey::from_vec(0, vec![3; 34]);
+        let utxo = UtxoEntryReference::from(utxo_entry);
+        let input = TransactionInput::new(utxo.outpoint(), None, 0, 0, 30, Some(utxo.clone()));
+        let outputs = vec![
+            TransactionOutput::new(
+                100_000_000,
+                ScriptPublicKey::from_vec(0, vec![1; 35]),
+                Some(CovenantBinding::new(0, Hash::from_u64_word(1))),
+            ),
+            TransactionOutput::new(15_795_460_313_475, ScriptPublicKey::from_vec(0, vec![2; 34]), None),
+        ];
+        let tx = Transaction::new(None, 1, vec![input], outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![0; 700], 0)
+            .expect("transaction construction should succeed");
+        let update_tx = tx.clone();
+        let tx_value = JsValue::from(tx);
+        let tx = tx_value.unchecked_ref::<TransactionT>();
+        let network_id = || JsValue::from_str(&NetworkId::new(NetworkType::Mainnet).to_string()).unchecked_into::<NetworkIdT>();
+
+        let mass = calculate_unsigned_transaction_mass(network_id(), tx, Some(1)).expect("mass calculation should succeed");
+        assert_eq!(mass, 40_000);
+
+        let fee = calculate_unsigned_transaction_fee(network_id(), tx, Some(1), Some(true))
+            .expect("fee calculation should not error")
+            .expect("tx should be within post-toccata mass limit");
+        assert_eq!(fee, 478_300);
+
+        assert!(update_unsigned_transaction_mass(network_id(), &update_tx, Some(1), Some(true)).expect("update should not error"));
+        assert_eq!(update_tx.get_storage_mass(), 40_000);
     }
 }
