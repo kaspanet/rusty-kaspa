@@ -7,7 +7,7 @@ use crate::utils::kaspa_to_sompi;
 use crate::utxo::UtxoEntryReference;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
-use kaspa_consensus_core::mass::{UtxoCell, transaction_estimated_serialized_size};
+use kaspa_consensus_core::mass::UtxoCell;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{ComputeCommit, CovenantBinding, Transaction};
 use kaspa_hashes::Hash;
@@ -173,13 +173,13 @@ fn validate(pt: &PendingTransaction) {
 
     let calc = MassCalculator::new(&pt.network_type().into());
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
-    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
-
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
-    let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or(u64::MAX);
-    let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
+    let masses = calc.calc_unsigned_consensus_transaction_masses(&tx, &utxo_entries, pt.minimum_signatures()).unwrap();
+    let storage_mass = masses.contextual.storage_mass;
+    let calculated_mass = calc.calc_standard_mass(&masses) + additional_mass;
 
     assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
+    assert_eq!(tx.storage_mass(), storage_mass, "transaction storage mass commitment does not match calculated storage mass");
 }
 
 fn expect<SOMPI>(pt: &PendingTransaction, expected: &Expected<SOMPI>)
@@ -203,17 +203,19 @@ where
     let calc = MassCalculator::new(&pt.network_type().into());
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
 
-    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
-
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
-    let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or(u64::MAX);
+    let masses = calc.calc_unsigned_consensus_transaction_masses(&tx, &utxo_entries, pt.minimum_signatures()).unwrap();
+    let storage_mass = masses.contextual.storage_mass;
     if DISPLAY_LOGS && storage_mass != 0 {
-        println!("calculated storage mass: {} calculated_compute_mass: {}", storage_mass, compute_mass,);
+        println!(
+            "calculated storage mass: {} calculated_compute_mass: {} calculated_transient_mass: {}",
+            storage_mass, masses.non_contextual.compute_mass, masses.non_contextual.transient_mass
+        );
     }
 
-    let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
-    // Minimum standard relay fee requires only compute mass.
-    let calculated_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass + additional_mass);
+    let calculated_mass = calc.calc_standard_mass(&masses) + additional_mass;
+    // Minimum standard relay fee is based on non-contextual relay mass.
+    let calculated_fees = calc.calc_minimum_relay_fee_with_additional_mass(&masses, additional_mass);
 
     if storage_mass != 0 {
         println!("PT outputs: {}", tx.outputs.len());
@@ -221,6 +223,7 @@ where
     }
 
     assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
+    assert_eq!(tx.storage_mass(), storage_mass, "transaction storage mass commitment does not match calculated storage mass");
 
     match expected.priority_fees {
         FeesExpected::Sender(priority_fees) => {
@@ -560,13 +563,12 @@ fn test_generator_large_payload_min_relay_fee() -> Result<()> {
         priority_fees: FeesExpected::sender(Kaspa(0.0)),
     });
 
-    const NORMALIZED_TRANSIENT_BYTE_FACTOR: u64 = 2;
-
     let pt = harness.accumulator.borrow().list[0].clone();
     let tx = pt.transaction();
     let calc = MassCalculator::new(&network_id.into());
-    let mempool_minimum_fee =
-        calc.calc_minimum_transaction_fee_from_mass(transaction_estimated_serialized_size(&tx) * NORMALIZED_TRANSIENT_BYTE_FACTOR);
+    let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
+    let masses = calc.calc_unsigned_consensus_transaction_masses(&tx, &utxo_entries, pt.minimum_signatures())?;
+    let mempool_minimum_fee = calc.calc_minimum_relay_fee(&masses);
     assert!(pt.fees() >= mempool_minimum_fee, "large payloads must cover the mempool transient fee floor");
 
     harness.finalize();
@@ -714,7 +716,7 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
         .fetch(&Expected {
             is_final: true,
             input_count: 2,
-            aggregate_input_value: Sompi(999_88657600),
+            aggregate_input_value: Sompi(999_88698800),
             output_count: 2,
             // priority_fees: FeesExpected::sender(Kaspa(5.0)),
             priority_fees: FeesExpected::sender(Kaspa(0.0)),
@@ -754,7 +756,7 @@ fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
     .fetch(&Expected {
         is_final: true,
         input_count: 2,
-        aggregate_input_value: Sompi(99_88657600),
+        aggregate_input_value: Sompi(99_88698800),
         output_count: 1,
         priority_fees: FeesExpected::receiver(Kaspa(5.0)),
     })
@@ -805,7 +807,7 @@ fn test_generator_inputs_1k_outputs_2_fees_exclude() -> Result<()> {
         .fetch(&Expected {
             is_final: true,
             input_count: 11,
-            aggregate_input_value: Sompi(9008_98189600),
+            aggregate_input_value: Sompi(9008_98601600),
             output_count: 2,
             priority_fees: FeesExpected::receiver(Kaspa(5.0)),
         })
@@ -882,7 +884,7 @@ fn test_generator_fan_out_1() -> Result<()> {
 }
 
 #[test]
-fn test_generator_rejects_output_covenant_binding() -> () {
+fn test_generator_rejects_output_covenant_binding() {
     let network_id = test_network_id();
     let covenant = CovenantBinding::new(0, Hash::from_u64_word(1));
     let output = PaymentOutput::with_covenant(output_address(network_id.into()), kaspa_to_sompi(10.0), covenant.into());

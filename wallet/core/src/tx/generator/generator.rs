@@ -67,6 +67,7 @@ use crate::tx::{
 use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
+use kaspa_consensus_core::mass::NonContextualMasses;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{ComputeCommit, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
@@ -225,8 +226,8 @@ struct Data {
     utxo_entry_references: Vec<UtxoEntryReference>,
     /// Addresses referenced by transaction inputs
     addresses: HashSet<Address>,
-    /// Aggregate transaction mass
-    aggregate_mass: u64,
+    /// Aggregate transaction non-contextual masses, inited with blank transaction
+    aggregate_non_contextual_masses: NonContextualMasses,
     /// Transaction fees based on the aggregate mass
     transaction_fees: u64,
     /// Aggregate value of all inputs
@@ -237,13 +238,13 @@ struct Data {
 
 impl Data {
     fn new(calc: &MassCalculator) -> Self {
-        let aggregate_mass = calc.blank_transaction_compute_mass();
+        let aggregate_non_contextual_masses = calc.blank_transaction_non_contextual_masses();
 
         Data {
             inputs: vec![],
             utxo_entry_references: vec![],
             addresses: HashSet::default(),
-            aggregate_mass,
+            aggregate_non_contextual_masses,
             transaction_fees: 0,
             aggregate_input_value: 0,
             change_output_value: None,
@@ -273,6 +274,8 @@ struct MassDisposition {
     /// This occurs when the change is dust or the change is below the fees
     /// produced by the storage mass.
     absorb_change_to_fees: bool,
+    // TODO(post-toccata): remove this field
+    pre_toccata_non_contextual_mass_exceeded: bool,
 }
 
 ///
@@ -303,14 +306,13 @@ struct Inner {
     minimum_signatures: u16,
     // change address
     change_address: Address,
-    // change_output: TransactionOutput,
-    standard_change_output_compute_mass: u64,
-    // signature mass per input
-    signature_mass_per_input: u64,
+    // non-contextual mass of a standard change output
+    standard_change_output_non_contextual_masses: NonContextualMasses,
     // fee rate
     fee_rate: Option<f64>,
-    // final transaction amount and fees
-    // `None` is used for sweep transactions
+    /// None means sweep all UTXOs to change address
+    ///
+    /// Some means user requested a payment destination
     final_transaction: Option<FinalTransaction>,
     // applies only to the final transaction
     final_transaction_priority_fee: Fees,
@@ -318,12 +320,10 @@ struct Inner {
     final_transaction_outputs: Vec<TransactionOutput>,
     // pre-calculated partial harmonic for user outputs (does not include change)
     final_transaction_outputs_harmonic: u64,
-    // mass of the final transaction
-    final_transaction_outputs_compute_mass: u64,
+    // non-contextual mass of the final transaction outputs and payload
+    final_transaction_non_contextual_masses: NonContextualMasses,
     // final transaction payload
     final_transaction_payload: Vec<u8>,
-    // final transaction payload mass
-    final_transaction_payload_mass: u64,
     // execution context
     context: Mutex<Context>,
     // @TODO(post-toccata): remove
@@ -344,16 +344,14 @@ impl std::fmt::Debug for Inner {
             .field("compute_commit", &self.compute_commit)
             .field("minimum_signatures", &self.minimum_signatures)
             .field("change_address", &self.change_address)
-            .field("standard_change_output_compute_mass", &self.standard_change_output_compute_mass)
-            .field("signature_mass_per_input", &self.signature_mass_per_input)
+            .field("standard_change_output_non_contextual_masses", &self.standard_change_output_non_contextual_masses)
             // .field("final_transaction", &self.final_transaction)
             .field("fee_rate", &self.fee_rate)
             .field("final_transaction_priority_fee", &self.final_transaction_priority_fee)
             .field("final_transaction_outputs", &self.final_transaction_outputs)
             .field("final_transaction_outputs_harmonic", &self.final_transaction_outputs_harmonic)
-            .field("final_transaction_outputs_compute_mass", &self.final_transaction_outputs_compute_mass)
+            .field("final_transaction_non_contextual_masses", &self.final_transaction_non_contextual_masses)
             .field("final_transaction_payload", &self.final_transaction_payload)
-            .field("final_transaction_payload_mass", &self.final_transaction_payload_mass)
             // .field("context", &self.context)
             .finish()
     }
@@ -445,23 +443,27 @@ impl Generator {
             return Err(Error::GeneratorChangeAddressNetworkTypeMismatch);
         }
 
-        let standard_change_output_mass = mass_calculator
-            .calc_compute_mass_for_client_transaction_output(&TransactionOutput::new(0, pay_to_address_script(&change_address)));
-        let signature_mass_per_input = mass_calculator.calc_compute_mass_for_signature(minimum_signatures);
-        let final_transaction_outputs_compute_mass =
-            mass_calculator.calc_compute_mass_for_client_transaction_outputs(&final_transaction_outputs);
+        let standard_change_output_non_contextual_masses = mass_calculator.calc_non_contextual_masses_for_client_transaction_output(
+            &TransactionOutput::new(0, pay_to_address_script(&change_address)),
+        );
+        let final_transaction_outputs_non_contextual_masses =
+            mass_calculator.calc_non_contextual_masses_for_client_transaction_outputs(&final_transaction_outputs);
         let final_transaction_payload = final_transaction_payload.unwrap_or_default();
-        let final_transaction_payload_mass = mass_calculator.calc_compute_mass_for_payload(final_transaction_payload.len());
+        let final_transaction_payload_non_contextual_masses =
+            mass_calculator.calc_non_contextual_masses_for_payload(final_transaction_payload.len());
+        let final_transaction_non_contextual_masses =
+            final_transaction_outputs_non_contextual_masses + final_transaction_payload_non_contextual_masses;
         let final_transaction_outputs_harmonic =
             mass_calculator.calc_storage_mass_output_harmonic(&final_transaction_outputs).ok_or(Error::MassCalculationError)?;
 
-        // reject transactions where the payload and outputs are more than 2/3rds of the maximum tx mass
         let final_transaction = final_transaction_amount.map(|amount| FinalTransaction {
             value_no_fees: amount,
             value_with_priority_fee: amount + final_transaction_priority_fee.additional(),
         });
 
-        let mass_sanity_check = standard_change_output_mass + final_transaction_outputs_compute_mass + final_transaction_payload_mass;
+        let mass_sanity_check_non_contextual_masses =
+            standard_change_output_non_contextual_masses + final_transaction_non_contextual_masses;
+        let mass_sanity_check = mass_calculator.calc_standard_non_contextual_mass(&mass_sanity_check_non_contextual_masses);
 
         let max_sanity_check_mass = if is_toccata_active {
             MAXIMUM_TRANSACTION_CRITERIA_MASS_SANITY_CHECK_POST_TOCCATA
@@ -469,6 +471,23 @@ impl Generator {
             MAXIMUM_TRANSACTION_CRITERIA_MASS_SANITY_CHECK_PRE_TOCCATA
         };
 
+        // check for old limit per dimensions
+        if !is_toccata_active {
+            if mass_sanity_check_non_contextual_masses.compute_mass > MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA {
+                return Err(Error::GeneratorTransactionOutputsAreTooHeavy {
+                    mass: mass_sanity_check_non_contextual_masses.compute_mass,
+                    kind: "compute mass",
+                });
+            }
+            if mass_sanity_check_non_contextual_masses.transient_mass > MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA {
+                return Err(Error::GeneratorTransactionOutputsAreTooHeavy {
+                    mass: mass_sanity_check_non_contextual_masses.transient_mass,
+                    kind: "transient mass",
+                });
+            }
+        }
+
+        // reject fixed outputs/payload that leave too little mass budget for inputs
         if mass_sanity_check > max_sanity_check_mass {
             return Err(Error::GeneratorTransactionOutputsAreTooHeavy { mass: mass_sanity_check, kind: "compute mass" });
         }
@@ -505,16 +524,14 @@ impl Generator {
             compute_commit,
             minimum_signatures,
             change_address,
-            standard_change_output_compute_mass: standard_change_output_mass,
-            signature_mass_per_input,
+            standard_change_output_non_contextual_masses,
             fee_rate,
             final_transaction,
             final_transaction_priority_fee,
             final_transaction_outputs,
             final_transaction_outputs_harmonic,
-            final_transaction_outputs_compute_mass,
+            final_transaction_non_contextual_masses,
             final_transaction_payload,
-            final_transaction_payload_mass,
             destination_utxo_context,
             is_toccata_active,
         };
@@ -679,17 +696,13 @@ impl Generator {
         self.context().utxo_stash.extend(into_iter);
     }
 
-    /// Calculate relay transaction mass for the current transaction `data`
+    /// Calculates fees for the current aggregate plus a standard change output
     #[inline(always)]
-    fn calc_relay_transaction_compute_mass(&self, data: &Data) -> u64 {
-        data.aggregate_mass + self.inner.standard_change_output_compute_mass
-    }
-
-    /// Calculate relay transaction fees for the current transaction `data`
-    #[inline(always)]
-    fn calc_relay_transaction_compute_fees(&self, data: &Data) -> u64 {
-        let compute_mass = self.calc_relay_transaction_compute_mass(data);
-        self.calc_compute_fees(compute_mass)
+    fn calc_relay_fees_with_standard_change_output(&self, data: &Data, additional_relay_mass: u64) -> u64 {
+        let non_contextual_masses = data.aggregate_non_contextual_masses + self.inner.standard_change_output_non_contextual_masses;
+        let relay_mass =
+            self.inner.mass_calculator.calc_standard_non_contextual_mass(&non_contextual_masses).saturating_add(additional_relay_mass);
+        self.calc_relay_fees_for_mass(relay_mass)
     }
 
     /// Returns the maximum standard transaction mass
@@ -702,20 +715,40 @@ impl Generator {
         }
     }
 
-    /// Calculates fees for compute-only contexts where transaction mass equals compute mass.
-    fn calc_compute_fees(&self, compute_mass: u64) -> u64 {
-        self.calc_transaction_fees(compute_mass, compute_mass)
+    #[inline(always)]
+    // @TODO(post-toccata): remove
+    fn exceeds_pre_toccata_raw_non_contextual_limit(&self, masses: &NonContextualMasses) -> bool {
+        !self.inner.is_toccata_active
+            && (masses.compute_mass > MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA
+                || masses.transient_mass > MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA)
     }
 
-    /// Calculates the required transaction fee from the mass dimensions.
-    /// - Mempool minimum relay policy prices compute mass.
-    /// - User-provided fee rate follows mempool prioritization by pricing full transaction mass including storage mass.
-    ///
-    /// Note: `compute_mass` is the wallet's minimum-relay mass proxy. It is mostly
-    /// compute mass, but its payload component is hardened to account for normalized
-    /// transient byte mass.
-    fn calc_transaction_fees(&self, compute_mass: u64, transaction_mass: u64) -> u64 {
-        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(compute_mass).max(self.calc_fee_rate(transaction_mass))
+    /// Calculates fees from an estimated non-contextual mass before a concrete transaction is built.
+    /// This is useful while deciding whether a candidate reaches a relay boundary.
+    /// Once concrete outputs are known, use `calc_transaction_fees_for_outputs`.
+    fn calc_relay_fees_for_mass(&self, relay_mass: u64) -> u64 {
+        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(relay_mass).max(self.calc_fee_rate(relay_mass))
+    }
+
+    /// Calculates fees after concrete outputs are selected and contextual storage mass is known.
+    fn calc_transaction_fees_for_outputs(
+        &self,
+        data: &Data,
+        outputs: Vec<TransactionOutput>,
+        payload: &[u8],
+        transaction_mass: u64,
+        additional_relay_mass: u64,
+    ) -> Result<u64> {
+        let tx = Transaction::new(self.inner.version, data.inputs.clone(), outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.to_vec());
+        let masses = self.inner.mass_calculator.calc_unsigned_consensus_transaction_masses(
+            &tx,
+            &data.utxo_entry_references,
+            self.inner.minimum_signatures,
+        )?;
+        let relay_fee = self.inner.mass_calculator.calc_minimum_relay_fee_with_additional_mass(&masses, additional_relay_mass);
+
+        // TODO(wallet-storage-mass-inconcistency): Price fee_rate from the exact mass calculated above
+        Ok(relay_fee.max(self.calc_fee_rate(transaction_mass)))
     }
 
     /// Main UTXO entry processing loop. This function sources UTXOs from [`Generator::get_utxo_entry()`] and
@@ -752,7 +785,10 @@ impl Generator {
             let utxo_entry_reference = if let Some(utxo_entry_reference) = self.get_utxo_entry(context, stage) {
                 utxo_entry_reference
             } else {
-                // UTXO sources are depleted
+                // no more UTXO to consume
+
+                // if user demanded a payment request, it cannot be fulfilled
+                // else, it's a change request, finish the compound
                 if let Some(final_transaction) = &self.inner.final_transaction {
                     // reject transaction
                     return Err(Error::InsufficientFunds {
@@ -760,11 +796,12 @@ impl Generator {
                         origin: "accumulator",
                     });
                 } else {
-                    // finish sweep processing
+                    // finish compound
                     return self.finish_relay_stage_processing(context, stage, data);
                 }
             };
 
+            // while aggregate succeed, it returns None. if it need to compound because an entry doesn't fit, it returns a Node.
             if let Some(node) = self.aggregate_utxo(context, calc, stage, &mut data, utxo_entry_reference) {
                 return Ok((node, data));
             }
@@ -772,7 +809,7 @@ impl Generator {
             if let Some(final_transaction) = &self.inner.final_transaction {
                 // try finish a stage or produce a final transaction with target value
                 // use basic condition checks to avoid unnecessary processing
-                if (data.aggregate_mass > max_tx_mass_boundary
+                if (calc.calc_standard_non_contextual_mass(&data.aggregate_non_contextual_masses) > max_tx_mass_boundary
                     || (self.inner.final_transaction_priority_fee.sender_pays()
                         && stage.aggregate_input_value >= final_transaction.value_with_priority_fee)
                     || (self.inner.final_transaction_priority_fee.receiver_pays()
@@ -809,62 +846,80 @@ impl Generator {
 
         let input = TransactionInput::new_with_mass(utxo.outpoint.clone().into(), vec![], 0, self.inner.compute_commit);
         let input_amount = utxo.amount();
-        let input_compute_mass = calc.calc_compute_mass_for_client_transaction_input(&input) + self.inner.signature_mass_per_input;
+        // input
+        let input_non_contextual_masses =
+            calc.calc_non_contextual_masses_for_client_transaction_input(&input, self.inner.version, self.inner.minimum_signatures);
+        // input + aggregated + change output
+        let candidate_relay_non_contextual_masses = data.aggregate_non_contextual_masses
+            + input_non_contextual_masses
+            + self.inner.standard_change_output_non_contextual_masses;
+
+        let candidate_relay_mass = calc
+            .calc_standard_non_contextual_mass(&candidate_relay_non_contextual_masses)
+            .saturating_add(self.inner.network_params.additional_compound_transaction_mass());
 
         let max_std_mass = self.maximum_standard_transaction_mass();
 
-        // NOTE: relay transactions have no storage mass
-        // mass threshold reached, yield transaction
-        if data.aggregate_mass
-            + input_compute_mass
-            + self.inner.standard_change_output_compute_mass
-            + self.inner.network_params.additional_compound_transaction_mass()
-            > max_std_mass
+        if candidate_relay_mass > max_std_mass
+            || self.exceeds_pre_toccata_raw_non_contextual_limit(&candidate_relay_non_contextual_masses)
         {
-            // note, we've used input for mass boundary calc and now abandon it
-            // while preserving the UTXO entry reference to be used in the next iteration
-
+            // we're full, stash the tested entry, prepare data, stage and context for a compound
             context.utxo_stash.push_back(utxo_entry_reference);
-            data.aggregate_mass +=
-                self.inner.standard_change_output_compute_mass + self.inner.network_params.additional_compound_transaction_mass();
-            data.transaction_fees = self.calc_relay_transaction_compute_fees(data);
+            data.transaction_fees = self
+                .calc_relay_fees_with_standard_change_output(data, self.inner.network_params.additional_compound_transaction_mass());
+            data.aggregate_non_contextual_masses += self.inner.standard_change_output_non_contextual_masses;
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
             Some(DataKind::Node)
         } else {
+            // entry fits, prepare the entry for inclusion in the aggregator
             context.aggregated_utxos += 1;
             stage.aggregate_input_value += input_amount;
             data.aggregate_input_value += input_amount;
-            data.aggregate_mass += input_compute_mass;
+            data.aggregate_non_contextual_masses += input_non_contextual_masses;
             data.utxo_entry_references.push(utxo_entry_reference.clone());
             data.inputs.push(input);
-            utxo.address.as_ref().map(|address| data.addresses.insert(address.clone()));
+            if let Some(address) = utxo.address.as_ref() {
+                data.addresses.insert(address.clone());
+            }
             None
         }
     }
 
-    /// Check current state and either 1) initiate a new stage or 2) finish stage accumulation processing
+    /// Resolves sweep/compound generation once no more source UTXOs are available.
+    ///
+    /// one of: drops the attempt when consolidation cannot operate (noop),
+    ///         closes an in-progress compound stage (edge),
+    ///         or emits the final compound transaction (final)
     fn finish_relay_stage_processing(&self, context: &mut Context, stage: &mut Stage, mut data: Data) -> Result<(DataKind, Data)> {
-        data.transaction_fees = self.calc_relay_transaction_compute_fees(&data);
-        stage.aggregate_fees += data.transaction_fees;
-        context.aggregate_fees += data.transaction_fees;
-
         if context.aggregated_utxos < 2 {
             Ok((DataKind::NoOp, data))
         } else if stage.number_of_transactions > 0 {
-            data.aggregate_mass += self.inner.standard_change_output_compute_mass;
-            // context.aggregate_mass += data.aggregate_mass;
+            data.transaction_fees = self
+                .calc_relay_fees_with_standard_change_output(&data, self.inner.network_params.additional_compound_transaction_mass());
+            stage.aggregate_fees += data.transaction_fees;
+            context.aggregate_fees += data.transaction_fees;
+            data.aggregate_non_contextual_masses += self.inner.standard_change_output_non_contextual_masses;
             Ok((DataKind::Edge, data))
-        } else if data.aggregate_input_value < data.transaction_fees {
-            Err(Error::InsufficientFunds { additional_needed: data.transaction_fees - data.aggregate_input_value, origin: "relay" })
         } else {
+            data.transaction_fees = self.calc_relay_fees_with_standard_change_output(&data, 0);
+            stage.aggregate_fees += data.transaction_fees;
+            context.aggregate_fees += data.transaction_fees;
+
+            if data.aggregate_input_value < data.transaction_fees {
+                return Err(Error::InsufficientFunds {
+                    additional_needed: data.transaction_fees - data.aggregate_input_value,
+                    origin: "relay",
+                });
+            }
+
             let change_output_value = data.aggregate_input_value - data.transaction_fees;
 
             if self.inner.mass_calculator.is_dust(change_output_value) {
                 // sweep transaction resulting in dust output
                 Ok((DataKind::NoOp, data))
             } else {
-                data.aggregate_mass += self.inner.standard_change_output_compute_mass;
+                data.aggregate_non_contextual_masses += self.inner.standard_change_output_non_contextual_masses;
                 data.change_output_value = Some(change_output_value);
                 Ok((DataKind::Final, data))
             }
@@ -875,6 +930,8 @@ impl Generator {
     /// and `output_harmonics` supplied by the user
     fn calc_storage_mass(&self, data: &Data, output_harmonics: u64) -> u64 {
         let calc = &self.inner.mass_calculator;
+        // TODO(wallet-storage-mass-inconcistency): Remove this helper from generator decisions. Once candidate
+        // outputs are known, calculate storage mass from the concrete outputs
         calc.calc_storage_mass(output_harmonics, data.aggregate_input_value, data.inputs.len() as u64)
     }
 
@@ -892,11 +949,16 @@ impl Generator {
         data: &mut Data,
         final_transaction: &FinalTransaction,
     ) -> Result<Option<DataKind>> {
-        let calc = &self.inner.mass_calculator;
-
         // calculate storage mass
-        let MassDisposition { transaction_mass, storage_mass, transaction_fees, absorb_change_to_fees } =
-            self.calculate_mass(stage, data, final_transaction.value_with_priority_fee)?;
+        // TODO(wallet-storage-mass-inconcistency): use exact candidate storage mass before
+        // deciding whether this candidate can be finalized or must close the stage as an edge
+        let MassDisposition {
+            transaction_mass,
+            storage_mass,
+            transaction_fees,
+            absorb_change_to_fees,
+            pre_toccata_non_contextual_mass_exceeded,
+        } = self.calculate_mass(stage, data, final_transaction.value_with_priority_fee)?;
 
         let total_stage_value_needed = if self.inner.final_transaction_priority_fee.sender_pays() {
             final_transaction.value_with_priority_fee + stage.aggregate_fees + transaction_fees
@@ -921,7 +983,7 @@ impl Generator {
         if reject {
             // need more value, reject finalization (try adding more inputs)
             Ok(None)
-        } else if transaction_mass > max_std_mass || stage.number_of_transactions > 0 {
+        } else if pre_toccata_non_contextual_mass_exceeded || transaction_mass > max_std_mass || stage.number_of_transactions > 0 {
             self.generate_edge_transaction(context, stage, data)
         } else {
             // ---
@@ -957,19 +1019,12 @@ impl Generator {
             };
 
             // checks output dust threshold in network params
+            // note: if it's final, we will generate_transaction, the real final mass will be calculated
+            //
+            //
             // if is_dust(&self.inner.network_params, change_output_value) {
             if absorb_change_to_fees || change_output_value == 0 {
                 transaction_fees += change_output_value;
-
-                // as we might absorb an input as a part of the receiver
-                // pays fee reduction, we should update the mass to make
-                // sure internal metrics and unit tests check out.
-                let compute_mass = data.aggregate_mass
-                    + self.inner.final_transaction_outputs_compute_mass
-                    + self.inner.final_transaction_payload_mass;
-                let storage_mass = self.calc_storage_mass(data, self.inner.final_transaction_outputs_harmonic);
-
-                data.aggregate_mass = calc.combine_mass(compute_mass, storage_mass);
 
                 data.transaction_fees = transaction_fees;
                 stage.aggregate_fees += transaction_fees;
@@ -977,7 +1032,6 @@ impl Generator {
 
                 Ok(Some(DataKind::Final))
             } else {
-                data.aggregate_mass = transaction_mass;
                 data.transaction_fees = transaction_fees;
                 stage.aggregate_fees += transaction_fees;
                 context.aggregate_fees += transaction_fees;
@@ -993,17 +1047,32 @@ impl Generator {
 
         let mut absorb_change_to_fees = false;
 
-        let compute_mass_no_change =
-            data.aggregate_mass + self.inner.final_transaction_outputs_compute_mass + self.inner.final_transaction_payload_mass;
-        let compute_mass_with_change = compute_mass_no_change + self.inner.standard_change_output_compute_mass;
+        let non_contextual_masses_no_change =
+            data.aggregate_non_contextual_masses + self.inner.final_transaction_non_contextual_masses;
+        let non_contextual_masses_with_change =
+            non_contextual_masses_no_change + self.inner.standard_change_output_non_contextual_masses;
+        let normalized_non_contextual_mass_with_change = calc.calc_standard_non_contextual_mass(&non_contextual_masses_with_change);
 
+        let mut selected_non_contextual_masses = non_contextual_masses_no_change;
+        let mut selected_outputs = self.inner.final_transaction_outputs.clone();
+        let mut selected_payload = self.inner.final_transaction_payload.as_slice();
+
+        let mut additional_relay_mass = 0;
+
+        // TODO(wallet-storage-mass-inconcistency): build the candidate outputs first and calculate exact storage mass
         let storage_mass = if stage.number_of_transactions > 0 {
             // calculate for edge transaction boundaries
             // we know that stage.number_of_transactions > 0 will trigger stage generation
-            let edge_compute_mass = data.aggregate_mass + self.inner.standard_change_output_compute_mass; //self.inner.final_transaction_outputs_compute_mass + self.inner.final_transaction_payload_mass;
-            let edge_fees = self.calc_compute_fees(edge_compute_mass);
+            let edge_non_contextual_masses =
+                data.aggregate_non_contextual_masses + self.inner.standard_change_output_non_contextual_masses;
+            additional_relay_mass = self.inner.network_params.additional_compound_transaction_mass();
+            let edge_mass = calc.calc_standard_non_contextual_mass(&edge_non_contextual_masses).saturating_add(additional_relay_mass);
+            let edge_fees = self.calc_relay_fees_for_mass(edge_mass);
             let edge_output_value = data.aggregate_input_value.saturating_sub(edge_fees);
             if edge_output_value != 0 {
+                selected_outputs = vec![TransactionOutput::new(edge_output_value, pay_to_address_script(&self.inner.change_address))];
+                selected_payload = &[];
+                selected_non_contextual_masses = edge_non_contextual_masses;
                 let edge_output_harmonic = calc.calc_storage_mass_output_harmonic_single(edge_output_value);
                 self.calc_storage_mass(data, edge_output_harmonic)
             } else {
@@ -1020,6 +1089,8 @@ impl Generator {
                 absorb_change_to_fees = true;
                 self.calc_storage_mass(data, self.inner.final_transaction_outputs_harmonic)
             } else {
+                let mut outputs_with_change = self.inner.final_transaction_outputs.clone();
+                outputs_with_change.push(TransactionOutput::new(change_value, pay_to_address_script(&self.inner.change_address)));
                 let output_harmonic_with_change =
                     calc.calc_storage_mass_output_harmonic_single(change_value) + self.inner.final_transaction_outputs_harmonic;
                 let storage_mass_with_change = self.calc_storage_mass(data, output_harmonic_with_change);
@@ -1027,27 +1098,45 @@ impl Generator {
                 // TODO - review and potentially simplify:
                 // this profiles the storage mass with change and without change
                 // and decides which one to use based on the fees
-                if storage_mass_with_change == 0 || (storage_mass_with_change < compute_mass_with_change) {
+                if storage_mass_with_change == 0 || (storage_mass_with_change < normalized_non_contextual_mass_with_change) {
+                    selected_outputs = outputs_with_change;
+                    selected_non_contextual_masses = non_contextual_masses_with_change;
                     0
                 } else {
                     let storage_mass_no_change = self.calc_storage_mass(data, self.inner.final_transaction_outputs_harmonic);
                     if storage_mass_with_change < storage_mass_no_change {
+                        selected_outputs = outputs_with_change;
+                        selected_non_contextual_masses = non_contextual_masses_with_change;
                         storage_mass_with_change
                     } else {
-                        let fees_with_change = self.calc_transaction_fees(
-                            compute_mass_with_change,
-                            calc.combine_mass(compute_mass_with_change, storage_mass_with_change),
+                        let transaction_mass_with_change =
+                            calc.calc_standard_mass_for_parts(&non_contextual_masses_with_change, storage_mass_with_change);
+                        let transaction_mass_no_change =
+                            calc.calc_standard_mass_for_parts(&non_contextual_masses_no_change, storage_mass_no_change);
+                        let fees_with_change = self.calc_transaction_fees_for_outputs(
+                            data,
+                            outputs_with_change.clone(),
+                            &self.inner.final_transaction_payload,
+                            transaction_mass_with_change,
+                            0,
                         );
-                        let fees_no_change = self.calc_transaction_fees(
-                            compute_mass_no_change,
-                            calc.combine_mass(compute_mass_no_change, storage_mass_no_change),
+                        let fees_no_change = self.calc_transaction_fees_for_outputs(
+                            data,
+                            self.inner.final_transaction_outputs.clone(),
+                            &self.inner.final_transaction_payload,
+                            transaction_mass_no_change,
+                            0,
                         );
+                        let fees_with_change = fees_with_change?;
+                        let fees_no_change = fees_no_change?;
                         let difference = fees_with_change.saturating_sub(fees_no_change);
 
                         if difference > change_value {
                             absorb_change_to_fees = true;
                             storage_mass_no_change
                         } else {
+                            selected_outputs = outputs_with_change;
+                            selected_non_contextual_masses = non_contextual_masses_with_change;
                             storage_mass_with_change
                         }
                     }
@@ -1060,11 +1149,28 @@ impl Generator {
         if storage_mass > max_std_mass {
             Err(Error::StorageMassExceedsMaximumTransactionMass { storage_mass })
         } else {
-            let compute_mass = if absorb_change_to_fees { compute_mass_no_change } else { compute_mass_with_change };
-            let transaction_mass = calc.combine_mass(compute_mass, storage_mass);
-            let transaction_fees = self.calc_transaction_fees(compute_mass, transaction_mass);
+            if absorb_change_to_fees {
+                selected_non_contextual_masses = non_contextual_masses_no_change;
+            }
+            let transaction_mass =
+                calc.calc_standard_mass_for_parts(&selected_non_contextual_masses, storage_mass).saturating_add(additional_relay_mass);
+            let pre_toccata_non_contextual_mass_exceeded =
+                self.exceeds_pre_toccata_raw_non_contextual_limit(&selected_non_contextual_masses);
+            let transaction_fees = self.calc_transaction_fees_for_outputs(
+                data,
+                selected_outputs,
+                selected_payload,
+                transaction_mass,
+                additional_relay_mass,
+            )?;
 
-            Ok(MassDisposition { transaction_mass, transaction_fees, storage_mass, absorb_change_to_fees })
+            Ok(MassDisposition {
+                transaction_mass,
+                transaction_fees,
+                storage_mass,
+                absorb_change_to_fees,
+                pre_toccata_non_contextual_mass_exceeded,
+            })
         }
     }
 
@@ -1073,21 +1179,23 @@ impl Generator {
     fn generate_edge_transaction(&self, context: &mut Context, stage: &mut Stage, data: &mut Data) -> Result<Option<DataKind>> {
         let calc = &self.inner.mass_calculator;
 
-        let compute_mass = data.aggregate_mass
-            + self.inner.standard_change_output_compute_mass
-            + self.inner.network_params.additional_compound_transaction_mass();
-        // let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass) + self.calc_fee_rate(compute_mass);
-        let compute_fees = self.calc_compute_fees(compute_mass);
+        let edge_non_contextual_masses =
+            data.aggregate_non_contextual_masses + self.inner.standard_change_output_non_contextual_masses;
+        let additional_relay_mass = self.inner.network_params.additional_compound_transaction_mass();
+        let edge_relay_mass =
+            calc.calc_standard_non_contextual_mass(&edge_non_contextual_masses).saturating_add(additional_relay_mass);
+        let edge_fees = self.calc_relay_fees_for_mass(edge_relay_mass);
+        let edge_output_value = data.aggregate_input_value.saturating_sub(edge_fees);
 
-        // TODO - consider removing this as calculated storage mass should produce `0` value
-        let edge_output_harmonic =
-            calc.calc_storage_mass_output_harmonic_single(data.aggregate_input_value.saturating_sub(compute_fees));
+        // TODO(wallet-storage-mass-inconcistency): Calculate this edge mass from the concrete edge output or consider removing this as calculated storage mass should produce `0` value
+        let edge_output_harmonic = calc.calc_storage_mass_output_harmonic_single(edge_output_value);
         let storage_mass = self.calc_storage_mass(data, edge_output_harmonic);
-        let transaction_mass = calc.combine_mass(compute_mass, storage_mass);
+        let transaction_mass =
+            calc.calc_standard_mass_for_parts(&edge_non_contextual_masses, storage_mass).saturating_add(additional_relay_mass);
 
         let max_std_mass = self.maximum_standard_transaction_mass();
 
-        if transaction_mass > max_std_mass {
+        if transaction_mass > max_std_mass || self.exceeds_pre_toccata_raw_non_contextual_limit(&edge_non_contextual_masses) {
             // transaction mass is too high... if we have additional
             // UTXOs, reject and try to accumulate more inputs...
             if self.has_utxo_entries(context, stage) {
@@ -1097,8 +1205,13 @@ impl Generator {
                 Err(Error::GeneratorTransactionIsTooHeavy)
             }
         } else {
-            data.aggregate_mass = transaction_mass;
-            data.transaction_fees = self.calc_transaction_fees(compute_mass, transaction_mass);
+            data.transaction_fees = self.calc_transaction_fees_for_outputs(
+                data,
+                vec![TransactionOutput::new(edge_output_value, pay_to_address_script(&self.inner.change_address))],
+                &[],
+                transaction_mass,
+                additional_relay_mass,
+            )?;
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
             Ok(Some(DataKind::Edge))
@@ -1145,7 +1258,6 @@ impl Generator {
                     addresses,
                     aggregate_input_value,
                     change_output_value,
-                    aggregate_mass: _,
                     transaction_fees,
                     ..
                 } = data;
@@ -1191,16 +1303,17 @@ impl Generator {
                     self.inner.final_transaction_payload.clone(),
                 );
 
-                let transaction_mass = self.inner.mass_calculator.calc_overall_mass_for_unsigned_consensus_transaction(
+                let masses = self.inner.mass_calculator.calc_unsigned_consensus_transaction_masses(
                     &tx,
                     &utxo_entry_references,
                     self.inner.minimum_signatures,
                 )?;
-                if transaction_mass > max_std_mass {
+                let transaction_mass = self.inner.mass_calculator.calc_standard_mass(&masses);
+                if transaction_mass > max_std_mass || self.exceeds_pre_toccata_raw_non_contextual_limit(&masses.non_contextual) {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
                 }
-                tx.set_storage_mass(transaction_mass);
+                tx.set_storage_mass(masses.contextual.storage_mass);
 
                 context.aggregate_mass += transaction_mass;
                 context.final_transaction_id = Some(tx.id());
@@ -1230,7 +1343,6 @@ impl Generator {
                     utxo_entry_references,
                     addresses,
                     aggregate_input_value,
-                    aggregate_mass: _,
                     transaction_fees,
                     change_output_value,
                     ..
@@ -1248,17 +1360,18 @@ impl Generator {
                 let output = TransactionOutput::new(output_value, script_public_key.clone());
                 let tx = Transaction::new(self.inner.version, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
-                let mut transaction_mass = self.inner.mass_calculator.calc_overall_mass_for_unsigned_consensus_transaction(
+                let masses = self.inner.mass_calculator.calc_unsigned_consensus_transaction_masses(
                     &tx,
                     &utxo_entry_references,
                     self.inner.minimum_signatures,
                 )?;
+                let mut transaction_mass = self.inner.mass_calculator.calc_standard_mass(&masses);
                 transaction_mass = transaction_mass.saturating_add(self.inner.network_params.additional_compound_transaction_mass());
-                if transaction_mass > max_std_mass {
+                if transaction_mass > max_std_mass || self.exceeds_pre_toccata_raw_non_contextual_limit(&masses.non_contextual) {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
                 }
-                tx.set_storage_mass(transaction_mass);
+                tx.set_storage_mass(masses.contextual.storage_mass);
 
                 context.aggregate_mass += transaction_mass;
                 context.number_of_transactions += 1;
