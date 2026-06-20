@@ -119,6 +119,7 @@ cfg_if! {
             AccountSelection = "account-selection",
             AccountCreate = "account-create",
             AccountUpdate = "account-update",
+            AccountRemove = "account-remove",
             ServerStatus = "server-status",
             UtxoProcStart = "utxo-proc-start",
             UtxoProcStop = "utxo-proc-stop",
@@ -156,6 +157,7 @@ cfg_if! {
             "account-selection": IAccountSelectionEvent,
             "account-create": IAccountCreateEvent,
             "account-update": IAccountUpdateEvent,
+            "account-remove": IAccountRemoveEvent,
             "server-status": IServerStatusEvent,
             "utxo-proc-start": undefined,
             "utxo-proc-stop": undefined,
@@ -469,6 +471,21 @@ declare! {
      */
     export interface IAccountUpdateEvent {
         accountDescriptor : IAccountDescriptor;
+    }
+    "#,
+}
+
+#[cfg(feature = "wasm32-sdk")]
+declare! {
+    IAccountRemoveEvent,
+    r#"
+    /**
+     * Emitted by {@link Wallet} when an account has been removed.
+     *
+     * @category Wallet Events
+     */
+    export interface IAccountRemoveEvent {
+        id : HexString;
     }
     "#,
 }
