@@ -163,9 +163,6 @@ pub fn append_r0_groth16_verifier(builder: &mut ScriptBuilder, image_id: [u8; 32
 /// Pre-stack:  `[..., compressed_proof]`
 /// Post-stack: `[..., true]`
 ///
-/// Internally const-pushes `journal_hash` underneath the proof (via `OpSwap`)
-/// and then delegates to [`append_r0_groth16_verifier`], so the spender only
-/// has to supply the proof witness.
 pub fn append_r0_groth16_verifier_with_fixed_journal(
     builder: &mut ScriptBuilder,
     image_id: [u8; 32],
