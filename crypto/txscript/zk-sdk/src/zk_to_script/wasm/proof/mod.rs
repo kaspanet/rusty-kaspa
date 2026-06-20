@@ -10,7 +10,6 @@ use wasm_bindgen::prelude::wasm_bindgen;
 /// `sigScript` is the spending script — set this on the transaction input.
 /// `redeemScript` is the inner commit script — hash this with
 /// `pay_to_script_hash_script` to derive the P2SH script-public-key.
-/// @category Consensus
 #[wasm_bindgen(inspectable)]
 pub struct FinalizedR0Script {
     sig_script: Vec<u8>,
