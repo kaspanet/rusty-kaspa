@@ -37,9 +37,9 @@ async function groth16VerifyNoBuilder() {
 
     console.log(`Verifying Groth16 proof with:`);
 
-    console.log(`  - Verifying key: ${unpreparedVk.length} bytes`);
-    console.log(`  - Proof: ${proof.length} bytes`);
-    console.log(`  - Public inputs: ${numInputs} field elements`);
+    console.log(`Verifying key: ${unpreparedVk.length} bytes`);
+    console.log(`Proof: ${proof.length} bytes`);
+    console.log(`Public inputs: ${numInputs} field elements`);
 
     const rpc = new RpcClient({
         url: RPC_URL,

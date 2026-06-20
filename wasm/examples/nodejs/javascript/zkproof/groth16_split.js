@@ -94,12 +94,12 @@ async function groth16VerifySplit() {
 
     // Build both halves up front. In a real deployment the redeem script is
     // built when locking the funds and the signature script much later, when a
-    // proof exists — possibly by entirely separate software.
+    // proof exists, possibly by entirely separate software.
     const redeemScript = buildRedeemScript();
     const signatureScript = buildSignatureScript(redeemScript);
     const lockingScript = payToScriptHashScript(redeemScript);
 
-    console.log('--- Groth16 split flow ---');
+    console.log('Groth16 split flow ---');
     console.log(`Redeem (verifier) script: ${redeemScript}`);
     console.log(`Signature (witness) script length: ${Buffer.from(signatureScript, 'hex').length} bytes`);
 
@@ -137,7 +137,7 @@ async function groth16VerifySplit() {
         }
         console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
-        // --- Commit transaction: fund the P2SH address ---
+        // Commit transaction: fund the P2SH address
         const utxoToSpend = matureUtxos[0];
         const commitAmount = utxoToSpend.amount - 163500n;
 
@@ -159,7 +159,7 @@ async function groth16VerifySplit() {
         console.log('Waiting for commit transaction to be accepted...');
         await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // --- Redeem transaction: unlock with the split-built signature script ---
+        // Redeem transaction: unlock with the split-built signature script
         const p2shUtxoEntry = {
             address: p2shAddress,
             outpoint: { transactionId: commitTxId, index: 0 },

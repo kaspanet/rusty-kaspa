@@ -69,7 +69,7 @@ async function succinctVerify() {
 
         // Create COMMIT transaction
         const utxoToSpend = matureUtxos[0];
-        const commitAmount = utxoToSpend.amount - 10000n;
+        const commitAmount = utxoToSpend.amount - 163500n;
 
         const utxoEntries = [{
             address: sourceAddress,
@@ -130,7 +130,7 @@ async function succinctVerify() {
             [p2shUtxoEntry],
             [{
                 address: sourceAddress,
-                amount: commitAmount - 473634n
+                amount: commitAmount - 47363400n
             }],
             0n,
             '',

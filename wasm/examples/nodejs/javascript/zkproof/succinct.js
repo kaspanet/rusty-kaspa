@@ -14,7 +14,7 @@ const PRIVATE_KEY = 'b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da86714159
 // ZK Proof configuration
 const ZK_VERIFIER_TAG = 0x21; // R0Succinct
 
-// Data files - matches the stack layout expected by R0SuccinctPrecompile::verify_zk
+// Data files matches the stack layout expected by R0SuccinctPrecompile::verify_zk
 // Stack (bottom to top): seal, claim, hashfn, control_index, control_digests, journal, image_id, tag
 const SEAL_FILE = './succinct.seal.hex';
 const CLAIM_FILE = './succinct.claim.hex';

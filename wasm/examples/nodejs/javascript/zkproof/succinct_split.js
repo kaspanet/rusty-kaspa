@@ -23,12 +23,10 @@ const { PrivateKey, RpcClient,
 const fs = require('fs');
 const path = require('path');
 
-// --- Configuration ---
 const NETWORK_ID = 'devnet';
 const RPC_URL = 'ws://127.0.0.1:17610';
 const PRIVATE_KEY = 'b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f';
 
-// --- ZK fixtures (same program/proof as succinct_builder.js) ---
 const IMAGE_ID = '1ade4c062dee368276ef6610bd7de59d9b63c7ebe87d8d75a63c0e288895cb7d';
 const CONTROL_ID = '1ca3ca03030719064ba61b3125bdd326fc57f74e799ef860bdea6f3227381e16';
 const JOURNAL = '5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456';
@@ -41,9 +39,7 @@ const SUCCINCT_RECEIPT = fs.readFileSync(path.join(__dirname, 'builder_data', 's
 
 const FLAGS = { flags: { covenantsEnabled: true } };
 
-// ---------------------------------------------------------------------------
 // Covenant-author side — the verifier fragment (redeem script).
-// ---------------------------------------------------------------------------
 
 // Dynamic journal: supplied at spend time by the signature script.
 // `appendR0SuccinctVerifier` embeds the image id, control id, hash function id
@@ -64,10 +60,8 @@ function buildFixedJournalRedeemScript() {
     return builder.drain();
 }
 
-// ---------------------------------------------------------------------------
-// Spender / tx-builder side — the witness push (signature script).
+// Spender / tx-builder side, the witness push (signature script).
 // A P2SH signature script must be push-only; both helpers below are.
-// ---------------------------------------------------------------------------
 
 // Dynamic journal: `pushR0SuccinctWitness` pushes the four receipt-derived
 // items (claim, control_index, control_digests, seal). The caller owns the
@@ -102,7 +96,6 @@ async function succinctVerifySplit() {
     const signatureScript = buildSignatureScript(redeemScript);
     const lockingScript = payToScriptHashScript(redeemScript);
 
-    console.log('--- Succinct split flow ---');
     console.log(`Redeem (verifier) script: ${redeemScript}`);
     console.log(`Signature (witness) script length: ${Buffer.from(signatureScript, 'hex').length} bytes`);
 
@@ -140,7 +133,7 @@ async function succinctVerifySplit() {
         }
         console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
-        // --- Commit transaction: fund the P2SH address ---
+        // Commit transaction: fund the P2SH address
         const utxoToSpend = matureUtxos[0];
         const commitAmount = utxoToSpend.amount - 163500n;
 
@@ -162,7 +155,7 @@ async function succinctVerifySplit() {
         console.log('Waiting for commit transaction to be accepted...');
         await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // --- Redeem transaction: unlock with the split-built signature script ---
+        // Redeem transaction: unlock with the split-built signature script
         const p2shUtxoEntry = {
             address: p2shAddress,
             outpoint: { transactionId: commitTxId, index: 0 },
