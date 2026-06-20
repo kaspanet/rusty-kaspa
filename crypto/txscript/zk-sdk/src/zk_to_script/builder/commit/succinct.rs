@@ -10,7 +10,7 @@ use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 impl R0ScriptBuilder<UnboundedR0Script> {
     /// Commits to the succinct proof system; the locking script will expect a
     /// successful verification of a succinct proof from the specified image id,
-    /// control id and hash function. 
+    /// control id and hash function.
     pub fn commit_to_succinct(
         mut self,
         image_id: [u8; 32],

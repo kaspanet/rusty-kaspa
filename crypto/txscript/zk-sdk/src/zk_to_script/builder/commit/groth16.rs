@@ -8,14 +8,14 @@ use crate::zk_to_script::{
 
 impl R0ScriptBuilder<UnboundedR0Script> {
     /// Commit the script to unlocking only from a valid groth16 proof from a
-    /// specified image id as public input. 
+    /// specified image id as public input.
     pub fn commit_to_groth16(mut self, image_id: [u8; 32]) -> Result<R0ScriptBuilder<BoundedR0Groth16Script>> {
         append_r0_groth16_verifier(&mut self.builder, image_id)?;
         Ok(R0ScriptBuilder { builder: self.builder, _state: PhantomData })
     }
 
     /// Commit the script to unlocking only from a valid groth16 proof for the
-    /// given image id *and* a fixed `journal_hash` baked into the script 
+    /// given image id *and* a fixed `journal_hash` baked into the script
     pub fn commit_to_groth16_with_fixed_journal(
         mut self,
         image_id: [u8; 32],

@@ -1,6 +1,6 @@
-use ark_bn254::Bn254;
+use ark_bn254::{Bn254, G1Affine};
 use ark_groth16::Proof;
-use ark_serialize::CanonicalDeserialize;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use kaspa_consensus_core::{
     hashing::sighash::SigHashReusedValuesUnsync,
     subnets::SubnetworkId,
@@ -57,7 +57,6 @@ fn load_succinct_fixture() -> (Digest, Digest, SuccinctReceipt<ReceiptClaim>) {
         borsh::from_slice(&hex::decode(include_str!("data/zk_builder_tests/succinct.rcpt.hex")).unwrap()).unwrap();
     (image_id, journal, receipt)
 }
-
 
 #[test]
 fn r0_script_builder_groth16_verifies() {
@@ -117,6 +116,61 @@ fn r0_script_builder_groth16_fixed_journal_verifies() {
 }
 
 #[test]
+fn r0_script_builder_succinct_fixed_journal_verifies() {
+    let (image_id, journal, receipt) = load_succinct_fixture();
+    let image_id_bytes: [u8; 32] = image_id.as_bytes().try_into().unwrap();
+    let control_id: [u8; 32] = receipt.control_id.as_bytes().try_into().unwrap();
+    let journal_bytes: [u8; 32] = journal.as_bytes().try_into().unwrap();
+    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+        .commit_to_succinct_with_fixed_journal(image_id_bytes, control_id, None, journal_bytes)
+        .unwrap()
+        .finalize_with_proof(receipt)
+        .unwrap();
+    execute_p2sh(finalized.sig_script, &finalized.redeem_script).unwrap();
+}
+
+#[test]
+fn r0_script_builder_groth16_rejects_tampered_proof() {
+    let flags = zk_test_flags();
+    let (journal_hash, image_id, receipt) = load_groth_fixture();
+
+    // Start from the valid compressed proof, then replace one group element with
+    // a different (still on-curve) point: structurally valid, cryptographically wrong.
+    let proof_bytes = prepare_r0_groth16_proof(&receipt).unwrap();
+    let mut proof = Proof::<Bn254>::deserialize_compressed(proof_bytes.as_slice()).unwrap();
+    proof.a = G1Affine::default();
+    let mut tampered_proof = Vec::new();
+    proof.serialize_compressed(&mut tampered_proof).unwrap();
+    assert_ne!(tampered_proof, proof_bytes, "tamper must actually change the proof");
+
+    // Verifier (redeem) is built normally; the signature script carries the tampered proof.
+    let mut redeem_builder = R0ScriptBuilder::with_flags(flags);
+    redeem_builder.append_r0_groth16_verifier(image_id).unwrap();
+    let redeem_script = redeem_builder.drain();
+
+    let mut sig_builder = R0ScriptBuilder::with_flags(flags);
+    sig_builder.add_data(&journal_hash).unwrap();
+    sig_builder.add_data(&tampered_proof).unwrap();
+    sig_builder.add_data(&redeem_script).unwrap();
+    let sig_script = sig_builder.drain();
+
+    assert!(matches!(execute_p2sh(sig_script, &redeem_script), Err(TxScriptError::ZkIntegrity(_))));
+}
+
+#[test]
+fn r0_script_builder_succinct_rejects_tampered_proof() {
+    let (image_id, journal, mut receipt) = load_succinct_fixture();
+    receipt.seal[0] ^= 1; // flip a single bit in the STARK seal
+
+    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+        .commit_to_succinct(image_id.as_bytes().try_into().unwrap(), receipt.control_id.as_bytes().try_into().unwrap(), None)
+        .unwrap()
+        .finalize_with_proof(receipt, journal)
+        .unwrap();
+    assert!(matches!(execute_p2sh(finalized.sig_script, &finalized.redeem_script), Err(TxScriptError::ZkIntegrity(_))));
+}
+
+#[test]
 fn fragments_groth16_roundtrip_matches_facade() {
     let flags = zk_test_flags();
     let (journal_hash, image_id, receipt) = load_groth_fixture();
@@ -126,7 +180,7 @@ fn fragments_groth16_roundtrip_matches_facade() {
     redeem_builder.append_r0_groth16_verifier(image_id).unwrap();
     let redeem_script = redeem_builder.drain();
 
-    // Signature script: caller pushes journal_hash, then the proof witness (push-only), then redeem.
+    // Signature script: caller pushes journal_hash, then the proof witness, then redeem.
     let mut sig_builder = R0ScriptBuilder::with_flags(flags);
     sig_builder.add_data(&journal_hash).unwrap();
     sig_builder.push_r0_groth16_witness(receipt).unwrap();
@@ -192,7 +246,7 @@ fn fragments_succinct_roundtrip_matches_facade() {
     redeem_builder.append_r0_succinct_verifier(image_id_bytes, control_id, None).unwrap();
     let redeem_script = redeem_builder.drain();
 
-    // Signature script: receipt witness items (push-only), then journal on top, then redeem.
+    // Signature script: receipt witness items, then journal on top, then redeem.
     let mut sig_builder = R0ScriptBuilder::with_flags(flags);
     sig_builder.push_r0_succinct_witness(receipt).unwrap();
     sig_builder.add_data(journal.as_bytes()).unwrap();
