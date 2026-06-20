@@ -38,9 +38,7 @@ const GROTH16_RECEIPT = fs.readFileSync(path.join(__dirname, 'builder_data', 'gr
 
 const FLAGS = { flags: { covenantsEnabled: true } };
 
-// ---------------------------------------------------------------------------
 // Covenant-author side — the verifier fragment (redeem script).
-// ---------------------------------------------------------------------------
 
 // Dynamic journal: the journal hash is supplied at spend time by the signature
 // script. `appendR0Groth16Verifier` embeds the image id, the fixed r0 groth16
@@ -61,12 +59,10 @@ function buildFixedJournalRedeemScript() {
     return builder.drain();
 }
 
-// ---------------------------------------------------------------------------
 // Spender / tx-builder side — the witness push (signature script).
 // A P2SH signature script must be push-only; both helpers below are.
-// ---------------------------------------------------------------------------
 
-// Dynamic journal: the caller owns the journal hash, so it is pushed FIRST —
+// Dynamic journal: the caller owns the journal hash, so it is pushed
 // for groth16 it must sit *under* the proof. `pushR0Groth16Witness` then maps
 // the receipt to the compressed proof and pushes it on top. Finally the redeem
 // script itself is pushed so the P2SH engine can execute it.
