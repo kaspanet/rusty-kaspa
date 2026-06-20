@@ -15,8 +15,7 @@ impl R0ScriptBuilder<UnboundedR0Script> {
     }
 
     /// Commit the script to unlocking only from a valid groth16 proof for the
-    /// given image id *and* a fixed `journal_hash` baked into the script (the
-    /// one-time covenant case).
+    /// given image id *and* a fixed `journal_hash` baked into the script 
     pub fn commit_to_groth16_with_fixed_journal(
         mut self,
         image_id: [u8; 32],
