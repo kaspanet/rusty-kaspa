@@ -101,7 +101,7 @@ See the pool/stratum operator and miner checklists in [Required changes](#requir
 - `mergingChainBlockHash`: populated once the block has known merge context.
 - `rewardAmount`: populated only when `blockColor` is `BLUE`.
 
-Use this endpoint when you need to determine the reward attributable to a mined block after it is merged. If `blockColor` is `UNKNOWN`, the node does not yet have enough merge context for that block. If `blockColor` is `RED`, no `rewardAmount` is returned.
+Use this endpoint when you need to determine the reward attributable to a mined block after it is merged.
 
 ## Test Against Testnet-10 Before Activation
 
