@@ -5,7 +5,7 @@ mod proof;
 pub use fragments::{R0SuccinctWitnessParts, prepare_r0_groth16_proof_wasm, prepare_r0_succinct_witness_wasm};
 
 use crate::zk_to_script::{
-    BoundedR0Groth16Script, BoundedR0SuccinctScript, R0ScriptBuilder as NativeR0ScriptBuilder, UnboundedR0Script,
+    BoundedR0Groth16Script, BoundedR0SuccinctScript, UnboundedR0Script, ZkScriptBuilder as NativeZkScriptBuilder,
 };
 use kaspa_txscript::EngineFlags;
 use kaspa_txscript::error::Error;
@@ -19,9 +19,9 @@ use wasm_bindgen::prelude::wasm_bindgen;
 /// transient sentinel held while ownership of the inner native builder is
 /// being moved across a state transition.
 pub(super) enum InnerState {
-    Unbounded(NativeR0ScriptBuilder<UnboundedR0Script>),
-    BoundedGroth16(NativeR0ScriptBuilder<BoundedR0Groth16Script>),
-    BoundedSuccinct(NativeR0ScriptBuilder<BoundedR0SuccinctScript>),
+    Unbounded(NativeZkScriptBuilder<UnboundedR0Script>),
+    BoundedGroth16(NativeZkScriptBuilder<BoundedR0Groth16Script>),
+    BoundedSuccinct(NativeZkScriptBuilder<BoundedR0SuccinctScript>),
     Taken,
 }
 
@@ -58,43 +58,44 @@ pub(super) fn into_array_32(bytes: Vec<u8>, name: &'static str) -> Result<[u8; 3
     bytes.as_slice().try_into().map_err(|_| Error::custom(format!("{name} must be 32 bytes")))
 }
 
-/// R0ScriptBuilder provides a staged builder for RISC0 zk-to-script locking
+/// ZkScriptBuilder provides a staged builder for RISC0 zk-to-script locking
 /// scripts. It enforces its state machine at runtime, since WASM cannot
 /// express the native compile-time type-state transitions.
 ///
 /// Flow:
-///   1. `new()` — unbounded.
+///   1. `newR0()` — unbounded.
 ///   2. `commitToGroth16(imageId)` *or* `commitToSuccinct(imageId, controlId, hashFnId?)` — bounded.
 ///   3. `finalizeWithGroth16Proof(receipt, journalHash)` *or* `finalizeWithSuccinctProof(receipt, journal)` — finalized hex bytes.
 ///
 /// Calling a method in the wrong state returns an error.
 #[wasm_bindgen(inspectable)]
-pub struct R0ScriptBuilder {
+pub struct ZkScriptBuilder {
     pub(super) inner: InnerState,
 }
 
-impl Default for R0ScriptBuilder {
+impl Default for ZkScriptBuilder {
     fn default() -> Self {
-        Self { inner: InnerState::Unbounded(NativeR0ScriptBuilder::new()) }
+        Self { inner: InnerState::Unbounded(NativeZkScriptBuilder::new_r0()) }
     }
 }
 
-impl R0ScriptBuilder {
+impl ZkScriptBuilder {
     pub(super) fn take(&mut self) -> InnerState {
         std::mem::replace(&mut self.inner, InnerState::Taken)
     }
 }
 
 #[wasm_bindgen]
-impl R0ScriptBuilder {
-    /// Constructs a new R0ScriptBuilder. Accepts an optional
-    /// `ScriptBuilderOptions` object
-    /// whose `flags` are forwarded to the underlying native builder. When
-    /// omitted, the native default `EngineFlags` are used.
-    #[wasm_bindgen(constructor)]
-    pub fn new(options: Option<ScriptBuilderOptions>) -> Result<R0ScriptBuilder> {
+impl ZkScriptBuilder {
+    /// Constructs a new `ZkScriptBuilder` for the RISC Zero proving flow.
+    /// Accepts an optional `ScriptBuilderOptions` object whose `flags` are
+    /// forwarded to the underlying native builder. Exposed as a static factory
+    /// (`ZkScriptBuilder.newR0(...)`) — not a `new` constructor — so future
+    /// non-R0 backends can add their own factories without a breaking change.
+    #[wasm_bindgen(js_name = "newR0")]
+    pub fn new_r0(options: Option<ScriptBuilderOptions>) -> Result<ZkScriptBuilder> {
         let flags = options.map(EngineFlags::try_from).transpose()?.unwrap_or_default();
-        Ok(Self { inner: InnerState::Unbounded(NativeR0ScriptBuilder::with_flags(flags)) })
+        Ok(Self { inner: InnerState::Unbounded(NativeZkScriptBuilder::new_r0_with_flags(flags)) })
     }
 
     /// Drains (empties) the builder and returns the script bytes as a hex

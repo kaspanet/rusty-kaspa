@@ -1,6 +1,6 @@
 // RISC0 succinct (STARK) zk-to-script: the LOW-LEVEL "split" flow.
 //
-// Unlike `succinct_builder.js` (which uses `R0ScriptBuilder`'s staged commit/finalize flow),
+// Unlike `succinct_builder.js` (which uses `ZkScriptBuilder`'s staged commit/finalize flow),
 // this example composes the two halves with the low-level free-function
 // bindings with the same builder's low-level fragment methods:
 //
@@ -17,7 +17,7 @@
 // require at the build output (`../../../../nodejs/kaspa`).
 
 const { PrivateKey, RpcClient,
-    R0ScriptBuilder, payToScriptHashScript, addressFromScriptPublicKey,
+    ZkScriptBuilder, payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
     Encoding } = require('./kaspa');
 const fs = require('fs');
@@ -50,7 +50,7 @@ const FLAGS = { flags: { covenantsEnabled: true } };
 // and the precompile call. At spend time it expects
 // `[..., claim, control_index, control_digests, seal, journal]`.
 function buildRedeemScript() {
-    const builder = new R0ScriptBuilder(FLAGS);
+    const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.appendR0SuccinctVerifier(IMAGE_ID, CONTROL_ID);
     return builder.drain();
 }
@@ -59,7 +59,7 @@ function buildRedeemScript() {
 // redeem script. At spend time the verifier expects just
 // `[..., claim, control_index, control_digests, seal]`.
 function buildFixedJournalRedeemScript() {
-    const builder = new R0ScriptBuilder(FLAGS);
+    const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.appendR0SuccinctVerifierWithFixedJournal(IMAGE_ID, CONTROL_ID, undefined, JOURNAL);
     return builder.drain();
 }
@@ -74,7 +74,7 @@ function buildFixedJournalRedeemScript() {
 // journal, so — for succinct it sits *on top* of the witness — it is pushed
 // AFTER. Finally the redeem script itself is pushed for the P2SH engine.
 function buildSignatureScript(redeemScript) {
-    const builder = new R0ScriptBuilder(FLAGS);
+    const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.pushR0SuccinctWitness(SUCCINCT_RECEIPT);
     builder.addData(JOURNAL);
     builder.addData(Buffer.from(redeemScript, 'hex'));
@@ -84,7 +84,7 @@ function buildSignatureScript(redeemScript) {
 // Fixed journal: the journal is already in the redeem script, so the signature
 // script carries only the four receipt-derived witness items.
 function buildFixedJournalSignatureScript(redeemScript) {
-    const builder = new R0ScriptBuilder(FLAGS);
+    const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.pushR0SuccinctWitness(SUCCINCT_RECEIPT);
     builder.addData(Buffer.from(redeemScript, 'hex'));
     return builder.drain();

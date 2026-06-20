@@ -5,7 +5,7 @@ use crate::zk_to_script::FinalizedR0Script as NativeFinalizedR0Script;
 use kaspa_wasm_core::types::HexString;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-/// Result of finalizing an R0ScriptBuilder.
+/// Result of finalizing an ZkScriptBuilder.
 ///
 /// `sigScript` is the spending script — set this on the transaction input.
 /// `redeemScript` is the inner commit script — hash this with

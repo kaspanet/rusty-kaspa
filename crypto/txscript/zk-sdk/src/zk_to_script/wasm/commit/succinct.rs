@@ -1,4 +1,4 @@
-use crate::zk_to_script::wasm::{InnerState, R0ScriptBuilder, into_array_32};
+use crate::zk_to_script::wasm::{InnerState, ZkScriptBuilder, into_array_32};
 use kaspa_txscript::error::Error;
 use kaspa_txscript::result::Result;
 use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
@@ -16,7 +16,7 @@ fn parse_hash_fn_id(value: &str) -> Result<HashFnId> {
 }
 
 #[wasm_bindgen]
-impl R0ScriptBuilder {
+impl ZkScriptBuilder {
     /// Commits the script to unlocking only on a valid succinct proof for the
     /// given image id and control id. `hashFnId` accepts "blake2b",
     /// "poseidon2", or "sha-256"; defaults to "poseidon2" when omitted.

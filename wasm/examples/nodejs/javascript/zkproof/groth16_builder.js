@@ -1,7 +1,7 @@
 const { PrivateKey, RpcClient, Opcodes,
     payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
-    Encoding, R0ScriptBuilder } = require('./kaspa');
+    Encoding, ZkScriptBuilder } = require('./kaspa');
 
 // Configuration  
 const NETWORK_ID = 'devnet';
@@ -50,10 +50,10 @@ async function groth16Verify() {
         console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
 
-        const r0ScriptBuilder = new R0ScriptBuilder({ flags: { covenantsEnabled: true } });
-        r0ScriptBuilder.commitToGroth16("75641a540ee2ad9ee5902bcdcdb8b55c0bef4a28287309b858f97b1356c6c2e0")
-        const redeemScript = r0ScriptBuilder.script();
-        const signatureScript = r0ScriptBuilder.finalizeWithGroth16Proof(GROTH16_SER_RCPT, "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456");
+        const zkScriptBuilder = ZkScriptBuilder.newR0({ flags: { covenantsEnabled: true } });
+        zkScriptBuilder.commitToGroth16("75641a540ee2ad9ee5902bcdcdb8b55c0bef4a28287309b858f97b1356c6c2e0")
+        const redeemScript = zkScriptBuilder.script();
+        const signatureScript = zkScriptBuilder.finalizeWithGroth16Proof(GROTH16_SER_RCPT, "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456");
         const lockingScript = payToScriptHashScript(redeemScript);
 
         console.log(`Redeem script (hex): ${redeemScript}`);

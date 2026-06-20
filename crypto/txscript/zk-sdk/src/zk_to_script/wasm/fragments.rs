@@ -1,4 +1,4 @@
-use crate::zk_to_script::wasm::{R0ScriptBuilder, into_array_32};
+use crate::zk_to_script::wasm::{ZkScriptBuilder, into_array_32};
 use crate::zk_to_script::{
     append_r0_groth16_verifier, append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier,
     append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof, prepare_r0_succinct_witness, push_r0_groth16_witness,
@@ -36,7 +36,7 @@ fn decode_succinct_receipt(receipt: BinaryT) -> Result<SuccinctReceipt<ReceiptCl
 }
 
 #[wasm_bindgen]
-impl R0ScriptBuilder {
+impl ZkScriptBuilder {
     /// Pushes data onto the builder (canonical encoding). Use this to push the
     /// caller-owned journal / journal_hash or the redeem script when composing a
     /// script from fragments.

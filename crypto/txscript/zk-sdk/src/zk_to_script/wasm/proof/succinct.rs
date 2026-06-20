@@ -1,5 +1,5 @@
 use crate::zk_to_script::wasm::proof::FinalizedR0Script;
-use crate::zk_to_script::wasm::{InnerState, R0ScriptBuilder};
+use crate::zk_to_script::wasm::{InnerState, ZkScriptBuilder};
 use kaspa_txscript::error::Error;
 use kaspa_txscript::result::Result;
 use kaspa_wasm_core::types::BinaryT;
@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use workflow_wasm::prelude::*;
 
 #[wasm_bindgen]
-impl R0ScriptBuilder {
+impl ZkScriptBuilder {
     /// Finalizes a succinct-bounded script with a borsh-encoded
     /// `SuccinctReceipt<ReceiptClaim>` and a 32-byte journal digest. If this is a preparation
     /// in order to unlock a ZK-locked UTXO the script is now ready.

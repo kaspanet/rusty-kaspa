@@ -2,16 +2,16 @@ use std::marker::PhantomData;
 
 use crate::result::Result;
 use crate::zk_to_script::{
-    BoundedR0Groth16FixedJournalScript, BoundedR0Groth16Script, R0ScriptBuilder, UnboundedR0Script, append_r0_groth16_verifier,
+    BoundedR0Groth16FixedJournalScript, BoundedR0Groth16Script, UnboundedR0Script, ZkScriptBuilder, append_r0_groth16_verifier,
     append_r0_groth16_verifier_with_fixed_journal,
 };
 
-impl R0ScriptBuilder<UnboundedR0Script> {
+impl ZkScriptBuilder<UnboundedR0Script> {
     /// Commit the script to unlocking only from a valid groth16 proof from a
     /// specified image id as public input.
-    pub fn commit_to_groth16(mut self, image_id: [u8; 32]) -> Result<R0ScriptBuilder<BoundedR0Groth16Script>> {
+    pub fn commit_to_groth16(mut self, image_id: [u8; 32]) -> Result<ZkScriptBuilder<BoundedR0Groth16Script>> {
         append_r0_groth16_verifier(&mut self.builder, image_id)?;
-        Ok(R0ScriptBuilder { builder: self.builder, _state: PhantomData })
+        Ok(ZkScriptBuilder { builder: self.builder, _state: PhantomData })
     }
 
     /// Commit the script to unlocking only from a valid groth16 proof for the
@@ -20,8 +20,8 @@ impl R0ScriptBuilder<UnboundedR0Script> {
         mut self,
         image_id: [u8; 32],
         journal_hash: [u8; 32],
-    ) -> Result<R0ScriptBuilder<BoundedR0Groth16FixedJournalScript>> {
+    ) -> Result<ZkScriptBuilder<BoundedR0Groth16FixedJournalScript>> {
         append_r0_groth16_verifier_with_fixed_journal(&mut self.builder, image_id, journal_hash)?;
-        Ok(R0ScriptBuilder { builder: self.builder, _state: PhantomData })
+        Ok(ZkScriptBuilder { builder: self.builder, _state: PhantomData })
     }
 }

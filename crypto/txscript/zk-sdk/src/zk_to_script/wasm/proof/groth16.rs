@@ -1,5 +1,5 @@
 use crate::zk_to_script::wasm::proof::FinalizedR0Script;
-use crate::zk_to_script::wasm::{InnerState, R0ScriptBuilder, into_array_32};
+use crate::zk_to_script::wasm::{InnerState, ZkScriptBuilder, into_array_32};
 use kaspa_txscript::error::Error;
 use kaspa_txscript::result::Result;
 use kaspa_wasm_core::types::BinaryT;
@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use workflow_wasm::prelude::*;
 
 #[wasm_bindgen]
-impl R0ScriptBuilder {
+impl ZkScriptBuilder {
     /// Finalizes a Groth16-bounded script with a borsh-encoded
     /// `Groth16Receipt<ReceiptClaim>` and a 32-byte journal hash. Returns the
     /// spending script and the inner redeem script. If this is a preparation

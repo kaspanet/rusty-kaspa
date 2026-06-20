@@ -1,6 +1,6 @@
 // Groth16 zk-to-script: the LOW-LEVEL "split" flow.
 //
-// Unlike `groth16_builder.js` (which uses `R0ScriptBuilder`'s staged commit/finalize flow),
+// Unlike `groth16_builder.js` (which uses `ZkScriptBuilder`'s staged commit/finalize flow),
 // this example composes the two halves of the locking/unlocking scripts with
 // the low-level free-function bindings with the same builder's low-level fragment methods:
 //
@@ -18,7 +18,7 @@
 // require at the build output (`../../../../nodejs/kaspa`).
 
 const { PrivateKey, RpcClient,
-    R0ScriptBuilder, payToScriptHashScript, addressFromScriptPublicKey,
+    ZkScriptBuilder, payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
     Encoding } = require('./kaspa');
 const fs = require('fs');
@@ -47,7 +47,7 @@ const FLAGS = { flags: { covenantsEnabled: true } };
 // verifier params / vk, the in-script receipt-claim reconstruction and the
 // precompile call. At spend time it expects `[..., journal_hash, proof]`.
 function buildRedeemScript() {
-    const builder = new R0ScriptBuilder(FLAGS);
+    const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.appendR0Groth16Verifier(IMAGE_ID);
     return builder.drain();
 }
@@ -56,7 +56,7 @@ function buildRedeemScript() {
 // redeem script. The spender then only has to supply the proof. At spend time
 // the verifier expects just `[..., proof]`.
 function buildFixedJournalRedeemScript() {
-    const builder = new R0ScriptBuilder(FLAGS);
+    const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.appendR0Groth16VerifierWithFixedJournal(IMAGE_ID, JOURNAL_HASH);
     return builder.drain();
 }
@@ -71,7 +71,7 @@ function buildFixedJournalRedeemScript() {
 // the receipt to the compressed proof and pushes it on top. Finally the redeem
 // script itself is pushed so the P2SH engine can execute it.
 function buildSignatureScript(redeemScript) {
-    const builder = new R0ScriptBuilder(FLAGS);
+    const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.addData(JOURNAL_HASH);
     builder.pushR0Groth16Witness(GROTH16_RECEIPT);
     builder.addData(Buffer.from(redeemScript, 'hex'));
@@ -81,7 +81,7 @@ function buildSignatureScript(redeemScript) {
 // Fixed journal: the journal hash is already in the redeem script, so the
 // signature script carries only the proof.
 function buildFixedJournalSignatureScript(redeemScript) {
-    const builder = new R0ScriptBuilder(FLAGS);
+    const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.pushR0Groth16Witness(GROTH16_RECEIPT);
     builder.addData(Buffer.from(redeemScript, 'hex'));
     return builder.drain();

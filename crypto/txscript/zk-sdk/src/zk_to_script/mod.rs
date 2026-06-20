@@ -46,22 +46,26 @@ pub struct BoundedR0SuccinctFixedJournalScript;
 /// A wrapper around the native ScriptBuilder to abstract away the
 /// complex implementation details of verifying a risc0 proof
 /// whilst utilizing the OpZkPrecompile opcode.
-pub struct R0ScriptBuilder<State> {
+pub struct ZkScriptBuilder<State> {
     builder: ScriptBuilder,
     _state: PhantomData<State>,
 }
 
-impl R0ScriptBuilder<UnboundedR0Script> {
-    pub fn new() -> Self {
+impl ZkScriptBuilder<UnboundedR0Script> {
+    /// Start a builder for the RISC Zero proving flow (default engine flags).
+    /// The `_r0` suffix leaves room for future, non-R0 proving backends to add
+    /// their own `new_*` entry points without a breaking type rename.
+    pub fn new_r0() -> Self {
         Self { builder: ScriptBuilder::new(), _state: PhantomData }
     }
 
-    pub fn with_flags(flags: EngineFlags) -> Self {
+    /// Start a builder for the RISC Zero proving flow with explicit engine flags.
+    pub fn new_r0_with_flags(flags: EngineFlags) -> Self {
         Self { builder: ScriptBuilder::with_flags(flags), _state: PhantomData }
     }
 }
 
-impl<ScriptType> R0ScriptBuilder<ScriptType> {
+impl<ScriptType> ZkScriptBuilder<ScriptType> {
     /// Get the script as bytes
     pub fn script(&self) -> &[u8] {
         self.builder.script()
@@ -87,7 +91,7 @@ impl<ScriptType> R0ScriptBuilder<ScriptType> {
     }
 }
 
-impl<ScriptType> R0ScriptBuilder<ScriptType> {
+impl<ScriptType> ZkScriptBuilder<ScriptType> {
     /// Pushes raw data (canonical encoding) — e.g. the caller-owned journal /
     /// journal_hash or a redeem script.
     pub fn add_data(&mut self, data: &[u8]) -> Result<&mut Self> {
@@ -137,8 +141,8 @@ impl<ScriptType> R0ScriptBuilder<ScriptType> {
     }
 }
 
-impl From<ScriptBuilder> for R0ScriptBuilder<UnboundedR0Script> {
+impl From<ScriptBuilder> for ZkScriptBuilder<UnboundedR0Script> {
     fn from(value: ScriptBuilder) -> Self {
-        R0ScriptBuilder { builder: value, _state: PhantomData }
+        ZkScriptBuilder { builder: value, _state: PhantomData }
     }
 }

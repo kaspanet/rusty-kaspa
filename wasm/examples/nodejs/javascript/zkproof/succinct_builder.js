@@ -1,7 +1,7 @@
 const { PrivateKey, RpcClient, Opcodes,
     payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
-    Encoding, R0ScriptBuilder } = require('./kaspa');
+    Encoding, ZkScriptBuilder } = require('./kaspa');
 
 // Configuration  
 const NETWORK_ID = 'devnet';
@@ -49,10 +49,10 @@ async function succinctVerify() {
         console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
 
-        const r0ScriptBuilder = new R0ScriptBuilder({ flags: { covenantsEnabled: true } });
-        r0ScriptBuilder.commitToSuccinct("1ade4c062dee368276ef6610bd7de59d9b63c7ebe87d8d75a63c0e288895cb7d","1ca3ca03030719064ba61b3125bdd326fc57f74e799ef860bdea6f3227381e16")
-        const redeemScript = r0ScriptBuilder.script();
-        const signatureScript = r0ScriptBuilder.finalizeWithSuccinctProof(SUCCINCT_SER_RCPT, "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456");
+        const zkScriptBuilder = ZkScriptBuilder.newR0({ flags: { covenantsEnabled: true } });
+        zkScriptBuilder.commitToSuccinct("1ade4c062dee368276ef6610bd7de59d9b63c7ebe87d8d75a63c0e288895cb7d","1ca3ca03030719064ba61b3125bdd326fc57f74e799ef860bdea6f3227381e16")
+        const redeemScript = zkScriptBuilder.script();
+        const signatureScript = zkScriptBuilder.finalizeWithSuccinctProof(SUCCINCT_SER_RCPT, "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456");
         const lockingScript = payToScriptHashScript(redeemScript);
 
         console.log(`Redeem script (hex): ${redeemScript}`);

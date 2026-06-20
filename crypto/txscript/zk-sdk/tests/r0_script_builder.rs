@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
 use kaspa_hashes::Hash;
 use kaspa_txscript::{EngineCtx, EngineFlags, SigCacheKey, TxScriptEngine, caches::Cache, hex, pay_to_script_hash_script};
 use kaspa_txscript_errors::TxScriptError;
-use kaspa_txscript_zk_sdk::{R0ScriptBuilder, prepare_r0_groth16_proof};
+use kaspa_txscript_zk_sdk::{ZkScriptBuilder, prepare_r0_groth16_proof};
 use risc0_zkvm::{Digest, Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 
 fn zk_test_flags() -> EngineFlags {
@@ -61,7 +61,7 @@ fn load_succinct_fixture() -> (Digest, Digest, SuccinctReceipt<ReceiptClaim>) {
 #[test]
 fn r0_script_builder_groth16_verifies() {
     let (journal_hash, image_id, receipt) = load_groth_fixture();
-    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_groth16(image_id)
         .unwrap()
         .finalize_with_proof(receipt, journal_hash)
@@ -73,7 +73,7 @@ fn r0_script_builder_groth16_verifies() {
 fn r0_script_builder_groth16_binds_image_id() {
     let (journal_hash, mut image_id, receipt) = load_groth_fixture();
     image_id[0] = 0x70; // corrupt the image id
-    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_groth16(image_id)
         .unwrap()
         .finalize_with_proof(receipt, journal_hash)
@@ -85,7 +85,7 @@ fn r0_script_builder_groth16_binds_image_id() {
 fn r0_script_builder_groth16_binds_journal_hash() {
     let (mut journal_hash, image_id, receipt) = load_groth_fixture();
     journal_hash[0] = 0x6d; // corrupt the journal hash
-    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_groth16(image_id)
         .unwrap()
         .finalize_with_proof(receipt, journal_hash)
@@ -96,7 +96,7 @@ fn r0_script_builder_groth16_binds_journal_hash() {
 #[test]
 fn r0_script_builder_succinct_verifies() {
     let (image_id, journal, receipt) = load_succinct_fixture();
-    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_succinct(image_id.as_bytes().try_into().unwrap(), receipt.control_id.as_bytes().try_into().unwrap(), None)
         .unwrap()
         .finalize_with_proof(receipt, journal)
@@ -107,7 +107,7 @@ fn r0_script_builder_succinct_verifies() {
 #[test]
 fn r0_script_builder_groth16_fixed_journal_verifies() {
     let (journal_hash, image_id, receipt) = load_groth_fixture();
-    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_groth16_with_fixed_journal(image_id, journal_hash)
         .unwrap()
         .finalize_with_proof(receipt)
@@ -121,7 +121,7 @@ fn r0_script_builder_succinct_fixed_journal_verifies() {
     let image_id_bytes: [u8; 32] = image_id.as_bytes().try_into().unwrap();
     let control_id: [u8; 32] = receipt.control_id.as_bytes().try_into().unwrap();
     let journal_bytes: [u8; 32] = journal.as_bytes().try_into().unwrap();
-    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_succinct_with_fixed_journal(image_id_bytes, control_id, None, journal_bytes)
         .unwrap()
         .finalize_with_proof(receipt)
@@ -144,11 +144,11 @@ fn r0_script_builder_groth16_rejects_tampered_proof() {
     assert_ne!(tampered_proof, proof_bytes, "tamper must actually change the proof");
 
     // Verifier (redeem) is built normally; the signature script carries the tampered proof.
-    let mut redeem_builder = R0ScriptBuilder::with_flags(flags);
+    let mut redeem_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     redeem_builder.append_r0_groth16_verifier(image_id).unwrap();
     let redeem_script = redeem_builder.drain();
 
-    let mut sig_builder = R0ScriptBuilder::with_flags(flags);
+    let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     sig_builder.add_data(&journal_hash).unwrap();
     sig_builder.add_data(&tampered_proof).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
@@ -162,7 +162,7 @@ fn r0_script_builder_succinct_rejects_tampered_proof() {
     let (image_id, journal, mut receipt) = load_succinct_fixture();
     receipt.seal[0] ^= 1; // flip a single bit in the STARK seal
 
-    let finalized = R0ScriptBuilder::with_flags(zk_test_flags())
+    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_succinct(image_id.as_bytes().try_into().unwrap(), receipt.control_id.as_bytes().try_into().unwrap(), None)
         .unwrap()
         .finalize_with_proof(receipt, journal)
@@ -176,12 +176,12 @@ fn fragments_groth16_roundtrip_matches_facade() {
     let (journal_hash, image_id, receipt) = load_groth_fixture();
 
     // Redeem (verifier) script via the fragment method.
-    let mut redeem_builder = R0ScriptBuilder::with_flags(flags);
+    let mut redeem_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     redeem_builder.append_r0_groth16_verifier(image_id).unwrap();
     let redeem_script = redeem_builder.drain();
 
     // Signature script: caller pushes journal_hash, then the proof witness, then redeem.
-    let mut sig_builder = R0ScriptBuilder::with_flags(flags);
+    let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     sig_builder.add_data(&journal_hash).unwrap();
     sig_builder.push_r0_groth16_witness(receipt).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
@@ -189,7 +189,7 @@ fn fragments_groth16_roundtrip_matches_facade() {
 
     // Byte-identity against the high-level facade.
     let (_, _, facade_receipt) = load_groth_fixture();
-    let facade = R0ScriptBuilder::with_flags(flags)
+    let facade = ZkScriptBuilder::new_r0_with_flags(flags)
         .commit_to_groth16(image_id)
         .unwrap()
         .finalize_with_proof(facade_receipt, journal_hash)
@@ -205,11 +205,11 @@ fn fragments_groth16_fixed_journal_covenant() {
     let flags = zk_test_flags();
     let (journal_hash, image_id, receipt) = load_groth_fixture();
 
-    let mut redeem_builder = R0ScriptBuilder::with_flags(flags);
+    let mut redeem_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     redeem_builder.append_r0_groth16_verifier_with_fixed_journal(image_id, journal_hash).unwrap();
     let redeem_script = redeem_builder.drain();
 
-    let mut sig_builder = R0ScriptBuilder::with_flags(flags);
+    let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     sig_builder.push_r0_groth16_witness(receipt).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
     let sig_script = sig_builder.drain();
@@ -223,11 +223,11 @@ fn fragments_groth16_fixed_journal_wrong_journal_rejected() {
     let (mut journal_hash, image_id, receipt) = load_groth_fixture();
     journal_hash[0] ^= 0xFF;
 
-    let mut redeem_builder = R0ScriptBuilder::with_flags(flags);
+    let mut redeem_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     redeem_builder.append_r0_groth16_verifier_with_fixed_journal(image_id, journal_hash).unwrap();
     let redeem_script = redeem_builder.drain();
 
-    let mut sig_builder = R0ScriptBuilder::with_flags(flags);
+    let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     sig_builder.push_r0_groth16_witness(receipt).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
     let sig_script = sig_builder.drain();
@@ -242,19 +242,19 @@ fn fragments_succinct_roundtrip_matches_facade() {
     let control_id: [u8; 32] = receipt.control_id.as_bytes().try_into().unwrap();
     let image_id_bytes: [u8; 32] = image_id.as_bytes().try_into().unwrap();
 
-    let mut redeem_builder = R0ScriptBuilder::with_flags(flags);
+    let mut redeem_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     redeem_builder.append_r0_succinct_verifier(image_id_bytes, control_id, None).unwrap();
     let redeem_script = redeem_builder.drain();
 
     // Signature script: receipt witness items, then journal on top, then redeem.
-    let mut sig_builder = R0ScriptBuilder::with_flags(flags);
+    let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     sig_builder.push_r0_succinct_witness(receipt).unwrap();
     sig_builder.add_data(journal.as_bytes()).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
     let sig_script = sig_builder.drain();
 
     let (_, _, facade_receipt) = load_succinct_fixture();
-    let facade = R0ScriptBuilder::with_flags(flags)
+    let facade = ZkScriptBuilder::new_r0_with_flags(flags)
         .commit_to_succinct(image_id_bytes, control_id, None)
         .unwrap()
         .finalize_with_proof(facade_receipt, journal)
@@ -273,11 +273,11 @@ fn fragments_succinct_fixed_journal_covenant() {
     let image_id_bytes: [u8; 32] = image_id.as_bytes().try_into().unwrap();
     let journal_bytes: [u8; 32] = journal.as_bytes().try_into().unwrap();
 
-    let mut redeem_builder = R0ScriptBuilder::with_flags(flags);
+    let mut redeem_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     redeem_builder.append_r0_succinct_verifier_with_fixed_journal(image_id_bytes, control_id, None, journal_bytes).unwrap();
     let redeem_script = redeem_builder.drain();
 
-    let mut sig_builder = R0ScriptBuilder::with_flags(flags);
+    let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     sig_builder.push_r0_succinct_witness(receipt).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
     let sig_script = sig_builder.drain();

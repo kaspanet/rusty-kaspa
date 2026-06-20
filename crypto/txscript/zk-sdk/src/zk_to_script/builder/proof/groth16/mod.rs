@@ -3,11 +3,11 @@ mod vk;
 use crate::result::Result;
 use crate::zk_to_script::builder::proof::FinalizedR0Script;
 pub use crate::zk_to_script::builder::proof::groth16::vk::R0_SERIALIZED_UNCOMPRESSED_VK;
-use crate::zk_to_script::{BoundedR0Groth16FixedJournalScript, BoundedR0Groth16Script, R0ScriptBuilder, push_r0_groth16_witness};
+use crate::zk_to_script::{BoundedR0Groth16FixedJournalScript, BoundedR0Groth16Script, ZkScriptBuilder, push_r0_groth16_witness};
 use risc0_binfmt::Digestible;
 use risc0_zkvm::Groth16Receipt;
 
-impl R0ScriptBuilder<BoundedR0Groth16Script> {
+impl ZkScriptBuilder<BoundedR0Groth16Script> {
     /// Add the proof to an existing groth16 commit script and return both the
     /// spending script and the inner redeem script.
     pub fn finalize_with_proof<Claim: Digestible + Clone>(
@@ -28,7 +28,7 @@ impl R0ScriptBuilder<BoundedR0Groth16Script> {
     }
 }
 
-impl R0ScriptBuilder<BoundedR0Groth16FixedJournalScript> {
+impl ZkScriptBuilder<BoundedR0Groth16FixedJournalScript> {
     /// Add the proof to a fixed-journal groth16 commit script. The journal hash
     /// is already baked into the redeem script, so the spending script only
     /// carries the proof witness.
