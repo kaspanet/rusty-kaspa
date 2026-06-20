@@ -131,6 +131,7 @@ kaspa-rpc-macros = { version = "2.0.1", path = "rpc/macros" }
 kaspa-rpc-service = { version = "2.0.1", path = "rpc/service" }
 kaspa-txscript = { version = "2.0.1", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "2.0.1", path = "crypto/txscript/errors" }
+kaspa-txscript-zk-sdk = { version = "2.0.1", path = "crypto/txscript/zk-sdk" }
 kaspa-utils = { version = "2.0.1", path = "utils", default-features = false }
 kaspa-utils-tower = { version = "2.0.1", path = "utils/tower" }
 kaspa-system-info = { version = "2.0.1", path = "system-info" }
