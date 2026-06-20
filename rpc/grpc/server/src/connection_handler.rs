@@ -54,11 +54,17 @@ pub struct ServerContext {
     pub core_service: DynRpcService,
     /// The notifier relaying RPC core notifications to connections
     pub notifier: Arc<Notifier<Notification, Connection>>,
+    /// Auth config for RPC authentication
+    pub auth_config: Option<Arc<kaspa_rpc_core::auth::RpcAuthConfig>>,
 }
 
 impl ServerContext {
-    pub fn new(core_service: DynRpcService, notifier: Arc<Notifier<Notification, Connection>>) -> Self {
-        Self { core_service, notifier }
+    pub fn new(
+        core_service: DynRpcService,
+        notifier: Arc<Notifier<Notification, Connection>>,
+        auth_config: Option<Arc<kaspa_rpc_core::auth::RpcAuthConfig>>,
+    ) -> Self {
+        Self { core_service, notifier, auth_config }
     }
 }
 
@@ -89,6 +95,7 @@ impl ConnectionHandler {
         subscription_context: SubscriptionContext,
         broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
+        auth_config: Option<Arc<kaspa_rpc_core::auth::RpcAuthConfig>>,
     ) -> Self {
         // This notifier UTXOs subscription granularity to rpc-core notifier
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
@@ -114,7 +121,7 @@ impl ConnectionHandler {
             broadcasters,
             policies,
         ));
-        let server_context = ServerContext::new(core_service, notifier);
+        let server_context = ServerContext::new(core_service, notifier, auth_config);
         let interface = Arc::new(Factory::new_interface(server_context.clone(), network_bps));
         let running = Default::default();
 
@@ -254,6 +261,14 @@ impl Rpc for ConnectionHandler {
 
         debug!("GRPC, Incoming message stream from {:?}", remote_address);
 
+        // Extract auth token from gRPC metadata before consuming the request
+        let auth_token = request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.strip_prefix("Bearer "))
+            .map(|s| s.to_string());
+
         // Build the in/out pipes
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_route_channel_size());
         let incoming_stream = request.into_inner();
@@ -266,6 +281,7 @@ impl Rpc for ConnectionHandler {
             self.manager_sender(),
             incoming_stream,
             outgoing_route,
+            auth_token,
         );
 
         // Try to get the connection registered into the central Manager
