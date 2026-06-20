@@ -6,4 +6,4 @@ pub enum TraversalError {
     ReachedMaxTraversalAllowed(u64, u64),
 }
 
-pub type TraversalResult<T> = std::result::Result<T, TraversalError>;
+pub type TraversalResult<T> = core::result::Result<T, TraversalError>;

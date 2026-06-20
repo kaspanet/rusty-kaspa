@@ -1,6 +1,7 @@
 use crate::BlockLevel;
 
 use super::{block::RuleError, tx::TxRuleError};
+use alloc::string::String;
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
@@ -115,4 +116,4 @@ pub enum ProofWeakness {
     NotEnoughHeaders,
 }
 
-pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;
+pub type PruningImportResult<T> = core::result::Result<T, PruningImportError>;

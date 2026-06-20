@@ -9,13 +9,15 @@ use crate::{
     mass::{BlockLaneLimits, BlockMassLimits, MassCofactors},
     network::{NetworkId, NetworkType},
 };
-use kaspa_addresses::Prefix;
-use kaspa_math::Uint256;
-use serde::{Deserialize, Serialize};
-use std::{
+use alloc::string::String;
+use core::{
     cmp::min,
     ops::{Deref, DerefMut},
 };
+
+use kaspa_addresses::Prefix;
+use kaspa_math::Uint256;
+use serde::{Deserialize, Serialize};
 
 const MEMPOOL_BLOCK_MASS_ACTIVATION_DELAY_SECONDS: u64 = 24 * 60 * 60;
 const PRIOR_MAX_SIGNATURE_SCRIPT_LEN: usize = 10_000;

@@ -16,4 +16,4 @@ pub enum SyncManagerError {
     LocatorLowHashNotInHighHashChain(Hash, Hash),
 }
 
-pub type SyncManagerResult<T> = std::result::Result<T, SyncManagerError>;
+pub type SyncManagerResult<T> = core::result::Result<T, SyncManagerError>;
