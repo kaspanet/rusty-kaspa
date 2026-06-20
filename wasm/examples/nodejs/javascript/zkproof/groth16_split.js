@@ -34,7 +34,7 @@ const IMAGE_ID = '75641a540ee2ad9ee5902bcdcdb8b55c0bef4a28287309b858f97b1356c6c2
 const JOURNAL_HASH = '5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456';
 // borsh-encoded `Groth16Receipt<ReceiptClaim>`. Read from file to keep this
 // example small (it is the same receipt hard-coded in groth16_builder.js).
-const GROTH16_RECEIPT = fs.readFileSync(path.join(__dirname, 'builder_data', 'groth.rcpt.hex'), 'utf8').trim();
+const GROTH16_RECEIPT = fs.readFileSync(path.join(__dirname, 'data', 'receipts', 'groth.rcpt.hex'), 'utf8').trim();
 
 const FLAGS = { flags: { covenantsEnabled: true } };
 

@@ -35,7 +35,7 @@ const JOURNAL = '5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c945
 
 // borsh-encoded `SuccinctReceipt<ReceiptClaim>`. Read from file because the
 // succinct receipt is large (~220 KB).
-const SUCCINCT_RECEIPT = fs.readFileSync(path.join(__dirname, 'builder_data', 'succinct.rcpt.hex'), 'utf8').trim();
+const SUCCINCT_RECEIPT = fs.readFileSync(path.join(__dirname, 'data', 'receipts', 'succinct.rcpt.hex'), 'utf8').trim();
 
 const FLAGS = { flags: { covenantsEnabled: true } };
 

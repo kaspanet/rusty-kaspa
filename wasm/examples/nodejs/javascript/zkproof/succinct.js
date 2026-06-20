@@ -16,14 +16,14 @@ const ZK_VERIFIER_TAG = 0x21; // R0Succinct
 
 // Data files matches the stack layout expected by R0SuccinctPrecompile::verify_zk
 // Stack (bottom to top): seal, claim, hashfn, control_index, control_digests, journal, image_id, tag
-const SEAL_FILE = './succinct.seal.hex';
-const CLAIM_FILE = './succinct.claim.hex';
-const HASHFN_FILE = './succinct.hashfn.hex';
-const CONTROL_INDEX_FILE = './succinct.control_index.hex';
-const CONTROL_DIGESTS_FILE = './succinct.control_digests.hex';
-const CONTROL_ID_FILE = './succinct.control_id.hex';
-const JOURNAL_FILE = './succinct.journal.hex';
-const IMAGE_ID_FILE = './succinct.image.hex';
+const SEAL_FILE = './data/direct/succinct.seal.hex';
+const CLAIM_FILE = './data/direct/succinct.claim.hex';
+const HASHFN_FILE = './data/direct/succinct.hashfn.hex';
+const CONTROL_INDEX_FILE = './data/direct/succinct.control_index.hex';
+const CONTROL_DIGESTS_FILE = './data/direct/succinct.control_digests.hex';
+const CONTROL_ID_FILE = './data/direct/succinct.control_id.hex';
+const JOURNAL_FILE = './data/direct/succinct.journal.hex';
+const IMAGE_ID_FILE = './data/direct/succinct.image.hex';
 
 /**
  * @param {fs.PathOrFileDescriptor} filePath
