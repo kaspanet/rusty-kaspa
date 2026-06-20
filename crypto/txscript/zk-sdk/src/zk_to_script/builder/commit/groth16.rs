@@ -8,11 +8,7 @@ use crate::zk_to_script::{
 
 impl R0ScriptBuilder<UnboundedR0Script> {
     /// Commit the script to unlocking only from a valid groth16 proof from a
-    /// specified image id as public input. Thin facade over
-    /// [`append_r0_groth16_verifier`]; the caller supplies the journal hash at
-    /// spend time.
-    ///
-    /// [`append_r0_groth16_verifier`]: crate::zk_to_script::append_r0_groth16_verifier
+    /// specified image id as public input. 
     pub fn commit_to_groth16(mut self, image_id: [u8; 32]) -> Result<R0ScriptBuilder<BoundedR0Groth16Script>> {
         append_r0_groth16_verifier(&mut self.builder, image_id)?;
         Ok(R0ScriptBuilder { builder: self.builder, _state: PhantomData })
@@ -20,11 +16,7 @@ impl R0ScriptBuilder<UnboundedR0Script> {
 
     /// Commit the script to unlocking only from a valid groth16 proof for the
     /// given image id *and* a fixed `journal_hash` baked into the script (the
-    /// one-time covenant case). Thin facade over
-    /// [`append_r0_groth16_verifier_with_fixed_journal`]; the spender only needs
-    /// to supply the proof.
-    ///
-    /// [`append_r0_groth16_verifier_with_fixed_journal`]: crate::zk_to_script::append_r0_groth16_verifier_with_fixed_journal
+    /// one-time covenant case).
     pub fn commit_to_groth16_with_fixed_journal(
         mut self,
         image_id: [u8; 32],

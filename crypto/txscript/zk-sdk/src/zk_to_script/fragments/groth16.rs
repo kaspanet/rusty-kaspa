@@ -35,10 +35,9 @@ const POST_DIGEST_HALTED_ZERO: [u8; 32] = [
 /// Pre-stack:  `[..., journal_hash]`
 /// Post-stack: `[..., journal_hash, compressed_proof]`
 ///
-/// Only the compressed proof is pushed — the `journal_hash` is caller-owned and
+/// Only the compressed proof is pushed, the `journal_hash` is caller-owned and
 /// must already be on the stack (the caller decides how it gets there: a
-/// constant for a one-time covenant, or a runtime in-script computation). The
-/// post-stack is exactly the pre-stack expected by [`append_r0_groth16_verifier`].
+/// constant for a one-time covenant, or a runtime in-script computation).
 pub fn push_r0_groth16_witness<Claim: Digestible + Clone>(builder: &mut ScriptBuilder, receipt: Groth16Receipt<Claim>) -> Result<()> {
     let encoded_proof = prepare_r0_groth16_proof(&receipt)?;
     builder.add_data(&encoded_proof)?; // push the proof that asserts the claim
@@ -70,7 +69,7 @@ pub fn append_r0_groth16_verifier(builder: &mut ScriptBuilder, image_id: [u8; 32
 
     // Park `proof` on the alt stack so it doesn't clutter the working area.
     // `journal_hash` is left for the digest reconstruction below. We'll bring
-    // the proof back at Stage F.
+    // the proof back later.
     builder.add_op(OpToAltStack)?; // alt:[..., proof]   main:[..., journal_hash]
 
     //  arrange [id_bn254, image_id, journal_hash] on top.

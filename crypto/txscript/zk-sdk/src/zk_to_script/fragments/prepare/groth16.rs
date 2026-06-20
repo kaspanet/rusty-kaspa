@@ -10,14 +10,6 @@ use risc0_zkvm::Groth16Receipt;
 
 /// Maps a RISC0 Groth16 receipt to the compressed ark-groth16 proof bytes that
 /// the verifier fragment expects on the stack.
-///
-/// This is a pure transformation with no [`ScriptBuilder`] involvement: a
-/// transaction builder can call it once, cache the bytes, and push them as a
-/// plain data push without re-running the curve math. [`push_r0_groth16_witness`]
-/// is implemented on top of this function.
-///
-/// [`ScriptBuilder`]: kaspa_txscript::script_builder::ScriptBuilder
-/// [`push_r0_groth16_witness`]: super::super::push_r0_groth16_witness
 pub fn prepare_r0_groth16_proof<Claim: Digestible + Clone>(receipt: &Groth16Receipt<Claim>) -> Result<Vec<u8>> {
     // Decode the seal.
     let seal = Seal::decode(&receipt.seal).map_err(|e| Error::SealDecoding(e.to_string()))?;

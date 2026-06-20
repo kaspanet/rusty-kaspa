@@ -87,11 +87,6 @@ impl<ScriptType> R0ScriptBuilder<ScriptType> {
     }
 }
 
-/// Fragment convenience methods. These apply the low-level zk-to-script
-/// fragments directly to the builder, so a single `R0ScriptBuilder` can compose
-/// a script from fragments without dropping down to the free functions on a bare
-/// [`ScriptBuilder`]. They are available in any state and do not change it; they
-/// return `&mut Self` for chaining (then call [`drain`](Self::drain) to finish).
 impl<ScriptType> R0ScriptBuilder<ScriptType> {
     /// Pushes raw data (canonical encoding) — e.g. the caller-owned journal /
     /// journal_hash or a redeem script.
@@ -100,31 +95,26 @@ impl<ScriptType> R0ScriptBuilder<ScriptType> {
         Ok(self)
     }
 
-    /// See [`append_r0_groth16_verifier`].
     pub fn append_r0_groth16_verifier(&mut self, image_id: [u8; 32]) -> Result<&mut Self> {
         fragments::append_r0_groth16_verifier(&mut self.builder, image_id)?;
         Ok(self)
     }
 
-    /// See [`push_r0_groth16_witness`].
     pub fn push_r0_groth16_witness<Claim: Digestible + Clone>(&mut self, receipt: Groth16Receipt<Claim>) -> Result<&mut Self> {
         fragments::push_r0_groth16_witness(&mut self.builder, receipt)?;
         Ok(self)
     }
 
-    /// See [`append_r0_groth16_verifier_with_fixed_journal`].
     pub fn append_r0_groth16_verifier_with_fixed_journal(&mut self, image_id: [u8; 32], journal_hash: [u8; 32]) -> Result<&mut Self> {
         fragments::append_r0_groth16_verifier_with_fixed_journal(&mut self.builder, image_id, journal_hash)?;
         Ok(self)
     }
 
-    /// See [`push_r0_succinct_witness`].
     pub fn push_r0_succinct_witness<Claim: Digestible + Clone>(&mut self, receipt: SuccinctReceipt<Claim>) -> Result<&mut Self> {
         fragments::push_r0_succinct_witness(&mut self.builder, receipt)?;
         Ok(self)
     }
 
-    /// See [`append_r0_succinct_verifier`].
     pub fn append_r0_succinct_verifier(
         &mut self,
         image_id: [u8; 32],
@@ -135,7 +125,6 @@ impl<ScriptType> R0ScriptBuilder<ScriptType> {
         Ok(self)
     }
 
-    /// See [`append_r0_succinct_verifier_with_fixed_journal`].
     pub fn append_r0_succinct_verifier_with_fixed_journal(
         &mut self,
         image_id: [u8; 32],

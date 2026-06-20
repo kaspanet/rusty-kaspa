@@ -10,11 +10,7 @@ use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 impl R0ScriptBuilder<UnboundedR0Script> {
     /// Commits to the succinct proof system; the locking script will expect a
     /// successful verification of a succinct proof from the specified image id,
-    /// control id and hash function. Thin facade over
-    /// [`append_r0_succinct_verifier`]; the caller supplies the journal at spend
-    /// time.
-    ///
-    /// [`append_r0_succinct_verifier`]: crate::zk_to_script::append_r0_succinct_verifier
+    /// control id and hash function. 
     pub fn commit_to_succinct(
         mut self,
         image_id: [u8; 32],
@@ -26,11 +22,7 @@ impl R0ScriptBuilder<UnboundedR0Script> {
     }
 
     /// Commits to the succinct proof system *and* a fixed `journal` baked into
-    /// the script (the one-time covenant case). Thin facade over
-    /// [`append_r0_succinct_verifier_with_fixed_journal`]; the spender only needs
-    /// to supply the receipt witness items.
-    ///
-    /// [`append_r0_succinct_verifier_with_fixed_journal`]: crate::zk_to_script::append_r0_succinct_verifier_with_fixed_journal
+    /// the script (the one-time covenant case).
     pub fn commit_to_succinct_with_fixed_journal(
         mut self,
         image_id: [u8; 32],

@@ -135,7 +135,6 @@ impl R0ScriptBuilder {
 
 /// The receipt-derived succinct witness items, hex-encoded, in the order the
 /// verifier consumes them (the journal is caller-owned and excluded).
-/// @category Consensus
 #[wasm_bindgen(inspectable)]
 pub struct R0SuccinctWitnessParts {
     claim: Vec<u8>,
@@ -167,7 +166,7 @@ impl R0SuccinctWitnessParts {
     }
 }
 
-/// Pure mapping: a borsh-encoded `Groth16Receipt<ReceiptClaim>` to the
+/// a borsh-encoded `Groth16Receipt<ReceiptClaim>` to the
 /// compressed ark-groth16 proof bytes (hex), without touching a builder.
 #[wasm_bindgen(js_name = "prepareR0Groth16Proof")]
 pub fn prepare_r0_groth16_proof_wasm(receipt: BinaryT) -> Result<HexString> {
@@ -176,7 +175,7 @@ pub fn prepare_r0_groth16_proof_wasm(receipt: BinaryT) -> Result<HexString> {
     Ok(HexString::from(bytes.as_slice()))
 }
 
-/// Pure mapping: a borsh-encoded `SuccinctReceipt<ReceiptClaim>` to its four
+/// a borsh-encoded `SuccinctReceipt<ReceiptClaim>` to its four
 /// on-stack witness byte vectors (hex), without touching a builder.
 #[wasm_bindgen(js_name = "prepareR0SuccinctWitness")]
 pub fn prepare_r0_succinct_witness_wasm(receipt: BinaryT) -> Result<R0SuccinctWitnessParts> {

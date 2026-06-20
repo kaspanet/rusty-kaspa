@@ -58,7 +58,6 @@ fn load_succinct_fixture() -> (Digest, Digest, SuccinctReceipt<ReceiptClaim>) {
     (image_id, journal, receipt)
 }
 
-// --- High-level type-state flow (commit -> finalize) ---
 
 #[test]
 fn r0_script_builder_groth16_verifies() {
@@ -116,8 +115,6 @@ fn r0_script_builder_groth16_fixed_journal_verifies() {
         .unwrap();
     execute_p2sh(finalized.sig_script, &finalized.redeem_script).unwrap();
 }
-
-// --- Low-level fragment flow, composed on the same `R0ScriptBuilder` ---
 
 #[test]
 fn fragments_groth16_roundtrip_matches_facade() {

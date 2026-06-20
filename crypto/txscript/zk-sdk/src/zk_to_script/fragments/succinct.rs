@@ -13,13 +13,9 @@ use kaspa_txscript::{
 ///
 /// Pre-stack:  `[...]`
 /// Post-stack: `[..., claim, control_index, control_digests, seal]`
-///
-/// This is **push-only** (data pushes, no opcodes), so it is safe to use inside
-/// a P2SH signature script. The caller-owned `journal` is *not* pushed here — to
-/// form the pre-stack expected by [`append_r0_succinct_verifier`], the caller
-/// must place `journal` on top afterwards (a constant push for a one-time
-/// covenant, or a runtime in-script computation in the redeem script for the
-/// general case), yielding `[..., claim, control_index, control_digests, seal, journal]`.
+/// the caller
+/// must place `journal` on top afterwards, a constant push for a one-time
+/// covenant, or a runtime in-script computation
 pub fn push_r0_succinct_witness<Claim: Digestible + Clone>(
     builder: &mut ScriptBuilder,
     receipt: SuccinctReceipt<Claim>,
@@ -62,11 +58,8 @@ pub fn append_r0_succinct_verifier(
 /// (the one-time covenant case).
 ///
 /// Pre-stack:  `[..., claim, control_index, control_digests, seal]`
-/// Post-stack: `[..., true]`
+/// Post-stack:  `[..., true]`
 ///
-/// Const-pushes `journal` (which lands on top, exactly where the verifier
-/// expects it) and then delegates to [`append_r0_succinct_verifier`], so the
-/// spender only has to supply the four receipt-derived witness items.
 pub fn append_r0_succinct_verifier_with_fixed_journal(
     builder: &mut ScriptBuilder,
     image_id: [u8; 32],
