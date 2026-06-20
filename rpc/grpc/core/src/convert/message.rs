@@ -591,6 +591,21 @@ from!(item: &kaspa_rpc_core::NotifySinkBlueScoreChangedRequest, protowire::Notif
 });
 from!(RpcResult<&kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>, protowire::NotifySinkBlueScoreChangedResponseMessage);
 
+from!(item: &kaspa_rpc_core::GetSeqCommitLaneProofRequest, protowire::GetSeqCommitLaneProofRequestMessage, {
+    Self { block_hash: item.block_hash.as_bytes().to_vec(), lane_key: item.lane_key.as_bytes().to_vec() }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetSeqCommitLaneProofResponse>, protowire::GetSeqCommitLaneProofResponseMessage, {
+    Self {
+        smt_proof: item.smt_proof.clone(),
+        lane_tip: item.lane.as_ref().map(|l| l.tip.as_bytes().to_vec()),
+        lane_blue_score: item.lane.as_ref().map(|l| l.blue_score),
+        payload_and_ctx_digest: item.payload_and_ctx_digest.as_bytes().to_vec(),
+        parent_seq_commit: item.parent_seq_commit.as_bytes().to_vec(),
+        inactivity_shortcut: item.inactivity_shortcut.as_bytes().to_vec(),
+        error: None,
+    }
+});
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -1124,6 +1139,29 @@ try_from!(item: &protowire::NotifySinkBlueScoreChangedRequestMessage, kaspa_rpc_
     Self { command: item.command.into() }
 });
 try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>);
+
+try_from!(item: &protowire::GetSeqCommitLaneProofRequestMessage, kaspa_rpc_core::GetSeqCommitLaneProofRequest, {
+    Self { block_hash: hash_from_bytes(&item.block_hash)?, lane_key: hash_from_bytes(&item.lane_key)? }
+});
+try_from!(item: &protowire::GetSeqCommitLaneProofResponseMessage, RpcResult<kaspa_rpc_core::GetSeqCommitLaneProofResponse>, {
+    Self {
+        smt_proof: item.smt_proof.clone(),
+        lane: if let (Some(tip), Some(blue_score)) = (item.lane_tip.as_ref(), item.lane_blue_score) {
+            Some(kaspa_rpc_core::RpcLaneEntry { tip: hash_from_bytes(tip)?, blue_score })
+        } else {
+            None
+        },
+        payload_and_ctx_digest: hash_from_bytes(&item.payload_and_ctx_digest)?,
+        parent_seq_commit: hash_from_bytes(&item.parent_seq_commit)?,
+        inactivity_shortcut: hash_from_bytes(&item.inactivity_shortcut)?,
+    }
+});
+
+fn hash_from_bytes(bytes: &[u8]) -> RpcResult<RpcHash> {
+    <[u8; 32]>::try_from(bytes)
+        .map(RpcHash::from_bytes)
+        .map_err(|_| RpcError::General(format!("expected 32-byte hash, got {} bytes", bytes.len())))
+}
 
 // ----------------------------------------------------------------------------
 // Unit tests

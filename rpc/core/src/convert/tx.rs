@@ -234,10 +234,11 @@ impl TryFrom<RpcOptionalTransaction> for Transaction {
 impl TryFrom<RpcOptionalTransactionOutput> for TransactionOutput {
     type Error = RpcError;
     fn try_from(item: RpcOptionalTransactionOutput) -> RpcResult<Self> {
-        Ok(Self::new(
+        Ok(Self::with_covenant(
             item.value.ok_or(RpcError::MissingRpcFieldError("RpcTransactionOutput".to_owned(), "value".to_owned()))?,
             item.script_public_key
                 .ok_or(RpcError::MissingRpcFieldError("RpcTransactionOutput".to_owned(), "script_public_key".to_owned()))?,
+            item.covenant.and_then(|bind| bind.0.map(Into::into)),
         ))
     }
 }
