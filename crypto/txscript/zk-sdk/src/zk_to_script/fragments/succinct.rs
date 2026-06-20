@@ -55,7 +55,6 @@ pub fn append_r0_succinct_verifier(
 
 /// Appends a fixed-journal r0 succinct verifier fragment into a caller-owned
 /// builder, binding the verification to a single `journal` baked into the script
-/// (the one-time covenant case).
 ///
 /// Pre-stack:  `[..., claim, control_index, control_digests, seal]`
 /// Post-stack:  `[..., true]`

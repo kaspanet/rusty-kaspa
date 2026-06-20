@@ -22,7 +22,7 @@ impl R0ScriptBuilder<UnboundedR0Script> {
     }
 
     /// Commits to the succinct proof system *and* a fixed `journal` baked into
-    /// the script (the one-time covenant case).
+    /// the script
     pub fn commit_to_succinct_with_fixed_journal(
         mut self,
         image_id: [u8; 32],

@@ -158,7 +158,7 @@ pub fn append_r0_groth16_verifier(builder: &mut ScriptBuilder, image_id: [u8; 32
 
 /// Appends a fixed-journal r0-over-groth16 verifier fragment into a caller-owned
 /// builder, binding the verification to a single `journal_hash` baked into the
-/// script (the one-time covenant case).
+/// script 
 ///
 /// Pre-stack:  `[..., compressed_proof]`
 /// Post-stack: `[..., true]`
