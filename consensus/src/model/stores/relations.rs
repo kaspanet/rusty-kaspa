@@ -1,3 +1,4 @@
+use hashbrown::hash_map::Entry;
 use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, blockhash::BlockHashes};
@@ -9,8 +10,6 @@ use kaspa_database::prelude::{ReadLock, StoreError};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use std::collections::HashSet;
-use std::collections::hash_map::Entry;
 use std::iter::once;
 use std::sync::Arc;
 
@@ -189,7 +188,7 @@ impl ChildrenStore for StagingRelationsStore<'_> {
                 e.get_mut().insert(child);
             }
             Entry::Vacant(e) => {
-                e.insert(HashSet::from_iter(once(child)));
+                e.insert(BlockHashSet::from_iter(once(child)));
             }
         };
         Ok(())
@@ -205,7 +204,7 @@ impl ChildrenStore for StagingRelationsStore<'_> {
                 e.get_mut().insert(child);
             }
             Entry::Vacant(e) => {
-                e.insert(HashSet::from_iter(once(child)));
+                e.insert(BlockHashSet::from_iter(once(child)));
             }
         };
 

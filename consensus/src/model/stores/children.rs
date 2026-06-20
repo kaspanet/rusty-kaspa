@@ -64,7 +64,9 @@ impl DbChildrenStore {
 
 impl ChildrenStoreReader for DbChildrenStore {
     fn get(&self, parent: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
-        self.access.read(parent)
+        // `CachedDbSetAccess` returns a std-backed `HashSet`; rebuild it as the
+        // hashbrown-backed `BlockHashSet` expected by the consensus trait.
+        Ok(BlockHashSet::from_iter(self.access.read(parent)?.read().iter().copied()).into())
     }
 }
 

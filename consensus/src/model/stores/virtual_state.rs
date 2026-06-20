@@ -286,13 +286,13 @@ mod tests {
     //! `CachedDbItem`, the `PreToccataVirtualState` shadow decoder, and
     //! the row-level key layout.
     use super::*;
+    use kaspa_consensus_core::HashMap;
     use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
     use kaspa_consensus_core::utxo::pre_toccata::{PreToccataUtxoDiff, PreToccataUtxoEntry};
     use kaspa_consensus_core::utxo::utxo_diff::UtxoDiff;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_hashes::Hash;
-    use std::collections::HashMap;
 
     fn legacy_row_key() -> Vec<u8> {
         DatabaseStorePrefixes::VirtualState.into()
@@ -328,10 +328,10 @@ mod tests {
     fn legacy_virtual_state_decodes_via_shadow() {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
 
-        let mut add = HashMap::new();
+        let mut add = HashMap::default();
         add.insert(outpoint(0x11, 0), pre_toccata_entry(0x0123_4567_89ab_cdef, 42, true, &[0x76, 0xa9, 0x14]));
         add.insert(outpoint(0x33, 4), pre_toccata_entry(500, 100, false, &[0xaa, 0xbb]));
-        let mut remove = HashMap::new();
+        let mut remove = HashMap::default();
         remove.insert(outpoint(0x22, 7), pre_toccata_entry(2_000_000, 99, false, &[0x51, 0x52]));
         remove.insert(outpoint(0x44, 11), pre_toccata_entry(777, 12, true, &[0xde, 0xad, 0xbe, 0xef]));
         let pre_diff = PreToccataUtxoDiff { add, remove };
@@ -380,7 +380,7 @@ mod tests {
         let lkg = LkgVirtualState::default();
         let mut store = DbVirtualStateStore::new(db.clone(), lkg);
 
-        let mut add = HashMap::new();
+        let mut add = HashMap::default();
         add.insert(
             outpoint(0x77, 3),
             UtxoEntry::new(
