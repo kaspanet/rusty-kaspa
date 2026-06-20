@@ -28,7 +28,7 @@ parking_lot.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
 rayon.workspace = true
-secp256k1 = { workspace = true, features = ["global-context", "rand-std"] }
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 
 [dev-dependencies]

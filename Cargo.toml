@@ -90,7 +90,7 @@ include = [
 
 [workspace.dependencies]
 kaspa-testing-integration = { version = "2.0.1", path = "testing/integration" }
-kaspa-addresses = { version = "2.0.1", path = "crypto/addresses" }
+kaspa-addresses = { version = "2.0.1", path = "crypto/addresses", default-features = false }
 kaspa-addressmanager = { version = "2.0.1", path = "components/addressmanager" }
 kaspa-bip32 = { version = "2.0.1", path = "wallet/bip32" }
 kaspa-cli = { version = "2.0.1", path = "cli" }
@@ -110,14 +110,14 @@ kaspa-grpc-server = { version = "2.0.1", path = "rpc/grpc/server" }
 kaspa-hashes = { version = "2.0.1", path = "crypto/hashes", default-features = false }
 kaspa-index-core = { version = "2.0.1", path = "indexes/core" }
 kaspa-index-processor = { version = "2.0.1", path = "indexes/processor" }
-kaspa-math = { version = "2.0.1", path = "math" }
-kaspa-merkle = { version = "2.0.1", path = "crypto/merkle" }
+kaspa-math = { version = "2.0.1", path = "math", default-features = false }
+kaspa-merkle = { version = "2.0.1", path = "crypto/merkle", default-features = false }
 kaspa-smt = { version = "2.0.1", path = "crypto/smt", default-features = false }
 kaspa-smt-store = { version = "2.0.1", path = "consensus/smt-store" }
 kaspa-metrics-core = { version = "2.0.1", path = "metrics/core" }
 kaspa-mining = { version = "2.0.1", path = "mining" }
 kaspa-mining-errors = { version = "2.0.1", path = "mining/errors" }
-kaspa-muhash = { version = "2.0.1", path = "crypto/muhash" }
+kaspa-muhash = { version = "2.0.1", path = "crypto/muhash", default-features = false }
 kaspa-notify = { version = "2.0.1", path = "notify" }
 kaspa-p2p-flows = { version = "2.0.1", path = "protocol/flows" }
 kaspa-p2p-lib = { version = "2.0.1", path = "protocol/p2p" }
@@ -129,7 +129,7 @@ kaspa-seq-commit = { version = "2.0.1", path = "consensus/seq-commit" }
 kaspa-rpc-macros = { version = "2.0.1", path = "rpc/macros" }
 kaspa-rpc-service = { version = "2.0.1", path = "rpc/service" }
 kaspa-txscript = { version = "2.0.1", path = "crypto/txscript" }
-kaspa-txscript-errors = { version = "2.0.1", path = "crypto/txscript/errors" }
+kaspa-txscript-errors = { version = "2.0.1", path = "crypto/txscript/errors", default-features = false }
 kaspa-utils = { version = "2.0.1", path = "utils", default-features = false }
 kaspa-utils-tower = { version = "2.0.1", path = "utils/tower" }
 kaspa-system-info = { version = "2.0.1", path = "system-info" }
@@ -198,6 +198,7 @@ futures = { version = "0.3.29" }
 futures-util = { version = "0.3.29", default-features = false, features = ["alloc"] }
 getrandom = { version = "0.2.10", features = ["js"] }
 h2 = "0.4.6"
+hashbrown = { version = "0.15", default-features = false, features = ["default-hasher", "inline-more", "serde"] }
 # h2 = "0.3.21"
 heapless = "0.8.0"
 # heapless = "0.7.16"
@@ -218,8 +219,8 @@ local-ip-address = "0.6.1"
 log = { version = "0.4.20", default-features = false }
 log4rs = "1.4.0"
 mac_address = "1.1.7"
-malachite-base = "0.9.1"
-malachite-nz = "0.9.1"
+malachite-base = { version = "0.9.2", default-features = false }
+malachite-nz = { version = "0.9.2", default-features = false }
 md-5 = "0.10.6"
 num = "0.4.1"
 num_cpus = "1.16.0"
@@ -232,7 +233,7 @@ pbkdf2 = "0.12.2"
 portable-atomic = { version = "1.5.1", features = ["float"] }
 prost = "0.14.3"
 rand = "0.8.5"
-rand_chacha = "0.3.1"
+rand_chacha = { version = "0.3.1", default-features = false }
 rand_core = { version = "0.6.4", features = ["std"] }
 rand_distr = "0.4.3"
 rayon = "1.8.0"
@@ -241,11 +242,7 @@ ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"
 rocksdb = "0.24.0"
 rv = "0.19.2"
-secp256k1 = { version = "0.29.0", features = [
-    "global-context",
-    "rand-std",
-    "serde",
-] } # TODO "0.28.0"
+secp256k1 = { version = "0.29.0", default-features = false, features = ["alloc"] } # TODO "0.28.0"
 self_cell = "1.2.2"
 semver = "1.0.28"
 separator = "0.4.1"

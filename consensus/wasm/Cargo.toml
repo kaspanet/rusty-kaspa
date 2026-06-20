@@ -25,7 +25,7 @@ cfg-if.workspace = true
 faster-hex.workspace = true
 js-sys.workspace = true
 rand.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
