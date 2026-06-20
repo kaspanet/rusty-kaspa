@@ -50,7 +50,7 @@ There are two reasons for the change:
 ## Running Your Node
 
 1. **Obtain Kaspa v2.0.1 binaries**  
-   Download and extract the official [2.0.1 or newer release](https://github.com/kaspanet/rusty-kaspa/releases/latest), or build from the `master` branch by following the instructions in the project README.
+   Download and extract the official [2.0.1 or newer release](https://github.com/kaspanet/rusty-kaspa/releases/latest), or build from the `stable` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
 
@@ -80,16 +80,6 @@ Leave this process running. Closing it will stop your node. If you have other fl
   - `--perf-metrics --loglevel=info,kaspad_lib::daemon=debug,kaspa_mining::monitor=debug` for detailed performance logs.
   - `--loglevel=kaspa_grpc_server=warn` to suppress most RPC connect/disconnect log reports.
   - `--ram-scale=3.0` to increase cache size threefold (relevant for utilizing large RAM; can be set between 0.1 and 10).
-
-## Mining and Preparation for Toccata
-
-Toccata introduces v1 transactions with new fields (`TransactionOutput.covenant`, `TransactionInput.compute_commit`), which need to be preserved from the template that you get from `GetBlockTemplate` and passed back when you submit your mined block via `SubmitBlock`.
-
-Pool and stratum operators must update their software to preserve the new fields in transactions by using an updated SDK, or by regenerating their gRPC bindings after reviewing [gRPC/protobuf Changes to Review](#grpcprotobuf-changes-to-review).
-
-Individual miners usually do not need to update SDKs or gRPC/protobuf bindings directly. Mine through an upgraded pool, or use the provided [Stratum Bridge](../bridge/docs/README.md) with an upgraded node.
-
-See the pool/stratum operator and miner checklists in [Required changes](#required-changes) for the concrete upgrade steps.
 
 ## Block Reward Info RPC for Pools and Miners
 
@@ -123,12 +113,12 @@ For JSON RPC transaction objects, both `mass` and `storageMass` are currently em
 
 For JavaScript/WASM transaction objects, `mass` is deprecated and aliases `storageMass`. New code should use `storageMass`.
 
-## gRPC/protobuf Changes to Review
+## gRPC/protobuf Changes
 
 Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), [`rpc.proto`](../rpc/grpc/core/proto/rpc.proto).
 
 - `RpcTransaction.mass` is now `RpcTransaction.storage_mass`.
-- `RpcTransactionInput.computeBudget` was added. For transaction version `1`, `computeBudget` replaces `sigOpCount`.
+- `RpcTransactionInput.computeBudget` was added. 
 - `RpcTransactionOutput.covenant` was added.
 - UTXO entries can carry covenant IDs: `RpcUtxoEntry.covenant_id`.
 
@@ -148,18 +138,10 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 ### Exchanges
 
 - Upgrade all nodes before activation.
-- Use an updated SDK: [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23) or [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes to Review](#grpcprotobuf-changes-to-review).
+- Use an updated SDK: [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
 - Test deposit, withdrawal, indexing, balance tracking, and fee-estimation flows against Testnet-10.
 - If transaction submission does not use the RPC fee estimation API, update fee calculation to `100 sompi * max(compute grams, 2 * transaction bytes)`.
 - Update transaction parsing to accept transaction version `1` and write `storageMass` / `storage_mass` instead of `mass`.
-
-### Pools
-
-- Upgrade all nodes before activation.
-- Use an updated SDK: [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23) or [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes to Review](#grpcprotobuf-changes-to-review).
-- Update pool, job-generation, and block-submission code to preserve post-Toccata template fields while building the solved block. In particular, do not drop or overwrite `RpcBlockHeader.version`, transaction version `1`, `RpcTransaction.storage_mass`, `RpcTransactionInput.computeBudget`, or `RpcTransactionOutput.covenant`.
-- If your software serializes block-template transactions into custom job messages, extend those messages and their block-reconstruction path to round-trip the new fields.
-- Test `GetBlockTemplate` -> mining work distribution -> solved block reconstruction -> `SubmitBlock` on Testnet-10 with post-activation templates. After Toccata activates, blocks that strip the new fields can be invalid.
 
 ### Miners
 
@@ -168,9 +150,17 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 - If you operate custom mining software that calls `GetBlockTemplate` and `SubmitBlock` directly, follow the pool/stratum operator requirements above.
 - Test your mining path against Testnet-10 before mainnet activation where possible.
 
+### Pools
+
+- Upgrade all nodes before activation.
+- Use an updated SDK: [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
+- Update pool, job-generation, and block-submission code to preserve post-Toccata template fields while building the solved block. In particular, do not drop or overwrite `RpcBlockHeader.version`, transaction version `1`, `RpcTransaction.storage_mass`, `RpcTransactionInput.computeBudget`, or `RpcTransactionOutput.covenant`.
+- If your software serializes block-template transactions into custom job messages, extend those messages and their block-reconstruction path to round-trip the new fields.
+- Test `GetBlockTemplate` -> mining work distribution -> solved block reconstruction -> `SubmitBlock` on Testnet-10 with post-activation templates. After Toccata activates, blocks that strip the new fields can be invalid.
+
 ### Explorers, indexers, and API integrators
 
-- Update your SDKs, or regenerate RPC bindings after reviewing [gRPC/protobuf Changes to Review](#grpcprotobuf-changes-to-review), so transaction version `1`, input `computeBudget`, output `covenant`, UTXO `covenant_id`, and `storageMass` / `storage_mass` are handled correctly.
+- Update your SDKs, or regenerate RPC bindings after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes), so transaction version `1`, input `computeBudget`, output `covenant`, UTXO `covenant_id`, and `storageMass` / `storage_mass` are handled correctly.
 - If your storage schema records full transaction, output, or UTXO data, make sure it can store covenant bindings and covenant IDs.
 - Review `GetBlockRewardInfo` and `GetSeqCommitLaneProof` if your integration needs reward-accounting, block-color, or KIP-21 lane-proof data.
 - Continue accepting the deprecated JSON `mass` field for backward compatibility where needed, but emit and document `storageMass` for new integrations.
