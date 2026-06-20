@@ -143,7 +143,7 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 
 - If you use the RPC fee estimation API, no fee calculation change is required.
 - If your software uses fixed fee assumptions, update the minimum standard fee calculation from `1 sompi` per gram to `100 sompi` per gram. The fee floor is `100 sompi * max(compute grams, 2 * transaction bytes)`. Without this change, direct transaction submissions to upgraded nodes can fail.
-- Update new code to use `storageMass` in JSON/JavaScript APIs and `storage_mass` in Rust/protobuf APIs instead of the deprecated main transaction `mass` field.
+- If you construct transactions manually, review [Deprecation of `Transaction.mass` in Transaction APIs](#deprecation-of-transactionmass-in-transaction-apis) before reading or writing transaction mass fields.
 
 ### Exchanges
 
@@ -157,7 +157,7 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 
 - Upgrade all nodes before activation.
 - Use an updated SDK: [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23) or [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes to Review](#grpcprotobuf-changes-to-review).
-- Update pool, stratum, job-generation, and block-submission code to preserve post-Toccata template fields while building the solved block. In particular, do not drop or overwrite `RpcBlockHeader.version`, transaction version `1`, `RpcTransaction.storage_mass`, `RpcTransactionInput.computeBudget`, or `RpcTransactionOutput.covenant`.
+- Update pool, job-generation, and block-submission code to preserve post-Toccata template fields while building the solved block. In particular, do not drop or overwrite `RpcBlockHeader.version`, transaction version `1`, `RpcTransaction.storage_mass`, `RpcTransactionInput.computeBudget`, or `RpcTransactionOutput.covenant`.
 - If your software serializes block-template transactions into custom job messages, extend those messages and their block-reconstruction path to round-trip the new fields.
 - Test `GetBlockTemplate` -> mining work distribution -> solved block reconstruction -> `SubmitBlock` on Testnet-10 with post-activation templates. After Toccata activates, blocks that strip the new fields can be invalid.
 
