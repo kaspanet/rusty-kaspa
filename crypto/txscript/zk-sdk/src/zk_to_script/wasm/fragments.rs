@@ -1,14 +1,3 @@
-//! WASM bindings for the low-level RISC0 zk-to-script fragment building blocks.
-//!
-//! These methods extend [`R0ScriptBuilder`] (defined in the parent module) with
-//! the composable witness-push and verifier-append fragments, mirroring the
-//! native free functions in [`crate::zk_to_script`]. They operate on the inner
-//! script builder regardless of the builder's staged proof-system state, so the
-//! same `R0ScriptBuilder` can be used for both the staged `commit` / `finalize`
-//! flow and the free-form fragment flow: a transaction builder pushes the
-//! witness into a signature script while a covenant author appends the verifier
-//! into a redeem script.
-
 use crate::zk_to_script::wasm::{R0ScriptBuilder, into_array_32};
 use crate::zk_to_script::{
     append_r0_groth16_verifier, append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier,
@@ -58,7 +47,7 @@ impl R0ScriptBuilder {
         Ok(())
     }
 
-    /// Pushes the r0 groth16 witness material (the compressed proof, push-only).
+    /// Pushes the r0 groth16 witness material.
     /// The caller-owned `journal_hash` must already be on the stack beneath it.
     #[wasm_bindgen(js_name = "pushR0Groth16Witness")]
     pub fn push_r0_groth16_witness(&mut self, receipt: BinaryT) -> Result<()> {
@@ -89,7 +78,7 @@ impl R0ScriptBuilder {
     }
 
     /// Pushes the r0 succinct witness material (claim, control index, control
-    /// digests, seal — push-only). The caller-owned `journal` is pushed
+    /// digests, seal). The caller-owned `journal` is pushed
     /// afterwards (on top) to form the verifier's pre-stack.
     #[wasm_bindgen(js_name = "pushR0SuccinctWitness")]
     pub fn push_r0_succinct_witness(&mut self, receipt: BinaryT) -> Result<()> {

@@ -34,12 +34,12 @@ pub struct BoundedR0SuccinctScript;
 
 /// An r0 script builder that committed to the groth16 proof system *and* a
 /// fixed journal hash baked into the script. It only needs the proof witness to
-/// finalize — the journal is already constrained.
+/// finalize, the journal is already constrained.
 pub struct BoundedR0Groth16FixedJournalScript;
 
 /// An r0 script builder that committed to the succinct proof system *and* a
 /// fixed journal baked into the script. It only needs the receipt witness items
-/// to finalize — the journal is already constrained.
+/// to finalize, the journal is already constrained.
 pub struct BoundedR0SuccinctFixedJournalScript;
 
 #[derive(Default)]
