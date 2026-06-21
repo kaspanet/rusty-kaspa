@@ -3143,6 +3143,7 @@ dependencies = [
  "bincode",
  "enum-primitive-derive",
  "faster-hex 0.9.0",
+ "hashbrown 0.15.5",
  "indexmap 2.14.0",
  "itertools 0.13.0",
  "kaspa-hashes",
