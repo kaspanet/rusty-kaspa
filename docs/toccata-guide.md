@@ -2,6 +2,8 @@
 
 Kaspa is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md), [KIP20](https://github.com/kaspanet/kips/blob/master/kip-0020.md), and [KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), bringing native L1 covenant programming and infrastructure for based ZK applications to Kaspa. The hard fork is scheduled to activate on mainnet at DAA score `474,165,565`, roughly on June 30, 2026, at 16:15 UTC.
 
+As with any consensus change, **failing to upgrade can cause your node to split off from the network**. Exchanges may record incorrect balances, and miners may produce invalid blocks.
+
 ## Key notes
 
 - Node operators should upgrade to this version before the upcoming hard fork.
