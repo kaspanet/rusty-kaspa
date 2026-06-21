@@ -2227,6 +2227,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
  "foldhash 0.1.5",
+ "serde",
 ]
 
 [[package]]
@@ -2923,6 +2924,7 @@ dependencies = [
  "faster-hex 0.9.0",
  "flate2",
  "futures-util",
+ "hashbrown 0.15.5",
  "indexmap 2.14.0",
  "itertools 0.13.0",
  "kaspa-addresses",
@@ -3002,10 +3004,10 @@ dependencies = [
  "faster-hex 0.9.0",
  "futures-util",
  "getrandom 0.2.15",
+ "hashbrown 0.15.5",
  "itertools 0.13.0",
  "js-sys",
  "kaspa-addresses",
- "kaspa-core",
  "kaspa-hashes",
  "kaspa-math",
  "kaspa-merkle",
@@ -3013,7 +3015,6 @@ dependencies = [
  "kaspa-smt",
  "kaspa-txscript-errors",
  "kaspa-utils",
- "rand 0.8.6",
  "secp256k1",
  "serde",
  "serde-value",
@@ -3142,6 +3143,7 @@ dependencies = [
  "bincode",
  "enum-primitive-derive",
  "faster-hex 0.9.0",
+ "hashbrown 0.15.5",
  "indexmap 2.14.0",
  "itertools 0.13.0",
  "kaspa-hashes",
@@ -3900,7 +3902,6 @@ version = "2.0.1"
 dependencies = [
  "borsh",
  "kaspa-hashes",
- "secp256k1",
  "thiserror 2.0.18",
 ]
 
@@ -3918,6 +3919,7 @@ dependencies = [
  "event-listener 2.5.3",
  "faster-hex 0.9.0",
  "futures-util",
+ "hashbrown 0.15.5",
  "ipnet",
  "itertools 0.13.0",
  "log",
@@ -4683,9 +4685,9 @@ dependencies = [
 
 [[package]]
 name = "malachite-base"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8b6f86fdbb1eb9955946be91775239dfcb0acdb1a51bb07d5fc9b8c854f5ccd"
+checksum = "a4f44099731f17094b07825c88ccb5fbd1bfa1f82fafff7daa33e8b8652db16e"
 dependencies = [
  "hashbrown 0.16.1",
  "itertools 0.14.0",
@@ -4695,9 +4697,9 @@ dependencies = [
 
 [[package]]
 name = "malachite-nz"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0197a2f5cfee19d59178e282985c6ca79a9233e26a2adcf40acb693896aa09f6"
+checksum = "a137660cdba20f136c8a223125f08088adb4e0b72fbb8466f08c43e31cc0427d"
 dependencies = [
  "itertools 0.14.0",
  "libm",

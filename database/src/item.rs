@@ -7,12 +7,9 @@ use crate::{
 use super::prelude::{DbKey, DbWriter};
 use parking_lot::RwLock;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{
-    collections::{HashSet, hash_map::RandomState},
-    hash::BuildHasher,
-    marker::PhantomData,
-    sync::Arc,
-};
+use std::{collections::hash_map::RandomState, hash::BuildHasher, marker::PhantomData, sync::Arc};
+
+use hashbrown::HashSet;
 
 /// A cached DB item with concurrency support.
 ///

@@ -109,7 +109,7 @@ impl CoinbaseManager {
 
         // Add an output for each mergeset blue block (∩ DAA window), paying to the script reported by the block.
         // Note that combinatorically it is nearly impossible for a blue block to be non-DAA
-        for blue in ghostdag_data.mergeset_blues.iter().filter(|h| !mergeset_non_daa.contains(h)) {
+        for blue in ghostdag_data.mergeset_blues.iter().filter(|h| !mergeset_non_daa.contains(*h)) {
             let reward_data = mergeset_rewards.get(blue).unwrap();
             if reward_data.subsidy + reward_data.total_fees > 0 {
                 outputs

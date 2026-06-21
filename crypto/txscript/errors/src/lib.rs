@@ -1,3 +1,9 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+use alloc::string::String;
+use alloc::vec::Vec;
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
@@ -33,9 +39,9 @@ pub enum TxScriptError {
     #[error("encountered invalid state while running script: {0}")]
     InvalidState(String),
     #[error("pubkey invalid: {0}")]
-    InvalidPubkey(secp256k1::Error),
+    InvalidPubkey(Secp256k1Error),
     #[error("signature invalid: {0}")]
-    InvalidSignature(secp256k1::Error),
+    InvalidSignature(Secp256k1Error),
     #[error("invalid signature in sig cache")]
     SigcacheSignatureInvalid,
     #[error("exceeded max operation limit of {0}")]
@@ -99,6 +105,39 @@ pub enum TxScriptError {
     BlockIsTooDeep(String),
     #[error("covenants error: {0}")]
     CovenantsError(#[from] CovenantsError),
+}
+
+/// A self-contained mirror of `secp256k1::Error`.
+///
+/// Carrying it instead of the original type means script errors can be inspected
+/// without linking the secp256k1 C library. Variant names and `Display` strings
+/// mirror `secp256k1::Error`.
+#[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Secp256k1Error {
+    #[error("signature failed verification")]
+    IncorrectSignature,
+    #[error("message was not 32 bytes (do you need to hash?)")]
+    InvalidMessage,
+    #[error("malformed public key")]
+    InvalidPublicKey,
+    #[error("malformed signature")]
+    InvalidSignature,
+    #[error("malformed or out-of-range secret key")]
+    InvalidSecretKey,
+    #[error("malformed or out-of-range shared secret")]
+    InvalidSharedSecret,
+    #[error("bad recovery id")]
+    InvalidRecoveryId,
+    #[error("bad tweak")]
+    InvalidTweak,
+    #[error("not enough memory allocated")]
+    NotEnoughMemory,
+    #[error("the sum of public keys was invalid or the input vector lengths was less than 1")]
+    InvalidPublicKeySum,
+    #[error("couldn't create parity")]
+    InvalidParityValue,
+    #[error("malformed EllSwift value")]
+    InvalidEllSwift,
 }
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]

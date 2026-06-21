@@ -23,7 +23,7 @@ pbkdf2.workspace = true
 rand_core.workspace = true
 rand.workspace = true
 ripemd.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 serde.workspace = true
 sha2.workspace = true
 subtle.workspace = true

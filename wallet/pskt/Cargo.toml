@@ -23,7 +23,7 @@ kaspa-addresses.workspace = true
 kaspa-bip32.workspace = true
 kaspa-consensus-client.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-txscript-errors.workspace = true
+kaspa-txscript-errors = { workspace = true, features = ["std"] }
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 
@@ -32,7 +32,7 @@ derive_builder.workspace = true
 js-sys.workspace = true
 futures.workspace = true
 hex.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 serde_repr.workspace = true
 serde-value.workspace = true
 serde.workspace = true

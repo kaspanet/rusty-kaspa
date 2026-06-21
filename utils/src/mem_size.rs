@@ -68,6 +68,18 @@ impl<T, S> MemSizeEstimator for HashSet<T, S> {
     }
 }
 
+impl<T, S> MemSizeEstimator for hashbrown::HashSet<T, S> {
+    fn estimate_mem_units(&self) -> usize {
+        self.len()
+    }
+}
+
+impl<K, V, S> MemSizeEstimator for hashbrown::HashMap<K, V, S> {
+    fn estimate_mem_units(&self) -> usize {
+        self.len()
+    }
+}
+
 impl<T: MemSizeEstimator> MemSizeEstimator for Arc<T> {
     fn estimate_mem_bytes(&self) -> usize {
         self.as_ref().estimate_mem_bytes() + size_of::<Self>()

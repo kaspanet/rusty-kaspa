@@ -93,7 +93,7 @@ impl From<u16> for ComputeBudget {
 }
 
 impl TryFrom<ScriptUnits> for ComputeBudget {
-    type Error = std::num::TryFromIntError;
+    type Error = core::num::TryFromIntError;
 
     #[inline]
     fn try_from(units: ScriptUnits) -> Result<Self, Self::Error> {
@@ -170,7 +170,7 @@ impl ScriptUnits {
     }
 }
 
-impl std::ops::Add for ScriptUnits {
+impl core::ops::Add for ScriptUnits {
     type Output = Self;
 
     #[inline(always)]
@@ -179,7 +179,7 @@ impl std::ops::Add for ScriptUnits {
     }
 }
 
-impl std::ops::Sub for ScriptUnits {
+impl core::ops::Sub for ScriptUnits {
     type Output = Self;
 
     #[inline(always)]

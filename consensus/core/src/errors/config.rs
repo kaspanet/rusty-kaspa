@@ -26,4 +26,4 @@ pub enum ConfigError {
     MissingPreallocNumOrAddress,
 }
 
-pub type ConfigResult<T> = std::result::Result<T, ConfigError>;
+pub type ConfigResult<T> = core::result::Result<T, ConfigError>;

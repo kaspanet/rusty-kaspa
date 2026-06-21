@@ -50,7 +50,7 @@ use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::mass::{Gram, ScriptUnits};
 use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_hashes::Hash;
-use kaspa_txscript_errors::TxScriptError;
+use kaspa_txscript_errors::{Secp256k1Error, TxScriptError};
 use kaspa_utils::hex::ToHex;
 use log::trace;
 use opcodes::codes::OpReturn;
@@ -447,6 +447,25 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
 /// This allows inputs to be pruned instantly when entering the UTXO set.
 pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(script: &[u8]) -> bool {
     parse_script::<T, Reused>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
+}
+
+/// Translates a `secp256k1::Error` into the self-contained [`Secp256k1Error`].
+fn map_secp_error(err: secp256k1::Error) -> Secp256k1Error {
+    use secp256k1::Error;
+    match err {
+        Error::IncorrectSignature => Secp256k1Error::IncorrectSignature,
+        Error::InvalidMessage => Secp256k1Error::InvalidMessage,
+        Error::InvalidPublicKey => Secp256k1Error::InvalidPublicKey,
+        Error::InvalidSignature => Secp256k1Error::InvalidSignature,
+        Error::InvalidSecretKey => Secp256k1Error::InvalidSecretKey,
+        Error::InvalidSharedSecret => Secp256k1Error::InvalidSharedSecret,
+        Error::InvalidRecoveryId => Secp256k1Error::InvalidRecoveryId,
+        Error::InvalidTweak => Secp256k1Error::InvalidTweak,
+        Error::NotEnoughMemory => Secp256k1Error::NotEnoughMemory,
+        Error::InvalidPublicKeySum => Secp256k1Error::InvalidPublicKeySum,
+        Error::InvalidParityValue(_) => Secp256k1Error::InvalidParityValue,
+        Error::InvalidEllSwift => Secp256k1Error::InvalidEllSwift,
+    }
 }
 
 enum ScriptExecutionOutput {
@@ -896,8 +915,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         F: FnOnce(&Reused) -> Hash,
     {
         self.consume_sig_op_cost(1)?;
-        let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidPubkey)?;
-        let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
+        let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(|e| TxScriptError::InvalidPubkey(map_secp_error(e)))?;
+        let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(|e| TxScriptError::InvalidSignature(map_secp_error(e)))?;
         let msg_hash = msg_hash(self.reused_values);
         let secp_msg = secp256k1::Message::from_digest(msg_hash.into());
         let sig_cache_key = SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: secp_msg };
@@ -926,8 +945,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     {
         self.consume_sig_op_cost(1)?;
         Self::check_pub_key_encoding_ecdsa(key)?;
-        let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidPubkey)?;
-        let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
+        let pk = secp256k1::PublicKey::from_slice(key).map_err(|e| TxScriptError::InvalidPubkey(map_secp_error(e)))?;
+        let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(|e| TxScriptError::InvalidSignature(map_secp_error(e)))?;
         let msg_hash = msg_hash(self.reused_values);
         let secp_msg = secp256k1::Message::from_digest(msg_hash.into());
         let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: secp_msg };

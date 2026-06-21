@@ -36,7 +36,7 @@ js-sys = { workspace = true, optional = true }
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
-kaspa-txscript-errors.workspace = true
+kaspa-txscript-errors = { workspace = true, features = ["std"] }
 kaspa-utils.workspace = true
 kaspa-wasm-core = { workspace = true, optional = true }
 log.workspace = true
@@ -46,7 +46,7 @@ risc0-binfmt.workspace = true
 risc0-circuit-recursion.workspace = true
 risc0-core.workspace = true
 risc0-zkp.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
 serde_json.workspace = true

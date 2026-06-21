@@ -3,11 +3,11 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
+use crate::errors::{ProofWeakness, PruningImportError, PruningImportResult};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockLevel, BlueWorkType,
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
-    errors::pruning::{ProofWeakness, PruningImportError, PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningProofMetadata},
 };

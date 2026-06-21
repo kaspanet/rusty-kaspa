@@ -19,11 +19,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, TransactionId, TransactionOutpoint},
 };
 use kaspa_core::{debug, time::unix_now, trace};
-use std::{
-    collections::{hash_map::Keys, hash_set::Iter},
-    iter::once,
-    sync::Arc,
-};
+use std::{collections::hash_map::Keys, iter::once, sync::Arc};
 
 use super::frontier::Frontier;
 use super::frontier::feerate_key::FeerateTransactionKey;
@@ -350,7 +346,7 @@ impl TransactionsPool {
     }
 }
 
-type IterTxId<'a> = Iter<'a, TransactionId>;
+type IterTxId<'a> = <&'a TransactionIdSet as IntoIterator>::IntoIter;
 type KeysTxId<'a> = Keys<'a, TransactionId, MempoolTransaction>;
 
 impl<'a> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<'a>, TransactionId> for TransactionsPool {
