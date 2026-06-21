@@ -70,16 +70,13 @@ impl DbTipsStore {
 
 impl TipsStoreReader for DbTipsStore {
     fn get(&self) -> StoreResult<ReadLock<BlockHashSet>> {
-        // `CachedDbSetItem` returns a std-backed `HashSet`; rebuild it as the
-        // hashbrown-backed `BlockHashSet` expected by the consensus trait.
-        Ok(BlockHashSet::from_iter(self.access.read()?.read().iter().copied()).into())
+        self.access.read()
     }
 }
 
 impl TipsStore for DbTipsStore {
     fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<ReadLock<BlockHashSet>> {
-        let updated = self.access.update(DirectDbWriter::new(&self.db), &[new_tip], new_tip_parents)?;
-        Ok(BlockHashSet::from_iter(updated.read().iter().copied()).into())
+        self.access.update(DirectDbWriter::new(&self.db), &[new_tip], new_tip_parents)
     }
 
     fn add_tip_with_writer(
@@ -89,8 +86,7 @@ impl TipsStore for DbTipsStore {
         new_tip_parents: &[Hash],
     ) -> StoreResult<ReadLock<BlockHashSet>> {
         // New tip parents are no longer tips and hence removed
-        let updated = self.access.update(writer, &[new_tip], new_tip_parents)?;
-        Ok(BlockHashSet::from_iter(updated.read().iter().copied()).into())
+        self.access.update(writer, &[new_tip], new_tip_parents)
     }
 
     fn prune_tips_with_writer(&mut self, writer: impl DbWriter, pruned_tips: &[Hash]) -> StoreResult<()> {
