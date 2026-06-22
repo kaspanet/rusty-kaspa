@@ -3,9 +3,7 @@ use prometheus::proto::MetricFamily;
 use prometheus::{Counter, register_counter};
 use prometheus::{CounterVec, Gauge, GaugeVec, register_counter_vec, register_gauge, register_gauge_vec};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "rkstratum_cpu_miner")]
-use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
@@ -21,6 +19,9 @@ const INVALID_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip",
 
 /// Block labels
 const BLOCK_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip", "nonce", "bluescore", "timestamp", "hash"];
+pub const BLOCK_GAUGE_HISTORY_LIMIT: usize = 512;
+const HTTP_READ_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Error labels
 const ERROR_LABELS: &[&str] = &["instance", "wallet", "error"];
@@ -46,6 +47,7 @@ static BLOCK_NOT_CONFIRMED_BLUE_COUNTER: OnceLock<CounterVec> = OnceLock::new();
 
 /// Block gauge - unique instances per block mined
 static BLOCK_GAUGE: OnceLock<GaugeVec> = OnceLock::new();
+static BLOCK_GAUGE_LABEL_HISTORY: OnceLock<parking_lot::Mutex<VecDeque<Vec<String>>>> = OnceLock::new();
 
 /// Disconnect counter - number of disconnects by worker
 static DISCONNECT_COUNTER: OnceLock<CounterVec> = OnceLock::new();
@@ -367,12 +369,8 @@ async fn handle_http_request(
         let mut buf = Vec::new();
         encoder.encode(&metric_families, &mut buf)?;
 
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{}",
-            buf.len(),
-            String::from_utf8_lossy(&buf)
-        );
-        stream.write_all(response.as_bytes()).await?;
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n", buf.len());
+        write_response(stream, response, Some(buf)).await?;
         return Ok(());
     }
 
@@ -467,17 +465,38 @@ async fn handle_http_request(
     Ok(())
 }
 
-async fn serve_http_loop(listener: tokio::net::TcpListener, mode: HttpMode) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn handle_http_connection(
+    mut stream: tokio::net::TcpStream,
+    mode: HttpMode,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use tokio::io::AsyncReadExt;
 
-    loop {
-        let (mut stream, _) = listener.accept().await?;
-        let mut buffer = [0; 8192];
+    let mut buffer = [0; 8192];
+    let n = match tokio::time::timeout(HTTP_READ_TIMEOUT, stream.read(&mut buffer)).await {
+        Ok(Ok(n)) => n,
+        Ok(Err(e)) => return Err(Box::new(e)),
+        Err(_) => return Ok(()),
+    };
+    if n == 0 {
+        return Ok(());
+    }
 
-        if let Ok(n) = stream.read(&mut buffer).await {
-            let request = String::from_utf8_lossy(&buffer[..n]);
-            let _ = handle_http_request(stream, &request, &mode).await;
-        }
+    let request = String::from_utf8_lossy(&buffer[..n]).to_string();
+    match tokio::time::timeout(HTTP_REQUEST_TIMEOUT, handle_http_request(stream, &request, &mode)).await {
+        Ok(result) => result,
+        Err(_) => Ok(()),
+    }
+}
+
+async fn serve_http_loop(listener: tokio::net::TcpListener, mode: HttpMode) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let mode = mode.clone();
+        tokio::spawn(async move {
+            if let Err(err) = handle_http_connection(stream, mode).await {
+                tracing::debug!("web dashboard request failed: {err}");
+            }
+        });
     }
 }
 
@@ -623,22 +642,49 @@ fn update_worker_activity(worker: &WorkerContext) {
     activity_map.lock().insert(key, Instant::now());
 }
 
+fn remember_block_gauge_labels(gauge: &GaugeVec, labels: Vec<String>) {
+    let history =
+        BLOCK_GAUGE_LABEL_HISTORY.get_or_init(|| parking_lot::Mutex::new(VecDeque::with_capacity(BLOCK_GAUGE_HISTORY_LIMIT)));
+    let mut history = history.lock();
+
+    if let Some(existing_idx) = history.iter().position(|existing| existing == &labels) {
+        history.remove(existing_idx);
+    }
+    history.push_front(labels);
+
+    while history.len() > BLOCK_GAUGE_HISTORY_LIMIT {
+        let Some(old_labels) = history.pop_back() else {
+            break;
+        };
+        let old_refs = old_labels.iter().map(String::as_str).collect::<Vec<_>>();
+        let _ = gauge.remove_label_values(&old_refs);
+    }
+}
+
 /// Record a block found
 pub fn record_block_found(worker: &WorkerContext, nonce: u64, bluescore: u64, hash: String) {
     if let Some(counter) = BLOCK_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc();
     }
     if let Some(gauge) = BLOCK_GAUGE.get() {
-        let mut labels = worker.labels();
+        let mut labels = vec![
+            worker.instance_id.clone(),
+            worker.worker_name.clone(),
+            worker.miner.clone(),
+            worker.wallet.clone(),
+            worker.ip.clone(),
+        ];
         let nonce_str = nonce.to_string();
         let bluescore_str = bluescore.to_string();
         let timestamp_str =
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs().to_string();
-        labels.push(&nonce_str);
-        labels.push(&bluescore_str);
-        labels.push(&timestamp_str);
-        labels.push(&hash);
-        gauge.with_label_values(&labels).set(1.0);
+        labels.push(nonce_str);
+        labels.push(bluescore_str);
+        labels.push(timestamp_str);
+        labels.push(hash);
+        let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+        gauge.with_label_values(&label_refs).set(1.0);
+        remember_block_gauge_labels(gauge, labels);
     }
 }
 
@@ -968,6 +1014,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     let mut worker_start_times: HashMap<String, f64> = HashMap::new(); // Store start times for hashrate calculation
     let mut worker_difficulties: HashMap<String, f64> = HashMap::new(); // Store current difficulty for each worker
     let mut block_set: HashSet<String> = HashSet::new();
+    let mut total_blocks_from_counters = 0u64;
 
     // Parse global network gauges from the unfiltered set.
     // Also pick up internal CPU miner metrics (if present).
@@ -1110,6 +1157,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().value() as u64;
+                    total_blocks_from_counters = total_blocks_from_counters.saturating_add(count);
                     let entry = worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
                     // Aggregate across multiple time series for the same (instance,worker,wallet)
                     entry.blocks = entry.blocks.saturating_add(count);
@@ -1331,6 +1379,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     stats.workers = active_workers;
     // Active workers are the number of Stratum workers, plus the internal CPU miner if present.
     stats.activeWorkers = stats.workers.len() + stats.internalCpu.as_ref().map(|_| 1).unwrap_or(0);
+    stats.totalBlocks = stats.totalBlocks.max(total_blocks_from_counters);
 
     // Fold internal CPU miner counts into summary totals so the dashboard top-cards reflect
     // internal mining even when no ASICs are connected.
@@ -1542,76 +1591,11 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
     serve_http_loop(listener, HttpMode::Instance { instance_id, web_bind: addr_str }).await
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
-    use tokio::io::AsyncReadExt;
-
-    async fn send_request(mode: HttpMode, request: &str) -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let request = request.to_string();
-        let server = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            handle_http_request(stream, &request, &mode).await.unwrap();
-        });
-
-        let mut client = tokio::net::TcpStream::connect(addr).await.unwrap();
-        let mut buf = Vec::new();
-        client.read_to_end(&mut buf).await.unwrap();
-        server.await.unwrap();
-        String::from_utf8_lossy(&buf).to_string()
-    }
-
-    fn temp_config_path() -> PathBuf {
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-        std::env::temp_dir().join(format!("rkstratum_config_test_{}_{}.yaml", std::process::id(), nanos))
-    }
-
-    #[tokio::test]
-    async fn test_http_routing_and_config_write() {
-        let config_path = temp_config_path();
-        set_web_config_path(config_path.clone());
-        std::fs::write(
-            &config_path,
-            r#"
-kaspad_address: "127.0.0.1:16110"
-stratum_port: ":5555"
-min_share_diff: 8192
-"#,
-        )
-        .unwrap();
-
-        set_web_status_config("127.0.0.1:16110".to_string(), 2);
-
-        let mode = HttpMode::Instance { instance_id: "0".to_string(), web_bind: "127.0.0.1:0".to_string() };
-
-        let status_resp = send_request(mode.clone(), "GET /api/status HTTP/1.1\r\n\r\n").await;
-        assert!(status_resp.contains("200 OK"));
-        assert!(status_resp.contains("\"kaspad_address\""));
-        assert!(status_resp.contains("\"instances\":2"));
-
-        let stats_resp = send_request(mode.clone(), "GET /api/stats HTTP/1.1\r\n\r\n").await;
-        assert!(stats_resp.contains("200 OK"));
-        assert!(stats_resp.contains("application/json"));
-
-        let config_resp = send_request(mode.clone(), "GET /api/config HTTP/1.1\r\n\r\n").await;
-        assert!(config_resp.contains("200 OK"));
-        assert!(config_resp.contains("\"kaspad_address\""));
-
-        // SAFETY: test-only env change scoped to this process; no concurrent mutation expected.
-        unsafe {
-            std::env::set_var("RKSTRATUM_ALLOW_CONFIG_WRITE", "1");
-        }
-        let json_body = r#"{"kaspad_address":"127.0.0.2:16110","stratum_port":":5556","min_share_diff":4096}"#;
-        let post_req = format!("POST /api/config HTTP/1.1\r\nContent-Length: {}\r\n\r\n{}", json_body.len(), json_body);
-        let post_resp = send_request(mode, &post_req).await;
-        assert!(post_resp.contains("\"success\": true"));
-
-        let saved = std::fs::read_to_string(&config_path).unwrap();
-        assert!(!saved.contains("global:"));
-        assert!(saved.contains("instances:"));
-    }
+/// Test entrypoint for exercising the dashboard server with a caller-owned listener.
+#[doc(hidden)]
+pub async fn serve_http_loop_for_test(
+    listener: tokio::net::TcpListener,
+    instance_id: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    serve_http_loop(listener, HttpMode::Instance { instance_id, web_bind: "127.0.0.1:0".to_string() }).await
 }
