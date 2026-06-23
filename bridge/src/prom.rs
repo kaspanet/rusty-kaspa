@@ -1345,26 +1345,26 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     // Add internal CPU recent blocks into the unified blocks list so the donut chart and
     // recent blocks table populate even in CPU-only runs.
     #[cfg(feature = "rkstratum_cpu_miner")]
-    if let Some(icpu) = stats.internalCpu.as_ref() {
-        if let Some(q) = INTERNAL_CPU_RECENT_BLOCKS.get() {
-            let wallet = icpu.wallet.clone();
-            let guard = q.lock();
-            for b in guard.iter() {
-                let hash = b.hash.clone();
-                if hash.is_empty() || block_set.contains(&hash) {
-                    continue;
-                }
-                block_set.insert(hash.clone());
-                stats.blocks.push(BlockInfo {
-                    instance: "-".to_string(),
-                    worker: "InternalCPU".to_string(),
-                    wallet: wallet.clone(),
-                    timestamp: b.timestamp_unix.to_string(),
-                    hash,
-                    nonce: b.nonce.to_string(),
-                    bluescore: b.bluescore.to_string(),
-                });
+    if let Some(icpu) = stats.internalCpu.as_ref()
+        && let Some(q) = INTERNAL_CPU_RECENT_BLOCKS.get()
+    {
+        let wallet = icpu.wallet.clone();
+        let guard = q.lock();
+        for b in guard.iter() {
+            let hash = b.hash.clone();
+            if hash.is_empty() || block_set.contains(&hash) {
+                continue;
             }
+            block_set.insert(hash.clone());
+            stats.blocks.push(BlockInfo {
+                instance: "-".to_string(),
+                worker: "InternalCPU".to_string(),
+                wallet: wallet.clone(),
+                timestamp: b.timestamp_unix.to_string(),
+                hash,
+                nonce: b.nonce.to_string(),
+                bluescore: b.bluescore.to_string(),
+            });
         }
     }
 
