@@ -28,7 +28,7 @@ ark-groth16.workspace = true
 ark-serialize.workspace = true
 borsh = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
-kaspa-txscript.workspace = true
+kaspa-txscript = { workspace = true, features = ["risc0-platform-exports-syscalls"] }
 kaspa-wasm-core = { workspace = true, optional = true }
 risc0-binfmt.workspace = true
 risc0-groth16.workspace = true

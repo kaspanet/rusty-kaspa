@@ -1,13 +1,22 @@
 #[cfg(windows)]
 fn main() {
-    // WORKAROUND: Compile Windows stub for risc0-zkvm-platform's sys_alloc_aligned
+    // WORKAROUND: Compile Windows stub for risc0-zkvm-platform's sys_alloc_aligned.
     //
+    // Verifier-only RISC0 builds may still declare sys_alloc_aligned as an external
+    // symbol on Windows. The optional `risc0-platform-exports-syscalls` feature is
+    // enabled by kaspa-txscript-zk-sdk, where risc0-zkvm enables
+    // risc0-zkvm-platform/export-syscalls and exports sys_alloc_aligned itself.
+    // In that graph, compiling this shim would create duplicate MSVC symbols.
+    if std::env::var_os("CARGO_FEATURE_RISC0_PLATFORM_EXPORTS_SYSCALLS").is_some() {
+        return;
+    }
+
     // This build script compiles a C stub that provides the missing sys_alloc_aligned()
-    // and sys_free_aligned() symbols required by risc0-zkvm-platform on Windows.
+    // symbol required by risc0-zkvm-platform on Windows.
     //
     // The stub is only compiled on Windows platforms and links against the MSVC runtime
     // to provide aligned memory allocation functions. This allows the crate to build
-    // successfully on Windows while risc0-zkvm-platform lacks native Windows support.
+    // successfully on Windows when the RISC0 platform does not export the host symbol.
     //
     // See src/zk_precompiles/risc0/windows_stub/sys_alloc.c for implementation details.
     //

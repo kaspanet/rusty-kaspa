@@ -16,6 +16,9 @@ name = "kip-10"
 [features]
 wasm32-core = ["dep:js-sys", "dep:kaspa-wasm-core"]
 wasm32-sdk = ["wasm32-core", "kaspa-consensus-core/wasm32-sdk"]
+# Disable the Windows host allocator shim when another selected crate enables
+# `risc0-zkvm-platform/export-syscalls` and RISC0 exports the symbol itself.
+risc0-platform-exports-syscalls = []
 
 [dependencies]
 ark-bn254.workspace = true

@@ -1,6 +1,7 @@
 // Windows stub implementation for risc0-zkvm-platform's sys_alloc_aligned
 //
-// WORKAROUND: Temporary workaround for Windows linking errors with risc0-zkvm-platform
+// WORKAROUND: Temporary workaround for verifier-only Windows linking with
+// risc0-zkvm-platform.
 //
 // ERROR ENCOUNTERED:
 // ==================
@@ -17,9 +18,13 @@
 //
 // WHY THIS SOLUTION:
 // ==================
-// We provide a Windows-specific implementation of sys_alloc_aligned()
-// using MSVC's native _aligned_malloc() functions. This satisfies the
-// linker's requirement for these symbols while maintaining the same functionality.
+// We provide a Windows-specific implementation of sys_alloc_aligned() using
+// MSVC's native _aligned_malloc() function. This satisfies the linker's
+// requirement while maintaining the same functionality.
+//
+// This file must only be compiled when risc0-zkvm-platform is not already built
+// with its export-syscalls feature. If RISC0 exports sys_alloc_aligned itself,
+// compiling this shim as well causes MSVC LNK2005/LNK1169 duplicate symbols.
 //
 // IMPORTANT NOTES:
 // ================
@@ -27,7 +32,8 @@
 //   not during verification-only use cases (which is how Kaspa uses it).
 // - The implementation uses Windows-specific functions (_aligned_malloc) which
 //   are part of the MSVC runtime library, so no additional dependencies are required.
-// - This is a temporary workaround until risc0-zkvm-platform adds proper Windows support.
+// - This is a temporary workaround for dependency graphs where risc0-zkvm-platform
+//   declares but does not export sys_alloc_aligned.
 //
 // TESTING/VERIFICATION:
 // =====================
@@ -49,7 +55,8 @@
 // The implementation uses standard MSVC runtime functions available in all modern
 // MSVC versions, so no specific version requirements beyond standard Rust/MSVC setup.
 //
-// TODO: Remove this workaround when risc0-zkvm-platform adds proper Windows support.
+// TODO: Remove this workaround when all supported RISC0 dependency graphs export
+// sys_alloc_aligned themselves on Windows.
 // Issue tracking: https://github.com/kaspanet/rusty-kaspa/issues/<ISSUE_NUMBER>
 // Upstream risc0-zkvm-platform issue: <UPSTREAM_ISSUE_LINK> (if applicable)
 //
