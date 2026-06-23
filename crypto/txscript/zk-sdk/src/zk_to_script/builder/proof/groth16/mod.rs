@@ -1,9 +1,6 @@
-mod vk;
-
 use crate::result::Result;
 use crate::zk_to_script::builder::proof::FinalizedR0Script;
-pub use crate::zk_to_script::builder::proof::groth16::vk::R0_SERIALIZED_UNCOMPRESSED_VK;
-use crate::zk_to_script::{BoundedR0Groth16FixedJournalScript, BoundedR0Groth16Script, ZkScriptBuilder, push_r0_groth16_witness};
+use crate::zk_to_script::{BoundedR0Groth16FixedJournalScript, BoundedR0Groth16Script, ZkScriptBuilder, push_r0_groth16_proof};
 use risc0_binfmt::Digestible;
 use risc0_zkvm::Groth16Receipt;
 
@@ -20,7 +17,7 @@ impl ZkScriptBuilder<BoundedR0Groth16Script> {
         // Caller-owned journal hash goes on the stack first (what we claim to
         // be), then the proof witness lands on top of it.
         self.builder.add_data(&journal_hash)?;
-        push_r0_groth16_witness(&mut self.builder, receipt)?;
+        push_r0_groth16_proof(&mut self.builder, receipt)?;
 
         self.builder.add_data(&redeem_script)?; // push the redeem script
 
@@ -35,7 +32,7 @@ impl ZkScriptBuilder<BoundedR0Groth16FixedJournalScript> {
     pub fn finalize_with_proof<Claim: Digestible + Clone>(mut self, receipt: Groth16Receipt<Claim>) -> Result<FinalizedR0Script> {
         let redeem_script = self.builder.drain();
 
-        push_r0_groth16_witness(&mut self.builder, receipt)?;
+        push_r0_groth16_proof(&mut self.builder, receipt)?;
 
         self.builder.add_data(&redeem_script)?; // push the redeem script
 

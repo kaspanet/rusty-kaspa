@@ -6,7 +6,7 @@
 //
 //   * `appendR0Groth16Verifier`      — the *verifier* fragment (redeem script).
 //                                       Built by the covenant author.
-//   * `pushR0Groth16Witness`         — the *witness* push (signature script).
+//   * `pushR0Groth16Proof`         — the *witness* push (signature script).
 //                                       Built by the spender / tx builder.
 //
 // These two sides are typically produced by different software at different
@@ -63,13 +63,13 @@ function buildFixedJournalRedeemScript() {
 // A P2SH signature script must be push-only; both helpers below are.
 
 // Dynamic journal: the caller owns the journal hash, so it is pushed
-// for groth16 it must sit *under* the proof. `pushR0Groth16Witness` then maps
+// for groth16 it must sit *under* the proof. `pushR0Groth16Proof` then maps
 // the receipt to the compressed proof and pushes it on top. Finally the redeem
 // script itself is pushed so the P2SH engine can execute it.
 function buildSignatureScript(redeemScript) {
     const builder = ZkScriptBuilder.newR0(FLAGS);
     builder.addData(JOURNAL_HASH);
-    builder.pushR0Groth16Witness(GROTH16_RECEIPT);
+    builder.pushR0Groth16Proof(GROTH16_RECEIPT);
     builder.addData(Buffer.from(redeemScript, 'hex'));
     return builder.drain();
 }
@@ -78,7 +78,7 @@ function buildSignatureScript(redeemScript) {
 // signature script carries only the proof.
 function buildFixedJournalSignatureScript(redeemScript) {
     const builder = ZkScriptBuilder.newR0(FLAGS);
-    builder.pushR0Groth16Witness(GROTH16_RECEIPT);
+    builder.pushR0Groth16Proof(GROTH16_RECEIPT);
     builder.addData(Buffer.from(redeemScript, 'hex'));
     return builder.drain();
 }

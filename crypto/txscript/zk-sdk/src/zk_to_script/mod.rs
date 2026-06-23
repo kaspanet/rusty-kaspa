@@ -9,10 +9,10 @@ mod fragments;
 #[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))]
 pub mod wasm;
 
-pub use builder::{FinalizedR0Script, R0_SERIALIZED_UNCOMPRESSED_VK};
+pub use builder::FinalizedR0Script;
 pub use fragments::{
     SuccinctWitnessBytes, append_r0_groth16_verifier, append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier,
-    append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof, prepare_r0_succinct_witness, push_r0_groth16_witness,
+    append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof, prepare_r0_succinct_witness, push_r0_groth16_proof,
     push_r0_succinct_witness,
 };
 
@@ -104,8 +104,8 @@ impl<ScriptType> ZkScriptBuilder<ScriptType> {
         Ok(self)
     }
 
-    pub fn push_r0_groth16_witness<Claim: Digestible + Clone>(&mut self, receipt: Groth16Receipt<Claim>) -> Result<&mut Self> {
-        fragments::push_r0_groth16_witness(&mut self.builder, receipt)?;
+    pub fn push_r0_groth16_proof<Claim: Digestible + Clone>(&mut self, receipt: Groth16Receipt<Claim>) -> Result<&mut Self> {
+        fragments::push_r0_groth16_proof(&mut self.builder, receipt)?;
         Ok(self)
     }
 

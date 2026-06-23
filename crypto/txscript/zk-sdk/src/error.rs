@@ -13,7 +13,4 @@ pub enum Error {
 
     #[error("Script builder error: {0}")]
     ScriptBuilder(#[from] kaspa_txscript::script_builder::ScriptBuilderError),
-
-    #[error("R0 verifying key serialization error")]
-    VkSerialization,
 }

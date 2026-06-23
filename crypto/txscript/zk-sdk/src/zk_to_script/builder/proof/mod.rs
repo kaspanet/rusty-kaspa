@@ -1,6 +1,5 @@
 mod groth16;
 mod succinct;
-pub use groth16::R0_SERIALIZED_UNCOMPRESSED_VK;
 
 /// The final output of the builder, containing both the sig script and redeem script.
 pub struct FinalizedR0Script {

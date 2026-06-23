@@ -1,9 +1,9 @@
 const { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
     payToScriptHashScript, addressFromScriptPublicKey,
-    createTransaction, signTransaction, 
+    createTransaction, signTransaction,
     Encoding} = require('./kaspa');
 
-// Configuration  
+// Configuration
 const NETWORK_ID = 'devnet';
 const RPC_URL = 'ws://127.0.0.1:17610';
 const PRIVATE_KEY = 'b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f';
@@ -28,7 +28,7 @@ async function groth16VerifyNoBuilder() {
     const privateKey = new PrivateKey(PRIVATE_KEY);
     const keypair = privateKey.toKeypair();
     const sourceAddress = keypair.toAddress(NETWORK_ID);
-    
+
     // Parse proof data
     const unpreparedVk = Buffer.from(UNPREPARED_VK_HEX, 'hex');
     const proof = Buffer.from(PROOF_HEX, 'hex');
@@ -48,15 +48,15 @@ async function groth16VerifyNoBuilder() {
     });
 
     await rpc.connect();
-    
+
     try {
         // Get UTXOs and wait for maturity
         console.log('Fetching UTXOs...');
         let response = await rpc.getUtxosByAddresses([sourceAddress]);
-        
+
         const info = await rpc.getBlockDagInfo();
         const currentDaaScore = info.virtualDaaScore;
-        
+
         const matureUtxos = response.entries.filter(entry => {
             if (!entry.entry.isCoinbase) return true;
             return (currentDaaScore - entry.entry.blockDaaScore) >= 100n;
@@ -75,15 +75,15 @@ async function groth16VerifyNoBuilder() {
         // 2. Redeem script pushes: tag (0x20)
         // 3. OpZkPrecompile pops in order: tag, vk, proof, num_inputs, input0...input4
         const redeemScriptBuilder = new ScriptBuilder();
-        
+
         // The signature script will push all the proof data
         // The redeem script only needs to push the tag and call the opcode
         redeemScriptBuilder.addData(Buffer.from([ZK_VERIFIER_TAG])); // Push tag (0x20)
         redeemScriptBuilder.addOp(Opcodes.OpZkPrecompile);            // Execute ZK verification
-        
+
         const redeemScript = redeemScriptBuilder.drain();
         const lockingScript = payToScriptHashScript(redeemScript);
-        
+
         console.log(`Redeem script (hex): ${redeemScript}`);
 
         // Convert the P2SH script to an address
@@ -140,10 +140,10 @@ async function groth16VerifyNoBuilder() {
         // Build signature script with proof data
         // Stack order (bottom to top): vk, proof, num_inputs, input0, input1, input2, input3, input4
         const signatureScriptBuilder = new ScriptBuilder();
-        
-        
-        
-        
+
+
+
+
         // Push public inputs in order (input0 first, pushed last so it's on top)
         for (let i = publicInputs.length - 1; i >= 0; i--) {
             signatureScriptBuilder.addData(publicInputs[i]);
@@ -156,7 +156,7 @@ async function groth16VerifyNoBuilder() {
 
         // Push redeem script (P2SH requirement)
         signatureScriptBuilder.addData(Buffer.from(redeemScript, 'hex'));
-        
+
         const signatureScript = signatureScriptBuilder.drain();
 
         console.log(`Signature script length: ${Buffer.from(signatureScript, 'hex').length} bytes`);
@@ -197,7 +197,7 @@ async function groth16VerifyNoBuilder() {
         redeemTx.inputs[0].signatureScript = signatureScript;
         redeemTx.inputs[0].computeBudget = 1600;
         redeemTx.version=1;
-        
+
         console.log('Redeem transaction created');
         console.log('Submitting redeem transaction with Groth16 proof verification...');
 
@@ -209,7 +209,7 @@ async function groth16VerifyNoBuilder() {
 
     } catch (error) {
         console.error('Error:', error);
-       
+
     } finally {
         await rpc.disconnect();
     }

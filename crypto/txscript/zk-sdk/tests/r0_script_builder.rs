@@ -183,7 +183,7 @@ fn fragments_groth16_roundtrip_matches_facade() {
     // Signature script: caller pushes journal_hash, then the proof witness, then redeem.
     let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
     sig_builder.add_data(&journal_hash).unwrap();
-    sig_builder.push_r0_groth16_witness(receipt).unwrap();
+    sig_builder.push_r0_groth16_proof(receipt).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
     let sig_script = sig_builder.drain();
 
@@ -210,7 +210,7 @@ fn fragments_groth16_fixed_journal_covenant() {
     let redeem_script = redeem_builder.drain();
 
     let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
-    sig_builder.push_r0_groth16_witness(receipt).unwrap();
+    sig_builder.push_r0_groth16_proof(receipt).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
     let sig_script = sig_builder.drain();
 
@@ -228,7 +228,7 @@ fn fragments_groth16_fixed_journal_wrong_journal_rejected() {
     let redeem_script = redeem_builder.drain();
 
     let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
-    sig_builder.push_r0_groth16_witness(receipt).unwrap();
+    sig_builder.push_r0_groth16_proof(receipt).unwrap();
     sig_builder.add_data(&redeem_script).unwrap();
     let sig_script = sig_builder.drain();
 
