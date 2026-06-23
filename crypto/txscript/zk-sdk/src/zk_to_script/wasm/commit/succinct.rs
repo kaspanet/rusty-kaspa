@@ -8,9 +8,10 @@ use workflow_wasm::prelude::*;
 
 fn parse_hash_fn_id(value: &str) -> Result<HashFnId> {
     match value {
-        "blake2b" => Ok(HashFnId::Blake2b),
         "poseidon2" => Ok(HashFnId::Poseidon2),
-        "sha-256" => Ok(HashFnId::Sha256),
+        // Other hashfns disabled until R0 support.
+        // "blake2b" => Ok(HashFnId::Blake2b),
+        // "sha-256" => Ok(HashFnId::Sha256),
         _ => Err(Error::custom(format!("invalid hash function id: {value}"))),
     }
 }
