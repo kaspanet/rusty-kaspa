@@ -2,6 +2,8 @@
 
 Kaspa is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md), [KIP20](https://github.com/kaspanet/kips/blob/master/kip-0020.md), and [KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), bringing native L1 covenant programming and infrastructure for based ZK applications to Kaspa. The hard fork is scheduled to activate on mainnet at DAA score `474,165,565`, roughly on June 30, 2026, at 16:15 UTC.
 
+As with any consensus change, **failing to upgrade can cause your node to split off from the network**. Exchanges may record incorrect balances, and miners may produce invalid blocks.
+
 ## Key notes
 
 - Node operators should upgrade to this version before the upcoming hard fork.
@@ -49,8 +51,8 @@ There are two reasons for the change:
 
 ## Running Your Node
 
-1. **Obtain Kaspa v2.0.0 binaries**  
-   Download and extract the official [2.0.0 release](https://github.com/kaspanet/rusty-kaspa/releases/tag/v2.0.0), or build from the `master` branch by following the instructions in the project README.
+1. **Obtain Kaspa v2.0.1 binaries**  
+   Download and extract the official [2.0.1 or newer release](https://github.com/kaspanet/rusty-kaspa/releases/latest), or build from the `stable` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
 
@@ -81,25 +83,17 @@ Leave this process running. Closing it will stop your node. If you have other fl
   - `--loglevel=kaspa_grpc_server=warn` to suppress most RPC connect/disconnect log reports.
   - `--ram-scale=3.0` to increase cache size threefold (relevant for utilizing large RAM; can be set between 0.1 and 10).
 
-## Mining and Preparation for Toccata
+## Block Reward Info RPC for Pools and Miners
 
-Toccata introduces v1 transactions with new fields (`TransactionOutput.covenant`, `TransactionInput.compute_commit`), which need to be preserved from the template that you get from `GetBlockTemplate` and passed back when you submit your mined block via `SubmitBlock`.
+`GetBlockRewardInfo` is a new RPC endpoint for pool accounting, miner reporting, and reward tracking by block hash. It accepts a block hash and returns:
 
-Ensure your pool/stratum is updated to preserve the new fields in transactions by updating your gRPC proto files.
+- `header`: the queried block header.
+- `blockColor`: `UNKNOWN`, `BLUE`, or `RED`.
+- `confirmationCount`: populated once the block has known merge context.
+- `mergingChainBlockHash`: populated once the block has known merge context.
+- `rewardAmount`: populated only when `blockColor` is `BLUE`.
 
-### Updating Your Pool/Stratum to Work with Toccata
-
-#### Updating gRPC proto
-
-Make sure that you get the updated `messages.proto` and `rpc.proto` from the rusty-kaspa repo at https://github.com/kaspanet/rusty-kaspa/tree/master/rpc/grpc/core/proto.
-
-#### Using the Go Kaspad Repo as an SDK
-
-If you use the Go Kaspad repo as an SDK, a new tag [v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23) has been made which contains the changes you need to get your pool/stratum updated. Update your dependency on the old repo to that tag.
-
-### What happens if I don't update my pool/stratum?
-
-After Toccata activates, if you still have not updated, the blocks that you submit will be considered invalid.
+Use this endpoint when you need to determine the reward attributable to a mined block after it is merged.
 
 ## Test Against Testnet-10 Before Activation
 
@@ -120,3 +114,55 @@ The transaction field previously exposed as `mass` is now named `storage_mass` i
 For JSON RPC transaction objects, both `mass` and `storageMass` are currently emitted with the same value for backward compatibility. When deserializing JSON, clients may provide either field. If both are provided, they must agree: conflicting values are rejected. New integrations should read and write `storageMass`.
 
 For JavaScript/WASM transaction objects, `mass` is deprecated and aliases `storageMass`. New code should use `storageMass`.
+
+## gRPC/protobuf Changes
+
+Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), [`rpc.proto`](../rpc/grpc/core/proto/rpc.proto).
+
+- `RpcTransaction.mass` is now `RpcTransaction.storage_mass`.
+- `RpcTransactionInput.computeBudget` was added. 
+- `RpcTransactionOutput.covenant` was added.
+- UTXO entries can carry covenant IDs: `RpcUtxoEntry.covenant_id`.
+
+## Required changes
+
+### Network users
+
+- If you run a node, upgrade to the [2.0.1 or newer release](https://github.com/kaspanet/rusty-kaspa/releases/latest) before activation.
+- If you do not operate a node, wallet, exchange, pool, explorer, or other Kaspa infrastructure, no action is required.
+
+### Wallet software
+
+- If you use the RPC fee estimation API, no fee calculation change is required.
+- If your software uses fixed fee assumptions, update the minimum standard fee calculation from `1 sompi` per gram to `100 sompi` per gram. The fee floor is `100 sompi * max(compute grams, 2 * transaction bytes)`. Without this change, direct transaction submissions to upgraded nodes can fail.
+- If you construct transactions manually, review [Deprecation of `Transaction.mass` in Transaction APIs](#deprecation-of-transactionmass-in-transaction-apis) before reading or writing transaction mass fields.
+
+### Exchanges
+
+- Upgrade all nodes before activation.
+- Use an updated SDK: [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
+- Test deposit, withdrawal, indexing, balance tracking, and fee-estimation flows against Testnet-10.
+- If transaction submission does not use the RPC fee estimation API, update fee calculation to `100 sompi * max(compute grams, 2 * transaction bytes)`.
+- Update transaction parsing to accept transaction version `1` and write `storageMass` / `storage_mass` instead of `mass`.
+
+### Miners
+
+- If you mine through a pool, verify that the pool has upgraded before activation.
+- If you mine against your own node, upgrade the node and use the provided [Stratum Bridge](../bridge/docs/README.md), or another Toccata-compatible mining stack.
+- If you operate custom mining software that calls `GetBlockTemplate` and `SubmitBlock` directly, follow the pool/stratum operator requirements above.
+- Test your mining path against Testnet-10 before mainnet activation where possible.
+
+### Pools
+
+- Upgrade all nodes before activation.
+- Use an updated SDK: [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
+- Update pool, job-generation, and block-submission code to preserve post-Toccata template fields while building the solved block. In particular, do not drop or overwrite `RpcBlockHeader.version`, transaction version `1`, `RpcTransaction.storage_mass`, `RpcTransactionInput.computeBudget`, or `RpcTransactionOutput.covenant`.
+- If your software serializes block-template transactions into custom job messages, extend those messages and their block-reconstruction path to round-trip the new fields.
+- Test `GetBlockTemplate` -> mining work distribution -> solved block reconstruction -> `SubmitBlock` on Testnet-10 with post-activation templates. After Toccata activates, blocks that strip the new fields can be invalid.
+
+### Explorers, indexers, and API integrators
+
+- Update your SDKs, or regenerate RPC bindings after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes), so transaction version `1`, input `computeBudget`, output `covenant`, UTXO `covenant_id`, and `storageMass` / `storage_mass` are handled correctly.
+- If your storage schema records full transaction, output, or UTXO data, make sure it can store covenant bindings and covenant IDs.
+- Review `GetBlockRewardInfo` and `GetSeqCommitLaneProof` if your integration needs reward-accounting, block-color, or KIP-21 lane-proof data.
+- Continue accepting the deprecated JSON `mass` field for backward compatibility where needed, but emit and document `storageMass` for new integrations.
