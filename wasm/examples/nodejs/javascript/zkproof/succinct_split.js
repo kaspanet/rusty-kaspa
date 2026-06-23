@@ -30,8 +30,8 @@ const PRIVATE_KEY = 'b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da86714159
 const IMAGE_ID = '1ade4c062dee368276ef6610bd7de59d9b63c7ebe87d8d75a63c0e288895cb7d';
 const CONTROL_ID = '1ca3ca03030719064ba61b3125bdd326fc57f74e799ef860bdea6f3227381e16';
 const JOURNAL = '5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456';
-// `hashFnId` is omitted below, which defaults to "poseidon2" (the succinct
-// default). Pass "blake2b" / "poseidon2" / "sha-256" to override.
+// `hashFnId` is omitted below, which defaults to "poseidon2" — currently the
+// only supported hash function.
 
 // borsh-encoded `SuccinctReceipt<ReceiptClaim>`. Read from file because the
 // succinct receipt is large (~220 KB).

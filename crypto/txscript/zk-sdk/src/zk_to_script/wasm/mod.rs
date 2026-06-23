@@ -12,6 +12,7 @@ use kaspa_txscript::error::Error;
 use kaspa_txscript::result::Result;
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::wasm::builder::ScriptBuilderOptions;
+use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 use kaspa_wasm_core::types::HexString;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -56,6 +57,20 @@ impl InnerState {
 
 pub(super) fn into_array_32(bytes: Vec<u8>, name: &'static str) -> Result<[u8; 32]> {
     bytes.as_slice().try_into().map_err(|_| Error::custom(format!("{name} must be 32 bytes")))
+}
+
+fn parse_hash_fn_id(value: &str) -> Result<HashFnId> {
+    match value {
+        "poseidon2" => Ok(HashFnId::Poseidon2),
+        // Other hashfns disabled until R0 support.
+        // "blake2b" => Ok(HashFnId::Blake2b),
+        // "sha-256" => Ok(HashFnId::Sha256),
+        _ => Err(Error::custom(format!("invalid hash function id: {value}"))),
+    }
+}
+
+pub(super) fn decode_hash_fn_id(hash_fn_id: Option<String>) -> Result<Option<HashFnId>> {
+    hash_fn_id.as_deref().map(parse_hash_fn_id).transpose()
 }
 
 /// ZkScriptBuilder provides a staged builder for RISC0 zk-to-script locking

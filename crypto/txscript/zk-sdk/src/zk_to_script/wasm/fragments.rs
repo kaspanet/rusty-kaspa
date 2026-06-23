@@ -1,4 +1,4 @@
-use crate::zk_to_script::wasm::{ZkScriptBuilder, into_array_32};
+use crate::zk_to_script::wasm::{ZkScriptBuilder, decode_hash_fn_id, into_array_32};
 use crate::zk_to_script::{
     append_r0_groth16_verifier, append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier,
     append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof, prepare_r0_succinct_witness, push_r0_groth16_proof,
@@ -6,24 +6,10 @@ use crate::zk_to_script::{
 };
 use kaspa_txscript::error::Error;
 use kaspa_txscript::result::Result;
-use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 use kaspa_wasm_core::types::{BinaryT, HexString};
 use risc0_zkvm::{Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 use wasm_bindgen::prelude::wasm_bindgen;
 use workflow_wasm::prelude::*;
-
-fn parse_hash_fn_id(value: &str) -> Result<HashFnId> {
-    match value {
-        "blake2b" => Ok(HashFnId::Blake2b),
-        "poseidon2" => Ok(HashFnId::Poseidon2),
-        "sha-256" => Ok(HashFnId::Sha256),
-        _ => Err(Error::custom(format!("invalid hash function id: {value}"))),
-    }
-}
-
-fn decode_hash_fn_id(hash_fn_id: Option<String>) -> Result<Option<HashFnId>> {
-    hash_fn_id.as_deref().map(parse_hash_fn_id).transpose()
-}
 
 fn decode_groth16_receipt(receipt: BinaryT) -> Result<Groth16Receipt<ReceiptClaim>> {
     let bytes = receipt.try_as_vec_u8()?;
@@ -92,9 +78,9 @@ impl ZkScriptBuilder {
     }
 
     /// Appends the r0 succinct verifier fragment for the given image id, control
-    /// id and hash function (`hashFnId` accepts "blake2b", "poseidon2" or
-    /// "sha-256"; defaults to "poseidon2"). Expects
-    /// `[..., claim, control_index, control_digests, seal, journal]`.
+    /// id and hash function. `hashFnId` currently only accepts "poseidon2"
+    /// (also the default when omitted); other hash functions are not yet
+    /// supported. Expects `[..., claim, control_index, control_digests, seal, journal]`.
     #[wasm_bindgen(js_name = "appendR0SuccinctVerifier")]
     pub fn append_r0_succinct_verifier(&mut self, image_id: BinaryT, control_id: BinaryT, hash_fn_id: Option<String>) -> Result<()> {
         let image_id = into_array_32(image_id.try_as_vec_u8()?, "imageId")?;
