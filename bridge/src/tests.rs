@@ -1079,9 +1079,16 @@ mod integration {
     use kaspa_stratum_bridge::{KaspaApi, StratumServerBridgeConfig as StratumBridgeConfig, listen_and_serve_with_shutdown};
     use kaspad_lib::args as kaspad_args;
     use std::ffi::OsString;
+    use std::sync::{Mutex, MutexGuard};
     use std::time::Duration;
     use tokio::sync::watch;
     use tokio::time::timeout;
+
+    static INPROCESS_NODE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_inprocess_node_test() -> MutexGuard<'static, ()> {
+        INPROCESS_NODE_TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     // Mirrors testing/integration/src/common/daemon.rs::free_port.
     fn free_port() -> u16 {
@@ -1096,6 +1103,7 @@ mod integration {
 
     #[tokio::test]
     async fn test_bridge_startup_with_inprocess_node() {
+        let _guard = lock_inprocess_node_test();
         init_allocator_with_default_settings();
 
         // Use a temporary directory for the node data
@@ -1166,8 +1174,8 @@ mod integration {
 
     #[tokio::test]
     #[cfg(feature = "rkstratum_cpu_miner")]
-    // Note: When running both integration tests, use --test-threads=1 to avoid file descriptor limits
     async fn test_bridge_startup_with_cpu_miner_feature() {
+        let _guard = lock_inprocess_node_test();
         init_allocator_with_default_settings();
 
         // Use a temporary directory for the node data
