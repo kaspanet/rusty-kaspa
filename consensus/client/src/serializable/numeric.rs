@@ -91,6 +91,7 @@ pub struct SerializableTransactionInput {
     pub index: SignedTransactionIndexType,
     pub sequence: u64,
     pub sig_op_count: u8,
+    #[serde(default)]
     pub compute_budget: u16,
     #[serde(with = "hex::serde")]
     // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
@@ -276,7 +277,7 @@ impl TryFrom<&TransactionOutput> for SerializableTransactionOutput {
     type Error = Error;
     fn try_from(output: &TransactionOutput) -> Result<Self> {
         let inner = output.inner();
-        let covenant = inner.covenant.map(SerializableCovenantBinding::from);
+        let covenant = inner.covenant.clone().map(SerializableCovenantBinding::from);
         Ok(Self { value: inner.value, script_public_key: inner.script_public_key.clone(), covenant })
     }
 }
@@ -291,7 +292,7 @@ pub struct SerializableTransaction {
     pub outputs: Vec<SerializableTransactionOutput>,
     pub lock_time: u64,
     pub gas: u64,
-    #[serde(default)]
+    #[serde(default, alias = "mass")]
     pub storage_mass: u64,
     pub subnetwork_id: SubnetworkId,
     #[serde(with = "hex::serde")]

@@ -329,7 +329,8 @@ impl HandleRelayInvsFlow {
     fn check_orphan_ibd_conditions(&self, orphan_daa_score: u64) -> bool {
         if let Some(ibd_daa_score) = self.ctx.ibd_relay_daa_score() {
             let max_orphans = self.ctx.max_orphans() as u64;
-            orphan_daa_score + max_orphans / 10 > ibd_daa_score && orphan_daa_score < ibd_daa_score + max_orphans / 2
+            orphan_daa_score.saturating_add(max_orphans / 10) > ibd_daa_score
+                && orphan_daa_score < ibd_daa_score.saturating_add(max_orphans / 2)
         } else {
             false
         }

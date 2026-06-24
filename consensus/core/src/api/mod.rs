@@ -81,6 +81,33 @@ pub struct SmtExportMetadata {
     pub active_lanes_count: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct SeqCommitLaneEntry {
+    pub tip: Hash,
+    pub blue_score: u64,
+}
+
+/// Witness for verifying a single lane against the `seq_commit` of a canonical block.
+///
+/// Given the block's header (which carries `seq_commit` in `accepted_id_merkle_root`),
+/// a client can reconstruct the lane's SMT leaf and verify the proof chain:
+/// `smt_leaf → compute_root → lanes_root → activity_root → seq_state_root → seq_commit`.
+///
+/// `lane` is `None` when the lane is absent at this POV;
+/// the SMT proof is then a non-inclusion proof.
+///
+/// `inactivity_shortcut` (KIP-21 activity_root level): the `accepted_id_merkle_root`
+/// (= seq_commit) of the anchor block resolved per KIP-21. Folded into
+/// `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`.
+#[derive(Clone, Debug)]
+pub struct SeqCommitLaneProof {
+    pub smt_proof: kaspa_smt::proof::OwnedSmtProof,
+    pub lane: Option<SeqCommitLaneEntry>,
+    pub payload_and_ctx_digest: Hash,
+    pub parent_seq_commit: Hash,
+    pub inactivity_shortcut: Hash,
+}
+
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
 pub trait ConsensusApi: Send + Sync {
@@ -442,6 +469,16 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        unimplemented!()
+    }
+
+    /// Returns a self-contained witness for verifying the lane `lane_key` against
+    /// the `seq_commit` carried in `block_hash`'s header. The block must be a
+    /// chain (selected-parent) block at or after the current pruning point;
+    /// non-canonical blocks are rejected with [`ConsensusError::BlockNotInSelectedChain`],
+    /// too-deep blocks with [`ConsensusError::BlockTooDeep`], and genesis with
+    /// [`ConsensusError::BlockIsGenesis`].
+    fn get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
         unimplemented!()
     }
 

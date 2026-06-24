@@ -501,6 +501,22 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    async fn get_seq_commit_lane_proof_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetSeqCommitLaneProofRequest,
+    ) -> RpcResult<GetSeqCommitLaneProofResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let proof = session.async_get_seq_commit_lane_proof(request.block_hash, request.lane_key).await?;
+        Ok(GetSeqCommitLaneProofResponse {
+            smt_proof: proof.smt_proof.to_bytes(),
+            lane: proof.lane.map(|l| RpcLaneEntry { tip: l.tip, blue_score: l.blue_score }),
+            payload_and_ctx_digest: proof.payload_and_ctx_digest,
+            parent_seq_commit: proof.parent_seq_commit,
+            inactivity_shortcut: proof.inactivity_shortcut,
+        })
+    }
+
     async fn get_blocks_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -1332,6 +1348,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetVirtualChainFromBlockV2Request,
     ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
         let session = self.consensus_manager.consensus().session().await;
+        // This RPC call attempts to retrieve transactions on route from the block to the virtual.
+        // These transactions may not be present during a transitional state where the sink is missing a block body.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
         // sets to full by default
         let data_verbosity_level = request.data_verbosity_level.or(Some(RpcDataVerbosityLevel::Full));
         let verbosity: RpcAcceptanceDataVerbosity = data_verbosity_level.map(RpcAcceptanceDataVerbosity::from).unwrap_or_default();
