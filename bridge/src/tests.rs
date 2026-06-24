@@ -1253,6 +1253,164 @@ mod integration {
 }
 
 // ============================================================================
+// DASHBOARD / PROMETHEUS TESTS
+// ============================================================================
+
+#[cfg(test)]
+fn dashboard_temp_config_path() -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    std::env::temp_dir().join(format!("rkstratum_config_test_{}_{}.yaml", std::process::id(), nanos))
+}
+
+#[cfg(test)]
+fn dashboard_test_id(prefix: &str) -> String {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    format!("{prefix}-{}-{nanos}", std::process::id())
+}
+
+#[cfg(test)]
+fn dashboard_metric_has_label(metric: &prometheus::proto::Metric, name: &str, value: &str) -> bool {
+    metric.get_label().iter().any(|label| label.name() == name && label.value() == value)
+}
+
+#[cfg(test)]
+fn dashboard_response_body(response: &str) -> &str {
+    response.split_once("\r\n\r\n").map(|(_, body)| body).unwrap_or(response)
+}
+
+#[cfg(test)]
+async fn start_dashboard_test_server(
+    instance_id: String,
+) -> (std::net::SocketAddr, tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { kaspa_stratum_bridge::prom::serve_http_loop_for_test(listener, instance_id).await });
+    (addr, server)
+}
+
+#[cfg(test)]
+async fn dashboard_send_request(addr: std::net::SocketAddr, request: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut client = tokio::net::TcpStream::connect(addr).await.unwrap();
+    client.write_all(request.as_bytes()).await.unwrap();
+
+    let mut buf = Vec::new();
+    client.read_to_end(&mut buf).await.unwrap();
+    String::from_utf8_lossy(&buf).to_string()
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn test_dashboard_http_routing_and_config_write() {
+    use kaspa_stratum_bridge::prom::{set_web_config_path, set_web_status_config};
+
+    let config_path = dashboard_temp_config_path();
+    set_web_config_path(config_path.clone());
+    std::fs::write(
+        &config_path,
+        r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+"#,
+    )
+    .unwrap();
+
+    set_web_status_config("127.0.0.1:16110".to_string(), 2);
+
+    let (addr, server) = start_dashboard_test_server("0".to_string()).await;
+
+    let status_resp = dashboard_send_request(addr, "GET /api/status HTTP/1.1\r\n\r\n").await;
+    assert!(status_resp.contains("200 OK"));
+    assert!(status_resp.contains("\"kaspad_address\""));
+    assert!(status_resp.contains("\"instances\":2"));
+
+    let stats_resp = dashboard_send_request(addr, "GET /api/stats HTTP/1.1\r\n\r\n").await;
+    assert!(stats_resp.contains("200 OK"));
+    assert!(stats_resp.contains("application/json"));
+
+    let config_resp = dashboard_send_request(addr, "GET /api/config HTTP/1.1\r\n\r\n").await;
+    assert!(config_resp.contains("200 OK"));
+    assert!(config_resp.contains("\"kaspad_address\""));
+
+    // SAFETY: test-only env change scoped to this process; no concurrent mutation expected.
+    unsafe {
+        std::env::set_var("RKSTRATUM_ALLOW_CONFIG_WRITE", "1");
+    }
+    let json_body = r#"{"kaspad_address":"127.0.0.2:16110","stratum_port":":5556","min_share_diff":4096}"#;
+    let post_req = format!("POST /api/config HTTP/1.1\r\nContent-Length: {}\r\n\r\n{}", json_body.len(), json_body);
+    let post_resp = dashboard_send_request(addr, &post_req).await;
+    assert!(post_resp.contains("\"success\": true"));
+
+    let saved = std::fs::read_to_string(&config_path).unwrap();
+    assert!(!saved.contains("global:"));
+    assert!(saved.contains("instances:"));
+
+    server.abort();
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn test_block_gauge_history_is_bounded_without_losing_total_count() {
+    use kaspa_stratum_bridge::prom::{BLOCK_GAUGE_HISTORY_LIMIT, WorkerContext, init_metrics, record_block_found};
+
+    init_metrics();
+    let instance_id = dashboard_test_id("block-retention");
+    let worker = WorkerContext {
+        instance_id: instance_id.clone(),
+        worker_name: "worker-a".to_string(),
+        miner: "miner-a".to_string(),
+        wallet: "kaspa:qtestwallet".to_string(),
+        ip: "127.0.0.1:12345".to_string(),
+    };
+    let total = BLOCK_GAUGE_HISTORY_LIMIT + 25;
+
+    for i in 0..total {
+        record_block_found(&worker, i as u64, 1_000_000 + i as u64, format!("test-block-{instance_id}-{i}"));
+    }
+
+    let gauge_series_for_instance = prometheus::gather()
+        .into_iter()
+        .find(|family| family.name() == "ks_mined_blocks_gauge")
+        .map(|family| family.get_metric().iter().filter(|metric| dashboard_metric_has_label(metric, "instance", &instance_id)).count())
+        .unwrap_or(0);
+
+    assert!(gauge_series_for_instance <= BLOCK_GAUGE_HISTORY_LIMIT, "block gauge retained {gauge_series_for_instance} series");
+
+    let (addr, server) = start_dashboard_test_server(instance_id).await;
+    let stats_resp = dashboard_send_request(addr, "GET /api/stats HTTP/1.1\r\n\r\n").await;
+    server.abort();
+
+    assert!(stats_resp.contains("200 OK"));
+    let stats: serde_json::Value = serde_json::from_str(dashboard_response_body(&stats_resp)).unwrap();
+    assert_eq!(stats["totalBlocks"].as_u64(), Some(total as u64));
+    assert!(stats["blocks"].as_array().map(|blocks| blocks.len()).unwrap_or(usize::MAX) <= BLOCK_GAUGE_HISTORY_LIMIT);
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn test_dashboard_web_server_accepts_fast_request_while_slow_client_is_idle() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let (addr, server) = start_dashboard_test_server(dashboard_test_id("web-loop")).await;
+
+    let _slow_client = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let mut fast_client = tokio::net::TcpStream::connect(addr).await.unwrap();
+    fast_client.write_all(b"GET /api/status HTTP/1.1\r\n\r\n").await.unwrap();
+
+    let mut buf = vec![0u8; 1024];
+    let n = tokio::time::timeout(std::time::Duration::from_secs(2), fast_client.read(&mut buf))
+        .await
+        .expect("fast dashboard request timed out")
+        .unwrap();
+    let response = String::from_utf8_lossy(&buf[..n]);
+    assert!(response.contains("200 OK"), "{response}");
+
+    server.abort();
+}
+
+// ============================================================================
 // COMPREHENSIVE TEST SUITE FOR BRIDGE FUNCTIONALITY
 // ============================================================================
 
