@@ -1,8 +1,9 @@
 use std::{collections::HashMap, fmt::Display};
 
 use crate::{
-    BlueWorkType, constants,
+    BlueWorkType,
     errors::{coinbase::CoinbaseError, tx::TxRuleError},
+    subnets::SubnetworkId,
     tx::{TransactionId, TransactionOutpoint},
 };
 use itertools::Itertools;
@@ -27,8 +28,8 @@ impl<T: Display + Clone> Display for TwoDimVecDisplay<T> {
 
 #[derive(Error, Debug, Clone)]
 pub enum RuleError {
-    #[error("wrong block version: got {0} but expected {}", constants::BLOCK_VERSION)]
-    WrongBlockVersion(u16),
+    #[error("wrong block version: got {0} but expected {1}")]
+    WrongBlockVersion(u16, u16),
 
     #[error("the block timestamp is too far into the future: block timestamp is {0} but maximum timestamp allowed is {1}")]
     TimeTooFarIntoTheFuture(u64, u64),
@@ -108,6 +109,12 @@ pub enum RuleError {
     #[error("block persistent storage mass {0} exceeds limit of {1}")]
     ExceedsStorageMassLimit(u64, u64),
 
+    #[error("block has {0} lanes, exceeding limit of {1}")]
+    ExceedsLanesPerBlockLimit(usize, usize),
+
+    #[error("block lane {0} gas {1} exceeds limit of {2}")]
+    ExceedsGasPerLaneLimit(SubnetworkId, u64, u64),
+
     #[error("outpoint {0} is spent more than once on the same block")]
     DoubleSpendInSameBlock(TransactionOutpoint),
 
@@ -128,6 +135,9 @@ pub enum RuleError {
 
     #[error("expected header pruning point is {0} but got {1}")]
     WrongHeaderPruningPoint(Hash, Hash),
+
+    #[error("block {0} first direct parent is {2} but selected parent is {1}")]
+    WrongSelectedParentOrder(Hash, Hash, Hash),
 
     #[error("expected indirect parents {0} but got {1}")]
     UnexpectedIndirectParents(TwoDimVecDisplay<Hash>, TwoDimVecDisplay<Hash>),

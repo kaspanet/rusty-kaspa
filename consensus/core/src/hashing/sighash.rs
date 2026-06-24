@@ -174,7 +174,7 @@ pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_value
     let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for input in tx.inputs.iter() {
-            hasher.write_u8(input.sig_op_count);
+            hasher.write_u8(input.compute_commit.sig_op_count().unwrap_or(0));
         }
         hasher.finalize()
     };
@@ -206,13 +206,13 @@ pub fn outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &im
         }
 
         let mut hasher = TransactionSigningHash::new();
-        hash_output(&mut hasher, &tx.outputs[input_index]);
+        hash_output(&mut hasher, &tx.outputs[input_index], tx.version);
         return hasher.finalize();
     }
     let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for output in tx.outputs.iter() {
-            hash_output(&mut hasher, output);
+            hash_output(&mut hasher, output, tx.version);
         }
         hasher.finalize()
     };
@@ -225,9 +225,16 @@ pub fn hash_outpoint(hasher: &mut impl Hasher, outpoint: TransactionOutpoint) {
     hasher.write_u32(outpoint.index);
 }
 
-pub fn hash_output(hasher: &mut impl Hasher, output: &TransactionOutput) {
+pub fn hash_output(hasher: &mut impl Hasher, output: &TransactionOutput, version: u16) {
     hasher.write_u64(output.value);
     hash_script_public_key(hasher, &output.script_public_key);
+
+    if version >= 1 {
+        hasher.write_bool(output.covenant.is_some());
+        if let Some(covenant) = &output.covenant {
+            hasher.write_u16(covenant.authorizing_input).update(covenant.covenant_id);
+        }
+    }
 }
 
 pub fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &ScriptPublicKey) {
@@ -244,20 +251,28 @@ pub fn calc_schnorr_signature_hash(
     let input = verifiable_tx.populated_input(input_index);
     let tx = verifiable_tx.tx();
     let mut hasher = TransactionSigningHash::new();
-    hasher
-        .write_u16(tx.version)
-        .update(previous_outputs_hash(tx, hash_type, reused_values))
-        .update(sequences_hash(tx, hash_type, reused_values))
-        .update(sig_op_counts_hash(tx, hash_type, reused_values));
+    hasher.write_u16(tx.version).update(previous_outputs_hash(tx, hash_type, reused_values)).update(sequences_hash(
+        tx,
+        hash_type,
+        reused_values,
+    ));
+
+    if tx.version < 1 {
+        hasher.update(sig_op_counts_hash(tx, hash_type, reused_values));
+    }
+
     hash_outpoint(&mut hasher, input.0.previous_outpoint);
     hash_script_public_key(&mut hasher, &input.1.script_public_key);
+    hasher.write_u64(input.1.amount).write_u64(input.0.sequence);
+
+    if tx.version < 1 {
+        hasher.write_u8(input.0.compute_commit.sig_op_count().unwrap_or(0));
+    }
+
     hasher
-        .write_u64(input.1.amount)
-        .write_u64(input.0.sequence)
-        .write_u8(input.0.sig_op_count)
         .update(outputs_hash(tx, hash_type, reused_values, input_index))
         .write_u64(tx.lock_time)
-        .update(&tx.subnetwork_id)
+        .update(tx.subnetwork_id)
         .write_u64(tx.gas)
         .update(payload_hash(tx, reused_values))
         .write_u8(hash_type.to_u8());
@@ -285,7 +300,7 @@ mod tests {
     use crate::{
         hashing::sighash_type::{SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE},
         subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
-        tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, UtxoEntry},
+        tx::{ComputeCommit, PopulatedTransaction, Transaction, TransactionId, TransactionInput, UtxoEntry},
     };
 
     use super::*;
@@ -309,24 +324,24 @@ mod tests {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                     signature_script: vec![],
                     sequence: 0,
-                    sig_op_count: 0,
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
                     signature_script: vec![],
                     sequence: 1,
-                    sig_op_count: 0,
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
                     signature_script: vec![],
                     sequence: 2,
-                    sig_op_count: 0,
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 },
             ],
             vec![
-                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()) },
-                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()), covenant: None },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()), covenant: None },
             ],
             1615462089000,
             SUBNETWORK_ID_NATIVE,
@@ -342,18 +357,80 @@ mod tests {
                     script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
                     block_daa_score: 0,
                     is_coinbase: false,
+                    covenant_id: None,
                 },
                 UtxoEntry {
                     amount: 200,
                     script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
                     block_daa_score: 0,
                     is_coinbase: false,
+                    covenant_id: None,
                 },
                 UtxoEntry {
                     amount: 300,
                     script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
                     block_daa_score: 0,
                     is_coinbase: false,
+                    covenant_id: None,
+                },
+            ],
+        );
+
+        let native_tx_v1 = Transaction::new(
+            1,
+            vec![
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                    signature_script: vec![],
+                    sequence: 0,
+                    compute_commit: ComputeCommit::ComputeBudget(11.into()),
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
+                    signature_script: vec![],
+                    sequence: 1,
+                    compute_commit: ComputeCommit::ComputeBudget(22.into()),
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
+                    signature_script: vec![],
+                    sequence: 2,
+                    compute_commit: ComputeCommit::ComputeBudget(33.into()),
+                },
+            ],
+            vec![
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()), covenant: None },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()), covenant: None },
+            ],
+            1615462089000,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        );
+
+        let native_populated_tx_v1 = PopulatedTransaction::new(
+            &native_tx_v1,
+            vec![
+                UtxoEntry {
+                    amount: 100,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
+                    block_daa_score: 0,
+                    is_coinbase: false,
+                    covenant_id: None,
+                },
+                UtxoEntry {
+                    amount: 200,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
+                    block_daa_score: 0,
+                    is_coinbase: false,
+                    covenant_id: None,
+                },
+                UtxoEntry {
+                    amount: 300,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
+                    block_daa_score: 0,
+                    is_coinbase: false,
+                    covenant_id: None,
                 },
             ],
         );
@@ -370,18 +447,21 @@ mod tests {
                     script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
                     block_daa_score: 0,
                     is_coinbase: false,
+                    covenant_id: None,
                 },
                 UtxoEntry {
                     amount: 200,
                     script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
                     block_daa_score: 0,
                     is_coinbase: false,
+                    covenant_id: None,
                 },
                 UtxoEntry {
                     amount: 300,
                     script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
                     block_daa_score: 0,
                     is_coinbase: false,
+                    covenant_id: None,
                 },
             ],
         );
@@ -390,6 +470,8 @@ mod tests {
             NoAction,
             Output(usize),
             Input(usize),
+            ComputeBudget(usize),
+            SigOpCount(usize),
             AmountSpent(usize),
             PrevScriptPublicKey(usize),
             Sequence(usize),
@@ -428,6 +510,46 @@ mod tests {
                 input_index: 0,
                 action: ModifyAction::Input(1),
                 expected_hash: "a9f563d86c0ef19ec2e4f483901d202e90150580b6123c3d492e26e7965f488c", // should change the hash
+            },
+            TestVector {
+                name: "native-all-0-modify-compute-mass-1",
+                populated_tx: &native_populated_tx,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::ComputeBudget(1),
+                expected_hash: "03b7ac6927b2b67100734c3cc313ff8c2e8b3ce3e746d46dd660b706a916b1f5", // shouldn't change the hash
+            },
+            TestVector {
+                name: "native-v1-all-0-modify-sigopcount-0",
+                populated_tx: &native_populated_tx_v1,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::SigOpCount(0),
+                expected_hash: "5b2657524be672e019897646b56da3d192b453d78ae5e6e5c07f029a69f5f075",
+            },
+            TestVector {
+                name: "native-v1-all-0-modify-sigopcount-1",
+                populated_tx: &native_populated_tx_v1,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::SigOpCount(1),
+                expected_hash: "5b2657524be672e019897646b56da3d192b453d78ae5e6e5c07f029a69f5f075",
+            },
+            TestVector {
+                name: "native-v1-all-0-modify-compute-budget-0",
+                populated_tx: &native_populated_tx_v1,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::ComputeBudget(0),
+                expected_hash: "5b2657524be672e019897646b56da3d192b453d78ae5e6e5c07f029a69f5f075",
+            },
+            TestVector {
+                name: "native-v1-all-0-modify-compute-budget-1",
+                populated_tx: &native_populated_tx_v1,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::ComputeBudget(1),
+                expected_hash: "5b2657524be672e019897646b56da3d192b453d78ae5e6e5c07f029a69f5f075",
             },
             TestVector {
                 name: "native-all-0-modify-output-1",
@@ -660,6 +782,12 @@ mod tests {
                 }
                 ModifyAction::Input(i) => {
                     tx.inputs[i].previous_outpoint.index = 2;
+                }
+                ModifyAction::ComputeBudget(i) => {
+                    tx.inputs[i].compute_commit = ComputeCommit::ComputeBudget(1234.into());
+                }
+                ModifyAction::SigOpCount(i) => {
+                    tx.inputs[i].compute_commit = ComputeCommit::SigopCount(123.into());
                 }
                 ModifyAction::AmountSpent(i) => {
                     entries[i].amount = 666;

@@ -26,6 +26,7 @@ use std::{
 };
 
 use super::frontier::Frontier;
+use super::frontier::feerate_key::FeerateTransactionKey;
 
 /// Pool of transactions to be included in a block template
 ///
@@ -123,7 +124,8 @@ impl TransactionsPool {
         let parents = self.get_parent_transaction_ids_in_pool(&transaction.mtx);
         self.parent_transactions.insert(id, parents.clone());
         if parents.is_empty() {
-            self.ready_transactions.insert((&transaction).into());
+            let cofactors = self.config.mempool_mass_cofactors.get(transaction.added_at_daa_score);
+            self.ready_transactions.insert(FeerateTransactionKey::from_tx(&transaction, &cofactors));
         }
         for parent_id in parents {
             let entry = self.chained_transactions.entry(parent_id).or_default();
@@ -153,7 +155,8 @@ impl TransactionsPool {
                     parents.remove(transaction_id);
                     if parents.is_empty() {
                         let tx = self.all_transactions.get(chain).unwrap();
-                        self.ready_transactions.insert(tx.into());
+                        let cofactors = self.config.mempool_mass_cofactors.get(tx.added_at_daa_score);
+                        self.ready_transactions.insert(FeerateTransactionKey::from_tx(tx, &cofactors));
                     }
                 }
             }
@@ -164,7 +167,8 @@ impl TransactionsPool {
         // Remove the transaction itself
         let removed_tx = self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))?;
 
-        self.ready_transactions.remove(&(&removed_tx).into());
+        let cofactors = self.config.mempool_mass_cofactors.get(removed_tx.added_at_daa_score);
+        self.ready_transactions.remove(&FeerateTransactionKey::from_tx(&removed_tx, &cofactors));
 
         // TODO: consider using `self.parent_transactions.get(transaction_id)`
         // The tradeoff to consider is whether it might be possible that a parent tx exists in the pool
@@ -205,7 +209,9 @@ impl TransactionsPool {
 
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
-        self.ready_transactions.build_selector(&Policy::new(self.config.maximum_mass_per_block))
+        self.ready_transactions
+            // Params::mempool_block_mass_cofactors asserts that the reference mass is stable across activation.
+            .build_selector(&Policy::new(self.config.mempool_mass_cofactors.after().reference, self.config.block_lane_limits))
     }
 
     /// Builds a feerate estimator based on internal state of the ready transactions frontier
@@ -224,6 +230,7 @@ impl TransactionsPool {
         &self,
         transaction: &MutableTransaction,
         transaction_size: usize,
+        virtual_daa_score: u64,
     ) -> RuleResult<Vec<TransactionId>> {
         // No eviction needed -- return
         if self.len() < self.config.maximum_transaction_count
@@ -233,7 +240,8 @@ impl TransactionsPool {
         }
 
         // Returns a vector of transactions to be removed (the caller has to actually remove)
-        let feerate_threshold = transaction.calculated_feerate().unwrap();
+        let pending_cofactors = self.config.mempool_mass_cofactors.get(virtual_daa_score);
+        let feerate_threshold = transaction.calculated_feerate(&pending_cofactors).unwrap();
         let mut txs_to_remove = Vec::with_capacity(1); // Normally we expect a single removal
         let mut selection_overall_size = 0;
         for tx in self
@@ -249,7 +257,8 @@ impl TransactionsPool {
             }
 
             // We are iterating ready txs by ascending feerate so the pending tx has lower feerate than all remaining txs
-            if tx.feerate() > feerate_threshold {
+            let tx_cofactors = self.config.mempool_mass_cofactors.get(tx.added_at_daa_score);
+            if tx.feerate(&tx_cofactors) > feerate_threshold {
                 let err = RuleError::RejectMempoolIsFull;
                 debug!("Transaction {} with feerate {} has been rejected: {}", transaction.id(), feerate_threshold, err);
                 return Err(err);

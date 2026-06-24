@@ -126,6 +126,7 @@ impl_verbosity_from! {
     for RpcTransactionOutputVerbosity, from RpcDataVerbosityLevel {
         include_amount:               (RpcDataVerbosityLevel::Low),
         include_script_public_key:    (RpcDataVerbosityLevel::Low),
+        include_covenant:             (RpcDataVerbosityLevel::Low),
         verbose_data_verbosity:       (|level| {
             RpcTransactionOutputVerboseDataVerbosity::from(level)
         }),
@@ -142,7 +143,7 @@ impl_verbosity_from! {
 impl_verbosity_from! {
     for RpcTransactionVerbosity, from RpcDataVerbosityLevel {
         include_payload:           (RpcDataVerbosityLevel::High),
-        include_mass:              (RpcDataVerbosityLevel::High),
+        include_storage_mass:      (RpcDataVerbosityLevel::High),
         include_version:           (RpcDataVerbosityLevel::Full),
         include_lock_time:         (RpcDataVerbosityLevel::Full),
         include_subnetwork_id:     (RpcDataVerbosityLevel::Full),

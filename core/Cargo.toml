@@ -12,7 +12,7 @@ repository.workspace = true
 [dependencies]
 cfg-if.workspace = true
 futures-util.workspace = true
-log.workspace = true
+log = { workspace = true, features = ["kv"] }
 thiserror.workspace = true
 triggered.workspace = true
 wasm-bindgen.workspace = true

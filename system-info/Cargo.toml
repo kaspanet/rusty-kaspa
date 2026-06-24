@@ -1,0 +1,22 @@
+[package]
+name = "kaspa-system-info"
+description = "Runtime system information (CPU, memory, fd limit, machine id)"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+kaspa-utils = { workspace = true, features = ["fd_budget"] }
+num_cpus.workspace = true
+sha2.workspace = true
+sysinfo.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mac_address.workspace = true
+
+[lints]
+workspace = true

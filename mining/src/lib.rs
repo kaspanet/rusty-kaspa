@@ -14,9 +14,11 @@ mod manager_tests;
 pub mod mempool;
 pub mod model;
 pub mod monitor;
+#[cfg(test)]
+mod toccata_transient_mass_activation_tests;
 
 // Exposed for benchmarks
-pub use block_template::{policy::Policy, selector::RebalancingWeightedTransactionSelector};
+pub use block_template::policy::Policy;
 pub use mempool::model::frontier::{Frontier, feerate_key::FeerateTransactionKey, search_tree::SearchTree};
 
 #[cfg(test)]

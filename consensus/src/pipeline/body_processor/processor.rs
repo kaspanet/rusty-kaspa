@@ -27,8 +27,11 @@ use kaspa_consensus_core::{
     KType,
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::{genesis::GenesisBlock, params::Params},
-    mass::{Mass, MassCalculator, MassOps},
+    config::{
+        genesis::GenesisBlock,
+        params::{ForkedParam, Params},
+    },
+    mass::{BlockLaneLimits, BlockMassLimits, Mass, MassCalculator},
     tx::Transaction,
 };
 use kaspa_consensus_notify::{
@@ -55,7 +58,8 @@ pub struct BlockBodyProcessor {
     db: Arc<DB>,
 
     // Config
-    pub(super) max_block_mass: u64,
+    pub(super) block_mass_limits: ForkedParam<BlockMassLimits>,
+    pub(super) block_lane_limits: BlockLaneLimits,
     pub(super) genesis: GenesisBlock,
     pub(super) _ghostdag_k: KType,
 
@@ -107,7 +111,8 @@ impl BlockBodyProcessor {
             thread_pool,
             db,
 
-            max_block_mass: params.max_block_mass,
+            block_mass_limits: params.block_mass_limits(),
+            block_lane_limits: params.block_lane_limits,
             genesis: params.genesis.clone(),
             _ghostdag_k: params.ghostdag_k(),
 
@@ -213,7 +218,9 @@ impl BlockBodyProcessor {
         // Report counters
         self.counters.body_counts.fetch_add(1, Ordering::Relaxed);
         self.counters.txs_counts.fetch_add(block.transactions.len() as u64, Ordering::Relaxed);
-        self.counters.mass_counts.fetch_add(mass.max(), Ordering::Relaxed);
+        self.counters.storage_mass_counts.fetch_add(mass.contextual.storage_mass, Ordering::Relaxed);
+        self.counters.compute_mass_counts.fetch_add(mass.non_contextual.compute_mass, Ordering::Relaxed);
+        self.counters.transient_mass_counts.fetch_add(mass.non_contextual.transient_mass, Ordering::Relaxed);
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
@@ -221,6 +228,8 @@ impl BlockBodyProcessor {
         let mass = self.validate_body_in_isolation(block)?;
         if !is_trusted {
             self.validate_body_in_context(block)?;
+        } else {
+            self.validate_trusted_body_in_context(block)?;
         }
         Ok(mass)
     }

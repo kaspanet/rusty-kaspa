@@ -80,7 +80,8 @@ features = [
 ]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+
 
 [lints]
 workspace = true
