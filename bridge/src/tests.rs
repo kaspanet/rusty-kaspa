@@ -1080,8 +1080,14 @@ mod integration {
     use kaspad_lib::args as kaspad_args;
     use std::ffi::OsString;
     use std::time::Duration;
-    use tokio::sync::watch;
+    use tokio::sync::{Mutex, MutexGuard, watch};
     use tokio::time::timeout;
+
+    static INPROCESS_NODE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
+
+    async fn lock_inprocess_node_test() -> MutexGuard<'static, ()> {
+        INPROCESS_NODE_TEST_LOCK.lock().await
+    }
 
     // Mirrors testing/integration/src/common/daemon.rs::free_port.
     fn free_port() -> u16 {
@@ -1096,6 +1102,7 @@ mod integration {
 
     #[tokio::test]
     async fn test_bridge_startup_with_inprocess_node() {
+        let _guard = lock_inprocess_node_test().await;
         init_allocator_with_default_settings();
 
         // Use a temporary directory for the node data
@@ -1166,8 +1173,8 @@ mod integration {
 
     #[tokio::test]
     #[cfg(feature = "rkstratum_cpu_miner")]
-    // Note: When running both integration tests, use --test-threads=1 to avoid file descriptor limits
     async fn test_bridge_startup_with_cpu_miner_feature() {
+        let _guard = lock_inprocess_node_test().await;
         init_allocator_with_default_settings();
 
         // Use a temporary directory for the node data
@@ -1210,7 +1217,7 @@ mod integration {
         };
 
         // Verify the config can be created (this tests the feature is available)
-        assert_eq!(miner_config.enabled, false);
+        assert!(!miner_config.enabled);
         assert_eq!(miner_config.threads, 1);
 
         // Create bridge config
@@ -2499,7 +2506,7 @@ mod comprehensive_tests {
 
         // Test that InternalMinerMetrics is available
         use kaspa_stratum_bridge::rkstratum_cpu_miner::InternalMinerMetrics;
-        let _metrics = InternalMinerMetrics::default();
+        let metrics = InternalMinerMetrics::default();
 
         // Test that spawn function is available (compile-time check)
         // The actual function signature: spawn_internal_cpu_miner(
@@ -2508,8 +2515,7 @@ mod comprehensive_tests {
         //     shutdown_rx: watch::Receiver<bool>,
         // ) -> Result<Arc<InternalMinerMetrics>, anyhow::Error>
 
-        // If we can compile this test, the feature is available
-        assert!(true, "CPU miner feature is available");
+        assert_eq!(metrics.blocks_accepted.load(std::sync::atomic::Ordering::Relaxed), 0);
     }
 
     // ========================================================================
