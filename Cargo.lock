@@ -2088,7 +2088,14 @@ name = "faster-hex"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2a2b11eda1d40935b26cf18f6833c526845ae8c41e58d09af6adeb6f0269183"
+
+[[package]]
+name = "faster-hex"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7223ae2d2f179b803433d9c830478527e92b8117eab39460edae7f1614d9fb73"
 dependencies = [
+ "heapless",
  "serde",
 ]
 
@@ -2532,11 +2539,11 @@ dependencies = [
 
 [[package]]
 name = "home"
-version = "0.5.9"
+version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3d1354bf6b7235cb4a0576c2619fd4ed18183f689b12b006a0ee7329eeff9a5"
+checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5465,18 +5472,18 @@ dependencies = [
 
 [[package]]
 name = "parse-variants"
-version = "1.0.3"
+version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99088a2b0695df5940d7b5a3b4c4460b765053cf5ecd6d46da43812d3fad7f13"
+checksum = "84b4d1bb0b90012ce8056bd6bb5168d8de026d633dd592a732da5a25d3f6c74c"
 dependencies = [
  "parse-variants-derive",
 ]
 
 [[package]]
 name = "parse-variants-derive"
-version = "1.0.0"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70df726c43c645ef1dde24c7ae14692036ebe5457c92c5f0ec4cfceb99634ff6"
+checksum = "70d80829147ec6f1b27109c7daaea62fc3a21a0348cdddf22b4093f0c35ab25a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8550,14 +8557,12 @@ dependencies = [
 
 [[package]]
 name = "workflow-chrome"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e0c0dfbc178cb7c3a47bd2aabf6902364d2db7e4c4f5b0dad57b75d78c6fe1f"
+version = "0.18.1"
 dependencies = [
  "cfg-if 1.0.0",
  "chrome-sys",
  "js-sys",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "workflow-core",
  "workflow-log",
@@ -8565,9 +8570,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1d67bbe225ea90aa6979167f28935275506696ac867661e218893d3a42e1666"
+version = "0.18.1"
 dependencies = [
  "async-channel 2.3.1",
  "async-std",
@@ -8576,7 +8579,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "chrono",
  "dirs",
- "faster-hex 0.9.0",
+ "faster-hex 0.10.0",
  "futures",
  "getrandom 0.2.15",
  "instant",
@@ -8585,7 +8588,7 @@ dependencies = [
  "rlimit",
  "serde",
  "serde-wasm-bindgen",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "tokio",
  "triggered",
  "vergen",
@@ -8598,9 +8601,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core-macros"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65659ed208b0066a9344142218abda353eb6c6cc1fc3ae4808b750c560de004b"
+version = "0.18.1"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -8615,14 +8616,12 @@ dependencies = [
 
 [[package]]
 name = "workflow-dom"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "503bba85907753c960ddfd73b4e79bffadf521cc3c992ef2b2a29fd3af09a957"
+version = "0.18.1"
 dependencies = [
  "futures",
  "js-sys",
  "regex",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -8633,15 +8632,13 @@ dependencies = [
 
 [[package]]
 name = "workflow-http"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3c654c7395e448001c658309377a44a8c3d7c28c7acb30e9babbaeacb575bb0"
+version = "0.18.1"
 dependencies = [
  "cfg-if 1.0.0",
  "reqwest",
  "serde",
  "serde_json",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "tokio",
  "wasm-bindgen",
  "workflow-core",
@@ -8649,9 +8646,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-log"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64bf52c539193f219b7a79eb0c7c5f6c222ccf9b95c5e0bd59e924feb762256f"
+version = "0.18.1"
 dependencies = [
  "cfg-if 1.0.0",
  "console",
@@ -8665,9 +8660,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-macro-tools"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "085d3045d5ca780fb589d230030e34fec962b3638d6c69806a72a7d7d1affea4"
+version = "0.18.1"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -8678,9 +8671,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-node"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b85c9add43b5da3bed3d0d6d92eb3a2c5986c0ae65c7c3f5189876c19648154"
+version = "0.18.1"
 dependencies = [
  "borsh",
  "futures",
@@ -8688,7 +8679,7 @@ dependencies = [
  "lazy_static",
  "node-sys",
  "serde",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "workflow-core",
@@ -8699,9 +8690,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-nw"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2dd8c77686e6456be8e92237daaa88ad31546974e04514a09b1a38f812530ef"
+version = "0.18.1"
 dependencies = [
  "ahash",
  "async-trait",
@@ -8712,7 +8701,7 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde-wasm-bindgen",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "web-sys",
  "workflow-core",
@@ -8723,9 +8712,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-panic-hook"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74c76ca8b459e4f0c949f06ce2d45565a6769748e83ca7064d36671bbd67b4da"
+version = "0.18.1"
 dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen",
@@ -8747,9 +8734,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec4235eb167f0bef3bcbdf0c578823a0105ab5303115e3b2afb4d526e2498b08"
+version = "0.18.1"
 dependencies = [
  "ahash",
  "async-std",
@@ -8763,7 +8748,7 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "tokio",
  "tungstenite",
  "wasm-bindgen",
@@ -8777,9 +8762,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc-macros"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f048ca6b1c551f468c3c0c829f958e83dd15b20138b5466bb617ffde500e8cf4"
+version = "0.18.1"
 dependencies = [
  "parse-variants",
  "proc-macro-error",
@@ -8790,9 +8773,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-serializer"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64679db6856852a472caff4ce869e3ecebe291fbccc9406e9643eb5951a0904a"
+version = "0.18.1"
 dependencies = [
  "ahash",
  "borsh",
@@ -8801,22 +8782,20 @@ dependencies = [
 
 [[package]]
 name = "workflow-store"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d161c4b844eee479f81306f2526266f9608a663e0a679d9fc0572ee15c144e06"
+version = "0.18.1"
 dependencies = [
  "async-std",
  "base64",
  "cfg-if 1.0.0",
  "chrome-sys",
- "faster-hex 0.9.0",
+ "faster-hex 0.10.0",
  "filetime",
  "home",
  "js-sys",
  "lazy_static",
  "serde",
  "serde_json",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -8829,21 +8808,17 @@ dependencies = [
 
 [[package]]
 name = "workflow-task"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d1a90743bb4d3f68606cb4e9a78551a53399ebc35ddba981cbb56bf2b31940a"
+version = "0.18.1"
 dependencies = [
  "futures",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "workflow-core",
  "workflow-task-macros",
 ]
 
 [[package]]
 name = "workflow-task-macros"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ecf6be36b52dc1e16d11b55f717d9ec2fec5804aff7f392af591933ba4af45e"
+version = "0.18.1"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -8857,9 +8832,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75b64a2ecf68442edf844c3138f0b78e1398cfe4279540f94cc51b4afb885e5b"
+version = "0.18.1"
 dependencies = [
  "async-std",
  "async-trait",
@@ -8873,7 +8846,7 @@ dependencies = [
  "pad",
  "regex",
  "textwrap",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -8886,9 +8859,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal-macros"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bf96dca7d1847a74d7566c5620610d1accc854032308489105b80c08ebf525f"
+version = "0.18.1"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -8902,17 +8873,15 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "799e5fbf266e0fffb5c24d6103735eb2b94bb31f93b664b91eaaf63b4f959804"
+version = "0.18.1"
 dependencies = [
  "cfg-if 1.0.0",
- "faster-hex 0.9.0",
+ "faster-hex 0.10.0",
  "futures",
  "js-sys",
  "serde",
  "serde-wasm-bindgen",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "workflow-core",
@@ -8923,9 +8892,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm-macros"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40237c65ecff78dbfedb13985e33f802a31f6f7de72dff12a6674fcdcf601822"
+version = "0.18.1"
 dependencies = [
  "js-sys",
  "proc-macro-error",
@@ -8937,9 +8904,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-websocket"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "515483a047477c91b5142e1090cce0afc21a0139d9c0c06ea42f0d3dbf3a6fcd"
+version = "0.18.1"
 dependencies = [
  "ahash",
  "async-channel 2.3.1",
@@ -8950,7 +8915,7 @@ dependencies = [
  "futures",
  "futures-util",
  "js-sys",
- "thiserror 1.0.64",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite",
  "triggered",

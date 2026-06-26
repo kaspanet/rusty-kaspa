@@ -317,35 +317,35 @@ nw-sys = "0.1.6"
 rustls = { version = "0.23.18", default-features = false, features = ["ring"] }
 
 # workflow dependencies
-workflow-core = { version = "0.18.0" }
-workflow-d3 = { version = "0.18.0" }
-workflow-dom = { version = "0.18.0" }
-workflow-http = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
-workflow-log = { version = "0.18.0" }
-workflow-node = { version = "0.18.0" }
-workflow-nw = { version = "0.18.0" }
-workflow-rpc = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
-workflow-serializer = { version = "0.18.0" }
-workflow-store = { version = "0.18.0" }
-workflow-terminal = { version = "0.18.0" }
-workflow-wasm = { version = "0.18.0" }
+# workflow-core = { version = "0.18.0" }
+# workflow-d3 = { version = "0.18.0" }
+# workflow-dom = { version = "0.18.0" }
+# workflow-http = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
+# workflow-log = { version = "0.18.0" }
+# workflow-node = { version = "0.18.0" }
+# workflow-nw = { version = "0.18.0" }
+# workflow-rpc = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+# workflow-serializer = { version = "0.18.0" }
+# workflow-store = { version = "0.18.0" }
+# workflow-terminal = { version = "0.18.0" }
+# workflow-wasm = { version = "0.18.0" }
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
 # into a sibling folder from https://github.com/workflow-rs/workflow-rs
-# workflow-core = { path = "../workflow-rs/core" }
-# workflow-d3 = { path = "../workflow-rs/d3" }
-# workflow-dom = { path = "../workflow-rs/dom" }
-# # Same features as default but with rustls-tls-webpki-roots instead of native-tls
-# workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
-# workflow-log = { path = "../workflow-rs/log" }
-# workflow-node = { path = "../workflow-rs/node" }
-# workflow-nw = { path = "../workflow-rs/nw" }
-# workflow-rpc = { path = "../workflow-rs/rpc", default-features = false, features = ["rustls-tls-webpki-roots"] }
-# workflow-serializer = { path = "../workflow-rs/serializer" }
-# workflow-store = { path = "../workflow-rs/store" }
-# workflow-terminal = { path = "../workflow-rs/terminal" }
-# workflow-wasm = { path = "../workflow-rs/wasm" }
+workflow-core = { path = "../workflow-rs/core" }
+workflow-d3 = { path = "../workflow-rs/d3" }
+workflow-dom = { path = "../workflow-rs/dom" }
+# Same features as default but with rustls-tls-webpki-roots instead of native-tls
+workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
+workflow-log = { path = "../workflow-rs/log" }
+workflow-node = { path = "../workflow-rs/node" }
+workflow-nw = { path = "../workflow-rs/nw" }
+workflow-rpc = { path = "../workflow-rs/rpc", default-features = false, features = ["rustls-tls-webpki-roots"] }
+workflow-serializer = { path = "../workflow-rs/serializer" }
+workflow-store = { path = "../workflow-rs/store" }
+workflow-terminal = { path = "../workflow-rs/terminal" }
+workflow-wasm = { path = "../workflow-rs/wasm" }
 
 
 # ---
