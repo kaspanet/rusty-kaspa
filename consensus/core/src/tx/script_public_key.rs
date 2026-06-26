@@ -162,7 +162,7 @@ impl<'de> Deserialize<'de> for ScriptPublicKey {
                 E: serde::de::Error,
             {
                 use wasm_bindgen::convert::RefFromWasmAbi;
-                let instance_ref = unsafe { Self::Value::ref_from_abi(v) }; // todo add checks for safecast
+                let instance_ref = unsafe { Self::Value::ref_from_abi(wasm_bindgen::__rt::WasmPtr::from_usize(v as usize)) }; // todo add checks for safecast
                 Ok(instance_ref.clone())
             }
             #[cfg(target_arch = "wasm32")]

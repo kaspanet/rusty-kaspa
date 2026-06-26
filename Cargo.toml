@@ -214,7 +214,7 @@ igd-next = { version = "0.17.0", features = ["aio_tokio"] }
 indexmap = "2.1.0"
 ipnet = { version = "2.11.0", default-features = false }
 itertools = { version = "0.13.0", default-features = false }
-js-sys = { version = "=0.3.77", default-features = false }
+js-sys = { version = "=0.3.103", default-features = false }
 keccak = "0.1.4"
 local-ip-address = "0.6.1"
 log = { version = "0.4.20", default-features = false }
@@ -278,10 +278,10 @@ tonic-prost = "0.14.5"
 tonic-prost-build = { version = "0.14.5" }
 triggered = "0.1.2"
 uuid = { version = "1.16.0", default-features = false }
-wasm-bindgen = { version = "=0.2.100", default-features = false }
-wasm-bindgen-futures = "=0.4.50"
+wasm-bindgen = { version = "=0.2.126", default-features = false }
+wasm-bindgen-futures = "=0.4.76"
 wasm-bindgen-test = "0.3.50"
-web-sys = "=0.3.77"
+web-sys = "=0.3.103"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
@@ -336,8 +336,9 @@ rustls = { version = "0.23.18", default-features = false, features = ["ring"] }
 workflow-core = { path = "../workflow-rs/core" }
 workflow-d3 = { path = "../workflow-rs/d3" }
 workflow-dom = { path = "../workflow-rs/dom" }
-# Same features as default but with rustls-tls-webpki-roots instead of native-tls
-workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
+# rustls-based TLS via the OS platform verifier; cross-platform system proxy
+# (workflow-http 0.19 / reqwest 0.13 renamed these features)
+workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls", "http2", "charset", "system-proxy"] }
 workflow-log = { path = "../workflow-rs/log" }
 workflow-node = { path = "../workflow-rs/node" }
 workflow-nw = { path = "../workflow-rs/nw" }
