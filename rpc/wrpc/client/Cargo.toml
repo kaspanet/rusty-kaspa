@@ -17,8 +17,24 @@ include = [
 ]
 
 [features]
+# The wRPC client owns the native TLS selection and forwards it to workflow-rpc
+# (-> workflow-websocket -> tokio-tungstenite). This lets an SDK consumer pass
+# `default-features = false` to drop ring entirely (and then either pick another
+# backend below or install their own rustls CryptoProvider in `main`).
+#
+# The two `rustls-tls-*` backends also pull in the pure-Rust `ring` provider that
+# `ensure_crypto_provider()` installs for the Resolver's HTTPS (reqwest), via the
+# internal `rustls-ring` feature. `native-tls*` do not — a consumer combining
+# `native-tls` with the Resolver must install a rustls provider themselves.
+default = ["rustls-tls-webpki-roots"]
+rustls-tls-webpki-roots = ["rustls-ring", "workflow-rpc/rustls-tls-webpki-roots"]
+rustls-tls-native-roots = ["rustls-ring", "workflow-rpc/rustls-tls-native-roots"]
+native-tls = ["workflow-rpc/native-tls"]
+native-tls-vendored = ["workflow-rpc/native-tls-vendored"]
+# internal: pull rustls(ring) and let ensure_crypto_provider() install it as the
+# process-default provider. Not meant to be enabled directly.
+rustls-ring = ["dep:rustls"]
 wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-rpc-core/wasm32-sdk","workflow-rpc/wasm32-sdk"]
-default = []
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -53,6 +69,11 @@ workflow-log.workspace = true
 workflow-rpc.workspace = true
 workflow-serializer.workspace = true
 workflow-wasm.workspace = true
-rustls.workspace = true
+
+# TLS / crypto provider is native-only: on wasm32 the host (browser/runtime)
+# terminates TLS, so rustls and the ring provider must not be in the wasm graph.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rustls = { workspace = true, optional = true }
+
 [lints]
 workspace = true

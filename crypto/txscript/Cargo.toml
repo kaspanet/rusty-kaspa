@@ -45,6 +45,13 @@ risc0-binfmt.workspace = true
 risc0-circuit-recursion.workspace = true
 risc0-core.workspace = true
 risc0-zkp.workspace = true
+# Pull risc0-zkvm-platform directly with `export-syscalls` so it defines its
+# host stubs (e.g. sys_alloc_aligned as `unimplemented!()`); otherwise the symbol
+# is left `extern "C"` (provided only by the zkVM runtime) and undefined on the
+# host. Unix linkers tolerate that, but MSVC link.exe rejects it when building a
+# cdylib (LNK2019), breaking every Windows cdylib that depends on kaspa-txscript.
+# Kaspa only verifies on the host, so the stub is never actually called.
+risc0-zkvm-platform = { workspace = true, features = ["export-syscalls"] }
 secp256k1.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true

@@ -214,7 +214,7 @@ igd-next = { version = "0.17.0", features = ["aio_tokio"] }
 indexmap = "2.1.0"
 ipnet = { version = "2.11.0", default-features = false }
 itertools = { version = "0.13.0", default-features = false }
-js-sys = { version = "=0.3.77", default-features = false }
+js-sys = { version = "=0.3.103", default-features = false }
 keccak = "0.1.4"
 local-ip-address = "0.6.1"
 log = { version = "0.4.20", default-features = false }
@@ -278,10 +278,10 @@ tonic-prost = "0.14.5"
 tonic-prost-build = { version = "0.14.5" }
 triggered = "0.1.2"
 uuid = { version = "1.16.0", default-features = false }
-wasm-bindgen = { version = "=0.2.100", default-features = false }
-wasm-bindgen-futures = "=0.4.50"
-wasm-bindgen-test = "0.3.50"
-web-sys = "=0.3.77"
+wasm-bindgen = { version = "=0.2.126", default-features = false }
+wasm-bindgen-futures = "=0.4.76"
+wasm-bindgen-test = "0.3.76"
+web-sys = "=0.3.103"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
@@ -309,6 +309,7 @@ risc0-core = "=3.0.1"
 risc0-zkp = "=3.0.4"
 risc0-groth16 = "=3.0.4"
 risc0-zkvm = { version="=3.0.4", default-features = false }
+risc0-zkvm-platform = "=2.2.2"
 # workflow dependencies that are not a part of core libraries
 
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
@@ -317,18 +318,27 @@ nw-sys = "0.1.6"
 rustls = { version = "0.23.18", default-features = false, features = ["ring"] }
 
 # workflow dependencies
-workflow-core = { version = "0.18.0" }
-workflow-d3 = { version = "0.18.0" }
-workflow-dom = { version = "0.18.0" }
-workflow-http = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
-workflow-log = { version = "0.18.0" }
-workflow-node = { version = "0.18.0" }
-workflow-nw = { version = "0.18.0" }
-workflow-rpc = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
-workflow-serializer = { version = "0.18.0" }
-workflow-store = { version = "0.18.0" }
-workflow-terminal = { version = "0.18.0" }
-workflow-wasm = { version = "0.18.0" }
+workflow-core = { version = "0.19.0" }
+workflow-d3 = { version = "0.19.0" }
+workflow-dom = { version = "0.19.0" }
+workflow-log = { version = "0.19.0" }
+workflow-node = { version = "0.19.0" }
+workflow-nw = { version = "0.19.0" }
+# TLS provider/roots are NOT selected here (workspace-wide) so they cannot be
+# forced on SDK consumers. The selection is forwarded by kaspa-wrpc-client's own
+# `rustls-tls-*` / `native-tls*` features (default: rustls-tls-webpki-roots),
+# letting a consumer pass `default-features = false` to drop ring. `workflow-rpc`
+# itself defaults to `native-tls`, so default-features must stay disabled here.
+workflow-rpc = { version = "0.19.0", default-features = false }
+workflow-serializer = { version = "0.19.0" }
+workflow-store = { version = "0.19.0" }
+workflow-terminal = { version = "0.19.0" }
+workflow-wasm = { version = "0.19.0" }
+# rustls-based TLS via the OS platform verifier; cross-platform system proxy.
+# `rustls-no-provider` keeps reqwest from pulling the aws-lc-rs crypto provider
+# (which needs a C/cmake toolchain); the wRPC client installs the pure-Rust
+# `ring` provider at startup (see kaspa-wrpc-client::ensure_crypto_provider).
+workflow-http = { version = "0.19.0", default-features = false, features = ["rustls-no-provider", "http2", "charset", "system-proxy"] }
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
@@ -336,8 +346,7 @@ workflow-wasm = { version = "0.18.0" }
 # workflow-core = { path = "../workflow-rs/core" }
 # workflow-d3 = { path = "../workflow-rs/d3" }
 # workflow-dom = { path = "../workflow-rs/dom" }
-# # Same features as default but with rustls-tls-webpki-roots instead of native-tls
-# workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
+# workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-no-provider", "http2", "charset", "system-proxy"] }
 # workflow-log = { path = "../workflow-rs/log" }
 # workflow-node = { path = "../workflow-rs/node" }
 # workflow-nw = { path = "../workflow-rs/nw" }
