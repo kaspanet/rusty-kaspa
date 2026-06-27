@@ -39,6 +39,13 @@ workflow-log.workspace = true
 workflow-core.workspace = true
 workflow-wasm.workspace = true
 
+# getrandom 0.3 is pulled in transitively (ahash -> ark-crypto -> kaspa-txscript)
+# and needs its `wasm_js` feature enabled on wasm32 (plus the getrandom_backend
+# cfg in .cargo/config.toml). Declared in kaspa-utils too; also pinned here at the
+# SDK build root so the feature unifies regardless of how the lock is regenerated.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
 [features]
 wasm32-sdk = [
     "kaspa-wallet-core/wasm32-sdk",

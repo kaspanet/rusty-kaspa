@@ -13,3 +13,9 @@ rustflags = [
 # (similar to how we use musl on Linux for portable binaries)
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# getrandom 0.3+ (pulled in transitively, e.g. via newer ahash) requires an
+# explicit backend on wasm32-unknown-unknown; the `wasm_js` feature alone is no
+# longer sufficient. Select the wasm_js (browser crypto) backend.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", 'getrandom_backend="wasm_js"']
