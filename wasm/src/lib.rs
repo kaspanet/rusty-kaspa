@@ -47,6 +47,28 @@ the W3C WebSocket and due to this supports RPC.
 NOTE: for security reasons it is always recommended to build WASM SDK from source or
 download pre-built redistributables from releases or development builds.
 
+## Building as a Rust dependency (`wasm32-unknown-unknown`)
+
+If you depend on `kaspa-wasm` (or the other Kaspa wasm crates) **from Rust** and
+build for the `wasm32-unknown-unknown` target, you must select a `getrandom`
+backend in **your own** build configuration. Some transitive dependencies use
+`getrandom` 0.3, whose web backend cannot be chosen by a library — it has to be
+selected by the final build. Add the following to your crate's
+`.cargo/config.toml`:
+
+```toml
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", 'getrandom_backend="wasm_js"']
+```
+
+(equivalently, export `RUSTFLAGS='--cfg getrandom_backend="wasm_js"'`). Without
+this, the build fails with *"the wasm32-unknown-unknown targets are not supported
+by default … you may need to enable the `wasm_js` configuration flag"*. This
+crate applies the setting for its own builds, but a `.cargo/config.toml` does not
+propagate to downstream crates, so each consuming project must set it. This only
+applies to `wasm32-unknown-unknown`; native and `wasm32-wasi` targets are
+unaffected.
+
 ## Examples
 
 JavaScript examples for using this framework can be found at:
