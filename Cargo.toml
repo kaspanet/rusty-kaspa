@@ -280,7 +280,7 @@ triggered = "0.1.2"
 uuid = { version = "1.16.0", default-features = false }
 wasm-bindgen = { version = "=0.2.126", default-features = false }
 wasm-bindgen-futures = "=0.4.76"
-wasm-bindgen-test = "0.3.50"
+wasm-bindgen-test = "0.3.76"
 web-sys = "=0.3.103"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zerocopy = { version = "0.8", features = ["derive"] }
