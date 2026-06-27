@@ -4067,6 +4067,7 @@ dependencies = [
  "blake3",
  "borsh",
  "bytemuck",
+ "cc",
  "cfg-if",
  "criterion",
  "faster-hex 0.9.0",
