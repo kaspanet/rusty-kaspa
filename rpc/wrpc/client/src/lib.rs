@@ -49,30 +49,29 @@ pub mod parse;
 pub mod prelude;
 pub mod resolver;
 
-/// Ensures a process-level rustls [`CryptoProvider`](rustls::crypto::CryptoProvider)
-/// is installed before the client establishes any TLS connection.
-///
-/// reqwest 0.13 (used by the [`Resolver`] over HTTPS) only auto-selects the
-/// `aws-lc-rs` provider, which requires a C/cmake toolchain. To keep the build
-/// pure-Rust (`ring`) while staying zero-config for SDK consumers, we install
-/// the `ring` provider on first client/resolver construction. This is
-/// idempotent and a no-op if a provider was already installed — so a consumer
-/// can override it by installing their own provider before constructing a
-/// client. wasm targets use the host's TLS and need no provider.
-///
-/// When built without a `rustls-tls-*` backend (e.g. `default-features = false`
-/// or a `native-tls*` backend) the `ring` provider is not compiled in and this
-/// function is a no-op; such consumers must install their own provider.
-#[cfg(all(not(target_arch = "wasm32"), feature = "rustls-ring"))]
-pub fn ensure_crypto_provider() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
+cfg_if::cfg_if! {
+    if #[cfg(all(not(target_arch = "wasm32"), feature = "rustls-ring"))] {
+        /// Ensures a process-level rustls [`CryptoProvider`](rustls::crypto::CryptoProvider)
+        /// is installed before the client establishes any TLS connection.
+        ///
+        /// reqwest 0.13 (used by the [`Resolver`] over HTTPS) only auto-selects the
+        /// `aws-lc-rs` provider, which requires a C/cmake toolchain. To keep the build
+        /// pure-Rust (`ring`) while staying zero-config for SDK consumers, we install
+        /// the `ring` provider on first client/resolver construction. This is
+        /// idempotent and a no-op if a provider was already installed — so a consumer
+        /// can override it by installing their own provider before constructing a
+        /// client. wasm targets use the host's TLS and need no provider.
+        ///
+        /// When built without a `rustls-tls-*` backend (e.g. `default-features = false`
+        /// or a `native-tls*` backend) the `ring` provider is not compiled in and this
+        /// function is a no-op; such consumers must install their own provider.
+        pub fn ensure_crypto_provider() {
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            ONCE.call_once(|| {
+                let _ = rustls::crypto::ring::default_provider().install_default();
+            });
+        }
+    } else {
+        pub fn ensure_crypto_provider() {}
+    }
 }
-
-#[cfg(all(not(target_arch = "wasm32"), not(feature = "rustls-ring")))]
-pub fn ensure_crypto_provider() {}
-
-#[cfg(target_arch = "wasm32")]
-pub fn ensure_crypto_provider() {}
