@@ -323,7 +323,12 @@ workflow-dom = { version = "0.19.0" }
 workflow-log = { version = "0.19.0" }
 workflow-node = { version = "0.19.0" }
 workflow-nw = { version = "0.19.0" }
-workflow-rpc = { version = "0.19.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+# TLS provider/roots are NOT selected here (workspace-wide) so they cannot be
+# forced on SDK consumers. The selection is forwarded by kaspa-wrpc-client's own
+# `rustls-tls-*` / `native-tls*` features (default: rustls-tls-webpki-roots),
+# letting a consumer pass `default-features = false` to drop ring. `workflow-rpc`
+# itself defaults to `native-tls`, so default-features must stay disabled here.
+workflow-rpc = { version = "0.19.0", default-features = false }
 workflow-serializer = { version = "0.19.0" }
 workflow-store = { version = "0.19.0" }
 workflow-terminal = { version = "0.19.0" }

@@ -20,16 +20,21 @@
 //! through [`rustls`](https://docs.rs/rustls), which (since 0.23) requires a
 //! process-level crypto provider to be installed.
 //!
-//! For zero-config use, this crate installs the pure-Rust `ring` provider
-//! automatically the first time a [`KaspaRpcClient`] or [`Resolver`] is
-//! constructed (see [`ensure_crypto_provider`]). The install is idempotent and a
-//! no-op if a provider has already been installed, so to use a different
-//! provider (e.g. `aws-lc-rs`) install it yourself *before* constructing a
-//! client:
+//! For zero-config use, the default `rustls-tls-webpki-roots` feature installs
+//! the pure-Rust `ring` provider automatically the first time a
+//! [`KaspaRpcClient`] or [`Resolver`] is constructed (see
+//! [`ensure_crypto_provider`]). The install is idempotent and a no-op if a
+//! provider has already been installed, so to use a different provider (e.g.
+//! `aws-lc-rs`) install it yourself *before* constructing a client:
 //!
 //! ```ignore
 //! rustls::crypto::aws_lc_rs::default_provider().install_default().unwrap();
 //! ```
+//!
+//! Building this crate with `default-features = false` (or selecting a
+//! `native-tls*` backend) drops the bundled `ring` provider; if you then use the
+//! [`Resolver`] (HTTPS) you must install a rustls [`CryptoProvider`] yourself —
+//! [`ensure_crypto_provider`] becomes a no-op in that configuration.
 //!
 //! On `wasm32` the host environment handles TLS, so no provider is required.
 //!
@@ -54,13 +59,20 @@ pub mod resolver;
 /// idempotent and a no-op if a provider was already installed — so a consumer
 /// can override it by installing their own provider before constructing a
 /// client. wasm targets use the host's TLS and need no provider.
-#[cfg(not(target_arch = "wasm32"))]
+///
+/// When built without a `rustls-tls-*` backend (e.g. `default-features = false`
+/// or a `native-tls*` backend) the `ring` provider is not compiled in and this
+/// function is a no-op; such consumers must install their own provider.
+#[cfg(all(not(target_arch = "wasm32"), feature = "rustls-ring"))]
 pub fn ensure_crypto_provider() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
 }
+
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "rustls-ring")))]
+pub fn ensure_crypto_provider() {}
 
 #[cfg(target_arch = "wasm32")]
 pub fn ensure_crypto_provider() {}
