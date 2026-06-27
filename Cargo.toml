@@ -336,9 +336,11 @@ rustls = { version = "0.23.18", default-features = false, features = ["ring"] }
 workflow-core = { path = "../workflow-rs/core" }
 workflow-d3 = { path = "../workflow-rs/d3" }
 workflow-dom = { path = "../workflow-rs/dom" }
-# rustls-based TLS via the OS platform verifier; cross-platform system proxy
-# (workflow-http 0.19 / reqwest 0.13 renamed these features)
-workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls", "http2", "charset", "system-proxy"] }
+# rustls-based TLS via the OS platform verifier; cross-platform system proxy.
+# `rustls-no-provider` keeps reqwest from pulling the aws-lc-rs crypto provider
+# (which needs a C/cmake toolchain); the wRPC client installs the pure-Rust
+# `ring` provider at startup (see kaspa-wrpc-client::ensure_crypto_provider).
+workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-no-provider", "http2", "charset", "system-proxy"] }
 workflow-log = { path = "../workflow-rs/log" }
 workflow-node = { path = "../workflow-rs/node" }
 workflow-nw = { path = "../workflow-rs/nw" }
