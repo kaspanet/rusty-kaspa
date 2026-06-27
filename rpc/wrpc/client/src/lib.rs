@@ -13,6 +13,26 @@
 //!
 //! The main struct managing Kaspa RPC client connections is the [`KaspaRpcClient`].
 //!
+//! ## TLS crypto provider (native)
+//!
+//! On native targets the client opens secure (`wss://`) connections and, when a
+//! [`Resolver`] is used, fetches the public node list over HTTPS — both go
+//! through [`rustls`](https://docs.rs/rustls), which (since 0.23) requires a
+//! process-level crypto provider to be installed.
+//!
+//! For zero-config use, this crate installs the pure-Rust `ring` provider
+//! automatically the first time a [`KaspaRpcClient`] or [`Resolver`] is
+//! constructed (see [`ensure_crypto_provider`]). The install is idempotent and a
+//! no-op if a provider has already been installed, so to use a different
+//! provider (e.g. `aws-lc-rs`) install it yourself *before* constructing a
+//! client:
+//!
+//! ```ignore
+//! rustls::crypto::aws_lc_rs::default_provider().install_default().unwrap();
+//! ```
+//!
+//! On `wasm32` the host environment handles TLS, so no provider is required.
+//!
 
 pub mod client;
 pub mod error;
@@ -35,7 +55,7 @@ pub mod resolver;
 /// can override it by installing their own provider before constructing a
 /// client. wasm targets use the host's TLS and need no provider.
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn ensure_crypto_provider() {
+pub fn ensure_crypto_provider() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
@@ -43,4 +63,4 @@ pub(crate) fn ensure_crypto_provider() {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn ensure_crypto_provider() {}
+pub fn ensure_crypto_provider() {}
