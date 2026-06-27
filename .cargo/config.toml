@@ -14,8 +14,15 @@ rustflags = [
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
 
-# getrandom 0.3+ (pulled in transitively, e.g. via newer ahash) requires an
-# explicit backend on wasm32-unknown-unknown; the `wasm_js` feature alone is no
-# longer sufficient. Select the wasm_js (browser crypto) backend.
+# wasm32-unknown-unknown rustflags:
+#  * getrandom 0.3+ (pulled in transitively, e.g. via newer ahash) requires an
+#    explicit backend; the `wasm_js` feature alone is no longer sufficient.
+#    Select the wasm_js (browser crypto) backend.
+#  * -Ctarget-cpu=mvp pins the W3C MVP feature set for maximum runtime
+#    compatibility (rustc >= 1.87 otherwise enables reference-types, multivalue,
+#    sign-ext, nontrapping-fptoint, ... by default, which old consumers and the
+#    MVP wasm-opt allow-list reject). +reference-types is then added back on its
+#    own because wasm-bindgen's externref table -- used by `--weak-refs` (see the
+#    __wbindgen_externref_table_alloc function) -- requires it.
 [target.wasm32-unknown-unknown]
-rustflags = ["--cfg", 'getrandom_backend="wasm_js"']
+rustflags = ["--cfg", 'getrandom_backend="wasm_js"', "-Ctarget-cpu=mvp", "-Ctarget-feature=+reference-types"]

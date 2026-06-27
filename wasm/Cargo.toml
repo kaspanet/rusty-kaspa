@@ -78,13 +78,13 @@ targets = [
 ]
 folder = "setup"
 
-# Workaround for Rust 1.87.0
-# https://github.com/rust-lang/rust/issues/141048
 [package.metadata.wasm-pack.profile.release]
-# This optimization configuration requires "-Ctarget-cpu=mvp" Rustflag (only enable W3C MVP feature set)
-# This flag is automatically used either via (release optimized) build script at root
-#   or via .cargo/config.toml when executing the build from /wasm
-wasm-opt = ["-O","--enable-bulk-memory"]
+# The wasm is built as W3C MVP + reference-types (see the workspace
+# .cargo/config.toml wasm32 rustflags); reference-types is required by
+# wasm-bindgen's externref table, which `--weak-refs` relies on. wasm-opt must
+# be told to allow reference-types (and bulk-memory, which -O may introduce)
+# rather than validating against the MVP-only feature set.
+wasm-opt = ["-O","--enable-bulk-memory","--enable-reference-types"]
 
 [lints]
 workspace = true
