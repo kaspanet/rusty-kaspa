@@ -317,38 +317,38 @@ nw-sys = "0.1.6"
 rustls = { version = "0.23.18", default-features = false, features = ["ring"] }
 
 # workflow dependencies
-# workflow-core = { version = "0.18.0" }
-# workflow-d3 = { version = "0.18.0" }
-# workflow-dom = { version = "0.18.0" }
-# workflow-http = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
-# workflow-log = { version = "0.18.0" }
-# workflow-node = { version = "0.18.0" }
-# workflow-nw = { version = "0.18.0" }
-# workflow-rpc = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
-# workflow-serializer = { version = "0.18.0" }
-# workflow-store = { version = "0.18.0" }
-# workflow-terminal = { version = "0.18.0" }
-# workflow-wasm = { version = "0.18.0" }
-
-# if below is enabled, this means that there is an ongoing work
-# on the workflow-rs crate. This requires that you clone workflow-rs
-# into a sibling folder from https://github.com/workflow-rs/workflow-rs
-workflow-core = { path = "../workflow-rs/core" }
-workflow-d3 = { path = "../workflow-rs/d3" }
-workflow-dom = { path = "../workflow-rs/dom" }
+workflow-core = { version = "0.19.0" }
+workflow-d3 = { version = "0.19.0" }
+workflow-dom = { version = "0.19.0" }
+workflow-log = { version = "0.19.0" }
+workflow-node = { version = "0.19.0" }
+workflow-nw = { version = "0.19.0" }
+workflow-rpc = { version = "0.19.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+workflow-serializer = { version = "0.19.0" }
+workflow-store = { version = "0.19.0" }
+workflow-terminal = { version = "0.19.0" }
+workflow-wasm = { version = "0.19.0" }
 # rustls-based TLS via the OS platform verifier; cross-platform system proxy.
 # `rustls-no-provider` keeps reqwest from pulling the aws-lc-rs crypto provider
 # (which needs a C/cmake toolchain); the wRPC client installs the pure-Rust
 # `ring` provider at startup (see kaspa-wrpc-client::ensure_crypto_provider).
-workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-no-provider", "http2", "charset", "system-proxy"] }
-workflow-log = { path = "../workflow-rs/log" }
-workflow-node = { path = "../workflow-rs/node" }
-workflow-nw = { path = "../workflow-rs/nw" }
-workflow-rpc = { path = "../workflow-rs/rpc", default-features = false, features = ["rustls-tls-webpki-roots"] }
-workflow-serializer = { path = "../workflow-rs/serializer" }
-workflow-store = { path = "../workflow-rs/store" }
-workflow-terminal = { path = "../workflow-rs/terminal" }
-workflow-wasm = { path = "../workflow-rs/wasm" }
+workflow-http = { version = "0.19.0", default-features = false, features = ["rustls-no-provider", "http2", "charset", "system-proxy"] }
+
+# if below is enabled, this means that there is an ongoing work
+# on the workflow-rs crate. This requires that you clone workflow-rs
+# into a sibling folder from https://github.com/workflow-rs/workflow-rs
+# workflow-core = { path = "../workflow-rs/core" }
+# workflow-d3 = { path = "../workflow-rs/d3" }
+# workflow-dom = { path = "../workflow-rs/dom" }
+# workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-no-provider", "http2", "charset", "system-proxy"] }
+# workflow-log = { path = "../workflow-rs/log" }
+# workflow-node = { path = "../workflow-rs/node" }
+# workflow-nw = { path = "../workflow-rs/nw" }
+# workflow-rpc = { path = "../workflow-rs/rpc", default-features = false, features = ["rustls-tls-webpki-roots"] }
+# workflow-serializer = { path = "../workflow-rs/serializer" }
+# workflow-store = { path = "../workflow-rs/store" }
+# workflow-terminal = { path = "../workflow-rs/terminal" }
+# workflow-wasm = { path = "../workflow-rs/wasm" }
 
 
 # ---
