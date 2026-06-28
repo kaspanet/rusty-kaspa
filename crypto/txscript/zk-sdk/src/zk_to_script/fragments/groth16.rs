@@ -113,21 +113,16 @@ pub fn append_r0_groth16_verifier(builder: &mut ScriptBuilder, image_id: [u8; 32
     append_r0_groth16_verifier_dynamic_image_id(builder)
 }
 
-/// Converts an R0 Groth16 receipt into the compressed proof bytes expected by
-/// the Kaspa Groth16 verifier and pushes them onto the provided builder.
-///
-/// This is typically called while building a signature script. The script that
-/// invokes [`append_r0_groth16_verifier`] is responsible for producing or
-/// placing `journal_hash` under this proof before the verifier runs.
-///
-/// Pre-stack:  `[...]`
-/// Post-stack: `[..., compressed_proof]`
-///
-/// When paired with [`append_r0_groth16_verifier`], execution should reach the
-/// verifier with:
+/// Appends the r0-over-groth16 verifier fragment into a caller-owned builder.
 ///
 /// Pre-stack:  `[..., journal_hash, compressed_proof, image_id]`
 /// Post-stack: `[..., true]`
+///
+/// Embeds the image id, the fixed r0 groth16 verifier params / vk, the r0
+/// receipt-claim reconstruction, the groth16 public-input shaping, and the
+/// groth16 zk precompile call. This follows the convention of groth16 input
+/// setup as per Risc0, but the verification itself is done by the generic
+/// Arkworks implementation.
 pub fn append_r0_groth16_verifier_dynamic_image_id(builder: &mut ScriptBuilder) -> Result<()> {
     let params = Groth16ReceiptVerifierParameters::default();
     let (a0, a1) = split_digest_bytes(params.control_root);
