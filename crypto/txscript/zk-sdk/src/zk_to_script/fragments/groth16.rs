@@ -109,20 +109,42 @@ pub fn push_r0_groth16_proof<Claim: Digestible + Clone>(builder: &mut ScriptBuil
 /// setup as per Risc0, but the verification itself is done by the generic
 /// Arkworks implementation.
 pub fn append_r0_groth16_verifier(builder: &mut ScriptBuilder, image_id: [u8; 32]) -> Result<()> {
+    builder.add_data(&image_id)?; // [..., journal_hash, compressed_proof, image_id]
+    append_r0_groth16_verifier_dynamic_image_id(builder)
+}
+
+/// Converts an R0 Groth16 receipt into the compressed proof bytes expected by
+/// the Kaspa Groth16 verifier and pushes them onto the provided builder.
+///
+/// This is typically called while building a signature script. The script that
+/// invokes [`append_r0_groth16_verifier`] is responsible for producing or
+/// placing `journal_hash` under this proof before the verifier runs.
+///
+/// Pre-stack:  `[...]`
+/// Post-stack: `[..., compressed_proof]`
+///
+/// When paired with [`append_r0_groth16_verifier`], execution should reach the
+/// verifier with:
+///
+/// Pre-stack:  `[..., journal_hash, compressed_proof, image_id]`
+/// Post-stack: `[..., true]`
+pub fn append_r0_groth16_verifier_dynamic_image_id(builder: &mut ScriptBuilder) -> Result<()> {
     let params = Groth16ReceiptVerifierParameters::default();
     let (a0, a1) = split_digest_bytes(params.control_root);
     let id_bn254: [u8; 32] = params.bn254_control_id.into();
 
-    // Redeem-script entry leaves us with: [..., journal_hash, proof]  (top = proof)
+    // Stack: [..., journal_hash, proof, image_id]  (top = image_id)
+
+    builder.add_op(OpSwap)?; // [..., journal_hash, image_id, proof]
 
     // Park `proof` on the alt stack so it doesn't clutter the working area.
     // `journal_hash` is left for the digest reconstruction below. We'll bring
     // the proof back later.
-    builder.add_op(OpToAltStack)?; // alt:[..., proof]   main:[..., journal_hash]
+    builder.add_op(OpToAltStack)?; // alt:[..., proof]   main:[..., journal_hash, image_id]
 
     //  arrange [id_bn254, image_id, journal_hash] on top.
-    builder.add_data(&id_bn254)?; // [..., journal_hash, id_bn254]
-    builder.add_data(&image_id)?; // [..., journal_hash, id_bn254, image_id]
+    builder.add_data(&id_bn254)?; // [..., journal_hash, image_id, id_bn254]
+    builder.add_op(OpSwap)?; // [..., journal_hash, id_bn254, image_id]
     builder.add_op(OpRot)?; // [..., id_bn254, image_id, journal_hash]
 
     // Recompute Output digest in a UTXO script.
