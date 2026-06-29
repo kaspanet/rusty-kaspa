@@ -49,13 +49,13 @@ pub fn calc_merkle_root_with_hasher<H: Hasher>(hashes: impl ExactSizeIterator<It
 /// Callers must ensure the set of valid leaf hashes is disjoint from valid
 /// internal-node hashes (typically via per-domain hashers) so the two cases
 /// cannot be confused.
-pub fn derive_merkle_tree_with_hasher<H: Hasher>(mut hashes: impl ExactSizeIterator<Item = Hash>) ->  Vec<Option<Hash>>  {
+pub fn derive_merkle_tree_with_hasher<H: Hasher>(mut hashes: impl ExactSizeIterator<Item = Hash>) -> Vec<Option<Hash>> {
     match hashes.len() {
         0 => return vec![Some(cold_path_empty())],
         1 => return vec![hashes.next()],
         _ => {}
     }
-    let next_pot = hashes.len().next_power_of_two();// Maximal number of  leaves in last level of tree
+    let next_pot = hashes.len().next_power_of_two(); // Maximal number of  leaves in last level of tree
     let vec_len = 2 * next_pot - 1; // Maximal number of nodes in tree
 
     let mut merkles = vec![None; vec_len];
@@ -161,12 +161,12 @@ fn cold_path_empty() -> Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::{calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness};
     use alloc::vec::Vec;
     use core::iter;
-    use kaspa_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
-        use super::{calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness};
     use kaspa_hashes::Hash;
     use kaspa_hashes::{HASH_SIZE, ZERO_HASH};
+    use kaspa_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
     use std::eprintln;
     // Test the case of the empty tree which gets missed in the more general tests
     const HASH1: [u8; 32] = [0x1u8; HASH_SIZE];
@@ -359,7 +359,6 @@ mod tests {
         }
     }
 }
-
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
 pub enum MerkleTreeError {

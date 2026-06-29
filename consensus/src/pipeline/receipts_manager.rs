@@ -19,6 +19,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::Hash;
 use kaspa_merkle::{calc_merkle_root, create_merkle_witness, merkle_hash, verify_merkle_witness};
+use kaspa_seq_commit::{hashing::seq_state_root, types::SeqState};
 
 use parking_lot::RwLock;
 
@@ -49,13 +50,13 @@ pub struct TxReceiptsManager<
 }
 
 impl<
-        T: SelectedChainStoreReader,
-        U: ReachabilityStoreReader,
-        V: HeaderStoreReader,
-        X: AcceptanceDataStoreReader,
-        W: BlockTransactionsStoreReader,
-        Y: PruningStoreReader,
-    > TxReceiptsManager<T, U, V, X, W, Y>
+    T: SelectedChainStoreReader,
+    U: ReachabilityStoreReader,
+    V: HeaderStoreReader,
+    X: AcceptanceDataStoreReader,
+    W: BlockTransactionsStoreReader,
+    Y: PruningStoreReader,
+> TxReceiptsManager<T, U, V, X, W, Y>
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -99,40 +100,57 @@ impl<
             .iter()
             .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
             .collect::<Vec<_>>();
+        let accepting_blk_activity_root = calc_merkle_root(accepted_txs.iter().copied());
         let tx_acc_proof = create_merkle_witness(accepted_txs.into_iter(), tracked_tx_id, false)?;
-
-        let mut accepted_tx_mroot_chain = vec![];
-        for block in self.reachability_service.forward_chain_iterator(accepting_block_header.hash, posterity_block, true) {
-            let block_header = self.headers_store.get_header(block)?;
-            let block_mergeset_txs_data = self.acceptance_data_store.get(block_header.hash)?;
-            let block_accepted_txs = block_mergeset_txs_data
-                .iter()
-                .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
-                .collect::<Vec<_>>();
-            accepted_tx_mroot_chain.push(calc_merkle_root(block_accepted_txs.into_iter()))
-        }
+        let accepting_blk_payload_and_ctx_digest = Hash::default();
+        let accepting_blk_state_root = seq_state_root(&SeqState {
+            lanes_root: &accepting_blk_activity_root,
+            payload_and_ctx_digest: &accepting_blk_payload_and_ctx_digest,
+        });
         Ok(TxReceipt {
             tracked_tx_id,
             posterity_block,
-            accepted_tx_mroot_chain,
+            state_roots_chain_to_acepting_blk: vec![accepting_blk_state_root],
+            accepting_blk_payload_and_ctx_digest,
+            accepting_blk_activity_root,
             tx_acceptance_proof: tx_acc_proof,
-            initial_sequencing_commitment,
+            parent_of_accepting_blk_sequencing_commitment: initial_sequencing_commitment,
         })
     }
     pub fn verify_tx_receipt(&self, tx_receipt: &TxReceipt) -> bool {
+        // Legal recipts must have a non empty state roots chain
+        if tx_receipt.state_roots_chain_to_acepting_blk.is_empty() {
+            return false;
+        }
         if !self.verify_is_posterity(tx_receipt.posterity_block) {
             return false;
         }
-        let tx_atmr = tx_receipt.accepted_tx_mroot_chain[0];
-        if !verify_merkle_witness(&tx_receipt.tx_acceptance_proof, tx_receipt.tracked_tx_id, tx_atmr) {
+
+        if !verify_merkle_witness(
+            &tx_receipt.tx_acceptance_proof,
+            tx_receipt.tracked_tx_id,
+            tx_receipt.accepting_blk_payload_and_ctx_digest,
+        ) {
             return false;
         }
-        let mut acc = tx_receipt.initial_sequencing_commitment;
-        for &curr_atmr in tx_receipt.accepted_tx_mroot_chain.iter() {
-            acc = merkle_hash(acc, curr_atmr);
+
+        // Next, verify the payload_digest corresponds to the supposed acceping block's state root.
+        let accepting_blk_state_root = seq_state_root(&SeqState {
+            lanes_root: &tx_receipt.accepting_blk_activity_root,
+            payload_and_ctx_digest: &tx_receipt.accepting_blk_payload_and_ctx_digest,
+        });
+
+        if accepting_blk_state_root != tx_receipt.state_roots_chain_to_acepting_blk[0] {
+            return false;
+        }
+        // finally, trace the state root chain up to the posterity block
+        let mut current_sequencing_commitment = tx_receipt.parent_of_accepting_blk_sequencing_commitment;
+
+        for &current_state_root in tx_receipt.state_roots_chain_to_acepting_blk.iter() {
+            current_sequencing_commitment = merkle_hash(current_sequencing_commitment, current_state_root);
         }
         let post_posterity_header = self.headers_store.get_header(tx_receipt.posterity_block).unwrap();
-        acc == post_posterity_header.accepted_id_merkle_root
+        current_sequencing_commitment == post_posterity_header.accepted_id_merkle_root
     }
 
     // The function assumes that the path from block_hash up to its post posterity if it exits is intact and has not been pruned

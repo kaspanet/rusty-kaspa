@@ -8,9 +8,10 @@ use kaspa_hashes::Hash;
 pub struct TxReceipt {
     pub tracked_tx_id: Hash,
     pub posterity_block: Hash,
-    pub initial_sequencing_commitment: Hash,
-    // the accepted transactions merkle root segment of each sequencing commitment on path
-    // from the accepting block to posterity
-    pub accepted_tx_mroot_chain: Vec<Hash>,
+    pub parent_of_accepting_blk_sequencing_commitment: Hash,
+    pub state_roots_chain_to_acepting_blk: Vec<Hash>,
+    pub accepting_blk_payload_and_ctx_digest: Hash,
+    pub accepting_blk_activity_root: Hash,
+
     pub tx_acceptance_proof: MerkleWitness,
 }
