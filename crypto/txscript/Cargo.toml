@@ -45,6 +45,7 @@ risc0-binfmt.workspace = true
 risc0-circuit-recursion.workspace = true
 risc0-core.workspace = true
 risc0-zkp.workspace = true
+risc0-zkvm-platform.workspace = true
 secp256k1.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
