@@ -16,7 +16,7 @@ use kaspa_consensus_core::{
     tx::Transaction,
 };
 use kaspa_consensusmanager::{ConsensusProxy, StagingConsensus, spawn_blocking};
-use kaspa_core::{debug, info, time::unix_now, warn};
+use kaspa_core::{debug, info, task::blocking::join_blocking_or_park, time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
@@ -179,7 +179,7 @@ impl IbdFlow {
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
                     Ok(()) => {
-                        spawn_blocking(|| staging.commit()).await.unwrap();
+                        join_blocking_or_park(spawn_blocking(|| staging.commit())).await;
                         info!(
                             "Header download stage of IBD with headers proof completed successfully from {}. Committed staging consensus.",
                             self.router
@@ -779,7 +779,7 @@ impl IbdFlow {
         consensus.async_set_pruning_utxoset_stable().await;
         // Once a new utxoset is stored, the utxoindex needs to be resynced as well. This happens through the reset handler mechanism.
         let consensus_manager = self.ctx.consensus_manager.clone();
-        spawn_blocking(move || consensus_manager.invoke_consensus_reset_handlers()).await.unwrap();
+        join_blocking_or_park(spawn_blocking(move || consensus_manager.invoke_consensus_reset_handlers())).await;
         self.ctx.on_pruning_point_utxoset_override();
         Ok(())
     }
