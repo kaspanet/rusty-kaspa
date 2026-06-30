@@ -1,54 +1,49 @@
+<!doctype html>
 <html>
-    <head>
-        <script type="module">
-            import * as kaspa from './kaspa/kaspa_wasm.js';
-            let {PublicKeyGenerator, createAddress, NetworkType, Mnemonic, XPrv} = kaspa;
-            window.XPublicKey = PublicKeyGenerator;
-            (async () => {
-                const wasm = await kaspa.default('./kaspa/kaspa_wasm_bg.wasm');
-                console.log("kaspa", kaspa);
-                console.log("version", kaspa.version());
-                tests();
-            })();
+  <head>
+    <link rel="stylesheet" href="./resources/style.css" />
+    <script type="importmap">
+      { "imports": { "kaspa": "../../web/kaspa-keygen/kaspa.js" } }
+    </script>
+    <script type="module">
+      import init, {
+        PublicKeyGenerator,
+        NetworkType,
+        Mnemonic,
+        XPrv,
+      } from "kaspa";
 
-            async function tests(){
-                let seed = Mnemonic.random(12).toSeed();
-                const xPrv = new XPrv(seed).intoString("kprv");
-                // HD Wallet-style public key generation
-                let xpub = await PublicKeyGenerator.fromMasterXPrv(
-                    xPrv,
-                    false,
-                    0n
-                );
+      await init(); // loads kaspa_bg.wasm next to kaspa.js
 
-                console.log("xpub", xpub)
-                let xpub_str = xpub.toString();
-                console.log("xpub", xpub_str)
+      const out = (label, value) => {
+        const li = document.createElement("li");
+        li.textContent = `${label}: ${value}`;
+        document.getElementById("out").appendChild(li);
+      };
 
-                // Generates the first 10 Receive Public keys and their addresses
-                let compressedPublicKeys = await xpub.receivePubkeys(0, 10);
-                console.log("receive address compressedPublicKeys", compressedPublicKeys);
-                let addresses1 = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
-                console.log("receive addresses", addresses1);
+      // Derive an xpub from a random master key, then the first receive addresses.
+      const xprv = new XPrv(Mnemonic.random().toSeed()).intoString("kprv");
+      const xpub = await PublicKeyGenerator.fromMasterXPrv(xprv, false, 0n);
 
-                xpub = await PublicKeyGenerator.fromString(xpub_str);
+      const keys = await xpub.receivePubkeys(0, 5);
+      const addresses = keys.map((key) =>
+        key.toAddress(NetworkType.Testnet).toString(),
+      );
 
-                // Generates the first 10 Receive Public keys and their addresses
-                compressedPublicKeys = await xpub.receivePubkeys(0, 10);
-                console.log("receive address compressedPublicKeys", compressedPublicKeys);
-                let addresses2 = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
-                console.log("receive addresses", addresses2);
-                //addresses1[0] += "should fail";
-                if (!addresses2.length){
-                    throw new Error("Address creation failed")
-                }else if (addresses2.find((address, index)=>addresses1[index]!=address)){
-                    console.error("Xpub restore failed");
-                }else{
-                    console.info("Xpub restore success");
-                }
+      // Restoring the xpub from its string must reproduce the same addresses.
+      const restored = await PublicKeyGenerator.fromXPub(xpub.toString());
+      const restoredAddresses = (await restored.receivePubkeys(0, 5)).map(
+        (key) => key.toAddress(NetworkType.Testnet).toString(),
+      );
 
-            }
-        </script>
-    </head>
-    <body></body>
+      const ok = addresses.every((a, i) => a === restoredAddresses[i]);
+      out("xpub restore", ok ? "success" : "FAILED");
+      addresses.forEach((a, i) => out(`receive[${i}]`, a));
+    </script>
+  </head>
+  <body>
+    <a href="index.html">&larr; Back</a>
+    <h3>XPub derivation &amp; restore (testnet)</h3>
+    <ul id="out"></ul>
+  </body>
 </html>
