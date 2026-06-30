@@ -46,6 +46,9 @@ pub enum ConsensusError {
     #[error("utxo inquirer error: {0}")]
     UtxoInquirerError(#[from] UtxoInquirerError),
 
+    #[error("tx with id:{0} was not found in local storage")]
+    MissingTx(Hash),
+
     #[error("{0}")]
     GeneralOwned(String),
 
