@@ -41,12 +41,8 @@ fn run_tie_breaking_at_k(k: KType) -> (Hash, usize) {
     let file = File::open(&json_filename).expect("Unable to open JSON file");
     let json_data: serde_json::Value = serde_json::from_reader(file).expect("Unable to parse JSON");
 
-    let tips: Vec<Hash> = json_data["tips"]
-        .as_array()
-        .expect("tips is not an array")
-        .iter()
-        .map(|t| prefixed_hash(t.as_str().expect("tip")))
-        .collect();
+    let tips: Vec<Hash> =
+        json_data["tips"].as_array().expect("tips is not an array").iter().map(|t| prefixed_hash(t.as_str().expect("tip"))).collect();
 
     let blocks = json_data["blocks"].as_array().expect("blocks is not an array");
 
@@ -57,12 +53,7 @@ fn run_tie_breaking_at_k(k: KType) -> (Hash, usize) {
             let parents: Vec<Hash> = if block["parents"].as_array().map(|a| a.is_empty()).unwrap_or(false) {
                 vec![ORIGIN]
             } else {
-                block["parents"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|p| prefixed_hash(p.as_str().expect("parent")))
-                    .collect()
+                block["parents"].as_array().unwrap().iter().map(|p| prefixed_hash(p.as_str().expect("parent"))).collect()
             };
             let blue_work = Uint192::from_u64(block["blue_work"].as_str().expect("blue_work").parse::<u64>().unwrap());
             let bits = u32::from_str_radix(block["bits"].as_str().expect("bits"), 16).unwrap();
