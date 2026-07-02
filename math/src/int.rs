@@ -60,6 +60,25 @@ impl<T: Sub<Output = T> + Add<Output = T> + Ord> Sub for SignedInteger<T> {
     }
 }
 
+impl<T: Add<Output = T> + Sub<Output = T> + Ord> Add for SignedInteger<T> {
+    type Output = Self;
+    #[inline]
+    #[track_caller]
+    fn add(self, other: Self) -> Self::Output {
+        match (self.negative, other.negative) {
+            (false, false) | (true, true) => Self { negative: self.negative, abs: self.abs + other.abs },
+            (false, true) | (true, false) => {
+                // Subtract the smaller magnitude from the larger
+                if self.abs >= other.abs {
+                    Self { negative: self.negative, abs: self.abs - other.abs }
+                } else {
+                    Self { negative: other.negative, abs: other.abs - self.abs }
+                }
+            }
+        }
+    }
+}
+
 impl<T: Mul<Output = T>> Mul for SignedInteger<T> {
     type Output = Self;
     #[inline]
