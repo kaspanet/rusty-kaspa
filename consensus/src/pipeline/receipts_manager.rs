@@ -237,7 +237,7 @@ impl<
 
         Ok(PosterityReceiptContext {
             lane_in_active_lanes_proof,
-            lane_blue_score: posterity_lane.blue_score(),
+            lane_last_blue_score: posterity_lane.blue_score(),
             inactivity_shortcut,
             payload_and_ctx_digest: posterity_metadata.payload_and_ctx_digest(),
             parent_sqc,
