@@ -76,7 +76,7 @@ pub fn derive_merkle_tree_with_hasher<H: Hasher>(mut hashes: impl ExactSizeItera
     merkles
 }
 
-pub fn verify_merkle_witness(witness_vec: &MerkleWitness, leaf_value: Hash, merkle_root_hash: Hash) -> bool {
+pub fn compute_merkle_witness_root(witness_vec: &MerkleWitness, leaf_value: Hash) -> Hash {
     let mut current_hash = leaf_value;
     for witness_segment in witness_vec.iter() {
         // The LeafRoute describes which branch the leaf is at from bottom to top
@@ -89,7 +89,11 @@ pub fn verify_merkle_witness(witness_vec: &MerkleWitness, leaf_value: Hash, merk
             }
         }
     }
-    current_hash == merkle_root_hash
+    current_hash
+}
+
+pub fn verify_merkle_witness(witness_vec: &MerkleWitness, leaf_value: Hash, merkle_root_hash: Hash) -> bool {
+    compute_merkle_witness_root(witness_vec, leaf_value) == merkle_root_hash
 }
 
 pub fn create_merkle_witness_from_unsorted(

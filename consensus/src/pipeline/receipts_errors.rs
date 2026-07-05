@@ -15,4 +15,10 @@ pub enum ReceiptsErrors {
     RequestedBlockNotOnSelectedChain(Hash),
     #[error("Block with hash {0} is orphaned with no chain blocks in its future")]
     NoChainBlockInFuture(Hash),
+    #[error("tracked transaction {0} not found in acceptance data of block {1}")]
+    TrackedTxNotFoundInAcceptanceData(Hash, Hash),
+    #[error("invalid accepted tx index {index} in block {block_hash}")]
+    InvalidAcceptedTxIndex { block_hash: Hash, index: u32 },
+    #[error("lane {lane_key} is not active at posterity block {posterity_hash}")]
+    LaneNotActiveAtPosterity { lane_key: Hash, posterity_hash: Hash },
 }

@@ -3226,6 +3226,7 @@ dependencies = [
  "kaspa-math",
  "kaspa-merkle",
  "kaspa-muhash",
+ "kaspa-seq-commit",
  "kaspa-smt",
  "kaspa-txscript-errors",
  "kaspa-utils",

@@ -132,6 +132,8 @@ impl ConsensusServices {
             storage.acceptance_data_store.clone(),
             storage.block_transactions_store.clone(),
             storage.pruning_point_store.clone(),
+            storage.smt_stores.clone(),
+            storage.smt_metadata_store.clone(),
             dag_traversal_manager.clone(),
             params.crescendo_activation,
         );
