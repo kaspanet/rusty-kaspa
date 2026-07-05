@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
+use tokio::time::timeout;
 
 use crate::app_config::BridgeConfig;
 use crate::net_utils::bind_addr_from_port;
@@ -345,16 +346,25 @@ async fn write_response(
     if let Some(body) = body_bytes {
         stream.write_all(&body).await?;
     }
+    let _ = stream.shutdown().await;
+    Ok(())
+}
+
+async fn send_response(
+    mut stream: tokio::net::TcpStream,
+    response: impl AsRef<[u8]>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use tokio::io::AsyncWriteExt;
+    stream.write_all(response.as_ref()).await?;
+    let _ = stream.shutdown().await;
     Ok(())
 }
 
 async fn handle_http_request(
-    mut stream: tokio::net::TcpStream,
+    stream: tokio::net::TcpStream,
     request: &str,
     mode: &HttpMode,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use tokio::io::AsyncWriteExt;
-
     let path = request.lines().next().and_then(|line| line.split_whitespace().nth(1)).unwrap_or("/");
 
     if request.starts_with("GET /metrics") {
@@ -368,11 +378,11 @@ async fn handle_http_request(
         encoder.encode(&metric_families, &mut buf)?;
 
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
             buf.len(),
             String::from_utf8_lossy(&buf)
         );
-        stream.write_all(response.as_bytes()).await?;
+        send_response(stream, response).await?;
         return Ok(());
     }
 
@@ -388,11 +398,11 @@ async fn handle_http_request(
             WebStatusResponse { kaspad_address: status_cfg.kaspad_address, kaspad_version, instances: status_cfg.instances, web_bind };
         let json = serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string());
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
             json.len(),
             json
         );
-        stream.write_all(response.as_bytes()).await?;
+        send_response(stream, response).await?;
         return Ok(());
     }
 
@@ -403,22 +413,22 @@ async fn handle_http_request(
         };
         let json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
             json.len(),
             json
         );
-        stream.write_all(response.as_bytes()).await?;
+        send_response(stream, response).await?;
         return Ok(());
     }
 
     if matches!(mode, HttpMode::Instance { .. }) && request.starts_with("GET /api/config") {
         let config_json = get_config_json().await;
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
             config_json.len(),
             config_json
         );
-        stream.write_all(response.as_bytes()).await?;
+        send_response(stream, response).await?;
         return Ok(());
     }
 
@@ -427,11 +437,11 @@ async fn handle_http_request(
             let json_response =
                 r#"{"success": false, "message": "Config write disabled. Set RKSTRATUM_ALLOW_CONFIG_WRITE=1 to enable."}"#;
             let response = format!(
-                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
                 json_response.len(),
                 json_response
             );
-            stream.write_all(response.as_bytes()).await?;
+            send_response(stream, response).await?;
             return Ok(());
         }
 
@@ -444,40 +454,66 @@ async fn handle_http_request(
             r#"{"success": false, "message": "Failed to update config"}"#
         };
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
             json_response.len(),
             json_response
         );
-        stream.write_all(response.as_bytes()).await?;
+        send_response(stream, response).await?;
         return Ok(());
     }
 
     if request.starts_with("GET /") {
         if let Some((rel, bytes)) = try_read_static_file(path) {
             let ct = content_type_for_path(&rel);
-            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n", ct, bytes.len());
+            let response =
+                format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nConnection: close\r\nContent-Length: {}\r\n\r\n", ct, bytes.len());
             write_response(stream, response, Some(bytes)).await?;
         } else {
-            stream.write_all("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes()).await?;
+            send_response(stream, "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n").await?;
         }
         return Ok(());
     }
 
-    stream.write_all("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes()).await?;
+    send_response(stream, "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n").await?;
     Ok(())
 }
 
-async fn serve_http_loop(listener: tokio::net::TcpListener, mode: HttpMode) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+const READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+async fn handle_one_connection(
+    mut stream: tokio::net::TcpStream,
+    mode: HttpMode,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use tokio::io::AsyncReadExt;
 
-    loop {
-        let (mut stream, _) = listener.accept().await?;
-        let mut buffer = [0; 8192];
+    let mut buffer = [0u8; 8192];
 
-        if let Ok(n) = stream.read(&mut buffer).await {
+    match timeout(READ_TIMEOUT, stream.read(&mut buffer)).await {
+        Ok(Ok(0)) => Ok(()),
+        Ok(Ok(n)) => {
             let request = String::from_utf8_lossy(&buffer[..n]);
-            let _ = handle_http_request(stream, &request, &mode).await;
+            handle_http_request(stream, &request, &mode).await
         }
+        Ok(Err(_)) => Ok(()),
+        Err(_) => Ok(()),
+    }
+}
+
+async fn serve_http_loop(listener: tokio::net::TcpListener, mode: HttpMode) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    loop {
+        let (stream, _) = match listener.accept().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                tracing::warn!("TCP accept error on web dashboard: {}", e);
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                continue;
+            }
+        };
+
+        let mode = mode.clone();
+        tokio::spawn(async move {
+            let _ = handle_one_connection(stream, mode).await;
+        });
     }
 }
 
@@ -1590,6 +1626,7 @@ min_share_diff: 8192
 
         let status_resp = send_request(mode.clone(), "GET /api/status HTTP/1.1\r\n\r\n").await;
         assert!(status_resp.contains("200 OK"));
+        assert!(status_resp.contains("Connection: close"));
         assert!(status_resp.contains("\"kaspad_address\""));
         assert!(status_resp.contains("\"instances\":2"));
 
