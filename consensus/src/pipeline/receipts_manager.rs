@@ -2,9 +2,7 @@ use super::receipts_errors::ReceiptsErrors;
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{
-        acceptance_data::AcceptanceDataStoreReader,
-        headers::HeaderStoreReader,
-        reachability::ReachabilityStoreReader,
+        acceptance_data::AcceptanceDataStoreReader, headers::HeaderStoreReader, reachability::ReachabilityStoreReader,
         smt_metadata::DbSmtMetadataStore,
     },
 };
@@ -107,11 +105,7 @@ impl<
         let tracked_entry = self.find_tracked_entry(&accepting_entries, tracked_tx_id, accepting_block_header.hash)?;
         let lane_key_hash = lane_key(&tracked_entry.lane_id);
 
-        let tx_context = TxContext {
-            tracked_tx_id,
-            tx_version: tracked_entry.version,
-            tx_merge_idx: tracked_entry.merge_idx,
-        };
+        let tx_context = TxContext { tracked_tx_id, tx_version: tracked_entry.version, tx_merge_idx: tracked_entry.merge_idx };
         let accepting_blk_context = self.build_accepting_blk_context(
             &accepting_block_header,
             &accepting_entries,
@@ -121,13 +115,9 @@ impl<
             &selected_parent_header,
         )?;
 
-        let lane_tip_updates_to_posterity = self.build_lane_tip_updates_to_posterity(
-            accepting_block_header.hash,
-            posterity_block,
-            &tracked_entry.lane_id,
-        )?;
-        let posterity_context =
-            self.build_posterity_materials(posterity_block, posterity_header.blue_score, lane_key_hash)?;
+        let lane_tip_updates_to_posterity =
+            self.build_lane_tip_updates_to_posterity(accepting_block_header.hash, posterity_block, &tracked_entry.lane_id)?;
+        let posterity_context = self.build_posterity_materials(posterity_block, posterity_header.blue_score, lane_key_hash)?;
 
         Ok(TxReceipt::new(
             posterity_block,
@@ -197,11 +187,7 @@ impl<
             .map(|v| *v.data())
             .unwrap_or(selected_parent_header.accepted_id_merkle_root);
 
-        Ok(AcceptingBlkContext {
-            tx_acceptance_proof,
-            context_hash: accepting_context_hash,
-            parent_ref,
-        })
+        Ok(AcceptingBlkContext { tx_acceptance_proof, context_hash: accepting_context_hash, parent_ref })
     }
 
     fn build_lane_tip_updates_to_posterity(
@@ -212,11 +198,7 @@ impl<
     ) -> Result<Vec<LaneTipUpdateContext>, ReceiptsErrors> {
         let mut updates = Vec::new();
 
-        for chain_block in self
-            .reachability_service
-            .forward_chain_iterator(accepting_block_hash, posterity_block, true)
-            .skip(1)
-        {
+        for chain_block in self.reachability_service.forward_chain_iterator(accepting_block_hash, posterity_block, true).skip(1) {
             let chain_header = self.headers_store.get_header(chain_block)?;
             let lane_activity = self
                 .collect_acceptance_entries(chain_block)?
@@ -257,10 +239,8 @@ impl<
 
         let posterity_metadata = self.smt_metadata_store.get(posterity_block)?;
         let inactivity_shortcut = self.inactivity_shortcut_hash(posterity_metadata.inactivity_shortcut_block())?;
-        let parent_sqc = self
-            .headers_store
-            .get_header(self.reachability_service.get_chain_parent(posterity_block))?
-            .accepted_id_merkle_root;
+        let parent_sqc =
+            self.headers_store.get_header(self.reachability_service.get_chain_parent(posterity_block))?.accepted_id_merkle_root;
 
         Ok(PosterityReceiptContext {
             lane_in_active_lanes_proof,

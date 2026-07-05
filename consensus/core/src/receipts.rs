@@ -90,23 +90,11 @@ impl TxReceipt {
         lane_key: Hash,
         posterity_context: PosterityReceiptContext,
     ) -> Self {
-        Self {
-            posterity_hash,
-            tx_context,
-            accepting_blk_context,
-            lane_tip_updates_to_posterity,
-            posterity_context,
-            lane_key,
-        }
+        Self { posterity_hash, tx_context, accepting_blk_context, lane_tip_updates_to_posterity, posterity_context, lane_key }
     }
 
     fn lane_tip_next(&self, parent_ref: &Hash, activity_digest: &Hash, context_hash: &Hash) -> Hash {
-        kaspa_seq_commit::hashing::lane_tip_next(&LaneTipInput {
-            parent_ref,
-            lane_key: &self.lane_key,
-            activity_digest,
-            context_hash,
-        })
+        kaspa_seq_commit::hashing::lane_tip_next(&LaneTipInput { parent_ref, lane_key: &self.lane_key, activity_digest, context_hash })
     }
 
     pub fn activity_leaf(&self) -> Hash {
@@ -118,11 +106,7 @@ impl TxReceipt {
     }
 
     pub fn accepting_lane_tip(&self, activity_digest: Hash) -> Hash {
-        self.lane_tip_next(
-            &self.accepting_blk_context.parent_ref,
-            &activity_digest,
-            &self.accepting_blk_context.context_hash,
-        )
+        self.lane_tip_next(&self.accepting_blk_context.parent_ref, &activity_digest, &self.accepting_blk_context.context_hash)
     }
 
     pub fn posterity_lane_tip(&self, accepting_blk_lane_tip: Hash) -> Hash {
@@ -164,10 +148,8 @@ impl TxReceipt {
             .ok()?;
 
         // Recompute the posterity block sequencing commitment from the receipt internals.
-        let activity_root = kaspa_seq_commit::hashing::activity_root_hash(
-            &self.posterity_context.inactivity_shortcut,
-            &posterity_active_lanes_root,
-        );
+        let activity_root =
+            kaspa_seq_commit::hashing::activity_root_hash(&self.posterity_context.inactivity_shortcut, &posterity_active_lanes_root);
         let state_root = kaspa_seq_commit::hashing::seq_state_root(&SeqState {
             activity_root: &activity_root,
             payload_and_ctx_digest: &self.posterity_context.payload_and_ctx_digest,
