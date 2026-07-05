@@ -50,8 +50,6 @@ pub struct TxReceiptsManager<
     pub smt_stores: Arc<SmtStores>,
     pub smt_metadata_store: Arc<DbSmtMetadataStore>,
 
-    pub crescendo_activation: ForkActivation,
-
     pub traversal_manager: DbDagTraversalManager,
 }
 
@@ -77,7 +75,6 @@ impl<
         smt_stores: Arc<SmtStores>,
         smt_metadata_store: Arc<DbSmtMetadataStore>,
         traversal_manager: DbDagTraversalManager,
-        crescendo_activation: ForkActivation,
     ) -> Self {
         Self {
             genesis: genesis.clone(),
@@ -86,7 +83,6 @@ impl<
             selected_chain_store: selected_chain_store.clone(),
             acceptance_data_store: acceptance_data_store.clone(),
             reachability_service,
-            crescendo_activation,
             block_transactions_store: block_transactions_store.clone(),
             pruning_point_store: pruning_point_store.clone(),
             smt_stores,
@@ -155,11 +151,8 @@ impl<
     fn inactivity_shortcut_hash(&self, inactivity_shortcut_block: Hash) -> Result<Hash, ReceiptsErrors> {
         // Parallel to virtual_processor::inactivity_shortcut.
         let shortcut_header = self.headers_store.get_header(inactivity_shortcut_block)?;
-        if self.crescendo_activation.is_active(shortcut_header.daa_score) {
             Ok(shortcut_header.accepted_id_merkle_root)
-        } else {
-            Ok(kaspa_hashes::ZERO_HASH)
-        }
+
     }
 
     fn build_accepting_blk_context(

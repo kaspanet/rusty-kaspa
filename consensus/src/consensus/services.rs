@@ -135,7 +135,6 @@ impl ConsensusServices {
             storage.smt_stores.clone(),
             storage.smt_metadata_store.clone(),
             dag_traversal_manager.clone(),
-            params.crescendo_activation,
         );
         let ghostdag_manager = GhostdagManager::new(
             params.genesis.hash,
