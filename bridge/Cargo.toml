@@ -75,6 +75,7 @@ path = "src/main.rs"
 
 [features]
 rkstratum_cpu_miner = []
+risc0-export-syscall = ["kaspad/risc0-export-syscall"]
 
 [lints]
 workspace = true

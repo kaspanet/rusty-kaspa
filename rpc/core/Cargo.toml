@@ -14,6 +14,7 @@ wasm32-sdk = [
     "kaspa-consensus-client/wasm32-sdk",
     "kaspa-consensus-wasm/wasm32-sdk"
 ]
+risc0-export-syscall = ["kaspa-txscript/risc0-export-syscall"]
 
 [dependencies]
 kaspa-addresses.workspace = true

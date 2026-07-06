@@ -17,6 +17,7 @@ crate-type = ["cdylib", "lib"]
 [features]
 wasm32-sdk = ["kaspa-consensus-client/wasm32-sdk"]
 wasm32-types = ["kaspa-consensus-client/wasm32-types"]
+risc0-export-syscall = ["kaspa-txscript/risc0-export-syscall"]
 
 [dependencies]
 kaspa-addresses.workspace = true

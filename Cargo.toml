@@ -307,6 +307,7 @@ risc0-binfmt = "=3.0.4"
 risc0-circuit-recursion = { version = "=4.0.4", default-features = false }
 risc0-core = "=3.0.1"
 risc0-zkp = "=3.0.4"
+risc0-zkvm-platform = "=2.2.2"
 risc0-groth16 = "=3.0.4"
 risc0-zkvm = { version="=3.0.4", default-features = false }
 # workflow dependencies that are not a part of core libraries
