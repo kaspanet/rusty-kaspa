@@ -55,6 +55,9 @@ thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+risc0-zkvm-platform = { version = "=2.2.2", features = ["export-syscalls"] }
+
 [dev-dependencies]
 bytemuck.workspace = true
 criterion.workspace = true
