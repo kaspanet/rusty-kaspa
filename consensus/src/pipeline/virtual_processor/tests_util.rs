@@ -64,6 +64,34 @@ impl TestContext {
         }
     }
 
+    pub(super) fn assert_row_parents(&mut self) -> &mut Self {
+        for t in self.current_templates.iter() {
+            assert_eq!(self.current_tips, BlockHashSet::from_iter(t.block.header.direct_parents().iter().copied()));
+        }
+        self
+    }
+
+    pub(super) fn assert_tips(&mut self) -> &mut Self {
+        assert_eq!(BlockHashSet::from_iter(self.consensus.get_tips().into_iter()), self.current_tips);
+        self
+    }
+
+    pub(super) fn assert_virtual_parents_subset(&mut self) -> &mut Self {
+        assert!(self.consensus.get_virtual_parents().is_subset(&self.current_tips));
+        self
+    }
+
+    pub(super) async fn build_and_insert_disqualified_chain(&mut self, mut parents: Vec<Hash>, len: usize) -> Hash {
+        // The chain will be disqualified since build_block_with_parents builds utxo-invalid blocks
+        for _ in 0..len {
+            self.simulated_time += self.consensus.params().target_time_per_block();
+            let b = self.build_block_with_parents(parents, 0, self.simulated_time);
+            parents = vec![b.header.hash];
+            self.validate_and_insert_block(b.to_immutable()).await;
+        }
+        parents[0]
+    }
+
     pub(super) fn build_block_template_row(&mut self, nonces: impl Iterator<Item = usize>) -> &mut Self {
         for nonce in nonces {
             self.simulated_time += self.consensus.params().target_time_per_block();
@@ -129,7 +157,7 @@ impl TestContext {
     }
 }
 
-fn new_miner_data() -> MinerData {
+pub(super) fn new_miner_data() -> MinerData {
     let secp = secp256k1::Secp256k1::new();
     let mut rng = rand::thread_rng();
     let (_sk, pk) = secp.generate_keypair(&mut rng);
