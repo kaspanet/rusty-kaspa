@@ -151,8 +151,7 @@ impl<
     fn inactivity_shortcut_hash(&self, inactivity_shortcut_block: Hash) -> Result<Hash, ReceiptsErrors> {
         // Parallel to virtual_processor::inactivity_shortcut.
         let shortcut_header = self.headers_store.get_header(inactivity_shortcut_block)?;
-            Ok(shortcut_header.accepted_id_merkle_root)
-
+        Ok(shortcut_header.accepted_id_merkle_root)
     }
 
     fn build_accepting_blk_context(

@@ -138,7 +138,7 @@ async fn test_receipts_in_chain() {
         assert!(ctx.consensus.verify_tx_receipt(&rec));
         // sanity check
         assert_eq!(rec.tracked_tx_id, tx_id);
-	}
+    }
 }
 
 #[tokio::test]

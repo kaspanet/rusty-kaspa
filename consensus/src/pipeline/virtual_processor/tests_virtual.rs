@@ -1,4 +1,4 @@
-﻿use super::tests_util::{new_miner_data, OnetimeTxSelector, TestContext};
+use super::tests_util::{OnetimeTxSelector, TestContext, new_miner_data};
 use crate::{consensus::test_consensus::TestConsensus, model::services::reachability::ReachabilityService};
 use kaspa_consensus_core::{
     BlockHashSet,

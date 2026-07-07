@@ -19,7 +19,7 @@ pub fn create_hash_merkle_witness<'a>(
     txs: impl ExactSizeIterator<Item = &'a Transaction>,
     tracked_tx: &Transaction,
 ) -> Result<MerkleWitness, MerkleTreeError> {
-    create_merkle_witness_from_unsorted(txs.map(|tx| hashing::tx::hash(tx)), hashing::tx::hash(tracked_tx))
+    create_merkle_witness_from_unsorted(txs.map(hashing::tx::hash), hashing::tx::hash(tracked_tx))
 }
 
 #[cfg(test)]
