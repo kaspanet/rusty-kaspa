@@ -12,9 +12,6 @@ repository.workspace = true
 [lib]
 crate-type = ["cdylib", "lib"]
 
-[features]
-risc0-export-syscall = ["kaspa-rpc-core/risc0-export-syscall"]
-
 [dependencies]
 async-trait.workspace = true
 borsh = { workspace = true, features = ["rc"] }

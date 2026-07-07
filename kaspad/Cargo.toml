@@ -70,7 +70,6 @@ serde_with = "3.7.0"
 heap = ["dhat", "kaspa-alloc/heap"]
 devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]
 semaphore-trace = ["kaspa-utils/semaphore-trace"]
-risc0-export-syscall = ["kaspa-txscript/risc0-export-syscall"]
 
 [lints]
 workspace = true
