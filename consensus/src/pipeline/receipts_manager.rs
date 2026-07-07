@@ -13,7 +13,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    config::{genesis::GenesisBlock, params::ForkActivation},
+    config::genesis::GenesisBlock,
     header::Header,
     receipts::{AcceptingBlkContext, LaneTipUpdateContext, PosterityReceiptContext, TxContext, TxReceipt},
 };

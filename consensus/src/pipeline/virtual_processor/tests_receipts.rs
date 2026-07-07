@@ -173,12 +173,11 @@ async fn test_receipts_in_random() {
     for (ind, parents_ind) in dag.1.into_iter() {
         let mut parents = vec![];
         for par in parents_ind.clone().iter() {
-            if let Some(&par_mapped) = mapper.get(par) {
-                if [BlockStatus::StatusUTXOValid, BlockStatus::StatusDisqualifiedFromChain]
+            if let Some(&par_mapped) = mapper.get(par)
+                && [BlockStatus::StatusUTXOValid, BlockStatus::StatusDisqualifiedFromChain]
                     .contains(&ctx.consensus.block_status(par_mapped))
-                {
-                    parents.push(par_mapped);
-                }
+            {
+                parents.push(par_mapped);
             }
         }
         if parents.is_empty() {
