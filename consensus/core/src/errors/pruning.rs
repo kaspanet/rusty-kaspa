@@ -33,6 +33,9 @@ pub enum PruningImportError {
     #[error("the pruning proof selected tip {0} at level {1} blue score {2} < 2M and root is not genesis")]
     PruningProofSelectedTipNotEnoughBlueScore(Hash, BlockLevel, u64),
 
+    #[error("the pruning proof last header {0} at level {2} is not the computed selected tip {1}")]
+    PruningProofSelectedTipNotLast(Hash, Hash, BlockLevel),
+
     #[error("provided pruning proof is weaker than local: {0}")]
     ProofWeaknessError(#[from] ProofWeakness),
 
@@ -86,6 +89,21 @@ pub enum PruningImportError {
 
     #[error("got trusted block {0} in the future of the pruning point {1}")]
     TrustedBlockInPruningPointFuture(Hash, Hash),
+
+    #[error("missing pruning point selected-parent chain block {0} in trusted data")]
+    MissingPruningPointChainSegment(Hash),
+
+    #[error("unexpected header-only pruning point chain segment block {0}")]
+    UnexpectedPruningPointChainSegmentBlock(Hash),
+
+    #[error("trusted block {0} selected parent {1} is missing from reachability parents")]
+    TrustedBlockSelectedParentMissing(Hash, Hash),
+
+    #[error("SMT root mismatch: expected {expected}, computed {computed}")]
+    SmtRootMismatch { expected: Hash, computed: Hash },
+
+    #[error("SMT store error: {0}")]
+    SmtStoreError(String),
 }
 
 #[derive(Error, Debug, Clone)]

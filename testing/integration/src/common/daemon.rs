@@ -1,18 +1,18 @@
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
 use kaspa_database::utils::get_kaspa_tempdir;
-use kaspa_grpc_client::GrpcClient;
+use kaspa_grpc_client::{ClientPool, GrpcClient};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::{networking::ContextualNetAddress, triggers::Listener};
+use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
+use kaspa_wrpc_server::address::WrpcNetAddress;
 use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tempfile::TempDir;
-
-use kaspa_grpc_client::ClientPool;
 
 pub struct ClientManager {
     pub args: RwLock<Args>,
@@ -26,6 +26,7 @@ pub struct ClientManager {
     // Daemon ports
     pub rpc_port: u16,
     pub p2p_port: u16,
+    pub rpc_borsh_port: u16,
 }
 
 impl ClientManager {
@@ -34,8 +35,12 @@ impl ClientManager {
         let context = SubscriptionContext::with_options(None);
         let rpc_port = args.rpclisten.unwrap().normalize(0).port;
         let p2p_port = args.listen.unwrap().normalize(0).port;
+        let rpc_borsh_port = match args.rpclisten_borsh.clone().unwrap() {
+            WrpcNetAddress::Custom(addr) => addr.normalize(0).port,
+            _ => panic!("Test infrastructure requires custom wRPC address with port"),
+        };
         let args = RwLock::new(args);
-        Self { args, network, context, rpc_port, p2p_port }
+        Self { args, network, context, rpc_port, p2p_port, rpc_borsh_port }
     }
 
     pub async fn new_client(&self) -> GrpcClient {
@@ -82,6 +87,18 @@ impl ClientManager {
             clients.push(Arc::new(self.new_client().await));
         }
         ClientPool::new(clients, distribution_channel_capacity)
+    }
+
+    /// Create a new wRPC (WebSocket RPC) client using Borsh encoding.
+    pub fn new_wrpc_client(&self) -> KaspaRpcClient {
+        KaspaRpcClient::new(
+            WrpcEncoding::Borsh,
+            Some(&format!("ws://localhost:{}", self.rpc_borsh_port)),
+            None,
+            Some(self.network),
+            Some(self.context.clone()),
+        )
+        .expect("Failed to create wRPC client")
     }
 }
 
@@ -139,10 +156,11 @@ impl Daemon {
         let appdir_tempdir = get_kaspa_tempdir();
         client_manager.args.write().appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
         let (core, _) = create_core_with_runtime(&Default::default(), &client_manager.args.read(), fd_total_budget);
-        let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().arc_any()).unwrap();
-        let rpc_core_service = &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().arc_any()).unwrap();
+        let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().into_any_arc()).unwrap();
+        let rpc_core_service =
+            &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().into_any_arc()).unwrap();
         let shutdown_requested = rpc_core_service.core_shutdown_request_listener();
-        let grpc_server = &Arc::downcast::<GrpcService>(async_service.find(GrpcService::IDENT).unwrap().arc_any()).unwrap();
+        let grpc_server = &Arc::downcast::<GrpcService>(async_service.find(GrpcService::IDENT).unwrap().into_any_arc()).unwrap();
         let grpc_server_started = grpc_server.started();
         Daemon { client_manager, core, grpc_server_started, shutdown_requested, workers: None, _appdir_tempdir: appdir_tempdir }
     }

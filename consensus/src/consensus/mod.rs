@@ -45,9 +45,9 @@ use crate::{
 };
 use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::{
-        BlockValidationFutures, ConsensusApi, ConsensusStats,
+        BlockValidationFutures, ConsensusApi, ConsensusStats, ImportLaneBatchIterator, SeqCommitLaneProof,
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
     },
@@ -61,7 +61,7 @@ use kaspa_consensus_core::{
         consensus::{ConsensusError, ConsensusResult},
         difficulty::DifficultyError,
         pruning::PruningImportError,
-        tx::TxResult,
+        tx::{TxResult, TxRuleError},
     },
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
@@ -72,8 +72,8 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{
-        MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
-        TransactionType, UtxoEntry,
+        ComputeCommit, MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint,
+        TransactionQueryResult, TransactionType, UtxoEntry,
     },
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -85,14 +85,21 @@ use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
 use kaspa_core::info;
+#[cfg(feature = "test-smt-pruning-diagnostics")]
+use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_smt_store::processor::SmtReadBounds;
+#[cfg(feature = "test-smt-pruning-diagnostics")]
+use kaspa_smt_store::processor::StaleSmtEntriesCount;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rocksdb::WriteBatch;
 
+use self::{services::ConsensusServices, storage::ConsensusStorage};
+use kaspa_consensus_core::api::SeqCommitLaneEntry;
 use std::{
     cmp,
     cmp::Reverse,
@@ -107,8 +114,6 @@ use std::{
     thread::{self, JoinHandle},
 };
 use tokio::sync::oneshot;
-
-use self::{services::ConsensusServices, storage::ConsensusStorage};
 
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
 
@@ -355,6 +360,9 @@ impl Consensus {
         if pruning_meta_write.pruning_utxoset_stable_flag() {
             pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, true).unwrap();
         }
+        if pruning_meta_write.pruning_smt_stable_flag() {
+            pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, true).unwrap();
+        }
         self.db.write(batch).unwrap();
     }
 
@@ -495,8 +503,11 @@ impl Consensus {
         self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
         // Update selected_chain
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
-        // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
-        self.pruning_meta_stores.write().set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+        // It is important to set these flags to false together with writing the batch, in case the node crashes suddenly before syncing starts
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, false).unwrap();
+        drop(pruning_meta_write);
         // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
         let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
         // Add the pruning point itself which is also missing a body
@@ -584,6 +595,53 @@ impl Consensus {
         }
         Ok(pruning_points_to_add)
     }
+
+    fn validate_transaction_for_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<()> {
+        if transaction.is_coinbase() {
+            return Ok(());
+        }
+
+        if transaction.inputs.len() > self.config.params.max_tx_inputs {
+            return Err(TxRuleError::TooManyInputs(transaction.inputs.len(), self.config.params.max_tx_inputs));
+        }
+
+        if transaction.outputs.len() > self.config.params.max_tx_outputs {
+            return Err(TxRuleError::TooManyOutputs(transaction.outputs.len(), self.config.params.max_tx_outputs));
+        }
+
+        if ComputeCommit::version_expects_compute_budget_field(transaction.version) {
+            for (i, input) in transaction.inputs.iter().enumerate() {
+                if let Some(sig_op_count) = input.compute_commit.sig_op_count() {
+                    return Err(TxRuleError::SigopCountInV1(i, sig_op_count));
+                }
+            }
+        } else {
+            for (i, input) in transaction.inputs.iter().enumerate() {
+                if let Some(compute_budget) = input.compute_commit.compute_budget() {
+                    return Err(TxRuleError::ComputeBudgetInV0(i, compute_budget));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    #[doc(hidden)]
+    /// Diagnostic invariant helper: count versioned SMT entries at or below a
+    /// pruning cutoff. Used by integration tests to catch stale pruning data.
+    pub fn count_stale_smt_entries(&self, cutoff_blue_score: u64) -> StoreResult<StaleSmtEntriesCount> {
+        self.storage.smt_stores.count_entries_at_or_below(cutoff_blue_score)
+    }
+
+    #[cfg(feature = "test-smt-pruning-diagnostics")]
+    #[doc(hidden)]
+    /// Diagnostic invariant helper: return whether the pruning checkpoint has
+    /// caught up with the retention-period root, which marks pruning complete.
+    pub fn is_pruning_stable(&self) -> StoreResult<bool> {
+        let pruning_point_read = self.pruning_point_store.read();
+        Ok(pruning_point_read.retention_checkpoint()? == pruning_point_read.retention_period_root()?)
+    }
 }
 
 impl ConsensusApi for Consensus {
@@ -628,8 +686,9 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
-    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
-        self.services.mass_calculator.calc_non_contextual_masses(transaction)
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
+        self.validate_transaction_for_non_contextual_masses(transaction)?;
+        Ok(self.services.mass_calculator.calc_non_contextual_masses(transaction))
     }
 
     fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
@@ -692,27 +751,35 @@ impl ConsensusApi for Consensus {
         DaaScoreTimestamp { daa_score: compact.daa_score, timestamp: compact.timestamp }
     }
 
-    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+    /// Returns the merge context of `hash`, if the block was already merged by a virtual chain block.
+    ///
+    /// Return semantics:
+    /// - `Err` if `hash` is unknown or outside the retained context required for this query.
+    /// - `Ok(None)` if `hash` is known and retained, but is not yet in `past(sink)`.
+    /// - `Ok(Some(..))` with the merging chain block context otherwise.
+    fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
         let _guard = self.pruning_lock.blocking_read();
 
         // Verify the block exists and can be assumed to have relations and reachability data
-        self.validate_block_exists(hash).ok()?;
+        self.validate_block_exists(hash)?;
 
         // Verify that the block is in future(retention root), where Ghostdag data is complete
-        self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash).then_some(())?;
+        if !self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash) {
+            return Err(ConsensusError::General("the queried hash does not have retention root in its past"));
+        }
 
         let sink = self.get_sink();
 
         // Optimization: verify that the block is in past(sink), otherwise the search will fail anyway
         // (means the block was not merged yet by a virtual chain block)
-        self.services.reachability_service.is_dag_ancestor_of(hash, sink).then_some(())?;
+        if !self.services.reachability_service.is_dag_ancestor_of(hash, sink) {
+            return Ok(None);
+        }
 
         let mut heap: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
         let mut visited = BlockHashSet::new();
 
-        let initial_children = self.get_block_children(hash).unwrap();
-
-        for child in initial_children {
+        for child in self.get_block_children(hash).unwrap() {
             if visited.insert(child) {
                 let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
                 heap.push(Reverse(SortableBlock::new(child, blue_work)));
@@ -723,23 +790,20 @@ impl ConsensusApi for Consensus {
             if self.services.reachability_service.is_chain_ancestor_of(decedent, sink) {
                 let decedent_data = self.get_ghostdag_data(decedent).unwrap();
 
-                if decedent_data.mergeset_blues.contains(&hash) {
-                    return Some(true);
+                return Ok(if decedent_data.mergeset_blues.contains(&hash) {
+                    Some(MergedBlockContext { merging_chain_block_hash: decedent, is_blue: true })
                 } else if decedent_data.mergeset_reds.contains(&hash) {
-                    return Some(false);
-                }
-
-                // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
-                // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
-                // unreachable.
-                kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
-                // TODO: we should consider the option of returning Result<Option<bool>> from this method
-                return None;
+                    Some(MergedBlockContext { merging_chain_block_hash: decedent, is_blue: false })
+                } else {
+                    // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
+                    // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
+                    // unreachable.
+                    kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
+                    None
+                });
             }
 
-            let children = self.get_block_children(decedent).unwrap();
-
-            for child in children {
+            for child in self.get_block_children(decedent).unwrap() {
                 if visited.insert(child) {
                     let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
                     heap.push(Reverse(SortableBlock::new(child, blue_work)));
@@ -747,7 +811,7 @@ impl ConsensusApi for Consensus {
             }
         }
 
-        None
+        Ok(None)
     }
 
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
@@ -1059,8 +1123,13 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.validate_pruning_point_proof(proof, proof_metadata)
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
-        self.services.pruning_proof_manager.apply_proof(proof, trusted_set)
+    fn apply_pruning_proof(
+        &self,
+        proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        header_only_chain_segment: &[Arc<Header>],
+    ) -> PruningImportResult<()> {
+        self.services.pruning_proof_manager.apply_proof(proof, trusted_set, header_only_chain_segment)
     }
 
     fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
@@ -1087,6 +1156,134 @@ impl ConsensusApi for Consensus {
 
     fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
+    }
+
+    fn import_pruning_point_smt(
+        &self,
+        new_pruning_point: Hash,
+        metadata: kaspa_consensus_core::api::SmtExportMetadata,
+        inactivity_shortcut_block: Hash,
+        lane_batches: ImportLaneBatchIterator<'_>,
+    ) -> PruningImportResult<()> {
+        use crate::model::stores::smt_metadata::SmtBlockMetadata;
+        use kaspa_hashes::ZERO_HASH;
+        use kaspa_smt_store::streaming_import::streaming_import;
+
+        let kaspa_consensus_core::api::SmtExportMetadata { lanes_root, payload_and_ctx_digest, active_lanes_count, .. } = metadata;
+        let expected_lane_count = active_lanes_count;
+
+        // `inactivity_shortcut_block` was already resolved by the caller during metadata verification.
+        let row = SmtBlockMetadata::new(payload_and_ctx_digest, inactivity_shortcut_block, active_lanes_count);
+
+        let result = self.virtual_processor.install(|| {
+            streaming_import(
+                &self.db,
+                &self.storage.smt_stores,
+                ZERO_HASH,
+                expected_lane_count,
+                lanes_root,
+                // Chunks arrive pre-sized (up to SMT_CHUNK_SIZE) from the wire-level chunker —
+                // forwarded as-is, no re-batching.
+                lane_batches,
+                4096,
+            )
+            .map_err(|e| PruningImportError::SmtStoreError(format!("{e}")))
+        })?;
+
+        if result.root != lanes_root {
+            return Err(PruningImportError::SmtRootMismatch { expected: lanes_root, computed: result.root });
+        }
+
+        let actual_count = result.lanes_imported;
+        if actual_count != expected_lane_count {
+            return Err(PruningImportError::SmtStoreError(format!(
+                "active lanes count mismatch: expected {expected_lane_count}, got {actual_count}"
+            )));
+        }
+
+        // The wire's metadata was already authenticated by the caller via `verify_smt_metadata`.
+        let mut batch = rocksdb::WriteBatch::default();
+        self.storage.smt_metadata_store.insert_batch(&mut batch, new_pruning_point, row).unwrap();
+        self.db.write(batch).unwrap();
+
+        info!("Imported SMT state for pruning point {}: {} lanes, root {}", new_pruning_point, actual_count, lanes_root);
+        Ok(())
+    }
+
+    fn get_pruning_point_smt_metadata(
+        &self,
+        expected_pruning_point: Hash,
+    ) -> ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+        self.virtual_processor.get_pruning_point_smt_metadata(expected_pruning_point)
+    }
+
+    fn inactivity_shortcut_block_for_pov(&self, pov_block: Hash) -> ConsensusResult<Hash> {
+        self.virtual_processor.inactivity_shortcut_block_for_pov(pov_block)
+    }
+
+    fn open_pruning_point_smt_lane_stream(
+        &self,
+        expected_pruning_point: Hash,
+    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<kaspa_consensus_core::api::ImportLane>> + Send + 'static>> {
+        use kaspa_consensus_core::api::{ImportLane, SMT_PROOF_INTERVAL};
+
+        let pp = self.pruning_point_store.read().pruning_point().unwrap();
+        if pp != expected_pruning_point {
+            return Err(ConsensusError::UnexpectedPruningPoint);
+        }
+        let max_score = self.storage.headers_store.get_blue_score(pp).unwrap();
+        // KIP-21: IBD streams only the active-lanes window `[pp - finality_depth, pp]`.
+        let min_score = max_score.saturating_sub(self.config.params.finality_depth());
+
+        let smt_stores = self.storage.smt_stores.clone();
+        let vp = self.virtual_processor.clone();
+
+        let is_canonical = {
+            let vp = vp.clone();
+            move |bh| vp.is_smt_canonical(bh, pp)
+        };
+        // Clip the scan window to `[pp.blue_score - finality, pp.blue_score]`.
+        // Entries above `pp.blue_score` belong to blocks in pp's future and
+        // must not be part of the SMT state exported for this pruning point.
+        let raw = smt_stores.lane_version.iter_all_canonical_owned(None, min_score, Some(max_score), is_canonical);
+
+        let sl = self.session_lock().clone();
+        let pps = self.pruning_point_store.clone();
+        let smt_stores_proof = smt_stores.clone();
+        let mut idx: u64 = 0;
+        let mapped = raw.map(move |res| -> ConsensusResult<ImportLane> {
+            let (lane_key, verified) = res.map_err(|e| ConsensusError::GeneralOwned(format!("SMT lane iter: {e}")))?;
+            let proof = if (idx as usize).is_multiple_of(SMT_PROOF_INTERVAL) {
+                let _g = sl.blocking_read();
+                let upp = pps.read().pruning_point().unwrap();
+                if upp != pp {
+                    return Err(ConsensusError::UnexpectedPruningPoint);
+                }
+                let vp_proof = vp.clone();
+                Some(
+                    smt_stores_proof
+                        .prove_lane(&lane_key, SmtReadBounds::new(max_score, min_score), move |bh| vp_proof.is_smt_canonical(bh, pp))
+                        .map_err(|e| ConsensusError::GeneralOwned(format!("prove_lane: {e}")))?,
+                )
+            } else {
+                None
+            };
+            idx += 1;
+            Ok(ImportLane { lane_key, lane_tip: *verified.data(), blue_score: verified.blue_score(), proof })
+        });
+
+        // Chain a one-shot tail so a fully drained stream verifies that
+        // pruning did not advance before the stream completed.
+        let sl = self.session_lock().clone();
+        let pps = self.pruning_point_store.clone();
+        let final_check = std::iter::once_with(move || {
+            let _g = sl.blocking_read();
+            let upp = pps.read().pruning_point().unwrap();
+            if upp != pp { Some(Err(ConsensusError::UnexpectedPruningPoint)) } else { None }
+        })
+        .flatten();
+
+        Ok(Box::new(mapped.chain(final_check)))
     }
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
@@ -1307,6 +1504,101 @@ impl ConsensusApi for Consensus {
         self.is_chain_ancestor_of(hash, self.get_sink())
     }
 
+    fn get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
+        let _guard = self.pruning_lock.blocking_read();
+        self.validate_block_exists(block_hash)?;
+
+        // Genesis has no selected parent; reject before we try to dereference one.
+        if block_hash == self.config.params.genesis.hash {
+            return Err(ConsensusError::BlockIsGenesis(block_hash));
+        }
+
+        // Canonicality: must be a selected-parent-chain block (ancestor of or equal to sink).
+        let sink = self.get_sink();
+        if !self.services.reachability_service.is_chain_ancestor_of(block_hash, sink) {
+            return Err(ConsensusError::BlockNotInSelectedChain(block_hash));
+        }
+
+        // Depth: block must be at or after the current pruning point. Blocks before
+        // the pruning point may have had their SMT versions pruned.
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
+        if !self.services.reachability_service.is_chain_ancestor_of(pruning_point, block_hash) {
+            return Err(ConsensusError::BlockTooDeep(block_hash));
+        }
+
+        let header = self.headers_store.get_header(block_hash).unwrap();
+
+        // KIP-21 activity_root only exists post-Toccata. Drop the gate after all
+        // nets activate.
+        if !self.config.params.toccata_activation.is_active(header.daa_score) {
+            return Err(ConsensusError::GeneralOwned(format!("toccata is not active at block {block_hash}")));
+        }
+
+        let selected_parent = header.post_toccata_chainblock_selected_parent();
+        let parent_header = self.headers_store.get_header(selected_parent).unwrap();
+
+        let finality_depth = self.config.params.finality_depth();
+        let current_bounds = SmtReadBounds::for_pov(header.blue_score, finality_depth);
+        let virtual_processor = self.virtual_processor.clone();
+        let is_canonical = |bh| virtual_processor.is_smt_canonical(bh, block_hash);
+
+        let smt_proof = self
+            .storage
+            .smt_stores
+            .prove_lane(&lane_key, current_bounds, is_canonical)
+            .map_err(|e| ConsensusError::GeneralOwned(format!("prove_lane: {e}")))?;
+
+        let lane = self
+            .storage
+            .smt_stores
+            .get_lane(lane_key, current_bounds, is_canonical)
+            .map(|v| SeqCommitLaneEntry { tip: *v.data(), blue_score: v.blue_score() });
+
+        let metadata =
+            self.storage.smt_metadata_store.get(block_hash).map_err(|e| ConsensusError::GeneralOwned(format!("smt_metadata: {e}")))?;
+
+        // Toccata is active (checked above), so the metadata carries a concrete
+        // shortcut block. Its header must exist: block_hash was verified to be a
+        // chain block between the pruning point and sink, so its shortcut block
+        // lies on the chain segment [pp - F, sink] which is not pruned (and we
+        // hold the pruning lock read guard). Fold to seq_commit via the virtual
+        // processor.
+        let inactivity_shortcut_block = metadata.inactivity_shortcut_block();
+        let inactivity_shortcut = self.virtual_processor.inactivity_shortcut(inactivity_shortcut_block);
+
+        let parent_seq_commit = parent_header.accepted_id_merkle_root;
+
+        // In debug builds, verify the proof is consistent with the stored lanes_root
+        // and that metadata chains to the header's seq_commit.
+        debug_assert!({
+            use kaspa_hashes::SeqCommitActiveNode;
+            use kaspa_seq_commit::{
+                hashing::smt_leaf_hash,
+                types::SmtLeafInput,
+                verify::{SmtMetadata, verify_smt_metadata},
+            };
+            let lanes_root = self.storage.smt_stores.get_lanes_root(current_bounds, is_canonical);
+            let leaf = lane.as_ref().map(|l| smt_leaf_hash(&SmtLeafInput { lane_tip: &l.tip, blue_score: l.blue_score }));
+            let computed_root = smt_proof.as_proof().compute_root::<SeqCommitActiveNode>(&lane_key, leaf).unwrap();
+            let payload_and_ctx_digest = metadata.payload_and_ctx_digest();
+            let md = SmtMetadata {
+                lanes_root: &lanes_root,
+                payload_and_ctx_digest: &payload_and_ctx_digest,
+                parent_seq_commit: &parent_seq_commit,
+            };
+            computed_root == lanes_root
+                && verify_smt_metadata(&md, inactivity_shortcut, header.accepted_id_merkle_root, parent_seq_commit).is_ok()
+        });
+
+        Ok(SeqCommitLaneProof {
+            smt_proof,
+            lane,
+            payload_and_ctx_digest: metadata.payload_and_ctx_digest(),
+            parent_seq_commit,
+            inactivity_shortcut,
+        })
+    }
+
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(high)?;
@@ -1384,6 +1676,26 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
         self.db.write(batch).unwrap();
         pruning_meta_write.utxo_set.clear().unwrap();
+    }
+
+    fn clear_pruning_smt_stores(&self) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, false).unwrap();
+        self.db.write(batch).unwrap();
+        self.storage.smt_stores.clear_all();
+        self.storage.smt_metadata_store.delete_all().unwrap();
+    }
+
+    fn set_pruning_smt_stable_flag(&self, val: bool) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_pruning_smt_stable_flag(&mut batch, val).unwrap();
+        self.db.write(batch).unwrap();
+    }
+
+    fn is_pruning_smt_stable(&self) -> bool {
+        self.pruning_meta_stores.read().pruning_smt_stable_flag()
     }
 
     /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default

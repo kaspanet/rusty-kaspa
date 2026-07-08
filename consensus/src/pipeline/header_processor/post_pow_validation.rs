@@ -8,6 +8,7 @@ use std::collections::HashSet;
 
 impl HeaderProcessor {
     pub fn post_pow_validation(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+        self.check_header_version_in_context(header)?;
         self.check_blue_score(ctx, header)?;
         self.check_blue_work(ctx, header)?;
         self.check_median_timestamp(ctx, header)?;
@@ -97,6 +98,15 @@ impl HeaderProcessor {
 
         ctx.merge_depth_root = Some(merge_depth_root);
         ctx.finality_point = Some(finality_point);
+        Ok(())
+    }
+
+    // TODO(post-toccata): Remove this and restore the context-free check_header_version.
+    fn check_header_version_in_context(&self, header: &Header) -> BlockProcessResult<()> {
+        let expected_version = self.block_version.get(header.daa_score);
+        if header.version != expected_version {
+            return Err(RuleError::WrongBlockVersion(header.version, expected_version));
+        }
         Ok(())
     }
 }

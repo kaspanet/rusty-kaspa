@@ -1,5 +1,4 @@
 use super::*;
-use crate::constants;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::statuses::StatusesStoreReader;
@@ -28,10 +27,11 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_header_version(&self, header: &Header) -> BlockProcessResult<()> {
-        if header.version != constants::BLOCK_VERSION {
-            return Err(RuleError::WrongBlockVersion(header.version));
-        }
+    fn check_header_version(&self, _header: &Header) -> BlockProcessResult<()> {
+        // TODO(post-toccata): Uncomment this and remove check_header_version_in_context.
+        // if header.version != constants::TOCCATA_BLOCK_VERSION {
+        //     return Err(RuleError::WrongBlockVersion(header.version));
+        // }
         Ok(())
     }
 

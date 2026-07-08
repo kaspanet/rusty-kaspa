@@ -223,9 +223,10 @@ impl HandleRelayInvsFlow {
             // We spawn post-processing as a separate task so that this loop
             // can continue processing the following relay blocks
             let ctx = self.ctx.clone();
+            let daa_score = block.header.daa_score;
             tokio::spawn(async move {
                 ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
-                ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
+                ctx.log_block_event(BlockLogEvent::Relay(inv.hash, daa_score));
             });
         }
     }
@@ -328,7 +329,8 @@ impl HandleRelayInvsFlow {
     fn check_orphan_ibd_conditions(&self, orphan_daa_score: u64) -> bool {
         if let Some(ibd_daa_score) = self.ctx.ibd_relay_daa_score() {
             let max_orphans = self.ctx.max_orphans() as u64;
-            orphan_daa_score + max_orphans / 10 > ibd_daa_score && orphan_daa_score < ibd_daa_score + max_orphans / 2
+            orphan_daa_score.saturating_add(max_orphans / 10) > ibd_daa_score
+                && orphan_daa_score < ibd_daa_score.saturating_add(max_orphans / 2)
         } else {
             false
         }

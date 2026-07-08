@@ -4,21 +4,41 @@ use crate::{
         args::ArgsBuilder,
         client_notify::ChannelNotify,
         daemon::{ClientManager, Daemon},
+        fee::FEE_RATE,
         utils::CONTRACT_FACTOR,
     },
     tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
 };
 use futures_util::future::join_all;
+use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
-use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType, tx::Transaction};
+use kaspa_consensus_core::{
+    constants::{SOMPI_PER_KASPA, TX_VERSION_TOCCATA},
+    hashing::sighash::SigHashReusedValuesUnsync,
+    mass::{ComputeBudget, MassCalculator, ScriptUnits, transaction_estimated_serialized_size},
+    network::NetworkType,
+    subnets::SUBNETWORK_ID_NATIVE,
+    tx::{
+        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
+        TransactionOutput, UtxoEntry,
+    },
+    utxo::{
+        utxo_collection::{UtxoCollection, UtxoCollectionExtensions},
+        utxo_diff::UtxoDiff,
+    },
+};
 use kaspa_core::{debug, info};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{NewBlockTemplateScope, Scope},
 };
 use kaspa_rpc_core::{Notification, RpcError, api::rpc::RpcApi};
-use kaspa_txscript::pay_to_address_script;
+use kaspa_txscript::{
+    EngineCtx, EngineFlags, TxScriptEngine, caches::Cache, extract_script_pub_key_address, opcodes::codes::OpZkPrecompile,
+    pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script, script_builder::ScriptBuilder,
+    zk_precompiles::tags::ZkTag, zk_precompiles::tests::helpers::load_stark_fields,
+};
 use kaspa_utils::fd_budget;
 use kaspad_lib::args::Args;
 use parking_lot::Mutex;
@@ -330,7 +350,7 @@ async fn bench_bbt_latency_2() {
     let spk = pay_to_address_script(&prealloc_address);
 
     let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, 500)
-        .prealloc_address(prealloc_address)
+        .prealloc_address(prealloc_address.clone())
         .apply_args(Daemon::fill_args_with_random_ports)
         .build();
 
@@ -364,4 +384,324 @@ async fn bench_bbt_latency_2() {
         );
     tasks.run().await;
     tasks.join().await;
+}
+
+/// Benchmark measuring KIP-21 SMT overhead — every tx gets a unique lane.
+///
+/// The miner picks txs from the mempool, so lanes-per-block = txs-per-block
+/// (typically ~300 TPB from baseline). This measures the case where
+/// each level draws transactions from a fixed-size random lane pool.
+///
+/// Run with:
+/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency_lanes --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_bbt_latency_lanes() {
+    kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
+    kaspa_core::panic::configure_panic();
+
+    const BLOCK_COUNT: usize = usize::MAX;
+    const MEMPOOL_TARGET: u64 = 600_000;
+    const TX_COUNT: usize = 1_200_000;
+    const TX_LEVEL_WIDTH: usize = 6_000;
+    const TX_LANES_PER_LEVEL: usize = 200;
+    const TPS_PRESSURE: u64 = u64::MAX;
+    const SUBMIT_BLOCK_CLIENTS: usize = 20;
+    const SUBMIT_TX_CLIENTS: usize = 2;
+
+    if TX_COUNT < TX_LEVEL_WIDTH {
+        panic!()
+    }
+
+    let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let prealloc_address =
+        Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
+    let schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
+    let spk = pay_to_address_script(&prealloc_address);
+
+    let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, 500)
+        .prealloc_address(prealloc_address.clone())
+        .apply_args(Daemon::fill_args_with_random_ports)
+        .build();
+
+    let network = args.network();
+    let params: Params = network.into();
+
+    let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
+    let txs = common::utils::generate_tx_dag_with_lanes(
+        utxoset.clone(),
+        schnorr_key,
+        spk,
+        TX_COUNT / TX_LEVEL_WIDTH,
+        TX_LEVEL_WIDTH,
+        TX_LANES_PER_LEVEL,
+    );
+    common::utils::verify_tx_dag(&utxoset, &txs);
+    info!("Generated {} txs using {} random lane ids per level", txs.len(), TX_LANES_PER_LEVEL);
+
+    let client_manager = Arc::new(ClientManager::new(args));
+    let mut tasks = TasksRunner::new(Some(DaemonTask::build(client_manager.clone())))
+        .launch()
+        .await
+        .task(
+            MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal)
+                .await,
+        )
+        .task(
+            TxSenderGroupTask::build(
+                client_manager.clone(),
+                SUBMIT_TX_CLIENTS,
+                false,
+                txs,
+                TPS_PRESSURE,
+                MEMPOOL_TARGET,
+                Stopper::Signal,
+            )
+            .await,
+        );
+    tasks.run().await;
+    tasks.join().await;
+}
+
+/// Run this benchmark with the following command line:
+/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency_stark --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_bbt_latency_stark() {
+    kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
+
+    // Constants
+    const BLOCK_COUNT: usize = usize::MAX;
+
+    const MEMPOOL_TARGET: u64 = 1000;
+    const TX_COUNT: usize = 10_000;
+    const TX_LEVEL_WIDTH: usize = 100;
+    const TPS_PRESSURE: u64 = u64::MAX;
+
+    // STARK proof verification nearly fills the standard tx compute-mass limit, so each tx can fit only one proof input.
+    const STARK_CONTRACT_FACTOR: u64 = 1;
+    const STARK_EXPAND_FACTOR: u64 = 1;
+
+    const SUBMIT_BLOCK_CLIENTS: usize = 20;
+    const SUBMIT_TX_CLIENTS: usize = 4;
+
+    if TX_COUNT < TX_LEVEL_WIDTH {
+        panic!()
+    }
+
+    /*
+    Logic:
+       1. Use the new feature for preallocating utxos
+       2. Set up a dataset with a DAG of signed txs over the preallocated utxoset
+       3. Create constant mempool pressure by submitting txs (via rpc for now)
+       4. Mine to the node (simulated)
+       5. Measure bbt latency, real-time bps, real-time throughput, mempool draining rate (tbd)
+
+    Notes:
+        - Uses a single STARK proof script reused across all txs (distinct txs, identical output script)
+    */
+
+    //
+    // Setup
+    //
+    let stark_redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
+    let stark_spk = pay_to_script_hash_script(&stark_redeem_script);
+    let prealloc_address =
+        extract_script_pub_key_address(&stark_spk, NetworkType::Simnet.into()).expect("stark redeem script address");
+
+    let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
+    let stark_tag = ZkTag::R0Succinct as u8;
+    let stark_signature_prefix = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+        .add_data(&claim)
+        .unwrap()
+        .add_data(&control_index)
+        .unwrap()
+        .add_data(&control_digests)
+        .unwrap()
+        .add_data(&seal)
+        .unwrap()
+        .add_data(&journal)
+        .unwrap()
+        .add_data(&image_id)
+        .unwrap()
+        .add_data(&control_id)
+        .unwrap()
+        .add_data(&hashfn)
+        .unwrap()
+        .add_data(&[stark_tag])
+        .unwrap()
+        .drain();
+    let stark_signature_script =
+        pay_to_script_hash_signature_script(stark_redeem_script.clone(), stark_signature_prefix).expect("canonical signature script");
+
+    let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * STARK_CONTRACT_FACTOR as u64, 500)
+        .prealloc_address(prealloc_address.clone())
+        .apply_args(Daemon::fill_args_with_random_ports)
+        .build();
+
+    let network = args.network();
+    let params: Params = network.into();
+
+    let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
+    let output_spk = pay_to_address_script(&prealloc_address);
+
+    let required_script_units: ScriptUnits = {
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_bytes([0u8; 32]), index: 0 },
+            signature_script: stark_signature_script.clone(),
+            sequence: 0,
+            compute_commit: ComputeBudget(0).into(),
+        };
+
+        let tx = Transaction::new(1, vec![input.clone()], vec![], 0, Default::default(), 0, vec![]);
+        let utxo_entry = UtxoEntry::new(0, stark_spk.clone(), 0, false, None);
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut unrestricted_vm = TxScriptEngine::from_transaction_input(
+            &populated_tx,
+            &input,
+            0,
+            &utxo_entry,
+            EngineCtx::new(&sig_cache).with_reused(&reused_values),
+            EngineFlags { covenants_enabled: true, ..Default::default() },
+            // ScriptUnits(u64::MAX),
+        );
+        unrestricted_vm.execute().unwrap();
+        unrestricted_vm.used_script_units()
+    };
+
+    assert!(required_script_units.0 < (ZkTag::R0Succinct.cost().0 as f64 * 1.1) as u64); // 1.1 is a margin for push data costs
+
+    let input_compute_budget =
+        ComputeBudget::checked_covering_script_units(required_script_units).expect("expected compute budget to fit");
+    let txs = generate_stark_tx_dag(
+        utxoset.clone(),
+        stark_signature_script,
+        output_spk,
+        input_compute_budget,
+        TX_COUNT / TX_LEVEL_WIDTH,
+        TX_LEVEL_WIDTH,
+        STARK_CONTRACT_FACTOR,
+        STARK_EXPAND_FACTOR,
+        &params,
+    );
+    common::utils::verify_tx_dag(&utxoset, &txs);
+    info!("Generated overall {} txs", txs.len());
+
+    let client_manager = Arc::new(ClientManager::new(args));
+    let mut tasks = TasksRunner::new(Some(DaemonTask::build(client_manager.clone())))
+        .launch()
+        .await
+        .task(
+            MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal)
+                .await,
+        )
+        .task(
+            TxSenderGroupTask::build(
+                client_manager.clone(),
+                SUBMIT_TX_CLIENTS,
+                false,
+                txs,
+                TPS_PRESSURE,
+                MEMPOOL_TARGET,
+                Stopper::Signal,
+            )
+            .await,
+        );
+    tasks.run().await;
+    tasks.join().await;
+}
+
+fn generate_stark_tx_dag(
+    mut utxoset: UtxoCollection,
+    signature_script: Vec<u8>,
+    output_spk: ScriptPublicKey,
+    input_compute_budget: ComputeBudget,
+    target_levels: usize,
+    target_width: usize,
+    contract_factor: u64,
+    expand_factor: u64,
+    params: &Params,
+) -> Vec<Arc<Transaction>> {
+    let num_inputs = contract_factor as usize;
+    let num_outputs = expand_factor;
+    let signature_script = Arc::new(signature_script);
+    let mass_calculator = MassCalculator::new_with_consensus_params(params);
+    let mass_cofactors = params.block_mass_limits().after().cofactors();
+
+    let mut txs = Vec::with_capacity(target_levels * target_width);
+    let mut logged_first_provisional_tx = false;
+
+    for i in 0..target_levels {
+        let mut utxo_diff = UtxoDiff::default();
+        utxoset
+            .iter()
+            .take(num_inputs * target_width)
+            .chunks(num_inputs)
+            .into_iter()
+            .map(|c| {
+                c.into_iter()
+                    .map(|(o, e)| {
+                        (
+                            TransactionInput::new_with_mass(*o, signature_script.as_ref().clone(), 0, input_compute_budget.into()),
+                            e.clone(),
+                        )
+                    })
+                    .unzip::<_, _, Vec<_>, Vec<UtxoEntry>>()
+            })
+            .collect::<Vec<(Vec<_>, Vec<UtxoEntry>)>>()
+            .into_iter()
+            .for_each(|(inputs, entries)| {
+                let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
+                let provisional_outputs = (0..num_outputs)
+                    .map(|_| TransactionOutput {
+                        value: total_in / num_outputs as u64,
+                        script_public_key: output_spk.clone(),
+                        covenant: None,
+                    })
+                    .collect::<Vec<_>>();
+                let provisional_tx =
+                    Transaction::new(TX_VERSION_TOCCATA, inputs, provisional_outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+                let provisional_tx_non_contextual_masses = mass_calculator.calc_non_contextual_masses(&provisional_tx);
+                let provisional_tx_mass_normalized = provisional_tx_non_contextual_masses.normalized_max(&mass_cofactors);
+                if !logged_first_provisional_tx {
+                    let provisional_tx_size = transaction_estimated_serialized_size(&provisional_tx);
+                    let provisional_tx_total_budget: u64 =
+                        provisional_tx.inputs.iter().map(|input| u64::from(input.compute_commit.compute_budget().unwrap())).sum();
+                    info!(
+                        "First provisional tx: non_contextual=({}), normalized_non_contextual_max={}, size={}, total_budget={}",
+                        provisional_tx_non_contextual_masses,
+                        provisional_tx_mass_normalized,
+                        provisional_tx_size,
+                        provisional_tx_total_budget
+                    );
+                    logged_first_provisional_tx = true;
+                }
+                let fee = FEE_RATE * provisional_tx_mass_normalized;
+                let total_out = total_in.saturating_sub(fee);
+                let outputs = (0..num_outputs)
+                    .map(|_| TransactionOutput {
+                        value: total_out / num_outputs,
+                        script_public_key: output_spk.clone(),
+                        covenant: None,
+                    })
+                    .collect::<Vec<_>>();
+                let tx = Transaction::new(TX_VERSION_TOCCATA, provisional_tx.inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+                let mtx = MutableTransaction::with_entries(tx, entries);
+                utxo_diff.add_transaction(&mtx.as_verifiable(), 0).unwrap();
+                txs.push(Arc::new(mtx.tx));
+            });
+        utxoset.remove_collection(&utxo_diff.remove);
+        utxoset.add_collection(&utxo_diff.add);
+
+        if i % (target_levels / 10).max(1) == 0 {
+            info!("Generated {} txs", txs.len());
+        }
+    }
+
+    txs
 }

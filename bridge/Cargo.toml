@@ -50,7 +50,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 blake2 = "0.10"
 num-bigint = "0.4"
-prometheus = "0.13"
+prometheus = "0.14.0"
 serde_yaml = "0.9"
 faster-hex = "0.1"
 chrono = { workspace = true }
@@ -66,6 +66,7 @@ mimalloc = { version = "0.1.48", default-features = false }
 
 
 [dev-dependencies]
+rand = { workspace = true }
 tokio-test = "0.4"
 
 [[bin]]
