@@ -10,7 +10,11 @@ use duration_string::DurationString;
 use futures_util::future::{join_all, try_join_all};
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{
+    debug, info,
+    task::blocking::{join_blocking_or_park, join_result_or_park},
+    warn,
+};
 use kaspa_p2p_lib::{ConnectionError, Peer, common::ProtocolError};
 use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
@@ -260,7 +264,8 @@ impl ConnectionManager {
     /// Queries DNS seeders in random order, one after the other, until obtaining `min_addresses_to_fetch` addresses
     async fn dns_seed_with_address_target(self: &Arc<Self>, min_addresses_to_fetch: usize) {
         let cmgr = self.clone();
-        tokio::task::spawn_blocking(move || cmgr.dns_seed_with_address_target_blocking(min_addresses_to_fetch)).await.unwrap();
+        join_blocking_or_park(tokio::task::spawn_blocking(move || cmgr.dns_seed_with_address_target_blocking(min_addresses_to_fetch)))
+            .await;
     }
 
     fn dns_seed_with_address_target_blocking(self: &Arc<Self>, mut min_addresses_to_fetch: usize) {
@@ -284,7 +289,7 @@ impl ConnectionManager {
             let cmgr = self.clone();
             tokio::task::spawn_blocking(move || cmgr.dns_seed_single(seeder))
         });
-        try_join_all(jobs).await.unwrap().into_iter().sum()
+        join_result_or_park(try_join_all(jobs).await).await.into_iter().sum()
     }
 
     /// Query a single DNS seeder and add the obtained addresses to the address manager.

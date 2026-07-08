@@ -4,6 +4,7 @@ use kaspa_consensus_core::{
     utxo::utxo_diff::UtxoDiff,
 };
 use kaspa_consensusmanager::spawn_blocking;
+use kaspa_core::task::blocking::join_blocking_or_park;
 use kaspa_database::prelude::StoreResult;
 use kaspa_hashes::Hash;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
@@ -67,21 +68,21 @@ impl UtxoIndexProxy {
     }
 
     pub async fn get_circulating_supply(self) -> StoreResult<u64> {
-        spawn_blocking(move || self.inner.read().get_circulating_supply()).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.read().get_circulating_supply())).await
     }
 
     pub async fn get_utxos_by_script_public_keys(self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
-        spawn_blocking(move || self.inner.read().get_utxos_by_script_public_keys(script_public_keys)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.read().get_utxos_by_script_public_keys(script_public_keys))).await
     }
 
     pub async fn get_balance_by_script_public_keys(
         self,
         script_public_keys: ScriptPublicKeys,
     ) -> StoreResult<BalanceByScriptPublicKey> {
-        spawn_blocking(move || self.inner.read().get_balance_by_script_public_keys(script_public_keys)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.read().get_balance_by_script_public_keys(script_public_keys))).await
     }
 
     pub async fn update(self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoChanges> {
-        spawn_blocking(move || self.inner.write().update(utxo_diff, tips)).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || self.inner.write().update(utxo_diff, tips))).await
     }
 }
