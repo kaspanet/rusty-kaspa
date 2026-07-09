@@ -1,6 +1,6 @@
 use crate::{hashing, tx::Transaction};
 use kaspa_hashes::Hash;
-use kaspa_merkle::{MerkleTreeError, MerkleWitness, calc_merkle_root, create_merkle_witness_from_unsorted};
+use kaspa_merkle::{MerkleTreeError, MerkleWitness, calc_merkle_root, create_merkle_witness};
 
 pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
     calc_merkle_root(txs.map(hashing::tx::hash))
@@ -19,7 +19,7 @@ pub fn create_hash_merkle_witness<'a>(
     txs: impl ExactSizeIterator<Item = &'a Transaction>,
     tracked_tx: &Transaction,
 ) -> Result<MerkleWitness, MerkleTreeError> {
-    create_merkle_witness_from_unsorted(txs.map(hashing::tx::hash), hashing::tx::hash(tracked_tx))
+    create_merkle_witness(txs.map(hashing::tx::hash), hashing::tx::hash(tracked_tx))
 }
 
 #[cfg(test)]

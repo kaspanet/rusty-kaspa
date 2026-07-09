@@ -169,7 +169,7 @@ impl<
             .map(|e| activity_leaf(&e.tx_id, e.version, e.merge_idx))
             .collect::<Vec<_>>();
         let tracked_leaf = activity_leaf(&tracked_entry.tx_id, tracked_entry.version, tracked_entry.merge_idx);
-        let tx_acceptance_proof = create_merkle_witness(lane_leaves.iter().copied(), tracked_leaf, false)?;
+        let tx_acceptance_proof = create_merkle_witness(lane_leaves.iter().copied(), tracked_leaf)?;
 
         let accepting_context_hash = self.block_context_hash(accepting_block_header)?;
         let parent_bounds = SmtReadBounds::for_pov(selected_parent_header.blue_score, self.posterity_depth);
