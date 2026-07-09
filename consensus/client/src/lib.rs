@@ -39,6 +39,7 @@ cfg_if::cfg_if! {
         mod parents;
         mod optional_header;
         mod block;
+        mod compute_commit;
 
         pub use header::*;
         pub use utils::*;
@@ -46,5 +47,6 @@ cfg_if::cfg_if! {
         pub use sign::sign_with_multiple_v3;
         pub use parents::*;
         pub use optional_header::*;
+        pub use compute_commit::*;
     }
 }
