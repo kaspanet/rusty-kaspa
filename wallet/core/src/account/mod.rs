@@ -86,7 +86,6 @@ impl Inner {
 
 /// Generic wallet [`Account`] trait implementation used
 /// by different types of accounts.
-#[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait Account: AnySync + Send + Sync + 'static {
     fn inner(&self) -> &Arc<Inner>;
@@ -378,6 +377,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok((generator.summary(), ids))
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn commit_reveal_manual(
         self: Arc<Self>,
         start_destination: PaymentDestination,
@@ -406,6 +406,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn commit_reveal(
         self: Arc<Self>,
         address: Address,
