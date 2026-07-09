@@ -316,7 +316,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
             fee_rate,
             Fees::None,
             None,
-            None,
         )?;
         let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
@@ -351,14 +350,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
 
-        let settings = GeneratorSettings::try_new_with_account(
-            self.clone().as_dyn_arc(),
-            destination,
-            fee_rate,
-            priority_fee_sompi,
-            payload,
-            None,
-        )?;
+        let settings =
+            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, fee_rate, priority_fee_sompi, payload)?;
 
         let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
@@ -389,7 +382,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
         reveal_fee_sompi: u64,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
-        is_toccata_active: Option<bool>,
     ) -> Result<Bundle, Error> {
         commit_reveal_batch_bundle(
             pskb::CommitRevealBatchKind::Manual { hop_payment: start_destination, destination_payment: end_destination },
@@ -401,7 +393,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
             wallet_secret,
             payment_secret,
             abortable,
-            is_toccata_active,
         )
         .await
     }
@@ -418,7 +409,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
         reveal_fee_sompi: u64,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
-        is_toccata_active: Option<bool>,
     ) -> Result<Bundle, Error> {
         commit_reveal_batch_bundle(
             pskb::CommitRevealBatchKind::Parameterized { address, commit_amount_sompi },
@@ -430,7 +420,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
             wallet_secret,
             payment_secret,
             abortable,
-            is_toccata_active,
         )
         .await
     }
@@ -445,14 +434,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
-        let settings = GeneratorSettings::try_new_with_account(
-            self.clone().as_dyn_arc(),
-            destination,
-            fee_rate,
-            priority_fee_sompi,
-            payload,
-            None,
-        )?;
+        let settings =
+            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, fee_rate, priority_fee_sompi, payload)?;
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata, payment_secret));
         let generator = Generator::try_new(settings, None, Some(abortable))?;
@@ -491,7 +474,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         }
     }
 
-    async fn pskb_broadcast(self: Arc<Self>, bundle: &Bundle, is_toccata_active: Option<bool>) -> Result<Vec<Hash>, Error> {
+    async fn pskb_broadcast(self: Arc<Self>, bundle: &Bundle) -> Result<Vec<Hash>, Error> {
         let mut ids = Vec::new();
         let mut stream = bundle_to_finalizer_stream(bundle);
 
@@ -499,13 +482,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
             match result {
                 Ok(pskt) => {
                     let change = self.change_address()?;
-                    let transaction = pskt_to_pending_transaction(
-                        pskt,
-                        self.wallet().network_id()?,
-                        change,
-                        self.utxo_context().clone().into(),
-                        is_toccata_active,
-                    )?;
+                    let transaction =
+                        pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change, self.utxo_context().clone().into())?;
                     log_info!("Submitting to rpc");
                     ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
                     log_info!("Submitted to rpc");
@@ -555,7 +533,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
             fee_rate,
             priority_fee_sompi,
             final_transaction_payload,
-            None,
         )?
         .utxo_context_transfer(destination_account.utxo_context());
 
@@ -584,8 +561,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<GeneratorSummary> {
-        let settings =
-            GeneratorSettings::try_new_with_account(self.as_dyn_arc(), destination, fee_rate, priority_fee_sompi, payload, None)?;
+        let settings = GeneratorSettings::try_new_with_account(self.as_dyn_arc(), destination, fee_rate, priority_fee_sompi, payload)?;
 
         let generator = Generator::try_new(settings, None, Some(abortable))?;
 
@@ -747,7 +723,6 @@ pub trait DerivationCapableAccount: Account {
                         PaymentDestination::Change,
                         fee_rate,
                         Fees::None,
-                        None,
                         None,
                         None,
                     )?;

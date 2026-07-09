@@ -107,12 +107,6 @@ interface IGeneratorSettingsObject {
      */
     networkId?: NetworkId | string;
 
-    // @TODO(post-toccata): remove this field
-    /**
-     * Optional boolean deciding what max mass is allowed depending on if toccata is active or not.
-     * Default to `false`.
-    */
-    isToccataActive?: boolean;
 }
 "#;
 
@@ -188,7 +182,6 @@ impl Generator {
             sig_op_count,
             minimum_signatures,
             payload,
-            is_toccata_active,
         } = settings;
 
         let settings = match source {
@@ -211,7 +204,6 @@ impl Generator {
                     final_priority_fee,
                     payload,
                     multiplexer,
-                    Some(is_toccata_active),
                 )?
             }
             GeneratorSource::UtxoContext(utxo_context) => {
@@ -229,7 +221,6 @@ impl Generator {
                     final_priority_fee,
                     payload,
                     multiplexer,
-                    Some(is_toccata_active),
                 )?
             } // GeneratorSource::Account(account) => {
               //     let account: Arc<dyn crate::account::Account> = account.into();
@@ -294,8 +285,6 @@ struct GeneratorSettings {
     pub sig_op_count: u8,
     pub minimum_signatures: u16,
     pub payload: Option<Vec<u8>>,
-    // @TODO(post-toccata): remove this field
-    pub is_toccata_active: bool,
 }
 
 impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
@@ -337,8 +326,6 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
 
         let payload = args.get_vec_u8("payload").ok();
 
-        let is_toccata_active = args.get_bool("isToccataActive").unwrap_or_default();
-
         let settings = GeneratorSettings {
             network_id,
             source: generator_source,
@@ -351,7 +338,6 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
             sig_op_count,
             minimum_signatures,
             payload,
-            is_toccata_active,
         };
 
         Ok(settings)

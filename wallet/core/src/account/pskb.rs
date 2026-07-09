@@ -314,7 +314,6 @@ pub fn pskt_to_pending_transaction(
     network_id: NetworkId,
     change_address: Address,
     source_utxo_context: Option<UtxoContext>,
-    is_toccata_active: Option<bool>,
 ) -> Result<PendingTransaction, Error> {
     let inner_pskt = finalized_pskt.deref();
     let (utxo_entries_ref, aggregate_input_value): (Vec<UtxoEntryReference>, u64) = inner_pskt
@@ -379,7 +378,6 @@ pub fn pskt_to_pending_transaction(
         final_transaction_priority_fee: fee_u.into(),
         final_transaction_destination,
         final_transaction_payload: None,
-        is_toccata_active: is_toccata_active.unwrap_or_default(),
     };
 
     // Create the Generator
@@ -447,7 +445,6 @@ pub async fn commit_reveal_batch_bundle(
     wallet_secret: Secret,
     payment_secret: Option<Secret>,
     abortable: &Abortable,
-    is_toccata_active: Option<bool>,
 ) -> Result<Bundle, Error> {
     let network_id = account.wallet().clone().network_id()?;
 
@@ -501,7 +498,6 @@ pub async fn commit_reveal_batch_bundle(
         fee_rate.or(Some(1.0)),
         0u64.into(),
         payload,
-        is_toccata_active,
     )
     .map_err(|e| Error::PSKTGenerationError(e.to_string()))?;
 
@@ -546,7 +542,6 @@ pub async fn commit_reveal_batch_bundle(
             network_id,
             account.change_address()?,
             account.utxo_context().clone().into(),
-            is_toccata_active,
         )
         .map_err(|_| Error::CommitTransactionIdExtractionError)?
         .id();

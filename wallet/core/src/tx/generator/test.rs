@@ -467,7 +467,6 @@ where
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
         final_transaction_payload,
-        is_toccata_active: false,
     };
 
     Generator::try_new(settings, None, None)
@@ -694,29 +693,29 @@ fn test_generator_inputs_2_outputs_2_fees_exclude() -> Result<()> {
 }
 
 #[test]
-fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
-    // generator(test_network_id(), &[10.0; 100], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(990.0))].as_slice())
-    generator(test_network_id(), &[10.0; 100], &[], None, Fees::sender(Kaspa(0.0)), [(output_address, Kaspa(990.0))].as_slice())
+fn test_generator_inputs_500_outputs_1_fees_exclude_success() -> Result<()> {
+    // generator(test_network_id(), &[10.0; 500], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(4990.0))].as_slice())
+    generator(test_network_id(), &[10.0; 500], &[], None, Fees::sender(Kaspa(0.0)), [(output_address, Kaspa(4990.0))].as_slice())
         .unwrap()
         .harness()
         .fetch(&Expected {
             is_final: false,
-            input_count: 88,
-            aggregate_input_value: Kaspa(880.0),
+            input_count: 446,
+            aggregate_input_value: Kaspa(4460.0),
             output_count: 1,
             priority_fees: FeesExpected::None,
         })
         .fetch(&Expected {
             is_final: false,
-            input_count: 12,
-            aggregate_input_value: Kaspa(120.0),
+            input_count: 54,
+            aggregate_input_value: Kaspa(540.0),
             output_count: 1,
             priority_fees: FeesExpected::None,
         })
         .fetch(&Expected {
             is_final: true,
             input_count: 2,
-            aggregate_input_value: Sompi(999_88698800),
+            aggregate_input_value: Sompi(499943978800),
             output_count: 2,
             // priority_fees: FeesExpected::sender(Kaspa(5.0)),
             priority_fees: FeesExpected::sender(Kaspa(0.0)),
@@ -727,36 +726,36 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
 }
 
 #[test]
-fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
+fn test_generator_inputs_500_outputs_1_fees_include_success() -> Result<()> {
     generator(
         test_network_id(),
-        &[1.0; 100],
+        &[1.0; 500],
         &[],
         None,
         Fees::receiver(Kaspa(5.0)),
-        // [(output_address, Kaspa(100.0))].as_slice(),
-        [(output_address, Kaspa(100.0))].as_slice(),
+        // [(output_address, Kaspa(500.0))].as_slice(),
+        [(output_address, Kaspa(500.0))].as_slice(),
     )
     .unwrap()
     .harness()
     .fetch(&Expected {
         is_final: false,
-        input_count: 88,
-        aggregate_input_value: Kaspa(88.0),
+        input_count: 446,
+        aggregate_input_value: Kaspa(446.0),
         output_count: 1,
         priority_fees: FeesExpected::None,
     })
     .fetch(&Expected {
         is_final: false,
-        input_count: 12,
-        aggregate_input_value: Kaspa(12.0),
+        input_count: 54,
+        aggregate_input_value: Kaspa(54.0),
         output_count: 1,
         priority_fees: FeesExpected::None,
     })
     .fetch(&Expected {
         is_final: true,
         input_count: 2,
-        aggregate_input_value: Sompi(99_88698800),
+        aggregate_input_value: Sompi(49943978800),
         output_count: 1,
         priority_fees: FeesExpected::receiver(Kaspa(5.0)),
     })
@@ -766,14 +765,14 @@ fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
 }
 
 #[test]
-fn test_generator_inputs_100_outputs_1_fees_exclude_insufficient_funds() -> Result<()> {
-    generator(test_network_id(), &[10.0; 100], &[], None, Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(1000.0))].as_slice())
+fn test_generator_inputs_500_outputs_1_fees_exclude_insufficient_funds() -> Result<()> {
+    generator(test_network_id(), &[10.0; 500], &[], None, Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(5000.0))].as_slice())
         .unwrap()
         .harness()
         .fetch(&Expected {
             is_final: false,
-            input_count: 88,
-            aggregate_input_value: Kaspa(880.0),
+            input_count: 446,
+            aggregate_input_value: Kaspa(4460.0),
             output_count: 1,
             priority_fees: FeesExpected::None,
         })
@@ -788,26 +787,26 @@ fn test_generator_inputs_1k_outputs_2_fees_exclude() -> Result<()> {
         .unwrap()
         .harness()
         .drain(
-            10,
+            2,
             &Expected {
                 is_final: false,
-                input_count: 88,
-                aggregate_input_value: Kaspa(880.0),
+                input_count: 446,
+                aggregate_input_value: Kaspa(4460.0),
                 output_count: 1,
                 priority_fees: FeesExpected::None,
             },
         )
         .fetch(&Expected {
             is_final: false,
-            input_count: 21,
-            aggregate_input_value: Kaspa(210.0),
+            input_count: 9,
+            aggregate_input_value: Kaspa(90.0),
             output_count: 1,
             priority_fees: FeesExpected::None,
         })
         .fetch(&Expected {
             is_final: true,
-            input_count: 11,
-            aggregate_input_value: Sompi(9008_98601600),
+            input_count: 3,
+            aggregate_input_value: Sompi(900899086400),
             output_count: 2,
             priority_fees: FeesExpected::receiver(Kaspa(5.0)),
         })
@@ -829,7 +828,7 @@ fn test_generator_inputs_32k_outputs_2_fees_exclude() -> Result<()> {
     )
     .unwrap()
     .harness()
-    .accumulate(379)
+    .accumulate(75)
     .finalize();
     Ok(())
 }
@@ -839,7 +838,7 @@ fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
     let f = 130.0;
     let head = vec![f; 250_000];
     let generator = make_generator(test_network_id(), &head, &[], None, Fees::None, change_address, PaymentDestination::Change);
-    generator.unwrap().harness().accumulate(2875).finalize();
+    generator.unwrap().harness().accumulate(564).finalize();
     Ok(())
 }
 
@@ -919,7 +918,6 @@ fn test_generator_skips_utxos_with_defined_covenant_id() -> Result<()> {
         final_transaction_priority_fee: Fees::sender(Kaspa(0.0)),
         final_transaction_destination: destination,
         final_transaction_payload: None,
-        is_toccata_active: false,
     };
     let generator = Generator::try_new(settings, None, None)?;
     let pending = generator.generate_transaction()?.expect("expected transaction");

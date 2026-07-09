@@ -41,8 +41,6 @@ pub struct GeneratorSettings {
     pub final_transaction_payload: Option<Vec<u8>>,
     // transaction is a transfer between accounts
     pub destination_utxo_context: Option<UtxoContext>,
-    // TODO(post-toccata): remove this parameter
-    pub is_toccata_active: bool,
 }
 
 // impl std::fmt::Debug for GeneratorSettings {
@@ -74,7 +72,6 @@ impl GeneratorSettings {
         fee_rate: Option<f64>,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
-        is_toccata_active: Option<bool>,
     ) -> Result<Self> {
         let network_id = account.utxo_context().processor().network_id()?;
         let change_address = account.change_address()?;
@@ -99,7 +96,6 @@ impl GeneratorSettings {
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
-            is_toccata_active: is_toccata_active.unwrap_or_default(),
         };
 
         Ok(settings)
@@ -118,7 +114,6 @@ impl GeneratorSettings {
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
-        is_toccata_active: Option<bool>,
     ) -> Result<Self> {
         let network_id = utxo_context.processor().network_id()?;
         let utxo_iterator = UtxoIterator::new(&utxo_context);
@@ -138,7 +133,6 @@ impl GeneratorSettings {
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
-            is_toccata_active: is_toccata_active.unwrap_or_default(),
         };
 
         Ok(settings)
@@ -158,7 +152,6 @@ impl GeneratorSettings {
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
-        is_toccata_active: Option<bool>,
     ) -> Result<Self> {
         let settings = GeneratorSettings {
             version: 0,
@@ -175,7 +168,6 @@ impl GeneratorSettings {
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
-            is_toccata_active: is_toccata_active.unwrap_or_default(),
         };
 
         Ok(settings)

@@ -29,12 +29,9 @@ pub const SIGNATURE_SIZE: u64 = 1 + 64 + 1; //1 byte for OP_DATA_65 + 64 (length
 pub(crate) const MINIMUM_RELAY_TRANSACTION_FEE_PER_KG: u64 = 100_000;
 const MINIMUM_RELAY_TRANSACTION_FEE_PER_GRAM: u64 = MINIMUM_RELAY_TRANSACTION_FEE_PER_KG / 1000;
 
-// TODO(post-toccata): remove this const and cleaup calling site, only use new 500_000 mass limit
-/// MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA is the maximum mass allowed for transactions that
-/// are considered standard and will therefore be relayed and considered for mining, before toccata activtion.
-pub const MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA: u64 = 100_000;
-
-pub const MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA: u64 = 500_000;
+/// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
+/// are considered standard and will therefore be relayed and considered for mining.
+pub const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 500_000;
 
 /// minimum_required_transaction_relay_fee returns the minimum transaction fee required
 /// for a transaction with the passed mass to be accepted into the mempool and relayed.
@@ -232,7 +229,10 @@ impl MassCalculator {
         let mut estimated_tx = tx.clone();
         let signature_script_len = SIGNATURE_SIZE as usize * minimum_signatures.max(1) as usize;
         for input in estimated_tx.inputs.iter_mut() {
-            input.signature_script.resize(input.signature_script.len() + signature_script_len, 0);
+            if input.signature_script.is_empty() {
+                // fill with dummy sig if input is unsigned
+                input.signature_script.resize(signature_script_len, 0);
+            }
         }
         estimated_tx.finalize();
         let non_contextual =

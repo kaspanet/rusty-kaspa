@@ -7,7 +7,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::rpc::DynRpcApi;
-use crate::tx::{DataKind, Generator, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA};
+use crate::tx::{DataKind, Generator};
 use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference, UtxoIterator};
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::sign::{Signed, sign_input, sign_with_multiple_v2};

@@ -1,5 +1,5 @@
 use crate::result::Result;
-use crate::tx::{MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA, MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA, mass};
+use crate::tx::{MAXIMUM_STANDARD_TRANSACTION_MASS, mass};
 use js_sys::Array;
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::config::params::Params;
@@ -9,7 +9,6 @@ use kaspa_wasm_core::types::NumberArray;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::*;
 
-// @TODO(post-toccata): remove the optional parameter is_toccata_active
 /// `maximumStandardTransactionMass()` returns the maximum transaction
 /// size allowed by the network.
 ///
@@ -18,12 +17,8 @@ use workflow_wasm::convert::*;
 /// @see {@link updateTransactionMass}
 /// @see {@link calculateTransactionFee}
 #[wasm_bindgen(js_name = maximumStandardTransactionMass)]
-pub fn maximum_standard_transaction_mass(is_toccata_active: Option<bool>) -> u64 {
-    if is_toccata_active.unwrap_or_default() {
-        MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA
-    } else {
-        MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA
-    }
+pub fn maximum_standard_transaction_mass() -> u64 {
+    MAXIMUM_STANDARD_TRANSACTION_MASS
 }
 
 /// `calculateTransactionMass()` returns the mass of the passed transaction.
@@ -48,7 +43,6 @@ pub fn calculate_unsigned_transaction_mass(network_id: NetworkIdT, tx: &Transact
     Ok(mc.calc_standard_mass(&masses))
 }
 
-// @TODO(post-toccata): remove the optional parameter is_toccata_active
 /// `updateTransactionMass()` updates the storage mass property of the passed transaction.
 /// If the transaction is invalid, the function throws an error.
 ///
@@ -64,12 +58,7 @@ pub fn calculate_unsigned_transaction_mass(network_id: NetworkIdT, tx: &Transact
 /// @see {@link calculateTransactionFee}
 ///
 #[wasm_bindgen(js_name = updateTransactionMass)]
-pub fn update_unsigned_transaction_mass(
-    network_id: NetworkIdT,
-    tx: &Transaction,
-    minimum_signatures: Option<u16>,
-    is_toccata_active: Option<bool>,
-) -> Result<bool> {
+pub fn update_unsigned_transaction_mass(network_id: NetworkIdT, tx: &Transaction, minimum_signatures: Option<u16>) -> Result<bool> {
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
     let mc = mass::MassCalculator::new(&consensus_params);
@@ -77,9 +66,7 @@ pub fn update_unsigned_transaction_mass(
     let masses = mc.calc_unsigned_client_transaction_masses(tx, minimum_signatures.unwrap_or(1))?;
     let mass = mc.calc_standard_mass(&masses);
 
-    let max_std_mass = maximum_standard_transaction_mass(is_toccata_active);
-
-    if mass > max_std_mass {
+    if mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
         Ok(false)
     } else {
         tx.set_storage_mass(masses.contextual.storage_mass);
@@ -87,7 +74,6 @@ pub fn update_unsigned_transaction_mass(
     }
 }
 
-// @TODO(post-toccata): remove the optional parameter is_toccata_active
 /// `calculateTransactionFee()` returns minimum fees needed for the transaction to be
 /// accepted by the network. If the transaction is invalid or the mass can not be calculated,
 /// the function throws an error. If the mass exceeds the maximum standard transaction mass,
@@ -103,7 +89,6 @@ pub fn calculate_unsigned_transaction_fee(
     network_id: NetworkIdT,
     tx: &TransactionT,
     minimum_signatures: Option<u16>,
-    is_toccata_active: Option<bool>,
 ) -> Result<Option<u64>> {
     let tx = Transaction::try_cast_from(tx)?;
     let network_id = NetworkId::try_owned_from(network_id)?;
@@ -112,9 +97,7 @@ pub fn calculate_unsigned_transaction_fee(
     let masses = mc.calc_unsigned_client_transaction_masses(tx.as_ref(), minimum_signatures.unwrap_or(1))?;
     let mass = mc.calc_standard_mass(&masses);
 
-    let max_std_mass = maximum_standard_transaction_mass(is_toccata_active);
-
-    if mass > max_std_mass { Ok(None) } else { Ok(Some(mc.calc_minimum_relay_fee(&masses))) }
+    if mass > MAXIMUM_STANDARD_TRANSACTION_MASS { Ok(None) } else { Ok(Some(mc.calc_minimum_relay_fee(&masses))) }
 }
 
 /// `calculateStorageMass()` is a helper function to compute the storage mass of inputs and outputs.
@@ -153,12 +136,12 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test;
 
     #[wasm_bindgen_test]
-    fn calculate_transaction_fee_respects_toccata_mass_limit() {
+    fn calculate_transaction_fee_respects_standard_mass_limit() {
         let utxo = UtxoEntryReference::simulated(1_000_000_000);
         let input = TransactionInput::new(utxo.outpoint(), None, 0, 1, 0, Some(utxo.clone()));
         let output = TransactionOutput::new(999_000_000, utxo.script_public_key(), None);
-        // payload bytes dominate mass: 60k puts unsigned mass between the 100k and 500k limits.
-        let payload = vec![0; 60_000];
+        // payload bytes dominate mass.
+        let payload = vec![0; 300_000];
         let tx = Transaction::new(None, 0, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, payload, 0)
             .expect("transaction construction should succeed");
         let tx_value = JsValue::from(tx);
@@ -166,16 +149,10 @@ mod tests {
         let network_id = || JsValue::from_str(&NetworkId::new(NetworkType::Mainnet).to_string()).unchecked_into::<NetworkIdT>();
 
         let mass = calculate_unsigned_transaction_mass(network_id(), tx, Some(1)).expect("mass calculation should succeed");
-        assert!(mass > MAXIMUM_STANDARD_TRANSACTION_MASS_PRE_TOCCATA);
-        assert!(mass <= MAXIMUM_STANDARD_TRANSACTION_MASS_POST_TOCCATA);
+        assert!(mass > MAXIMUM_STANDARD_TRANSACTION_MASS);
 
-        let pre_toccata_fee = calculate_unsigned_transaction_fee(network_id(), tx, Some(1), Some(false))
-            .expect("pre-toccata fee calculation should not error");
-        assert_eq!(pre_toccata_fee, None);
-
-        let post_toccata_fee = calculate_unsigned_transaction_fee(network_id(), tx, Some(1), Some(true))
-            .expect("post-toccata fee calculation should not error");
-        assert!(post_toccata_fee.is_some());
+        let fee = calculate_unsigned_transaction_fee(network_id(), tx, Some(1)).expect("fee calculation should not error");
+        assert_eq!(fee, None);
     }
 
     #[wasm_bindgen_test]
@@ -202,12 +179,12 @@ mod tests {
         let mass = calculate_unsigned_transaction_mass(network_id(), tx, Some(1)).expect("mass calculation should succeed");
         assert_eq!(mass, 40_000);
 
-        let fee = calculate_unsigned_transaction_fee(network_id(), tx, Some(1), Some(true))
+        let fee = calculate_unsigned_transaction_fee(network_id(), tx, Some(1))
             .expect("fee calculation should not error")
-            .expect("tx should be within post-toccata mass limit");
+            .expect("tx should be within standard mass limit");
         assert_eq!(fee, 478_300);
 
-        assert!(update_unsigned_transaction_mass(network_id(), &update_tx, Some(1), Some(true)).expect("update should not error"));
+        assert!(update_unsigned_transaction_mass(network_id(), &update_tx, Some(1)).expect("update should not error"));
         assert_eq!(update_tx.get_storage_mass(), 40_000);
     }
 }
