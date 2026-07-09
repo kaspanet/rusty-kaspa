@@ -192,7 +192,7 @@ impl Pskb {
                 }
                 let pskb = Self::parse_input_pskb(argv.first().unwrap().as_str())?;
                 let account = ctx.wallet().account()?;
-                match account.pskb_broadcast(&pskb, None).await {
+                match account.pskb_broadcast(&pskb).await {
                     Ok(sent) => tprintln!(ctx, "Sent transactions {:?}", sent),
                     Err(e) => terrorln!(ctx, "Send error {:?}", e),
                 }
