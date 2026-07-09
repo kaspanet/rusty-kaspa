@@ -192,7 +192,10 @@ impl TransactionOutput {
 #[serde(rename_all = "camelCase")]
 pub struct CovenantBinding {
     pub authorizing_input: u16,
-    /// see ./hashing/covenant_id.rs
+    /// Identifier of the covenant this output belongs to.
+    ///
+    /// Genesis covenant ids are computed by
+    /// [`covenant_id()`](fn@crate::hashing::covenant_id::covenant_id).
     pub covenant_id: Hash,
 }
 

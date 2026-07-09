@@ -117,19 +117,6 @@ impl ComputeCommit {
         };
         Ok(())
     }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_js_object(&self) -> Result<Object, WasmError> {
-        let obj = Object::new();
-        obj.set("type", &self.get_type().into())?;
-        obj.set("value", &self.get_value().into())?;
-        Ok(obj)
-    }
-
-    #[wasm_bindgen(js_name = "toString")]
-    pub fn js_to_string(&self) -> Result<js_sys::JsString, WasmError> {
-        Ok(js_sys::JSON::stringify(&self.to_js_object()?.into())?)
-    }
 }
 
 impl From<CoreComputeCommit> for ComputeCommit {
@@ -202,15 +189,5 @@ mod tests {
         let commit = ComputeCommit::try_owned_from(obj).expect("try_cast_from failed");
 
         assert_eq!(commit.inner(), CoreComputeCommit::ComputeBudget(ComputeBudget::from(99)));
-    }
-
-    #[wasm_bindgen_test]
-    fn test_compute_commit_to_json() {
-        let commit = ComputeCommit::from_sig_op_count(7);
-
-        let obj = commit.to_js_object().expect("to_js_object failed");
-
-        assert_eq!(obj.get_string("type").expect("failed to get type"), COMPUTE_COMMIT_TYPE_SIG_OP_COUNT);
-        assert_eq!(obj.get_u16("value").expect("failed to get value"), 7);
     }
 }

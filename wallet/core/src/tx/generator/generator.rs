@@ -689,6 +689,8 @@ impl Generator {
         let relay_fee = self.inner.mass_calculator.calc_minimum_relay_fee_with_additional_mass(&masses, additional_relay_mass);
 
         // TODO(wallet-storage-mass-inconcistency): Price fee_rate from the exact mass calculated above
+        // but before this, all calling sites must be resolved (some maintain transaction mass independently)
+        // especially generate_edge_transaction calling site
         Ok(relay_fee.max(self.calc_fee_rate(transaction_mass)))
     }
 
@@ -711,8 +713,6 @@ impl Generator {
     fn generate_transaction_data(&self, context: &mut Context, stage: &mut Stage) -> Result<(DataKind, Data)> {
         let calc = &self.inner.mass_calculator;
         let mut data = Data::new(calc);
-
-        let max_tx_mass_boundary = TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION;
 
         loop {
             if let Some(abortable) = self.inner.abortable.as_ref() {
@@ -746,7 +746,8 @@ impl Generator {
             if let Some(final_transaction) = &self.inner.final_transaction {
                 // try finish a stage or produce a final transaction with target value
                 // use basic condition checks to avoid unnecessary processing
-                if (calc.calc_standard_non_contextual_mass(&data.aggregate_non_contextual_masses) > max_tx_mass_boundary
+                if (calc.calc_standard_non_contextual_mass(&data.aggregate_non_contextual_masses)
+                    > TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION
                     || (self.inner.final_transaction_priority_fee.sender_pays()
                         && stage.aggregate_input_value >= final_transaction.value_with_priority_fee)
                     || (self.inner.final_transaction_priority_fee.receiver_pays()
@@ -786,7 +787,7 @@ impl Generator {
         // input
         let input_non_contextual_masses =
             calc.calc_non_contextual_masses_for_client_transaction_input(&input, self.inner.version, self.inner.minimum_signatures);
-        // input + aggregated + change output
+        // input + aggregated + change output (candidate)
         let candidate_relay_non_contextual_masses = data.aggregate_non_contextual_masses
             + input_non_contextual_masses
             + self.inner.standard_change_output_non_contextual_masses;
@@ -812,22 +813,23 @@ impl Generator {
             data.aggregate_non_contextual_masses += input_non_contextual_masses;
             data.utxo_entry_references.push(utxo_entry_reference.clone());
             data.inputs.push(input);
-            if let Some(address) = utxo.address.as_ref() {
-                data.addresses.insert(address.clone());
-            }
+            utxo.address.as_ref().map(|address| data.addresses.insert(address.clone()));
             None
         }
     }
 
-    /// Resolves sweep/compound generation once no more source UTXOs are available.
+    /// Resolves relay-only sweep/compound generation once no more source UTXOs are available.
     ///
-    /// one of: drops the attempt when consolidation cannot operate (noop),
-    ///         closes an in-progress compound stage (edge),
-    ///         or emits the final compound transaction (final)
+    /// At this point there is payment target (caller requested a change). The accumulated inputs are
+    /// either ignored, emitted as the last transaction of an in-progress compound stage, or emitted
+    /// directly as the final sweep transaction.
     fn finish_relay_stage_processing(&self, context: &mut Context, stage: &mut Stage, mut data: Data) -> Result<(DataKind, Data)> {
         if context.aggregated_utxos < 2 {
+            // with fewer inputs, there is no consolidation transaction to emit
             Ok((DataKind::NoOp, data))
         } else if stage.number_of_transactions > 0 {
+            // previous node transactions already exist in this stage. transaction closes the
+            // stage by aggregating the remaining source UTXOs into one edge output
             data.transaction_fees = self
                 .calc_relay_fees_with_standard_change_output(&data, self.inner.network_params.additional_compound_transaction_mass());
             stage.aggregate_fees += data.transaction_fees;
@@ -835,11 +837,14 @@ impl Generator {
             data.aggregate_non_contextual_masses += self.inner.standard_change_output_non_contextual_masses;
             Ok((DataKind::Edge, data))
         } else {
+            // no node transactions were emitted, so the current accumulation can be returned
+            // directly as the final sweep output.
             data.transaction_fees = self.calc_relay_fees_with_standard_change_output(&data, 0);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
 
             if data.aggregate_input_value < data.transaction_fees {
+                // selected inputs cannot pay the relay fee
                 return Err(Error::InsufficientFunds {
                     additional_needed: data.transaction_fees - data.aggregate_input_value,
                     origin: "relay",
@@ -849,7 +854,6 @@ impl Generator {
             let change_output_value = data.aggregate_input_value - data.transaction_fees;
 
             if self.inner.mass_calculator.is_dust(change_output_value) {
-                // sweep transaction resulting in dust output
                 Ok((DataKind::NoOp, data))
             } else {
                 data.aggregate_non_contextual_masses += self.inner.standard_change_output_non_contextual_masses;
@@ -1099,7 +1103,8 @@ impl Generator {
         let edge_fees = self.calc_relay_fees_for_mass(edge_relay_mass);
         let edge_output_value = data.aggregate_input_value.saturating_sub(edge_fees);
 
-        // TODO(wallet-storage-mass-inconcistency): Calculate this edge mass from the concrete edge output or consider removing this as calculated storage mass should produce `0` value
+        // TODO(wallet-storage-mass-inconcistency): edge transactions usually consolidate many UTXOs into one output, so storage mass is expected to be zero.
+        // But this should either be enforced, or replaced with exact storage-mass calculation from the concrete edge output.
         let edge_output_harmonic = calc.calc_storage_mass_output_harmonic_single(edge_output_value);
         let storage_mass = self.calc_storage_mass(data, edge_output_harmonic);
         let transaction_mass =
