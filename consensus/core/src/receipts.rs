@@ -5,29 +5,6 @@ use kaspa_merkle::MerkleWitness;
 use kaspa_seq_commit::types::{LaneTipInput, SeqCommitInput, SeqState, SmtLeafInput};
 use kaspa_smt::proof::OwnedSmtProof;
 
-// Hash functions for sequencing commitments.
-//
-// Commitment tree shape:
-//
-// ```text
-// SeqCommit(B)
-// └── H_seq
-//     ├── parent_seq_commit = SeqCommit(selected_parent(B))
-//     └── state_root
-//         └── H_seq
-//             ├── activity_root
-//             │   └── H_activity_root
-//             │       ├── inactivity_shortcut
-//             │       └── lanes_root
-//             │           └── SMT root over active lanes
-//             │
-//             └── payload_and_ctx_digest
-//                 └── H_seq
-//                     ├── context_hash
-//                     └── payload_root
-// ```
-//
-
 // Receipt context data
 
 #[derive(Clone)]
