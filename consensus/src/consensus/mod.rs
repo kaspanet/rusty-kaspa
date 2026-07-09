@@ -687,7 +687,8 @@ impl Consensus {
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
 
         let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
-        let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
+        let elapsed_blue_score = tip_timestamp.saturating_sub(tx_timestamp).saturating_mul(bps) / 1000;
+        let estimated_bscore = tip_bscore.saturating_sub(elapsed_blue_score);
         let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
         let mut guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(self.config.genesis.hash);
         if !self.is_chain_ancestor_of(self.pruning_point_store.read().retention_period_root().unwrap(), guess_block).unwrap_or(false) {
@@ -1816,8 +1817,8 @@ impl ConsensusApi for Consensus {
         (0..=pruning_index).rev().take(n).map(|ind| self.past_pruning_points_store.get(ind).unwrap()).collect_vec()
     }
 
-    // For an archival node, generally speaking, this function should not be called without a known accepting_block
-    // or a timestamp, as it will search through the entire datadbase
+    // For archival nodes, callers should avoid the unbounded historical lookup and pass
+    // either the accepting block or a timestamp hint.
     fn generate_tx_receipt(
         &self,
         tx_id: Hash,
@@ -1838,9 +1839,13 @@ impl ConsensusApi for Consensus {
         if let Some(tx_timestamp) = tx_timestamp {
             return self.generate_tx_receipt_based_on_time(tx_id, tx_timestamp);
         }
+        if self.config.is_archival {
+            return Err(ConsensusError::General(
+                "attempting to generate a transaction receipt on an archival node without any hint may require an arbitrarily deep search; please supply an accepting block or transaction timestamp",
+            ));
+        }
         // if no timestamp is given either, search the entire database
-        // note: this is probably very computationally wasteful for archival nodes
-        // and should be avoided on usual terms
+        // note: this is computationally wasteful and should be avoided on usual terms
 
         for block in self.services.reachability_service.forward_chain_iterator(self.config.genesis.hash, self.get_sink(), true) {
             let accepted_txs = self.get_block_acceptance_data(block);
