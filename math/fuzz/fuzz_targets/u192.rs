@@ -3,10 +3,11 @@ mod utils;
 
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
 use kaspa_math::construct_uint;
+use kaspa_math::lehmer::LehmerInvert;
 use libfuzzer_sys::fuzz_target;
 use num_bigint::BigUint;
 use num_traits::Zero;
-use utils::{assert_same, consume, try_opt};
+use utils::{assert_same, bigint_mod_inv, consume, try_opt};
 
 // This is important as it's a non power of two.
 construct_uint!(Uint192, 3);
@@ -128,6 +129,23 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    // mod_inv was removed with the generic `Uint::mod_inverse`; the 3072-bit MuHash inverse
-    // (the only production case) is fuzzed in `u3072.rs` against a num-bigint reference.
+    // lehmer_invert (the mod_inv arm, recovered) against a num-bigint extended-gcd
+    // reference. `lehmer_invert` is total, so both value and modulus are fuzzed freely;
+    // only the trivial-ring modulus < 2 is filtered (the inverse in Z/1Z is convention:
+    // the oracle says 0, lehmer says None).
+    {
+        let ((lib1, native1), (lib2, native2)) = loop {
+            let (lib1, native1) = try_opt!(generate_ints(&mut data));
+            let (lib2, native2) = try_opt!(generate_ints(&mut data));
+            if lib2 > 1u64 {
+                break ((lib1, native1), (lib2, native2));
+            }
+        };
+        let lib_inv = lib1.lehmer_invert(lib2);
+        let native_inv = bigint_mod_inv(native1, native2);
+        assert_eq!(lib_inv.is_some(), native_inv.is_some(), "lib1: {lib1}, lib2: {lib2}");
+        if let Some(lib_inv) = lib_inv {
+            assert_same!(lib_inv, native_inv.unwrap(), "lib1: {lib1}, lib2: {lib2}");
+        }
+    }
 });

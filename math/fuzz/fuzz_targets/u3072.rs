@@ -39,7 +39,7 @@ fuzz_target!(|data: &[u8]| {
 
     // The production inverse under test.
     let mut out = [0u64; LIMBS];
-    let invertible = lehmer::invert(value.0, prime.0, &mut out);
+    let invertible = lehmer::invert::<Uint3072>(value.0, prime.0, &mut out);
     // The MuHash prime is prime, so every nonzero reduced value is invertible.
     assert!(invertible, "value={value}");
 
