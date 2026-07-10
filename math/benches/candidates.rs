@@ -4,9 +4,11 @@
 //! 1. `mod_inverse` (muhash u3072.rs): inverse of a 3072-bit value modulo the MuHash prime
 //!    2^3072 - 1103717, `[u64; 48]` limbs in/out (conversions inside the measured loop, the const
 //!    modulus precomputed). malachite (current) vs the in-repo Lehmer ext-gcd (`lehmer.rs`), the
-//!    chosen replacement. The rejected third-party candidates (dashu, crypto-bigint, num-bigint,
-//!    ruint) are commented out and their dev-deps removed (re-add the deps and uncomment the
-//!    marked modules/arms below to reproduce the full sweep).
+//!    chosen replacement, plus the frozen pre-generalization fixed 48-limb snapshot
+//!    (`support/lehmer_fixed48.rs`) that isolates the cost of the trait/generic plumbing.
+//!    The rejected third-party candidates (dashu, crypto-bigint, num-bigint, ruint) are
+//!    commented out and their dev-deps removed (re-add the deps and uncomment the marked
+//!    modules/arms below to reproduce the full sweep).
 //! 2. `ceiling_log_base_2` on u64 (consensus sync locator, sync/mod.rs): malachite vs plain std.
 //!
 //! Per inverse = group time / N (=32). Run: `cargo bench -p kaspa-math --bench candidates`.
@@ -19,6 +21,11 @@ use rand_chacha::{
 };
 
 use kaspa_math::Uint3072;
+
+// Frozen pre-generalization 48-limb Lehmer implementation, an A/B baseline for
+// the generic trait-based `src/lehmer.rs` (bench arm below + asm diffing).
+#[path = "support/lehmer_fixed48.rs"]
+mod lehmer_fixed48;
 
 const N: usize = 32;
 const LIMBS: usize = 48;
@@ -78,15 +85,27 @@ mod current_malachite {
     }
 }
 
-// Euclidean Lehmer ext-gcd (in-repo, fixed 48-limb), the chosen permissive replacement.
-// Avoids safegcd's full-width modular cofactor updates: clean integer cofactors that grow
-// gradually, one sign fixup at the end.
+// Euclidean Lehmer ext-gcd (in-repo, generic over the limb width), the chosen permissive
+// replacement. Avoids safegcd's full-width modular cofactor updates: clean integer cofactors
+// that grow gradually, one sign fixup at the end.
 mod cand_lehmer {
     use super::*;
 
     pub fn modinv(limbs: &[u64; LIMBS]) -> [u64; LIMBS] {
         let mut out = [0u64; LIMBS];
-        assert!(kaspa_math::lehmer::invert(*limbs, PRIME.0, &mut out), "0 < a < prime");
+        assert!(kaspa_math::lehmer::invert::<Uint3072>(*limbs, PRIME.0, &mut out), "0 < a < prime");
+        out
+    }
+}
+
+// The pre-generalization fixed 48-limb snapshot (benches/support/lehmer_fixed48.rs): any gap
+// between this arm and `cand_lehmer` is the cost of the trait/generic plumbing.
+mod cand_lehmer_fixed {
+    use super::*;
+
+    pub fn modinv(limbs: &[u64; LIMBS]) -> [u64; LIMBS] {
+        let mut out = [0u64; LIMBS];
+        assert!(lehmer_fixed48::invert(*limbs, PRIME.0, &mut out), "0 < a < prime");
         out
     }
 }
@@ -198,6 +217,7 @@ fn bench_modinv_3072(c: &mut Criterion) {
     for limbs in &inputs {
         let expected = current_malachite::modinv(limbs);
         assert_eq!(cand_lehmer::modinv(limbs), expected);
+        assert_eq!(cand_lehmer_fixed::modinv(limbs), expected);
         // ruled-out candidates (deps removed):
         // assert_eq!(cand_dashu::modinv(limbs, &da_prime), expected);
         // assert_eq!(cand_crypto_bigint::modinv_vartime(limbs, &cb_prime), expected);
@@ -207,6 +227,7 @@ fn bench_modinv_3072(c: &mut Criterion) {
     let mut group = c.benchmark_group("modinv_3072_muhash_prime");
     bench_candidate(&mut group, "malachite (current)", &inputs, current_malachite::modinv);
     bench_candidate(&mut group, "lehmer (Euclidean ext-gcd)", &inputs, cand_lehmer::modinv);
+    bench_candidate(&mut group, "lehmer fixed-48 (pre-trait snapshot)", &inputs, cand_lehmer_fixed::modinv);
     // ruled-out candidates (re-add the dev-deps + uncomment the modules above to reproduce):
     // let da_prime = cand_dashu::prime();
     // let cb_prime = cand_crypto_bigint::prime();

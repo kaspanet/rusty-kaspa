@@ -1,5 +1,9 @@
-//! Variable-time modular inversion via Lehmer's extended-GCD algorithm,
-//! specialized for the 3072-bit MuHash element and fully stack-allocated.
+//! Variable-time modular inversion via Lehmer's extended-GCD algorithm, fully
+//! stack-allocated and generic over the operand width (little-endian base-2^64
+//! limbs). [`LehmerInvert::lehmer_invert`] is the entry point, available on
+//! every `construct_uint!` type and on primitive `u64`/`u128` (whose native
+//! division doubles as a reference oracle in tests and fuzzing); the production
+//! user is the 3072-bit MuHash element.
 //!
 //! This is a *Euclidean* extended GCD (true quotients), not the binary
 //! Bernstein-Yang "safegcd" divstep. The distinction matters: safegcd divides by
@@ -28,11 +32,17 @@
 //! Algorithm: Knuth, TAOCP Vol. 2, sec. 4.5.2, Algorithm L. Adapted from the
 //! MIT-licensed 256-bit implementation by Dean Little (Copyright (c) 2026 Dean
 //! Little, <https://github.com/blueshift-gg/solana-secp256k1>, `src/lehmer.rs`),
-//! generalized to 48 limbs with a two-word half-GCD guess. Uses native
-//! `u128`/`i128` accumulators plus this crate's `Uint3072` for the rare
-//! multi-limb-divisor fallback; no external dependency.
+//! generalized to arbitrary limb counts with a two-word half-GCD guess. Uses
+//! native `u128`/`i128` accumulators plus the uint type's own division
+//! ([`LehmerOps::div_rem`]) for the rare multi-limb-divisor fallback; no
+//! external dependency.
+//!
+//! The limb loops are generic over the concrete `[u64; N]` buffer types
+//! ([`LimbArray`]) rather than slices, so each width monomorphizes with
+//! compile-time trip counts and elided bounds checks, keeping the 3072-bit
+//! codegen equivalent to the pre-generalization fixed-width version (kept
+//! frozen in `benches/support/lehmer_fixed48.rs` for A/B comparison).
 
-use crate::Uint3072;
 use core::cmp::Ordering;
 
 /// Diagnostics-only per-inverse operation counters (enabled with the
@@ -58,12 +68,117 @@ macro_rules! count {
     }};
 }
 
-/// Limb count of the operands (3072 bits in base 2^64).
-const N: usize = 48;
-/// Limb count for the cofactor buffers. The cofactor of `value` is bounded in
-/// magnitude by the modulus (< 2^3072, i.e. <= `N` limbs); the extra headroom
-/// absorbs carry-out during a matrix application and the multi-limb fallback.
-const T: usize = N + 8;
+/// Fixed-size little-endian limb buffer, blanket-implemented for every
+/// `[u64; N]`. The inversion's working storage; keeping the concrete array
+/// type generic (rather than passing slices around) monomorphizes the limb
+/// loops per width, so trip counts and bounds stay compile-time constants.
+pub trait LimbArray: Copy {
+    const LEN: usize;
+    const ZERO: Self;
+    fn as_slice(&self) -> &[u64];
+    fn as_mut_slice(&mut self) -> &mut [u64];
+}
+
+impl<const N: usize> LimbArray for [u64; N] {
+    const LEN: usize = N;
+    const ZERO: Self = [0; N];
+    #[inline(always)]
+    fn as_slice(&self) -> &[u64] {
+        self
+    }
+    #[inline(always)]
+    fn as_mut_slice(&mut self) -> &mut [u64] {
+        self
+    }
+}
+
+/// Extra limbs every cofactor buffer ([`LehmerOps::Cofactor`]) carries beyond
+/// the operand width, absorbing carry-out during a matrix application and the
+/// multi-limb fallback. Compile-time checked per width in [`invert`].
+pub const COFACTOR_HEADROOM: usize = 8;
+
+/// What Lehmer inversion needs from a uint type beyond plain limb arithmetic:
+/// its limb representation and an exact multi-limb division (the rare fallback
+/// when the two-word guess cannot confirm a quotient, and the defensive branch
+/// of the final reduction).
+///
+/// Implemented by `construct_uint!` for every generated type, and manually for
+/// primitive `u64`/`u128`.
+pub trait LehmerOps: Copy {
+    /// The operand representation, `[u64; N]`.
+    type Limbs: LimbArray;
+    /// The cofactor working buffer, `[u64; N + COFACTOR_HEADROOM]`. The
+    /// cofactor of `value` is bounded in magnitude by the modulus (<= `N`
+    /// limbs); the extra headroom absorbs carry-out during a matrix
+    /// application and the multi-limb fallback. Supplied per-impl because
+    /// stable Rust cannot spell the sum generically.
+    type Cofactor: LimbArray;
+    fn from_limbs(limbs: Self::Limbs) -> Self;
+    fn into_limbs(self) -> Self::Limbs;
+    /// `(self / other, self % other)`.
+    fn div_rem(self, other: Self) -> (Self, Self);
+}
+
+impl LehmerOps for u64 {
+    type Limbs = [u64; 1];
+    type Cofactor = [u64; 1 + COFACTOR_HEADROOM];
+    #[inline]
+    fn from_limbs(limbs: Self::Limbs) -> Self {
+        limbs[0]
+    }
+    #[inline]
+    fn into_limbs(self) -> Self::Limbs {
+        [self]
+    }
+    #[inline]
+    fn div_rem(self, other: Self) -> (Self, Self) {
+        (self / other, self % other)
+    }
+}
+
+impl LehmerOps for u128 {
+    type Limbs = [u64; 2];
+    type Cofactor = [u64; 2 + COFACTOR_HEADROOM];
+    #[inline]
+    fn from_limbs(limbs: Self::Limbs) -> Self {
+        ((limbs[1] as u128) << 64) | (limbs[0] as u128)
+    }
+    #[inline]
+    fn into_limbs(self) -> Self::Limbs {
+        [self as u64, (self >> 64) as u64]
+    }
+    #[inline]
+    fn div_rem(self, other: Self) -> (Self, Self) {
+        (self / other, self % other)
+    }
+}
+
+/// Modular inversion as a method on any [`LehmerOps`] type.
+pub trait LehmerInvert: Sized {
+    /// The multiplicative inverse of `self` modulo `modulus`, in `[0, modulus)`.
+    ///
+    /// Total over all inputs: `self` is reduced first when `self >= modulus`,
+    /// and `None` is returned when no inverse exists (`gcd != 1`, which covers
+    /// a zero residue, or `modulus < 2`).
+    fn lehmer_invert(self, modulus: Self) -> Option<Self>;
+}
+
+impl<U: LehmerOps> LehmerInvert for U {
+    fn lehmer_invert(self, modulus: Self) -> Option<Self> {
+        let m = modulus.into_limbs();
+        let ms = m.as_slice();
+        if ms[0] < 2 && ms[1..].iter().all(|&w| w == 0) {
+            return None;
+        }
+        let mut value = self.into_limbs();
+        if cmp_n(value.as_slice(), ms) != Ordering::Less {
+            value = self.div_rem(modulus).1.into_limbs();
+        }
+        let mut out = U::Limbs::ZERO;
+        invert::<U>(value, m, &mut out).then(|| U::from_limbs(out))
+    }
+}
+
 // Matrix entries from `hgcd2` are below `2^63` by construction (the half-limb
 // refinement discards the least significant half limb), so the `i128`/`u128`
 // accumulators in the matrix applications cannot overflow
@@ -71,15 +186,20 @@ const T: usize = N + 8;
 
 /// Compute the multiplicative inverse of `value` modulo `modulus` (an odd
 /// modulus, e.g. the MuHash prime), via Lehmer's extended GCD. `value`,
-/// `modulus` and `out` are little-endian base-2^64 limbs (`N = 48` words), and
-/// `value` must already be reduced (`value < modulus`).
+/// `modulus` and `out` are little-endian base-2^64 limb arrays, and `value`
+/// must already be reduced (`value < modulus`).
+/// [`LehmerInvert::lehmer_invert`] is the totalized wrapper without the
+/// reduction precondition.
 ///
 /// Returns `true` and writes the inverse into `out` when
 /// `gcd(value, modulus) == 1`; returns `false` (leaving `out` unspecified)
 /// otherwise. A zero `value` yields `false`.
-pub fn invert(value: [u64; N], modulus: [u64; N], out: &mut [u64; N]) -> bool {
+pub fn invert<U: LehmerOps>(value: U::Limbs, modulus: U::Limbs, out: &mut U::Limbs) -> bool {
+    const {
+        assert!(U::Cofactor::LEN >= U::Limbs::LEN + COFACTOR_HEADROOM, "cofactor buffer lacks the required headroom");
+    }
     count!(INVERSES += 1);
-    if is_zero(&value) {
+    if is_zero(value.as_slice()) {
         core::hint::cold_path();
         return false;
     }
@@ -88,13 +208,12 @@ pub fn invert(value: [u64; N], modulus: [u64; N], out: &mut [u64; N]) -> bool {
     // Invariant: x ≡ -t0·value (mod m) and y ≡ t1·value (mod m) when
     // `swapped == false`, and the roles flip with each swap. `x`, `y` are owned
     // working buffers (they are reduced in place).
-    let mut x: [u64; N] = modulus;
-    let mut y: [u64; N] = value;
-    let mut x_len = top_len(&x);
-    let mut y_len = top_len(&y);
-    let mut t0 = [0u64; T];
-    let mut t1 = [0u64; T];
-    t1[0] = 1;
+    let mut x: U::Limbs = modulus;
+    let mut y: U::Limbs = value;
+    let mut x_len = top_len(x.as_slice());
+    let mut y_len = top_len(y.as_slice());
+    let mut t0 = U::Cofactor::ZERO;
+    let mut t1 = from_word::<U::Cofactor>(1);
     let mut t0_len = 1usize; // 0 has conventional length 1
     let mut t1_len = 1usize;
     let mut swapped = false;
@@ -102,7 +221,7 @@ pub fn invert(value: [u64; N], modulus: [u64; N], out: &mut [u64; N]) -> bool {
     // Multi-limb phase: run until y collapses to a single limb, then finish
     // with a u64 extended-Euclidean tail.
     while y_len > 1 {
-        let (x_hi, y_hi) = highest_two_words_normalized(&x, &y, x_len);
+        let (x_hi, y_hi) = highest_two_words_normalized(x.as_slice(), y.as_slice(), x_len);
         let guess = hgcd2((x_hi >> 64) as u64, x_hi as u64, (y_hi >> 64) as u64, y_hi as u64);
 
         if let Some((a, b, c, d)) = guess {
@@ -111,7 +230,7 @@ pub fn invert(value: [u64; N], modulus: [u64; N], out: &mut [u64; N]) -> bool {
             apply_matrix_t(&mut t0, &mut t1, &mut t0_len, &mut t1_len, a, b, c, d);
 
             // A partial guess can leave x < y; restore x >= y, toggling the sign.
-            if x_len < y_len || (x_len == y_len && cmp_prefix(&x, &y, x_len).is_lt()) {
+            if x_len < y_len || (x_len == y_len && cmp_prefix(x.as_slice(), y.as_slice(), x_len).is_lt()) {
                 core::mem::swap(&mut x, &mut y);
                 core::mem::swap(&mut x_len, &mut y_len);
                 core::mem::swap(&mut t0, &mut t1);
@@ -124,12 +243,12 @@ pub fn invert(value: [u64; N], modulus: [u64; N], out: &mut [u64; N]) -> bool {
             core::hint::cold_path();
             count!(FALLBACK_STEPS += 1);
             // Guess could not confirm a quotient: one exact Euclidean step.
-            let (q, r) = div_rem_step(&x, &y);
-            t_add_qmul(&mut t0, &mut t0_len, &q, &t1, t1_len);
+            let (q, r) = div_rem_step::<U>(&x, &y);
+            t_add_qmul(&mut t0, &mut t0_len, q.as_slice(), &t1, t1_len);
             x = y;
             x_len = y_len;
             y = r;
-            y_len = top_len(&y);
+            y_len = top_len(y.as_slice());
             core::mem::swap(&mut t0, &mut t1);
             core::mem::swap(&mut t0_len, &mut t1_len);
             swapped = !swapped;
@@ -138,46 +257,43 @@ pub fn invert(value: [u64; N], modulus: [u64; N], out: &mut [u64; N]) -> bool {
 
     // Single-limb tail. `y` is now <= 1 limb; one u64 extended Euclidean step
     // replaces the remaining ~tens of `t_add_qmul` iterations.
-    if y_len == 1 && y[0] != 0 {
-        if x[1..N].iter().any(|&w| w != 0) {
-            let (q, r) = div_rem_step(&x, &y);
-            t_add_qmul(&mut t0, &mut t0_len, &q, &t1, t1_len);
-            let old_y = y[0];
-            x = [0u64; N];
-            x[0] = old_y;
+    if y_len == 1 && y.as_slice()[0] != 0 {
+        if x.as_slice()[1..].iter().any(|&w| w != 0) {
+            let (q, r) = div_rem_step::<U>(&x, &y);
+            t_add_qmul(&mut t0, &mut t0_len, q.as_slice(), &t1, t1_len);
+            x = from_word(y.as_slice()[0]);
             y = r;
             core::mem::swap(&mut t0, &mut t1);
             core::mem::swap(&mut t0_len, &mut t1_len);
             swapped = !swapped;
         }
 
-        let (g, cx, cy) = gcd_ext_u64(x[0], y[0]);
+        let (g, cx, cy) = gcd_ext_u64(x.as_slice()[0], y.as_slice()[0]);
 
         // Fold the sign of the chosen cofactor into `swapped`, then combine
         // magnitudes: new_t0 = |cx|·t0 + |cy|·t1.
         if cx < 0 || (cx == 0 && cy > 0) {
             swapped = !swapped;
         }
-        let mut new_t0 = [0u64; T];
+        let mut new_t0 = U::Cofactor::ZERO;
         let mut new_t0_len = 1usize;
         add_mul_word(&mut new_t0, &mut new_t0_len, cx.unsigned_abs(), &t0, t0_len);
         add_mul_word(&mut new_t0, &mut new_t0_len, cy.unsigned_abs(), &t1, t1_len);
         t0 = new_t0;
 
-        x = [0u64; N];
-        x[0] = g;
+        x = from_word(g);
         x_len = if g == 0 { 0 } else { 1 };
     }
 
     // For an odd prime modulus and `value` in [1, m), the gcd is 1.
-    if !(x_len == 1 && x[0] == 1) {
+    if !(x_len == 1 && x.as_slice()[0] == 1) {
         return false;
     }
 
     // x = 1 = ±t0·value (mod m). With `swapped`, the inverse is +t0; otherwise
     // it is -t0 ≡ m - t0. Reduce t0 into [0, m) first.
-    let mut inv = reduce_mod(&t0, &modulus);
-    if !swapped && !is_zero(&inv) {
+    let mut inv = reduce_mod::<U>(&t0, &modulus);
+    if !swapped && !is_zero(inv.as_slice()) {
         inv = sub_n(&modulus, &inv);
     }
     *out = inv;
@@ -458,8 +574,8 @@ fn msb(acc: u64, m: u64, w: u64, borrow: u64) -> (u64, u64) {
 /// `(x, y) <- (a·x - b·y, d·y - c·x)`, over the `len` live limbs only (the
 /// current larger length), returning the new `(x_len, y_len)`. Both results are
 /// non-negative and fit in `len` limbs for matrices from [`hgcd2`], so
-/// the limbs at `[len..N]` (already zero) stay zero. Tracking lengths here lets
-/// passes shrink with the remainders instead of always touching all `N` limbs.
+/// the limbs above `len` (already zero) stay zero. Tracking lengths here lets
+/// passes shrink with the remainders instead of always touching all limbs.
 ///
 /// Each output uses a multiply-accumulate / multiply-subtract structure: a `mac`
 /// carry chain for the additive term and an independent `msb` borrow chain for
@@ -468,12 +584,14 @@ fn msb(acc: u64, m: u64, w: u64, borrow: u64) -> (u64, u64) {
 /// which would serialize a two-register carry plus a per-limb sign-extension
 /// every step.
 #[inline]
-fn apply_matrix_xy(x: &mut [u64; N], y: &mut [u64; N], len: usize, a: u64, b: u64, c: u64, d: u64) -> (usize, usize) {
-    // A single up-front bound: once the compiler knows `len <= N`, every `[i]`
-    // with `i < len` below is provably in-bounds, so the per-limb bounds checks
-    // collapse into this one branch and no `unsafe` is needed. `len <= N` always
-    // holds here, so this never actually panics.
-    assert!(len <= N, "apply_matrix_xy: len exceeds N");
+fn apply_matrix_xy<A: LimbArray>(x: &mut A, y: &mut A, len: usize, a: u64, b: u64, c: u64, d: u64) -> (usize, usize) {
+    let (x, y) = (x.as_mut_slice(), y.as_mut_slice());
+    // A single up-front bound: once the compiler knows `len` is within both
+    // buffers, every `[i]` with `i < len` below is provably in-bounds, so the
+    // per-limb bounds checks collapse into this one branch and no `unsafe` is
+    // needed. `len` never exceeds the limb count here, so this never actually
+    // panics.
+    assert!(len <= x.len() && x.len() == y.len(), "apply_matrix_xy: len exceeds the limb count");
     count!(APPLY_XY_LIMBS += len as u64);
     // x' = a·x - b·y: `carry_ax` accumulates a·x, `borrow_x` peels off b·y.
     let mut carry_ax: u64 = 0;
@@ -515,15 +633,17 @@ fn apply_matrix_xy(x: &mut [u64; N], y: &mut [u64; N], len: usize, a: u64, b: u6
 /// (carry or zero) to keep `t[len..] == 0` without a separate clearing pass.
 #[allow(clippy::too_many_arguments)]
 #[inline]
-fn apply_matrix_t(t0: &mut [u64; T], t1: &mut [u64; T], t0_len: &mut usize, t1_len: &mut usize, a: u64, b: u64, c: u64, d: u64) {
+fn apply_matrix_t<C: LimbArray>(t0: &mut C, t1: &mut C, t0_len: &mut usize, t1_len: &mut usize, a: u64, b: u64, c: u64, d: u64) {
+    let (t0, t1) = (t0.as_mut_slice(), t1.as_mut_slice());
     let max_len = (*t0_len).max(*t1_len);
     count!(APPLY_T_LIMBS += max_len as u64);
-    // Single up-front bound; see `apply_matrix_xy`. With `max_len < T` known, the
-    // body `[i]` (i < max_len), the carry write `[max_len]`, and the length scan
-    // (`max_len + 1 <= T`) are all provably in-bounds, collapsing the per-limb
-    // checks into this one branch. The cofactor magnitude is bounded by the
-    // modulus with `T = N + 8` limbs of headroom, so `max_len < T` always holds.
-    assert!(max_len < T, "cofactor exceeded T limbs");
+    // Single up-front bound; see `apply_matrix_xy`. With `max_len` known to be
+    // within both buffers, the body `[i]` (i < max_len), the carry write
+    // `[max_len]`, and the length scan (`max_len + 1` limbs) are all provably
+    // in-bounds, collapsing the per-limb checks into this one branch. The
+    // cofactor magnitude is bounded by the modulus with 8 limbs of headroom,
+    // so the bound always holds.
+    assert!(max_len < t0.len() && t0.len() == t1.len(), "cofactor exceeded the cofactor buffer");
     let (a, b, c, d) = (a as u128, b as u128, c as u128, d as u128);
 
     let mut c0: u128 = 0;
@@ -557,7 +677,9 @@ fn apply_matrix_t(t0: &mut [u64; T], t1: &mut [u64; T], t0_len: &mut usize, t1_l
 }
 
 /// `t0 += q · t1`, where `q` is up to `N` limbs (the exact Euclidean quotient).
-fn t_add_qmul(t0: &mut [u64; T], t0_len: &mut usize, q: &[u64; N], t1: &[u64; T], t1_len: usize) {
+fn t_add_qmul<C: LimbArray>(t0: &mut C, t0_len: &mut usize, q: &[u64], t1: &C, t1_len: usize) {
+    let (t0, t1) = (t0.as_mut_slice(), t1.as_slice());
+    let cap = t0.len();
     for (i, &qi) in q.iter().enumerate() {
         if qi == 0 {
             continue;
@@ -566,7 +688,7 @@ fn t_add_qmul(t0: &mut [u64; T], t0_len: &mut usize, q: &[u64; N], t1: &[u64; T]
         let mut carry: u64 = 0;
         for (j, &t1j) in t1.iter().enumerate().take(t1_len) {
             let k = i + j;
-            if k >= T {
+            if k >= cap {
                 debug_assert_eq!(carry, 0, "t_add_qmul: truncated nonzero limb");
                 break;
             }
@@ -575,7 +697,7 @@ fn t_add_qmul(t0: &mut [u64; T], t0_len: &mut usize, q: &[u64; N], t1: &[u64; T]
             carry = (prod >> 64) as u64;
         }
         let mut k = i + t1_len;
-        while carry > 0 && k < T {
+        while carry > 0 && k < cap {
             let (s, c) = t0[k].overflowing_add(carry);
             t0[k] = s;
             carry = c as u64;
@@ -587,14 +709,16 @@ fn t_add_qmul(t0: &mut [u64; T], t0_len: &mut usize, q: &[u64; N], t1: &[u64; T]
 }
 
 /// `out += w · t` (multi-limb unsigned), used by the single-limb tail.
-fn add_mul_word(out: &mut [u64; T], out_len: &mut usize, w: u64, t: &[u64; T], t_len: usize) {
+fn add_mul_word<C: LimbArray>(out: &mut C, out_len: &mut usize, w: u64, t: &C, t_len: usize) {
+    let (out, t) = (out.as_mut_slice(), t.as_slice());
+    let cap = out.len();
     if w != 0 {
         let w = w as u128;
         let mut carry: u64 = 0;
         for j in 0..t_len {
-            // `j < t_len <= T` always, but the bound also lets the compiler clamp
-            // the trip count and skip the per-limb bounds check.
-            if j >= T {
+            // `j < t_len <= cap` always, but the bound also lets the compiler
+            // clamp the trip count and skip the per-limb bounds check.
+            if j >= cap {
                 break;
             }
             let prod = w.wrapping_mul(t[j] as u128).wrapping_add(out[j] as u128).wrapping_add(carry as u128);
@@ -602,7 +726,7 @@ fn add_mul_word(out: &mut [u64; T], out_len: &mut usize, w: u64, t: &[u64; T], t
             carry = (prod >> 64) as u64;
         }
         let mut k = t_len;
-        while carry > 0 && k < T {
+        while carry > 0 && k < cap {
             let (s, c) = out[k].overflowing_add(carry);
             out[k] = s;
             carry = c as u64;
@@ -614,48 +738,51 @@ fn add_mul_word(out: &mut [u64; T], out_len: &mut usize, w: u64, t: &[u64; T], t
 }
 
 /// `(q, r) = (x / y, x % y)`. Fast path for a single-limb divisor (the common
-/// case once Lehmer has shrunk `y`); otherwise [`Uint3072::div_rem`].
-fn div_rem_step(x: &[u64; N], y: &[u64; N]) -> ([u64; N], [u64; N]) {
-    if y[1..N].iter().all(|&w| w == 0) {
-        let (q, r0) = div_n_by_1(x, y[0]);
-        let mut r_arr = [0u64; N];
-        r_arr[0] = r0;
-        return (q, r_arr);
+/// case once Lehmer has shrunk `y`); otherwise the uint type's own
+/// [`LehmerOps::div_rem`].
+fn div_rem_step<U: LehmerOps>(x: &U::Limbs, y: &U::Limbs) -> (U::Limbs, U::Limbs) {
+    if y.as_slice()[1..].iter().all(|&w| w == 0) {
+        let (q, r0) = div_n_by_1(x, y.as_slice()[0]);
+        return (q, from_word(r0));
     }
-    let (q, r) = Uint3072(*x).div_rem(Uint3072(*y));
-    (q.0, r.0)
+    let (q, r) = U::from_limbs(*x).div_rem(U::from_limbs(*y));
+    (q.into_limbs(), r.into_limbs())
 }
 
 /// `(q, r) = (x / d, x % d)` for a nonzero single-limb divisor `d` (the common
-/// case once Lehmer has collapsed `y`). The divisor is constant across all `N`
+/// case once Lehmer has collapsed `y`). The divisor is constant across all
 /// limbs, so a reciprocal is computed once and each limb costs two multiplies
 /// instead of a hardware divide. Precomputed-reciprocal division
 /// (Moller-Granlund, 2011).
-fn div_n_by_1(x: &[u64; N], d: u64) -> ([u64; N], u64) {
+fn div_n_by_1<A: LimbArray>(x: &A, d: u64) -> (A, u64) {
     debug_assert!(d != 0);
-    let mut q = [0u64; N];
+    let x = x.as_slice();
+    let n = x.len();
+    let mut q = A::ZERO;
+    let qs = q.as_mut_slice();
     let s = d.leading_zeros();
-    if s == 0 {
+    let r = if s == 0 {
         // `d` already has its top bit set: no normalization shift needed.
         let v = invert_limb(d);
         let mut r: u64 = 0;
-        for i in (0..N).rev() {
-            (q[i], r) = div_2by1_preinv(r, x[i], d, v);
+        for i in (0..n).rev() {
+            (qs[i], r) = div_2by1_preinv(r, x[i], d, v);
         }
-        (q, r)
+        r
     } else {
         // Normalize: divide `x << s` by `d << s` (same quotient); the bits shifted
         // off the top of `x` seed the running remainder, and `x % d = r >> s`.
         let d_norm = d << s;
         let v = invert_limb(d_norm);
-        let mut r = x[N - 1] >> (64 - s);
-        for i in (0..N).rev() {
+        let mut r = x[n - 1] >> (64 - s);
+        for i in (0..n).rev() {
             let lo = if i == 0 { 0 } else { x[i - 1] };
             let cur = (x[i] << s) | (lo >> (64 - s));
-            (q[i], r) = div_2by1_preinv(r, cur, d_norm, v);
+            (qs[i], r) = div_2by1_preinv(r, cur, d_norm, v);
         }
-        (q, r >> s)
-    }
+        r >> s
+    };
+    (q, r)
 }
 
 /// Reciprocal of a normalized 64-bit divisor `d` (top bit set):
@@ -769,20 +896,21 @@ fn gcd_ext_u64(mut x: u64, mut y: u64) -> (u64, i64, i64) {
     (x, a as i64, b as i64)
 }
 
-/// Reduce a cofactor (`<= N` significant limbs) into `[0, m)`. The cofactor is
-/// bounded by `m` at loop exit, so a few subtractions suffice; the `div_rem`
-/// branch is a defensive fallback.
-fn reduce_mod(value: &[u64; T], m: &[u64; N]) -> [u64; N] {
-    debug_assert!(value[N..T].iter().all(|&w| w == 0), "cofactor exceeded N limbs");
-    let mut out = [0u64; N];
-    out.copy_from_slice(&value[..N]);
+/// Reduce a cofactor (with at most the modulus' significant limbs) into
+/// `[0, m)`. The cofactor is bounded by `m` at loop exit, so a few
+/// subtractions suffice; the `div_rem` branch is a defensive fallback.
+fn reduce_mod<U: LehmerOps>(value: &U::Cofactor, m: &U::Limbs) -> U::Limbs {
+    let n = U::Limbs::LEN;
+    debug_assert!(value.as_slice()[n..].iter().all(|&w| w == 0), "cofactor exceeded the modulus width");
+    let mut out = U::Limbs::ZERO;
+    out.as_mut_slice().copy_from_slice(&value.as_slice()[..n]);
     for _ in 0..8 {
-        if cmp_n(&out, m).is_lt() {
+        if cmp_n(out.as_slice(), m.as_slice()).is_lt() {
             return out;
         }
         out = sub_n(&out, m);
     }
-    (Uint3072(out) % Uint3072(*m)).0
+    U::from_limbs(out).div_rem(U::from_limbs(*m)).1.into_limbs()
 }
 
 /// Top 128-bit prefix of `x` and of `y`, both shifted left by the same amount so
@@ -791,7 +919,7 @@ fn reduce_mod(value: &[u64; T], m: &[u64; N]) -> [u64; N] {
 /// prefix is naturally the smaller. Requires `x` the larger operand and
 /// `x_len >= 2`.
 #[inline]
-fn highest_two_words_normalized(x: &[u64; N], y: &[u64; N], x_len: usize) -> (u128, u128) {
+fn highest_two_words_normalized(x: &[u64], y: &[u64], x_len: usize) -> (u128, u128) {
     debug_assert!(x_len >= 2);
     let i = x_len - 1;
     let lz = x[i].leading_zeros();
@@ -807,58 +935,53 @@ fn highest_two_words_normalized(x: &[u64; N], y: &[u64; N], x_len: usize) -> (u1
     (combine(x[i], x[i - 1], x_lo), combine(y[i], y[i - 1], y_lo))
 }
 
+/// A limb buffer holding the single word `w`.
 #[inline]
-fn is_zero(x: &[u64; N]) -> bool {
+fn from_word<A: LimbArray>(w: u64) -> A {
+    let mut a = A::ZERO;
+    a.as_mut_slice()[0] = w;
+    a
+}
+
+#[inline]
+fn is_zero(x: &[u64]) -> bool {
     x.iter().all(|&w| w == 0)
 }
 
 #[inline]
-fn top_len(x: &[u64; N]) -> usize {
-    for i in (0..N).rev() {
-        if x[i] != 0 {
-            return i + 1;
-        }
-    }
-    0
+fn top_len(x: &[u64]) -> usize {
+    x.iter().rposition(|&w| w != 0).map_or(0, |i| i + 1)
 }
 
 /// Significant length of a cofactor buffer; 0 maps to 1 by convention.
 #[inline]
-fn top_len_t(x: &[u64; T]) -> usize {
-    for i in (0..T).rev() {
-        if x[i] != 0 {
-            return i + 1;
-        }
-    }
-    1
+fn top_len_t(x: &[u64]) -> usize {
+    x.iter().rposition(|&w| w != 0).map_or(1, |i| i + 1)
 }
 
 #[inline]
-fn sub_n(a: &[u64; N], b: &[u64; N]) -> [u64; N] {
-    let mut out = [0u64; N];
+fn sub_n<A: LimbArray>(a: &A, b: &A) -> A {
+    let mut out = A::ZERO;
+    let (a, b, o) = (a.as_slice(), b.as_slice(), out.as_mut_slice());
     let mut borrow = 0u64;
-    for i in 0..N {
+    for i in 0..o.len() {
         let (d1, b1) = a[i].overflowing_sub(b[i]);
         let (d2, b2) = d1.overflowing_sub(borrow);
-        out[i] = d2;
+        o[i] = d2;
         borrow = (b1 | b2) as u64;
     }
     out
 }
 
+/// Full-width limb compare of two equal-length buffers.
 #[inline]
-fn cmp_n(a: &[u64; N], b: &[u64; N]) -> Ordering {
-    for i in (0..N).rev() {
-        match a[i].cmp(&b[i]) {
-            Ordering::Equal => continue,
-            other => return other,
-        }
-    }
-    Ordering::Equal
+fn cmp_n(a: &[u64], b: &[u64]) -> Ordering {
+    debug_assert_eq!(a.len(), b.len());
+    cmp_prefix(a, b, a.len())
 }
 
 #[inline]
-fn cmp_prefix(a: &[u64; N], b: &[u64; N], n: usize) -> Ordering {
+fn cmp_prefix(a: &[u64], b: &[u64], n: usize) -> Ordering {
     for i in (0..n).rev() {
         match a[i].cmp(&b[i]) {
             Ordering::Equal => continue,
@@ -877,6 +1000,8 @@ mod tests {
         rand_core::{RngCore, SeedableRng},
     };
 
+    const N: usize = 48;
+
     // MuHash prime: 2^3072 - 1103717.
     const MUHASH_PRIME: Uint3072 = {
         let mut max = Uint3072::MAX;
@@ -886,21 +1011,22 @@ mod tests {
 
     fn lehmer_inv(value: [u64; N], modulus: [u64; N]) -> Option<[u64; N]> {
         let mut out = [0u64; N];
-        invert(value, modulus, &mut out).then_some(out)
+        invert::<Uint3072>(value, modulus, &mut out).then_some(out)
     }
 
-    // Malachite reference oracle. The generic `Uint::mod_inverse` was removed, so this calls
-    // malachite's `Natural::mod_inverse` directly (malachite is a dev-dependency, available here).
-    fn malachite_inv(value: [u64; N], modulus: [u64; N]) -> Option<[u64; N]> {
+    // Malachite reference oracle over any LehmerOps type. The generic `Uint::mod_inverse` was
+    // removed, so this calls malachite's `Natural::mod_inverse` directly (malachite is a
+    // dev-dependency, available here). Requires `value < modulus`, like `invert`.
+    fn malachite_inv<U: LehmerOps>(value: U, modulus: U) -> Option<U> {
         use malachite_base::num::arithmetic::traits::ModInverse;
         use malachite_nz::natural::Natural;
-        let x = Natural::from_limbs_asc(&value);
-        let m = Natural::from_limbs_asc(&modulus);
+        let x = Natural::from_limbs_asc(value.into_limbs().as_slice());
+        let m = Natural::from_limbs_asc(modulus.into_limbs().as_slice());
         x.mod_inverse(m).map(|inv| {
-            let mut out = [0u64; N];
+            let mut out = U::Limbs::ZERO;
             let limbs = inv.into_limbs_asc();
-            out[..limbs.len()].copy_from_slice(&limbs);
-            out
+            out.as_mut_slice()[..limbs.len()].copy_from_slice(&limbs);
+            U::from_limbs(out)
         })
     }
 
@@ -935,9 +1061,9 @@ mod tests {
             if v.is_zero() {
                 continue;
             }
-            let expected = malachite_inv(v.0, MUHASH_PRIME.0).unwrap();
+            let expected = malachite_inv(v, MUHASH_PRIME).unwrap();
             let got = lehmer_inv(v.0, MUHASH_PRIME.0).unwrap();
-            assert_eq!(got.as_slice(), expected.as_slice(), "v={v}");
+            assert_eq!(got.as_slice(), expected.0.as_slice(), "v={v}");
         }
     }
 
@@ -1112,7 +1238,7 @@ mod tests {
             0x803912aebf95eede,
         ];
         let got = lehmer_inv(v, MUHASH_PRIME.0).unwrap();
-        assert_eq!(got.as_slice(), malachite_inv(v, MUHASH_PRIME.0).unwrap().as_slice());
+        assert_eq!(got.as_slice(), malachite_inv(Uint3072(v), MUHASH_PRIME).unwrap().0.as_slice());
         assert_eq!(mulmod(Uint3072(v), Uint3072(got), MUHASH_PRIME), Uint3072::from_u64(1));
     }
 
@@ -1123,5 +1249,101 @@ mod tests {
         assert!(hgcd2(1, 0, 5, 0).is_none()); // ah < 2
         assert!(hgcd2(5, 0, 0, 9).is_none()); // bh < 2
         assert!(hgcd2(u64::MAX, 0, u64::MAX >> 1, 0).is_some()); // well-separated -> confirms a quotient
+    }
+
+    /// Extended-Euclid reference for u64 moduli, in i128 (all magnitudes fit).
+    fn egcd_inv_u64(v: u64, m: u64) -> Option<u64> {
+        let (mut old_r, mut r) = (m as i128, v as i128);
+        let (mut old_t, mut t) = (0i128, 1i128);
+        while r != 0 {
+            let q = old_r / r;
+            (old_r, r) = (r, old_r - q * r);
+            (old_t, t) = (t, old_t - q * t);
+        }
+        (old_r == 1).then(|| old_t.rem_euclid(m as i128) as u64)
+    }
+
+    #[test]
+    fn u64_exhaustive_small_range() {
+        // Every (value, modulus) with modulus in [2, 512) and value in [0, 4m):
+        // agreement with the extended-Euclid oracle, covering gcd != 1 -> None
+        // and the value-reduction path.
+        for m in 2u64..512 {
+            for v in 0..m * 4 {
+                let got = v.lehmer_invert(m);
+                assert_eq!(got, egcd_inv_u64(v % m, m), "v={v} m={m}");
+                if let Some(inv) = got {
+                    assert_eq!((inv as u128 * (v % m) as u128 % m as u128) as u64, 1, "v={v} m={m}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn u64_random_matches_oracle() {
+        let mut rng = ChaCha8Rng::seed_from_u64(17);
+        for _ in 0..200_000 {
+            let m = rng.next_u64().max(2);
+            let v = rng.next_u64();
+            assert_eq!(v.lehmer_invert(m), egcd_inv_u64(v % m, m), "v={v} m={m}");
+        }
+    }
+
+    #[test]
+    fn u128_random_matches_malachite() {
+        // Primitive u128 impl vs malachite, mixing full-width and single-limb
+        // operands to cross the multi-limb/single-limb phase boundary.
+        let mut rng = ChaCha8Rng::seed_from_u64(23);
+        let mut sample = |wide: bool| {
+            if wide { ((rng.next_u64() as u128) << 64) | rng.next_u64() as u128 } else { rng.next_u64() as u128 }
+        };
+        for i in 0..50_000u32 {
+            let m = sample(i % 4 != 0).max(2);
+            let v = sample(i % 3 != 0);
+            let got = v.lehmer_invert(m);
+            assert_eq!(got, malachite_inv(v % m, m), "v={v} m={m}");
+        }
+    }
+
+    #[test]
+    fn uint_sizes_match_malachite() {
+        // The construct_uint! impls at the other production widths, vs malachite.
+        use crate::{Uint192, Uint256, Uint320};
+        let mut rng = ChaCha8Rng::seed_from_u64(29);
+        macro_rules! check {
+            ($ty:ty, $iters:expr) => {{
+                let mut buf = [0u8; <$ty>::BYTES];
+                for _ in 0..$iters {
+                    rng.fill_bytes(&mut buf);
+                    let m = <$ty>::from_le_bytes(buf);
+                    if m < 2u64 {
+                        continue;
+                    }
+                    rng.fill_bytes(&mut buf);
+                    let v = <$ty>::from_le_bytes(buf);
+                    assert_eq!(v.lehmer_invert(m), malachite_inv(v % m, m), "v={v} m={m}");
+                }
+            }};
+        }
+        check!(Uint192, 3000);
+        check!(Uint256, 3000);
+        check!(Uint320, 3000);
+    }
+
+    #[test]
+    fn lehmer_invert_edge_semantics() {
+        // Totality of the trait method: degenerate moduli, unreduced values,
+        // non-coprime pairs.
+        assert_eq!(0u64.lehmer_invert(0), None);
+        assert_eq!(5u64.lehmer_invert(0), None);
+        assert_eq!(5u64.lehmer_invert(1), None);
+        assert_eq!(1u64.lehmer_invert(2), Some(1));
+        assert_eq!(7u64.lehmer_invert(7), None); // value == modulus reduces to 0
+        assert_eq!(9u64.lehmer_invert(7), 2u64.lehmer_invert(7)); // reduction path
+        assert_eq!(4u64.lehmer_invert(6), None); // gcd = 2
+        assert_eq!(3u64.lehmer_invert(8), Some(3)); // even modulus, coprime value
+        assert_eq!(3u128.lehmer_invert(8), Some(3));
+        assert_eq!(Uint3072::from_u64(5).lehmer_invert(Uint3072::from_u64(1)), None);
+        assert_eq!(Uint3072::from_u64(3).lehmer_invert(Uint3072::from_u64(8)), Some(Uint3072::from_u64(3)));
     }
 }

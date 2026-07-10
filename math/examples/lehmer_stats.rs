@@ -38,7 +38,7 @@ fn main() {
         if v.is_zero() {
             continue;
         }
-        assert!(invert(v.0, PRIME.0, &mut out));
+        assert!(invert::<Uint3072>(v.0, PRIME.0, &mut out));
         done += 1;
     }
 

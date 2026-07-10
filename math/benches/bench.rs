@@ -132,7 +132,7 @@ fn bench_uint3072(c: &mut Criterion) {
             for &a in &uint3072_one[..uint3072_one.len() / 4] {
                 // generic mod_inverse was removed; inverse the reduced value via lehmer::invert
                 let mut out = [0u64; 48];
-                black_box(kaspa_math::lehmer::invert((a % PRIME).0, PRIME.0, &mut out));
+                black_box(kaspa_math::lehmer::invert::<Uint3072>((a % PRIME).0, PRIME.0, &mut out));
             }
         });
     });

@@ -165,7 +165,7 @@ impl U3072 {
         }
         let inv = {
             let mut out = [0u64; LIMBS];
-            let invertible = kaspa_math::lehmer::invert(a.limbs, Self::UINT_PRIME.0, &mut out);
+            let invertible = kaspa_math::lehmer::invert::<kaspa_math::Uint3072>(a.limbs, Self::UINT_PRIME.0, &mut out);
             assert!(invertible, "Cannot fail, 0 < a < prime");
             Self { limbs: out }
         };
