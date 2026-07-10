@@ -98,7 +98,7 @@ fuzz_target!(|data: &[u8]| {
     // as u128
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
-        assert_eq!(lib.as_u128(), native as u128, "native: {native}");
+        assert_eq!(lib.as_u128(), native, "native: {native}");
     }
     // as f64
     {

@@ -45,6 +45,9 @@ malachite-nz.workspace = true
 # (matrices, divides, apply-limb iterations) into atomics. Off by default; has
 # zero effect on the production path.
 lehmer-instrument = []
+# Promote the `lehmer` invariant checks from `debug_assert!` to always-on
+# `assert!`, independent of `debug-assertions`.
+strict-asserts = []
 
 [[bench]]
 name = "bench"

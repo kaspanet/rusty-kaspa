@@ -68,6 +68,26 @@ macro_rules! count {
     }};
 }
 
+// Invariant checks: `debug_assert!` by default (free in release), promoted to
+// always-on `assert!` under the `strict-asserts` feature so optimized fuzz and
+// test builds verify every invariant regardless of `debug-assertions`.
+#[cfg(not(feature = "strict-asserts"))]
+macro_rules! strict_assert {
+    ($($arg:tt)*) => { debug_assert!($($arg)*) };
+}
+#[cfg(feature = "strict-asserts")]
+macro_rules! strict_assert {
+    ($($arg:tt)*) => { assert!($($arg)*) };
+}
+#[cfg(not(feature = "strict-asserts"))]
+macro_rules! strict_assert_eq {
+    ($($arg:tt)*) => { debug_assert_eq!($($arg)*) };
+}
+#[cfg(feature = "strict-asserts")]
+macro_rules! strict_assert_eq {
+    ($($arg:tt)*) => { assert_eq!($($arg)*) };
+}
+
 /// Fixed-size little-endian limb buffer, blanket-implemented for every
 /// `[u64; N]`. The inversion's working storage; keeping the concrete array
 /// type generic (rather than passing slices around) monomorphizes the limb
@@ -203,6 +223,7 @@ pub fn invert<U: LehmerOps>(value: U::Limbs, modulus: U::Limbs, out: &mut U::Lim
         core::hint::cold_path();
         return false;
     }
+    strict_assert!(cmp_n(value.as_slice(), modulus.as_slice()).is_lt(), "invert requires value < modulus");
 
     // Euclidean state on (x, y) with x >= y, plus the cofactor of `value`.
     // Invariant: x ≡ -t0·value (mod m) and y ≡ t1·value (mod m) when
@@ -296,6 +317,10 @@ pub fn invert<U: LehmerOps>(value: U::Limbs, modulus: U::Limbs, out: &mut U::Lim
     if !swapped && !is_zero(inv.as_slice()) {
         inv = sub_n(&modulus, &inv);
     }
+    strict_assert!(
+        !is_zero(inv.as_slice()) && cmp_n(inv.as_slice(), modulus.as_slice()).is_lt(),
+        "invert: result outside (0, modulus)"
+    );
     *out = inv;
     true
 }
@@ -491,6 +516,12 @@ fn hgcd2(mut ah: u64, mut al: u64, mut bh: u64, mut bl: u64) -> Option<(u64, u64
         }
     }
 
+    // Every entry stays below 2^63 (the half-limb refinement's exit bound, which
+    // the `apply_matrix_*` overflow analyses rely on), and the column updates
+    // preserve the unit determinant of the elementary step matrices.
+    strict_assert!(m00 < 1 << 63 && m01 < 1 << 63 && m10 < 1 << 63 && m11 < 1 << 63, "hgcd2: matrix entry reached 2^63");
+    strict_assert_eq!((m00 as i128) * (m11 as i128) - (m01 as i128) * (m10 as i128), 1, "hgcd2: determinant is not 1");
+
     // Remap M to this module's apply convention:
     // x' = m11·x - m01·y, y' = m00·y - m10·x.
     Some((m11, m01, m10, m00))
@@ -504,9 +535,9 @@ fn gcd_div(n: u128, d: u128) -> (u64, u128) {
     count!(DIVIDES += 1);
     let (n1, n0) = ((n >> 64) as u64, n as u64);
     let (mut d1, mut d0) = ((d >> 64) as u64, d as u64);
-    debug_assert!(d1 != 0);
+    strict_assert!(d1 != 0);
     let (q, r) = (n1 / d1, n1 % d1);
-    if q > d1 {
+    let (q, rem) = if q > d1 {
         // Non-normalized divisor: when `d1`'s top word is small, the single-word
         // estimate `q = n1/d1` can exceed `d1`. Rare but genuinely reachable (a
         // b-step can drop the divisor below 2^32 before an a-step divides by it),
@@ -548,7 +579,10 @@ fn gcd_div(n: u128, d: u128) -> (u64, u128) {
         let (rr0, br) = n0.overflowing_sub(t0);
         let rr1 = r.wrapping_sub(t1).wrapping_sub(br as u64);
         (q, ((rr1 as u128) << 64) | rr0 as u128)
-    }
+    };
+    // Exact reconstruction: cannot wrap for a correct result since q·d + r = n < 2^128.
+    strict_assert!(rem < d && (q as u128).wrapping_mul(d).wrapping_add(rem) == n, "gcd_div: bad quotient or remainder");
+    (q, rem)
 }
 
 /// Multiply-accumulate: `acc + m·w + carry`, returning `(low 64 bits, high 64
@@ -619,8 +653,8 @@ fn apply_matrix_xy<A: LimbArray>(x: &mut A, y: &mut A, len: usize, a: u64, b: u6
     }
     // Non-negative result fitting in `len` limbs: the positive carry-out exactly
     // cancels the negative borrow-out (both name the same high limb, which is 0).
-    debug_assert_eq!(carry_ax, borrow_x, "apply_matrix_xy: x went negative or overflowed len limbs");
-    debug_assert_eq!(carry_dy, borrow_y, "apply_matrix_xy: y went negative or overflowed len limbs");
+    strict_assert_eq!(carry_ax, borrow_x, "apply_matrix_xy: x went negative or overflowed len limbs");
+    strict_assert_eq!(carry_dy, borrow_y, "apply_matrix_xy: y went negative or overflowed len limbs");
 
     let nlx = x[..len].iter().rposition(|&w| w != 0).map_or(0, |i| i + 1);
     let nly = y[..len].iter().rposition(|&w| w != 0).map_or(0, |i| i + 1);
@@ -667,6 +701,7 @@ fn apply_matrix_t<C: LimbArray>(t0: &mut C, t1: &mut C, t0_len: &mut usize, t1_l
         c1 = n1 >> 64;
     }
     // Carry-out (provably < 2^64); also clears any stale cell at `max_len`.
+    strict_assert!(c0 >> 64 == 0 && c1 >> 64 == 0, "apply_matrix_t: carry-out exceeded one limb");
     t0[max_len] = c0 as u64;
     t1[max_len] = c1 as u64;
 
@@ -689,7 +724,7 @@ fn t_add_qmul<C: LimbArray>(t0: &mut C, t0_len: &mut usize, q: &[u64], t1: &C, t
         for (j, &t1j) in t1.iter().enumerate().take(t1_len) {
             let k = i + j;
             if k >= cap {
-                debug_assert_eq!(carry, 0, "t_add_qmul: truncated nonzero limb");
+                strict_assert_eq!(carry, 0, "t_add_qmul: truncated nonzero limb");
                 break;
             }
             let prod = qi.wrapping_mul(t1j as u128).wrapping_add(t0[k] as u128).wrapping_add(carry as u128);
@@ -703,7 +738,7 @@ fn t_add_qmul<C: LimbArray>(t0: &mut C, t0_len: &mut usize, q: &[u64], t1: &C, t
             carry = c as u64;
             k += 1;
         }
-        debug_assert!(carry == 0, "t_add_qmul: carry lost off the top");
+        strict_assert!(carry == 0, "t_add_qmul: carry lost off the top");
     }
     *t0_len = top_len_t(t0);
 }
@@ -732,7 +767,7 @@ fn add_mul_word<C: LimbArray>(out: &mut C, out_len: &mut usize, w: u64, t: &C, t
             carry = c as u64;
             k += 1;
         }
-        debug_assert!(carry == 0, "add_mul_word: carry lost off the top");
+        strict_assert!(carry == 0, "add_mul_word: carry lost off the top");
     }
     *out_len = top_len_t(out);
 }
@@ -755,7 +790,7 @@ fn div_rem_step<U: LehmerOps>(x: &U::Limbs, y: &U::Limbs) -> (U::Limbs, U::Limbs
 /// instead of a hardware divide. Precomputed-reciprocal division
 /// (Moller-Granlund, 2011).
 fn div_n_by_1<A: LimbArray>(x: &A, d: u64) -> (A, u64) {
-    debug_assert!(d != 0);
+    strict_assert!(d != 0);
     let x = x.as_slice();
     let n = x.len();
     let mut q = A::ZERO;
@@ -782,6 +817,7 @@ fn div_n_by_1<A: LimbArray>(x: &A, d: u64) -> (A, u64) {
         }
         r >> s
     };
+    strict_assert!(r < d, "div_n_by_1: remainder not below the divisor");
     (q, r)
 }
 
@@ -792,7 +828,7 @@ fn div_n_by_1<A: LimbArray>(x: &A, d: u64) -> (A, u64) {
 /// call (amortized over all `N` limbs), so it is off the per-limb hot path.
 #[inline]
 const fn invert_limb(d: u64) -> u64 {
-    debug_assert!(d >> 63 == 1, "invert_limb requires a normalized divisor");
+    strict_assert!(d >> 63 == 1, "invert_limb requires a normalized divisor");
     // v = floor((2^128 - 1) / d) - 2^64 = floor(((!d)·2^64 + !0) / d): subtracting
     // 2^64·d from the numerator drops the quotient by exactly 2^64, and that
     // numerator's high word `!d` is `< d` for a normalized `d`, so the quotient
@@ -809,7 +845,7 @@ const fn invert_limb(d: u64) -> u64 {
 /// with `overflow-checks = true`).
 #[inline(always)]
 fn div_2by1_preinv(nh: u64, nl: u64, d: u64, di: u64) -> (u64, u64) {
-    debug_assert!(d >> 63 == 1 && nh < d);
+    strict_assert!(d >> 63 == 1 && nh < d);
     // (qh:ql) = nh·di + (nh + 1)·2^64 + nl
     let prod = (nh as u128).wrapping_mul(di as u128);
     let (mut qh, ql) = ((prod >> 64) as u64, prod as u64);
@@ -827,6 +863,7 @@ fn div_2by1_preinv(nh: u64, nl: u64, d: u64, di: u64) -> (u64, u64) {
         r = r.wrapping_sub(d);
         qh = qh.wrapping_add(1);
     }
+    strict_assert!(r < d, "div_2by1_preinv: remainder not below the divisor");
     (qh, r)
 }
 
@@ -840,16 +877,16 @@ fn div_2by1_preinv(nh: u64, nl: u64, d: u64, di: u64) -> (u64, u64) {
 /// fine.
 #[inline]
 const fn div_2by1(hi: u64, lo: u64, d: u64) -> (u64, u64) {
-    debug_assert!(d != 0);
-    debug_assert!(hi < d, "div_2by1 quotient would overflow u64");
+    strict_assert!(d != 0);
+    strict_assert!(hi < d, "div_2by1 quotient would overflow u64");
 
     let s = d.leading_zeros();
-    let d = if s == 0 { d } else { d << s };
+    let dn = if s == 0 { d } else { d << s };
     let un32 = if s == 0 { hi } else { (hi << s) | (lo >> (64 - s)) };
     let un10 = if s == 0 { lo } else { lo << s };
 
-    let vn1 = d >> 32;
-    let vn0 = d & 0xFFFF_FFFF;
+    let vn1 = dn >> 32;
+    let vn0 = dn & 0xFFFF_FFFF;
     let un1 = un10 >> 32;
     let un0 = un10 & 0xFFFF_FFFF;
 
@@ -863,7 +900,7 @@ const fn div_2by1(hi: u64, lo: u64, d: u64) -> (u64, u64) {
         }
     }
 
-    let un21 = (un32 << 32).wrapping_add(un1).wrapping_sub(q1.wrapping_mul(d));
+    let un21 = (un32 << 32).wrapping_add(un1).wrapping_sub(q1.wrapping_mul(dn));
     let mut q0 = un21 / vn1;
     let mut rhat = un21 - q0 * vn1;
     while q0 >= (1u64 << 32) || q0 * vn0 > (rhat << 32) | un0 {
@@ -874,13 +911,19 @@ const fn div_2by1(hi: u64, lo: u64, d: u64) -> (u64, u64) {
         }
     }
 
-    let r = (un21 << 32).wrapping_add(un0).wrapping_sub(q0.wrapping_mul(d)) >> s;
-    ((q1 << 32) | q0, r)
+    let r = (un21 << 32).wrapping_add(un0).wrapping_sub(q0.wrapping_mul(dn)) >> s;
+    let q = (q1 << 32) | q0;
+    strict_assert!(
+        r < d && (q as u128).wrapping_mul(d as u128).wrapping_add(r as u128) == ((hi as u128) << 64) | lo as u128,
+        "div_2by1: bad quotient or remainder"
+    );
+    (q, r)
 }
 
 /// Extended Euclidean GCD of two `u64`s: `(gcd, cx, cy)` with `cx·x + cy·y = g`.
 /// Called once per inversion, so `i128` intermediates are fine.
 fn gcd_ext_u64(mut x: u64, mut y: u64) -> (u64, i64, i64) {
+    let (x0, y0) = (x as i128, y as i128);
     let (mut a, mut b, mut c, mut d) = (1i128, 0i128, 0i128, 1i128);
     while y != 0 {
         let q = (x / y) as i128;
@@ -893,6 +936,10 @@ fn gcd_ext_u64(mut x: u64, mut y: u64) -> (u64, i64, i64) {
         x = y;
         y = r;
     }
+    // Cofactors are bounded by the inputs (so the i64 narrowing is lossless) and
+    // satisfy the Bezout identity for the returned gcd.
+    strict_assert!(i64::try_from(a).is_ok() && i64::try_from(b).is_ok(), "gcd_ext_u64: cofactor overflowed i64");
+    strict_assert_eq!(a.wrapping_mul(x0).wrapping_add(b.wrapping_mul(y0)), x as i128, "gcd_ext_u64: Bezout identity failed");
     (x, a as i64, b as i64)
 }
 
@@ -901,7 +948,7 @@ fn gcd_ext_u64(mut x: u64, mut y: u64) -> (u64, i64, i64) {
 /// subtractions suffice; the `div_rem` branch is a defensive fallback.
 fn reduce_mod<U: LehmerOps>(value: &U::Cofactor, m: &U::Limbs) -> U::Limbs {
     let n = U::Limbs::LEN;
-    debug_assert!(value.as_slice()[n..].iter().all(|&w| w == 0), "cofactor exceeded the modulus width");
+    strict_assert!(value.as_slice()[n..].iter().all(|&w| w == 0), "cofactor exceeded the modulus width");
     let mut out = U::Limbs::ZERO;
     out.as_mut_slice().copy_from_slice(&value.as_slice()[..n]);
     for _ in 0..8 {
@@ -920,7 +967,7 @@ fn reduce_mod<U: LehmerOps>(value: &U::Cofactor, m: &U::Limbs) -> U::Limbs {
 /// `x_len >= 2`.
 #[inline]
 fn highest_two_words_normalized(x: &[u64], y: &[u64], x_len: usize) -> (u128, u128) {
-    debug_assert!(x_len >= 2);
+    strict_assert!(x_len >= 2);
     let i = x_len - 1;
     let lz = x[i].leading_zeros();
     let lo_idx_ok = i >= 2;
@@ -932,7 +979,9 @@ fn highest_two_words_normalized(x: &[u64], y: &[u64], x_len: usize) -> (u128, u1
     };
     let x_lo = if lo_idx_ok { x[i - 2] } else { 0 };
     let y_lo = if lo_idx_ok { y[i - 2] } else { 0 };
-    (combine(x[i], x[i - 1], x_lo), combine(y[i], y[i - 1], y_lo))
+    let (x_hi, y_hi) = (combine(x[i], x[i - 1], x_lo), combine(y[i], y[i - 1], y_lo));
+    strict_assert!(x_hi >> 127 == 1 && y_hi <= x_hi, "highest_two_words_normalized: prefixes unnormalized or misordered");
+    (x_hi, y_hi)
 }
 
 /// A limb buffer holding the single word `w`.
@@ -976,7 +1025,7 @@ fn sub_n<A: LimbArray>(a: &A, b: &A) -> A {
 /// Full-width limb compare of two equal-length buffers.
 #[inline]
 fn cmp_n(a: &[u64], b: &[u64]) -> Ordering {
-    debug_assert_eq!(a.len(), b.len());
+    strict_assert_eq!(a.len(), b.len());
     cmp_prefix(a, b, a.len())
 }
 

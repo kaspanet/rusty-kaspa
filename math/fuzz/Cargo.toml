@@ -16,6 +16,7 @@ num-integer = "0.1"
 
 [dependencies.kaspa-math]
 path = ".."
+features = ["strict-asserts"]
 
 # Prevent this from interfering with workspaces
 [workspace]
