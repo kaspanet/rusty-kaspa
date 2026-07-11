@@ -18,7 +18,7 @@ kaspa-p2p-mining.workspace = true
 kaspa-utils = { workspace = true, features = ["fd_budget"]}
 kaspa-utils-tower.workspace = true
 kaspa-hashes.workspace = true
-kaspa-muhash.workspace = true
+kaspa-muhash = { workspace = true, features = ["std"] }
 kaspa-seq-commit.workspace = true
 kaspa-smt.workspace = true
 kaspa-connectionmanager.workspace = true

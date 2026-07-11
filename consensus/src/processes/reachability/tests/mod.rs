@@ -14,6 +14,7 @@ use crate::{
         relations::{RelationsStoreExtensions, delete_reachability_relations, init as relations_init},
     },
 };
+use hashbrown::hash_map::Entry::{Occupied, Vacant};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet,
@@ -21,10 +22,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_database::prelude::{DirectWriter, StoreError};
 use kaspa_hashes::Hash;
-use std::collections::{
-    VecDeque,
-    hash_map::Entry::{Occupied, Vacant},
-};
+use std::collections::VecDeque;
 use thiserror::Error;
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+#[cfg(feature = "mem_size")]
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +22,7 @@ pub enum BlockStatus {
     StatusHeaderOnly,
 }
 
+#[cfg(feature = "mem_size")]
 impl MemSizeEstimator for BlockStatus {}
 
 impl BlockStatus {

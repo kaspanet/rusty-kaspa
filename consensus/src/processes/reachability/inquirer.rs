@@ -376,7 +376,7 @@ mod tests {
 
         for block in test.ids().choose_multiple(&mut rand::thread_rng(), test.blocks.len()).into_iter().chain(once(test.genesis)) {
             DagBuilder::new(reachability, relations).delete_block(block.into());
-            hashes_ref.remove(&block.into());
+            hashes_ref.remove::<Hash>(&block.into());
             reachability.validate_intervals(ORIGIN).unwrap();
             validate_relations(relations).unwrap();
             validate_closures(relations, reachability, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
@@ -449,7 +449,7 @@ mod tests {
             test.ids().choose_multiple(&mut rand::thread_rng(), test.blocks.len()).into_iter().chain(once(test.genesis)).enumerate()
         {
             DagBuilder::new(&mut staging_reachability, &mut staging_relations).delete_block(block.into());
-            hashes_ref.remove(&block.into());
+            hashes_ref.remove::<Hash>(&block.into());
             staging_reachability.validate_intervals(ORIGIN).unwrap();
             validate_relations(&staging_relations).unwrap();
             validate_closures(&staging_relations, &staging_reachability, &chain_closure_ref, &dag_closure_ref, &hashes_ref);

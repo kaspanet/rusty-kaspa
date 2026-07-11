@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
 

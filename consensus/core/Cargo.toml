@@ -10,47 +10,96 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-devnet-prealloc = []
-wasm32-sdk = []
-default = []
+default = ["std", "sign", "metrics", "atomic-mass", "workflow", "sighash-sync", "wasm32-sdk"]
+std = [
+    "borsh/std",
+    "faster-hex/std",
+    "futures-util/std",
+    "kaspa-addresses/std",
+    "kaspa-hashes/std",
+    "kaspa-math/std",
+    "kaspa-muhash/std",
+    "kaspa-smt/std",
+    "kaspa-txscript-errors/std",
+    "kaspa-utils/std",
+    "mem_size",
+    "dep:serde-value",
+    "serde/std",
+    "thiserror/std",
+]
+# Heap-size estimation for cache accounting. Pulls in the `mem_size` modules of
+# the hash/util dependencies (which currently require their `std` builds).
+mem_size = [
+    "kaspa-hashes/mem_size",
+    "kaspa-utils/mem_size",
+]
+# Transaction signing helpers. These rely on secp256k1's global context, which
+# requires `std`, so the feature is kept separate from the no_std-friendly core.
+sign = [
+    "std",
+    "dep:secp256k1",
+    "secp256k1/std",
+    "secp256k1/global-context",
+    "secp256k1/rand-std",
+    "secp256k1/serde",
+]
+sighash-sync = ["std", "dep:arc-swap"]
+workflow = ["std", "dep:workflow-serializer"]
+wasm32-sdk = [
+    "std",
+    "kaspa-addresses/wasm32-sdk",
+    "dep:getrandom",
+    "dep:wasm-bindgen",
+    "dep:js-sys",
+    "dep:serde-wasm-bindgen",
+    "dep:workflow-core",
+    "dep:workflow-log",
+    "dep:workflow-wasm",
+]
+# Node processing counters (uses 64-bit atomics, unavailable on some no_std targets).
+metrics = []
+# Use a 64-bit atomic (vs a `Cell`) for the transaction mass field. Required for
+# `Transaction: Sync`; disable on single-threaded targets lacking 64-bit atomics.
+atomic-mass = []
+devnet-prealloc = ["std"]
 
 [dependencies]
-arc-swap.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
 bitflags.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 futures-util.workspace = true
-getrandom.workspace = true
-itertools.workspace = true
-js-sys.workspace = true
+hashbrown.workspace = true
+itertools = { workspace = true, features = ["use_alloc"] }
 kaspa-addresses.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes = { workspace = true, features = ["mem_size"] }
+kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-smt.workspace = true
 kaspa-merkle.workspace = true
 kaspa-muhash.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
-rand.workspace = true
-secp256k1.workspace = true
-serde-value.workspace = true
-serde-wasm-bindgen.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
-wasm-bindgen.workspace = true
-workflow-core.workspace = true
-workflow-log.workspace = true
-workflow-serializer.workspace = true
-workflow-wasm.workspace = true
+
+arc-swap = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+secp256k1 = { workspace = true, optional = true }
+serde-value = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+serde-wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+workflow-core = { workspace = true, optional = true }
+workflow-log = { workspace = true, optional = true }
+workflow-serializer = { workspace = true, optional = true }
+workflow-wasm = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion.workspace = true
 bincode.workspace = true
+serde_json.workspace = true
 serde_yaml = "0.9"
 toml.workspace = true
 wasm-bindgen-test.workspace = true

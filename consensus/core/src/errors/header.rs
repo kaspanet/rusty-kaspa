@@ -10,4 +10,4 @@ pub enum CompressedParentsError {
     NotFullyCompressed,
 }
 
-pub type CompressedParentsResult<T> = std::result::Result<T, CompressedParentsError>;
+pub type CompressedParentsResult<T> = core::result::Result<T, CompressedParentsError>;

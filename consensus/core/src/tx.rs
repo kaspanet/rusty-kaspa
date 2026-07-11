@@ -9,33 +9,34 @@
 mod script_public_key;
 mod serde_impl;
 
-use crate::mass::{
-    ComputeBudget, ContextualMasses, Mass, MassCofactors, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input,
-};
+use crate::mass::{ComputeBudget, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input};
+#[cfg(feature = "std")]
+use crate::mass::{ContextualMasses, Mass, MassCofactors};
 pub use crate::utxo::UtxoEntry;
 use crate::{
     errors::tx::PopulateGenesisCovenantsError,
     hashing,
     subnets::{self, SubnetworkId},
 };
+use alloc::sync::Arc;
+use alloc::vec;
+use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_hashes::Hash;
-use kaspa_utils::hex::ToHex;
-use kaspa_utils::mem_size::MemSizeEstimator;
-use kaspa_utils::serde_bytes_fixed_ref;
-pub use script_public_key::{
-    SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
-};
-use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering::SeqCst;
-use std::{
+use core::{
     fmt::Display,
     ops::Range,
     str::{self},
 };
+use hashbrown::HashSet;
+use kaspa_hashes::Hash;
+use kaspa_utils::hex::ToHex;
+#[cfg(feature = "mem_size")]
+use kaspa_utils::mem_size::MemSizeEstimator;
+use kaspa_utils::serde_bytes_fixed_ref;
+#[cfg(feature = "wasm32-sdk")]
+pub use script_public_key::ScriptPublicKeyT;
+pub use script_public_key::{SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec};
+use serde::{Deserialize, Serialize};
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
@@ -60,7 +61,7 @@ impl TransactionOutpoint {
 }
 
 impl Display for TransactionOutpoint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "({}, {})", self.transaction_id, self.index)
     }
 }
@@ -157,8 +158,8 @@ impl TransactionInput {
     }
 }
 
-impl std::fmt::Debug for TransactionInput {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for TransactionInput {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TransactionInput")
             .field("previous_outpoint", &self.previous_outpoint)
             .field("signature_script", &self.signature_script.to_hex())
@@ -219,33 +220,80 @@ impl GenesisCovenantGroup {
     }
 }
 
+/// Interior-mutable `u64` cell backing the transaction mass field, abstracting
+/// over the atomic and non-atomic representations.
+trait MassCell {
+    fn from_u64(value: u64) -> Self;
+    fn read(&self) -> u64;
+    fn write(&self, value: u64);
+}
+
+#[cfg(feature = "atomic-mass")]
+use core::sync::atomic::{AtomicU64, Ordering::SeqCst};
+#[cfg(feature = "atomic-mass")]
+impl MassCell for AtomicU64 {
+    fn from_u64(value: u64) -> Self {
+        AtomicU64::new(value)
+    }
+    fn read(&self) -> u64 {
+        self.load(SeqCst)
+    }
+    fn write(&self, value: u64) {
+        self.store(value, SeqCst)
+    }
+}
+
+#[cfg(not(feature = "atomic-mass"))]
+use core::cell::Cell;
+#[cfg(not(feature = "atomic-mass"))]
+impl MassCell for Cell<u64> {
+    fn from_u64(value: u64) -> Self {
+        Cell::new(value)
+    }
+    fn read(&self) -> u64 {
+        self.get()
+    }
+    fn write(&self, value: u64) {
+        self.set(value)
+    }
+}
+
+/// Backing storage of the mass field. With the `atomic-mass` feature it is an
+/// `AtomicU64`, keeping [`Transaction`] `Sync` so the mass can be updated through a
+/// shared reference (e.g. from the mempool). Without it (single-threaded targets,
+/// or targets lacking 64-bit atomics) a `Cell` is used instead.
+#[cfg(feature = "atomic-mass")]
+type MassInner = AtomicU64;
+#[cfg(not(feature = "atomic-mass"))]
+type MassInner = Cell<u64>;
+
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct TransactionMass(AtomicU64); // TODO: using atomic as a temp solution for mutating this field through the mempool
+pub struct TransactionMass(MassInner); // TODO: using interior mutability as a temp solution for mutating this field through the mempool
 
 impl Eq for TransactionMass {}
 
 impl PartialEq for TransactionMass {
     fn eq(&self, other: &Self) -> bool {
-        self.0.load(SeqCst) == other.0.load(SeqCst)
+        self.0.read() == other.0.read()
     }
 }
 
 impl Clone for TransactionMass {
     fn clone(&self) -> Self {
-        Self(AtomicU64::new(self.0.load(SeqCst)))
+        Self(MassInner::from_u64(self.0.read()))
     }
 }
 
 impl BorshDeserialize for TransactionMass {
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
         let mass: u64 = borsh::BorshDeserialize::deserialize_reader(reader)?;
-        Ok(Self(AtomicU64::new(mass)))
+        Ok(Self(MassInner::from_u64(mass)))
     }
 }
 
 impl BorshSerialize for TransactionMass {
-    fn serialize<W: std::io::prelude::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        borsh::BorshSerialize::serialize(&self.0.load(SeqCst), writer)
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.0.read(), writer)
     }
 }
 
@@ -415,7 +463,7 @@ impl Transaction {
     /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
     /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
     pub fn set_storage_mass(&self, mass: u64) {
-        self.storage_mass.0.store(mass, SeqCst)
+        self.storage_mass.0.write(mass)
     }
 
     /// Read the storage mass commitment
@@ -426,7 +474,7 @@ impl Transaction {
 
     /// Read the storage mass commitment
     pub fn storage_mass(&self) -> u64 {
-        self.storage_mass.0.load(SeqCst)
+        self.storage_mass.0.read()
     }
 
     /// Set the storage mass commitment of the passed transaction
@@ -440,6 +488,7 @@ impl Transaction {
     }
 }
 
+#[cfg(feature = "mem_size")]
 impl MemSizeEstimator for Transaction {
     fn estimate_mem_bytes(&self) -> usize {
         // Calculates mem bytes of the transaction (for cache tracking purposes)
@@ -599,7 +648,7 @@ impl AsRef<Transaction> for Transaction {
 /// Represents a generic mutable/readonly/pointer transaction type along
 /// with partially filled UTXO entry data and optional fee and mass
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MutableTransaction<T: AsRef<Transaction> = std::sync::Arc<Transaction>> {
+pub struct MutableTransaction<T: AsRef<Transaction> = alloc::sync::Arc<Transaction>> {
     /// The inner transaction
     pub tx: T,
     /// Partially filled UTXO entry data
@@ -659,6 +708,9 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     /// transactions pays per gram of the aggregated contextual mass (max over compute, transient
     /// and storage masses). The function returns a value when calculated fee and calculated masses
     /// exist, otherwise `None` is returned.
+    ///
+    /// Relies on floating-point ceiling math from the standard library.
+    #[cfg(feature = "std")]
     pub fn calculated_feerate(&self, cofactors: &MassCofactors) -> Option<f64> {
         self.calculated_non_contextual_masses
             .map(|non_contextual| {
@@ -670,6 +722,7 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     /// A function for estimating the amount of memory bytes used by this transaction (dedicated to mempool usage).
     /// We need consistency between estimation calls so only this function should be used for this purpose since
     /// `estimate_mem_bytes` is sensitive to pointer wrappers such as Arc
+    #[cfg(feature = "mem_size")]
     pub fn mempool_estimated_bytes(&self) -> usize {
         self.estimate_mem_bytes()
     }
@@ -678,11 +731,12 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
         self.tx.as_ref().inputs.iter().any(|x| x.previous_outpoint.transaction_id == possible_parent)
     }
 
-    pub fn has_parent_in_set(&self, possible_parents: &HashSet<TransactionId>) -> bool {
+    pub fn has_parent_in_set<S: core::hash::BuildHasher>(&self, possible_parents: &HashSet<TransactionId, S>) -> bool {
         self.tx.as_ref().inputs.iter().any(|x| possible_parents.contains(&x.previous_outpoint.transaction_id))
     }
 }
 
+#[cfg(feature = "mem_size")]
 impl<T: AsRef<Transaction>> MemSizeEstimator for MutableTransaction<T> {
     fn estimate_mem_bytes(&self) -> usize {
         size_of::<Self>()
@@ -730,7 +784,7 @@ impl<T: AsRef<Transaction>> VerifiableTransaction for MutableTransactionVerifiab
 /// Specialized impl for `T=Arc<Transaction>`
 impl MutableTransaction {
     pub fn from_tx(tx: Transaction) -> Self {
-        Self::new(std::sync::Arc::new(tx))
+        Self::new(alloc::sync::Arc::new(tx))
     }
 }
 

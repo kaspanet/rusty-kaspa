@@ -99,11 +99,11 @@ mod tests {
     //! `PreToccataUtxoDiff` shadow decoder, and the row-level key layout.
     use super::*;
     use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+    use kaspa_consensus_core::utxo::utxo_collection::UtxoCollection;
     use kaspa_consensus_core::utxo::utxo_diff::UtxoDiff;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_database::prelude::StoreErrorPredicates;
-    use std::collections::HashMap;
 
     /// Hex bytes captured on the `master` worktree from a 2-add / 2-remove
     /// pre-Toccata `UtxoDiff`. Same fixture as in
@@ -202,7 +202,7 @@ mod tests {
 
         let hash = Hash::from_u64_word(0xDEAD_BEEF);
 
-        let mut add = HashMap::new();
+        let mut add = UtxoCollection::default();
         add.insert(
             TransactionOutpoint::new(Hash::from_bytes([0x77; 32]), 3),
             UtxoEntry::new(

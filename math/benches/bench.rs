@@ -1,3 +1,5 @@
+extern crate alloc;
+
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, black_box, criterion_group, criterion_main};
 use rand_chacha::{
