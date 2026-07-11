@@ -58,6 +58,7 @@ members = [
     "database",
     "database/rocknroll",
     "crypto/txscript",
+    "crypto/txscript/zk-sdk",
     "crypto/txscript/errors",
     "testing/integration",
     "utils",
@@ -130,6 +131,7 @@ kaspa-rpc-macros = { version = "2.0.1", path = "rpc/macros" }
 kaspa-rpc-service = { version = "2.0.1", path = "rpc/service" }
 kaspa-txscript = { version = "2.0.1", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "2.0.1", path = "crypto/txscript/errors", default-features = false }
+kaspa-txscript-zk-sdk = { version = "2.0.1", path = "crypto/txscript/zk-sdk" }
 kaspa-utils = { version = "2.0.1", path = "utils", default-features = false }
 kaspa-utils-tower = { version = "2.0.1", path = "utils/tower" }
 kaspa-system-info = { version = "2.0.1", path = "system-info" }
@@ -302,7 +304,9 @@ risc0-binfmt = "=3.0.4"
 risc0-circuit-recursion = { version = "=4.0.4", default-features = false }
 risc0-core = "=3.0.1"
 risc0-zkp = "=3.0.4"
-
+risc0-groth16 = "=3.0.4"
+risc0-zkvm = { version="=3.0.4", default-features = false }
+risc0-zkvm-platform = "=2.2.2"
 # workflow dependencies that are not a part of core libraries
 
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
