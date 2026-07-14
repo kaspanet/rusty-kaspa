@@ -1,6 +1,9 @@
 // RISC0 succinct (STARK) zk-to-script: the LOW-LEVEL "split" flow.
 //
-// Unlike `succinct_builder.js` (which uses `ZkScriptBuilder`'s staged commit/finalize flow),
+//   cd wasm/examples
+//   npx tsx recipes/zk/succinct_split.ts
+//
+// Unlike `succinct_builder.ts` (which uses `ZkScriptBuilder`'s staged commit/finalize flow),
 // this example composes the two halves with the low-level free-function
 // bindings with the same builder's low-level fragment methods:
 //
@@ -16,12 +19,12 @@
 // devnet node at the RPC url below. If `./kaspa` does not resolve, point the
 // require at the build output (`../../../../nodejs/kaspa`).
 
-const { PrivateKey, RpcClient,
+import { PrivateKey, RpcClient,
     ZkScriptBuilder, payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
-    Encoding } = require('./kaspa');
-const fs = require('fs');
-const path = require('path');
+    Encoding } from 'kaspa';
+import fs from 'fs';
+import path from 'path';
 
 const NETWORK_ID = 'devnet';
 const RPC_URL = 'ws://127.0.0.1:17610';
@@ -35,7 +38,7 @@ const JOURNAL = '5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c945
 
 // borsh-encoded `SuccinctReceipt<ReceiptClaim>`. Read from file because the
 // succinct receipt is large (~220 KB).
-const SUCCINCT_RECEIPT = fs.readFileSync(path.join(__dirname, 'data', 'receipts', 'succinct.rcpt.hex'), 'utf8').trim();
+const SUCCINCT_RECEIPT = fs.readFileSync(path.join(import.meta.dirname, 'fixtures', 'receipts', 'succinct.rcpt.hex'), 'utf8').trim();
 
 const FLAGS = { flags: { covenantsEnabled: true } };
 

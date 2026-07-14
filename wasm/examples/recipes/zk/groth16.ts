@@ -1,7 +1,12 @@
-const { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
+// Verify a Groth16 zk-proof on-chain, hand-building the P2SH scripts with raw opcodes.
+//
+//   cd wasm/examples
+//   npx tsx recipes/zk/groth16.ts
+
+import { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
     payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
-    Encoding} = require('./kaspa');
+    Encoding} from 'kaspa';
 
 // Configuration
 const NETWORK_ID = 'devnet';

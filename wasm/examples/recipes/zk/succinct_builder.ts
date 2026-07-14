@@ -1,7 +1,12 @@
-const { PrivateKey, RpcClient, Opcodes,
+// Verify a RISC0 succinct (STARK) zk-proof on-chain using ZkScriptBuilder's commit/finalize flow.
+//
+//   cd wasm/examples
+//   npx tsx recipes/zk/succinct_builder.ts
+
+import { PrivateKey, RpcClient, Opcodes,
     payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
-    Encoding, ZkScriptBuilder } = require('./kaspa');
+    Encoding, ZkScriptBuilder } from 'kaspa';
 
 // Configuration
 const NETWORK_ID = 'devnet';

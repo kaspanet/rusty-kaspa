@@ -1,9 +1,14 @@
-const { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
+// Verify a RISC0 succinct (STARK) zk-proof on-chain, hand-building the P2SH scripts from fixtures.
+//
+//   cd wasm/examples
+//   npx tsx recipes/zk/succinct.ts
+
+import { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
   payToScriptHashScript, addressFromScriptPublicKey,
   createTransaction, signTransaction,
-  Encoding } = require('../../../../nodejs/kaspa');
-const fs = require('fs');
-const path = require('path');
+  Encoding } from 'kaspa';
+import fs from 'fs';
+import path from 'path';
 
 // Configuration
 const NETWORK_ID = 'devnet';
@@ -16,14 +21,14 @@ const ZK_VERIFIER_TAG = 0x21; // R0Succinct
 
 // Data files matches the stack layout expected by R0SuccinctPrecompile::verify_zk
 // Stack (bottom to top): seal, claim, hashfn, control_index, control_digests, journal, image_id, tag
-const SEAL_FILE = './data/direct/succinct.seal.hex';
-const CLAIM_FILE = './data/direct/succinct.claim.hex';
-const HASHFN_FILE = './data/direct/succinct.hashfn.hex';
-const CONTROL_INDEX_FILE = './data/direct/succinct.control_index.hex';
-const CONTROL_DIGESTS_FILE = './data/direct/succinct.control_digests.hex';
-const CONTROL_ID_FILE = './data/direct/succinct.control_id.hex';
-const JOURNAL_FILE = './data/direct/succinct.journal.hex';
-const IMAGE_ID_FILE = './data/direct/succinct.image.hex';
+const SEAL_FILE = path.join(import.meta.dirname, 'fixtures', 'direct', 'succinct.seal.hex');
+const CLAIM_FILE = path.join(import.meta.dirname, 'fixtures', 'direct', 'succinct.claim.hex');
+const HASHFN_FILE = path.join(import.meta.dirname, 'fixtures', 'direct', 'succinct.hashfn.hex');
+const CONTROL_INDEX_FILE = path.join(import.meta.dirname, 'fixtures', 'direct', 'succinct.control_index.hex');
+const CONTROL_DIGESTS_FILE = path.join(import.meta.dirname, 'fixtures', 'direct', 'succinct.control_digests.hex');
+const CONTROL_ID_FILE = path.join(import.meta.dirname, 'fixtures', 'direct', 'succinct.control_id.hex');
+const JOURNAL_FILE = path.join(import.meta.dirname, 'fixtures', 'direct', 'succinct.journal.hex');
+const IMAGE_ID_FILE = path.join(import.meta.dirname, 'fixtures', 'direct', 'succinct.image.hex');
 
 /**
  * @param {fs.PathOrFileDescriptor} filePath
