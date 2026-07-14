@@ -1,4 +1,9 @@
-const {
+// Compute covenant IDs and bind transaction outputs to a covenant group.
+//
+//   cd wasm/examples
+//   npx tsx recipes/covenants/covenants.ts
+
+import {
     initConsolePanicHook,
     covenantId,
     Transaction,
@@ -6,7 +11,7 @@ const {
     TransactionOutput,
     ScriptPublicKey,
     GenesisCovenantGroup,
-} = require('../../../../nodejs/kaspa');
+} from 'kaspa';
 
 initConsolePanicHook();
 
