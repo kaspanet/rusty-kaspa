@@ -3,9 +3,7 @@ use prometheus::proto::MetricFamily;
 use prometheus::{Counter, register_counter};
 use prometheus::{CounterVec, Gauge, GaugeVec, register_counter_vec, register_gauge, register_gauge_vec};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "rkstratum_cpu_miner")]
-use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
@@ -22,6 +20,14 @@ const INVALID_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip",
 
 /// Block labels
 const BLOCK_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip", "nonce", "bluescore", "timestamp", "hash"];
+
+/// Maximum number of recent mined-block series retained in `ks_mined_blocks_gauge`.
+///
+/// Each mined block carries unique `hash`/`nonce`/`timestamp` labels, so without a cap the gauge
+/// grows one permanent series per block for the process lifetime — the only throughput-sensitive
+/// unbounded metric. Older series are evicted past this bound (see `remember_block_gauge_labels`);
+/// the monotonic `ks_blocks_mined` counter preserves the true lifetime block total.
+pub const BLOCK_GAUGE_HISTORY_LIMIT: usize = 512;
 
 /// Error labels
 const ERROR_LABELS: &[&str] = &["instance", "wallet", "error"];
@@ -47,6 +53,10 @@ static BLOCK_NOT_CONFIRMED_BLUE_COUNTER: OnceLock<CounterVec> = OnceLock::new();
 
 /// Block gauge - unique instances per block mined
 static BLOCK_GAUGE: OnceLock<GaugeVec> = OnceLock::new();
+
+/// Insertion-ordered history of `ks_mined_blocks_gauge` label sets (newest first), used to evict
+/// the oldest series once `BLOCK_GAUGE_HISTORY_LIMIT` is exceeded.
+static BLOCK_GAUGE_LABEL_HISTORY: OnceLock<parking_lot::Mutex<VecDeque<Vec<String>>>> = OnceLock::new();
 
 /// Disconnect counter - number of disconnects by worker
 static DISCONNECT_COUNTER: OnceLock<CounterVec> = OnceLock::new();
@@ -675,22 +685,44 @@ fn update_worker_activity(worker: &WorkerContext) {
     activity_map.lock().insert(key, Instant::now());
 }
 
+/// Record a `ks_mined_blocks_gauge` label set and evict the oldest series once the history limit
+/// is exceeded. Keeps the gauge bounded even on a high-hashrate bridge that finds many blocks.
+fn remember_block_gauge_labels(gauge: &GaugeVec, labels: Vec<String>) {
+    let history =
+        BLOCK_GAUGE_LABEL_HISTORY.get_or_init(|| parking_lot::Mutex::new(VecDeque::with_capacity(BLOCK_GAUGE_HISTORY_LIMIT)));
+    let mut history = history.lock();
+
+    // Move an already-tracked label set back to the front rather than tracking it twice.
+    if let Some(existing_idx) = history.iter().position(|existing| existing == &labels) {
+        history.remove(existing_idx);
+    }
+    history.push_front(labels);
+
+    while history.len() > BLOCK_GAUGE_HISTORY_LIMIT {
+        let Some(old_labels) = history.pop_back() else {
+            break;
+        };
+        let old_refs = old_labels.iter().map(String::as_str).collect::<Vec<_>>();
+        let _ = gauge.remove_label_values(&old_refs);
+    }
+}
+
 /// Record a block found
 pub fn record_block_found(worker: &WorkerContext, nonce: u64, bluescore: u64, hash: String) {
     if let Some(counter) = BLOCK_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc();
     }
     if let Some(gauge) = BLOCK_GAUGE.get() {
-        let mut labels = worker.labels();
-        let nonce_str = nonce.to_string();
-        let bluescore_str = bluescore.to_string();
-        let timestamp_str =
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs().to_string();
-        labels.push(&nonce_str);
-        labels.push(&bluescore_str);
-        labels.push(&timestamp_str);
-        labels.push(&hash);
-        gauge.with_label_values(&labels).set(1.0);
+        // Build owned labels in BLOCK_LABELS order (worker labels, then the per-block fields) so the
+        // set can be retained for later eviction.
+        let mut labels = worker.labels().iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        labels.push(nonce.to_string());
+        labels.push(bluescore.to_string());
+        labels.push(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs().to_string());
+        labels.push(hash);
+        let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+        gauge.with_label_values(&label_refs).set(1.0);
+        remember_block_gauge_labels(gauge, labels);
     }
 }
 
@@ -1020,6 +1052,10 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     let mut worker_start_times: HashMap<String, f64> = HashMap::new(); // Store start times for hashrate calculation
     let mut worker_difficulties: HashMap<String, f64> = HashMap::new(); // Store current difficulty for each worker
     let mut block_set: HashSet<String> = HashSet::new();
+    // The block gauge is capped (see BLOCK_GAUGE_HISTORY_LIMIT), so its unique-hash count can
+    // undercount lifetime blocks once older series are evicted; the monotonic ks_blocks_mined
+    // counter is the source of truth for the total.
+    let mut total_blocks_from_counters = 0u64;
 
     // Parse global network gauges from the unfiltered set.
     // Also pick up internal CPU miner metrics (if present).
@@ -1162,6 +1198,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().value() as u64;
+                    total_blocks_from_counters = total_blocks_from_counters.saturating_add(count);
                     let entry = worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
                     // Aggregate across multiple time series for the same (instance,worker,wallet)
                     entry.blocks = entry.blocks.saturating_add(count);
@@ -1383,6 +1420,10 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     stats.workers = active_workers;
     // Active workers are the number of Stratum workers, plus the internal CPU miner if present.
     stats.activeWorkers = stats.workers.len() + stats.internalCpu.as_ref().map(|_| 1).unwrap_or(0);
+
+    // The block gauge may have evicted older blocks; fall back to the monotonic counter total so the
+    // "Total Blocks" card still reflects the full lifetime count.
+    stats.totalBlocks = stats.totalBlocks.max(total_blocks_from_counters);
 
     // Fold internal CPU miner counts into summary totals so the dashboard top-cards reflect
     // internal mining even when no ASICs are connected.
