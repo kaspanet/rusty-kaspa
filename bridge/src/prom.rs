@@ -546,6 +546,18 @@ pub struct WorkerContext {
     pub ip: String,
 }
 
+/// Resolve the `miner` (mining-software) label for a worker.
+///
+/// The value is sourced from the live connection (`ctx.remote_app`, captured at `mining.subscribe`,
+/// which always precedes any share/job) so it is identical across every recording path for a
+/// session. Callers historically passed the real app string from some sites and `""` from others,
+/// which split each worker across an empty and a populated series — unbounded label churn. The
+/// caller-provided `hint` is used only as a fallback when the connection has not reported an app.
+fn resolve_miner_label(ctx: &crate::stratum_context::StratumContext, hint: &str) -> String {
+    let app = ctx.remote_app.lock().clone();
+    if app.is_empty() { hint.to_string() } else { app }
+}
+
 impl WorkerContext {
     pub fn labels(&self) -> Vec<&str> {
         vec![&self.instance_id, &self.worker_name, &self.miner, &self.wallet, &self.ip]
@@ -566,21 +578,25 @@ impl WorkerContext {
         Self {
             instance_id: instance_id.to_string(),
             worker_name: worker_name.to_string(),
-            miner: miner.to_string(),
+            miner: resolve_miner_label(ctx, miner),
             wallet: ctx.wallet_addr.lock().clone(),
-            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
+            // Host only — the ephemeral remote *port* changes on every reconnect, minting a fresh
+            // time series per connection and growing the metrics endpoint without bound. The host
+            // alone is bounded by the real client fleet.
+            ip: ctx.remote_addr().to_string(),
         }
     }
 }
 
 /// Build Prometheus worker labels from a Stratum session (stable name, no empty `worker` label).
 pub fn worker_context(instance_id: &str, ctx: &crate::stratum_context::StratumContext, miner: impl Into<String>) -> WorkerContext {
+    let miner = miner.into();
     WorkerContext {
         instance_id: instance_id.to_string(),
         worker_name: ctx.effective_worker_name(),
-        miner: miner.into(),
+        miner: resolve_miner_label(ctx, &miner),
         wallet: ctx.wallet_addr.lock().clone(),
-        ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
+        ip: ctx.remote_addr().to_string(),
     }
 }
 
