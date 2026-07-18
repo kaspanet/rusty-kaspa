@@ -284,9 +284,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         let mut sorted_blocks: Vec<Hash> = blocks.into_iter().collect();
         sorted_blocks.sort_by_cached_key(|block| SortableBlock {
             hash: *block,
-            // Sort by blue work as calculated within the zone. For blocks not within the zone (or not in agreement), we prefer them to be added later.
-            // Using the header blue work will tend to order these blocks later.
-            blue_work: self.get_blue_work(*block).unwrap_or(self.headers_store.get_header(*block).unwrap().blue_work),
+            blue_work: self.headers_store.get_header(*block).unwrap().blue_work,
         });
         sorted_blocks
     }
