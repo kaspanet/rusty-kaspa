@@ -584,7 +584,7 @@ impl PruningProcessor {
         // score `pp.blue_score − finality_depth` is still inside the active
         // window at the pruning point and must be preserved.
         if self.config.toccata_activation.is_active(pp_header.daa_score) {
-            let smt_cutoff = crate::pipeline::virtual_processor::bounds::SeqCommitBounds::inclusive_prune_cutoff(
+            let smt_cutoff = crate::pipeline::seq_commit_bounds::SeqCommitBounds::inclusive_prune_cutoff(
                 pp_header.blue_score,
                 self.config.params.finality_depth(),
             );
