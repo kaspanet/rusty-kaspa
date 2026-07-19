@@ -11,6 +11,7 @@ use crate::{
     model::stores::{
         block_transactions::BlockTransactionsStoreReader, pruning::PruningStoreReader, selected_chain::SelectedChainStoreReader,
     },
+    pipeline::seq_commit_bounds::SeqCommitBounds,
 };
 use kaspa_consensus_core::{
     config::genesis::GenesisBlock,
@@ -173,7 +174,12 @@ impl<
             create_merkle_witness_with_hasher::<SeqCommitMerkleBranch>(lane_leaves.iter().copied(), tracked_leaf)?;
 
         let accepting_context_hash = self.block_context_hash(accepting_block_header)?;
-        let parent_bounds = SmtReadBounds::for_pov(selected_parent_header.blue_score, self.posterity_depth);
+        // Match virtual_processor::resolve_lane_updates: before the accepting block writes
+        // its own lane version, it reads selected-parent lane versions that remain active
+        // under the accepting block's inactivity cutoff.
+        let parent_bounds =
+            SeqCommitBounds::new(selected_parent_header.blue_score, accepting_block_header.blue_score, self.posterity_depth)
+                .selected_parent_read_bounds();
         let parent_ref = self
             .smt_stores
             .get_lane(lane_key_hash, parent_bounds, |bh| self.reachability_service.is_chain_ancestor_of(bh, selected_parent))
