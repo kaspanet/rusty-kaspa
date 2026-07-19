@@ -76,34 +76,37 @@ pub fn derive_merkle_tree_with_hasher<H: Hasher>(mut hashes: impl ExactSizeItera
     merkles
 }
 
-pub fn compute_merkle_witness_root(witness_vec: &MerkleWitness, leaf_value: Hash) -> Hash {
+pub fn compute_merkle_witness_root_with_hasher<H: Hasher>(witness_vec: &MerkleWitness, leaf_value: Hash) -> Hash {
     let mut current_hash = leaf_value;
     for witness_segment in witness_vec.iter() {
         // The LeafRoute describes which branch the leaf is at from bottom to top
         match witness_segment.leaf_route {
             LeafRoute::Right => {
-                current_hash = merkle_hash(witness_segment.companion_hash, current_hash);
+                current_hash = merkle_hash_with_hasher(witness_segment.companion_hash, current_hash, H::default());
             }
             LeafRoute::Left => {
-                current_hash = merkle_hash(current_hash, witness_segment.companion_hash);
+                current_hash = merkle_hash_with_hasher(current_hash, witness_segment.companion_hash, H::default());
             }
         }
     }
     current_hash
 }
 
-pub fn verify_merkle_witness(witness_vec: &MerkleWitness, leaf_value: Hash, merkle_root_hash: Hash) -> bool {
-    compute_merkle_witness_root(witness_vec, leaf_value) == merkle_root_hash
+pub fn verify_merkle_witness_with_hasher<H: Hasher>(witness_vec: &MerkleWitness, leaf_value: Hash, merkle_root_hash: Hash) -> bool {
+    compute_merkle_witness_root_with_hasher::<H>(witness_vec, leaf_value) == merkle_root_hash
 }
 
-pub fn create_merkle_witness(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Result<MerkleWitness, MerkleTreeError> {
+pub fn create_merkle_witness_with_hasher<H: Hasher>(
+    hashes: impl ExactSizeIterator<Item = Hash>,
+    leaf_hash: Hash,
+) -> Result<MerkleWitness, MerkleTreeError> {
     let vec_len = hashes.len();
     if vec_len == 0 && leaf_hash == ZERO_HASH {
         // Edge case, return empty witness and not an error
         return Ok(vec![]);
     }
     let next_pot = vec_len.next_power_of_two(); // Maximal number of  leaves in last level of tree
-    let merkles = derive_merkle_tree_with_hasher::<MerkleBranchHash>(hashes);
+    let merkles = derive_merkle_tree_with_hasher::<H>(hashes);
     let leaf_index = merkles[0..vec_len].iter().position(|&e| e == Some(leaf_hash)).ok_or(MerkleTreeError::HashNotFound(leaf_hash))?;
     let mut witness_vec = vec![];
     let mut level_start = 0;
@@ -143,12 +146,12 @@ fn cold_path_empty() -> Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{calc_merkle_root, create_merkle_witness, verify_merkle_witness};
+    use super::{calc_merkle_root, create_merkle_witness_with_hasher, verify_merkle_witness_with_hasher};
     use alloc::vec::Vec;
     use core::iter;
     use kaspa_hashes::Hash;
     use kaspa_hashes::{HASH_SIZE, ZERO_HASH};
-    use kaspa_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
+    use kaspa_hashes::{HasherBase, MerkleBranchHash, SeqCommitMerkleBranch, TransactionHash};
     // Test the case of the empty tree which gets missed in the more general tests
     const HASH1: [u8; 32] = [0x1u8; HASH_SIZE];
     const HASH2: [u8; 32] = [0x2u8; HASH_SIZE];
@@ -257,42 +260,42 @@ mod tests {
     #[test]
     fn test_witnesses_empty() {
         let empty_vec = vec![];
-        let empty_witness = create_merkle_witness(empty_vec.clone().into_iter(), ZERO_HASH).unwrap();
+        let empty_witness = create_merkle_witness_with_hasher::<MerkleBranchHash>(empty_vec.clone().into_iter(), ZERO_HASH).unwrap();
         let merkle_root = calc_merkle_root(empty_vec.clone().into_iter());
 
         // Sanity checks
         assert_eq!(empty_vec, vec!());
         assert_eq!(merkle_root, ZERO_HASH);
-        assert!(verify_merkle_witness(&empty_witness, ZERO_HASH, merkle_root));
+        assert!(verify_merkle_witness_with_hasher::<MerkleBranchHash>(&empty_witness, ZERO_HASH, merkle_root));
         // Check false is returned for other hashes
-        assert!(!verify_merkle_witness(&empty_witness, Hash::from(HASH1), merkle_root));
+        assert!(!verify_merkle_witness_with_hasher::<MerkleBranchHash>(&empty_witness, Hash::from(HASH1), merkle_root));
         // Check erronous case behaves as expected
-        assert!(create_merkle_witness(empty_vec.clone().into_iter(), Hash::from(HASH1)).is_err());
+        assert!(create_merkle_witness_with_hasher::<MerkleBranchHash>(empty_vec.clone().into_iter(), Hash::from(HASH1)).is_err());
     }
     // Test separately the single leaf and double leaf tree cases
     #[test]
     fn test_witnesses_basic() {
         let single_vec = vec![Hash::from(HASH1)];
         let double_vec = vec![Hash::from(HASH1), Hash::from(HASH2)];
-        assert!(verify_merkle_witness(
-            &create_merkle_witness(single_vec.clone().into_iter(), Hash::from(HASH1)).unwrap(),
+        assert!(verify_merkle_witness_with_hasher::<MerkleBranchHash>(
+            &create_merkle_witness_with_hasher::<MerkleBranchHash>(single_vec.clone().into_iter(), Hash::from(HASH1)).unwrap(),
             Hash::from(HASH1),
             calc_merkle_root(single_vec.clone().into_iter())
         ));
-        assert!(verify_merkle_witness(
-            &create_merkle_witness(double_vec.clone().into_iter(), Hash::from(HASH1)).unwrap(),
+        assert!(verify_merkle_witness_with_hasher::<MerkleBranchHash>(
+            &create_merkle_witness_with_hasher::<MerkleBranchHash>(double_vec.clone().into_iter(), Hash::from(HASH1)).unwrap(),
             Hash::from(HASH1),
             calc_merkle_root(double_vec.clone().into_iter())
         ));
-        assert!(verify_merkle_witness(
-            &create_merkle_witness(double_vec.clone().into_iter(), Hash::from(HASH2)).unwrap(),
+        assert!(verify_merkle_witness_with_hasher::<MerkleBranchHash>(
+            &create_merkle_witness_with_hasher::<MerkleBranchHash>(double_vec.clone().into_iter(), Hash::from(HASH2)).unwrap(),
             Hash::from(HASH2),
             calc_merkle_root(double_vec.clone().into_iter())
         ));
         // Testing erronous case behaviour
-        assert!(create_merkle_witness(single_vec.clone().into_iter(), Hash::from(HASH2)).is_err());
-        assert!(create_merkle_witness(single_vec.clone().into_iter(), Hash::from(HASH3)).is_err());
-        assert!(create_merkle_witness(double_vec.clone().into_iter(), Hash::from(HASH3)).is_err());
+        assert!(create_merkle_witness_with_hasher::<MerkleBranchHash>(single_vec.clone().into_iter(), Hash::from(HASH2)).is_err());
+        assert!(create_merkle_witness_with_hasher::<MerkleBranchHash>(single_vec.clone().into_iter(), Hash::from(HASH3)).is_err());
+        assert!(create_merkle_witness_with_hasher::<MerkleBranchHash>(double_vec.clone().into_iter(), Hash::from(HASH3)).is_err());
     }
     #[test]
     fn test_witnesses_consistency() {
@@ -311,17 +314,22 @@ mod tests {
         for i in 1..TREE_LENGTH {
             // Disregard the 0 edge case as it is tested separately
             for leaf_index in 0..i {
-                let witness = create_merkle_witness(hash_vec.clone().into_iter().take(i), hash_vec[leaf_index]).unwrap();
+                let witness =
+                    create_merkle_witness_with_hasher::<MerkleBranchHash>(hash_vec.clone().into_iter().take(i), hash_vec[leaf_index])
+                        .unwrap();
                 let merkle_root = calc_merkle_root(hash_vec.clone().into_iter().take(i));
 
-                assert!(verify_merkle_witness(&witness, hash_vec[leaf_index], merkle_root));
+                assert!(verify_merkle_witness_with_hasher::<MerkleBranchHash>(&witness, hash_vec[leaf_index], merkle_root));
 
                 // Check false is returned when witness doesn't match
-                assert!(!verify_merkle_witness(&witness, hash_vec[leaf_index + 1], merkle_root));
+                assert!(!verify_merkle_witness_with_hasher::<MerkleBranchHash>(&witness, hash_vec[leaf_index + 1], merkle_root));
             }
             // Testing erronous case behaviour
             let leaf_index = 2 * i - 1;
-            assert!(create_merkle_witness(hash_vec.clone().into_iter().take(i), hash_vec[leaf_index]).is_err());
+            assert!(
+                create_merkle_witness_with_hasher::<MerkleBranchHash>(hash_vec.clone().into_iter().take(i), hash_vec[leaf_index])
+                    .is_err()
+            );
         }
     }
 }
