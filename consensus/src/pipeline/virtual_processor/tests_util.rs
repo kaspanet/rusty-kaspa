@@ -1,11 +1,15 @@
-use crate::consensus::test_consensus::TestConsensus;
+use crate::{consensus::test_consensus::TestConsensus, model::stores::block_transactions::BlockTransactionsStoreReader};
 use kaspa_consensus_core::{
     BlockHashSet,
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    tx::{ScriptPublicKey, ScriptVec, Transaction},
+    constants::TX_VERSION_TOCCATA,
+    subnets::SubnetworkId,
+    tx::{
+        ComputeCommit, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec,
+    },
 };
 use kaspa_hashes::Hash;
 use std::{collections::VecDeque, thread::JoinHandle};
@@ -155,6 +159,47 @@ impl TestContext {
     pub(super) async fn add_utxo_valid_block_with_parents(&self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>) {
         self.consensus.add_utxo_valid_block_with_parents(hash, parents, txs).await.unwrap();
     }
+
+    /// Builds and inserts a UTXO-valid block whose miner payout script is OP_TRUE.
+    ///
+    /// This is useful for fixtures that need to spend coinbase outputs without introducing
+    /// signature construction into the test setup.
+    pub(super) async fn add_op_true_block(&mut self, hash: Hash, parent: Hash, txs: Vec<Transaction>) {
+        let block: Block =
+            self.consensus.build_utxo_valid_block_with_parents(hash, vec![parent], op_true_miner_data(), txs).to_immutable();
+        self.validate_and_insert_block(block).await.assert_valid_utxo_tip();
+    }
+
+    /// Creates a Toccata user-lane transaction that spends the first positive coinbase
+    /// output in `source_block` and pays it back to OP_TRUE.
+    ///
+    /// The value is preserved so the transaction has zero fee and, for a one-input /
+    /// one-output spend, zero storage-mass commitment.
+    pub(super) fn spend_coinbase_output(&self, source_block: Hash, lane: SubnetworkId, payload: Vec<u8>) -> Transaction {
+        let txs = self.consensus.block_transactions_store.get(source_block).unwrap();
+        let coinbase = &txs[0];
+        let (output_index, output) = coinbase
+            .outputs
+            .iter()
+            .enumerate()
+            .find(|(_, output)| output.value > 0)
+            .expect("test block should contain a spendable coinbase output");
+
+        Transaction::new(
+            TX_VERSION_TOCCATA,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint::new(coinbase.id(), output_index as u32),
+                signature_script: vec![],
+                sequence: u64::MAX,
+                compute_commit: ComputeCommit::ComputeBudget(0.into()),
+            }],
+            vec![TransactionOutput::new(output.value, op_true_script_public_key())],
+            0,
+            lane,
+            0,
+            payload,
+        )
+    }
 }
 
 pub(super) fn new_miner_data() -> MinerData {
@@ -163,4 +208,14 @@ pub(super) fn new_miner_data() -> MinerData {
     let (_sk, pk) = secp.generate_keypair(&mut rng);
     let script = ScriptVec::from_slice(&pk.serialize());
     MinerData::new(ScriptPublicKey::new(0, script), vec![])
+}
+
+/// Creates miner data with an OP_TRUE payout script, making the resulting
+/// coinbase outputs deliberately easy to spend in consensus fixtures.
+fn op_true_miner_data() -> MinerData {
+    MinerData::new(op_true_script_public_key(), vec![])
+}
+
+fn op_true_script_public_key() -> ScriptPublicKey {
+    ScriptPublicKey::new(0, scriptvec!(0x51u8))
 }
