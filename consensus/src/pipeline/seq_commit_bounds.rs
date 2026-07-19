@@ -13,7 +13,7 @@ pub(crate) struct SeqCommitBounds {
 }
 
 impl SeqCommitBounds {
-    pub(super) const fn new(parent_blue_score: u64, current_blue_score: u64, inactivity_threshold: u64) -> Self {
+    pub(crate) const fn new(parent_blue_score: u64, current_blue_score: u64, inactivity_threshold: u64) -> Self {
         Self {
             parent_blue_score,
             #[cfg(test)]
@@ -33,7 +33,7 @@ impl SeqCommitBounds {
         self.current_active_min..=self.current_blue_score
     }
 
-    pub(super) const fn selected_parent_read_bounds(self) -> SmtReadBounds {
+    pub(crate) const fn selected_parent_read_bounds(self) -> SmtReadBounds {
         SmtReadBounds::new(self.parent_blue_score, self.current_active_min)
     }
 

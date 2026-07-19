@@ -83,8 +83,8 @@ use kaspa_notify::{events::EventType, notifier::Notify};
 use kaspa_smt_store::processor::SmtReadBounds;
 use once_cell::unsync::Lazy;
 
-use super::bounds::SeqCommitBounds;
 use super::errors::{PruningImportError, PruningImportResult};
+use crate::pipeline::seq_commit_bounds::SeqCommitBounds;
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
 use kaspa_consensus_core::config::params::ForkedParam;
