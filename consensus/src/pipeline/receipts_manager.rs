@@ -17,8 +17,8 @@ use kaspa_consensus_core::{
     header::Header,
     receipts::{AcceptingBlkContext, LaneTipUpdateContext, PosterityReceiptContext, TxContext, TxReceipt},
 };
-use kaspa_hashes::Hash;
-use kaspa_merkle::create_merkle_witness;
+use kaspa_hashes::{Hash, SeqCommitMerkleBranch};
+use kaspa_merkle::create_merkle_witness_with_hasher;
 use kaspa_seq_commit::{
     hashing::{activity_digest_lane, activity_leaf, lane_key, mergeset_context_hash},
     types::MergesetContext,
@@ -169,7 +169,8 @@ impl<
             .map(|e| activity_leaf(&e.tx_id, e.version, e.merge_idx))
             .collect::<Vec<_>>();
         let tracked_leaf = activity_leaf(&tracked_entry.tx_id, tracked_entry.version, tracked_entry.merge_idx);
-        let tx_acceptance_proof = create_merkle_witness(lane_leaves.iter().copied(), tracked_leaf)?;
+        let tx_acceptance_proof =
+            create_merkle_witness_with_hasher::<SeqCommitMerkleBranch>(lane_leaves.iter().copied(), tracked_leaf)?;
 
         let accepting_context_hash = self.block_context_hash(accepting_block_header)?;
         let parent_bounds = SmtReadBounds::for_pov(selected_parent_header.blue_score, self.posterity_depth);

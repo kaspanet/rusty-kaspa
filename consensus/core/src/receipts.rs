@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use kaspa_hashes::{Hash, SeqCommitActiveNode};
+use kaspa_hashes::{Hash, SeqCommitActiveNode, SeqCommitMerkleBranch};
 use kaspa_merkle::MerkleWitness;
 use kaspa_seq_commit::types::{LaneTipInput, SeqCommitInput, SeqState, SmtLeafInput};
 use kaspa_smt::proof::OwnedSmtProof;
@@ -94,7 +94,10 @@ impl TxReceipt {
     }
 
     pub fn compute_accepting_activity_digest_in_lane(&self) -> Hash {
-        kaspa_merkle::compute_merkle_witness_root(&self.accepting_blk_context.tx_acceptance_proof, self.activity_leaf())
+        kaspa_merkle::compute_merkle_witness_root_with_hasher::<SeqCommitMerkleBranch>(
+            &self.accepting_blk_context.tx_acceptance_proof,
+            self.activity_leaf(),
+        )
     }
 
     pub fn accepting_lane_tip(&self, activity_digest: Hash) -> Hash {
