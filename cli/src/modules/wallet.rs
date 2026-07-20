@@ -36,7 +36,7 @@ impl Wallet {
                     tprintln!(ctx, "");
                 }
             }
-            "create" | "import" => {
+            "create" | "import" | "restore" => {
                 let wallet_name = if argv.is_empty() {
                     None
                 } else {
@@ -50,7 +50,7 @@ impl Wallet {
                 };
 
                 let wallet_name = wallet_name.as_deref();
-                let import_with_mnemonic = op.as_str() == "import";
+                let import_with_mnemonic = matches!(op.as_str(), "import" | "restore");
                 wizards::wallet::create(&ctx, guard.into(), wallet_name, import_with_mnemonic).await?;
             }
             "open" => {
@@ -107,8 +107,8 @@ impl Wallet {
                 ("list", "List available local wallet files"),
                 ("create [<name>]", "Create a new bip32 wallet"),
                 (
-                    "import [<name>]",
-                    "Create a wallet from an existing mnemonic (bip32 only). \r\n\r\n\
+                    "import | restore [<name>]",
+                    "Restore a wallet from an existing mnemonic (bip32 only). \r\n\r\n\
                 To import legacy wallets (KDX or kaspanet) please create \
                 a new bip32 wallet and use the 'account import' command. \
                 Legacy wallets can only be imported as accounts. \
