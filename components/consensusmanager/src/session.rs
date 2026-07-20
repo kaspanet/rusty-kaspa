@@ -168,7 +168,19 @@ impl ConsensusSessionOwned {
         F: FnOnce(&dyn ConsensusApi) -> R + Send + 'static,
         R: Send + 'static,
     {
-        spawn_blocking(move || f(self.consensus.as_ref())).await.unwrap()
+        join_blocking_or_park(spawn_blocking(move || f(self.consensus.as_ref()))).await
+    }
+}
+
+/// Awaits a `spawn_blocking` join handle, handling the two [`tokio::task::JoinError`] cases:
+/// - Cancellation only occurs while the Tokio runtime is shutting down, where there is no result to
+///   return; in that case park until this task is dropped during teardown rather than panicking (see #949).
+/// - A genuine panic inside the closure is propagated to the caller, preserving the previous behavior.
+async fn join_blocking_or_park<R>(handle: tokio::task::JoinHandle<R>) -> R {
+    match handle.await {
+        Ok(result) => result,
+        Err(err) if err.is_cancelled() => std::future::pending().await,
+        Err(err) => std::panic::resume_unwind(err.into_panic()),
     }
 }
 
@@ -554,3 +566,50 @@ impl ConsensusSessionOwned {
 }
 
 pub type ConsensusProxy = ConsensusSessionOwned;
+
+#[cfg(test)]
+mod tests {
+    use super::join_blocking_or_park;
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread().worker_threads(2).build().unwrap()
+    }
+
+    #[test]
+    fn returns_closure_result() {
+        let rt = runtime();
+        let value = rt.block_on(async { join_blocking_or_park(tokio::task::spawn_blocking(|| 42u32)).await });
+        assert_eq!(value, 42);
+    }
+
+    #[test]
+    fn parks_on_cancellation() {
+        // A cancelled join handle (the runtime-shutdown case) must park rather than panic or resolve,
+        // since there is no result to return. We emulate the cancellation by aborting a task.
+        let rt = runtime();
+        rt.block_on(async {
+            let cancelled = tokio::spawn(std::future::pending::<u32>());
+            cancelled.abort();
+
+            let parked = tokio::spawn(join_blocking_or_park(cancelled));
+            for _ in 0..1000 {
+                tokio::task::yield_now().await;
+            }
+            assert!(!parked.is_finished(), "helper should park on cancellation rather than resolve");
+            parked.abort();
+        });
+    }
+
+    #[test]
+    fn propagates_closure_panic() {
+        // A genuine panic inside the closure must propagate to the caller (not be swallowed).
+        let rt = runtime();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            rt.block_on(async { join_blocking_or_park(tokio::task::spawn_blocking(|| -> u32 { panic!("boom-{}", 42) })).await })
+        }));
+        let payload = result.expect_err("closure panic should propagate through join_blocking_or_park");
+        let message =
+            payload.downcast_ref::<String>().map(String::as_str).or_else(|| payload.downcast_ref::<&str>().copied()).unwrap_or("");
+        assert!(message.contains("boom-42"), "panic payload should be preserved, got: {message:?}");
+    }
+}
