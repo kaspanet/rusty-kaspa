@@ -1294,6 +1294,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0a7a9bfdb35811f9e59832f0f05975114d2251b415fb534108e6f34060fd772"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.5.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3809,6 +3818,27 @@ dependencies = [
  "kaspa-smt-store",
  "kaspad",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "kaspa-rpc-cli"
+version = "2.0.1"
+dependencies = [
+ "async-channel 2.3.1",
+ "clap",
+ "clap_complete",
+ "dirs",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-grpc-client",
+ "kaspa-notify",
+ "kaspa-rpc-core",
+ "kaspa-wrpc-client",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
 ]
 
 [[package]]
