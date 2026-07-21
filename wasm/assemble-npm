@@ -1,0 +1,28 @@
+#!/bin/bash
+# This script assembles and packs the @kaspa/sdk-wasm npm package
+
+set -e
+
+# Workaround for Rust 1.87.0
+# https://github.com/rust-lang/rust/issues/141048
+export RUSTFLAGS=-Ctarget-cpu=mvp
+
+cd "$(dirname "$0")"
+
+if [ "$1" == "--skip-build" ]; then
+    shift
+else
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk $@
+fi
+
+node build/npm/assemble.js
+
+pushd npm-release/sdk-wasm > /dev/null
+npm pack --pack-destination .. > /dev/null
+popd > /dev/null
+
+TARBALL=$(ls npm-release/*.tgz)
+echo ""
+echo "npm package tarball ready: wasm/$TARBALL"
+echo "smoke test it with:        node build/npm/smoke-test.js"
+echo "to publish:                npm publish wasm/$TARBALL"
