@@ -401,7 +401,7 @@ jobs:
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install NodeJS dependencies
         run: npm install --global typedoc typescript
@@ -416,11 +416,31 @@ jobs:
           bash build-release
           popd
 
+      - name: Assemble npm package
+        run: |
+          pushd .
+          cd wasm
+          bash assemble-npm --skip-build
+          popd
+
+      - name: Smoke test npm tarball
+        run: |
+          pushd .
+          cd wasm
+          node build/npm/smoke-test.js
+          popd
+
       - name: Upload WASM build to GitHub 
         uses: actions/upload-artifact@v4
         with: 
           name: kaspa-wasm32-sdk-${{ env.SHORT_SHA }}
           path: wasm/release/
+
+      - name: Upload npm tarball to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaspa-sdk-wasm-npm-${{ env.SHORT_SHA }}
+          path: wasm/npm-release/*.tgz
   build-release:
     name: Build Linux Release
     runs-on: ubuntu-latest
