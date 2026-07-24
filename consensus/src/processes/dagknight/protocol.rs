@@ -9,7 +9,6 @@ use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
 use kaspa_core::{debug, trace};
 use kaspa_hashes::Hash;
-use kaspa_math::Uint192;
 use parking_lot::RwLock;
 
 use crate::{
@@ -31,7 +30,7 @@ use crate::{
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakInput, TieBreaker},
         },
-        difficulty::calc_work,
+ 
         ghostdag::ordering::SortableBlock,
         reachability::relations::FutureIntersectRelations,
     },
@@ -279,52 +278,40 @@ impl<
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> bool {
-        /*
-            inputs: G, U, d
-            output: does U have a subset U' s.t. U' is d-UMC of G
-                    where d-UMC means that each block in U' is majority covered by U' (up to d)
+        use crate::processes::dagknight::umc_cascade::run_cascade;
 
-            sketch 1:
-                maintain the blue/total past sizes and blue/total anticone sizes for each blue block
-            problems:
-                1. keeping the anticone size can be costly (a single attacker block with a huge anticone would dirty many entries)
-                2. challenging to reason about blue blocks which can be treated as red (U / U')
-                3. plus does not benefit from the above
-
-
-        */
-        let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-        let deficit = Uint192::from_u64(k.isqrt() as u64) * deficit_work_basis;
-
-        let blue_block_work = virtual_gd.blue_work;
-        let mut gray_block_work = Uint192::ZERO;
-        let mut red_block_work = Uint192::ZERO;
         let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
 
-        // Iterate through the VSPC red mergeset to determine red/gray work
+        // Collect blues and reds by traversing virtual GD chain backward
+        let mut blues = Vec::new();
+        let mut reds = Vec::new();
+
         let mut curr_gd = Arc::new(virtual_gd);
 
         while curr_gd.selected_parent != conflict_genesis {
-            for &red_block in curr_gd.mergeset_reds.iter() {
-                let red_block_bits = self.headers_store.get_bits(red_block).unwrap();
-                let red_work = calc_work(red_block_bits);
+            for &blue_block in curr_gd.mergeset_blues.iter() {
+                blues.push(blue_block);
+            }
 
-                if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
-                    gray_block_work = gray_block_work + red_work;
-                } else {
-                    red_block_work = red_block_work + red_work;
+            for &red_block in curr_gd.mergeset_reds.iter() {
+                // Exclude gray blocks (chain ancestors of subgroup's next chain ancestor)
+                if !self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
+                    reds.push(red_block);
                 }
             }
 
             curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
         }
 
+        // Block-count deficit: sqrt(k)
+        let deficit_blocks = (k as f64).sqrt() as i64;
+
         debug!(
-            "k = {} | blue work = {} | gray work = {} | red work = {} | deficit = {}",
-            k, blue_block_work, gray_block_work, red_block_work, deficit
+            "k = {} | blues = {} | reds = {} | deficit_blocks = {}",
+            k, blues.len(), reds.len(), deficit_blocks
         );
 
-        blue_block_work + deficit > red_block_work
+        run_cascade(&blues, &reds, deficit_blocks, &self.reachability_service)
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
@@ -672,6 +659,7 @@ mod tests {
     use crate::model::stores::headers::MemoryHeaderStore;
     use crate::processes::ghostdag::protocol::GhostdagManager;
     use crate::processes::reachability::tests::r#gen::generate_complex_dag;
+    use kaspa_math::Uint192;
     use crate::{
         model::stores::{
             dagknight::MemoryDagknightStore, ghostdag::MemoryGhostdagStore, reachability::MemoryReachabilityStore,
