@@ -9,6 +9,7 @@ pub mod manager;
 pub mod protocol;
 pub mod rank_search;
 pub mod tie_breaking;
+pub mod umc_cascade;
 
 pub struct GroupMetadata {
     conflict_genesis: Hash,
