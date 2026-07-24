@@ -9,6 +9,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
 use kaspa_core::{debug, trace};
 use kaspa_hashes::Hash;
+use kaspa_math::Uint192;
 use parking_lot::RwLock;
 
 use crate::{
@@ -23,14 +24,14 @@ use crate::{
             relations::{MemoryRelationsStore, RelationsStore, RelationsStoreReader},
         },
     },
-    processes::{
+   processes::{
         dagknight::{
             GroupMetadata,
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakInput, TieBreaker},
         },
- 
+        difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
         reachability::relations::FutureIntersectRelations,
     },
@@ -278,6 +279,64 @@ impl<
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> bool {
+        /*
+            inputs: G, U, d
+            output: does U have a subset U' s.t. U' is d-UMC of G
+                    where d-UMC means that each block in U' is majority covered by U' (up to d)
+
+            sketch 1:
+                maintain the blue/total past sizes and blue/total anticone sizes for each blue block
+            problems:
+                1. keeping the anticone size can be costly (a single attacker block with a huge anticone would dirty many entries)
+                2. challenging to reason about blue blocks which can be treated as red (U / U')
+                3. plus does not benefit from the above
+
+
+        */
+        let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+        let deficit = Uint192::from_u64(k.isqrt() as u64) * deficit_work_basis;
+
+        let blue_block_work = virtual_gd.blue_work;
+        let mut gray_block_work = Uint192::ZERO;
+        let mut red_block_work = Uint192::ZERO;
+        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
+
+        // Iterate through the VSPC red mergeset to determine red/gray work
+        let mut curr_gd = Arc::new(virtual_gd);
+
+        while curr_gd.selected_parent != conflict_genesis {
+            for &red_block in curr_gd.mergeset_reds.iter() {
+                let red_block_bits = self.headers_store.get_bits(red_block).unwrap();
+                let red_work = calc_work(red_block_bits);
+
+                if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
+                    gray_block_work = gray_block_work + red_work;
+                } else {
+                    red_block_work = red_block_work + red_work;
+                }
+            }
+
+            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
+        }
+
+        debug!(
+            "k = {} | blue work = {} | gray work = {} | red work = {} | deficit = {}",
+            k, blue_block_work, gray_block_work, red_block_work, deficit
+        );
+
+        blue_block_work + deficit > red_block_work
+    }
+
+    /// Proposed chain-based UMC cascade voting using segment tree cascade scores.
+    /// Competes with original work-weighted `umc_cascade_voting` for comparison.
+    fn proposed_umc_cascade_voting(
+        &self,
+        conflict_genesis: Hash,
+        subgroup: &[Hash],
+        virtual_gd: GhostdagData,
+        k: KType,
+        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+    ) -> bool {
         use crate::processes::dagknight::umc_cascade::run_cascade;
 
         let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
@@ -409,7 +468,14 @@ impl<
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
         let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
-        if self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd, k_to_check, &conflict_zone_manager) {
+        let vote_original = self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+        let vote_proposed = self.proposed_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd, k_to_check, &conflict_zone_manager);
+        if vote_original != vote_proposed {
+            debug!(
+                "UMC VOTE DIFFERENCE: original={vote_original}, proposed={vote_proposed}, k={k_to_check}, conflict_genesis={conflict_genesis:#?}"
+            );
+        }
+        if vote_original {
             Some(SortableBlock {
                 hash: subgroup_virtual_sp,
                 blue_work: self.headers_store.get_header(subgroup_virtual_sp).unwrap().blue_work,
