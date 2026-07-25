@@ -341,9 +341,10 @@ impl<
 
         let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
 
-        // Collect blues and reds by traversing virtual GD chain backward
+        // Collect blues, reds, and grays by traversing virtual GD chain backward
         let mut blues = Vec::new();
         let mut reds = Vec::new();
+        let mut grays = Vec::new();
 
         let mut curr_gd = Arc::new(virtual_gd);
 
@@ -353,8 +354,11 @@ impl<
             }
 
             for &red_block in curr_gd.mergeset_reds.iter() {
-                // Exclude gray blocks (chain ancestors of subgroup's next chain ancestor)
-                if !self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
+                // Gray blocks agree with the current side (chain ancestors of subgroup's next chain ancestor)
+                // They don't vote - skip them in cascade
+                if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
+                    grays.push(red_block);
+                } else {
                     reds.push(red_block);
                 }
             }
@@ -366,11 +370,11 @@ impl<
         let deficit_blocks = (k as f64).sqrt() as i64;
 
         debug!(
-            "k = {} | blues = {} | reds = {} | deficit_blocks = {}",
-            k, blues.len(), reds.len(), deficit_blocks
+            "k = {} | blues = {} | reds = {} | grays = {} | deficit_blocks = {}",
+            k, blues.len(), reds.len(), grays.len(), deficit_blocks
         );
 
-        run_cascade(&blues, &reds, deficit_blocks, &self.reachability_service)
+        run_cascade(&blues, &reds, &grays, deficit_blocks, &self.reachability_service)
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.

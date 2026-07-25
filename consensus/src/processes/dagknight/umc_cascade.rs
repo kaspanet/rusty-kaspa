@@ -494,6 +494,13 @@ impl CascadeMaintainer {
         self.process_event(block, -1, reachability);
     }
 
+    /// Add a gray block (red block that agrees with the current side).
+    /// Grays don't vote - they don't emit events and don't affect the cascade.
+    pub fn add_gray(&mut self, _block: Hash) {
+        // Gray blocks are tracked but don't participate in cascade voting.
+        // They don't emit events, don't affect scores, and don't count toward red_count.
+    }
+
     /// Compute virtual score: |U| - |R| - 2*negative_count + deficit
     pub fn virtual_score(&self) -> i64 {
         self.blue_count - self.red_count - 2 * self.negative_count + self.deficit
@@ -592,11 +599,13 @@ fn last_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reachab
     lo
 }
 
-/// Run cascade voting on a set of blues and reds.
+ /// Run cascade voting on a set of blues, reds, and grays.
+/// Grays are red blocks that agree with the current side and don't vote.
 /// Returns true if the virtual score is >= 0 (UMC accepted).
 pub fn run_cascade(
     blues: &[Hash],
     reds: &[Hash],
+    grays: &[Hash],
     deficit: i64,
     reachability: &impl ReachabilityService,
 ) -> bool {
@@ -608,6 +617,11 @@ pub fn run_cascade(
 
     for &red in reds {
         maintainer.add_red(red, reachability);
+    }
+
+    // Grays are recorded but don't vote - they don't emit events
+    for &gray in grays {
+        maintainer.add_gray(gray);
     }
 
     maintainer.virtual_accepts()
