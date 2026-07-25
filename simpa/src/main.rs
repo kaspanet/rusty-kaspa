@@ -509,6 +509,19 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
     let txs_mean = num_txs as f64 / hashes.len() as f64;
     info!("[DELAY={delay}, BPS={bps}, GHOSTDAG K={k}]");
     info!("[Average stats of generated DAG] blues: {blues_mean}, reds: {reds_mean}, parents: {parents_mean}, txs: {txs_mean}");
+    let snapshot = src_consensus.dagknight_counters().snapshot();
+    info!(
+        "[UMC comparison] total_calls={}, identical={}, differences={} ({:.2}%), \
+         original_true_proposed_false={} ({:.2}%), original_false_proposed_true={} ({:.2}%)",
+        snapshot.total_calls,
+        snapshot.identical,
+        snapshot.differences,
+        snapshot.difference_percentage(),
+        snapshot.original_true_proposed_false,
+        snapshot.original_true_proposed_false_percentage(),
+        snapshot.original_false_proposed_true,
+        snapshot.original_false_proposed_true_percentage(),
+    );
     num_txs
 }
 

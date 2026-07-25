@@ -12,10 +12,11 @@ use crate::{
         },
     },
     processes::{
-        block_depth::BlockDepthManager, coinbase::CoinbaseManager, dagknight::protocol::DagknightExecutor,
-        ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, pruning::PruningPointManager,
-        pruning_proof::PruningProofManager, sync::SyncManager, transaction_validator::TransactionValidator,
-        traversal_manager::DagTraversalManager, window::SampledWindowManager,
+        block_depth::BlockDepthManager, coinbase::CoinbaseManager, dagknight::DagknightCounters,
+        dagknight::protocol::DagknightExecutor, ghostdag::protocol::GhostdagManager,
+        parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager,
+        sync::SyncManager, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
+        window::SampledWindowManager,
     },
 };
 use kaspa_consensus_core::mass::MassCalculator;
@@ -74,6 +75,7 @@ pub struct ConsensusServices {
     pub mass_calculator: MassCalculator,
     pub transaction_validator: TransactionValidator,
     pub dagknight_executor: Option<DbDagknightExecutor>,
+    pub dagknight_counters: Arc<DagknightCounters>,
 }
 
 impl ConsensusServices {
@@ -138,12 +140,14 @@ impl ConsensusServices {
         );
 
         // TODO[DK]: Use a config or ForkActivation to gate this
+        let dagknight_counters = Arc::<crate::processes::dagknight::DagknightCounters>::default();
         let dagknight_executor = storage.dagknight_store.as_ref().map(|dagknight_store| DagknightExecutor {
             genesis_hash: params.genesis.hash,
             dagknight_store: dagknight_store.clone(),
             headers_store: storage.headers_store.clone(),
             relations_store: Arc::new(RwLock::new(relations_service.clone())),
             reachability_service: reachability_service.clone(),
+            counters: dagknight_counters.clone(),
         });
 
         let coinbase_manager = CoinbaseManager::new(
@@ -240,6 +244,7 @@ impl ConsensusServices {
             mass_calculator,
             transaction_validator,
             dagknight_executor,
+            dagknight_counters,
         })
     }
 }
