@@ -24,9 +24,9 @@ use crate::{
             relations::{MemoryRelationsStore, RelationsStore, RelationsStoreReader},
         },
     },
-   processes::{
+    processes::{
         dagknight::{
-            GroupMetadata,
+            DagknightCounters, GroupMetadata,
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakInput, TieBreaker},
@@ -145,6 +145,7 @@ pub struct DagknightExecutor<
     pub headers_store: Arc<O>,
     pub relations_store: Arc<RwLock<D>>,
     pub reachability_service: MTReachabilityService<R>,
+    pub counters: Arc<DagknightCounters>,
 }
 
 #[derive(Clone)]
@@ -371,7 +372,11 @@ impl<
 
         debug!(
             "k = {} | blues = {} | reds = {} | grays = {} | deficit_blocks = {}",
-            k, blues.len(), reds.len(), grays.len(), deficit_blocks
+            k,
+            blues.len(),
+            reds.len(),
+            grays.len(),
+            deficit_blocks
         );
 
         run_cascade(&blues, &reds, &grays, deficit_blocks, &self.reachability_service)
@@ -472,8 +477,11 @@ impl<
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
         let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
-        let vote_original = self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
-        let vote_proposed = self.proposed_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd, k_to_check, &conflict_zone_manager);
+        let vote_original =
+            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+        let vote_proposed =
+            self.proposed_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd, k_to_check, &conflict_zone_manager);
+        self.counters.record_vote(vote_original, vote_proposed);
         if vote_original != vote_proposed {
             debug!(
                 "UMC VOTE DIFFERENCE: original={vote_original}, proposed={vote_proposed}, k={k_to_check}, conflict_genesis={conflict_genesis:#?}"
@@ -729,7 +737,6 @@ mod tests {
     use crate::model::stores::headers::MemoryHeaderStore;
     use crate::processes::ghostdag::protocol::GhostdagManager;
     use crate::processes::reachability::tests::r#gen::generate_complex_dag;
-    use kaspa_math::Uint192;
     use crate::{
         model::stores::{
             dagknight::MemoryDagknightStore, ghostdag::MemoryGhostdagStore, reachability::MemoryReachabilityStore,
@@ -738,6 +745,7 @@ mod tests {
         processes::reachability::tests::{DagBlock, DagBuilder},
         test_helpers::generate_dot_with_chain,
     };
+    use kaspa_math::Uint192;
 
     #[test]
     fn test_cascade() {
@@ -820,6 +828,7 @@ mod tests {
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
+            counters: Arc::new(DagknightCounters::new()),
         };
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
         builder.init();
@@ -1023,6 +1032,7 @@ mod tests {
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
+            counters: Arc::new(DagknightCounters::new()),
         };
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
         builder.init();
@@ -1102,6 +1112,7 @@ mod tests {
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
+            counters: Arc::new(DagknightCounters::new()),
         };
 
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
