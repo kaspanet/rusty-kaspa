@@ -7,12 +7,6 @@ use crate::processes::dagknight::appendable_segment_tree_api::{
 type LeafPosition = usize;
 type NodeIndex = usize;
 
-#[derive(Clone, Copy, Debug)]
-struct LeafMetadata {
-    position: LeafPosition,
-    bucket: Bucket,
-}
-
 const ROOT_NODE: NodeIndex = 1;
 
 /// Node relationships in the tree's one-based heap layout.
@@ -64,21 +58,11 @@ impl<T: Copy> BucketExtrema<T> {
         Self { min_positive: None, max_negative: None, pending_delta: 0 }
     }
 
-    fn leaf_in_bucket(leaf: T, score: i64, bucket: Bucket) -> Self {
-        // Bucket membership is explicit because it may temporarily differ from the score's polarity
-        // while the cascade processes threshold crossings.
+    fn create_leaf_with_score(leaf: T, score: i64) -> Self {
         let candidate = Some(ScoreCandidate { score, leaf });
-        match bucket {
+        match bucket_for_score(score) {
             Bucket::Positive => Self { min_positive: candidate, max_negative: None, pending_delta: 0 },
             Bucket::Negative => Self { min_positive: None, max_negative: candidate, pending_delta: 0 },
-        }
-    }
-
-    /// Returns this subtree's extremal candidate for the requested bucket.
-    fn candidate_for(&self, bucket: Bucket) -> Option<ScoreCandidate<T>> {
-        match bucket {
-            Bucket::Positive => self.min_positive,
-            Bucket::Negative => self.max_negative,
         }
     }
 
@@ -135,11 +119,15 @@ fn maximum_candidate<T: Copy>(
 /// The tree supports prefix range adds and extraction of threshold crossings:
 /// - positive score dropping below 0
 /// - negative score rising to at least 0
+///
+/// Invariant: callers must consume every crossing produced by prior updates before appending
+/// another leaf. Consequently, all bucket memberships agree with their scores whenever growth
+/// can occur.
 pub struct AppendableSegmentTree<T> {
     len: usize,
     leaf_capacity: usize,
-    /// Leaf metadata keyed by the caller-defined identifier. Logical positions remain stable when the tree grows.
-    leaf_metadata: HashMap<T, LeafMetadata>,
+    /// Stable logical positions, independent of the current heap layout in `nodes`.
+    position_by_leaf: HashMap<T, LeafPosition>,
     nodes: Vec<BucketExtrema<T>>,
 }
 
@@ -161,24 +149,25 @@ where
         assert!(initial_capacity > 0, "initial capacity must be positive");
         let leaf_capacity = initial_capacity.checked_next_power_of_two().expect("initial capacity is too large");
         let node_count = leaf_capacity.checked_mul(2).expect("initial capacity is too large");
-        Self { len: 0, leaf_capacity, leaf_metadata: HashMap::new(), nodes: vec![BucketExtrema::empty(); node_count] }
+        Self { len: 0, leaf_capacity, position_by_leaf: HashMap::new(), nodes: vec![BucketExtrema::empty(); node_count] }
     }
 
-    /// Append a new leaf to the tree. The initial bucket is inferred from `initial_score`.
+    /// Append a new leaf after every crossing produced by earlier updates has been consumed.
+    /// The initial bucket is inferred from `initial_score`.
     pub fn append_leaf(&mut self, leaf: T, initial_score: i64) {
-        assert!(!self.leaf_metadata.contains_key(&leaf), "leaf already present");
+        assert!(!self.position_by_leaf.contains_key(&leaf), "leaf already present");
+        assert!(!self.has_unconsumed_crossings(), "consume all threshold crossings before appending a leaf");
 
         if self.len == self.leaf_capacity {
             self.grow();
         }
 
         let position = self.len;
-        let bucket = bucket_for_score(initial_score);
         self.len += 1;
-        self.leaf_metadata.insert(leaf, LeafMetadata { position, bucket });
+        self.position_by_leaf.insert(leaf, position);
 
         let node = self.leaf_node(position);
-        self.nodes[node] = BucketExtrema::leaf_in_bucket(leaf, initial_score, bucket);
+        self.nodes[node] = BucketExtrema::create_leaf_with_score(leaf, initial_score);
         self.recompute_ancestors_of(node);
     }
 
@@ -221,36 +210,39 @@ where
     }
 
     pub fn score(&mut self, leaf: T) -> i64 {
-        let metadata = self.metadata_of(leaf);
+        let target_position = self.position_of(leaf);
         // The position identifies the physical leaf directly, but its score may not yet include
         // lazy deltas stored by ancestors. Descend from the root to propagate those deltas first.
-        self.point_score(ROOT_NODE, self.full_leaf_range(), metadata.position, metadata.bucket)
+        self.point_score(ROOT_NODE, self.full_leaf_range(), target_position)
     }
 
     // ---------------------------------------------------------------------
     // Internal queries and bucket transitions
     // ---------------------------------------------------------------------
 
-    fn point_score(&mut self, node: NodeIndex, node_range: Range<LeafPosition>, target_position: LeafPosition, bucket: Bucket) -> i64 {
+    fn has_unconsumed_crossings(&self) -> bool {
+        self.has_positive_below_zero() || self.has_negative_at_least_zero()
+    }
+
+    fn point_score(&mut self, node: NodeIndex, node_range: Range<LeafPosition>, target_position: LeafPosition) -> i64 {
         if node_range.len() == 1 {
             debug_assert_eq!(node_range.start, target_position);
             debug_assert_eq!(node, self.leaf_node(target_position));
-            self.leaf_candidate_at(target_position, bucket).score
+            self.bucketed_leaf_candidate_at(target_position).0.score
         } else {
             self.push_pending_delta(node);
             let (left_child_range, right_child_range) = split_range(&node_range);
             if left_child_range.contains(&target_position) {
-                self.point_score(left_child(node), left_child_range, target_position, bucket)
+                self.point_score(left_child(node), left_child_range, target_position)
             } else {
-                self.point_score(right_child(node), right_child_range, target_position, bucket)
+                self.point_score(right_child(node), right_child_range, target_position)
             }
         }
     }
 
     fn set_bucket(&mut self, leaf: T, new_bucket: Bucket) {
-        let metadata = self.metadata_of(leaf);
-        self.set_bucket_at_position(ROOT_NODE, self.full_leaf_range(), metadata.position, metadata.bucket, new_bucket);
-        self.leaf_metadata.get_mut(&leaf).expect("leaf not in tree").bucket = new_bucket;
+        let target_position = self.position_of(leaf);
+        self.set_bucket_at_position(ROOT_NODE, self.full_leaf_range(), target_position, new_bucket);
     }
 
     fn set_bucket_at_position(
@@ -258,27 +250,25 @@ where
         node: NodeIndex,
         node_range: Range<LeafPosition>,
         target_position: LeafPosition,
-        current_bucket: Bucket,
         new_bucket: Bucket,
     ) {
         if node_range.len() == 1 {
             debug_assert_eq!(node_range.start, target_position);
             debug_assert_eq!(node, self.leaf_node(target_position));
+            let (candidate, current_bucket) = self.bucketed_leaf_candidate_at(target_position);
             assert_ne!(current_bucket, new_bucket, "leaf already belongs to the requested bucket");
-
-            let candidate = self.leaf_candidate_at(target_position, current_bucket);
             assert_eq!(new_bucket, bucket_for_score(candidate.score), "destination bucket does not match the leaf score");
 
-            self.nodes[node] = BucketExtrema::leaf_in_bucket(candidate.leaf, candidate.score, new_bucket);
+            self.nodes[node] = BucketExtrema::create_leaf_with_score(candidate.leaf, candidate.score);
             return;
         }
 
         self.push_pending_delta(node);
         let (left_child_range, right_child_range) = split_range(&node_range);
         if left_child_range.contains(&target_position) {
-            self.set_bucket_at_position(left_child(node), left_child_range, target_position, current_bucket, new_bucket);
+            self.set_bucket_at_position(left_child(node), left_child_range, target_position, new_bucket);
         } else {
-            self.set_bucket_at_position(right_child(node), right_child_range, target_position, current_bucket, new_bucket);
+            self.set_bucket_at_position(right_child(node), right_child_range, target_position, new_bucket);
         }
         self.recompute_node(node);
     }
@@ -350,18 +340,25 @@ where
         &self.nodes[ROOT_NODE]
     }
 
-    fn metadata_of(&self, leaf: T) -> LeafMetadata {
-        *self.leaf_metadata.get(&leaf).expect("leaf not in tree")
+    fn position_of(&self, leaf: T) -> LeafPosition {
+        *self.position_by_leaf.get(&leaf).expect("leaf not in tree")
     }
 
     fn leaf_node(&self, position: LeafPosition) -> NodeIndex {
         self.leaf_capacity + position
     }
 
-    /// Returns the candidate stored for an occupied logical leaf.
-    fn leaf_candidate_at(&self, position: LeafPosition, bucket: Bucket) -> ScoreCandidate<T> {
+    /// Returns the candidate and current bucket stored at an occupied logical leaf.
+    fn bucketed_leaf_candidate_at(&self, position: LeafPosition) -> (ScoreCandidate<T>, Bucket) {
         debug_assert!(position < self.len);
-        self.nodes[self.leaf_node(position)].candidate_for(bucket).expect("occupied leaf must have a candidate in its recorded bucket")
+        let leaf = &self.nodes[self.leaf_node(position)];
+        debug_assert!(leaf.min_positive.is_some() ^ leaf.max_negative.is_some(), "occupied leaf must belong to exactly one bucket");
+
+        if let Some(candidate) = leaf.min_positive {
+            (candidate, Bucket::Positive)
+        } else {
+            (leaf.max_negative.expect("occupied leaf must have a candidate"), Bucket::Negative)
+        }
     }
 
     fn full_leaf_range(&self) -> Range<LeafPosition> {
@@ -380,13 +377,14 @@ where
     }
 
     fn grow(&mut self) {
+        debug_assert!(!self.has_unconsumed_crossings(), "growth requires a crossingless tree");
         let leaves = self.materialized_leaves();
         self.leaf_capacity *= 2;
         self.nodes = vec![BucketExtrema::empty(); 2 * self.leaf_capacity];
 
-        for (position, candidate, bucket) in leaves {
+        for (position, candidate) in leaves {
             let node = self.leaf_node(position);
-            self.nodes[node] = BucketExtrema::leaf_in_bucket(candidate.leaf, candidate.score, bucket);
+            self.nodes[node] = BucketExtrema::create_leaf_with_score(candidate.leaf, candidate.score);
         }
 
         for node in (ROOT_NODE..self.leaf_capacity).rev() {
@@ -395,14 +393,15 @@ where
     }
 
     /// Flush lazy updates and snapshot the occupied leaves with their stable logical positions.
-    fn materialized_leaves(&mut self) -> Vec<(LeafPosition, ScoreCandidate<T>, Bucket)> {
+    fn materialized_leaves(&mut self) -> Vec<(LeafPosition, ScoreCandidate<T>)> {
         self.materialize_subtree_deltas(ROOT_NODE, self.full_leaf_range());
-        self.leaf_metadata
+        self.position_by_leaf
             .iter()
-            .map(|(&leaf, &metadata)| {
-                let candidate = self.leaf_candidate_at(metadata.position, metadata.bucket);
+            .map(|(&leaf, &position)| {
+                let (candidate, bucket) = self.bucketed_leaf_candidate_at(position);
                 debug_assert!(candidate.leaf == leaf);
-                (metadata.position, candidate, metadata.bucket)
+                debug_assert_eq!(bucket, bucket_for_score(candidate.score), "growth requires score-aligned buckets");
+                (position, candidate)
             })
             .collect()
     }
@@ -591,6 +590,16 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "consume all threshold crossings before appending a leaf")]
+    fn test_append_requires_crossingless_tree() {
+        let mut tree = AppendableSegmentTree::<u64>::new();
+        tree.append_leaf(1, 0);
+        tree.prefix_add(1, -1);
+
+        tree.append_leaf(2, 0);
+    }
+
+    #[test]
     fn test_grow_preserves_lazy_state() {
         let mut tree = AppendableSegmentTree::<u64>::with_initial_capacity(1);
         tree.append_leaf(1, 10);
@@ -603,6 +612,8 @@ mod tests {
         tree.prefix_add(2, -4);
         assert_eq!(tree.score(1), 11);
         assert_eq!(tree.score(2), -1);
+        assert_eq!(tree.extract_positive_below_zero(), Some(2));
+        tree.flip_to_negative(2);
 
         tree.append_leaf(3, 7);
         tree.append_leaf(4, -2);

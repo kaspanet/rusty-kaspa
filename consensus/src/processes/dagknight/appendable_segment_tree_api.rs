@@ -41,6 +41,8 @@ pub trait AppendableSegmentTreeApi<T> {
     where
         Self: Sized;
 
+    /// Appends a leaf after all threshold crossings produced by earlier updates have been consumed.
+    /// Implementations may reject an append while an unconsumed crossing remains.
     fn append_leaf(&mut self, leaf: T, initial_score: i64);
     fn prefix_add(&mut self, prefix_length: usize, delta: i64);
     fn range_add(&mut self, range: Range<usize>, delta: i64);
