@@ -22,8 +22,19 @@ use crate::{
     },
 };
 
+/// Chain blocks from a subgroup's conditioned k-colouring.
+pub type SubgroupChainBlocks = Vec<Hash>;
+
+/// Result of free-search k-colouring reference cluster computation.
+pub struct ReferenceCluster {
+    /// Set of blue block hashes in the resulting colouring.
+    pub blues: BlockHashSet,
+    /// Chain backbone from virtual towards conflict_genesis (inclusive).
+    pub chain_blocks: Vec<Hash>,
+}
+
 /// Input data for a tie-breaking call.
-pub struct TieBreakInput<'a> {
+pub struct TieBreakContext<'a> {
     /// The latest common chain ancestor of all competing tips (conflict genesis).
     pub conflict_genesis: Hash,
     /// All tips of the DAG (parents of the virtual block).
@@ -39,7 +50,7 @@ pub trait TieBreaker {
     /// Performs tie-breaking among competing subgroups that share the same rank.
     ///
     /// Returns the index of the winning subgroup
-    fn tie_break(&self, input: &TieBreakInput<'_>) -> usize;
+    fn tie_break(&self, input: &TieBreakContext<'_>) -> usize;
 }
 
 /// DAGKnight tie-breaker backed by the consensus stores.
@@ -80,8 +91,8 @@ impl<
     /// `ConflictZoneManager::with_free_search` with `free_search = true`,
     /// allowing unrestricted maximization of the k-cluster across all parents.
     ///
-    /// Returns the set of blue block hashes in the resulting colouring.
-    pub fn compute_free_coloring(&self, conflict_genesis: Hash, all_tips: &[Hash], k: KType) -> (BlockHashSet, Vec<Hash>) {
+    /// Returns the blue set and chain backbone.
+    pub fn compute_reference_cluster(&self, conflict_genesis: Hash, all_tips: &[Hash], k: KType) -> ReferenceCluster {
         let reachability_service = self.reachability_service.clone();
         let relations_store = self.relations_store.read();
         let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
@@ -126,24 +137,19 @@ impl<
         blue_set.insert(conflict_genesis);
         chain_blocks.push(conflict_genesis);
 
-        (blue_set, chain_blocks)
+        ReferenceCluster { blues: blue_set, chain_blocks }
     }
 
     /// Computes the k'-chain conditioned on the virtual block agreeing with a specific subgroup.
     ///
-    /// This is a **committed** (non-free-search) k-colouring: the virtual block's selected
-    /// parent is forced to be the max blue-work block from `group_tips`, committing the
-    /// colouring to that group's side of the conflict. During zone population, each block
-    /// only considers "agreeing" parents (those sharing a chain ancestor above conflict_genesis).
-    ///
-    /// Returns the chain backbone from virtual towards conflict_genesis (inclusive).
-    pub fn compute_conditioned_chain(
+    /// Returns the chain blocks from virtual towards conflict_genesis (inclusive).
+    pub fn compute_subgroup_chain_blocks(
         &self,
         conflict_genesis: Hash,
         group_tips: &[Hash],
         all_tips: &[Hash],
         k_prime: KType,
-    ) -> Vec<Hash> {
+    ) -> SubgroupChainBlocks {
         let reachability_service = self.reachability_service.clone();
         let relations_store = self.relations_store.read();
         let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
@@ -206,7 +212,7 @@ impl<
 
         // TODO[DK]: Revisit - as it only checks k - 1 against the reference block
         let k_prime = k.saturating_sub(1);
-        let chain = self.compute_conditioned_chain(conflict_genesis, group_tips, all_tips, k_prime);
+        let chain = self.compute_subgroup_chain_blocks(conflict_genesis, group_tips, all_tips, k_prime);
 
         for &b in f_cluster.iter() {
             if self.count_anticone_with_chain(b, &chain) > k_prime {
@@ -237,12 +243,13 @@ impl<
     ///
     /// If any C_i is empty (small conflict zone), falls back to SimpleTieBreaker
     /// logic (pick the subgroup with the highest selected_parent).
-    fn tie_break(&self, input: &TieBreakInput<'_>) -> usize {
-        let TieBreakInput { conflict_genesis, all_tips, subgroups, k } = input;
+    fn tie_break(&self, input: &TieBreakContext<'_>) -> usize {
+        let TieBreakContext { conflict_genesis, all_tips, subgroups, k } = input;
 
         // Step 1: Compute reference cluster F using free search with g(k) = floor(sqrt(k))
         let g_k = k.isqrt() as KType;
-        let (f_cluster, _chain_blocks) = self.compute_free_coloring(*conflict_genesis, all_tips, g_k);
+        let ref_cluster = self.compute_reference_cluster(*conflict_genesis, all_tips, g_k);
+        let f_cluster = ref_cluster.blues;
 
         // Step 2: For each group P_i, compute C_i (high-rank witnesses)
         let mut group_scores: Vec<Option<(usize, SortableBlock, Hash)>> = Vec::with_capacity(subgroups.len());
@@ -359,18 +366,18 @@ mod tests {
         }
     }
 
-    /// Verifies that `compute_conditioned_chain` follows the reachability store's chain
+    /// Verifies that `compute_subgroup_chain_blocks` follows the reachability store's chain
     /// parents (committed mode).
     ///
     /// Conditioned on [X]: chain follows reachability chain X → Y → Z → A
     /// Conditioned on [D]: chain follows reachability chain D → C → B → A
     #[test]
-    fn test_conditioned_chain() {
+    fn test_subgroup_chain_blocks() {
         let dag = TestDag::new();
         let all_tips = vec![dag.hash_x, dag.hash_d];
 
         // Conditioned on [X]: must follow reachability chain X → Y → Z → A
-        let chain_x = dag.tie_breaker.compute_conditioned_chain(dag.hash_a, &[dag.hash_x], &all_tips, 2);
+        let chain_x = dag.tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_x], &all_tips, 2);
         assert_eq!(chain_x.len(), 4, "X conditioned chain should have 4 blocks: X, Y, Z, A");
         assert_eq!(chain_x[0], dag.hash_x, "virtual selected parent is X");
         assert_eq!(chain_x[1], dag.hash_y, "X's committed parent must be Y");
@@ -378,7 +385,7 @@ mod tests {
         assert_eq!(chain_x[3], dag.hash_a, "Z's committed parent is genesis A");
 
         // Conditioned on [D]: must follow reachability chain D → C → B → A
-        let chain_d = dag.tie_breaker.compute_conditioned_chain(dag.hash_a, &[dag.hash_d], &all_tips, 2);
+        let chain_d = dag.tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_d], &all_tips, 2);
         assert_eq!(chain_d.len(), 4, "D conditioned chain should have 4 blocks: D, C, B, A");
         assert_eq!(chain_d[0], dag.hash_d, "virtual selected parent is D");
         assert_eq!(chain_d[1], dag.hash_c, "D's committed parent must be C");
@@ -392,7 +399,7 @@ mod tests {
         assert!(!chain_x.contains(&dag.hash_c), "X's chain must NOT contain C (different side of conflict)");
     }
 
-    /// Verifies that `compute_free_coloring` overrides the reachability store's chain
+    /// Verifies that `compute_reference_cluster` overrides the reachability store's chain
     /// parents and follows the max blue work path.
     ///
     /// Reachability chain from X: X → Y → Z → A (low-work side)
@@ -402,21 +409,21 @@ mod tests {
         let dag = TestDag::new();
         let all_tips = vec![dag.hash_x];
 
-        let (blue_cluster, chain_blocks) = dag.tie_breaker.compute_free_coloring(dag.hash_a, &all_tips, 2);
+        let ref_cluster = dag.tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
 
         // Verify the exact free search chain: X → C → B → A
-        assert_eq!(chain_blocks.len(), 4, "chain should have exactly 4 blocks: X, C, B, A");
-        assert_eq!(chain_blocks[0], dag.hash_x, "virtual selected parent must be X (max blue_work)");
-        assert_eq!(chain_blocks[1], dag.hash_c, "X's free-selected parent must be C (bw=3 > Y's bw=2)");
-        assert_eq!(chain_blocks[2], dag.hash_b, "C's free-selected parent must be B");
-        assert_eq!(chain_blocks[3], dag.hash_a, "B's parent is genesis A");
+        assert_eq!(ref_cluster.chain_blocks.len(), 4, "chain should have exactly 4 blocks: X, C, B, A");
+        assert_eq!(ref_cluster.chain_blocks[0], dag.hash_x, "virtual selected parent must be X (max blue_work)");
+        assert_eq!(ref_cluster.chain_blocks[1], dag.hash_c, "X's free-selected parent must be C (bw=3 > Y's bw=2)");
+        assert_eq!(ref_cluster.chain_blocks[2], dag.hash_b, "C's free-selected parent must be B");
+        assert_eq!(ref_cluster.chain_blocks[3], dag.hash_a, "B's parent is genesis A");
 
         // All 6 discovered blocks should be blue within k=2 (D is dead-end, not discovered)
-        assert_eq!(blue_cluster.len(), 6, "6 zone blocks should be blue (k=2 is sufficient)");
+        assert_eq!(ref_cluster.blues.len(), 6, "6 zone blocks should be blue (k=2 is sufficient)");
         for &h in &[dag.hash_a, dag.hash_b, dag.hash_c, dag.hash_z, dag.hash_y, dag.hash_x] {
-            assert!(blue_cluster.contains(&h), "block must be in blue cluster");
+            assert!(ref_cluster.blues.contains(&h), "block must be in blue cluster");
         }
-        assert!(!blue_cluster.contains(&dag.hash_d), "D is not discovered by zone traversal (dead-end)");
+        assert!(!ref_cluster.blues.contains(&dag.hash_d), "D is not discovered by zone traversal (dead-end)");
     }
 
     /// Verifies that `count_anticone_with_chain` correctly identifies anticone blocks.
@@ -532,7 +539,8 @@ mod tests {
         let all_tips = vec![dag.hash_x, dag.hash_d];
 
         // Compute F cluster at g(4) = 2
-        let (f_cluster, _) = dag.tie_breaker.compute_free_coloring(dag.hash_a, &all_tips, 2);
+        let ref_cluster = dag.tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
+        let f_cluster = ref_cluster.blues;
 
         // Compute C_i for [X] side
         let c_x = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_x], &all_tips, &f_cluster, 4);
@@ -578,7 +586,7 @@ mod tests {
             },
         ];
         let input_forward =
-            TieBreakInput { conflict_genesis: dag.hash_a, all_tips: &all_tips, subgroups: &subgroups_forward, k: mutual_k };
+            TieBreakContext { conflict_genesis: dag.hash_a, all_tips: &all_tips, subgroups: &subgroups_forward, k: mutual_k };
 
         // Reversed order: [D], [X]
         let sg_d2 = Arc::new(vec![dag.hash_d]);
@@ -604,7 +612,7 @@ mod tests {
             },
         ];
         let input_reversed =
-            TieBreakInput { conflict_genesis: dag.hash_a, all_tips: &all_tips, subgroups: &subgroups_reversed, k: mutual_k };
+            TieBreakContext { conflict_genesis: dag.hash_a, all_tips: &all_tips, subgroups: &subgroups_reversed, k: mutual_k };
 
         let output_forward = dag.tie_breaker.tie_break(&input_forward);
         let output_reversed = dag.tie_breaker.tie_break(&input_reversed);
