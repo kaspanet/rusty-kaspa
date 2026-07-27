@@ -218,6 +218,7 @@ impl<
             let (winning_conflict_genesis, winning_subgroup) = {
                 let best_groups = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
 
+                #[allow(clippy::style)]
                 let final_winner = if best_groups.len() > 1 {
                     self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups)
                 } else {
@@ -371,7 +372,7 @@ impl<
                 .iter()
                 .filter_map(|(curr_conflict_genesis, subgroup)| {
                     // `subgroup` is an `&Arc<Vec<Hash>>` here; pass a `&[Hash]` to the colouring function
-                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), &all_tips, k).map(|selected_parent| {
+                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k).map(|selected_parent| {
                         (
                             (*curr_conflict_genesis, subgroup.clone()),
                             GroupMetadata { conflict_genesis: *curr_conflict_genesis, subgroup: subgroup.clone(), k, selected_parent },
@@ -662,6 +663,7 @@ impl DagPlan {
 }
 
 #[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -685,6 +687,17 @@ mod tests {
         processes::reachability::tests::{DagBlock, DagBuilder},
         test_helpers::generate_dot_with_chain,
     };
+
+    /// Block data parsed from a JSON fixture for conflict zone tie-breaking tests.
+    struct TestBlock {
+        hash: Hash,
+        parents: Vec<Hash>,
+        blue_work: Uint192,
+        bits: u32,
+        blue_score: u64,
+        daa_score: u64,
+        selected_parent: Hash,
+    }
 
     #[test]
     fn test_cascade() {
@@ -1073,10 +1086,10 @@ mod tests {
 
         let blocks = json_data["blocks"].as_array().expect("Blocks is not an array");
 
-        let test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash)> = blocks
+        let test_blocks: Vec<TestBlock> = blocks
             .iter()
             .map(|block| {
-                let id = prefixed_hash(block["id"].as_str().unwrap());
+                let hash = prefixed_hash(block["id"].as_str().unwrap());
                 let parents: Vec<Hash> = if block["parents"].as_array().map(|a| a.is_empty()).unwrap_or(false) {
                     vec![ORIGIN]
                 } else {
@@ -1091,16 +1104,24 @@ mod tests {
                 } else {
                     prefixed_hash(block["selected_parent"].as_str().unwrap())
                 };
-                (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+                TestBlock { hash, parents, blue_work, bits, blue_score, daa_score, selected_parent }
             })
             .collect();
 
         let mut test_blocks = test_blocks;
 
-        test_blocks.sort_by_key(|(_, _, blue_work, _, _, _, _)| *blue_work);
+        test_blocks.sort_by_key(|block| block.blue_work);
 
-        for (hash, parents, blue_work, bits, blue_score, daa_score, selected_parent) in &test_blocks {
-            add_block(*hash, parents.clone(), *blue_work, *bits, *blue_score, *daa_score, *selected_parent);
+        for block in &test_blocks {
+            add_block(
+                block.hash,
+                block.parents.clone(),
+                block.blue_work,
+                block.bits,
+                block.blue_score,
+                block.daa_score,
+                block.selected_parent,
+            );
         }
 
         let mut parents = tips.clone();
