@@ -29,7 +29,7 @@ use crate::{
             GroupMetadata,
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
-            tie_breaking::{DagknightTieBreaker, TieBreakInput, TieBreaker},
+            tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
         },
         difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
@@ -344,7 +344,7 @@ impl<
             self.relations_store.clone(),
             self.reachability_service.clone(),
         )
-        .tie_break(&TieBreakInput { conflict_genesis, all_tips, subgroups, k: mutual_k });
+        .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: mutual_k });
 
         let winning_conflict_genesis = subgroups[winning_index].conflict_genesis;
         let winning_subgroup = subgroups[winning_index].subgroup.clone();
