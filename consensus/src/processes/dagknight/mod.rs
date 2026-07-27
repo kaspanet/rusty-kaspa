@@ -8,6 +8,10 @@ use kaspa_hashes::Hash;
 
 use crate::processes::ghostdag::ordering::SortableBlock;
 
+mod appendable_segment_tree_api;
+mod appendable_segment_tree_impl;
+pub use appendable_segment_tree_api::{AppendableSegmentTreeApi, Bucket, bucket_for_score};
+pub use appendable_segment_tree_impl::AppendableSegmentTree;
 pub mod manager;
 pub mod protocol;
 pub mod rank_search;
