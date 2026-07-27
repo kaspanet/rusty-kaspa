@@ -35,6 +35,7 @@ pub struct VirtualState {
 }
 
 impl VirtualState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         parents: Vec<Hash>,
         daa_score: u64,

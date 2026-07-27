@@ -255,14 +255,12 @@ impl<
         }
 
         // Step 3: Select winner
-        let winner_idx = group_scores
+        group_scores
             .iter()
             .flatten()
             .min_by(|(_, a, ah), (_, b, bh)| a.cmp(b).then_with(|| ah.cmp(bh)))
             .map(|(idx, _, _)| *idx)
-            .unwrap();
-
-        winner_idx
+            .unwrap()
     }
 }
 
