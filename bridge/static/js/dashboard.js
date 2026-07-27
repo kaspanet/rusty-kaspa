@@ -740,11 +740,13 @@ function initCollapsibles() {
   }
 }
 
-function updateBlocksChartFromBlocks(blocks, totalAllBlocks, walletFilter) {
+function updateBlocksChartFromWorkers(workers, walletFilter, allWorkers) {
   const blockBuckets = new Map();
-  for (const b of (blocks || [])) {
-    const label = `${b.instance || '-'} / ${displayWorkerName(b.worker)}`;
-    blockBuckets.set(label, (blockBuckets.get(label) || 0) + 1);
+  for (const w of (workers || [])) {
+    const count = Number(w.blocks) || 0;
+    if (count <= 0) continue;
+    const label = `${w.instance || '-'} / ${displayWorkerName(w.worker)}`;
+    blockBuckets.set(label, (blockBuckets.get(label) || 0) + count);
   }
 
   const items = Array.from(blockBuckets.entries())
@@ -757,8 +759,8 @@ function updateBlocksChartFromBlocks(blocks, totalAllBlocks, walletFilter) {
   if (restTotal > 0) top.push({ label: 'Other', value: restTotal });
 
   const filter = normalizeWalletFilter(walletFilter);
-  const allCount = Number(totalAllBlocks) || 0;
-  const emptyMessage = filter && allCount > 0
+  const anyBlocks = (allWorkers || []).some(w => (Number(w.blocks) || 0) > 0);
+  const emptyMessage = filter && anyBlocks
     ? 'No blocks match the current wallet filter. Clear the filter to see all blocks.'
     : 'No blocks mined data to chart yet.';
 
@@ -972,7 +974,7 @@ async function refresh() {
       workersBody.appendChild(tr);
     });
 
-    updateBlocksChartFromBlocks(blocks, (mergedStats.blocks || []).length, filter);
+    updateBlocksChartFromWorkers(workers, filter, allWorkers);
 
     // raw view is on /raw.html
   } catch (e) {
@@ -1147,7 +1149,7 @@ async function refresh() {
         workersBody.appendChild(tr);
       });
 
-      updateBlocksChartFromBlocks(blocks, (cached.stats.blocks || []).length, filter);
+      updateBlocksChartFromWorkers(workers, filter, allWorkers);
 
       return;
     }
@@ -1491,7 +1493,7 @@ setInterval(() => {
     workersBody.appendChild(tr);
   });
 
-  updateBlocksChartFromBlocks(blocks, (cached.stats.blocks || []).length, filter);
+  updateBlocksChartFromWorkers(workers, filter, allWorkers);
 })();
 initCollapsibles();
 refresh();
