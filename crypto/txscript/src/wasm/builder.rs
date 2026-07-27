@@ -16,7 +16,7 @@ const TS_SCRIPT_BUILDER_OPTIONS: &'static str = r#"
  * @category TxScript
  */
 export interface ScriptBuilderFlags {
-    /** Whether or not covenant opcodes and post-Toccata script limits are enabled. */
+    /** @deprecated Covenant opcodes and their script limits are always enabled. This option has no effect and will be removed in a future major version. */
     covenantsEnabled?: boolean;
     /** Script units charged for each signature operation. Defaults to the native engine default. */
     sigopScriptUnits?: bigint | number;
@@ -93,8 +93,10 @@ impl TryFrom<ScriptBuilderOptions> for EngineFlags {
         let mut engine_flags = Self::default();
 
         if let Some(value) = flags.try_get_value("covenantsEnabled")? {
-            engine_flags.covenants_enabled =
-                value.as_bool().ok_or_else(|| Error::convert("flags.covenantsEnabled", "expected boolean"))?;
+            // Deprecated no-op: covenant opcodes and their script limits are always
+            // enabled. The key is still accepted (and type-checked) so existing
+            // callers keep compiling, but the value has no effect.
+            value.as_bool().ok_or_else(|| Error::convert("flags.covenantsEnabled", "expected boolean"))?;
         }
 
         if flags.try_get_value("sigopScriptUnits")?.is_some() {
@@ -248,7 +250,7 @@ impl ScriptBuilder {
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::{ScriptBuilder, ScriptBuilderOptions};
-    use crate::{max_script_element_size, wasm::Opcodes};
+    use crate::wasm::Opcodes;
     use js_sys::{Object, Reflect, Uint8Array};
     use kaspa_wasm_core::types::BinaryT;
     use wasm_bindgen::{JsCast, JsValue};
@@ -276,15 +278,11 @@ mod tests {
         assert_eq!(builder.to_string_js().as_string().unwrap(), "5102abcd");
     }
 
+    /// The deprecated `covenantsEnabled` option is still accepted (and type-checked)
+    /// so existing callers keep compiling, even though it no longer changes behavior.
     #[wasm_bindgen_test]
-    fn script_builder_uses_flags_js_test() {
-        let data_with_length_greater_than_max = vec![0x01; max_script_element_size(false) + 1];
-
-        let builder_without_covenants = ScriptBuilder::new(None).expect("builder should be created");
-        assert!(builder_without_covenants.add_data(binary(&data_with_length_greater_than_max)).is_err());
-
-        let builder_with_covenants =
-            ScriptBuilder::new(Some(script_builder_options(true))).expect("builder should be created with covenant flags");
-        builder_with_covenants.add_data(binary(&data_with_length_greater_than_max)).expect("covenant flag allow pushes > 520");
+    fn script_builder_accepts_deprecated_covenants_enabled_option_js_test() {
+        ScriptBuilder::new(Some(script_builder_options(true))).expect("builder should be created with covenantsEnabled: true");
+        ScriptBuilder::new(Some(script_builder_options(false))).expect("builder should be created with covenantsEnabled: false");
     }
 }

@@ -15,11 +15,11 @@ use crate::{
 };
 
 pub fn zk_test_flags() -> EngineFlags {
-    EngineFlags { covenants_enabled: true, ..Default::default() }
+    Default::default()
 }
 
 pub fn build_zk_script(elements: &[&[u8]]) -> ScriptBuilderResult<Vec<u8>> {
-    let mut builder = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() });
+    let mut builder = ScriptBuilder::with_flags(Default::default());
     for element in elements {
         builder.add_data(element)?;
     }
@@ -32,7 +32,7 @@ pub fn execute_zk_script(
     sig_cache: &Cache<SigCacheKey, bool>,
     reused_values: &SigHashReusedValuesUnsync,
 ) -> Result<(), TxScriptError> {
-    execute_zk_script_with_flags(script, sig_cache, reused_values, EngineFlags { covenants_enabled: true, ..Default::default() })
+    execute_zk_script_with_flags(script, sig_cache, reused_values, Default::default())
 }
 
 pub fn execute_zk_script_with_flags(
@@ -234,7 +234,7 @@ impl Groth16Fields {
 
 pub fn build_groth_script_from_fields(unprepared_compressed_vk: &[u8], groth16_proof_bytes: &[u8], inputs: &[Vec<u8>]) -> Vec<u8> {
     let groth16_tag = ZkTag::Groth16 as u8;
-    let mut builder = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() });
+    let mut builder = ScriptBuilder::with_flags(Default::default());
     for input in inputs.iter().rev() {
         builder.add_data(input).unwrap();
     }

@@ -491,7 +491,18 @@ impl PSKT<Extractor> {
             let ctx = EngineCtx::new(&cache).with_reused(&reused_values);
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
-                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, ctx, Default::default()).execute()?;
+                // Bound execution by the input's committed script units, matching consensus validation.
+                let script_units_limit = input.compute_commit.allowed_script_units();
+                TxScriptEngine::from_transaction_input_with_script_units_limit(
+                    &tx,
+                    input,
+                    idx,
+                    entry,
+                    ctx,
+                    Default::default(),
+                    script_units_limit,
+                )
+                .execute()?;
                 <Result<(), ExtractError>>::Ok(())
             })?;
         }
