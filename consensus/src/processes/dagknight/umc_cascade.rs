@@ -24,6 +24,8 @@ pub struct CascadeMaintainer {
     blue_work: BlueWorkType,
     red_work: BlueWorkType,
     negative_blue_work: BlueWorkType,
+    /// Total bucket flips observed during cascade stabilization
+    flip_count: u64,
 }
 
 /// A block identifier paired with that block's own proof-of-work contribution.
@@ -59,6 +61,7 @@ impl CascadeMaintainer {
             blue_work: BlueWorkType::ZERO,
             red_work: BlueWorkType::ZERO,
             negative_blue_work: BlueWorkType::ZERO,
+            flip_count: 0,
         }
     }
 
@@ -138,6 +141,7 @@ impl CascadeMaintainer {
                 while let Some(block) = tree.extract_positive_below_zero() {
                     tree.flip_to_negative(block);
                     self.negative_blue_work = self.negative_blue_work + block.work;
+                    self.flip_count += 1;
                     queue.push((block.hash, work_delta(block.work * 2u64, Bucket::Negative)));
                     changed = true;
                 }
@@ -145,6 +149,7 @@ impl CascadeMaintainer {
                 while let Some(block) = tree.extract_negative_at_least_zero() {
                     tree.flip_to_positive(block);
                     self.negative_blue_work = self.negative_blue_work - block.work;
+                    self.flip_count += 1;
                     queue.push((block.hash, work_delta(block.work * 2u64, Bucket::Positive)));
                     changed = true;
                 }
@@ -184,6 +189,14 @@ fn last_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reachab
     lo
 }
 
+/// Cascade result including flip statistics for performance monitoring.
+#[derive(Debug, Clone, Copy)]
+pub struct CascadeResult {
+    pub accepted: bool,
+    pub flips: u64,
+    pub voting_blocks: u64,
+}
+
 /// Run cascade voting on a set of blues, reds, and grays.
 /// Grays are red blocks that agree with the current side and don't vote.
 /// Returns true if `blue work - red work - 2 * negative blue work + deficit work > 0`.
@@ -194,7 +207,7 @@ pub fn run_cascade(
     conflict_genesis: BlockWithWork,
     k: KType,
     reachability: &impl ReachabilityService,
-) -> bool {
+) -> CascadeResult {
     let mut maintainer = CascadeMaintainer::new(conflict_genesis, k);
 
     for &blue in blues {
@@ -210,7 +223,11 @@ pub fn run_cascade(
         maintainer.add_gray(gray);
     }
 
-    maintainer.virtual_accepts()
+    CascadeResult {
+        accepted: maintainer.virtual_accepts(),
+        flips: maintainer.flip_count,
+        voting_blocks: (blues.len() + reds.len()) as u64,
+    }
 }
 
 // Cascade maintainer testing is done through protocol integration tests.

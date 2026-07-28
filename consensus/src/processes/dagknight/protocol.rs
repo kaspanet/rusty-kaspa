@@ -30,6 +30,7 @@ use crate::{
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakInput, TieBreaker},
+            umc_cascade::CascadeResult,
         },
         difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
@@ -337,7 +338,7 @@ impl<
         virtual_gd: GhostdagData,
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
-    ) -> bool {
+    ) -> CascadeResult {
         use crate::processes::dagknight::umc_cascade::{BlockWithWork, run_cascade};
 
         let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
@@ -484,9 +485,11 @@ impl<
 
         let vote_original =
             self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
-        let vote_proposed =
+        let cascade_result =
             self.proposed_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd, k_to_check, &conflict_zone_manager);
+        let vote_proposed = cascade_result.accepted;
         self.counters.record_vote(vote_original, vote_proposed);
+        self.counters.record_cascade_stats(cascade_result.flips, cascade_result.voting_blocks);
         if vote_original != vote_proposed {
             debug!(
                 "UMC VOTE DIFFERENCE: original={vote_original}, proposed={vote_proposed}, k={k_to_check}, conflict_genesis={conflict_genesis:#?}"
