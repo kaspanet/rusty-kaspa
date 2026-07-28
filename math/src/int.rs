@@ -1,5 +1,6 @@
 use core::fmt::{self, Display};
-use core::ops::{Add, Div, Mul, Sub};
+use core::ops::{Add, AddAssign, Div, Mul, Sub};
+use num_traits::Zero;
 
 #[derive(Copy, Clone, Debug)]
 pub struct SignedInteger<T> {
@@ -76,6 +77,25 @@ impl<T: Add<Output = T> + Sub<Output = T> + Ord> Add for SignedInteger<T> {
                 }
             }
         }
+    }
+}
+
+impl<T: Copy + Add<Output = T> + Sub<Output = T> + Ord> AddAssign for SignedInteger<T> {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+impl<T: Zero + Add<Output = T> + Sub<Output = T> + Ord> Zero for SignedInteger<T> {
+    #[inline]
+    fn zero() -> Self {
+        Self { abs: T::zero(), negative: false }
+    }
+
+    #[inline]
+    fn is_zero(&self) -> bool {
+        self.abs.is_zero()
     }
 }
 

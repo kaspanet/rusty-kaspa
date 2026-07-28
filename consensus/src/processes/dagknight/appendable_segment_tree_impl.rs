@@ -1,4 +1,10 @@
-use std::{collections::HashMap, hash::Hash, ops::Range};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    ops::{AddAssign, Range},
+};
+
+use num_traits::Zero;
 
 use crate::processes::dagknight::appendable_segment_tree_api::{
     AppendableSegmentTreeApi, Bucket, DEFAULT_INITIAL_CAPACITY, bucket_for_score,
@@ -41,28 +47,32 @@ fn split_range(range: &Range<LeafPosition>) -> (Range<LeafPosition>, Range<LeafP
 }
 
 #[derive(Clone, Copy, Debug)]
-struct ScoreCandidate<T> {
-    score: i64,
+struct ScoreCandidate<T, S> {
+    score: S,
     leaf: T,
 }
 
 #[derive(Clone, Debug)]
-struct BucketExtrema<T> {
-    min_positive: Option<ScoreCandidate<T>>,
-    max_negative: Option<ScoreCandidate<T>>,
-    pending_delta: i64,
+struct BucketExtrema<T, S> {
+    min_positive: Option<ScoreCandidate<T, S>>,
+    max_negative: Option<ScoreCandidate<T, S>>,
+    pending_delta: S,
 }
 
-impl<T: Copy> BucketExtrema<T> {
+impl<T, S> BucketExtrema<T, S>
+where
+    T: Copy,
+    S: Copy + PartialOrd + AddAssign + Zero,
+{
     fn empty() -> Self {
-        Self { min_positive: None, max_negative: None, pending_delta: 0 }
+        Self { min_positive: None, max_negative: None, pending_delta: S::zero() }
     }
 
-    fn create_leaf_with_score(leaf: T, score: i64) -> Self {
+    fn create_leaf_with_score(leaf: T, score: S) -> Self {
         let candidate = Some(ScoreCandidate { score, leaf });
         match bucket_for_score(score) {
-            Bucket::Positive => Self { min_positive: candidate, max_negative: None, pending_delta: 0 },
-            Bucket::Negative => Self { min_positive: None, max_negative: candidate, pending_delta: 0 },
+            Bucket::Positive => Self { min_positive: candidate, max_negative: None, pending_delta: S::zero() },
+            Bucket::Negative => Self { min_positive: None, max_negative: candidate, pending_delta: S::zero() },
         }
     }
 
@@ -70,11 +80,11 @@ impl<T: Copy> BucketExtrema<T> {
         Self {
             min_positive: minimum_candidate(left_child.min_positive, right_child.min_positive),
             max_negative: maximum_candidate(left_child.max_negative, right_child.max_negative),
-            pending_delta: 0,
+            pending_delta: S::zero(),
         }
     }
 
-    fn apply_delta(&mut self, delta: i64) {
+    fn apply_delta(&mut self, delta: S) {
         if let Some(candidate) = self.min_positive.as_mut() {
             candidate.score += delta;
         }
@@ -85,10 +95,10 @@ impl<T: Copy> BucketExtrema<T> {
     }
 }
 
-fn minimum_candidate<T: Copy>(
-    left_candidate: Option<ScoreCandidate<T>>,
-    right_candidate: Option<ScoreCandidate<T>>,
-) -> Option<ScoreCandidate<T>> {
+fn minimum_candidate<T: Copy, S: Copy + PartialOrd>(
+    left_candidate: Option<ScoreCandidate<T, S>>,
+    right_candidate: Option<ScoreCandidate<T, S>>,
+) -> Option<ScoreCandidate<T, S>> {
     match (left_candidate, right_candidate) {
         (Some(left_candidate), Some(right_candidate)) => {
             Some(if left_candidate.score <= right_candidate.score { left_candidate } else { right_candidate })
@@ -98,10 +108,10 @@ fn minimum_candidate<T: Copy>(
     }
 }
 
-fn maximum_candidate<T: Copy>(
-    left_candidate: Option<ScoreCandidate<T>>,
-    right_candidate: Option<ScoreCandidate<T>>,
-) -> Option<ScoreCandidate<T>> {
+fn maximum_candidate<T: Copy, S: Copy + PartialOrd>(
+    left_candidate: Option<ScoreCandidate<T, S>>,
+    right_candidate: Option<ScoreCandidate<T, S>>,
+) -> Option<ScoreCandidate<T, S>> {
     match (left_candidate, right_candidate) {
         (Some(left_candidate), Some(right_candidate)) => {
             Some(if left_candidate.score >= right_candidate.score { left_candidate } else { right_candidate })
@@ -123,17 +133,18 @@ fn maximum_candidate<T: Copy>(
 /// Invariant: callers must consume every crossing produced by prior updates before appending
 /// another leaf. Consequently, all bucket memberships agree with their scores whenever growth
 /// can occur.
-pub struct AppendableSegmentTree<T> {
+pub struct AppendableSegmentTree<T, S = i64> {
     len: usize,
     leaf_capacity: usize,
     /// Stable logical positions, independent of the current heap layout in `nodes`.
     position_by_leaf: HashMap<T, LeafPosition>,
-    nodes: Vec<BucketExtrema<T>>,
+    nodes: Vec<BucketExtrema<T, S>>,
 }
 
-impl<T> AppendableSegmentTree<T>
+impl<T, S> AppendableSegmentTree<T, S>
 where
     T: Copy + Eq + Hash,
+    S: Copy + PartialOrd + AddAssign + Zero,
 {
     // ---------------------------------------------------------------------
     // Public API
@@ -154,7 +165,7 @@ where
 
     /// Append a new leaf after every crossing produced by earlier updates has been consumed.
     /// The initial bucket is inferred from `initial_score`.
-    pub fn append_leaf(&mut self, leaf: T, initial_score: i64) {
+    pub fn append_leaf(&mut self, leaf: T, initial_score: S) {
         assert!(!self.position_by_leaf.contains_key(&leaf), "leaf already present");
         assert!(!self.has_unconsumed_crossings(), "consume all threshold crossings before appending a leaf");
 
@@ -171,34 +182,34 @@ where
         self.recompute_ancestors_of(node);
     }
 
-    pub fn prefix_add(&mut self, prefix_length: usize, delta: i64) {
+    pub fn prefix_add(&mut self, prefix_length: usize, delta: S) {
         self.range_add(0..prefix_length, delta);
     }
 
     /// Add `delta` to the half-open range of logical leaf positions.
-    pub fn range_add(&mut self, update_range: Range<LeafPosition>, delta: i64) {
+    pub fn range_add(&mut self, update_range: Range<LeafPosition>, delta: S) {
         assert!(update_range.start <= update_range.end, "range start exceeds range end");
         assert!(update_range.end <= self.len, "range exceeds tree length");
-        if update_range.is_empty() || delta == 0 {
+        if update_range.is_empty() || delta.is_zero() {
             return;
         }
         self.add_to_range(ROOT_NODE, self.full_leaf_range(), &update_range, delta);
     }
 
     pub fn has_positive_below_zero(&self) -> bool {
-        self.root().min_positive.is_some_and(|candidate| candidate.score < 0)
+        self.root().min_positive.is_some_and(|candidate| candidate.score < S::zero())
     }
 
     pub fn has_negative_at_least_zero(&self) -> bool {
-        self.root().max_negative.is_some_and(|candidate| candidate.score >= 0)
+        self.root().max_negative.is_some_and(|candidate| candidate.score >= S::zero())
     }
 
     pub fn extract_positive_below_zero(&self) -> Option<T> {
-        self.root().min_positive.filter(|candidate| candidate.score < 0).map(|candidate| candidate.leaf)
+        self.root().min_positive.filter(|candidate| candidate.score < S::zero()).map(|candidate| candidate.leaf)
     }
 
     pub fn extract_negative_at_least_zero(&self) -> Option<T> {
-        self.root().max_negative.filter(|candidate| candidate.score >= 0).map(|candidate| candidate.leaf)
+        self.root().max_negative.filter(|candidate| candidate.score >= S::zero()).map(|candidate| candidate.leaf)
     }
 
     pub fn flip_to_negative(&mut self, leaf: T) {
@@ -209,7 +220,7 @@ where
         self.set_bucket(leaf, Bucket::Positive);
     }
 
-    pub fn score(&mut self, leaf: T) -> i64 {
+    pub fn score(&mut self, leaf: T) -> S {
         let target_position = self.position_of(leaf);
         // The position identifies the physical leaf directly, but its score may not yet include
         // lazy deltas stored by ancestors. Descend from the root to propagate those deltas first.
@@ -224,7 +235,7 @@ where
         self.has_positive_below_zero() || self.has_negative_at_least_zero()
     }
 
-    fn point_score(&mut self, node: NodeIndex, node_range: Range<LeafPosition>, target_position: LeafPosition) -> i64 {
+    fn point_score(&mut self, node: NodeIndex, node_range: Range<LeafPosition>, target_position: LeafPosition) -> S {
         if node_range.len() == 1 {
             debug_assert_eq!(node_range.start, target_position);
             debug_assert_eq!(node, self.leaf_node(target_position));
@@ -277,7 +288,7 @@ where
     // Range updates
     // ---------------------------------------------------------------------
 
-    fn add_to_range(&mut self, node: NodeIndex, node_range: Range<LeafPosition>, update_range: &Range<LeafPosition>, delta: i64) {
+    fn add_to_range(&mut self, node: NodeIndex, node_range: Range<LeafPosition>, update_range: &Range<LeafPosition>, delta: S) {
         // No overlap: this subtree lies entirely outside the requested update,
         // so neither its summary nor its descendants need to change.
         if ranges_are_disjoint(&node_range, update_range) {
@@ -304,24 +315,24 @@ where
     // Lazy propagation
     // ---------------------------------------------------------------------
 
-    fn apply_delta_to_node(&mut self, node: NodeIndex, delta: i64) {
+    fn apply_delta_to_node(&mut self, node: NodeIndex, delta: S) {
         self.nodes[node].apply_delta(delta);
     }
 
     fn push_pending_delta(&mut self, node: NodeIndex) {
         let delta = self.nodes[node].pending_delta;
-        if delta == 0 {
+        if delta.is_zero() {
             return;
         }
 
         self.apply_delta_to_node(left_child(node), delta);
         self.apply_delta_to_node(right_child(node), delta);
-        self.nodes[node].pending_delta = 0;
+        self.nodes[node].pending_delta = S::zero();
     }
 
     fn materialize_subtree_deltas(&mut self, node: NodeIndex, node_range: Range<LeafPosition>) {
         if node_range.len() == 1 {
-            self.nodes[node].pending_delta = 0;
+            self.nodes[node].pending_delta = S::zero();
             return;
         }
 
@@ -336,7 +347,7 @@ where
     // Tree maintenance and growth
     // ---------------------------------------------------------------------
 
-    fn root(&self) -> &BucketExtrema<T> {
+    fn root(&self) -> &BucketExtrema<T, S> {
         &self.nodes[ROOT_NODE]
     }
 
@@ -349,7 +360,7 @@ where
     }
 
     /// Returns the candidate and current bucket stored at an occupied logical leaf.
-    fn bucketed_leaf_candidate_at(&self, position: LeafPosition) -> (ScoreCandidate<T>, Bucket) {
+    fn bucketed_leaf_candidate_at(&self, position: LeafPosition) -> (ScoreCandidate<T, S>, Bucket) {
         debug_assert!(position < self.len);
         let leaf = &self.nodes[self.leaf_node(position)];
         debug_assert!(leaf.min_positive.is_some() ^ leaf.max_negative.is_some(), "occupied leaf must belong to exactly one bucket");
@@ -393,7 +404,7 @@ where
     }
 
     /// Flush lazy updates and snapshot the occupied leaves with their stable logical positions.
-    fn materialized_leaves(&mut self) -> Vec<(LeafPosition, ScoreCandidate<T>)> {
+    fn materialized_leaves(&mut self) -> Vec<(LeafPosition, ScoreCandidate<T, S>)> {
         self.materialize_subtree_deltas(ROOT_NODE, self.full_leaf_range());
         self.position_by_leaf
             .iter()
@@ -407,18 +418,20 @@ where
     }
 }
 
-impl<T> Default for AppendableSegmentTree<T>
+impl<T, S> Default for AppendableSegmentTree<T, S>
 where
     T: Copy + Eq + Hash,
+    S: Copy + PartialOrd + AddAssign + Zero,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> AppendableSegmentTreeApi<T> for AppendableSegmentTree<T>
+impl<T, S> AppendableSegmentTreeApi<T, S> for AppendableSegmentTree<T, S>
 where
     T: Copy + Eq + Hash,
+    S: Copy + PartialOrd + AddAssign + Zero,
 {
     fn with_initial_capacity(initial_capacity: usize) -> Self
     where
@@ -427,15 +440,15 @@ where
         AppendableSegmentTree::with_initial_capacity(initial_capacity)
     }
 
-    fn append_leaf(&mut self, leaf: T, initial_score: i64) {
+    fn append_leaf(&mut self, leaf: T, initial_score: S) {
         AppendableSegmentTree::append_leaf(self, leaf, initial_score)
     }
 
-    fn prefix_add(&mut self, prefix_length: usize, delta: i64) {
+    fn prefix_add(&mut self, prefix_length: usize, delta: S) {
         AppendableSegmentTree::prefix_add(self, prefix_length, delta)
     }
 
-    fn range_add(&mut self, range: Range<usize>, delta: i64) {
+    fn range_add(&mut self, range: Range<usize>, delta: S) {
         AppendableSegmentTree::range_add(self, range, delta)
     }
 
@@ -463,7 +476,7 @@ where
         AppendableSegmentTree::flip_to_positive(self, leaf)
     }
 
-    fn score(&mut self, leaf: T) -> i64 {
+    fn score(&mut self, leaf: T) -> S {
         AppendableSegmentTree::score(self, leaf)
     }
 }

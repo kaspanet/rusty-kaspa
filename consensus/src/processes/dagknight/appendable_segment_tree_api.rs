@@ -1,4 +1,6 @@
-use std::ops::Range;
+use std::ops::{AddAssign, Range};
+
+use num_traits::Zero;
 
 pub(super) const DEFAULT_INITIAL_CAPACITY: usize = 8;
 
@@ -9,8 +11,8 @@ pub enum Bucket {
 }
 
 /// Assigns non-negative scores to the positive bucket and negative scores to the negative bucket.
-pub fn bucket_for_score(score: i64) -> Bucket {
-    if score >= 0 { Bucket::Positive } else { Bucket::Negative }
+pub fn bucket_for_score<S: PartialOrd + Zero>(score: S) -> Bucket {
+    if score >= S::zero() { Bucket::Positive } else { Bucket::Negative }
 }
 
 /// Public API for the appendable segment tree used by UMC cascade.
@@ -29,7 +31,10 @@ pub fn bucket_for_score(score: i64) -> Bucket {
 /// - `flip_to_negative`: O(log n)
 /// - `flip_to_positive`: O(log n)
 /// - `score`: O(log n)
-pub trait AppendableSegmentTreeApi<T> {
+pub trait AppendableSegmentTreeApi<T, S = i64>
+where
+    S: Copy + PartialOrd + AddAssign + Zero,
+{
     fn new() -> Self
     where
         Self: Sized,
@@ -43,9 +48,9 @@ pub trait AppendableSegmentTreeApi<T> {
 
     /// Appends a leaf after all threshold crossings produced by earlier updates have been consumed.
     /// Implementations may reject an append while an unconsumed crossing remains.
-    fn append_leaf(&mut self, leaf: T, initial_score: i64);
-    fn prefix_add(&mut self, prefix_length: usize, delta: i64);
-    fn range_add(&mut self, range: Range<usize>, delta: i64);
+    fn append_leaf(&mut self, leaf: T, initial_score: S);
+    fn prefix_add(&mut self, prefix_length: usize, delta: S);
+    fn range_add(&mut self, range: Range<usize>, delta: S);
 
     fn has_positive_below_zero(&self) -> bool;
     fn has_negative_at_least_zero(&self) -> bool;
@@ -56,5 +61,5 @@ pub trait AppendableSegmentTreeApi<T> {
     fn flip_to_negative(&mut self, leaf: T);
     fn flip_to_positive(&mut self, leaf: T);
 
-    fn score(&mut self, leaf: T) -> i64;
+    fn score(&mut self, leaf: T) -> S;
 }
