@@ -338,7 +338,7 @@ impl<
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> bool {
-        use crate::processes::dagknight::umc_cascade::run_cascade;
+        use crate::processes::dagknight::umc_cascade::{BlockWithWork, run_cascade};
 
         let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
 
@@ -351,35 +351,40 @@ impl<
 
         while curr_gd.selected_parent != conflict_genesis {
             for &blue_block in curr_gd.mergeset_blues.iter() {
-                blues.push(blue_block);
+                let blue_work = calc_work(self.headers_store.get_bits(blue_block).unwrap());
+                blues.push(BlockWithWork::new(blue_block, blue_work));
             }
 
             for &red_block in curr_gd.mergeset_reds.iter() {
-                // Gray blocks agree with the current side (chain ancestors of subgroup's next chain ancestor)
-                // They don't vote - skip them in cascade
+                let red_work = calc_work(self.headers_store.get_bits(red_block).unwrap());
+                let block = BlockWithWork::new(red_block, red_work);
+
+                // Gray blocks agree with the current side (chain ancestors of subgroup's next chain ancestor).
+                // They are recorded separately but contribute no vote or work to either side.
                 if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
-                    grays.push(red_block);
+                    grays.push(block);
                 } else {
-                    reds.push(red_block);
+                    reds.push(block);
                 }
             }
 
             curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
         }
 
-        // Block-count deficit: sqrt(k)
-        let deficit_blocks = (k as f64).sqrt() as i64;
+        let conflict_genesis_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+        let conflict_genesis_block = BlockWithWork::new(conflict_genesis, conflict_genesis_work);
 
         debug!(
-            "k = {} | blues = {} | reds = {} | grays = {} | deficit_blocks = {}",
+            "k = {} | blues = {} | reds = {} | grays = {} | voting_deficit = {} | conflict_genesis_work = {}",
             k,
             blues.len(),
             reds.len(),
             grays.len(),
-            deficit_blocks
+            k.isqrt(),
+            conflict_genesis_work
         );
 
-        run_cascade(&blues, &reds, &grays, deficit_blocks, &self.reachability_service)
+        run_cascade(&blues, &reds, &grays, conflict_genesis_block, k, &self.reachability_service)
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.

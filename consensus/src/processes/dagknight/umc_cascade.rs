@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 
+use kaspa_consensus_core::{BlueWorkType, KType};
 use kaspa_hashes::Hash;
+use kaspa_math::int::SignedInteger;
+use num_traits::Zero;
 
 use crate::model::services::reachability::ReachabilityService;
 use crate::processes::dagknight::{AppendableSegmentTree, Bucket, bucket_for_score};
+
+type SignedWork = SignedInteger<BlueWorkType>;
 
 // ============================================================================
 // Cascade Maintainer
@@ -13,69 +18,85 @@ use crate::processes::dagknight::{AppendableSegmentTree, Bucket, bucket_for_scor
 /// and lazy segment trees with event-driven bucket-transition propagation.
 pub struct CascadeMaintainer {
     blues_chains_decomposition: Vec<Vec<Hash>>,
-    chains_score_trees: Vec<AppendableSegmentTree<Hash>>,
+    chains_score_trees: Vec<AppendableSegmentTree<BlockWithWork, SignedWork>>,
     blk_mapping_to_chains: HashMap<Hash, usize>,
-    deficit: i64,
-    blue_count: i64,
-    red_count: i64,
-    negative_blue_count: i64,
+    deficit_work: BlueWorkType,
+    blue_work: BlueWorkType,
+    red_work: BlueWorkType,
+    negative_blue_work: BlueWorkType,
+}
+
+/// A block identifier paired with that block's own proof-of-work contribution.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct BlockWithWork {
+    pub hash: Hash,
+    pub work: BlueWorkType,
+}
+
+impl BlockWithWork {
+    pub fn new(hash: Hash, work: BlueWorkType) -> Self {
+        Self { hash, work }
+    }
+}
+
+fn work_delta(work: BlueWorkType, bucket: Bucket) -> SignedWork {
+    let magnitude = SignedWork::from(work);
+    match bucket {
+        Bucket::Positive => magnitude,
+        Bucket::Negative => SignedWork::zero() - magnitude,
+    }
 }
 
 impl CascadeMaintainer {
-    pub fn new(deficit: i64) -> Self {
+    /// Initializes the cascade with `floor(sqrt(k))` conflict-genesis work as its voting deficit.
+    pub fn new(conflict_genesis: BlockWithWork, k: KType) -> Self {
+        let deficit_work = conflict_genesis.work * u64::from(k.isqrt());
         Self {
             blues_chains_decomposition: Vec::new(),
             chains_score_trees: Vec::new(),
             blk_mapping_to_chains: HashMap::new(),
-            deficit,
-            blue_count: 0,
-            red_count: 0,
-            negative_blue_count: 0,
+            deficit_work,
+            blue_work: BlueWorkType::ZERO,
+            red_work: BlueWorkType::ZERO,
+            negative_blue_work: BlueWorkType::ZERO,
         }
     }
 
     /// Insert a new blue block into the chain decomposition and stabilize cascade.
-    pub fn add_blue(&mut self, block: Hash, reachability: &impl ReachabilityService) {
-        let initial_score = self.deficit;
+    pub fn add_blue(&mut self, block: BlockWithWork, reachability: &impl ReachabilityService) {
+        let initial_score = SignedWork::from(self.deficit_work);
         let initial_bucket = bucket_for_score(initial_score);
 
-        let chain_id = self.find_extendable_chain(block, reachability).unwrap_or_else(|| {
+        let chain_id = self.find_extendable_chain(block.hash, reachability).unwrap_or_else(|| {
             let id = self.blues_chains_decomposition.len();
             self.blues_chains_decomposition.push(Vec::new());
             self.chains_score_trees.push(AppendableSegmentTree::new());
             id
         });
 
+        self.blue_work = self.blue_work + block.work;
         self.append_to_chain(chain_id, block, initial_score, initial_bucket);
 
         // A new blue block contributes according to its initial bucket.
-        let initial_contribution = match initial_bucket {
-            Bucket::Positive => 1,
-            Bucket::Negative => -1,
-        };
-        self.process_event(block, initial_contribution, reachability);
+        let initial_contribution = work_delta(block.work, initial_bucket);
+        self.process_event(block.hash, initial_contribution, reachability);
     }
 
-    /// Add a new red block and emit -1 event to ancestors.
-    pub fn add_red(&mut self, block: Hash, reachability: &impl ReachabilityService) {
-        self.red_count += 1;
-        self.process_event(block, -1, reachability);
+    /// Add a new red block and subtract its work from ancestor scores.
+    pub fn add_red(&mut self, block: BlockWithWork, reachability: &impl ReachabilityService) {
+        self.red_work = self.red_work + block.work;
+        self.process_event(block.hash, work_delta(block.work, Bucket::Negative), reachability);
     }
 
     /// Add a gray block (red block that agrees with the current side).
     /// Grays don't vote - they don't emit events and don't affect the cascade.
-    pub fn add_gray(&mut self, _block: Hash) {
+    pub fn add_gray(&mut self, _block: BlockWithWork) {
         // Gray blocks are tracked but don't participate in cascade voting.
-        // They don't emit events, don't affect scores, and don't count toward red_count.
-    }
-
-    /// Compute virtual score: |U| - |R| - 2*negative_count + deficit
-    pub fn virtual_score(&self) -> i64 {
-        self.blue_count - self.red_count - 2 * self.negative_blue_count + self.deficit
+        // They don't emit events, don't affect scores, and don't count toward red work.
     }
 
     pub fn virtual_accepts(&self) -> bool {
-        self.virtual_score() >= 0
+        self.blue_work + self.deficit_work > self.red_work + (self.negative_blue_work * 2)
     }
 
     // ----- Chain operations -----
@@ -91,20 +112,19 @@ impl CascadeMaintainer {
         None
     }
 
-    fn append_to_chain(&mut self, chain_id: usize, block: Hash, initial_score: i64, initial_bucket: Bucket) {
-        self.blues_chains_decomposition[chain_id].push(block);
+    fn append_to_chain(&mut self, chain_id: usize, block: BlockWithWork, initial_score: SignedWork, initial_bucket: Bucket) {
+        self.blues_chains_decomposition[chain_id].push(block.hash);
         self.chains_score_trees[chain_id].append_leaf(block, initial_score);
-        self.blk_mapping_to_chains.insert(block, chain_id);
-        self.blue_count += 1;
+        self.blk_mapping_to_chains.insert(block.hash, chain_id);
 
         if initial_bucket == Bucket::Negative {
-            self.negative_blue_count += 1;
+            self.negative_blue_work = self.negative_blue_work + block.work;
         }
     }
 
     // ----- Event processing -----
 
-    fn process_event(&mut self, source: Hash, delta: i64, reachability: &impl ReachabilityService) {
+    fn process_event(&mut self, source: Hash, delta: SignedWork, reachability: &impl ReachabilityService) {
         let mut queue = Vec::new();
 
         self.apply_event(source, delta, reachability);
@@ -115,17 +135,17 @@ impl CascadeMaintainer {
             changed = false;
 
             for tree in self.chains_score_trees.iter_mut() {
-                while let Some(v) = tree.extract_positive_below_zero() {
-                    tree.flip_to_negative(v);
-                    self.negative_blue_count += 1;
-                    queue.push((v, -2));
+                while let Some(block) = tree.extract_positive_below_zero() {
+                    tree.flip_to_negative(block);
+                    self.negative_blue_work = self.negative_blue_work + block.work;
+                    queue.push((block.hash, work_delta(block.work * 2u64, Bucket::Negative)));
                     changed = true;
                 }
 
-                while let Some(v) = tree.extract_negative_at_least_zero() {
-                    tree.flip_to_positive(v);
-                    self.negative_blue_count -= 1;
-                    queue.push((v, 2));
+                while let Some(block) = tree.extract_negative_at_least_zero() {
+                    tree.flip_to_positive(block);
+                    self.negative_blue_work = self.negative_blue_work - block.work;
+                    queue.push((block.hash, work_delta(block.work * 2u64, Bucket::Positive)));
                     changed = true;
                 }
             }
@@ -136,7 +156,7 @@ impl CascadeMaintainer {
         }
     }
 
-    fn apply_event(&mut self, source: Hash, delta: i64, reachability: &impl ReachabilityService) {
+    fn apply_event(&mut self, source: Hash, delta: SignedWork, reachability: &impl ReachabilityService) {
         for (chain, tree) in self.blues_chains_decomposition.iter().zip(self.chains_score_trees.iter_mut()) {
             let p = last_ancestor_index(chain, source, reachability);
             if p > 0 {
@@ -166,9 +186,16 @@ fn last_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reachab
 
 /// Run cascade voting on a set of blues, reds, and grays.
 /// Grays are red blocks that agree with the current side and don't vote.
-/// Returns true if the virtual score is >= 0 (UMC accepted).
-pub fn run_cascade(blues: &[Hash], reds: &[Hash], grays: &[Hash], deficit: i64, reachability: &impl ReachabilityService) -> bool {
-    let mut maintainer = CascadeMaintainer::new(deficit);
+/// Returns true if `blue work - red work - 2 * negative blue work + deficit work > 0`.
+pub fn run_cascade(
+    blues: &[BlockWithWork],
+    reds: &[BlockWithWork],
+    grays: &[BlockWithWork],
+    conflict_genesis: BlockWithWork,
+    k: KType,
+    reachability: &impl ReachabilityService,
+) -> bool {
+    let mut maintainer = CascadeMaintainer::new(conflict_genesis, k);
 
     for &blue in blues {
         maintainer.add_blue(blue, reachability);
