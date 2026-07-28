@@ -64,7 +64,7 @@ const address = createAddress(publicKey, NetworkType.Mainnet);
 console.log(String(address));
 ```
 
-Connect to a public node and query it over RPC:
+Connect to one of the public community-maintained nodes:
 
 ```javascript
 import { RpcClient, Resolver } from '@kaspa/sdk-wasm';
@@ -80,6 +80,7 @@ try {
 ```
 ## Documentation
 
+- [**Kaspa** documentation](https://docs.kaspa.org/)
 - [**integrating with Kaspa** guide](https://kaspa.aspectron.org/)
 - [**TypeScript** documentation](https://kaspa.aspectron.org/docs/)
 - [**Rust** documentation](https://docs.rs/kaspa-wasm/latest/kaspa_wasm/index.html)

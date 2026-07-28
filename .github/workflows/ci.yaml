@@ -327,7 +327,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install NodeJS dependencies
         run: npm install --global typedoc typescript
@@ -399,9 +399,9 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
 
       - name: Install NodeJS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install NodeJS dependencies
         run: npm install --global typedoc typescript
@@ -420,14 +420,14 @@ jobs:
         run: |
           pushd .
           cd wasm
-          bash assemble-npm --skip-build
+          bash assemble-npm
           popd
 
       - name: Smoke test npm tarball
         run: |
           pushd .
           cd wasm
-          node build/npm/smoke-test.js
+          node build/npm/smoke-test.js npm-release/*.tgz
           popd
 
       - name: Upload WASM build to GitHub 

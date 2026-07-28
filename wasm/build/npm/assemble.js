@@ -2,7 +2,7 @@
 // Assembles the publishable @kaspa/sdk-wasm npm package from the wasm-pack
 // output in web/kaspa.
 //
-// Invoked by `assemble-npm`, which builds web/kaspa and packs the result.
+// Invoked by `assemble-npm`, which packs the result.
 
 const fs = require('fs');
 const path = require('path');
@@ -33,19 +33,19 @@ function workspaceVersion() {
 
 function assemble() {
   if (!fs.existsSync(path.join(sourceDir, 'package.json'))) {
-    fail(`missing wasm-pack output at ${sourceDir}\n` + "run 'bash assemble-npm' or 'bash build-release' first");
+    fail(`missing wasm-pack output at ${sourceDir}\n` + "run 'bash build-release' first");
   }
 
   const pkg = JSON.parse(fs.readFileSync(path.join(sourceDir, 'package.json'), 'utf8'));
   const version = workspaceVersion();
 
   if (pkg.version !== version) {
-    fail(`web/kaspa is stale: built version ${pkg.version} != workspace version ${version}\n` + "rebuild with 'bash assemble-npm'");
+    fail(`web/kaspa is stale: built version ${pkg.version} != workspace version ${version}\n` + "rebuild with 'bash build-release'");
   }
 
   for (const file of BUILD_FILES) {
     if (!fs.existsSync(path.join(sourceDir, file))) {
-      fail(`missing ${file} in ${sourceDir}`);
+      fail(`missing ${file} in ${sourceDir}\n` + "rebuild with 'bash build-release'");
     }
   }
 
@@ -54,6 +54,8 @@ function assemble() {
   pkg.bugs = { url: 'https://github.com/kaspanet/rusty-kaspa/issues' };
   pkg.keywords = ['kaspa', 'wasm', 'sdk', 'blockdag', 'wallet', 'rpc'];
   pkg.publishConfig = { access: 'public' };
+  // wasm-pack omits kaspa_bg.wasm.d.ts from files; drop this once
+  // https://github.com/wasm-bindgen/wasm-pack/issues/1193 is fixed
   if (!pkg.files.includes('kaspa_bg.wasm.d.ts')) {
     pkg.files.push('kaspa_bg.wasm.d.ts');
   }

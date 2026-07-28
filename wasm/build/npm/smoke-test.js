@@ -10,8 +10,6 @@ const os = require('os');
 const path = require('path');
 const { workspaceVersion } = require('./assemble');
 
-const wasmDir = path.resolve(__dirname, '..', '..');
-
 /** @param {string} message @returns {never} */
 function fail(message) {
   console.error(`smoke-test: ${message}`);
@@ -23,16 +21,10 @@ function run(command, args, cwd) {
   execFileSync(command, args, { cwd, stdio: ['ignore', 'inherit', 'inherit'] });
 }
 
-let tarball = process.argv[2];
-if (!tarball) {
-  const releaseDir = path.join(wasmDir, 'npm-release');
-  const tarballs = fs.existsSync(releaseDir) ? fs.readdirSync(releaseDir).filter((f) => f.endsWith('.tgz')) : [];
-  if (tarballs.length !== 1) {
-    fail(`expected exactly one .tgz in ${releaseDir}, found ${tarballs.length}; run 'bash assemble-npm' first`);
-  }
-  tarball = path.join(releaseDir, tarballs[0]);
+if (process.argv.length !== 3) {
+  fail(`usage: node smoke-test.js <tarball.tgz> (got ${process.argv.length - 2} arguments)`);
 }
-tarball = path.resolve(tarball);
+const tarball = path.resolve(process.argv[2]);
 if (!fs.existsSync(tarball)) {
   fail(`no such tarball: ${tarball}`);
 }
@@ -86,22 +78,17 @@ fs.writeFileSync(path.join(tmpDir, 'main.mjs'), consumerBody);
 run(process.execPath, ['main.mjs'], tmpDir);
 console.log('ESM consumer: ok');
 
-// Node >= 22.12 can require() ES modules, which is what keeps the web-target
-// build usable from CommonJS consumers
-const [major, minor] = process.versions.node.split('.').map(Number);
-if (major > 22 || (major === 22 && minor >= 12)) {
-  fs.writeFileSync(
-    path.join(tmpDir, 'main.cjs'),
-    `const { readFileSync } = require('node:fs');
+// require() of ES modules (Node >= 22.12) is what keeps the web-target build
+// usable from CommonJS consumers
+fs.writeFileSync(
+  path.join(tmpDir, 'main.cjs'),
+  `const { readFileSync } = require('node:fs');
 const { initSync, Mnemonic } = require('@kaspa/sdk-wasm');
 initSync({ module: readFileSync(require.resolve('@kaspa/sdk-wasm/kaspa_bg.wasm')) });
 if (Mnemonic.random().phrase.split(' ').length < 12) throw new Error('unexpected mnemonic');
 console.log('require() interop: ok');
 `,
-  );
-  run(process.execPath, ['main.cjs'], tmpDir);
-} else {
-  console.log(`require() interop: skipped (needs Node >= 22.12, running ${process.versions.node})`);
-}
+);
+run(process.execPath, ['main.cjs'], tmpDir);
 
 console.log('smoke test passed');
