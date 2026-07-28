@@ -115,17 +115,13 @@ pub type RuleResult<T> = std::result::Result<T, RuleError>;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum NonStandardError {
+    // TODO: the three variants below are unreachable, nothing constructs them. Each corresponds to a
+    // rule that is now enforced elsewhere: transaction version and signature script length are
+    // consensus rules, per-lane gas is a block template limit rather than a standardness rule, and
+    // the zero-gas requirement for native and system subnetworks is a consensus rule. Remove all
+    // three together with their `transaction_id` arms once no external consumer matches on them.
     #[error("transaction version {1} is not in the valid range of {2}-{3}")]
     RejectVersion(TransactionId, u16, u16, u16),
-
-    #[error("transaction compute mass of {1} is larger than max allowed size of {2}")]
-    RejectComputeMass(TransactionId, u64, u64),
-
-    #[error("transaction transient (storage) mass of {1} is larger than max allowed size of {2}")]
-    RejectTransientMass(TransactionId, u64, u64),
-
-    #[error("transaction storage mass of {1} is larger than max allowed size of {2}")]
-    RejectStorageMass(TransactionId, u64, u64),
 
     #[error("transaction gas of {1} is larger than max allowed per-lane gas of {2}")]
     RejectGas(TransactionId, u64, u64),
@@ -158,9 +154,6 @@ impl NonStandardError {
     pub fn transaction_id(&self) -> &TransactionId {
         match self {
             NonStandardError::RejectVersion(id, _, _, _) => id,
-            NonStandardError::RejectComputeMass(id, _, _) => id,
-            NonStandardError::RejectTransientMass(id, _, _) => id,
-            NonStandardError::RejectStorageMass(id, _, _) => id,
             NonStandardError::RejectGas(id, _, _) => id,
             NonStandardError::RejectSignatureScriptSize(id, _, _, _) => id,
             NonStandardError::RejectScriptPublicKeyVersion(id, _) => id,
