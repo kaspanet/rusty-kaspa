@@ -4,14 +4,14 @@ use crate::flowcontext::{
     transactions::TransactionsSpread,
 };
 use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
-use crate::{v7, v8, v10};
+use crate::v10;
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::config::{Config, params::ForkActivation};
+use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_notify::{
@@ -712,15 +712,9 @@ impl ConnectionInitializer for FlowContext {
 
         let local_address = self.address_manager.lock().best_local_address();
 
-        // Networks with a scheduled Toccata activation advertise the current protocol version.
-        // Other networks still support v10 locally, but advertise v9 so future Toccata-activated peers reject them.
-        let advertise_toccata_p2p = self.config.toccata_activation != ForkActivation::never();
-        let advertised_protocol_version = if advertise_toccata_p2p { PROTOCOL_VERSION } else { 9 };
-
         // Build the local version message
         // Subnets are not currently supported
-        let mut self_version_message =
-            Version::new(local_address, self.node_id, network_name.clone(), None, advertised_protocol_version);
+        let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: disable_relay_tx from config/cmd
 
@@ -768,29 +762,10 @@ impl ConnectionInitializer for FlowContext {
 
         let peer_protocol_version = peer_version.protocol_version;
 
-        // One day before activation, upgraded nodes start disconnecting outdated peers from the P2P network.
-        const ONE_DAY_SECONDS: u64 = 24 * 60 * 60;
-        let daa_threshold = ONE_DAY_SECONDS * self.config.bps();
-        let virtual_daa_score = self.consensus().unguarded_session().get_virtual_daa_score();
-        let connect_only_new_versions = self.config.toccata_activation.is_active(virtual_daa_score.saturating_add(daa_threshold));
-
-        // Until the one-day pre-activation threshold is reached, older protocol versions remain accepted.
-        // Once it is reached, peers must advertise protocol 10.
-        let (flows, applied_protocol_version) = if connect_only_new_versions {
-            // Register all flows according to version
-            match peer_protocol_version {
-                v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
-                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
-            }
-        } else {
-            // Register all flows according to version
-            match peer_protocol_version {
-                v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
-                9 => (v8::register(self.clone(), router.clone(), 9), 9),
-                8 => (v8::register(self.clone(), router.clone(), 8), 8),
-                7 => (v7::register(self.clone(), router.clone()), 7),
-                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
-            }
+        // Peers must advertise at least the current protocol version. Register all flows according to version.
+        let (flows, applied_protocol_version) = match peer_protocol_version {
+            v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
         // Build and register the peer properties
