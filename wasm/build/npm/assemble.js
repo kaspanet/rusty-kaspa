@@ -14,11 +14,7 @@ const stagingDir = path.join(releaseDir, 'sdk-wasm');
 
 const BUILD_FILES = ['kaspa.js', 'kaspa.d.ts', 'kaspa_bg.wasm', 'kaspa_bg.wasm.d.ts'];
 
-/** @param {string} message @returns {never} */
-function fail(message) {
-  console.error(`assemble-npm: ${message}`);
-  process.exit(1);
-}
+class Failure extends Error { name = 'Failure' }
 
 function workspaceVersion() {
   const cargoTomlPath = path.join(wasmDir, '..', 'Cargo.toml');
@@ -26,26 +22,28 @@ function workspaceVersion() {
   const section = cargoToml.split(/^\[workspace\.package\]\s*$/m)[1];
   const match = section && section.split(/^\[/m)[0].match(/^version\s*=\s*"([^"]+)"/m);
   if (!match) {
-    throw new Error(`unable to parse [workspace.package] version from ${cargoTomlPath}`);
+    throw new Failure(`unable to parse [workspace.package] version from ${cargoTomlPath}`);
   }
   return match[1];
 }
 
 function assemble() {
   if (!fs.existsSync(path.join(sourceDir, 'package.json'))) {
-    fail(`missing wasm-pack output at ${sourceDir}\n` + "run 'bash build-release' first");
+    throw new Failure(`missing wasm-pack output at ${sourceDir}\n` + "run 'bash build-release' first");
   }
 
   const pkg = JSON.parse(fs.readFileSync(path.join(sourceDir, 'package.json'), 'utf8'));
   const version = workspaceVersion();
 
   if (pkg.version !== version) {
-    fail(`web/kaspa is stale: built version ${pkg.version} != workspace version ${version}\n` + "rebuild with 'bash build-release'");
+    throw new Failure(
+      `web/kaspa is stale: built version ${pkg.version} != workspace version ${version}\n` + "rebuild with 'bash build-release'",
+    );
   }
 
   for (const file of BUILD_FILES) {
     if (!fs.existsSync(path.join(sourceDir, file))) {
-      fail(`missing ${file} in ${sourceDir}\n` + "rebuild with 'bash build-release'");
+      throw new Failure(`missing ${file} in ${sourceDir}\n` + "rebuild with 'bash build-release'");
     }
   }
 
@@ -75,7 +73,13 @@ function assemble() {
 }
 
 if (require.main === module) {
-  assemble();
+  try {
+    assemble();
+  } catch (err) {
+    if (!(err instanceof Failure)) throw err;
+    console.error(`assemble-npm: ${err.message}`);
+    process.exitCode = 1;
+  }
 }
 
-module.exports = { workspaceVersion };
+module.exports = { workspaceVersion, Failure };
