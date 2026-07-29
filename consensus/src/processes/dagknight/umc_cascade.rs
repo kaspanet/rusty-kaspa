@@ -99,7 +99,7 @@ impl CascadeMaintainer {
     }
 
     pub fn virtual_accepts(&self) -> bool {
-        self.blue_work + self.deficit_work > self.red_work + (self.negative_blue_work * 2)
+        self.blue_work + self.deficit_work >= self.red_work + (self.negative_blue_work * 2)
     }
 
     // ----- Chain operations -----
