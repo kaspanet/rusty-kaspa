@@ -36,6 +36,10 @@ pub struct DagknightCounters {
     original_false_proposed_true: AtomicU64,
     /// Total UMC cascade voting calls
     total_calls: AtomicU64,
+    /// Baseline true, proposed false
+    baseline_true_proposed_false: AtomicU64,
+    /// Baseline false, proposed true
+    baseline_false_proposed_true: AtomicU64,
     /// Total voting blocks (blues + reds, excluding grays) across all cascade calls
     total_voting_blocks: AtomicU64,
     /// Total cascade flips across all runs
@@ -58,6 +62,8 @@ impl DagknightCounters {
             original_true_proposed_false: AtomicU64::new(0),
             original_false_proposed_true: AtomicU64::new(0),
             total_calls: AtomicU64::new(0),
+            baseline_true_proposed_false: AtomicU64::new(0),
+            baseline_false_proposed_true: AtomicU64::new(0),
             total_voting_blocks: AtomicU64::new(0),
             total_cascade_flips: AtomicU64::new(0),
             max_cascade_flips: AtomicU64::new(0),
@@ -93,6 +99,19 @@ impl DagknightCounters {
         }
     }
 
+    /// Record a directional disagreement between baseline (paper Algorithm 6) and proposed cascade.
+    pub fn record_baseline_disagreement(&self, baseline_true: bool, proposed_true: bool) {
+        match (baseline_true, proposed_true) {
+            (true, false) => {
+                self.baseline_true_proposed_false.fetch_add(1, Ordering::Relaxed);
+            }
+            (false, true) => {
+                self.baseline_false_proposed_true.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {} // agreement — no-op
+        }
+    }
+
     /// Take a point-in-time snapshot of all counters.
     pub fn snapshot(&self) -> DagknightCountersSnapshot {
         DagknightCountersSnapshot {
@@ -101,6 +120,8 @@ impl DagknightCounters {
             differences: self.differences.load(Ordering::Relaxed),
             original_true_proposed_false: self.original_true_proposed_false.load(Ordering::Relaxed),
             original_false_proposed_true: self.original_false_proposed_true.load(Ordering::Relaxed),
+            baseline_true_proposed_false: self.baseline_true_proposed_false.load(Ordering::Relaxed),
+            baseline_false_proposed_true: self.baseline_false_proposed_true.load(Ordering::Relaxed),
             total_voting_blocks: self.total_voting_blocks.load(Ordering::Relaxed),
             total_cascade_flips: self.total_cascade_flips.load(Ordering::Relaxed),
             max_cascade_flips: self.max_cascade_flips.load(Ordering::Relaxed),
@@ -116,6 +137,8 @@ pub struct DagknightCountersSnapshot {
     pub differences: u64,
     pub original_true_proposed_false: u64,
     pub original_false_proposed_true: u64,
+    pub baseline_true_proposed_false: u64,
+    pub baseline_false_proposed_true: u64,
     pub total_voting_blocks: u64,
     pub total_cascade_flips: u64,
     pub max_cascade_flips: u64,
@@ -135,6 +158,16 @@ impl DagknightCountersSnapshot {
     /// Percentage of calls where original was false and proposed was true.
     pub fn original_false_proposed_true_percentage(&self) -> f64 {
         if self.total_calls == 0 { 0.0 } else { self.original_false_proposed_true as f64 / self.total_calls as f64 * 100.0 }
+    }
+
+    /// Percentage of calls where baseline accepted and proposed rejected.
+    pub fn baseline_true_proposed_false_percentage(&self) -> f64 {
+        if self.total_calls == 0 { 0.0 } else { self.baseline_true_proposed_false as f64 / self.total_calls as f64 * 100.0 }
+    }
+
+    /// Percentage of calls where baseline rejected and proposed accepted.
+    pub fn baseline_false_proposed_true_percentage(&self) -> f64 {
+        if self.total_calls == 0 { 0.0 } else { self.baseline_false_proposed_true as f64 / self.total_calls as f64 * 100.0 }
     }
 
     /// Average voting blocks per cascade call.
@@ -158,6 +191,8 @@ impl std::ops::Sub for &DagknightCountersSnapshot {
             differences: self.differences.saturating_sub(rhs.differences),
             original_true_proposed_false: self.original_true_proposed_false.saturating_sub(rhs.original_true_proposed_false),
             original_false_proposed_true: self.original_false_proposed_true.saturating_sub(rhs.original_false_proposed_true),
+            baseline_true_proposed_false: self.baseline_true_proposed_false.saturating_sub(rhs.baseline_true_proposed_false),
+            baseline_false_proposed_true: self.baseline_false_proposed_true.saturating_sub(rhs.baseline_false_proposed_true),
             total_voting_blocks: self.total_voting_blocks.saturating_sub(rhs.total_voting_blocks),
             total_cascade_flips: self.total_cascade_flips.saturating_sub(rhs.total_cascade_flips),
             max_cascade_flips: 0, // max doesn't subtract meaningfully

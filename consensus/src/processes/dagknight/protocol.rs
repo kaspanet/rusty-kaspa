@@ -6,11 +6,14 @@ use std::{
 
 use dashmap::DashMap;
 use itertools::Itertools;
-use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
+use kaspa_consensus_core::{BlockHashMap, BlockHashSet, BlueWorkType, KType};
 use kaspa_core::{debug, trace};
 use kaspa_hashes::Hash;
-use kaspa_math::Uint192;
+use kaspa_math::{Uint192, int::SignedInteger};
+use num_traits::Zero;
 use parking_lot::RwLock;
+
+type SignedWork = SignedInteger<BlueWorkType>;
 
 use crate::{
     model::{
@@ -153,6 +156,68 @@ pub struct DagknightExecutor<
 pub struct DagknightData {
     pub selected_parent: Hash,               // The selected parent for this call
     pub conflict_ordered_parents: Vec<Hash>, // The rest of the parents, ordered by conflict hierarchy (parents from latest/topmost conflicts first)
+}
+
+/// Baseline cascade: iterate blues topologically (tips→past) using a heap of SortableBlock.
+/// vote(B) = sign(Σ vote(blue ∈ future(B)) - red_work(future(B)) + deficit) * work(B)
+struct BaselineCascadeHelper<'a> {
+    blues: Vec<(Hash, BlueWorkType, BlueWorkType)>,
+    reds: Vec<(Hash, BlueWorkType, BlueWorkType)>,
+    deficit: BlueWorkType,
+    is_ancestor: &'a dyn Fn(Hash, Hash) -> bool,
+    conflict_genesis: Hash,
+}
+
+impl<'a> BaselineCascadeHelper<'a> {
+    fn new(
+        blues: Vec<(Hash, BlueWorkType, BlueWorkType)>,
+        reds: Vec<(Hash, BlueWorkType, BlueWorkType)>,
+        deficit: BlueWorkType,
+        is_ancestor: &'a dyn Fn(Hash, Hash) -> bool,
+        conflict_genesis: Hash,
+    ) -> Self {
+        Self { blues, reds, deficit, is_ancestor, conflict_genesis }
+    }
+
+    fn compute_all_votes(&self) -> SignedWork {
+        use std::collections::BinaryHeap;
+
+        let mut votes: HashMap<Hash, SignedWork> = HashMap::new();
+        let mut block_work_map: HashMap<Hash, BlueWorkType> = HashMap::new();
+        let mut heap: BinaryHeap<SortableBlock> = self
+            .blues
+            .iter()
+            .map(|(hash, block_work, header_work)| {
+                block_work_map.insert(*hash, *block_work);
+                SortableBlock { hash: *hash, blue_work: *header_work }
+            })
+            .collect();
+
+        while let Some(SortableBlock { hash: bh, .. }) = heap.pop() {
+            // Only blues already processed (higher blue_work) can be in future of bh
+            let future_blue_votes: SignedWork = votes
+                .iter()
+                .filter(|(other, _)| (self.is_ancestor)(bh, **other))
+                .map(|(_, v)| *v)
+                .fold(SignedWork::zero(), |acc, v| acc + v);
+
+            let future_red_work: BlueWorkType =
+                self.reds.iter().filter(|&&(rh, _, _)| (self.is_ancestor)(bh, rh)).map(|&(_, rw, _)| rw).sum();
+
+            let blue_work_signed = SignedWork::from(block_work_map[&bh]);
+            // score = future_blue_votes - future_red_work + deficit
+            let score: SignedWork = future_blue_votes - SignedWork::from(future_red_work) + SignedWork::from(self.deficit);
+            let v = if score >= SignedWork::zero() { blue_work_signed } else { SignedWork::zero() - blue_work_signed };
+
+            // println!(
+            //     "cg: {} | compute_all_votes | curr: {} | bw: {} \n\t-> future_blue_votes: {} | future_red_work: {} | deficit: {} | blue_work_signed: {}",
+            //     self.conflict_genesis, bh, blue_work, future_blue_votes, future_red_work, self.deficit, blue_work_signed
+            // );
+            votes.insert(bh, v);
+        }
+
+        votes[&self.conflict_genesis]
+    }
 }
 
 impl<
@@ -329,6 +394,65 @@ impl<
         blue_block_work + deficit > red_block_work
     }
 
+    /// Pure (naive) baseline UMC cascade voting with memoization.
+    /// Recursive implementation of Algorithm 6 from the DK paper, work-weighted.
+    ///
+    /// Paper Algorithm 6:
+    ///   UMC-Voting(G, U, e):
+    ///     v ← Σ_{B ∈ U} UMC-Voting(future(B), U ∩ future(B), e)
+    ///     return sign(v - |G \ U| + e)
+    ///
+    /// Work-weighted adaptation:
+    ///   vote(B) = sign(Σ vote(blue ∈ future(B)) - red_work(future(B)) + deficit) * work(B)
+    ///   Genesis accepts if Σ vote(blue) > 0
+    ///
+    /// Grays (reds that are chain ancestors of subgroup's next chain ancestor) are excluded from voting.
+    fn baseline_umc_cascade_voting(
+        &self,
+        conflict_genesis: Hash,
+        subgroup: &[Hash],
+        virtual_gd: GhostdagData,
+        k: KType,
+        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+    ) -> CascadeResult {
+        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
+
+        // Collect blues and reds (excluding grays)
+        let mut blues = Vec::new();
+        let mut reds = Vec::new();
+
+        let mut curr_gd = Arc::new(virtual_gd);
+        while curr_gd.selected_parent != conflict_genesis {
+            for &blue_block in curr_gd.mergeset_blues.iter() {
+                let blue_work = calc_work(self.headers_store.get_bits(blue_block).unwrap());
+                let header_work = self.headers_store.get_header(blue_block).unwrap().blue_work;
+                blues.push((blue_block, blue_work, header_work));
+            }
+            for &red_block in curr_gd.mergeset_reds.iter() {
+                let red_work = calc_work(self.headers_store.get_bits(red_block).unwrap());
+                let header_work = self.headers_store.get_header(red_block).unwrap().blue_work;
+                if !self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
+                    reds.push((red_block, red_work, header_work));
+                }
+            }
+            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
+        }
+
+        let cg_block_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+        blues.push((conflict_genesis, cg_block_work, 0.into()));
+
+        // Deficit work = sqrt(k) * conflict_genesis_work
+        let deficit_work =
+            BlueWorkType::from_u64(u64::from(k.isqrt())) * calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+
+        // Compute votes topologically from tips backwards using a Reverse heap of SortableBlock
+        let voting_blocks = (blues.len() + reds.len()) as u64;
+        let is_ancestor = |a: Hash, b: Hash| self.reachability_service.is_dag_ancestor_of(a, b);
+        let helper = BaselineCascadeHelper::new(blues, reds, deficit_work, &is_ancestor, conflict_genesis);
+        let total_vote = helper.compute_all_votes();
+        CascadeResult { accepted: total_vote >= SignedWork::zero(), flips: 0, voting_blocks }
+    }
+
     /// Proposed chain-based UMC cascade voting using segment tree cascade scores.
     /// Competes with original work-weighted `umc_cascade_voting` for comparison.
     fn proposed_umc_cascade_voting(
@@ -375,6 +499,8 @@ impl<
         let conflict_genesis_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
         let conflict_genesis_block = BlockWithWork::new(conflict_genesis, conflict_genesis_work);
 
+        blues.push(conflict_genesis_block);
+
         debug!(
             "k = {} | blues = {} | reds = {} | grays = {} | voting_deficit = {} | conflict_genesis_work = {}",
             k,
@@ -384,6 +510,12 @@ impl<
             k.isqrt(),
             conflict_genesis_work
         );
+
+        // TODO[DK]: The blocks need to be processed topologically from past to future, but are inserted topologically backwards.
+        // Reverse the arrays to correct. Revisit later for clarity
+        blues.reverse();
+        reds.reverse();
+        grays.reverse();
 
         run_cascade(&blues, &reds, &grays, conflict_genesis_block, k, &self.reachability_service)
     }
@@ -486,8 +618,31 @@ impl<
         let vote_original =
             self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
         let cascade_result =
-            self.proposed_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd, k_to_check, &conflict_zone_manager);
+            self.proposed_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
         let vote_proposed = cascade_result.accepted;
+
+        // Compare baseline (per-blue recursive) against proposed (global virtual score)
+        // These use different acceptance criteria and are not expected to always agree.
+        // The baseline is Algorithm 6 from the paper; the proposed is an optimization.
+        let baseline_result =
+            self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+        if baseline_result.accepted != cascade_result.accepted {
+            self.counters.record_baseline_disagreement(baseline_result.accepted, cascade_result.accepted);
+            if baseline_result.accepted && !cascade_result.accepted {
+                panic!("Unexpected failure where baseline accepts but proposed declines. Impossible scenario");
+            }
+            debug!(
+                "BASELINE vs PROPOSED: k={}, conflict_genesis={:?}, baseline={}, proposed={}, \
+                 flips={}, voting_blocks={}",
+                k_to_check,
+                conflict_genesis,
+                baseline_result.accepted,
+                cascade_result.accepted,
+                cascade_result.flips,
+                cascade_result.voting_blocks
+            );
+        }
+
         self.counters.record_vote(vote_original, vote_proposed);
         self.counters.record_cascade_stats(cascade_result.flips, cascade_result.voting_blocks);
         if vote_original != vote_proposed {
@@ -753,7 +908,6 @@ mod tests {
         processes::reachability::tests::{DagBlock, DagBuilder},
         test_helpers::generate_dot_with_chain,
     };
-    use kaspa_math::Uint192;
 
     #[test]
     fn test_cascade() {
