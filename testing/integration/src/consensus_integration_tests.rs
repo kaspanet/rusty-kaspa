@@ -27,7 +27,7 @@ use kaspa_consensus_core::block::{Block, MutableBlock};
 use kaspa_consensus_core::blockhash::{self, new_unique};
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TOCCATA_BLOCK_VERSION, TRANSIENT_BYTE_TO_MASS_FACTOR};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing;
@@ -439,7 +439,7 @@ async fn header_in_isolation_validation_test() {
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::WrongBlockVersion(wrong_version, expected_version)) => {
                 assert_eq!(wrong_version, block_version);
-                assert_eq!(expected_version, TOCCATA_BLOCK_VERSION);
+                assert_eq!(expected_version, BLOCK_VERSION);
             }
             res => {
                 panic!("Unexpected result: {res:?}")
@@ -499,6 +499,8 @@ async fn header_in_isolation_validation_test() {
 
 #[tokio::test]
 async fn header_version_is_enforced_test() {
+    const WRONG_BLOCK_VERSION: u16 = BLOCK_VERSION - 1;
+
     fn set_block_version(mut block: MutableBlock, version: u16) -> MutableBlock {
         block.header.version = version;
         block.header.finalize();
@@ -511,12 +513,12 @@ async fn header_version_is_enforced_test() {
     let wait_handles = consensus.init();
 
     let block = consensus.build_header_only_block_with_parents(2.into(), vec![config.genesis.hash]);
-    assert_eq!(block.header.version, TOCCATA_BLOCK_VERSION);
+    assert_eq!(block.header.version, BLOCK_VERSION);
 
-    let wrong_version_block = set_block_version(block.clone(), BLOCK_VERSION);
+    let wrong_version_block = set_block_version(block.clone(), WRONG_BLOCK_VERSION);
     assert_match!(
         consensus.validate_and_insert_block(wrong_version_block.to_immutable()).block_task.await,
-        Err(RuleError::WrongBlockVersion(BLOCK_VERSION, TOCCATA_BLOCK_VERSION))
+        Err(RuleError::WrongBlockVersion(WRONG_BLOCK_VERSION, BLOCK_VERSION))
     );
 
     assert_match!(consensus.validate_and_insert_block(block.to_immutable()).block_task.await, Ok(BlockStatus::StatusHeaderOnly));
@@ -1568,7 +1570,6 @@ async fn seqcommit_sp_context_threshold_edge_test() {
             // KIP-21: the seqcommit look-back equals `finality_depth`; set it to 1 so a
             // single follow-up block is still within the threshold during template validation.
             p.finality_depth = 1;
-            p.toccata_activation = ForkActivation::always();
         })
         .build();
 
@@ -1878,8 +1879,7 @@ async fn push_limit_enforced_test() {
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
             let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
-            p.prior_block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
-            p.new_transient_mass_limit = mass_limit;
+            p.block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
             p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE;
             p.storage_mass_parameter = 1;
         })
@@ -1985,7 +1985,7 @@ async fn payload_test() {
     };
 
     consensus.validate_and_insert_block(funding_block.to_immutable()).virtual_state_task.await.unwrap();
-    let transient_limit = config.params.block_mass_limits().before().transient;
+    let transient_limit = config.params.block_mass_limits.transient;
     let mut txx = Transaction::new(
         0,
         vec![TransactionInput::new(TransactionOutpoint { transaction_id: cb_id, index: 0 }, vec![], 0, 0)],
@@ -2054,7 +2054,7 @@ async fn payload_for_native_tx_test() {
     consensus.init();
 
     // Create transaction with large payload
-    let transient_limit = config.params.block_mass_limits().after().transient;
+    let transient_limit = config.params.block_mass_limits.transient;
     let large_payload = vec![0u8; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx_with_payload = Transaction::new(
         0,
@@ -2126,9 +2126,7 @@ fn build_p2pk_block(
             let genesis_header: Header = (&p.genesis).into();
             p.genesis.hash = genesis_header.hash;
             p.mass_per_sig_op = mass_per_sig_op;
-            p.prior_block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
-            p.new_transient_mass_limit = u64::MAX;
-            p.toccata_activation = ForkActivation::always();
+            p.block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
         })
         .build();
 
@@ -2169,7 +2167,7 @@ fn build_p2pk_block(
     (consensus, wait_handles, transactions, block.to_immutable())
 }
 
-fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
+fn init_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
     let redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
     let stark_spk = pay_to_script_hash_script(&redeem_script);
     let output_spk = ScriptPublicKey::from_vec(0, vec![OpTrue]);
@@ -2242,7 +2240,6 @@ fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<(
 
     let mut params = TESTNET_PARAMS;
     params.crescendo_activation = ForkActivation::always();
-    params.toccata_activation = ForkActivation::always();
 
     let config = ConfigBuilder::new(params)
         .skip_proof_of_work()
@@ -2323,10 +2320,10 @@ async fn mass_per_sig_op_does_not_change_block_capacity() {
 }
 
 #[tokio::test]
-async fn toccata_accepts_one_valid_stark_proof_but_rejects_two() {
+async fn accepts_one_valid_stark_proof_but_rejects_two() {
     init_allocator_with_default_settings();
 
-    let (consensus, wait_handles, genesis_hash, transactions) = init_toccata_stark_fixture();
+    let (consensus, wait_handles, genesis_hash, transactions) = init_stark_fixture();
     let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
     let one_stark_block = consensus
         .build_utxo_valid_block_with_parents(new_unique(), vec![genesis_hash], miner_data.clone(), vec![transactions[0].clone()])
@@ -2343,7 +2340,7 @@ async fn toccata_accepts_one_valid_stark_proof_but_rejects_two() {
         .to_immutable();
     assert_match!(
         consensus.validate_and_insert_block(two_stark_block).virtual_state_task.await,
-        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == consensus.params().block_mass_limits().after().compute
+        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == consensus.params().block_mass_limits.compute
     );
     consensus.shutdown(wait_handles);
 }

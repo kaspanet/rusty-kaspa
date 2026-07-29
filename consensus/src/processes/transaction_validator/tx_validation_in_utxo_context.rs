@@ -338,7 +338,7 @@ mod tests {
         let tv = TransactionValidator::new(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -493,7 +493,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -568,7 +568,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -648,7 +648,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -729,7 +729,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -812,7 +812,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -895,7 +895,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -977,7 +977,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -1046,7 +1046,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),

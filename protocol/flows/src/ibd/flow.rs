@@ -387,7 +387,7 @@ impl IbdFlow {
         // Guard IBD from outdated nodes. P2P flow registration does not protect
         // fresh IBD peers, and the relay block is usually the syncer sink, so reject an unexpected
         // block version before requesting the pruning proof.
-        let expected_relay_block_version = self.ctx.config.block_version().after();
+        let expected_relay_block_version = self.ctx.config.block_version();
         if relay_block.header.version != expected_relay_block_version {
             return Err(ProtocolError::OtherOwned(format!(
                 "peer relayed block {} header version mismatch: got {}, expected {} at DAA score {}",

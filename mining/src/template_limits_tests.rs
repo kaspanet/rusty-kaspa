@@ -23,7 +23,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::{
         constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
-        params::{ForkActivation, ForkedParam, Params, SIMNET_PARAMS},
+        params::{Params, SIMNET_PARAMS},
     },
     constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
     errors::{
@@ -51,16 +51,14 @@ use std::{
     },
 };
 
-const ACTIVATION_DAA_SCORE: u64 = 10_000;
-const PRIOR_BLOCK_MASS_LIMIT: u64 = 500_000;
-const NEW_TRANSIENT_LIMIT: u64 = 1_000_000;
+const BLOCK_MASS_LIMIT: u64 = 500_000;
 const TARGET_TIME_PER_BLOCK: u64 = 100;
 const BLOCK_LANE_LIMITS: BlockLaneLimits =
     BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };
 
 struct MassPolicyTestConsensus {
     mass_calculator: MassCalculator,
-    mempool_mass_cofactors: ForkedParam<MassCofactors>,
+    mempool_mass_cofactors: MassCofactors,
     validation_attempts: AtomicU64,
     non_contextual_mass_overrides: RwLock<HashMap<TransactionId, NonContextualMasses>>,
 }
@@ -69,7 +67,7 @@ impl MassPolicyTestConsensus {
     fn new(params: &Params) -> Self {
         Self {
             mass_calculator: MassCalculator::new_with_consensus_params(params),
-            mempool_mass_cofactors: params.mempool_block_mass_cofactors(),
+            mempool_mass_cofactors: params.block_mass_cofactors(),
             validation_attempts: AtomicU64::new(0),
             non_contextual_mass_overrides: Default::default(),
         }
@@ -140,7 +138,7 @@ impl ConsensusApi for MassPolicyTestConsensus {
 
         if let Some(threshold) = args.feerate_threshold {
             let mass = Mass::new(non_contextual_masses, contextual_masses);
-            let normalized_mass = mass.normalized_max(&self.mempool_mass_cofactors.get(self.get_virtual_daa_score()));
+            let normalized_mass = mass.normalized_max(&self.mempool_mass_cofactors);
             if fee as f64 / normalized_mass as f64 <= threshold {
                 return Err(TxRuleError::FeerateTooLow);
             }
@@ -194,19 +192,19 @@ impl ConsensusApi for MassPolicyTestConsensus {
 
 #[test]
 fn template_limits_reject_compute_tx_before_consensus_validation() {
-    let params = transient_activation_params();
+    let params = test_params();
     let consensus = Arc::new(MassPolicyTestConsensus::new(&params));
     let mining_manager = mining_manager(&params);
     let tx = test_transaction(0, 1, 10_000);
-    consensus.set_non_contextual_masses(tx.id(), NonContextualMasses::new(PRIOR_BLOCK_MASS_LIMIT + 1, 1));
+    consensus.set_non_contextual_masses(tx.id(), NonContextualMasses::new(BLOCK_MASS_LIMIT + 1, 1));
 
     let err = match insert_transaction(&mining_manager, consensus.as_ref(), tx.clone(), RbfPolicy::Forbidden) {
         Ok(_) => panic!("compute-heavy tx should exceed the block-template compute limit"),
         Err(err) => err,
     };
     assert!(
-        matches!(err, MiningManagerError::MempoolError(RuleError::RejectComputeMass(tx_id, compute, PRIOR_BLOCK_MASS_LIMIT))
-            if tx_id == tx.id() && compute == PRIOR_BLOCK_MASS_LIMIT + 1),
+        matches!(err, MiningManagerError::MempoolError(RuleError::RejectComputeMass(tx_id, compute, BLOCK_MASS_LIMIT))
+            if tx_id == tx.id() && compute == BLOCK_MASS_LIMIT + 1),
         "expected tx to exceed block-template compute limit, got {err:?}"
     );
     assert_eq!(consensus.validation_attempts(), 0, "compute limit rejection should happen before consensus in-context validation");
@@ -214,7 +212,7 @@ fn template_limits_reject_compute_tx_before_consensus_validation() {
 
 #[test]
 fn template_limits_reject_storage_tx_after_consensus_validation() {
-    let params = transient_activation_params();
+    let params = test_params();
     let consensus = Arc::new(MassPolicyTestConsensus::new(&params));
     let mining_manager = mining_manager(&params);
     let tx = test_transaction_with_input_amount(0, 1, 1, 2);
@@ -224,8 +222,8 @@ fn template_limits_reject_storage_tx_after_consensus_validation() {
         Err(err) => err,
     };
     assert!(
-        matches!(err, MiningManagerError::MempoolError(RuleError::RejectStorageMass(tx_id, storage, PRIOR_BLOCK_MASS_LIMIT))
-            if tx_id == tx.id() && storage > PRIOR_BLOCK_MASS_LIMIT),
+        matches!(err, MiningManagerError::MempoolError(RuleError::RejectStorageMass(tx_id, storage, BLOCK_MASS_LIMIT))
+            if tx_id == tx.id() && storage > BLOCK_MASS_LIMIT),
         "expected tx to exceed block-template storage mass limit, got {err:?}"
     );
     assert_eq!(consensus.validation_attempts(), 1, "storage limit rejection should happen after consensus in-context validation");
@@ -233,7 +231,7 @@ fn template_limits_reject_storage_tx_after_consensus_validation() {
 
 #[test]
 fn template_limits_reject_gas_even_when_non_standard_transactions_are_allowed() {
-    let params = transient_activation_params();
+    let params = test_params();
     let consensus = Arc::new(MassPolicyTestConsensus::new(&params));
     let mining_manager = mining_manager(&params);
     let tx = test_transaction_with_gas(0, 10_000, 10_000, DEFAULT_GAS_PER_LANE_LIMIT + 1);
@@ -253,16 +251,14 @@ fn template_limits_reject_gas_even_when_non_standard_transactions_are_allowed() 
     assert_eq!(consensus.validation_attempts(), 0, "gas limit rejection should happen before consensus in-context validation");
 }
 
-fn transient_activation_params() -> Params {
+fn test_params() -> Params {
     let mut params = SIMNET_PARAMS.clone();
-    params.prior_block_mass_limits = BlockMassLimits::with_shared_limit(PRIOR_BLOCK_MASS_LIMIT);
-    params.new_transient_mass_limit = NEW_TRANSIENT_LIMIT;
-    params.toccata_activation = ForkActivation::new(ACTIVATION_DAA_SCORE);
+    params.block_mass_limits = BlockMassLimits::with_shared_limit(BLOCK_MASS_LIMIT);
     params
 }
 
 fn mining_manager(params: &Params) -> MiningManager {
-    let config = Config::build_default(TARGET_TIME_PER_BLOCK, true, params.mempool_block_mass_limits(), BLOCK_LANE_LIMITS);
+    let config = Config::build_default(TARGET_TIME_PER_BLOCK, true, params.block_mass_limits, BLOCK_LANE_LIMITS);
     MiningManager::with_config(config, None, Arc::new(MiningCounters::default()))
 }
 

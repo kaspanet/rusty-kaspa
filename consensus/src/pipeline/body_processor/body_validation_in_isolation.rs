@@ -65,7 +65,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_mass(self: &Arc<Self>, block: &Block) -> BlockProcessResult<Mass> {
-        let block_mass_limits = self.block_mass_limits.after();
+        let block_mass_limits = self.block_mass_limits;
         let mut total_compute_mass: u64 = 0;
         let mut total_transient_mass: u64 = 0;
         let mut total_storage_mass: u64 = 0;
