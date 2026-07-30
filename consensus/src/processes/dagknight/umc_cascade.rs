@@ -109,13 +109,19 @@ impl CascadeMaintainer {
         // They don't emit events, don't affect scores, and don't count toward red work.
     }
 
-    /// Check if cascade accepts using the cascade's aggregate formula.
-    /// Acceptance criterion: blue_work + deficit >= red_work + 2 * negative_blue_work
+    /// Returns the aggregate score of the virtual block.
+    ///
+    /// Each blue contributes its work positively or negatively according to its
+    /// final bucket, while red work contributes negatively.
+    fn virtual_score(&self) -> SignedWork {
+        SignedWork::from(self.blue_work) + SignedWork::from(self.deficit_work)
+            - SignedWork::from(self.red_work)
+            - SignedWork::from(self.negative_blue_work * 2)
+    }
+
+    /// Check if the virtual block's aggregate cascade score is non-negative.
     pub fn virtual_accepts(&self) -> bool {
-        let two_neg_blue_work = self.negative_blue_work + self.negative_blue_work;
-        let lhs = self.blue_work + self.deficit_work;
-        let rhs = self.red_work + two_neg_blue_work;
-        lhs >= rhs
+        self.virtual_score() >= SignedWork::zero()
     }
 
     // ----- Chain operations -----
