@@ -266,9 +266,8 @@ pub struct CascadeResult {
     pub debug_info: Option<CascadeDebugInfo>,
 }
 
-/// Run cascade voting on a set of blues, reds, and grays.
-/// Two-phase processing: (1) all blues in topological order, (2) all reds in topological order.
-/// Each block's events propagate backward to already-processed ancestors.
+/// Run cascade voting on a set of blues and reds in topological order.
+/// Each block's events propagate backward to already-processed strict ancestors.
 pub fn run_cascade(
     mut topological_heap: BinaryHeap<Reverse<SortableBlock>>,
     block_map: BlockHashMap<(BlockWithWork, BlockColor)>,
@@ -279,45 +278,17 @@ pub fn run_cascade(
     let mut maintainer = CascadeMaintainer::new(conflict_genesis, k);
     let mut voting_blocks = 0;
 
-    // FIXME: Topological order should work just as well as processing blues first then reds first.
-    // However, this is not the case, indicating that there is some sensitivity related to how reds
-    // propagate and how flips work. If you uncomment this and comment out the 2 phase processing below
-    // simpa will panic due to the strict baseline comparison.
+    while !topological_heap.is_empty() {
+        let Reverse(SortableBlock { hash, .. }) = topological_heap.pop().unwrap();
+        let (block_with_work, color) = &block_map[&hash];
 
-    // while !topological_heap.is_empty() {
-    //     let Reverse(SortableBlock { hash, .. }) = topological_heap.pop().unwrap();
-    //     let (block_with_work, color) = &block_map[&hash];
-
-    //     if *color == BlockColor::BLUE {
-    //         maintainer.add_blue(*block_with_work, reachability);
-    //     } else {
-    //         maintainer.add_red(*block_with_work, reachability);
-    //     }
-
-    //     voting_blocks += 1;
-    // }
-
-    // Phase 1: Process all blues first (in topological order)
-    let mut reds: Vec<SortableBlock> = Vec::new();
-    while let Some(Reverse(sb)) = topological_heap.pop() {
-        if let Some((block_with_work, color)) = block_map.get(&sb.hash) {
-            if *color == BlockColor::BLUE {
-                maintainer.add_blue(*block_with_work, reachability);
-                voting_blocks += 1;
-            } else {
-                reds.push(sb);
-            }
+        if *color == BlockColor::BLUE {
+            maintainer.add_blue(*block_with_work, reachability);
+        } else {
+            maintainer.add_red(*block_with_work, reachability);
         }
-    }
 
-    // Phase 2: Process all reds (in topological order)
-    for sb in reds {
-        if let Some((block_with_work, color)) = block_map.get(&sb.hash) {
-            if *color == BlockColor::RED {
-                maintainer.add_red(*block_with_work, reachability);
-                voting_blocks += 1;
-            }
-        }
+        voting_blocks += 1;
     }
 
     let virtual_score = maintainer.virtual_score();
