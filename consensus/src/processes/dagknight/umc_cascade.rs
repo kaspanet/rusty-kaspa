@@ -186,9 +186,8 @@ impl CascadeMaintainer {
 
     fn apply_event(&mut self, source: Hash, delta: SignedWork, reachability: &impl ReachabilityService) {
         for (chain, tree) in self.blues_chains_decomposition.iter().zip(self.chains_score_trees.iter_mut()) {
-            let p = last_ancestor_index(chain, source, reachability);
-            if p > 0 {
-                tree.prefix_add(p, delta);
+            if let Some(ancestor_index) = strict_ancestor_index(chain, source, reachability) {
+                tree.prefix_add(ancestor_index, delta);
             }
         }
     }
@@ -215,9 +214,8 @@ impl CascadeMaintainer {
     }
 }
 
-/// Binary search for the prefix of the chain where all elements are chain ancestors of source.
-/// Returns the prefix length p such that chain[0..p] are all ancestors of source.
-fn last_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl ReachabilityService) -> usize {
+/// Returns the exclusive end index of the strict-ancestor prefix, or `None` if it is empty.
+fn strict_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl ReachabilityService) -> Option<usize> {
     let mut lo = 0usize;
     let mut hi = chain.len();
 
@@ -230,7 +228,22 @@ fn last_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reachab
             hi = mid - 1;
         }
     }
-    lo
+
+    if lo == 0 {
+        return None;
+    }
+
+    // `lo` is exclusive, so `lo - 1` is the last inclusive ancestor.
+    // Reachability includes `source` itself; strict ancestry excludes it.
+    if chain[lo - 1] == source {
+        lo = lo.saturating_sub(1);
+    }
+
+    if lo == 0 {
+        return None;
+    }
+
+    Some(lo)
 }
 
 /// Per-blue debug information for comparing baseline vs cascade bucket assignments.

@@ -198,8 +198,7 @@ impl<'a> BaselineCascadeHelper<'a> {
             let blue_work_signed = SignedWork::from(block_work_map[&bh]);
 
             // Only blues already processed (higher blue_work) can be in future of bh
-            let future_blue_votes: SignedWork = blue_work_signed
-                + votes
+            let future_blue_votes: SignedWork = votes
                 .iter()
                 .filter(|(other, _)| (self.is_ancestor)(bh, **other))
                 .map(|(_, v)| *v)
