@@ -245,6 +245,7 @@ pub struct CascadeDebugInfo {
 /// Cascade result including flip statistics for performance monitoring.
 #[derive(Debug, Clone)]
 pub struct CascadeResult {
+    pub virtual_score: SignedInteger<BlueWorkType>,
     pub accepted: bool,
     pub flips: u64,
     pub voting_blocks: u64,
@@ -306,10 +307,11 @@ pub fn run_cascade(
         }
     }
 
-    let accepted = maintainer.virtual_accepts();
+    let virtual_score = maintainer.virtual_score();
+    let accepted = virtual_score >= SignedWork::zero();
     let debug_info = maintainer.collect_blue_buckets();
 
-    CascadeResult { accepted, flips: maintainer.flip_count, voting_blocks, debug_info: Some(debug_info) }
+    CascadeResult { virtual_score, accepted, flips: maintainer.flip_count, voting_blocks, debug_info: Some(debug_info) }
 }
 
 // Cascade maintainer testing is done through protocol integration tests.

@@ -180,7 +180,7 @@ impl<'a> BaselineCascadeHelper<'a> {
         Self { blues, reds, deficit, is_ancestor, conflict_genesis }
     }
 
-    fn compute_all_votes(&self) -> (SignedWork, HashMap<Hash, Bucket>) {
+    fn compute_all_votes(&self) -> (SignedWork, SignedWork, HashMap<Hash, Bucket>) {
         use std::collections::BinaryHeap;
 
         let mut votes: HashMap<Hash, SignedWork> = HashMap::new();
@@ -229,7 +229,11 @@ impl<'a> BaselineCascadeHelper<'a> {
             })
             .collect();
 
-        (votes[&self.conflict_genesis], per_blue_buckets)
+        let signed_blue_work = votes.values().copied().fold(SignedWork::zero(), |total, vote| total + vote);
+        let red_work: BlueWorkType = self.reds.iter().map(|&(_, work, _)| work).sum();
+        let virtual_score = signed_blue_work + SignedWork::from(self.deficit) - SignedWork::from(red_work);
+
+        (votes[&self.conflict_genesis], virtual_score, per_blue_buckets)
     }
 }
 
@@ -462,12 +466,18 @@ impl<
         let voting_blocks = (blues.len() + reds.len()) as u64;
         let is_ancestor = |a: Hash, b: Hash| self.reachability_service.is_dag_ancestor_of(a, b);
         let helper = BaselineCascadeHelper::new(blues, reds, deficit_work, &is_ancestor, conflict_genesis);
-        let (total_vote, per_blue_buckets) = helper.compute_all_votes();
+        let (total_vote, virtual_score, per_blue_buckets) = helper.compute_all_votes();
 
         // Build debug info from baseline
         let baseline_debug = CascadeDebugInfo { per_blue_buckets, blue_hashes: self.collect_baseline_blue_hashes(&helper) };
 
-        CascadeResult { accepted: total_vote >= SignedWork::zero(), flips: 0, voting_blocks, debug_info: Some(baseline_debug) }
+        CascadeResult {
+            virtual_score,
+            accepted: total_vote >= SignedWork::zero(),
+            flips: 0,
+            voting_blocks,
+            debug_info: Some(baseline_debug),
+        }
     }
 
     /// Collect all blue hashes from the baseline helper for debug comparison
