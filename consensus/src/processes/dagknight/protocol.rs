@@ -1,6 +1,7 @@
 use std::{
     cell::Cell,
-    collections::HashMap,
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap, HashSet},
     sync::{Arc, OnceLock},
 };
 
@@ -29,11 +30,11 @@ use crate::{
     },
     processes::{
         dagknight::{
-            DagknightCounters, GroupMetadata,
+            Bucket, DagknightCounters, GroupMetadata,
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakInput, TieBreaker},
-            umc_cascade::CascadeResult,
+            umc_cascade::{BlockColor, CascadeDebugInfo, CascadeResult},
         },
         difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
@@ -179,7 +180,7 @@ impl<'a> BaselineCascadeHelper<'a> {
         Self { blues, reds, deficit, is_ancestor, conflict_genesis }
     }
 
-    fn compute_all_votes(&self) -> SignedWork {
+    fn compute_all_votes(&self) -> (SignedWork, HashMap<Hash, Bucket>) {
         use std::collections::BinaryHeap;
 
         let mut votes: HashMap<Hash, SignedWork> = HashMap::new();
@@ -194,8 +195,11 @@ impl<'a> BaselineCascadeHelper<'a> {
             .collect();
 
         while let Some(SortableBlock { hash: bh, .. }) = heap.pop() {
+            let blue_work_signed = SignedWork::from(block_work_map[&bh]);
+
             // Only blues already processed (higher blue_work) can be in future of bh
-            let future_blue_votes: SignedWork = votes
+            let future_blue_votes: SignedWork = blue_work_signed
+                + votes
                 .iter()
                 .filter(|(other, _)| (self.is_ancestor)(bh, **other))
                 .map(|(_, v)| *v)
@@ -204,7 +208,6 @@ impl<'a> BaselineCascadeHelper<'a> {
             let future_red_work: BlueWorkType =
                 self.reds.iter().filter(|&&(rh, _, _)| (self.is_ancestor)(bh, rh)).map(|&(_, rw, _)| rw).sum();
 
-            let blue_work_signed = SignedWork::from(block_work_map[&bh]);
             // score = future_blue_votes - future_red_work + deficit
             let score: SignedWork = future_blue_votes - SignedWork::from(future_red_work) + SignedWork::from(self.deficit);
             let v = if score >= SignedWork::zero() { blue_work_signed } else { SignedWork::zero() - blue_work_signed };
@@ -216,7 +219,17 @@ impl<'a> BaselineCascadeHelper<'a> {
             votes.insert(bh, v);
         }
 
-        votes[&self.conflict_genesis]
+        // Convert votes to buckets for each blue based on vote sign.
+        // CG's bucket is determined by its actual vote (same as all other blues).
+        let per_blue_buckets: HashMap<Hash, Bucket> = votes
+            .iter()
+            .map(|(hash, vote)| {
+                let bucket = if *vote >= SignedWork::zero() { Bucket::Positive } else { Bucket::Negative };
+                (*hash, bucket)
+            })
+            .collect();
+
+        (votes[&self.conflict_genesis], per_blue_buckets)
     }
 }
 
@@ -449,8 +462,17 @@ impl<
         let voting_blocks = (blues.len() + reds.len()) as u64;
         let is_ancestor = |a: Hash, b: Hash| self.reachability_service.is_dag_ancestor_of(a, b);
         let helper = BaselineCascadeHelper::new(blues, reds, deficit_work, &is_ancestor, conflict_genesis);
-        let total_vote = helper.compute_all_votes();
-        CascadeResult { accepted: total_vote >= SignedWork::zero(), flips: 0, voting_blocks }
+        let (total_vote, per_blue_buckets) = helper.compute_all_votes();
+
+        // Build debug info from baseline
+        let baseline_debug = CascadeDebugInfo { per_blue_buckets, blue_hashes: self.collect_baseline_blue_hashes(&helper) };
+
+        CascadeResult { accepted: total_vote >= SignedWork::zero(), flips: 0, voting_blocks, debug_info: Some(baseline_debug) }
+    }
+
+    /// Collect all blue hashes from the baseline helper for debug comparison
+    fn collect_baseline_blue_hashes(&self, helper: &BaselineCascadeHelper<'_>) -> HashSet<Hash> {
+        helper.blues.iter().map(|(h, _, _)| *h).collect()
     }
 
     /// Proposed chain-based UMC cascade voting using segment tree cascade scores.
@@ -474,10 +496,21 @@ impl<
 
         let mut curr_gd = Arc::new(virtual_gd);
 
+        let mut topological_heap: BinaryHeap<_> = Default::default();
+        let mut block_map = BlockHashMap::default();
+
         while curr_gd.selected_parent != conflict_genesis {
             for &blue_block in curr_gd.mergeset_blues.iter() {
                 let blue_work = calc_work(self.headers_store.get_bits(blue_block).unwrap());
-                blues.push(BlockWithWork::new(blue_block, blue_work));
+                let block_with_work = BlockWithWork::new(blue_block, blue_work);
+                blues.push(block_with_work);
+
+                topological_heap.push(Reverse(SortableBlock {
+                    hash: blue_block,
+                    blue_work: self.headers_store.get_header(blue_block).unwrap().blue_work,
+                }));
+
+                block_map.insert(blue_block, (block_with_work, BlockColor::BLUE));
             }
 
             for &red_block in curr_gd.mergeset_reds.iter() {
@@ -490,6 +523,13 @@ impl<
                     grays.push(block);
                 } else {
                     reds.push(block);
+
+                    topological_heap.push(Reverse(SortableBlock {
+                        hash: red_block,
+                        blue_work: self.headers_store.get_header(red_block).unwrap().blue_work,
+                    }));
+
+                    block_map.insert(red_block, (block, BlockColor::RED));
                 }
             }
 
@@ -498,6 +538,13 @@ impl<
 
         let conflict_genesis_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
         let conflict_genesis_block = BlockWithWork::new(conflict_genesis, conflict_genesis_work);
+
+        // CG is a voting blue: include it in topological processing
+        topological_heap.push(Reverse(SortableBlock {
+            hash: conflict_genesis,
+            blue_work: self.headers_store.get_header(conflict_genesis).unwrap().blue_work,
+        }));
+        block_map.insert(conflict_genesis, (conflict_genesis_block, BlockColor::BLUE));
 
         blues.push(conflict_genesis_block);
 
@@ -511,13 +558,7 @@ impl<
             conflict_genesis_work
         );
 
-        // TODO[DK]: The blocks need to be processed topologically from past to future, but are inserted topologically backwards.
-        // Reverse the arrays to correct. Revisit later for clarity
-        blues.reverse();
-        reds.reverse();
-        grays.reverse();
-
-        run_cascade(&blues, &reds, &grays, conflict_genesis_block, k, &self.reachability_service)
+        run_cascade(topological_heap, block_map, conflict_genesis_block, k, &self.reachability_service)
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
@@ -626,21 +667,56 @@ impl<
         // The baseline is Algorithm 6 from the paper; the proposed is an optimization.
         let baseline_result =
             self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+
         if baseline_result.accepted != cascade_result.accepted {
             self.counters.record_baseline_disagreement(baseline_result.accepted, cascade_result.accepted);
-            if baseline_result.accepted && !cascade_result.accepted {
-                panic!("Unexpected failure where baseline accepts but proposed declines. Impossible scenario");
+
+            // Print per-blue comparison table for debugging
+            let baseline_buckets = baseline_result.debug_info.as_ref().map(|d| &d.per_blue_buckets);
+            let cascade_buckets = cascade_result.debug_info.as_ref().map(|d| &d.per_blue_buckets);
+
+            // Collect all blue hashes from both sides
+            let mut all_blues: HashSet<Hash> = HashSet::new();
+            if let Some(ref dbg) = baseline_result.debug_info {
+                all_blues.extend(&dbg.blue_hashes);
             }
-            debug!(
-                "BASELINE vs PROPOSED: k={}, conflict_genesis={:?}, baseline={}, proposed={}, \
+            if let Some(ref dbg) = cascade_result.debug_info {
+                all_blues.extend(&dbg.blue_hashes);
+            }
+
+            // Log per-blue comparison
+            let mut blues_sorted: Vec<Hash> = all_blues.into_iter().collect();
+            blues_sorted.sort();
+            for blue_hash in &blues_sorted {
+                let baseline_bucket = match baseline_buckets {
+                    Some(map) => match map.get(blue_hash) {
+                        Some(&Bucket::Positive) => "pos",
+                        Some(&Bucket::Negative) => "neg",
+                        None => "???",
+                    },
+                    None => "N/A",
+                };
+                let cascade_bucket = match cascade_buckets {
+                    Some(map) => match map.get(blue_hash) {
+                        Some(&Bucket::Positive) => "pos",
+                        Some(&Bucket::Negative) => "neg",
+                        None => "???",
+                    },
+                    None => "N/A",
+                };
+                println!("  BLUE {} | baseline={} | cascade={}", blue_hash, baseline_bucket, cascade_bucket);
+
+                panic!(
+                    "BASELINE vs PROPOSED DISAGREEMENT: k={}, conflict_genesis={:?}, baseline={}, proposed={}, \
                  flips={}, voting_blocks={}",
-                k_to_check,
-                conflict_genesis,
-                baseline_result.accepted,
-                cascade_result.accepted,
-                cascade_result.flips,
-                cascade_result.voting_blocks
-            );
+                    k_to_check,
+                    conflict_genesis,
+                    baseline_result.accepted,
+                    cascade_result.accepted,
+                    cascade_result.flips,
+                    cascade_result.voting_blocks
+                );
+            }
         }
 
         self.counters.record_vote(vote_original, vote_proposed);

@@ -1,12 +1,14 @@
-use std::collections::HashMap;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
-use kaspa_consensus_core::{BlueWorkType, KType};
+use kaspa_consensus_core::{BlockHashMap, BlueWorkType, KType};
 use kaspa_hashes::Hash;
 use kaspa_math::int::SignedInteger;
 use num_traits::Zero;
 
 use crate::model::services::reachability::ReachabilityService;
 use crate::processes::dagknight::{AppendableSegmentTree, Bucket, bucket_for_score};
+use crate::processes::ghostdag::ordering::SortableBlock;
 
 type SignedWork = SignedInteger<BlueWorkType>;
 
@@ -26,6 +28,8 @@ pub struct CascadeMaintainer {
     negative_blue_work: BlueWorkType,
     /// Total bucket flips observed during cascade stabilization
     flip_count: u64,
+    /// Mapping from block hash to work, used for debug bucket collection
+    block_work_map: HashMap<Hash, BlueWorkType>,
 }
 
 /// A block identifier paired with that block's own proof-of-work contribution.
@@ -33,6 +37,12 @@ pub struct CascadeMaintainer {
 pub struct BlockWithWork {
     pub hash: Hash,
     pub work: BlueWorkType,
+}
+
+#[derive(Eq, PartialEq)]
+pub enum BlockColor {
+    BLUE,
+    RED,
 }
 
 impl BlockWithWork {
@@ -62,6 +72,7 @@ impl CascadeMaintainer {
             red_work: BlueWorkType::ZERO,
             negative_blue_work: BlueWorkType::ZERO,
             flip_count: 0,
+            block_work_map: HashMap::new(),
         }
     }
 
@@ -85,7 +96,7 @@ impl CascadeMaintainer {
         self.process_event(block.hash, initial_contribution, reachability);
     }
 
-    /// Add a new red block and subtract its work from ancestor scores.
+    /// Add a new red block and propagate its negative work to ancestor blues.
     pub fn add_red(&mut self, block: BlockWithWork, reachability: &impl ReachabilityService) {
         self.red_work = self.red_work + block.work;
         self.process_event(block.hash, work_delta(block.work, Bucket::Negative), reachability);
@@ -98,8 +109,13 @@ impl CascadeMaintainer {
         // They don't emit events, don't affect scores, and don't count toward red work.
     }
 
+    /// Check if cascade accepts using the cascade's aggregate formula.
+    /// Acceptance criterion: blue_work + deficit >= red_work + 2 * negative_blue_work
     pub fn virtual_accepts(&self) -> bool {
-        self.blue_work + self.deficit_work >= self.red_work + (self.negative_blue_work * 2)
+        let two_neg_blue_work = self.negative_blue_work + self.negative_blue_work;
+        let lhs = self.blue_work + self.deficit_work;
+        let rhs = self.red_work + two_neg_blue_work;
+        lhs >= rhs
     }
 
     // ----- Chain operations -----
@@ -119,6 +135,7 @@ impl CascadeMaintainer {
         self.blues_chains_decomposition[chain_id].push(block.hash);
         self.chains_score_trees[chain_id].append_leaf(block, initial_score);
         self.blk_mapping_to_chains.insert(block.hash, chain_id);
+        self.block_work_map.insert(block.hash, block.work);
 
         if initial_bucket == Bucket::Negative {
             self.negative_blue_work = self.negative_blue_work + block.work;
@@ -169,6 +186,27 @@ impl CascadeMaintainer {
             }
         }
     }
+
+    /// Collect per-blue bucket assignments from all segment trees for debug comparison.
+    /// TODO[DK]: Remove when debugging against baseline is done
+    pub fn collect_blue_buckets(&mut self) -> CascadeDebugInfo {
+        let mut per_blue_buckets = HashMap::new();
+        let mut blue_hashes = HashSet::new();
+
+        for (chain_id, chain) in self.blues_chains_decomposition.iter().enumerate() {
+            let tree = &mut self.chains_score_trees[chain_id];
+            for &hash in chain.iter() {
+                blue_hashes.insert(hash);
+                // Reconstruct BlockWithWork from the hash and stored work
+                let work = self.block_work_map[&hash];
+                let block = BlockWithWork::new(hash, work);
+                let score = tree.score(block);
+                per_blue_buckets.insert(hash, bucket_for_score(score));
+            }
+        }
+
+        CascadeDebugInfo { per_blue_buckets, blue_hashes }
+    }
 }
 
 /// Binary search for the prefix of the chain where all elements are chain ancestors of source.
@@ -189,45 +227,83 @@ fn last_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reachab
     lo
 }
 
+/// Per-blue debug information for comparing baseline vs cascade bucket assignments.
+#[derive(Debug, Clone)]
+pub struct CascadeDebugInfo {
+    /// Map from blue hash to its final bucket (positive/negative) in the cascade
+    pub per_blue_buckets: HashMap<Hash, Bucket>,
+    /// Set of all blue hashes (for easy iteration in debug logs)
+    pub blue_hashes: HashSet<Hash>,
+}
+
 /// Cascade result including flip statistics for performance monitoring.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct CascadeResult {
     pub accepted: bool,
     pub flips: u64,
     pub voting_blocks: u64,
+    /// Debug information with per-blue bucket assignments (populated during comparison mode)
+    pub debug_info: Option<CascadeDebugInfo>,
 }
 
 /// Run cascade voting on a set of blues, reds, and grays.
-/// Grays are red blocks that agree with the current side and don't vote.
-/// Returns true if `blue work - red work - 2 * negative blue work + deficit work > 0`.
+/// Two-phase processing: (1) all blues in topological order, (2) all reds in topological order.
+/// Each block's events propagate backward to already-processed ancestors.
 pub fn run_cascade(
-    blues: &[BlockWithWork],
-    reds: &[BlockWithWork],
-    grays: &[BlockWithWork],
+    mut topological_heap: BinaryHeap<Reverse<SortableBlock>>,
+    block_map: BlockHashMap<(BlockWithWork, BlockColor)>,
     conflict_genesis: BlockWithWork,
     k: KType,
     reachability: &impl ReachabilityService,
 ) -> CascadeResult {
     let mut maintainer = CascadeMaintainer::new(conflict_genesis, k);
+    let mut voting_blocks = 0;
 
-    for &blue in blues {
-        maintainer.add_blue(blue, reachability);
+    // FIXME: Topological order should work just as well as processing blues first then reds first.
+    // However, this is not the case, indicating that there is some sensitivity related to how reds
+    // propagate and how flips work. If you uncomment this and comment out the 2 phase processing below
+    // simpa will panic due to the strict baseline comparison.
+
+    // while !topological_heap.is_empty() {
+    //     let Reverse(SortableBlock { hash, .. }) = topological_heap.pop().unwrap();
+    //     let (block_with_work, color) = &block_map[&hash];
+
+    //     if *color == BlockColor::BLUE {
+    //         maintainer.add_blue(*block_with_work, reachability);
+    //     } else {
+    //         maintainer.add_red(*block_with_work, reachability);
+    //     }
+
+    //     voting_blocks += 1;
+    // }
+
+    // Phase 1: Process all blues first (in topological order)
+    let mut reds: Vec<SortableBlock> = Vec::new();
+    while let Some(Reverse(sb)) = topological_heap.pop() {
+        if let Some((block_with_work, color)) = block_map.get(&sb.hash) {
+            if *color == BlockColor::BLUE {
+                maintainer.add_blue(*block_with_work, reachability);
+                voting_blocks += 1;
+            } else {
+                reds.push(sb);
+            }
+        }
     }
 
-    for &red in reds {
-        maintainer.add_red(red, reachability);
+    // Phase 2: Process all reds (in topological order)
+    for sb in reds {
+        if let Some((block_with_work, color)) = block_map.get(&sb.hash) {
+            if *color == BlockColor::RED {
+                maintainer.add_red(*block_with_work, reachability);
+                voting_blocks += 1;
+            }
+        }
     }
 
-    // Grays are recorded but don't vote - they don't emit events
-    for &gray in grays {
-        maintainer.add_gray(gray);
-    }
+    let accepted = maintainer.virtual_accepts();
+    let debug_info = maintainer.collect_blue_buckets();
 
-    CascadeResult {
-        accepted: maintainer.virtual_accepts(),
-        flips: maintainer.flip_count,
-        voting_blocks: (blues.len() + reds.len()) as u64,
-    }
+    CascadeResult { accepted, flips: maintainer.flip_count, voting_blocks, debug_info: Some(debug_info) }
 }
 
 // Cascade maintainer testing is done through protocol integration tests.
