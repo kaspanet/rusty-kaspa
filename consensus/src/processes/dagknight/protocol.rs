@@ -677,8 +677,10 @@ impl<
         let baseline_result =
             self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
 
-        if baseline_result.accepted != cascade_result.accepted {
-            self.counters.record_baseline_disagreement(baseline_result.accepted, cascade_result.accepted);
+        if baseline_result.virtual_score != cascade_result.virtual_score {
+            if baseline_result.accepted != cascade_result.accepted {
+                self.counters.record_baseline_disagreement(baseline_result.accepted, cascade_result.accepted);
+            }
 
             // Print per-blue comparison table for debugging
             let baseline_buckets = baseline_result.debug_info.as_ref().map(|d| &d.per_blue_buckets);
@@ -714,18 +716,20 @@ impl<
                     None => "N/A",
                 };
                 println!("  BLUE {} | baseline={} | cascade={}", blue_hash, baseline_bucket, cascade_bucket);
-
-                panic!(
-                    "BASELINE vs PROPOSED DISAGREEMENT: k={}, conflict_genesis={:?}, baseline={}, proposed={}, \
-                 flips={}, voting_blocks={}",
-                    k_to_check,
-                    conflict_genesis,
-                    baseline_result.accepted,
-                    cascade_result.accepted,
-                    cascade_result.flips,
-                    cascade_result.voting_blocks
-                );
             }
+
+            panic!(
+                "BASELINE vs PROPOSED SCORE DISAGREEMENT: k={}, conflict_genesis={:?}, baseline_score={}, \
+                 proposed_score={}, baseline_accepted={}, proposed_accepted={}, flips={}, voting_blocks={}",
+                k_to_check,
+                conflict_genesis,
+                baseline_result.virtual_score,
+                cascade_result.virtual_score,
+                baseline_result.accepted,
+                cascade_result.accepted,
+                cascade_result.flips,
+                cascade_result.voting_blocks
+            );
         }
 
         self.counters.record_vote(vote_original, vote_proposed);
