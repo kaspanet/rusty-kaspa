@@ -11,9 +11,9 @@ pub mod wasm;
 
 pub use builder::FinalizedR0Script;
 pub use fragments::{
-    SuccinctWitnessBytes, append_r0_groth16_verifier, append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier,
-    append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof, prepare_r0_succinct_witness, push_r0_groth16_proof,
-    push_r0_succinct_witness,
+    SuccinctWitnessBytes, append_r0_groth16_verifier, append_r0_groth16_verifier_dynamic_image_id,
+    append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier, append_r0_succinct_verifier_with_fixed_journal,
+    prepare_r0_groth16_proof, prepare_r0_succinct_witness, push_r0_groth16_proof, push_r0_succinct_witness,
 };
 
 /// This represents R0 zk script builder
