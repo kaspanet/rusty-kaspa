@@ -24,12 +24,15 @@ use crate::{
         utxo_multisets::DbUtxoMultisetsStore,
         virtual_state::{LkgVirtualState, VirtualStores},
     },
-    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
+    processes::{
+        dagknight::umc_cascade_persistence::DbUmcCascadeStore, ghostdag::ordering::SortableBlock,
+        reachability::inquirer as reachability, relations,
+    },
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
 use kaspa_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
-use kaspa_database::registry::DatabaseStorePrefixes;
+use kaspa_database::{prelude::CachePolicy, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use std::{ops::DerefMut, sync::Arc};
@@ -50,6 +53,7 @@ pub struct ConsensusStorage {
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     pub dagknight_store: Option<Arc<DbDagknightStore>>,
+    pub umc_persistence_store: Arc<DbUmcCascadeStore>,
 
     // Append-only stores
     pub topology_ghostdag_store: Arc<DbGhostdagStore>,
@@ -249,6 +253,7 @@ impl ConsensusStorage {
         let dagknight_builder = PolicyBuilder::new().bytes_budget(scaled(5_000_000)).tracked_bytes();
         // TODO[DK]: Use a config or ForkActivation to gate this
         let dagknight_store = Some(Arc::new(DbDagknightStore::new(db.clone(), dagknight_builder.build())));
+        let umc_persistence_store = Arc::new(DbUmcCascadeStore::new(db.clone(), CachePolicy::Count(256)));
 
         Arc::new(Self {
             _db: db,
@@ -277,6 +282,7 @@ impl ConsensusStorage {
             block_window_cache_for_past_median_time,
             lkg_virtual_state,
             dagknight_store,
+            umc_persistence_store,
         })
     }
 }
