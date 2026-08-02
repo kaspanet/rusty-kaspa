@@ -62,4 +62,7 @@ where
     fn flip_to_positive(&mut self, leaf: T);
 
     fn score(&mut self, leaf: T) -> S;
+
+    /// Returns all leaves in left-to-right (position) order.
+    fn leaves(&self) -> Vec<T>;
 }
