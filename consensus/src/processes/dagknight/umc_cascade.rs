@@ -1,12 +1,16 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
+use std::sync::Arc;
 
 use kaspa_consensus_core::{BlockHashMap, BlueWorkType, KType};
+use kaspa_database::prelude::StoreError;
 use kaspa_hashes::Hash;
+use kaspa_math::Uint192;
 use kaspa_math::int::SignedInteger;
 use num_traits::Zero;
 
 use crate::model::services::reachability::ReachabilityService;
+use crate::processes::dagknight::umc_cascade_persistence::{ChainLeafEntry, UmcCascadeKey, UmcCascadePersistedState, UmcCascadeStore};
 use crate::processes::dagknight::{AppendableSegmentTree, Bucket, bucket_for_score};
 use crate::processes::ghostdag::ordering::SortableBlock;
 
@@ -121,14 +125,92 @@ impl CascadeMaintainer {
         self.virtual_score() >= SignedWork::zero()
     }
 
+    /// Returns the total number of bucket flips observed during cascade stabilization.
+    pub fn flip_count(&self) -> u64 {
+        self.flip_count
+    }
+
+    // ----- Persistence -----
+
+    /// Serialize the current cascade state for checkpoint persistence.
+    pub fn to_persisted_state(&mut self, voting_blocks: u64) -> UmcCascadePersistedState {
+        let mut chains_leaves: Vec<Vec<ChainLeafEntry>> = Vec::new();
+
+        for (chain_id, _chain) in self.blues_chains_decomposition.iter().enumerate() {
+            let tree = &mut self.chains_score_trees[chain_id];
+            let leaves = tree.leaves();
+            let mut chain_leaves = Vec::new();
+            for block_with_work in leaves {
+                let score = tree.score(block_with_work);
+                let is_negative = score.negative();
+                let abs_score: Uint192 = score.abs();
+                chain_leaves.push(ChainLeafEntry {
+                    hash: block_with_work.hash,
+                    work: block_with_work.work,
+                    score_abs: abs_score,
+                    score_negative: is_negative,
+                });
+            }
+            chains_leaves.push(chain_leaves);
+        }
+
+        UmcCascadePersistedState {
+            blues_chains_decomposition: self.blues_chains_decomposition.clone(),
+            chains_leaves,
+            blk_mapping_to_chains: self.blk_mapping_to_chains.clone(),
+            deficit_work: self.deficit_work,
+            blue_work: self.blue_work,
+            red_work: self.red_work,
+            negative_blue_work: self.negative_blue_work,
+            voting_blocks,
+            flip_count: self.flip_count,
+        }
+    }
+
+    /// Restore cascade state from a persisted checkpoint.
+    pub fn from_persisted_state(persisted: &UmcCascadePersistedState, conflict_genesis: BlockWithWork, k: KType) -> Self {
+        let mut maintainer = Self::new(conflict_genesis, k);
+
+        // Override counters from persisted state
+        maintainer.deficit_work = persisted.deficit_work;
+        maintainer.blue_work = persisted.blue_work;
+        maintainer.red_work = persisted.red_work;
+        maintainer.negative_blue_work = persisted.negative_blue_work;
+        maintainer.flip_count = persisted.flip_count;
+
+        // Restore chains and trees
+        maintainer.blues_chains_decomposition = persisted.blues_chains_decomposition.clone();
+        maintainer.blk_mapping_to_chains = persisted.blk_mapping_to_chains.clone();
+
+        for (chain_id, _chain) in maintainer.blues_chains_decomposition.iter().enumerate() {
+            let leaves = &persisted.chains_leaves[chain_id];
+
+            // Rebuild tree from checkpoint
+            let mut temp_tree: AppendableSegmentTree<BlockWithWork, SignedWork> = AppendableSegmentTree::new();
+            for leaf_entry in leaves {
+                let block = BlockWithWork::new(leaf_entry.hash, leaf_entry.work);
+                let score: SignedWork = if leaf_entry.score_negative {
+                    SignedWork::zero() - SignedWork::from(leaf_entry.score_abs)
+                } else {
+                    SignedWork::from(leaf_entry.score_abs)
+                };
+                temp_tree.append_leaf(block, score);
+            }
+
+            maintainer.chains_score_trees.push(temp_tree);
+        }
+
+        maintainer
+    }
+
     // ----- Chain operations -----
 
     fn find_extendable_chain(&self, block: Hash, reachability: &impl ReachabilityService) -> Option<usize> {
         for (chain_id, chain) in self.blues_chains_decomposition.iter().enumerate() {
-            if let Some(&head) = chain.last() {
-                if reachability.is_dag_ancestor_of(head, block) {
-                    return Some(chain_id);
-                }
+            if let Some(&head) = chain.last()
+                && reachability.is_dag_ancestor_of(head, block)
+            {
+                return Some(chain_id);
             }
         }
         None
@@ -187,6 +269,22 @@ impl CascadeMaintainer {
             }
         }
     }
+
+    /// Serialize checkpoint state at the given chain block for persistence.
+    /// and save it to the persistence store
+    pub fn save_state(
+        &mut self,
+        conflict_genesis: Hash,
+        k: KType,
+        next_chain_ancestor: Hash,
+        chain_block: Hash,
+        voting_blocks: u64,
+        cascade_store: Arc<dyn UmcCascadeStore>,
+    ) -> Result<(), StoreError> {
+        let persisted_state = self.to_persisted_state(voting_blocks);
+        let key = UmcCascadeKey::new(conflict_genesis, k, next_chain_ancestor, chain_block);
+        cascade_store.insert_checkpoint(key, persisted_state)
+    }
 }
 
 /// Returns the exclusive end index of the strict-ancestor prefix, or `None` if it is empty.
@@ -195,7 +293,7 @@ fn strict_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reach
     let mut hi = chain.len();
 
     while lo < hi {
-        let mid = (lo + hi + 1) / 2;
+        let mid = (lo + hi).div_ceil(2);
         let v_mid = chain[mid - 1];
         if reachability.is_dag_ancestor_of(v_mid, source) {
             lo = mid;
