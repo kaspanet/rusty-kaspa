@@ -227,6 +227,20 @@ where
         self.point_score(ROOT_NODE, self.full_leaf_range(), target_position)
     }
 
+    /// Returns all leaves in left-to-right (position) order.
+    pub fn leaves(&self) -> Vec<T> {
+        (0..self.len)
+            .map(|pos| {
+                let leaf = &self.nodes[self.leaf_node(pos)];
+                if let Some(candidate) = leaf.min_positive {
+                    candidate.leaf
+                } else {
+                    leaf.max_negative.expect("occupied leaf must have a candidate").leaf
+                }
+            })
+            .collect()
+    }
+
     // ---------------------------------------------------------------------
     // Internal queries and bucket transitions
     // ---------------------------------------------------------------------
@@ -479,6 +493,10 @@ where
     fn score(&mut self, leaf: T) -> S {
         AppendableSegmentTree::score(self, leaf)
     }
+
+    fn leaves(&self) -> Vec<T> {
+        AppendableSegmentTree::leaves(self)
+    }
 }
 
 #[cfg(test)]
@@ -647,5 +665,43 @@ mod tests {
         assert!(!tree.has_positive_below_zero());
         assert_eq!(tree.score(1), -5);
         assert_eq!(tree.score(2), 0);
+    }
+
+    #[test]
+    fn test_leaves_returns_in_position_order() {
+        let mut tree = AppendableSegmentTree::<u64>::new();
+        tree.append_leaf(10, 1);
+        tree.append_leaf(20, 2);
+        tree.append_leaf(30, 3);
+        tree.append_leaf(40, 4);
+        tree.append_leaf(50, 5);
+
+        let leaves = tree.leaves();
+        assert_eq!(leaves, vec![10, 20, 30, 40, 50]);
+    }
+
+    #[test]
+    fn test_leaves_after_prefix_add() {
+        let mut tree = AppendableSegmentTree::<u64>::new();
+        tree.append_leaf(1, 10);
+        tree.append_leaf(2, 20);
+        tree.append_leaf(3, 30);
+
+        tree.prefix_add(2, -5);
+
+        // Leaves should still be in position order regardless of score changes
+        let leaves = tree.leaves();
+        assert_eq!(leaves, vec![1, 2, 3]);
+
+        // Verify scores are correct after prefix add
+        assert_eq!(tree.score(1), 5);
+        assert_eq!(tree.score(2), 15);
+        assert_eq!(tree.score(3), 30);
+    }
+
+    #[test]
+    fn test_leaves_empty_tree() {
+        let tree = AppendableSegmentTree::<u64>::new();
+        assert!(tree.leaves().is_empty());
     }
 }
