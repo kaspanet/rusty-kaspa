@@ -43,7 +43,8 @@ use crate::{
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
-            umc_cascade::{BlockColor, CascadeResult},
+            umc_cascade::{BlockColor, BlockWithWork, CascadeResult, run_cascade},
+            umc_cascade_persistence::{UmcCascadeStore, UmcCascadeStoreReader},
         },
         difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
@@ -107,12 +108,14 @@ pub struct DagknightExecutor<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
+    E: UmcCascadeStoreReader + Clone + 'static,
     R: ReachabilityStoreReader + Clone,
 > {
     pub genesis_hash: Hash,
     pub dagknight_store: Arc<C>,
     pub headers_store: Arc<O>,
     pub relations_store: Arc<RwLock<D>>,
+    pub umc_persistence_store: Arc<E>,
     pub reachability_service: MTReachabilityService<R>,
     pub counters: Arc<DagknightCounters>,
 }
@@ -206,8 +209,9 @@ impl<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
+    E: UmcCascadeStore + Clone,
     R: ReachabilityStoreReader + Clone,
-> DagknightExecutor<C, O, D, R>
+> DagknightExecutor<C, O, D, E, R>
 {
     pub fn dagknight(&self, parents: &[Hash]) -> DagknightData {
         /*
@@ -398,8 +402,6 @@ impl<
             output: does U have a subset U' s.t. U' is d-UMC of G
                     where d-UMC means that each block in U' is majority covered by U' (up to d)
         */
-        use crate::processes::dagknight::umc_cascade::{BlockWithWork, run_cascade};
-
         let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
 
         // Collect blues, reds, and grays by traversing virtual GD chain backward
@@ -849,6 +851,7 @@ mod tests {
     use super::*;
     use crate::model::stores::ghostdag::{GhostdagStore, GhostdagStoreReader};
     use crate::model::stores::headers::MemoryHeaderStore;
+    use crate::processes::dagknight::umc_cascade_persistence::MemoryUmcCascadeStore;
     use crate::processes::ghostdag::protocol::GhostdagManager;
     use crate::processes::reachability::tests::r#gen::generate_complex_dag;
     use crate::{
@@ -953,6 +956,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
         builder.init();
@@ -1157,6 +1161,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
         builder.init();
@@ -1237,6 +1242,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
 
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
@@ -1353,6 +1359,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
             relations_store: Arc::new(RwLock::new(relations)),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
 
         // Two identical parents: [T1, T1]
@@ -1403,6 +1410,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
             relations_store: Arc::new(RwLock::new(relations)),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
 
         // Three parents where first two are identical: [T1, T1, T2]
