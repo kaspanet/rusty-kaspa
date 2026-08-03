@@ -529,6 +529,18 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
         snapshot.baseline_false_cascade_true,
         snapshot.baseline_false_cascade_true_percentage(),
     );
+    let total_umc_calls = snapshot.checkpoint_from_checkpoint + snapshot.checkpoint_from_scratch;
+    info!(
+        "[UMC checkpoint] total_calls={}, from_checkpoint={}, from_scratch={}, hit_rate={:.1}%, \
+          estimated_effort_saved={}, estimated_effort_total={}, effort_saved={:.1}%",
+        total_umc_calls,
+        snapshot.checkpoint_from_checkpoint,
+        snapshot.checkpoint_from_scratch,
+        snapshot.checkpoint_hit_rate(),
+        snapshot.checkpoint_estimated_effort_saved,
+        snapshot.checkpoint_estimated_effort_total,
+        snapshot.checkpoint_effort_saved(),
+    );
     num_txs
 }
 
