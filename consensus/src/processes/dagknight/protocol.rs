@@ -1,15 +1,7 @@
-use std::{
-    cell::Cell,
-    cmp::Reverse,
-    collections::{BinaryHeap, HashMap},
-    sync::Arc,
-};
+use std::{cell::Cell, collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
-use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
-
-#[cfg(feature = "baseline-debugging")]
-use kaspa_consensus_core::BlueWorkType;
+use kaspa_consensus_core::{BlockHashMap, BlockHashSet, BlueWorkType, KType};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
 
@@ -43,8 +35,8 @@ use crate::{
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
-            umc_cascade::{BlockColor, BlockWithWork, CascadeResult, run_cascade},
-            umc_cascade_persistence::{UmcCascadeStore, UmcCascadeStoreReader},
+            umc_cascade::{BlockWithWork, CascadeResult, run_cascade},
+            umc_cascade_persistence::{Mergeset, UmcCascadeKey, UmcCascadePersistedState, UmcCascadeStore, UmcCascadeStoreReader},
         },
         difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
@@ -385,7 +377,15 @@ impl<
         let helper = BaselineCascadeHelper::new(blues, reds, deficit_work, &is_ancestor, conflict_genesis);
         let (total_vote, virtual_score, _per_blue_buckets) = helper.compute_all_votes();
 
-        CascadeResult { virtual_score, accepted: total_vote >= SignedWork::zero(), flips: 0, voting_blocks }
+        CascadeResult {
+            virtual_score,
+            accepted: total_vote >= SignedWork::zero(),
+            flips: 0,
+            voting_blocks,
+            from_checkpoint: false,
+            estimated_effort_saved: 0,
+            estimated_effort_total: 0,
+        }
     }
 
     /// UMC Cascade Voting using chain-based segment tree
@@ -404,76 +404,68 @@ impl<
         */
         let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
 
-        // Collect blues, reds, and grays by traversing virtual GD chain backward
-        let mut blues = Vec::new();
-        let mut reds = Vec::new();
-        let mut grays = Vec::new();
+        // Collect blues and reds by traversing virtual GD chain backward.
+        // Build mergesets into a stack: Virtual first, then ChainN, ..., Chain1, CG last.
+        let mut mergeset_stack: Vec<Mergeset> = Vec::new();
+        let mut merging_chain_block: Option<Hash> = None;
+        let mut checkpoint_state: Option<UmcCascadePersistedState> = None;
 
+        let virtual_blue_score = virtual_gd.blue_score;
         let mut curr_gd = Arc::new(virtual_gd);
 
-        let mut topological_heap: BinaryHeap<_> = Default::default();
-        let mut block_map = BlockHashMap::default();
+        while merging_chain_block.is_none() || merging_chain_block.unwrap() != conflict_genesis {
+            let blues: Vec<(Hash, BlueWorkType)> =
+                curr_gd.mergeset_blues.iter().map(|&h| (h, calc_work(self.headers_store.get_bits(h).unwrap()))).collect();
 
-        while curr_gd.selected_parent != conflict_genesis {
-            for &blue_block in curr_gd.mergeset_blues.iter() {
-                let blue_work = calc_work(self.headers_store.get_bits(blue_block).unwrap());
-                let block_with_work = BlockWithWork::new(blue_block, blue_work);
-                blues.push(block_with_work);
+            let reds: Vec<(Hash, BlueWorkType)> =
+                curr_gd.mergeset_reds.iter().map(|&h| (h, calc_work(self.headers_store.get_bits(h).unwrap()))).collect();
 
-                topological_heap.push(Reverse(SortableBlock {
-                    hash: blue_block,
-                    blue_work: self.headers_store.get_header(blue_block).unwrap().blue_work,
-                }));
+            mergeset_stack.push(Mergeset { merging_chain_block, mergeset_blues: blues, mergeset_reds: reds });
 
-                block_map.insert(blue_block, (block_with_work, BlockColor::BLUE));
-            }
+            merging_chain_block = Some(curr_gd.selected_parent);
+            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
 
-            for &red_block in curr_gd.mergeset_reds.iter() {
-                let red_work = calc_work(self.headers_store.get_bits(red_block).unwrap());
-                let block = BlockWithWork::new(red_block, red_work);
-
-                // Gray blocks agree with the current side (chain ancestors of subgroup's next chain ancestor).
-                // They are recorded separately but contribute no vote or work to either side.
-                if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
-                    grays.push(block);
-                } else {
-                    reds.push(block);
-
-                    topological_heap.push(Reverse(SortableBlock {
-                        hash: red_block,
-                        blue_work: self.headers_store.get_header(red_block).unwrap().blue_work,
-                    }));
-
-                    block_map.insert(red_block, (block, BlockColor::RED));
+            // Check if a checkpoint exists for the next chain block.
+            // If found, break — run_cascade will reload from that state and skip
+            // already-computed mergesets.
+            if let Some(cb) = merging_chain_block {
+                let state_key = UmcCascadeKey::new(conflict_genesis, k, next_chain_ancestor_of_subgroup, cb);
+                if let Ok(Some(existing_state)) = self.umc_persistence_store.get_checkpoint(state_key) {
+                    checkpoint_state = Some(existing_state);
+                    break;
                 }
             }
-
-            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
         }
 
-        let conflict_genesis_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-        let conflict_genesis_block = BlockWithWork::new(conflict_genesis, conflict_genesis_work);
+        let from_checkpoint = checkpoint_state.is_some();
+        let estimated_effort_total = virtual_blue_score;
+        let estimated_effort_saved = if from_checkpoint {
+            // Estimate effort saved: virtual_blue_score - checkpoint_block.blue_score
+            // This represents the blue blocks we didn't need to visit.
+            let checkpoint_block = merging_chain_block.unwrap();
+            let checkpoint_gd = conflict_zone_manager.get_data(checkpoint_block).unwrap();
+            checkpoint_gd.blue_score
+        } else {
+            0
+        };
 
-        // CG is a voting blue: include it in topological processing
-        topological_heap.push(Reverse(SortableBlock {
-            hash: conflict_genesis,
-            blue_work: self.headers_store.get_header(conflict_genesis).unwrap().blue_work,
-        }));
-        block_map.insert(conflict_genesis, (conflict_genesis_block, BlockColor::BLUE));
+        let cg_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+        let conflict_genesis_block = BlockWithWork::new(conflict_genesis, cg_work);
 
-        blues.push(conflict_genesis_block);
+        debug!("k = {} | voting_deficit = {} | conflict_genesis_work = {}", k, k.isqrt(), cg_work);
 
-        debug!(
-            "k = {} | blues = {} | reds = {} | grays = {} | voting_deficit = {} | conflict_genesis_work = {}",
+        run_cascade(
+            mergeset_stack,
+            conflict_genesis_block,
             k,
-            blues.len(),
-            reds.len(),
-            grays.len(),
-            k.isqrt(),
-            conflict_genesis_work
-        );
-
-        run_cascade(topological_heap, block_map, conflict_genesis_block, k, &self.reachability_service)
+            next_chain_ancestor_of_subgroup,
+            &self.reachability_service,
+            self.umc_persistence_store.clone(),
+            checkpoint_state,
+            from_checkpoint,
+            estimated_effort_saved,
+            estimated_effort_total,
+        )
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
@@ -600,6 +592,11 @@ impl<
         }
 
         self.counters.record_cascade_stats(cascade_result.flips, cascade_result.voting_blocks);
+        self.counters.record_checkpoint_stats(
+            cascade_result.from_checkpoint,
+            cascade_result.estimated_effort_saved,
+            cascade_result.estimated_effort_total,
+        );
 
         if cascade_result.accepted {
             Some(SortableBlock {

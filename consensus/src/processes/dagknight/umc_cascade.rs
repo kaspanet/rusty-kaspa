@@ -1,8 +1,7 @@
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use kaspa_consensus_core::{BlockHashMap, BlueWorkType, KType};
+use kaspa_consensus_core::{BlueWorkType, KType};
 use kaspa_database::prelude::StoreError;
 use kaspa_hashes::Hash;
 use kaspa_math::Uint192;
@@ -10,9 +9,10 @@ use kaspa_math::int::SignedInteger;
 use num_traits::Zero;
 
 use crate::model::services::reachability::ReachabilityService;
-use crate::processes::dagknight::umc_cascade_persistence::{ChainLeafEntry, UmcCascadeKey, UmcCascadePersistedState, UmcCascadeStore};
+use crate::processes::dagknight::umc_cascade_persistence::{
+    ChainLeafEntry, Mergeset, UmcCascadeKey, UmcCascadePersistedState, UmcCascadeStore,
+};
 use crate::processes::dagknight::{AppendableSegmentTree, Bucket, bucket_for_score};
-use crate::processes::ghostdag::ordering::SortableBlock;
 
 type SignedWork = SignedInteger<BlueWorkType>;
 
@@ -39,12 +39,6 @@ pub struct CascadeMaintainer {
 pub struct BlockWithWork {
     pub hash: Hash,
     pub work: BlueWorkType,
-}
-
-#[derive(Eq, PartialEq)]
-pub enum BlockColor {
-    BLUE,
-    RED,
 }
 
 impl BlockWithWork {
@@ -103,18 +97,8 @@ impl CascadeMaintainer {
         self.process_event(block.hash, work_delta(block.work, Bucket::Negative), reachability);
     }
 
-    /// Add a gray block (red block that agrees with the current side).
-    /// Grays don't vote - they don't emit events and don't affect the cascade.
-    pub fn add_gray(&mut self, _block: BlockWithWork) {
-        // Gray blocks are tracked but don't participate in cascade voting.
-        // They don't emit events, don't affect scores, and don't count toward red work.
-    }
-
     /// Returns the aggregate score of the virtual block.
-    ///
-    /// Each blue contributes its work positively or negatively according to its
-    /// final bucket, while red work contributes negatively.
-    fn virtual_score(&self) -> SignedWork {
+    pub fn virtual_score(&self) -> SignedWork {
         SignedWork::from(self.blue_work) + SignedWork::from(self.deficit_work)
             - SignedWork::from(self.red_work)
             - SignedWork::from(self.negative_blue_work * 2)
@@ -326,39 +310,327 @@ pub struct CascadeResult {
     pub accepted: bool,
     pub flips: u64,
     pub voting_blocks: u64,
+    /// Whether this cascade started from a persisted checkpoint state.
+    pub from_checkpoint: bool,
+    /// Estimated blue blocks skipped by loading from checkpoint.
+    /// Calculated as virtual_gd.blue_score - checkpoint_block.blue_score,
+    /// representing the number of blue blocks we didn't need to visit.
+    /// Zero if cascade started from scratch.
+    pub estimated_effort_saved: u64,
+    /// Total blue blocks in the conflict zone (virtual_gd.blue_score).
+    /// Used as denominator for effort_saved percentage.
+    pub estimated_effort_total: u64,
 }
 
-/// Run cascade voting on a set of blues and reds in topological order.
+// ============================================================================
+// Checkpoint-Based Cascade Runner
+// ============================================================================
+
+/// Run cascade voting on mergesets from the virtual GD chain.
 /// Each block's events propagate backward to already-processed strict ancestors.
+///
+/// `mergeset_stack` is ordered Virtual-first (top-down), so pop() gives CG first.
+///
+/// Within each mergeset, blocks are already in topological order:
+/// - mergeset_blues[i] < mergeset_blues[i+1]
+/// - mergeset_reds[i] < mergeset_reds[i+1]
+/// - All blues are earlier than all reds
+///
+/// `next_chain_ancestor` is used to filter grays: a red block that is a chain ancestor
+/// of `next_chain_ancestor` is a gray and is skipped.
+///
+/// `checkpoint_state` is the persisted cascade state loaded by the caller.
+/// When `Some`, the cascade reloads from this state and processes only the
+/// remaining mergesets above the checkpoint. When `None`, starts from scratch.
+///
+/// `from_checkpoint` indicates whether we started from a checkpoint (caller's responsibility).
+/// `estimated_effort_saved` is the estimated number of blue blocks skipped by checkpointing
+/// (caller's responsibility to calculate from virtual_gd.blue_score - checkpoint_blue_score).
+/// `estimated_effort_total` is virtual_gd.blue_score (total blues in the conflict zone).
 pub fn run_cascade(
-    mut topological_heap: BinaryHeap<Reverse<SortableBlock>>,
-    block_map: BlockHashMap<(BlockWithWork, BlockColor)>,
+    mut mergeset_stack: Vec<Mergeset>,
     conflict_genesis: BlockWithWork,
     k: KType,
+    next_chain_ancestor: Hash,
     reachability: &impl ReachabilityService,
+    cascade_store: Arc<dyn UmcCascadeStore>,
+    checkpoint_state: Option<UmcCascadePersistedState>,
+    from_checkpoint: bool,
+    estimated_effort_saved: u64,
+    estimated_effort_total: u64,
 ) -> CascadeResult {
-    let mut maintainer = CascadeMaintainer::new(conflict_genesis, k);
-    let mut voting_blocks = 0;
+    let mut voting_blocks = 0u64;
 
-    while !topological_heap.is_empty() {
-        let Reverse(SortableBlock { hash, .. }) = topological_heap.pop().unwrap();
-        let (block_with_work, color) = &block_map[&hash];
+    // Restore from checkpoint or start fresh
+    let mut maintainer = if let Some(persisted) = checkpoint_state {
+        voting_blocks = persisted.voting_blocks;
+        CascadeMaintainer::from_persisted_state(&persisted, conflict_genesis, k)
+    } else {
+        CascadeMaintainer::new(conflict_genesis, k)
+    };
 
-        if *color == BlockColor::BLUE {
-            maintainer.add_blue(*block_with_work, reachability);
-        } else {
-            maintainer.add_red(*block_with_work, reachability);
+    // Process remaining mergesets (pop from bottom = CG-first, upward)
+    while let Some(mergeset) = mergeset_stack.pop() {
+        // Process blues first (already in topological order)
+        for (hash, work) in mergeset.mergeset_blues {
+            let block_with_work = BlockWithWork::new(hash, work);
+            maintainer.add_blue(block_with_work, reachability);
+            voting_blocks += 1;
         }
 
-        voting_blocks += 1;
+        // Then process reds (already in topological order, skip grays)
+        for (hash, work) in mergeset.mergeset_reds {
+            let is_gray = reachability.is_chain_ancestor_of(next_chain_ancestor, hash);
+            if !is_gray {
+                let block_with_work = BlockWithWork::new(hash, work);
+                maintainer.add_red(block_with_work, reachability);
+                voting_blocks += 1;
+            }
+        }
+
+        // Checkpoint at chain block — persist to store (best-effort)
+        if let Some(chain_block) = mergeset.merging_chain_block {
+            let _ = maintainer.save_state(
+                conflict_genesis.hash,
+                k,
+                next_chain_ancestor,
+                chain_block,
+                voting_blocks,
+                cascade_store.clone(),
+            );
+        }
     }
 
     let virtual_score = maintainer.virtual_score();
     let accepted = virtual_score >= SignedWork::zero();
 
-    CascadeResult { virtual_score, accepted, flips: maintainer.flip_count, voting_blocks }
+    CascadeResult {
+        virtual_score,
+        accepted,
+        flips: maintainer.flip_count,
+        voting_blocks,
+        from_checkpoint,
+        estimated_effort_saved,
+        estimated_effort_total,
+    }
 }
 
-// Cascade maintainer testing is done through protocol integration tests.
-// The reachability service requires proper store setup which is handled
-// by DagBuilder in protocol tests.
+#[cfg(test)]
+mod checkpoint_tests {
+    use super::*;
+    use crate::model::services::reachability::MTReachabilityService;
+    use crate::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
+    use crate::processes::dagknight::umc_cascade_persistence::{
+        MemoryUmcCascadeStore, UmcCascadeKey, UmcCascadePersistedState, UmcCascadeStore, UmcCascadeStoreReader,
+    };
+    use crate::processes::reachability::interval::Interval;
+    use kaspa_consensus_core::blockhash::ORIGIN;
+    use kaspa_database::prelude::StoreError;
+    use rocksdb::WriteBatch;
+
+    /// Test wrapper around MemoryUmcCascadeStore that reports is_persistent()=true
+    /// so that run_cascade() actually performs checkpoint saves.
+    #[derive(Clone)]
+    struct TestPersistentStore {
+        inner: MemoryUmcCascadeStore,
+    }
+
+    impl TestPersistentStore {
+        fn new() -> Self {
+            Self { inner: MemoryUmcCascadeStore::new() }
+        }
+    }
+
+    impl UmcCascadeStoreReader for TestPersistentStore {
+        fn get_checkpoint(&self, key: UmcCascadeKey) -> Result<Option<UmcCascadePersistedState>, StoreError> {
+            self.inner.get_checkpoint(key)
+        }
+    }
+
+    impl UmcCascadeStore for TestPersistentStore {
+        fn insert_checkpoint(&self, key: UmcCascadeKey, state: UmcCascadePersistedState) -> Result<(), StoreError> {
+            self.inner.insert_checkpoint(key, state)
+        }
+
+        fn prune_by_conflict_genesis(&self, _batch: &mut WriteBatch, conflict_genesis: Hash) -> Result<u32, StoreError> {
+            self.inner.prune_by_conflict_genesis(_batch, conflict_genesis)
+        }
+
+        fn is_persistent(&self) -> bool {
+            true
+        }
+    }
+
+    fn make_reachability()
+    -> (MTReachabilityService<MemoryReachabilityStore>, std::sync::Arc<parking_lot::RwLock<MemoryReachabilityStore>>) {
+        let store = MemoryReachabilityStore::new();
+        let arc = std::sync::Arc::new(parking_lot::RwLock::new(store));
+        (MTReachabilityService::new(arc.clone()), arc)
+    }
+
+    fn reach_insert(arc: &std::sync::Arc<parking_lot::RwLock<MemoryReachabilityStore>>, hash: Hash, parent: Hash, height: u64) {
+        let mut store = arc.write();
+        store.insert(hash, parent, Interval::new(height, height), height).unwrap();
+    }
+
+    fn work() -> BlueWorkType {
+        BlueWorkType::from_u64(100)
+    }
+
+    #[test]
+    fn test_checkpoint_reload_produces_identical_result() {
+        // Build a simple DAG: 1→2→3→4→5, conflict genesis at 3
+        let (reachability, arc) = make_reachability();
+        reach_insert(&arc, Hash::from_u64_word(1), Hash::from_u64_word(0), 1);
+        reach_insert(&arc, Hash::from_u64_word(2), Hash::from_u64_word(1), 2);
+        reach_insert(&arc, Hash::from_u64_word(3), Hash::from_u64_word(2), 3);
+        reach_insert(&arc, Hash::from_u64_word(4), Hash::from_u64_word(3), 4);
+        reach_insert(&arc, Hash::from_u64_word(5), Hash::from_u64_word(4), 5);
+
+        let store = Arc::new(TestPersistentStore::new());
+        let cg = BlockWithWork::new(Hash::from_u64_word(3), work());
+        let k: KType = 0;
+        let nca = Hash::from_u64_word(2);
+
+        // Stack: Virtual → Chain4 → CG
+        let stack: Vec<Mergeset> = vec![
+            Mergeset { merging_chain_block: None, mergeset_blues: vec![(Hash::from_u64_word(5), work())], mergeset_reds: vec![] },
+            Mergeset {
+                merging_chain_block: Some(Hash::from_u64_word(4)),
+                mergeset_blues: vec![(Hash::from_u64_word(4), work())],
+                mergeset_reds: vec![],
+            },
+        ];
+
+        // First run — from scratch
+        let result1 = run_cascade(stack.clone(), cg, k, nca, &reachability, store.clone(), None, false, 0, 0);
+        assert!(!result1.from_checkpoint);
+        assert_eq!(result1.estimated_effort_saved, 0);
+
+        // Second run — with checkpoint state
+        // The checkpoint at chain4 should have been saved by run_cascade
+        // We simulate the caller loading it and passing it
+        let checkpoint_key = UmcCascadeKey::new(cg.hash, k, nca, Hash::from_u64_word(4));
+        let checkpoint_state = store.get_checkpoint(checkpoint_key).unwrap();
+        assert!(checkpoint_state.is_some(), "checkpoint should have been saved");
+
+        // Retain only mergesets above checkpoint (Virtual only)
+        let stack_above_checkpoint: Vec<Mergeset> = stack[..1].to_vec();
+
+        let result2 = run_cascade(
+            stack_above_checkpoint,
+            cg,
+            k,
+            nca,
+            &reachability,
+            store,
+            checkpoint_state,
+            true,
+            1, // estimated_effort_saved estimate
+            5, // estimated_effort_total
+        );
+
+        assert!(result2.from_checkpoint);
+        assert_eq!(result2.estimated_effort_saved, 1);
+
+        // Both should produce identical cascade results
+        assert_eq!(result1.accepted, result2.accepted, "accepted mismatch");
+        assert_eq!(result1.virtual_score, result2.virtual_score, "virtual score mismatch");
+        assert_eq!(result1.flips, result2.flips, "flips mismatch");
+    }
+
+    #[test]
+    fn test_checkpoint_with_grays_filtered() {
+        // Test that gray filtering works correctly with checkpoint reload
+        let (reachability, arc) = make_reachability();
+        reach_insert(&arc, Hash::from_u64_word(1), Hash::from_u64_word(0), 1);
+        reach_insert(&arc, Hash::from_u64_word(2), Hash::from_u64_word(1), 2);
+        reach_insert(&arc, Hash::from_u64_word(3), Hash::from_u64_word(2), 3);
+        reach_insert(&arc, Hash::from_u64_word(4), Hash::from_u64_word(3), 4);
+
+        let store = Arc::new(TestPersistentStore::new());
+        let cg = BlockWithWork::new(Hash::from_u64_word(2), work());
+        let k: KType = 0;
+        let nca = Hash::from_u64_word(1);
+
+        // Stack with gray block (chain ancestor of NCA)
+        let stack: Vec<Mergeset> = vec![
+            Mergeset { merging_chain_block: None, mergeset_blues: vec![(Hash::from_u64_word(4), work())], mergeset_reds: vec![] },
+            Mergeset {
+                merging_chain_block: Some(Hash::from_u64_word(3)),
+                mergeset_blues: vec![(Hash::from_u64_word(3), work())],
+                mergeset_reds: vec![(Hash::from_u64_word(1), work())], // Gray: chain ancestor of NCA
+            },
+        ];
+
+        let result1 = run_cascade(stack.clone(), cg, k, nca, &reachability, store.clone(), None, false, 0, 0);
+
+        // Reload from checkpoint
+        let checkpoint_key = UmcCascadeKey::new(cg.hash, k, nca, Hash::from_u64_word(3));
+        let checkpoint_state = store.get_checkpoint(checkpoint_key).unwrap();
+        assert!(checkpoint_state.is_some());
+
+        let result2 = run_cascade(
+            stack[..1].to_vec(),
+            cg,
+            k,
+            nca,
+            &reachability,
+            store.clone(),
+            checkpoint_state,
+            true,
+            1,
+            4, // estimated_effort_total
+        );
+
+        assert_eq!(result1.accepted, result2.accepted);
+        assert_eq!(result1.virtual_score, result2.virtual_score);
+        assert!(result2.from_checkpoint);
+    }
+
+    #[test]
+    fn test_checkpoint_different_nca_different_key() {
+        // Test that different NCA produces different checkpoint key
+        let (reachability, arc) = make_reachability();
+        reach_insert(&arc, Hash::from_u64_word(1), ORIGIN, 1);
+        reach_insert(&arc, Hash::from_u64_word(2), Hash::from_u64_word(1), 2);
+        reach_insert(&arc, Hash::from_u64_word(3), Hash::from_u64_word(1), 3);
+
+        let store = Arc::new(TestPersistentStore::new());
+        let cg = BlockWithWork::new(Hash::from_u64_word(1), work());
+        let k: KType = 0;
+
+        // First subgroup: NCA = 2
+        let nca_1 = Hash::from_u64_word(2);
+        let stack_1: Vec<Mergeset> = vec![
+            Mergeset { merging_chain_block: None, mergeset_blues: vec![], mergeset_reds: vec![] },
+            Mergeset {
+                merging_chain_block: Some(Hash::from_u64_word(2)),
+                mergeset_blues: vec![(Hash::from_u64_word(2), work())],
+                mergeset_reds: vec![(Hash::from_u64_word(3), work())],
+            },
+        ];
+
+        let _result1 = run_cascade(stack_1, cg, k, nca_1, &reachability, store.clone(), None, false, 0, 0);
+
+        // Second subgroup: NCA = 3 (different key, should not reuse checkpoint)
+        let nca_2 = Hash::from_u64_word(3);
+        let stack_2: Vec<Mergeset> = vec![
+            Mergeset { merging_chain_block: None, mergeset_blues: vec![], mergeset_reds: vec![] },
+            Mergeset {
+                merging_chain_block: Some(Hash::from_u64_word(3)),
+                mergeset_blues: vec![(Hash::from_u64_word(3), work())],
+                mergeset_reds: vec![(Hash::from_u64_word(2), work())],
+            },
+        ];
+
+        let _result2 = run_cascade(stack_2, cg, k, nca_2, &reachability, store.clone(), None, false, 0, 0);
+
+        // Verify both checkpoints exist with different keys
+        let key_1 = UmcCascadeKey::new(cg.hash, k, nca_1, Hash::from_u64_word(2));
+        let key_2 = UmcCascadeKey::new(cg.hash, k, nca_2, Hash::from_u64_word(3));
+
+        assert!(store.get_checkpoint(key_1).unwrap().is_some(), "checkpoint for NCA1 should exist");
+        assert!(store.get_checkpoint(key_2).unwrap().is_some(), "checkpoint for NCA2 should exist");
+    }
+}
