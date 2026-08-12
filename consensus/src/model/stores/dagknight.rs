@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, fmt, sync::Arc};
 
 use kaspa_consensus_core::KType;
 use kaspa_database::{
@@ -52,9 +52,9 @@ impl DagknightKey {
     }
 }
 
-impl ToString for DagknightKey {
-    fn to_string(&self) -> String {
-        format!("{:?}", &self.bytes)
+impl fmt::Display for DagknightKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", &self.bytes)
     }
 }
 
