@@ -33,7 +33,7 @@ use crate::{
             Bucket, DagknightCounters, GroupMetadata,
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
-            tie_breaking::{DagknightTieBreaker, TieBreakInput, TieBreaker},
+            tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
             umc_cascade::{BlockColor, CascadeDebugInfo, CascadeResult},
         },
         difficulty::calc_work,
@@ -264,7 +264,7 @@ impl<
 
         // g = find LCCA
         let mut conflict_genesis = self.common_chain_ancestor(parents);
-        let mut curr_subgroup = Arc::new(parents.to_vec());
+        let mut curr_subgroup = Arc::new(parents.iter().unique().copied().collect_vec());
         let mut conflict_ordered_parents = vec![];
         debug!("conflict_genesis: {:#?}", conflict_genesis);
 
@@ -282,6 +282,11 @@ impl<
                 // There is exactly one group, we don't rank anymore.
                 let (_, subgroup) = agreement_grouping.iter().next().unwrap();
                 curr_subgroup = subgroup.clone();
+                // Deduplication via `.unique()` may have reduced curr_subgroup to a single
+                // element (e.g., [T1, T1] -> [T1]). In that case we're done.
+                if curr_subgroup.len() <= 1 {
+                    break;
+                }
                 let next_conflict_genesis = self.common_chain_ancestor(&curr_subgroup);
                 assert_ne!(
                     next_conflict_genesis, conflict_genesis,
@@ -296,6 +301,7 @@ impl<
             let (winning_conflict_genesis, winning_subgroup) = {
                 let best_groups = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
 
+                #[allow(clippy::style)]
                 let final_winner = if best_groups.len() > 1 {
                     self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups)
                 } else {
@@ -581,7 +587,7 @@ impl<
             self.relations_store.clone(),
             self.reachability_service.clone(),
         )
-        .tie_break(&TieBreakInput { conflict_genesis, all_tips, subgroups, k: mutual_k });
+        .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: mutual_k });
 
         let winning_conflict_genesis = subgroups[winning_index].conflict_genesis;
         let winning_subgroup = subgroups[winning_index].subgroup.clone();
@@ -609,7 +615,7 @@ impl<
                 .iter()
                 .filter_map(|(curr_conflict_genesis, subgroup)| {
                     // `subgroup` is an `&Arc<Vec<Hash>>` here; pass a `&[Hash]` to the colouring function
-                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), &all_tips, k).map(|selected_parent| {
+                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k).map(|selected_parent| {
                         (
                             (*curr_conflict_genesis, subgroup.clone()),
                             GroupMetadata { conflict_genesis: *curr_conflict_genesis, subgroup: subgroup.clone(), k, selected_parent },
@@ -974,6 +980,7 @@ impl DagPlan {
 }
 
 #[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -997,6 +1004,17 @@ mod tests {
         processes::reachability::tests::{DagBlock, DagBuilder},
         test_helpers::generate_dot_with_chain,
     };
+
+    /// Block data parsed from a JSON fixture for conflict zone tie-breaking tests.
+    struct TestBlock {
+        hash: Hash,
+        parents: Vec<Hash>,
+        blue_work: Uint192,
+        bits: u32,
+        blue_score: u64,
+        daa_score: u64,
+        selected_parent: Hash,
+    }
 
     #[test]
     fn test_cascade() {
@@ -1388,10 +1406,10 @@ mod tests {
 
         let blocks = json_data["blocks"].as_array().expect("Blocks is not an array");
 
-        let test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash)> = blocks
+        let test_blocks: Vec<TestBlock> = blocks
             .iter()
             .map(|block| {
-                let id = prefixed_hash(block["id"].as_str().unwrap());
+                let hash = prefixed_hash(block["id"].as_str().unwrap());
                 let parents: Vec<Hash> = if block["parents"].as_array().map(|a| a.is_empty()).unwrap_or(false) {
                     vec![ORIGIN]
                 } else {
@@ -1406,16 +1424,24 @@ mod tests {
                 } else {
                     prefixed_hash(block["selected_parent"].as_str().unwrap())
                 };
-                (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+                TestBlock { hash, parents, blue_work, bits, blue_score, daa_score, selected_parent }
             })
             .collect();
 
         let mut test_blocks = test_blocks;
 
-        test_blocks.sort_by_key(|(_, _, blue_work, _, _, _, _)| *blue_work);
+        test_blocks.sort_by_key(|block| block.blue_work);
 
-        for (hash, parents, blue_work, bits, blue_score, daa_score, selected_parent) in &test_blocks {
-            add_block(*hash, parents.clone(), *blue_work, *bits, *blue_score, *daa_score, *selected_parent);
+        for block in &test_blocks {
+            add_block(
+                block.hash,
+                block.parents.clone(),
+                block.blue_work,
+                block.bits,
+                block.blue_score,
+                block.daa_score,
+                block.selected_parent,
+            );
         }
 
         let mut parents = tips.clone();
@@ -1434,5 +1460,107 @@ mod tests {
         let mut hex = [b'0'; 64];
         hex[..s.len()].copy_from_slice(s.as_bytes());
         Hash::from_str(std::str::from_utf8(&hex).unwrap()).expect("Invalid hash string")
+    }
+
+    /// Duplicate parents [T1, T1] must NOT panic the DagKnight algorithm.
+    ///
+    /// Before the fix: this panics at the `assert_ne!` in `dagknight_pure` because
+    /// `common_chain_ancestor([T1, T1])` returns the same conflict_genesis in the shortcut
+    /// path's single-group case, violating the "conflict genesis must strictly advance" invariant.
+    #[test]
+    fn test_duplicate_parents_two_same() {
+        // genesis -> T1
+        let genesis_hash = Hash::from_u64_word(1);
+        let t1_hash = Hash::from_u64_word(2);
+
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+        let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+        builder.init();
+        builder.add_block(DagBlock::new(genesis_hash, vec![ORIGIN]));
+        builder.add_block(DagBlock::new(t1_hash, vec![genesis_hash]));
+
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+        let mut genesis_header = Header::from_precomputed_hash(genesis_hash, vec![]);
+        genesis_header.bits = 0x207fffff;
+        headers_store.insert(Arc::new(genesis_header));
+        let mut t1_header = Header::from_precomputed_hash(t1_hash, vec![genesis_hash]);
+        t1_header.bits = 0x207fffff;
+        t1_header.daa_score = 1;
+        headers_store.insert(Arc::new(t1_header));
+
+        let dk_map = RefCell::new(HashMap::new());
+        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let dk_executor = DagknightExecutor {
+            genesis_hash,
+            dagknight_store,
+            headers_store,
+            reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
+            relations_store: Arc::new(RwLock::new(relations)),
+            counters: Arc::new(DagknightCounters::new()),
+        };
+
+        // Two identical parents: [T1, T1]
+        let duplicate_parents: Vec<Hash> = vec![t1_hash, t1_hash];
+        let result = dk_executor.dagknight(&duplicate_parents);
+        assert_eq!(result.selected_parent, t1_hash);
+    }
+
+    /// Duplicate parents [T1, T1, T2] must NOT panic the DagKnight algorithm.
+    ///
+    /// T1 and T2 are independent tips (both children of genesis), so they are in the anticone.
+    /// `.unique()` deduplicates [T1, T1, T2] to [T1, T2], which forms two agreement groups,
+    /// so the shortcut path is not taken.
+    #[test]
+    fn test_duplicate_parents_three_with_one_dup() {
+        // genesis -> T1, genesis -> T2 (independent tips, in anticone)
+        let genesis_hash = Hash::from_u64_word(1);
+        let t1_hash = Hash::from_u64_word(2);
+        let t2_hash = Hash::from_u64_word(3);
+
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+        let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+        builder.init();
+        builder.add_block(DagBlock::new(genesis_hash, vec![ORIGIN]));
+        builder.add_block(DagBlock::new(t1_hash, vec![genesis_hash]));
+        builder.add_block(DagBlock::new(t2_hash, vec![genesis_hash]));
+
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+        let mut genesis_header = Header::from_precomputed_hash(genesis_hash, vec![]);
+        genesis_header.bits = 0x207fffff;
+        headers_store.insert(Arc::new(genesis_header));
+        let mut t1_header = Header::from_precomputed_hash(t1_hash, vec![genesis_hash]);
+        t1_header.bits = 0x207fffff;
+        t1_header.daa_score = 1;
+        headers_store.insert(Arc::new(t1_header));
+        let mut t2_header = Header::from_precomputed_hash(t2_hash, vec![genesis_hash]);
+        t2_header.bits = 0x207fffff;
+        t2_header.daa_score = 1;
+        headers_store.insert(Arc::new(t2_header));
+
+        let dk_map = RefCell::new(HashMap::new());
+        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let dk_executor = DagknightExecutor {
+            genesis_hash,
+            dagknight_store,
+            headers_store,
+            reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
+            relations_store: Arc::new(RwLock::new(relations)),
+            counters: Arc::new(DagknightCounters::new()),
+        };
+
+        // Three parents where first two are identical: [T1, T1, T2]
+        let duplicate_parents: Vec<Hash> = vec![t1_hash, t1_hash, t2_hash];
+        let result = dk_executor.dagknight(&duplicate_parents);
+
+        // Selected parent should be one of the unique parents
+        assert!(
+            result.selected_parent == t1_hash || result.selected_parent == t2_hash,
+            "selected parent {:?} should be one of {:?} or {:?}",
+            result.selected_parent,
+            t1_hash,
+            t2_hash
+        );
     }
 }

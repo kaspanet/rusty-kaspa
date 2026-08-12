@@ -275,6 +275,16 @@ pub fn generate_dot_with_chain(
     Ok(())
 }
 
+/// Block metadata for conflict zone visualization.
+struct ZoneBlock {
+    parents: Vec<Hash>,
+    blue_work: Uint192,
+    bits: u32,
+    blue_score: u64,
+    daa_score: u64,
+    selected_parent: Hash,
+}
+
 /// Dumps the conflict zone to JSON and DOT files for visualization.
 ///
 /// The conflict zone is `future(conflict_genesis) ∩ past(all_tips)`. We traverse
@@ -300,8 +310,8 @@ pub fn dump_conflict_zone<O: HeaderStoreReader + 'static, D: RelationsStoreReade
     let mut seen = HashSet::new();
     seen.extend(all_tips.iter().copied());
 
-    // Maps: hash -> (parents, header_data)
-    let mut zone_blocks: HashMap<Hash, (Vec<Hash>, (Uint192, u32, u64, u64, Hash))> = HashMap::new();
+    // Maps: hash -> ZoneBlock
+    let mut zone_blocks: HashMap<Hash, ZoneBlock> = HashMap::new();
     let relations_store_guard = relations_store.read();
 
     while let Some(hash) = queue.pop_front() {
@@ -320,9 +330,18 @@ pub fn dump_conflict_zone<O: HeaderStoreReader + 'static, D: RelationsStoreReade
         // Get header data
         let header = headers_store.get_header(hash).unwrap();
         let selected_parent = reachability_service.get_chain_parent(hash);
-        let meta = (header.blue_work, header.bits, header.blue_score, header.daa_score, selected_parent);
 
-        zone_blocks.insert(hash, (parents_vec.clone(), meta));
+        zone_blocks.insert(
+            hash,
+            ZoneBlock {
+                parents: parents_vec.clone(),
+                blue_work: header.blue_work,
+                bits: header.bits,
+                blue_score: header.blue_score,
+                daa_score: header.daa_score,
+                selected_parent,
+            },
+        );
 
         // Continue BFS through parents
         for &parent in parents_vec.iter() {
@@ -344,15 +363,15 @@ pub fn dump_conflict_zone<O: HeaderStoreReader + 'static, D: RelationsStoreReade
 
     let json_blocks: Vec<serde_json::Value> = zone_blocks
         .iter()
-        .map(|(hash, (parents, (blue_work, bits, blue_score, daa_score, selected_parent)))| {
+        .map(|(hash, block)| {
             let mut obj = serde_json::Map::new();
             obj.insert("id".to_string(), serde_json::json!(short(*hash)));
-            obj.insert("parents".to_string(), serde_json::json!(parents.iter().map(|p| short(*p)).collect::<Vec<_>>()));
-            obj.insert("blue_work".to_string(), serde_json::json!(blue_work.to_string()));
-            obj.insert("bits".to_string(), serde_json::json!(format!("{:08x}", bits)));
-            obj.insert("blue_score".to_string(), serde_json::json!(blue_score));
-            obj.insert("daa_score".to_string(), serde_json::json!(daa_score));
-            obj.insert("selected_parent".to_string(), serde_json::json!(short(*selected_parent)));
+            obj.insert("parents".to_string(), serde_json::json!(block.parents.iter().map(|p| short(*p)).collect::<Vec<_>>()));
+            obj.insert("blue_work".to_string(), serde_json::json!(block.blue_work.to_string()));
+            obj.insert("bits".to_string(), serde_json::json!(format!("{:08x}", block.bits)));
+            obj.insert("blue_score".to_string(), serde_json::json!(block.blue_score));
+            obj.insert("daa_score".to_string(), serde_json::json!(block.daa_score));
+            obj.insert("selected_parent".to_string(), serde_json::json!(short(block.selected_parent)));
             serde_json::Value::Object(obj)
         })
         .collect();
@@ -383,7 +402,7 @@ pub fn dump_conflict_zone<O: HeaderStoreReader + 'static, D: RelationsStoreReade
             reds.iter().filter(|&&h| reachability_service.is_chain_ancestor_of(next_chain_ancestor, h)).copied().collect();
 
         // Node definitions
-        for (hash, _) in &zone_blocks {
+        for hash in zone_blocks.keys() {
             let s = short(*hash);
             if chain_blocks.contains(hash) {
                 // Chain blocks get double circles (overrides genesis/tips coloring)
@@ -404,9 +423,9 @@ pub fn dump_conflict_zone<O: HeaderStoreReader + 'static, D: RelationsStoreReade
         writeln!(file).unwrap();
 
         // Edge definitions: chain-to-chain edges are blue/bold, rest are gray/dashed
-        for (hash, (parents, _)) in &zone_blocks {
+        for (hash, block) in &zone_blocks {
             let from = short(*hash);
-            for parent in parents {
+            for parent in &block.parents {
                 let to = short(*parent);
                 if chain_blocks.contains(hash) && chain_blocks.contains(parent) {
                     writeln!(file, "    \"{}\" -> \"{}\" [color=blue, penwidth=2, style=bold];", from, to).unwrap();
