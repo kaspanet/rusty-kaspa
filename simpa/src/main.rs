@@ -524,14 +524,18 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
     );
     info!(
         "[UMC cascade] calls={}, total_flips={}, max_flips={}, avg_flips={:.2}, \
-          total_voting_blocks={}, avg_blocks={:.1}, \
-          baseline_True_proposed_False={} ({:.2}%), baseline_False_proposed_True={} ({:.2}%)",
+          total_voting_blocks={}, avg_blocks={:.1}",
         snapshot.total_calls,
         snapshot.total_cascade_flips,
         snapshot.max_cascade_flips,
         snapshot.avg_flips_per_call(),
         snapshot.total_voting_blocks,
         snapshot.avg_voting_blocks_per_call(),
+    );
+    #[cfg(feature = "baseline-debugging")]
+    info!(
+        "[UMC cascade baseline] baseline_True_proposed_False={} ({:.2}%), \
+          baseline_False_proposed_True={} ({:.2}%)",
         snapshot.baseline_true_proposed_false,
         snapshot.baseline_true_proposed_false_percentage(),
         snapshot.baseline_false_proposed_true,
