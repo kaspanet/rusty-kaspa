@@ -1,13 +1,12 @@
 use std::{
     cell::Cell,
     collections::HashMap,
-    sync::{Arc, OnceLock},
+    sync::Arc,
 };
 
-use dashmap::DashMap;
 use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
-use kaspa_core::{debug, trace};
+use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_math::Uint192;
 use parking_lot::RwLock;
@@ -86,51 +85,6 @@ use crate::{
         2. moving to DK storage objects
         3. switch GD/k-coloring to committed coloring
 */
-
-/// TODO[DK]: If writes here are moved out or batched, revisit this
-/// Global lock map for conflict genesis level locking
-/// Maps conflict genesis hashes to their respective locks
-static CONFLICT_LOCKS: OnceLock<DashMap<Hash, Arc<RwLock<()>>>> = OnceLock::new();
-
-fn get_conflict_locks() -> &'static DashMap<Hash, Arc<RwLock<()>>> {
-    CONFLICT_LOCKS.get_or_init(DashMap::new)
-}
-
-/// Cleans up unused locks from the global lock map.
-/// A lock is considered unused if its Arc strong count is 1 (only the map holds a reference).
-/// This should be called periodically or opportunistically to prevent unbounded growth.
-pub fn cleanup_conflict_locks() {
-    let locks = get_conflict_locks();
-    let mut to_remove = Vec::new();
-
-    // First pass: identify locks with no external references
-    for entry in locks.iter() {
-        let hash = *entry.key();
-        let arc = entry.value();
-        // If strong count is 1, only the DashMap holds a reference
-        if Arc::strong_count(arc) == 1 {
-            to_remove.push(hash);
-        }
-    }
-
-    // Second pass: remove identified locks
-    // Note: by the time we remove, another thread might have acquired the lock,
-    // so we double-check the count before removing
-    let mut removed_count = 0;
-    for hash in to_remove {
-        if let Some(entry) = locks.get(&hash)
-            && Arc::strong_count(entry.value()) == 1
-        {
-            drop(entry); // Release the reference before removing
-            locks.remove(&hash);
-            removed_count += 1;
-        }
-    }
-
-    if removed_count > 0 {
-        trace!("Cleaned up {} unused conflict locks, {} remaining", removed_count, locks.len());
-    }
-}
 
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 #[derive(Clone)]
@@ -247,9 +201,6 @@ impl<
         conflict_ordered_parents.reverse();
 
         debug!("dk::sp: {} | conflict_ordered_parents: {:?}", curr_subgroup[0], conflict_ordered_parents);
-
-        // Opportunistically cleanup unused locks after processing
-        cleanup_conflict_locks();
 
         DagknightData { selected_parent: curr_subgroup[0], conflict_ordered_parents }
     }
@@ -416,11 +367,6 @@ impl<
             relations_service,
             reachability_service.clone(),
         );
-
-        // Acquire a lock for this conflict_genesis to prevent concurrent writes
-        let locks = get_conflict_locks();
-        let lock_arc = locks.entry(conflict_genesis).or_insert_with(|| Arc::new(RwLock::new(()))).clone();
-        let _lock = lock_arc.write();
 
         conflict_zone_manager.fill_zone_data(all_tips);
 
