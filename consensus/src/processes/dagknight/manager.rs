@@ -1,8 +1,11 @@
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, VecDeque},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
+
+use dashmap::DashMap;
+use parking_lot::RwLock;
 
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType,
@@ -32,6 +35,54 @@ use crate::{
         reachability::relations::FutureIntersectRelations,
     },
 };
+
+/// Granular lock key for k-colouring operations.
+/// Uniquely identifies a subgroup's processing context by its conflict genesis,
+/// k-value, next chain ancestor (NCA), and search type.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KColouringLockKey {
+    conflict_genesis: Hash,
+    k: KType,
+    nca: Hash,
+    free_search: bool,
+}
+
+impl KColouringLockKey {
+    /// Creates a lock key for committed search.
+    /// The NCA must be a block whose selected parent is the conflict genesis.
+    pub fn committed_search_key(conflict_genesis: Hash, k: KType, nca: Hash) -> Self {
+        Self { conflict_genesis, k, nca, free_search: false }
+    }
+
+    /// Creates a lock key for free search.
+    /// In free search, the NCA defaults to the conflict genesis itself.
+    pub fn free_search_key(conflict_genesis: Hash, k: KType) -> Self {
+        Self { conflict_genesis, k, nca: conflict_genesis, free_search: true }
+    }
+
+    pub fn conflict_genesis(&self) -> Hash {
+        self.conflict_genesis
+    }
+
+    pub fn is_free_search(&self) -> bool {
+        self.free_search
+    }
+}
+
+// Global lock map for granular k-colouring synchronization.
+static K_COLOURING_LOCKS: OnceLock<DashMap<KColouringLockKey, Arc<RwLock<()>>>> = OnceLock::new();
+
+fn get_k_colouring_locks() -> &'static DashMap<KColouringLockKey, Arc<RwLock<()>>> {
+    K_COLOURING_LOCKS.get_or_init(DashMap::new)
+}
+
+/// Cleans up unused locks from the global k-colouring lock map.
+/// A lock is considered unused if its Arc strong count is 1 (only the map holds a reference).
+fn cleanup_k_colouring_locks() {
+    if let Some(locks) = K_COLOURING_LOCKS.get() {
+        locks.retain(|_, v| Arc::strong_count(v) > 1);
+    }
+}
 
 // START Copied from GD Manager
 // NOTE: This is a copy from GD Manager right now, but the idea here is that it will update k_colouring to
@@ -465,6 +516,90 @@ mod tests {
     use parking_lot::RwLock;
     use std::cell::RefCell;
     use std::collections::HashMap;
+
+    #[test]
+    fn test_k_colouring_lock_key_constructors() {
+        let cg: Hash = 1_u64.into();
+        let nca: Hash = 2_u64.into();
+        let k = 5;
+
+        let committed = KColouringLockKey::committed_search_key(cg, k, nca);
+        assert_eq!(committed.conflict_genesis(), cg);
+        assert!(!committed.is_free_search());
+
+        let free = KColouringLockKey::free_search_key(cg, k);
+        assert_eq!(free.conflict_genesis(), cg);
+        // Free search key should use conflict_genesis as nca
+        assert_eq!(free.nca, cg);
+        assert!(free.is_free_search());
+    }
+
+    #[test]
+    fn test_k_colouring_lock_key_equality() {
+        let cg: Hash = 1_u64.into();
+        let nca1: Hash = 2_u64.into();
+        let nca2: Hash = 3_u64.into();
+        let k1 = 5;
+        let k2 = 10;
+
+        let key1 = KColouringLockKey::committed_search_key(cg, k1, nca1);
+        let key2 = KColouringLockKey::committed_search_key(cg, k1, nca1);
+        assert_eq!(key1, key2);
+
+        // Different NCA should yield different keys (allows concurrent processing of independent subgroups)
+        let key3 = KColouringLockKey::committed_search_key(cg, k1, nca2);
+        assert_ne!(key1, key3);
+
+        // Different K should yield different keys
+        let key4 = KColouringLockKey::committed_search_key(cg, k2, nca1);
+        assert_ne!(key1, key4);
+
+        // Free search key should differ from committed key with same CG and K
+        let key5 = KColouringLockKey::free_search_key(cg, k1);
+        assert_ne!(key1, key5);
+    }
+
+    #[test]
+    fn test_get_k_colouring_locks_singleton() {
+        let map1 = get_k_colouring_locks();
+        let map2 = get_k_colouring_locks();
+        assert!(std::ptr::eq(map1, map2), "get_k_colouring_locks should return the same singleton map");
+    }
+
+    #[test]
+    fn test_cleanup_k_colouring_locks_removes_unused() {
+        let map = get_k_colouring_locks();
+        let key = KColouringLockKey::committed_search_key(100_u64.into(), 5, 101_u64.into());
+        let lock = Arc::new(RwLock::new(()));
+        map.insert(key.clone(), lock.clone());
+
+        assert!(map.contains_key(&key), "Key should exist in map");
+
+        drop(lock); // Now only 1 strong ref remains (the one in the map)
+        cleanup_k_colouring_locks();
+        assert!(!map.contains_key(&key), "Unused lock should be cleaned up");
+    }
+
+    #[test]
+    fn test_cleanup_k_colouring_locks_keeps_used() {
+        let map = get_k_colouring_locks();
+        let key = KColouringLockKey::committed_search_key(200_u64.into(), 5, 201_u64.into());
+        let lock = Arc::new(RwLock::new(()));
+        map.insert(key.clone(), lock.clone());
+
+        // Acquire the lock to simulate active usage
+        let _guard = lock.read();
+        assert!(map.contains_key(&key), "Key should exist in map");
+
+        cleanup_k_colouring_locks();
+        // Should still be present because `_guard` holds an active reference
+        assert!(map.contains_key(&key), "Active lock should be preserved");
+
+        drop(_guard);
+        drop(lock); // Drop our reference so only the map's reference remains
+        cleanup_k_colouring_locks();
+        assert!(!map.contains_key(&key), "Lock should be cleaned up after all external references are dropped");
+    }
 
     /// Test that `find_last_known_tips` correctly uses chain ancestry (committed)
     /// vs DAG ancestry (free_search) when traversing back from tips.
