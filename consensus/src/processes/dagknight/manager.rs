@@ -80,6 +80,7 @@ fn get_k_colouring_locks() -> &'static DashMap<KColouringLockKey, Arc<RwLock<()>
 /// A lock is considered unused if its Arc strong count is 1 (only the map holds a reference).
 fn cleanup_k_colouring_locks() {
     if let Some(locks) = K_COLOURING_LOCKS.get() {
+        // TODO[DK]: Track average lock map size as part of metrics for later
         locks.retain(|_, v| Arc::strong_count(v) > 1);
     }
 }
@@ -422,8 +423,32 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     // subgroup = the current subgroup
     // tips = all tips in this conflict. part of which is the subgroup
     //
+    // `next_chain_ancestor`:
+    //   - If `free_search` is true, this must be `None` (asserted).
+    //   - If `free_search` is false, this must be `Some(nca)` where `nca` is a block whose selected
+    //     parent is `root` (asserted). This bounds the zone fill to the subgroup's region.
+    //
     // Returns the conflict zone manager which gives access to the coloring data of the conflict zone
-    pub fn fill_zone_data(&self, tips: &[Hash]) -> BlockHashSet {
+    pub fn fill_zone_data(&self, tips: &[Hash], next_chain_ancestor: Option<Hash>) -> BlockHashSet {
+        // Construct lock key and validate parameters
+        let lock_key = if self.free_search {
+            assert!(next_chain_ancestor.is_none(), "free_search expects None for next_chain_ancestor");
+            KColouringLockKey::free_search_key(self.root, self.k)
+        } else {
+            let nca = next_chain_ancestor.expect("committed_search expects Some(next_chain_ancestor)");
+            // Assert NCA's selected parent is self.root (conflict_genesis)
+            assert!(
+                self.reachability_service.is_chain_ancestor_of(self.root, next_chain_ancestor.unwrap()),
+                "conflict_genesis must be a chain ancestor of next_chain_ancestor"
+            );
+            KColouringLockKey::committed_search_key(self.root, self.k, nca)
+        };
+
+        // Acquire lock for this zone fill
+        let locks = get_k_colouring_locks();
+        let lock_arc = locks.entry(lock_key).or_insert_with(|| Arc::new(RwLock::new(()))).clone();
+        let _guard = lock_arc.write();
+
         self.init_root();
 
         let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips);
@@ -459,7 +484,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 let selected_parent = if self.free_search {
                     self.find_selected_parent(parents.iter().copied())
                 } else {
-                    let next_chain_ancestor_of_current = self.reachability_service.get_next_chain_ancestor(current_hash, self.root);
+                    let next_chain_ancestor_of_current = next_chain_ancestor.unwrap();
                     let agreeing_parents = parents
                         .iter()
                         .copied()
@@ -487,7 +512,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 let is_in_zone = if self.free_search {
                     self.reachability_service.try_is_dag_ancestor_of(self.root, child).unwrap_or(false)
                 } else {
-                    self.reachability_service.try_is_chain_ancestor_of(self.root, child).unwrap_or(false)
+                    self.reachability_service.try_is_chain_ancestor_of(next_chain_ancestor.unwrap(), child).unwrap_or(false)
                 };
                 if !is_in_zone {
                     continue;
@@ -496,6 +521,9 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                     .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
             }
         }
+
+        // Opportunistically cleanup unused locks after zone fill
+        cleanup_k_colouring_locks();
 
         visited_subdag
     }
@@ -850,8 +878,10 @@ mod tests {
 
         // Now fill zone data
         let tips = vec![hash_x, hash_d];
-        manager_committed.fill_zone_data(&tips);
-        manager_free.fill_zone_data(&tips);
+        // For committed search, NCA is hash_z (whose selected parent is hash_a, the conflict genesis)
+        manager_committed.fill_zone_data(&tips, Some(hash_z));
+        // For free search, NCA is None
+        manager_free.fill_zone_data(&tips, None);
 
         // Get X's selected parent from both managers
         let committed_sp = manager_committed.get_selected_parent(hash_x).unwrap();
