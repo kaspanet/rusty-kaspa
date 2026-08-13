@@ -43,9 +43,10 @@ impl Ord for SortableBlock {
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn sort_blocks(&self, blocks: impl IntoIterator<Item = Hash>) -> Vec<Hash> {
+        let ghostdag_store = self.custom_topology_store.as_ref().unwrap_or_else(|| &self.ghostdag_store);
         let mut sorted_blocks: Vec<Hash> = blocks.into_iter().collect();
         sorted_blocks
-            .sort_by_cached_key(|block| SortableBlock { hash: *block, blue_work: self.ghostdag_store.get_blue_work(*block).unwrap() });
+            .sort_by_cached_key(|block| SortableBlock { hash: *block, blue_work: ghostdag_store.get_blue_work(*block).unwrap() });
         sorted_blocks
     }
 }
