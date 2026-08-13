@@ -38,6 +38,7 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
     /// above the difficulty target, all blocks in it should represent the same amount of
     /// work regardless of whether current difficulty requires 20 zeros or 25 zeros.  
     level_work: BlueWorkType,
+    pub(super) custom_topology_store: Option<Arc<T>>,
 }
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
@@ -50,7 +51,16 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         reachability_service: U,
     ) -> Self {
         // For ordinary GD, always keep level_work=0 so the lower bound is ineffective
-        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store, level_work: 0.into() }
+        Self {
+            genesis_hash,
+            k,
+            ghostdag_store,
+            relations_store,
+            reachability_service,
+            headers_store,
+            level_work: 0.into(),
+            custom_topology_store: None,
+        }
     }
 
     pub fn with_level(
@@ -71,6 +81,28 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             reachability_service,
             headers_store,
             level_work: level_work(level, max_block_level),
+            custom_topology_store: None,
+        }
+    }
+
+    pub fn with_custom_topology_store(
+        genesis_hash: Hash,
+        k: KType,
+        ghostdag_store: Arc<T>,
+        relations_store: S,
+        headers_store: Arc<V>,
+        reachability_service: U,
+        custom_topology_store: Arc<T>,
+    ) -> Self {
+        Self {
+            genesis_hash,
+            k,
+            ghostdag_store,
+            relations_store,
+            reachability_service,
+            headers_store,
+            level_work: 0.into(),
+            custom_topology_store: Some(custom_topology_store),
         }
     }
 

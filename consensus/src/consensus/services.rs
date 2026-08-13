@@ -130,13 +130,14 @@ impl ConsensusServices {
             storage.headers_store.clone(),
             reachability_service.clone(),
         );
-        let coloring_ghostdag_manager = GhostdagManager::new(
+        let coloring_ghostdag_manager = GhostdagManager::with_custom_topology_store(
             params.genesis.hash,
             params.ghostdag_k(),
             storage.coloring_ghostdag_store.clone(),
             relations_service.clone(),
             storage.headers_store.clone(),
             reachability_service.clone(),
+            storage.topology_ghostdag_store.clone(),
         );
 
         // TODO[DK]: Use a config or ForkActivation to gate this
