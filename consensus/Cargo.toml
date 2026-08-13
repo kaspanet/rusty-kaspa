@@ -75,6 +75,7 @@ harness = false
 [features]
 html_reports = []
 devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]
+baseline-debugging = []
 
 [lints]
 workspace = true

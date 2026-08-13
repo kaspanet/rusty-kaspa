@@ -1,5 +1,5 @@
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap};
 
 use kaspa_consensus_core::{BlockHashMap, BlueWorkType, KType};
 use kaspa_hashes::Hash;
@@ -28,8 +28,6 @@ pub struct CascadeMaintainer {
     negative_blue_work: BlueWorkType,
     /// Total bucket flips observed during cascade stabilization
     flip_count: u64,
-    /// Mapping from block hash to work, used for debug bucket collection
-    block_work_map: HashMap<Hash, BlueWorkType>,
 }
 
 /// A block identifier paired with that block's own proof-of-work contribution.
@@ -72,7 +70,6 @@ impl CascadeMaintainer {
             red_work: BlueWorkType::ZERO,
             negative_blue_work: BlueWorkType::ZERO,
             flip_count: 0,
-            block_work_map: HashMap::new(),
         }
     }
 
@@ -141,7 +138,6 @@ impl CascadeMaintainer {
         self.blues_chains_decomposition[chain_id].push(block.hash);
         self.chains_score_trees[chain_id].append_leaf(block, initial_score);
         self.blk_mapping_to_chains.insert(block.hash, chain_id);
-        self.block_work_map.insert(block.hash, block.work);
 
         if initial_bucket == Bucket::Negative {
             self.negative_blue_work = self.negative_blue_work + block.work;
@@ -191,27 +187,6 @@ impl CascadeMaintainer {
             }
         }
     }
-
-    /// Collect per-blue bucket assignments from all segment trees for debug comparison.
-    /// TODO[DK]: Remove when debugging against baseline is done
-    pub fn collect_blue_buckets(&mut self) -> CascadeDebugInfo {
-        let mut per_blue_buckets = HashMap::new();
-        let mut blue_hashes = HashSet::new();
-
-        for (chain_id, chain) in self.blues_chains_decomposition.iter().enumerate() {
-            let tree = &mut self.chains_score_trees[chain_id];
-            for &hash in chain.iter() {
-                blue_hashes.insert(hash);
-                // Reconstruct BlockWithWork from the hash and stored work
-                let work = self.block_work_map[&hash];
-                let block = BlockWithWork::new(hash, work);
-                let score = tree.score(block);
-                per_blue_buckets.insert(hash, bucket_for_score(score));
-            }
-        }
-
-        CascadeDebugInfo { per_blue_buckets, blue_hashes }
-    }
 }
 
 /// Returns the exclusive end index of the strict-ancestor prefix, or `None` if it is empty.
@@ -246,15 +221,6 @@ fn strict_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reach
     Some(lo)
 }
 
-/// Per-blue debug information for comparing baseline vs cascade bucket assignments.
-#[derive(Debug, Clone)]
-pub struct CascadeDebugInfo {
-    /// Map from blue hash to its final bucket (positive/negative) in the cascade
-    pub per_blue_buckets: HashMap<Hash, Bucket>,
-    /// Set of all blue hashes (for easy iteration in debug logs)
-    pub blue_hashes: HashSet<Hash>,
-}
-
 /// Cascade result including flip statistics for performance monitoring.
 #[derive(Debug, Clone)]
 pub struct CascadeResult {
@@ -262,8 +228,6 @@ pub struct CascadeResult {
     pub accepted: bool,
     pub flips: u64,
     pub voting_blocks: u64,
-    /// Debug information with per-blue bucket assignments (populated during comparison mode)
-    pub debug_info: Option<CascadeDebugInfo>,
 }
 
 /// Run cascade voting on a set of blues and reds in topological order.
@@ -293,9 +257,8 @@ pub fn run_cascade(
 
     let virtual_score = maintainer.virtual_score();
     let accepted = virtual_score >= SignedWork::zero();
-    let debug_info = maintainer.collect_blue_buckets();
 
-    CascadeResult { virtual_score, accepted, flips: maintainer.flip_count, voting_blocks, debug_info: Some(debug_info) }
+    CascadeResult { virtual_score, accepted, flips: maintainer.flip_count, voting_blocks }
 }
 
 // Cascade maintainer testing is done through protocol integration tests.

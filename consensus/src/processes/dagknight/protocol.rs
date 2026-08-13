@@ -1,20 +1,31 @@
 use std::{
     cell::Cell,
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap, HashSet},
+    collections::{BinaryHeap, HashMap},
     sync::{Arc, OnceLock},
 };
 
 use dashmap::DashMap;
 use itertools::Itertools;
-use kaspa_consensus_core::{BlockHashMap, BlockHashSet, BlueWorkType, KType};
+use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
+
+#[cfg(feature = "baseline-debugging")]
+use kaspa_consensus_core::BlueWorkType;
 use kaspa_core::{debug, trace};
 use kaspa_hashes::Hash;
-use kaspa_math::{Uint192, int::SignedInteger};
+use kaspa_math::Uint192;
+
+#[cfg(feature = "baseline-debugging")]
+use kaspa_math::int::SignedInteger;
+#[cfg(feature = "baseline-debugging")]
 use num_traits::Zero;
 use parking_lot::RwLock;
 
+#[cfg(feature = "baseline-debugging")]
 type SignedWork = SignedInteger<BlueWorkType>;
+
+#[cfg(feature = "baseline-debugging")]
+use crate::processes::dagknight::Bucket;
 
 use crate::{
     model::{
@@ -30,11 +41,11 @@ use crate::{
     },
     processes::{
         dagknight::{
-            Bucket, DagknightCounters, GroupMetadata,
+            DagknightCounters, GroupMetadata,
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
-            umc_cascade::{BlockColor, CascadeDebugInfo, CascadeResult},
+            umc_cascade::{BlockColor, CascadeResult},
         },
         difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
@@ -161,6 +172,7 @@ pub struct DagknightData {
 
 /// Baseline cascade: iterate blues topologically (tips→past) using a heap of SortableBlock.
 /// vote(B) = sign(Σ vote(blue ∈ future(B)) - red_work(future(B)) + deficit) * work(B)
+#[cfg(feature = "baseline-debugging")]
 struct BaselineCascadeHelper<'a> {
     blues: Vec<(Hash, BlueWorkType, BlueWorkType)>,
     reds: Vec<(Hash, BlueWorkType, BlueWorkType)>,
@@ -169,6 +181,7 @@ struct BaselineCascadeHelper<'a> {
     conflict_genesis: Hash,
 }
 
+#[cfg(feature = "baseline-debugging")]
 impl<'a> BaselineCascadeHelper<'a> {
     fn new(
         blues: Vec<(Hash, BlueWorkType, BlueWorkType)>,
@@ -429,6 +442,7 @@ impl<
     ///   Genesis accepts if Σ vote(blue) > 0
     ///
     /// Grays (reds that are chain ancestors of subgroup's next chain ancestor) are excluded from voting.
+    #[cfg(feature = "baseline-debugging")]
     fn baseline_umc_cascade_voting(
         &self,
         conflict_genesis: Hash,
@@ -471,23 +485,9 @@ impl<
         let voting_blocks = (blues.len() + reds.len()) as u64;
         let is_ancestor = |a: Hash, b: Hash| self.reachability_service.is_dag_ancestor_of(a, b);
         let helper = BaselineCascadeHelper::new(blues, reds, deficit_work, &is_ancestor, conflict_genesis);
-        let (total_vote, virtual_score, per_blue_buckets) = helper.compute_all_votes();
+        let (total_vote, virtual_score, _per_blue_buckets) = helper.compute_all_votes();
 
-        // Build debug info from baseline
-        let baseline_debug = CascadeDebugInfo { per_blue_buckets, blue_hashes: self.collect_baseline_blue_hashes(&helper) };
-
-        CascadeResult {
-            virtual_score,
-            accepted: total_vote >= SignedWork::zero(),
-            flips: 0,
-            voting_blocks,
-            debug_info: Some(baseline_debug),
-        }
-    }
-
-    /// Collect all blue hashes from the baseline helper for debug comparison
-    fn collect_baseline_blue_hashes(&self, helper: &BaselineCascadeHelper<'_>) -> HashSet<Hash> {
-        helper.blues.iter().map(|(h, _, _)| *h).collect()
+        CascadeResult { virtual_score, accepted: total_vote >= SignedWork::zero(), flips: 0, voting_blocks }
     }
 
     /// Proposed chain-based UMC cascade voting using segment tree cascade scores.
@@ -677,65 +677,32 @@ impl<
             self.proposed_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
         let vote_proposed = cascade_result.accepted;
 
-        // Compare baseline (per-blue recursive) against proposed (global virtual score)
-        // These use different acceptance criteria and are not expected to always agree.
-        // The baseline is Algorithm 6 from the paper; the proposed is an optimization.
-        let baseline_result =
-            self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+        #[cfg(feature = "baseline-debugging")]
+        {
+            // Compare baseline (per-blue recursive) against proposed (global virtual score)
+            // These use different acceptance criteria and are not expected to always agree.
+            // The baseline is Algorithm 6 from the paper; the proposed is an optimization.
+            let baseline_result =
+                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
 
-        if baseline_result.virtual_score != cascade_result.virtual_score {
-            if baseline_result.accepted != cascade_result.accepted {
-                self.counters.record_baseline_disagreement(baseline_result.accepted, cascade_result.accepted);
+            if baseline_result.virtual_score != cascade_result.virtual_score {
+                if baseline_result.accepted != cascade_result.accepted {
+                    self.counters.record_baseline_disagreement(baseline_result.accepted, cascade_result.accepted);
+                }
+
+                panic!(
+                    "BASELINE vs PROPOSED SCORE DISAGREEMENT: k={}, conflict_genesis={:?}, baseline_score={}, \
+                     proposed_score={}, baseline_accepted={}, proposed_accepted={}, flips={}, voting_blocks={}",
+                    k_to_check,
+                    conflict_genesis,
+                    baseline_result.virtual_score,
+                    cascade_result.virtual_score,
+                    baseline_result.accepted,
+                    cascade_result.accepted,
+                    cascade_result.flips,
+                    cascade_result.voting_blocks
+                );
             }
-
-            // Print per-blue comparison table for debugging
-            let baseline_buckets = baseline_result.debug_info.as_ref().map(|d| &d.per_blue_buckets);
-            let cascade_buckets = cascade_result.debug_info.as_ref().map(|d| &d.per_blue_buckets);
-
-            // Collect all blue hashes from both sides
-            let mut all_blues: HashSet<Hash> = HashSet::new();
-            if let Some(ref dbg) = baseline_result.debug_info {
-                all_blues.extend(&dbg.blue_hashes);
-            }
-            if let Some(ref dbg) = cascade_result.debug_info {
-                all_blues.extend(&dbg.blue_hashes);
-            }
-
-            // Log per-blue comparison
-            let mut blues_sorted: Vec<Hash> = all_blues.into_iter().collect();
-            blues_sorted.sort();
-            for blue_hash in &blues_sorted {
-                let baseline_bucket = match baseline_buckets {
-                    Some(map) => match map.get(blue_hash) {
-                        Some(&Bucket::Positive) => "pos",
-                        Some(&Bucket::Negative) => "neg",
-                        None => "???",
-                    },
-                    None => "N/A",
-                };
-                let cascade_bucket = match cascade_buckets {
-                    Some(map) => match map.get(blue_hash) {
-                        Some(&Bucket::Positive) => "pos",
-                        Some(&Bucket::Negative) => "neg",
-                        None => "???",
-                    },
-                    None => "N/A",
-                };
-                println!("  BLUE {} | baseline={} | cascade={}", blue_hash, baseline_bucket, cascade_bucket);
-            }
-
-            panic!(
-                "BASELINE vs PROPOSED SCORE DISAGREEMENT: k={}, conflict_genesis={:?}, baseline_score={}, \
-                 proposed_score={}, baseline_accepted={}, proposed_accepted={}, flips={}, voting_blocks={}",
-                k_to_check,
-                conflict_genesis,
-                baseline_result.virtual_score,
-                cascade_result.virtual_score,
-                baseline_result.accepted,
-                cascade_result.accepted,
-                cascade_result.flips,
-                cascade_result.voting_blocks
-            );
         }
 
         self.counters.record_vote(vote_original, vote_proposed);
