@@ -1,5 +1,6 @@
 use core::fmt::{self, Display};
-use core::ops::{Add, Div, Mul, Sub};
+use core::ops::{Add, AddAssign, Div, Mul, Sub};
+use num_traits::Zero;
 
 #[derive(Copy, Clone, Debug)]
 pub struct SignedInteger<T> {
@@ -57,6 +58,44 @@ impl<T: Sub<Output = T> + Add<Output = T> + Ord> Sub for SignedInteger<T> {
             }
             (false, true) | (true, false) => Self { negative: self.negative, abs: self.abs + other.abs },
         }
+    }
+}
+
+impl<T: Add<Output = T> + Sub<Output = T> + Ord> Add for SignedInteger<T> {
+    type Output = Self;
+    #[inline]
+    #[track_caller]
+    fn add(self, other: Self) -> Self::Output {
+        match (self.negative, other.negative) {
+            (false, false) | (true, true) => Self { negative: self.negative, abs: self.abs + other.abs },
+            (false, true) | (true, false) => {
+                // Subtract the smaller magnitude from the larger
+                if self.abs >= other.abs {
+                    Self { negative: self.negative, abs: self.abs - other.abs }
+                } else {
+                    Self { negative: other.negative, abs: other.abs - self.abs }
+                }
+            }
+        }
+    }
+}
+
+impl<T: Copy + Add<Output = T> + Sub<Output = T> + Ord> AddAssign for SignedInteger<T> {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+impl<T: Zero + Add<Output = T> + Sub<Output = T> + Ord> Zero for SignedInteger<T> {
+    #[inline]
+    fn zero() -> Self {
+        Self { abs: T::zero(), negative: false }
+    }
+
+    #[inline]
+    fn is_zero(&self) -> bool {
+        self.abs.is_zero()
     }
 }
 

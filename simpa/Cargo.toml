@@ -46,6 +46,7 @@ kaspa-testing-integration.workspace = true
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]
 semaphore-trace = ["kaspa-utils/semaphore-trace"]
+baseline-debugging = ["kaspa-consensus/baseline-debugging"]
 
 [lints]
 workspace = true
