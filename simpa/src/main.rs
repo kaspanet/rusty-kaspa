@@ -511,18 +511,6 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
     info!("[Average stats of generated DAG] blues: {blues_mean}, reds: {reds_mean}, parents: {parents_mean}, txs: {txs_mean}");
     let snapshot = src_consensus.dagknight_counters().snapshot();
     info!(
-        "[UMC comparison] calls={}, identical={}, differences={} ({:.2}%), \
-         original>T_proposed<F={} ({:.2}%), original<F_proposed>T={} ({:.2}%)",
-        snapshot.total_calls,
-        snapshot.identical,
-        snapshot.differences,
-        snapshot.difference_percentage(),
-        snapshot.original_true_proposed_false,
-        snapshot.original_true_proposed_false_percentage(),
-        snapshot.original_false_proposed_true,
-        snapshot.original_false_proposed_true_percentage(),
-    );
-    info!(
         "[UMC cascade] calls={}, total_flips={}, max_flips={}, avg_flips={:.2}, \
           total_voting_blocks={}, avg_blocks={:.1}",
         snapshot.total_calls,
@@ -534,12 +522,12 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
     );
     #[cfg(feature = "baseline-debugging")]
     info!(
-        "[UMC cascade baseline] baseline_True_proposed_False={} ({:.2}%), \
-          baseline_False_proposed_True={} ({:.2}%)",
-        snapshot.baseline_true_proposed_false,
-        snapshot.baseline_true_proposed_false_percentage(),
-        snapshot.baseline_false_proposed_true,
-        snapshot.baseline_false_proposed_true_percentage(),
+        "[UMC cascade baseline] baseline_accepted_cascade_rejected={} ({:.2}%), \
+          baseline_rejected_cascade_accepted={} ({:.2}%)",
+        snapshot.baseline_true_cascade_false,
+        snapshot.baseline_true_cascade_false_percentage(),
+        snapshot.baseline_false_cascade_true,
+        snapshot.baseline_false_cascade_true_percentage(),
     );
     num_txs
 }
