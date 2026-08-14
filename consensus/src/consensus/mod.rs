@@ -412,6 +412,10 @@ impl Consensus {
         &self.counters
     }
 
+    pub fn dagknight_counters(&self) -> &Arc<crate::processes::dagknight::DagknightCounters> {
+        &self.services.dagknight_counters
+    }
+
     pub fn signal_exit(&self) {
         self.is_consensus_exiting.store(true, Ordering::Relaxed);
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();

@@ -1,5 +1,5 @@
 #[doc(hidden)]
-pub use {faster_hex, malachite_base, malachite_nz, serde};
+pub use {faster_hex, malachite_base, malachite_nz, num_traits, serde};
 
 // TODO: Add u32 support for optimization on 32 bit machines.
 
@@ -441,6 +441,18 @@ macro_rules! construct_uint {
                 self.try_into()
             }
 
+        }
+
+        impl $crate::uint::num_traits::Zero for $name {
+            #[inline]
+            fn zero() -> Self {
+                Self::ZERO
+            }
+
+            #[inline]
+            fn is_zero(&self) -> bool {
+                (*self).is_zero()
+            }
         }
 
         impl kaspa_utils::mem_size::MemSizeEstimator for $name {
