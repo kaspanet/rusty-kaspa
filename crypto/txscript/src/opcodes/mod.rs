@@ -1316,7 +1316,7 @@ opcode_list! {
                 let [idx]: [i32; 1] = vm.dstack.pop_items()?;
                 let output = usize::try_from(idx).ok()
                     .and_then(|idx| tx.outputs().get(idx))
-                    .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
+                    .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
                 push_number(output.value.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
             },
             _ => Err(TxScriptError::InvalidSource("OpTxOutputAmount only applies to transaction inputs".to_string()))
@@ -1328,7 +1328,7 @@ opcode_list! {
                 let [idx]: [i32; 1] = vm.dstack.pop_items()?;
                 let output = usize::try_from(idx).ok()
                     .and_then(|idx| tx.outputs().get(idx))
-                    .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
+                    .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
                 vm.dstack.push(output.script_public_key.to_bytes().into())
             },
             _ => Err(TxScriptError::InvalidSource("OpTxOutputSpk only applies to transaction inputs".to_string()))
@@ -1601,7 +1601,7 @@ opcode_list! {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
                     let idx = i32_to_usize(idx)?;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.inputs().len()))?;
+                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.outputs().len()))?;
                     let covenant_id = output.covenant.map(|c| c.covenant_id).unwrap_or(ZERO_HASH);
                     push_data(covenant_id.as_bytes().into(), vm)
                 },
@@ -1618,7 +1618,7 @@ opcode_list! {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
                     let idx = i32_to_usize(idx)?;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.inputs().len()))?;
+                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.outputs().len()))?;
                     let auth_input_idx = output.covenant.as_ref()
                         .map(|c| c.authorizing_input as i64)
                         .unwrap_or(-1i64);
@@ -3795,7 +3795,11 @@ mod test {
             let output_spk2 = create_mock_spk(4);
 
             let inputs =
-                vec![Kip10Mock { spk: input_spk1.clone(), amount: 1111 }, Kip10Mock { spk: input_spk2.clone(), amount: 2222 }];
+                vec![
+                    Kip10Mock { spk: input_spk1.clone(), amount: 1111 },
+                    Kip10Mock { spk: input_spk2.clone(), amount: 2222 },
+                    Kip10Mock { spk: create_mock_spk(5), amount: 5555 },
+                ];
             let outputs =
                 vec![Kip10Mock { spk: output_spk1.clone(), amount: 3333 }, Kip10Mock { spk: output_spk2.clone(), amount: 4444 }];
 
@@ -3864,9 +3868,7 @@ mod test {
                                 Operation::OutputAmount => op_output_amount.execute(&mut vm),
                             };
 
-                            assert!(
-                                matches!(result, Err(ref e) if std::mem::discriminant(e) == std::mem::discriminant(expected_error))
-                            );
+                            assert_eq!(result, Err(expected_error.clone()));
                             vm.dstack.clear();
                         }
                     }
@@ -3962,12 +3964,12 @@ mod test {
                         TestCase::Incorrect {
                             operation: Operation::InputAmount,
                             index: Some(-1),
-                            expected_error: TxScriptError::InvalidInputIndex(-1, 2),
+                            expected_error: TxScriptError::InvalidInputIndex(-1, 3),
                         },
                         TestCase::Incorrect {
                             operation: Operation::InputAmount,
-                            index: Some(2),
-                            expected_error: TxScriptError::InvalidInputIndex(2, 2),
+                            index: Some(3),
+                            expected_error: TxScriptError::InvalidInputIndex(3, 3),
                         },
                         TestCase::Incorrect {
                             operation: Operation::OutputAmount,
@@ -3981,6 +3983,11 @@ mod test {
                         },
                         TestCase::Incorrect {
                             operation: Operation::OutputAmount,
+                            index: Some(2),
+                            expected_error: TxScriptError::InvalidOutputIndex(2, 2),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::OutputSpk,
                             index: Some(2),
                             expected_error: TxScriptError::InvalidOutputIndex(2, 2),
                         },
@@ -4902,8 +4909,16 @@ mod test {
             run_script(&tx, entries.clone(), 0, spk_cov_out_idx_5).unwrap();
 
             let spk_cov_out_idx_oob = script(|sb| sb.add_data(&covenant_id_1.as_bytes())?.add_i64(3)?.add_op(codes::OpCovOutputIdx));
-            let err = run_script(&tx, entries, 0, spk_cov_out_idx_oob).expect_err("cov out idx oob");
+            let err = run_script(&tx, entries.clone(), 0, spk_cov_out_idx_oob).expect_err("cov out idx oob");
             assert!(matches!(err, TxScriptError::CovenantsError(CovenantsError::InvalidCovOutIndex(_, _))));
+
+            let spk_output_cov_id_oob = script(|sb| sb.add_i64(6)?.add_op(codes::OpOutputCovenantId));
+            let err = run_script(&tx, entries.clone(), 0, spk_output_cov_id_oob).expect_err("output covenant id oob");
+            assert_eq!(err, TxScriptError::InvalidOutputIndex(6, 6));
+
+            let spk_output_auth_input_oob = script(|sb| sb.add_i64(6)?.add_op(codes::OpOutputAuthorizingInput));
+            let err = run_script(&tx, entries, 0, spk_output_auth_input_oob).expect_err("output authorizing input oob");
+            assert_eq!(err, TxScriptError::InvalidOutputIndex(6, 6));
 
             // OpInputCovenantId when covenant id is None (returns zero hash)
             let (tx_no_cov, entries_no_cov) = base_transaction(0);
