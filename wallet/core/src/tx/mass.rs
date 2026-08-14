@@ -14,6 +14,7 @@ use kaspa_hashes::HASH_SIZE;
 // pub const ECDSA_SIGNATURE_SIZE: u64 = 64;
 // pub const SCHNORR_SIGNATURE_SIZE: u64 = 64;
 pub const SIGNATURE_SIZE: u64 = 1 + 64 + 1; //1 byte for OP_DATA_65 + 64 (length of signature) + 1 byte for sig hash type
+pub const STANDARD_P2PK_INPUT_SERIALIZED_BYTE_SIZE: u64 = 36 + 8 + SIGNATURE_SIZE + 8;
 
 /// MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
 /// the mempool and relayed. It is specified in sompi per 1kg (or 1000 grams) of transaction mass.
@@ -66,18 +67,11 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     //
     // Pay-to-pubkey bytes breakdown:
     //
-    //  Output to pubkey (43 bytes):
-    //   8 value, 1 script len, 34 script [1 OP_DATA_32,
-    //   32 pubkey, 1 OP_CHECKSIG]
-    //
-    //  Input (105 bytes):
-    //   36 prev outpoint, 1 script len, 64 script [1 OP_DATA_64,
-    //   64 sig], 4 sequence
-    //
-    // The most common scripts are pay-to-pubkey, and as per the above
-    // breakdown, the minimum size of a p2pk input script is 148 bytes. So
-    // that figure is used.
-    let total_serialized_size = transaction_output_serialized_byte_size(transaction_output) + 148;
+    // Input to pubkey (118 bytes):
+    //  36 previous outpoint, 8 signature script length, 66 signature script
+    //  [1 OP_DATA_65, 64 signature, 1 sighash type], 8 sequence.
+    let total_serialized_size =
+        transaction_output_serialized_byte_size(transaction_output) + STANDARD_P2PK_INPUT_SERIALIZED_BYTE_SIZE;
 
     // The output is considered dust if the cost to the network to spend the
     // coins is more than 1/3 of the minimum free transaction relay fee.
@@ -99,10 +93,10 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     }
 }
 
-// The most common scripts are pay-to-pubkey, and as per the above
-// breakdown, the minimum size of a p2pk input script is 148 bytes. So
-// that figure is used.
-pub const STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE: u64 = transaction_standard_output_serialized_byte_size() + 148;
+// The most common scripts are pay-to-pubkey, so use the serialized size of a
+// standard output and the typical input required to spend it.
+pub const STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE: u64 =
+    transaction_standard_output_serialized_byte_size() + STANDARD_P2PK_INPUT_SERIALIZED_BYTE_SIZE;
 pub const STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X: u64 = STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE * 3;
 
 // pub fn is_standard_output_amount_dust(value: u64) -> bool {
@@ -357,5 +351,23 @@ impl MassCalculator {
     pub fn calc_storage_mass(&self, output_harmonic: u64, total_input_value: u64, number_of_inputs: u64) -> u64 {
         let input_arithmetic = self.calc_storage_mass_input_mean_arithmetic(total_input_value, number_of_inputs);
         output_harmonic.saturating_sub(input_arithmetic)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptVec};
+
+    #[test]
+    fn p2pk_dust_threshold_uses_actual_input_size() {
+        assert_eq!(STANDARD_P2PK_INPUT_SERIALIZED_BYTE_SIZE, 118);
+
+        let script_public_key = ScriptPublicKey::new(0, ScriptVec::from_slice(&[0; 34]));
+        let dust = TransactionOutput::new(50_999, script_public_key.clone());
+        let spendable = TransactionOutput::new(51_000, script_public_key);
+
+        assert!(is_transaction_output_dust(&dust));
+        assert!(!is_transaction_output_dust(&spendable));
     }
 }
