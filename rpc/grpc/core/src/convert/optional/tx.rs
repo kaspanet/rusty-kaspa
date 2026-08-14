@@ -100,7 +100,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalUtxoEntryVerboseData, protowire::RpcOpti
 
 try_from!(item: &protowire::RpcOptionalTransaction, kaspa_rpc_core::RpcOptionalTransaction, {
     Self {
-        version: item.version.map(|x| x as u16),
+        version: item.version.map(u16::try_from).transpose()?,
         inputs: item.inputs.iter().map(kaspa_rpc_core::RpcOptionalTransactionInput::try_from).collect::<RpcResult<_>>()?,
         outputs: item.outputs.iter().map(kaspa_rpc_core::RpcOptionalTransactionOutput::try_from).collect::<RpcResult<_>>()?,
         lock_time: item.lock_time,
@@ -117,8 +117,8 @@ try_from!(item: &protowire::RpcOptionalTransactionInput, kaspa_rpc_core::RpcOpti
         previous_outpoint: item.previous_outpoint.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionOutpoint::try_from).transpose()?,
         signature_script: item.signature_script.as_ref().map(|x| Vec::from_rpc_hex(x)).transpose()?,
         sequence: item.sequence,
-        sig_op_count: item.sig_op_count.map(|x| x as u8),
-        compute_budget: item.compute_budget.map(|x| x as u16),
+        sig_op_count: item.sig_op_count.map(u8::try_from).transpose()?,
+        compute_budget: item.compute_budget.map(u16::try_from).transpose()?,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionInputVerboseData::try_from).transpose()?,
     }
 });
@@ -192,7 +192,7 @@ try_from!(item: &protowire::RpcOptionalUtxoEntryVerboseData, kaspa_rpc_core::Rpc
 mod tests {
     use crate::protowire;
     use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_rpc_core::RpcOptionalTransaction;
+    use kaspa_rpc_core::{RpcError, RpcOptionalTransaction};
 
     #[test]
     fn test_rpc_optional_transaction_compute_budget_roundtrip() {
@@ -224,5 +224,33 @@ mod tests {
         let decoded = RpcOptionalTransaction::try_from(&wire).unwrap();
         assert_eq!(decoded.inputs[0].compute_budget, Some(444));
         assert_eq!(decoded.storage_mass, Some(333));
+    }
+
+    #[test]
+    fn rejects_out_of_range_optional_transaction_fields() {
+        let wire = protowire::RpcOptionalTransaction {
+            version: Some(u16::MAX as u32 + 1),
+            ..Default::default()
+        };
+        assert!(matches!(
+            RpcOptionalTransaction::try_from(&wire),
+            Err(RpcError::IntConversionError(_))
+        ));
+
+        let wire_input = protowire::RpcOptionalTransactionInput {
+            sig_op_count: Some(u8::MAX as u32 + 1),
+            ..Default::default()
+        };
+        assert!(matches!(
+            kaspa_rpc_core::RpcOptionalTransactionInput::try_from(&wire_input),
+            Err(RpcError::IntConversionError(_))
+        ));
+
+        let wire_input =
+            protowire::RpcOptionalTransactionInput { compute_budget: Some(u16::MAX as u32 + 1), ..Default::default() };
+        assert!(matches!(
+            kaspa_rpc_core::RpcOptionalTransactionInput::try_from(&wire_input),
+            Err(RpcError::IntConversionError(_))
+        ));
     }
 }

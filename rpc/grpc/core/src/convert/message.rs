@@ -156,7 +156,7 @@ from!(item: RpcResult<&kaspa_rpc_core::SubmitBlockResponse>, protowire::SubmitBl
 from!(item: &kaspa_rpc_core::GetBlockTemplateRequest, protowire::GetBlockTemplateRequestMessage, {
     Self {
         pay_address: (&item.pay_address).into(),
-        extra_data: String::from_utf8(item.extra_data.clone()).expect("extra data has to be valid UTF-8"),
+        extra_data: String::from_utf8_lossy(&item.extra_data).into_owned(),
     }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetBlockTemplateResponse>, protowire::GetBlockTemplateResponseMessage, {
@@ -1171,9 +1171,21 @@ fn hash_from_bytes(bytes: &[u8]) -> RpcResult<RpcHash> {
 
 #[cfg(test)]
 mod tests {
-    use kaspa_rpc_core::{RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
+    use kaspa_addresses::{Address, Prefix, Version};
+    use kaspa_rpc_core::{
+        GetBlockTemplateRequest, RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse,
+    };
 
     use crate::protowire::{self, SubmitBlockResponseMessage, submit_block_response_message::RejectReason};
+
+    #[test]
+    fn get_block_template_extra_data_does_not_panic_on_invalid_utf8() {
+        let request =
+            GetBlockTemplateRequest::new(Address::new(Prefix::Mainnet, Version::PubKey, &[0; 32]), vec![0xff, b'a']);
+        let wire: protowire::GetBlockTemplateRequestMessage = (&request).into();
+
+        assert_eq!(wire.extra_data, "\u{fffd}a");
+    }
 
     #[test]
     fn test_submit_block_response() {
