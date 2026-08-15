@@ -17,6 +17,7 @@ pub mod rank_search;
 pub mod tie_breaking;
 pub mod umc_cascade;
 pub mod umc_cascade_persistence;
+pub mod umc_voting;
 
 pub struct GroupMetadata {
     conflict_genesis: Hash,

@@ -12,6 +12,7 @@ use crate::model::services::reachability::ReachabilityService;
 use crate::processes::dagknight::umc_cascade_persistence::{
     ChainLeafEntry, Mergeset, UmcCascadeKey, UmcCascadePersistedState, UmcCascadeStore,
 };
+use crate::processes::dagknight::umc_voting::CascadeResult;
 use crate::processes::dagknight::{AppendableSegmentTree, Bucket, bucket_for_score};
 
 type SignedWork = SignedInteger<BlueWorkType>;
@@ -301,25 +302,6 @@ fn strict_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reach
     }
 
     Some(lo)
-}
-
-/// Cascade result including flip statistics for performance monitoring.
-#[derive(Debug, Clone)]
-pub struct CascadeResult {
-    pub virtual_score: SignedInteger<BlueWorkType>,
-    pub accepted: bool,
-    pub flips: u64,
-    pub voting_blocks: u64,
-    /// Whether this cascade started from a persisted checkpoint state.
-    pub from_checkpoint: bool,
-    /// Estimated blue blocks skipped by loading from checkpoint.
-    /// Calculated as virtual_gd.blue_score - checkpoint_block.blue_score,
-    /// representing the number of blue blocks we didn't need to visit.
-    /// Zero if cascade started from scratch.
-    pub estimated_effort_saved: u64,
-    /// Total blue blocks in the conflict zone (virtual_gd.blue_score).
-    /// Used as denominator for effort_saved percentage.
-    pub estimated_effort_total: u64,
 }
 
 // ============================================================================
