@@ -1,14 +1,13 @@
 use std::{cell::Cell, collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
-use kaspa_consensus_core::{BlockHashMap, BlockHashSet, BlueWorkType, KType};
+use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
 #[cfg(feature = "baseline-debugging")]
 use crate::processes::dagknight::umc_baseline::BaselineUmcVoter;
-#[cfg(feature = "baseline-debugging")]
 use crate::processes::dagknight::umc_voting::{UmcVoter, UmcVotingContext};
 
 use crate::{
@@ -29,11 +28,10 @@ use crate::{
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
-            umc_cascade::{BlockWithWork, run_cascade},
-            umc_cascade_persistence::{Mergeset, UmcCascadeKey, UmcCascadePersistedState, UmcCascadeStore, UmcCascadeStoreReader},
+            umc_cascade::SegmentTreeUmcVoter,
+            umc_cascade_persistence::{UmcCascadeStore, UmcCascadeStoreReader},
             umc_voting::CascadeResult,
         },
-        difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
         reachability::relations::FutureIntersectRelations,
     },
@@ -261,75 +259,13 @@ impl<
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
-        /*
-            inputs: G, U, d
-            output: does U have a subset U' s.t. U' is d-UMC of G
-                    where d-UMC means that each block in U' is majority covered by U' (up to d)
-        */
-        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-
-        // Collect blues and reds by traversing virtual GD chain backward.
-        // Build mergesets into a stack: Virtual first, then ChainN, ..., Chain1, CG last.
-        let mut mergeset_stack: Vec<Mergeset> = Vec::new();
-        let mut merging_chain_block: Option<Hash> = None;
-        let mut checkpoint_state: Option<UmcCascadePersistedState> = None;
-
-        let virtual_blue_score = virtual_gd.blue_score;
-        let mut curr_gd = Arc::new(virtual_gd);
-
-        while merging_chain_block.is_none() || merging_chain_block.unwrap() != conflict_genesis {
-            let blues: Vec<(Hash, BlueWorkType)> =
-                curr_gd.mergeset_blues.iter().map(|&h| (h, calc_work(self.headers_store.get_bits(h).unwrap()))).collect();
-
-            let reds: Vec<(Hash, BlueWorkType)> =
-                curr_gd.mergeset_reds.iter().map(|&h| (h, calc_work(self.headers_store.get_bits(h).unwrap()))).collect();
-
-            mergeset_stack.push(Mergeset { merging_chain_block, mergeset_blues: blues, mergeset_reds: reds });
-
-            merging_chain_block = Some(curr_gd.selected_parent);
-            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
-
-            // Check if a checkpoint exists for the next chain block.
-            // If found, break — run_cascade will reload from that state and skip
-            // already-computed mergesets.
-            if let Some(cb) = merging_chain_block {
-                let state_key = UmcCascadeKey::new(conflict_genesis, k, next_chain_ancestor_of_subgroup, cb);
-                if let Ok(Some(existing_state)) = self.umc_persistence_store.get_checkpoint(state_key) {
-                    checkpoint_state = Some(existing_state);
-                    break;
-                }
-            }
-        }
-
-        let from_checkpoint = checkpoint_state.is_some();
-        let estimated_effort_total = virtual_blue_score;
-        let estimated_effort_saved = if from_checkpoint {
-            // Estimate effort saved: virtual_blue_score - checkpoint_block.blue_score
-            // This represents the blue blocks we didn't need to visit.
-            let checkpoint_block = merging_chain_block.unwrap();
-            let checkpoint_gd = conflict_zone_manager.get_data(checkpoint_block).unwrap();
-            checkpoint_gd.blue_score
-        } else {
-            0
-        };
-
-        let cg_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-        let conflict_genesis_block = BlockWithWork::new(conflict_genesis, cg_work);
-
-        debug!("k = {} | voting_deficit = {} | conflict_genesis_work = {}", k, k.isqrt(), cg_work);
-
-        run_cascade(
-            mergeset_stack,
-            conflict_genesis_block,
-            k,
-            next_chain_ancestor_of_subgroup,
-            &self.reachability_service,
+        let voter = SegmentTreeUmcVoter::new(
+            self.headers_store.clone(),
             self.umc_persistence_store.clone(),
-            checkpoint_state,
-            from_checkpoint,
-            estimated_effort_saved,
-            estimated_effort_total,
-        )
+            self.reachability_service.clone(),
+        );
+        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        voter.vote(&ctx)
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
