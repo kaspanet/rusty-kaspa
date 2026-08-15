@@ -15,6 +15,8 @@ pub mod manager;
 pub mod protocol;
 pub mod rank_search;
 pub mod tie_breaking;
+#[cfg(feature = "baseline-debugging")]
+pub mod umc_baseline;
 pub mod umc_cascade;
 pub mod umc_cascade_persistence;
 pub mod umc_voting;

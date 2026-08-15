@@ -4,18 +4,12 @@ use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet, BlueWorkType, KType};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
-
-#[cfg(feature = "baseline-debugging")]
-use kaspa_math::int::SignedInteger;
-#[cfg(feature = "baseline-debugging")]
-use num_traits::Zero;
 use parking_lot::RwLock;
 
 #[cfg(feature = "baseline-debugging")]
-type SignedWork = SignedInteger<BlueWorkType>;
-
+use crate::processes::dagknight::umc_baseline::BaselineUmcVoter;
 #[cfg(feature = "baseline-debugging")]
-use crate::processes::dagknight::Bucket;
+use crate::processes::dagknight::umc_voting::{UmcVoter, UmcVotingContext};
 
 use crate::{
     model::{
@@ -117,85 +111,6 @@ pub struct DagknightExecutor<
 pub struct DagknightData {
     pub selected_parent: Hash,               // The selected parent for this call
     pub conflict_ordered_parents: Vec<Hash>, // The rest of the parents, ordered by conflict hierarchy (parents from latest/topmost conflicts first)
-}
-
-/// Baseline cascade: iterate blues topologically (tips→past) using a heap of SortableBlock.
-/// vote(B) = sign(Σ vote(blue ∈ future(B)) - red_work(future(B)) + deficit) * work(B)
-#[cfg(feature = "baseline-debugging")]
-struct BaselineCascadeHelper<'a> {
-    blues: Vec<(Hash, BlueWorkType, BlueWorkType)>,
-    reds: Vec<(Hash, BlueWorkType, BlueWorkType)>,
-    deficit: BlueWorkType,
-    is_ancestor: &'a dyn Fn(Hash, Hash) -> bool,
-    conflict_genesis: Hash,
-}
-
-#[cfg(feature = "baseline-debugging")]
-impl<'a> BaselineCascadeHelper<'a> {
-    fn new(
-        blues: Vec<(Hash, BlueWorkType, BlueWorkType)>,
-        reds: Vec<(Hash, BlueWorkType, BlueWorkType)>,
-        deficit: BlueWorkType,
-        is_ancestor: &'a dyn Fn(Hash, Hash) -> bool,
-        conflict_genesis: Hash,
-    ) -> Self {
-        Self { blues, reds, deficit, is_ancestor, conflict_genesis }
-    }
-
-    fn compute_all_votes(&self) -> (SignedWork, SignedWork, HashMap<Hash, Bucket>) {
-        use std::collections::BinaryHeap;
-
-        let mut votes: HashMap<Hash, SignedWork> = HashMap::new();
-        let mut block_work_map: HashMap<Hash, BlueWorkType> = HashMap::new();
-        let mut heap: BinaryHeap<SortableBlock> = self
-            .blues
-            .iter()
-            .map(|(hash, block_work, header_work)| {
-                block_work_map.insert(*hash, *block_work);
-                SortableBlock { hash: *hash, blue_work: *header_work }
-            })
-            .collect();
-
-        while let Some(SortableBlock { hash: bh, .. }) = heap.pop() {
-            let blue_work_signed = SignedWork::from(block_work_map[&bh]);
-
-            // Only blues already processed (higher blue_work) can be in future of bh
-            let future_blue_votes: SignedWork = votes
-                .iter()
-                .filter(|(other, _)| (self.is_ancestor)(bh, **other))
-                .map(|(_, v)| *v)
-                .fold(SignedWork::zero(), |acc, v| acc + v);
-
-            let future_red_work: BlueWorkType =
-                self.reds.iter().filter(|&&(rh, _, _)| (self.is_ancestor)(bh, rh)).map(|&(_, rw, _)| rw).sum();
-
-            // score = future_blue_votes - future_red_work + deficit
-            let score: SignedWork = future_blue_votes - SignedWork::from(future_red_work) + SignedWork::from(self.deficit);
-            let v = if score >= SignedWork::zero() { blue_work_signed } else { SignedWork::zero() - blue_work_signed };
-
-            // println!(
-            //     "cg: {} | compute_all_votes | curr: {} | bw: {} \n\t-> future_blue_votes: {} | future_red_work: {} | deficit: {} | blue_work_signed: {}",
-            //     self.conflict_genesis, bh, blue_work, future_blue_votes, future_red_work, self.deficit, blue_work_signed
-            // );
-            votes.insert(bh, v);
-        }
-
-        // Convert votes to buckets for each blue based on vote sign.
-        // CG's bucket is determined by its actual vote (same as all other blues).
-        let per_blue_buckets: HashMap<Hash, Bucket> = votes
-            .iter()
-            .map(|(hash, vote)| {
-                let bucket = if *vote >= SignedWork::zero() { Bucket::Positive } else { Bucket::Negative };
-                (*hash, bucket)
-            })
-            .collect();
-
-        let signed_blue_work = votes.values().copied().fold(SignedWork::zero(), |total, vote| total + vote);
-        let red_work: BlueWorkType = self.reds.iter().map(|&(_, work, _)| work).sum();
-        let virtual_score = signed_blue_work + SignedWork::from(self.deficit) - SignedWork::from(red_work);
-
-        (votes[&self.conflict_genesis], virtual_score, per_blue_buckets)
-    }
 }
 
 impl<
@@ -320,19 +235,9 @@ impl<
         panic!("")
     }
 
-    /// Pure (naive) baseline UMC cascade voting with memoization.
-    /// Recursive implementation of Algorithm 6 from the DK paper, work-weighted.
-    ///
-    /// Paper Algorithm 6:
-    ///   UMC-Voting(G, U, e):
-    ///     v ← Σ_{B ∈ U} UMC-Voting(future(B), U ∩ future(B), e)
-    ///     return sign(v - |G \ U| + e)
-    ///
-    /// Work-weighted adaptation:
-    ///   vote(B) = sign(Σ vote(blue ∈ future(B)) - red_work(future(B)) + deficit) * work(B)
-    ///   Genesis accepts if Σ vote(blue) > 0
-    ///
-    /// Grays (reds that are chain ancestors of subgroup's next chain ancestor) are excluded from voting.
+    /// Baseline UMC cascade voting: naive reference impl of paper Algorithm 6 (work-weighted),
+    /// used to cross-check `SegmentTreeUmcVoter` (see the comparison in
+    /// `select_parent_from_k_colouring`).
     #[cfg(feature = "baseline-debugging")]
     fn baseline_umc_cascade_voting(
         &self,
@@ -342,51 +247,9 @@ impl<
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
-        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-
-        // Collect blues and reds (excluding grays)
-        let mut blues = Vec::new();
-        let mut reds = Vec::new();
-
-        let mut curr_gd = Arc::new(virtual_gd);
-        while curr_gd.selected_parent != conflict_genesis {
-            for &blue_block in curr_gd.mergeset_blues.iter() {
-                let blue_work = calc_work(self.headers_store.get_bits(blue_block).unwrap());
-                let header_work = self.headers_store.get_header(blue_block).unwrap().blue_work;
-                blues.push((blue_block, blue_work, header_work));
-            }
-            for &red_block in curr_gd.mergeset_reds.iter() {
-                let red_work = calc_work(self.headers_store.get_bits(red_block).unwrap());
-                let header_work = self.headers_store.get_header(red_block).unwrap().blue_work;
-                if !self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
-                    reds.push((red_block, red_work, header_work));
-                }
-            }
-            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
-        }
-
-        let cg_block_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-        blues.push((conflict_genesis, cg_block_work, 0.into()));
-
-        // Deficit work = sqrt(k) * conflict_genesis_work
-        let deficit_work =
-            BlueWorkType::from_u64(u64::from(k.isqrt())) * calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-
-        // Compute votes topologically from tips backwards using a Reverse heap of SortableBlock
-        let voting_blocks = (blues.len() + reds.len()) as u64;
-        let is_ancestor = |a: Hash, b: Hash| self.reachability_service.is_dag_ancestor_of(a, b);
-        let helper = BaselineCascadeHelper::new(blues, reds, deficit_work, &is_ancestor, conflict_genesis);
-        let (total_vote, virtual_score, _per_blue_buckets) = helper.compute_all_votes();
-
-        CascadeResult {
-            virtual_score,
-            accepted: total_vote >= SignedWork::zero(),
-            flips: 0,
-            voting_blocks,
-            from_checkpoint: false,
-            estimated_effort_saved: 0,
-            estimated_effort_total: 0,
-        }
+        let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
+        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        voter.vote(&ctx)
     }
 
     /// UMC Cascade Voting using chain-based segment tree
