@@ -23,7 +23,10 @@ use crate::{
             virtual_state::VirtualStateStoreReader,
         },
     },
-    processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
+    processes::{
+        dagknight::umc_cascade_persistence::UmcCascadeStore, pruning_proof::PruningProofManager,
+        reachability::inquirer as reachability, relations,
+    },
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
@@ -510,6 +513,11 @@ impl PruningProcessor {
                     if dk_deleted > 0 {
                         trace!("[PRUNE::DK] Root: {} | Count: {}", current, dk_deleted);
                     }
+                }
+                // Prune UMC cascade checkpoints of zones whose conflict genesis is this block
+                let umc_deleted = self.umc_persistence_store.prune_by_conflict_genesis(&mut batch, current).unwrap();
+                if umc_deleted > 0 {
+                    trace!("[PRUNE::UMC] Root: {} | Count: {}", current, umc_deleted);
                 }
 
                 if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
