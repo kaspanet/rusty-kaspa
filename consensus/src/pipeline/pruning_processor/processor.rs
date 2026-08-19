@@ -583,16 +583,14 @@ impl PruningProcessor {
         // The inclusive cutoff is `pp.blue_score − finality_depth − 1`: the
         // score `pp.blue_score − finality_depth` is still inside the active
         // window at the pruning point and must be preserved.
-        if self.config.toccata_activation.is_active(pp_header.daa_score) {
-            let smt_cutoff = crate::pipeline::virtual_processor::bounds::SeqCommitBounds::inclusive_prune_cutoff(
-                pp_header.blue_score,
-                self.config.params.finality_depth(),
-            );
-            info!("SMT pruning: cutoff_blue_score={}", smt_cutoff);
-            self.smt_stores.prune(&self.db, smt_cutoff);
-            if self.config.enable_sanity_checks {
-                self.assert_smt_rebuilding(new_pruning_point, pp_header.blue_score);
-            }
+        let smt_cutoff = crate::pipeline::virtual_processor::bounds::SeqCommitBounds::inclusive_prune_cutoff(
+            pp_header.blue_score,
+            self.config.params.finality_depth(),
+        );
+        info!("SMT pruning: cutoff_blue_score={}", smt_cutoff);
+        self.smt_stores.prune(&self.db, smt_cutoff);
+        if self.config.enable_sanity_checks {
+            self.assert_smt_rebuilding(new_pruning_point, pp_header.blue_score);
         }
 
         {

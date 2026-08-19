@@ -35,6 +35,10 @@ pub struct VirtualState {
     pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
     /// Pre-KIP21: tx digests for accepted_id_merkle_root computation.
     /// Post-KIP21: single-element vec containing the seq_commit hash.
+    // TODO: post-Toccata this always holds exactly one element. Replace `Vec<Hash>` with a
+    // dedicated single-hash type whose Serialize/Deserialize impl encodes as a one-element
+    // vector, so the on-disk and wire format stay byte-identical while the type makes the
+    // single-element invariant explicit and drops the Vec from the API.
     pub accepted_id_digests: Vec<Hash>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub mergeset_non_daa: BlockHashSet,
