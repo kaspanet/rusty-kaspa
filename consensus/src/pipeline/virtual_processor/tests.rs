@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
         ConfigBuilder,
         params::{ForkActivation, MAINNET_PARAMS},
     },
-    constants::{BLOCK_VERSION, TOCCATA_BLOCK_VERSION},
+    constants::TOCCATA_BLOCK_VERSION,
     tx::{ScriptPublicKey, ScriptVec, Transaction},
 };
 use kaspa_hashes::Hash;
@@ -174,36 +174,16 @@ async fn template_mining_sanity_test() {
 }
 
 #[tokio::test]
-async fn block_template_version_changes_to_v2_upon_activation() {
-    let activation = MAINNET_PARAMS.genesis.daa_score + 10;
-    let config = ConfigBuilder::new(MAINNET_PARAMS)
-        .skip_proof_of_work()
-        .edit_consensus_params(|p| p.toccata_activation = ForkActivation::new(activation))
-        .build();
+async fn block_template_uses_toccata_version() {
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let join_handles = consensus.init();
     let miner_data = new_miner_data();
 
-    let mut saw_pre_activation_template = false;
-    loop {
-        let template = consensus
-            .build_block_template(
-                miner_data.clone(),
-                Box::new(OnetimeTxSelector::new(Default::default())),
-                TemplateBuildMode::Standard,
-            )
-            .unwrap();
-        if template.block.header.daa_score >= activation {
-            assert!(saw_pre_activation_template);
-            assert_eq!(template.block.header.version, TOCCATA_BLOCK_VERSION);
-            break;
-        }
-
-        saw_pre_activation_template = true;
-        assert_eq!(template.block.header.version, BLOCK_VERSION);
-        let status = consensus.validate_and_insert_block(template.block.to_immutable()).virtual_state_task.await.unwrap();
-        assert!(status.has_block_body());
-    }
+    let template = consensus
+        .build_block_template(miner_data, Box::new(OnetimeTxSelector::new(Default::default())), TemplateBuildMode::Standard)
+        .unwrap();
+    assert_eq!(template.block.header.version, TOCCATA_BLOCK_VERSION);
 
     consensus.shutdown(join_handles);
 }

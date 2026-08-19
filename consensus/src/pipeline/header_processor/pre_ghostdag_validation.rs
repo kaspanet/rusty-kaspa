@@ -27,11 +27,11 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_header_version(&self, _header: &Header) -> BlockProcessResult<()> {
-        // TODO(post-toccata): Uncomment this and remove check_header_version_in_context.
-        // if header.version != constants::TOCCATA_BLOCK_VERSION {
-        //     return Err(RuleError::WrongBlockVersion(header.version));
-        // }
+    fn check_header_version(&self, header: &Header) -> BlockProcessResult<()> {
+        let expected_version = self.block_version.after();
+        if header.version != expected_version {
+            return Err(RuleError::WrongBlockVersion(header.version, expected_version));
+        }
         Ok(())
     }
 

@@ -164,21 +164,16 @@ impl TransactionValidator {
         &self,
         tx: &(impl VerifiableTransaction + Sync),
         covenants_ctx: CovenantsContext,
-        block_daa_score: u64,
+        _block_daa_score: u64,
         seq_commit_accessor: Option<&dyn SeqCommitAccessor>,
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
-        let covenants_enabled = self.toccata_activation.is_active(block_daa_score);
-        let flags: EngineFlags = EngineFlags { covenants_enabled, sigop_script_units: Gram(self.mass_per_sig_op).into() };
+        let flags: EngineFlags = EngineFlags { covenants_enabled: true, sigop_script_units: Gram(self.mass_per_sig_op).into() };
 
         check_scripts(tx, ctx, flags)
     }
 
-    fn check_covenant_info(&self, tx: &impl VerifiableTransaction, block_daa_score: u64) -> TxResult<CovenantsContext> {
-        if !self.toccata_activation.is_active(block_daa_score) {
-            return Ok(Default::default());
-        }
-
+    fn check_covenant_info(&self, tx: &impl VerifiableTransaction, _block_daa_score: u64) -> TxResult<CovenantsContext> {
         Ok(CovenantsContext::from_tx(tx)?)
     }
 }
@@ -234,15 +229,12 @@ mod tests {
     use core::str::FromStr;
     use itertools::Itertools;
     use kaspa_consensus_core::mass::{ComputeBudget, free_script_units_per_input};
+    use kaspa_consensus_core::mass::{GRAMS_PER_COMPUTE_BUDGET_UNIT, MassCalculator, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT};
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{
         ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId,
         TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
-    };
-    use kaspa_consensus_core::{
-        config::params::ForkActivation,
-        mass::{GRAMS_PER_COMPUTE_BUDGET_UNIT, MassCalculator, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT},
     };
     use kaspa_core::assert_match;
     use kaspa_txscript::opcodes::codes::{OpCheckSigVerify, OpDup};
@@ -358,7 +350,6 @@ mod tests {
             params.ghostdag_k,
             Default::default(),
             MassCalculator::new(0, 0, 0),
-            ForkActivation::always(),
             params.mass_per_sig_op,
         );
 

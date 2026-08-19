@@ -1524,13 +1524,6 @@ impl ConsensusApi for Consensus {
         }
 
         let header = self.headers_store.get_header(block_hash).unwrap();
-
-        // KIP-21 activity_root only exists post-Toccata. Drop the gate after all
-        // nets activate.
-        if !self.config.params.toccata_activation.is_active(header.daa_score) {
-            return Err(ConsensusError::GeneralOwned(format!("toccata is not active at block {block_hash}")));
-        }
-
         let selected_parent = header.post_toccata_chainblock_selected_parent();
         let parent_header = self.headers_store.get_header(selected_parent).unwrap();
 
