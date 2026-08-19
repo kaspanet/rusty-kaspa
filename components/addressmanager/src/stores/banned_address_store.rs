@@ -20,6 +20,7 @@ pub trait BannedAddressesStoreReader {
 pub trait BannedAddressesStore: BannedAddressesStoreReader {
     fn set(&mut self, ip: IpAddr, timestamp: ConnectionBanTimestamp) -> StoreResult<()>;
     fn remove(&mut self, ip: IpAddr) -> StoreResult<()>;
+    fn reset(&mut self) -> StoreResult<()>;
 }
 
 const IPV6_LEN: usize = 16;
@@ -105,5 +106,9 @@ impl BannedAddressesStore for DbBannedAddressesStore {
 
     fn remove(&mut self, ip: IpAddr) -> StoreResult<()> {
         self.access.delete(DirectDbWriter::new(&self.db), ip.into())
+    }
+
+    fn reset(&mut self) -> StoreResult<()> {
+        self.access.delete_all(DirectDbWriter::new(&self.db))
     }
 }
