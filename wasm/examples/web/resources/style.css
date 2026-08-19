@@ -1,116 +1,235 @@
+:root {
+  --kaspa-teal: #70c7ba;
+  --kaspa-teal-bright: #49eacb;
+  --kaspa-teal-dim: #4a8d83;
+
+  --bg: #16161a;
+  --bg-elevated: #1e1e22;
+  --fg: #e3e3e6;
+  --muted: #8a8a92;
+  --border: #2c2c33;
+  --accent: var(--kaspa-teal);
+  --accent-hover: var(--kaspa-teal-bright);
+  --shadow: rgba(0, 0, 0, 0.4);
+
+  --syntax-key: #5fd6c2;
+  --syntax-string: #e0a36a;
+  --syntax-number: #8ec7f0;
+  --syntax-boolean: #f08a8a;
+  --syntax-keyword: #c79bf0;
+  --syntax-null: #6f817d;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f5f7;
+    --bg-elevated: #ffffff;
+    --fg: #1d1d1f;
+    --muted: #6b6b70;
+    --border: #e2e2e6;
+    --accent: #2aa78f;
+    --accent-hover: #1d8a74;
+    --shadow: rgba(0, 0, 0, 0.08);
+
+    --syntax-key: #1d7d6c;
+    --syntax-string: #b5651d;
+    --syntax-number: #2a6fb0;
+    --syntax-boolean: #a83232;
+    --syntax-keyword: #7a3fb0;
+    --syntax-null: #8a8a8a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
-    margin: 0px;
-    padding: 32px;
-    font-size: 16px;
-    font-family: "Consolas", "Andale Mono", monospace;
-    /* white-space: pre-wrap; */
-}
-@media (prefers-color-scheme: dark) {
-    body {
-        background: rgb(41, 41, 40);
-        color: rgb(188, 189, 229);
-    }
+  margin: 0px;
+  padding: 32px;
+  font-size: 15px;
+  line-height: 1.55;
+  font-family: "Consolas", "Andale Mono", monospace;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
 }
 
-code {
-    display: block;
-    font-size: inherit;
-    font-family: inherit;
-    white-space: pre-wrap;
+/* The first line rendered by utils.js: "<- Back | Network: ...".
+   Give it a card-like header treatment. */
+body > a:first-child {
+  font-weight: 600;
 }
 
-.banner {
-    opacity: 0.75;
-    position:fixed;
-    right: 32px;
-    top: 32px;
+#menu,
+#actions {
+  color: var(--muted);
 }
 
-span.number {
-    color: rgb(11, 103, 20);
-}
-
-span.key {
-    color: rgb(22, 32, 110);
-}
-
-span.string {
-    color: rgb(16, 115, 105);
-}
-
-span.boolean {
-    color: rgb(91, 9, 0);
-}
-
-span.keyword {
-    color: rgb(2, 83, 67);
+#menu text {
+  color: var(--kaspa-teal);
+  font-weight: 600;
 }
 
 .network {
-    color: rgb(11, 103, 20);
+  color: var(--kaspa-teal);
+  font-weight: 600;
 }
 
-a, .link {
-    color: rgb(0, 156, 117);
-    text-decoration: none;
+code {
+  display: block;
+  font-size: inherit;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 2px 14px;
+  border-left: 3px solid transparent;
 }
 
-a:hover, .link:hover {
-    color: rgb(80, 121, 111);
-    text-decoration: none;
-    cursor: pointer;
+/* Subtle alternating emphasis on the streamed log lines */
+code:hover {
+  border-left-color: var(--kaspa-teal-dim);
+  background: var(--bg-elevated);
 }
-.link:disabled{
-    opacity:0.5;
-    cursor:not-allowed
+
+.banner {
+  opacity: 0.75;
+  position: fixed;
+  right: 32px;
+  top: 32px;
+}
+
+span.key {
+  color: var(--syntax-key);
+  font-weight: 600;
+}
+
+span.string {
+  color: var(--syntax-string);
+}
+
+span.number {
+  color: var(--syntax-number);
+}
+
+span.boolean {
+  color: var(--syntax-boolean);
+  font-weight: 600;
+}
+
+span.keyword {
+  color: var(--syntax-keyword);
+}
+
+span.null {
+  color: var(--syntax-null);
+  font-style: italic;
+}
+
+a,
+.link {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:hover,
+.link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 input.address {
-    font-size: 14px;
-    font-family: "Consolas", "Andale Mono", monospace;
-    clear: both;
-    width : 600px;
-    height: 2.5rem;
-    line-height: 2.5rem;
-    border-radius: 10px;
-    border: 1px solid rgb(0, 156, 117);
-    box-shadow: rgba(0, 0, 0, 0.16) 0px 3px 6px, rgba(0, 0, 0, 0.23) 0px 3px 6px;
+  font-size: 14px;
+  font-family: "Consolas", "Andale Mono", monospace;
+  clear: both;
+  width: 600px;
+  max-width: 100%;
+  height: 2.5rem;
+  line-height: 2.5rem;
+  padding: 0 12px;
+  color: var(--fg);
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 6px var(--shadow);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+input.address:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(112, 199, 186, 0.25);
 }
 
 input::placeholder {
-    font-size: 14px;
-    font-family: "Consolas", "Andale Mono", monospace;
+  font-size: 14px;
+  font-family: "Consolas", "Andale Mono", monospace;
+  color: var(--muted);
 }
 
 div.button {
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
-    font-size: 15.2px;
-    height: 2.5rem;
-    line-height: 2.5rem;
-    width:fit-content;
-    padding: 0 1.5rem;
-    text-align: center;
-    border: 1px solid rgb(0, 156, 117);
-    border-radius: 10px;
-    box-shadow: rgba(0, 0, 0, 0.16) 0px 3px 6px, rgba(0, 0, 0, 0.23) 0px 3px 6px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  font-size: 15.2px;
+  font-weight: 600;
+  height: 2.5rem;
+  line-height: 2.5rem;
+  width: fit-content;
+  padding: 0 1.5rem;
+  text-align: center;
+  color: #0d1413;
+  background: var(--kaspa-teal);
+  border: 1px solid var(--kaspa-teal);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px var(--shadow);
+  transition:
+    background 0.15s ease,
+    transform 0.05s ease;
 }
 
-.wallet{
-    padding:10px;
-    border:1px solid #DDD;
-    border-radius: 5px;
-    margin:2px;
-    display: inline-flex;
-    align-items: center;
-    cursor:pointer;
+div.button:hover {
+  background: var(--kaspa-teal-bright);
 }
-.wallet .title{
-    font-size:16px;
-    margin-left:10px;
+
+div.button:active {
+  transform: translateY(1px);
 }
-.wallet .icon{
-    width:50px;
-    height:50px;
+
+.wallet {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 2px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  background: var(--bg-elevated);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.wallet:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.wallet .title {
+  font-size: 16px;
+  margin-left: 10px;
+}
+
+.wallet .icon {
+  width: 50px;
+  height: 50px;
 }
