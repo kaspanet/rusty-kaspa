@@ -12,7 +12,7 @@ use log4rs::{
         },
     },
     config::Appender,
-    encode::{Color, Encode, Style, Write, pattern::PatternEncoder},
+    encode::pattern::PatternEncoder,
     filter::{Filter, threshold::ThresholdFilter},
 };
 use std::path::PathBuf;
@@ -28,7 +28,7 @@ impl AppenderSpec {
         Self::new(
             name,
             level,
-            Box::new(ConsoleAppender::builder().encoder(Box::new(ForkEncoder::new(LOG_LINE_PATTERN_COLORED))).build()),
+            Box::new(ConsoleAppender::builder().encoder(Box::new(PatternEncoder::new(LOG_LINE_PATTERN_COLORED))).build()),
         )
     }
 
@@ -64,42 +64,5 @@ impl AppenderSpec {
         Appender::builder()
             .filters(self.level.map(|x| Box::new(ThresholdFilter::new(x)) as Box<dyn Filter>))
             .build(self.name, self.append.take().unwrap())
-    }
-}
-
-pub const FORK_KEYWORD: &str = "toccata";
-const FORK_LOG_LINE_PATTERN_COLORED: &str = "{d(%Y-%m-%d %H:%M:%S%.3f%:z)} [{h({(TOCC):5.5})}] {m}{n}";
-
-// TODO (post HF): remove or hide the custom encoder
-#[derive(Debug)]
-struct ForkEncoder {
-    general_encoder: PatternEncoder,
-    fork_encoder: PatternEncoder,
-    keyword: &'static str,
-}
-
-impl ForkEncoder {
-    fn new(pattern: &str) -> Self {
-        ForkEncoder {
-            general_encoder: PatternEncoder::new(pattern),
-            fork_encoder: PatternEncoder::new(FORK_LOG_LINE_PATTERN_COLORED),
-            keyword: FORK_KEYWORD,
-        }
-    }
-}
-
-impl Encode for ForkEncoder {
-    fn encode(&self, w: &mut dyn Write, record: &log::Record) -> anyhow::Result<()> {
-        if record.target() == self.keyword {
-            // Hack: override log level to debug so that inner encoder does not reset the style
-            // (note that we use the custom pattern with TOCC so this change isn't visible)
-            let record = record.to_builder().level(log::Level::Debug).build();
-            w.set_style(Style::new().text(Color::Cyan))?;
-            self.fork_encoder.encode(w, &record)?;
-            w.set_style(&Style::new())?;
-            Ok(())
-        } else {
-            self.general_encoder.encode(w, record)
-        }
     }
 }

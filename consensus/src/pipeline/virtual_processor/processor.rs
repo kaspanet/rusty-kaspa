@@ -37,10 +37,8 @@ use crate::{
     },
     params::Params,
     pipeline::{
-        ProcessingCounters,
-        deps_manager::VirtualStateProcessingMessage,
-        pruning_processor::processor::PruningProcessingMessage,
-        virtual_processor::{fork_logger::ForkLogger, utxo_validation::UtxoProcessingContext},
+        ProcessingCounters, deps_manager::VirtualStateProcessingMessage, pruning_processor::processor::PruningProcessingMessage,
+        virtual_processor::utxo_validation::UtxoProcessingContext,
     },
     processes::{
         coinbase::CoinbaseManager,
@@ -175,7 +173,6 @@ pub struct VirtualStateProcessor {
 
     // Toccata activation
     pub(crate) toccata_activation: ForkActivation,
-    pub(crate) toccata_logger: ForkLogger,
 
     // SMT stores
     pub(super) smt_stores: Arc<kaspa_smt_store::processor::SmtStores>,
@@ -250,7 +247,6 @@ impl VirtualStateProcessor {
             notification_root,
             counters,
             toccata_activation: params.toccata_activation,
-            toccata_logger: ForkLogger::new("virtual state processing rules", true),
             smt_stores: storage.smt_stores.clone(),
             smt_metadata_store: storage.smt_metadata_store.clone(),
             _mining_rules: mining_rules,
@@ -581,10 +577,6 @@ impl VirtualStateProcessor {
 
         // Update the accumulated diff
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
-
-        if self.toccata_activation.is_within_range_from_activation(virtual_daa_window.daa_score, 10_000) {
-            self.toccata_logger.report_activation();
-        }
 
         // Compute accepted_id_digests
         let accepted_id_digests = if self.toccata_activation.is_active(virtual_daa_window.daa_score) {
