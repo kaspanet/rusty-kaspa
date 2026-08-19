@@ -66,22 +66,29 @@ impl UtxoIndexProxy {
         Self { inner }
     }
 
-    pub async fn get_circulating_supply(self) -> StoreResult<u64> {
-        spawn_blocking(move || self.inner.read().get_circulating_supply()).await.unwrap()
+    pub async fn get_circulating_supply(&self) -> StoreResult<u64> {
+        let inner = Arc::clone(&self.inner);
+        spawn_blocking(move || inner.read().get_circulating_supply()).await.unwrap()
     }
 
-    pub async fn get_utxos_by_script_public_keys(self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
-        spawn_blocking(move || self.inner.read().get_utxos_by_script_public_keys(script_public_keys)).await.unwrap()
+    pub async fn get_utxos_by_script_public_keys(
+        &self,
+        script_public_keys: ScriptPublicKeys,
+    ) -> StoreResult<UtxoSetByScriptPublicKey> {
+        let inner = Arc::clone(&self.inner);
+        spawn_blocking(move || inner.read().get_utxos_by_script_public_keys(script_public_keys)).await.unwrap()
     }
 
     pub async fn get_balance_by_script_public_keys(
-        self,
+        &self,
         script_public_keys: ScriptPublicKeys,
     ) -> StoreResult<BalanceByScriptPublicKey> {
-        spawn_blocking(move || self.inner.read().get_balance_by_script_public_keys(script_public_keys)).await.unwrap()
+        let inner = Arc::clone(&self.inner);
+        spawn_blocking(move || inner.read().get_balance_by_script_public_keys(script_public_keys)).await.unwrap()
     }
 
-    pub async fn update(self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoChanges> {
-        spawn_blocking(move || self.inner.write().update(utxo_diff, tips)).await.unwrap()
+    pub async fn update(&self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoChanges> {
+        let inner = Arc::clone(&self.inner);
+        spawn_blocking(move || inner.write().update(utxo_diff, tips)).await.unwrap()
     }
 }
