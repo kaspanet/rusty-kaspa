@@ -1,7 +1,7 @@
 #![no_main]
 mod utils;
 
-use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
+use core::ops::{BitAnd, BitOr, BitXor, Div, Rem};
 use kaspa_math::construct_uint;
 use libfuzzer_sys::fuzz_target;
 use std::convert::TryInto;
@@ -22,6 +22,7 @@ fn generate_ints_top_bit_cleared(data: &mut &[u8]) -> Option<(Uint128, u128)> {
     Some((Uint128::from_le_bytes(buf), u128::from_le_bytes(buf)))
 }
 
+#[track_caller]
 fn assert_op<T, U>(data: &mut &[u8], op_lib: T, op_native: U, ok_by_zero: bool) -> Option<()>
 where
     T: Fn(Uint128, Uint128) -> Uint128,
@@ -38,6 +39,26 @@ where
     Some(())
 }
 
+#[track_caller]
+fn assert_op_with_overflow<T, U>(data: &mut &[u8], op_lib: T, op_native: U, ok_by_zero: bool) -> Option<()>
+where
+    T: Fn(Uint128, Uint128) -> (Uint128, bool),
+    U: Fn(u128, u128) -> (u128, bool),
+{
+    let (lib, native) = generate_ints(data)?;
+    let (lib2, native2) = loop {
+        let (lib2, native2) = generate_ints(data)?;
+        if ok_by_zero || native2 != 0 {
+            break (lib2, native2);
+        }
+    };
+    let (lib_result, lib_overflow) = op_lib(lib, lib2);
+    let (native_result, native_overflow) = op_native(native, native2);
+    assert_eq!(lib_result, native_result, "native: {native}, native2: {native2}");
+    assert_eq!(lib_overflow, native_overflow, "native: {native}, native2: {native2}");
+    Some(())
+}
+
 fuzz_target!(|data: &[u8]| {
     let mut data = data;
     // from_le_bytes
@@ -46,10 +67,12 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(lib, native);
     }
 
-    // Full addition
-    assert_op(&mut data, Add::add, Add::add, true);
-    // Full multiplication
-    assert_op(&mut data, Mul::mul, Mul::mul, true);
+    // Full Overflow addition
+    assert_op_with_overflow(&mut data, Uint128::overflowing_add, u128::overflowing_add, true);
+    // Full Overflow multiplication
+    assert_op_with_overflow(&mut data, Uint128::overflowing_mul, u128::overflowing_mul, true);
+    // Full Overflow subtraction
+    assert_op_with_overflow(&mut data, Uint128::overflowing_sub, u128::overflowing_sub, true);
     // Full division
     assert_op(&mut data, Div::div, Div::div, false);
     // Full remainder
@@ -71,25 +94,39 @@ fuzz_target!(|data: &[u8]| {
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_eq!(lib + word, native + (word as u128), "native: {native}, word: {word}");
+        let (lib_result, lib_overflow) = lib.overflowing_add_u64(word);
+        let (native_result, native_overflow) = u128::overflowing_add(native, word as u128);
+        assert_eq!(lib_result, native_result, "native: {native}, word: {word}");
+        assert_eq!(lib_overflow, native_overflow, "native: {native}, word: {word}");
     }
     // U64 multiplication
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_eq!(lib * word, native * (word as u128), "native: {native}, word: {word}");
+        let (lib_result, lib_overflow) = lib.overflowing_mul_u64(word);
+        let (native_result, native_overflow) = u128::overflowing_mul(native, word as u128);
+        assert_eq!(lib_result, native_result, "native: {native}, word: {word}");
+        assert_eq!(lib_overflow, native_overflow, "native: {native}, word: {word}");
     }
     // Left shift
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let lshift = try_opt!(consume::<1>(&mut data))[0] as u32;
-        assert_eq!(lib << lshift, native << lshift, "native: {native}, lshift: {lshift}");
+
+        let (native_res, native_overflow) = native.overflowing_shl(lshift);
+        let (lib_res, lib_overflow) = lib.overflowing_shl(lshift);
+        assert_eq!(lib_res, native_res, "native: {native}, lshift: {lshift}");
+        assert_eq!(lib_overflow, native_overflow, "native: {native}, lshift: {lshift}");
     }
     // Right shift
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let rshift = try_opt!(consume::<1>(&mut data))[0] as u32;
-        assert_eq!(lib >> rshift, native >> rshift, "native: {native}, rshift: {rshift}");
+
+        let (native_res, native_overflow) = native.overflowing_shr(rshift);
+        let (lib_res, lib_overflow) = lib.overflowing_shr(rshift);
+        assert_eq!(lib_res, native_res, "native: {native}, rshift: {rshift}");
+        assert_eq!(lib_overflow, native_overflow, "native: {native}, rshift: {rshift}");
     }
     // bits
     {
@@ -104,7 +141,7 @@ fuzz_target!(|data: &[u8]| {
     // as u128
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
-        assert_eq!(lib.as_u128(), native as u128, "native: {native}");
+        assert_eq!(lib.as_u128(), native, "native: {native}");
     }
     // as f64
     {
