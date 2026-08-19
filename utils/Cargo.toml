@@ -32,6 +32,14 @@ wasm-bindgen.workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit = { workspace = true, optional = true }
 
+# getrandom 0.3 is pulled in transitively (ahash -> ark-crypto -> kaspa-txscript)
+# and needs its `wasm_js` feature enabled on wasm32; the feature alone is no
+# longer sufficient (it also needs the getrandom_backend cfg in .cargo/config.toml).
+# kaspa-utils is in every wasm32 build root, so declaring the alias here unifies
+# the feature across the whole workspace's wasm builds.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
 [dev-dependencies]
 bincode.workspace = true
 serde_json.workspace = true

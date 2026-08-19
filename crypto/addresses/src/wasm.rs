@@ -119,7 +119,7 @@ mod tests {
 
     use crate::Address;
     use js_sys::Object;
-    use wasm_bindgen::{__rt::IntoJsResult, JsValue, convert::IntoWasmAbi};
+    use wasm_bindgen::{__rt::IntoJsResult, JsValue};
     use wasm_bindgen_test::wasm_bindgen_test;
     use workflow_wasm::{extensions::ObjectExtension, serde::from_value, serde::to_value};
 
@@ -153,7 +153,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn test_wasm_serde_object() {
         let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
-        let wasm_js_value: JsValue = expected.clone().into_abi().into();
+        let wasm_js_value: JsValue = to_value(&expected).unwrap();
 
         let actual = from_value(wasm_js_value).unwrap();
         assert_eq!(expected, actual);

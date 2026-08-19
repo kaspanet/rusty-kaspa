@@ -13,6 +13,31 @@
 //!
 //! The main struct managing Kaspa RPC client connections is the [`KaspaRpcClient`].
 //!
+//! ## TLS crypto provider (native)
+//!
+//! On native targets the client opens secure (`wss://`) connections and, when a
+//! [`Resolver`] is used, fetches the public node list over HTTPS — both go
+//! through [`rustls`](https://docs.rs/rustls), which (since 0.23) requires a
+//! process-level crypto provider to be installed.
+//!
+//! For zero-config use, the default `rustls-tls-webpki-roots` feature installs
+//! the pure-Rust `ring` provider automatically the first time a
+//! [`KaspaRpcClient`] or [`Resolver`] is constructed (see
+//! [`ensure_crypto_provider`]). The install is idempotent and a no-op if a
+//! provider has already been installed, so to use a different provider (e.g.
+//! `aws-lc-rs`) install it yourself *before* constructing a client:
+//!
+//! ```ignore
+//! rustls::crypto::aws_lc_rs::default_provider().install_default().unwrap();
+//! ```
+//!
+//! Building this crate with `default-features = false` (or selecting a
+//! `native-tls*` backend) drops the bundled `ring` provider; if you then use the
+//! [`Resolver`] (HTTPS) you must install a rustls [`CryptoProvider`] yourself —
+//! [`ensure_crypto_provider`] becomes a no-op in that configuration.
+//!
+//! On `wasm32` the host environment handles TLS, so no provider is required.
+//!
 
 pub mod client;
 pub mod error;
@@ -23,3 +48,30 @@ pub mod node;
 pub mod parse;
 pub mod prelude;
 pub mod resolver;
+
+cfg_if::cfg_if! {
+    if #[cfg(all(not(target_arch = "wasm32"), feature = "rustls-ring"))] {
+        /// Ensures a process-level rustls [`CryptoProvider`](rustls::crypto::CryptoProvider)
+        /// is installed before the client establishes any TLS connection.
+        ///
+        /// reqwest 0.13 (used by the [`Resolver`] over HTTPS) only auto-selects the
+        /// `aws-lc-rs` provider, which requires a C/cmake toolchain. To keep the build
+        /// pure-Rust (`ring`) while staying zero-config for SDK consumers, we install
+        /// the `ring` provider on first client/resolver construction. This is
+        /// idempotent and a no-op if a provider was already installed — so a consumer
+        /// can override it by installing their own provider before constructing a
+        /// client. wasm targets use the host's TLS and need no provider.
+        ///
+        /// When built without a `rustls-tls-*` backend (e.g. `default-features = false`
+        /// or a `native-tls*` backend) the `ring` provider is not compiled in and this
+        /// function is a no-op; such consumers must install their own provider.
+        pub fn ensure_crypto_provider() {
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            ONCE.call_once(|| {
+                let _ = rustls::crypto::ring::default_provider().install_default();
+            });
+        }
+    } else {
+        pub fn ensure_crypto_provider() {}
+    }
+}
