@@ -17,6 +17,9 @@ pub enum ConfigError {
     #[error("Configuration: --max-tracked-addresses cannot be set above {0}")]
     MaxTrackedAddressesTooHigh(usize),
 
+    #[error("Configuration: {0}")]
+    General(String),
+
     #[cfg(feature = "devnet-prealloc")]
     #[error("Cannot preallocate UTXOs on any network except devnet")]
     PreallocUtxosOnNonDevnet,
