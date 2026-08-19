@@ -127,7 +127,6 @@ impl ConsensusServices {
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
             params.bps_history(),
-            params.toccata_activation,
         );
 
         let mass_calculator =
@@ -143,7 +142,6 @@ impl ConsensusServices {
             params.ghostdag_k(),
             tx_script_cache_counters,
             mass_calculator.clone(),
-            params.toccata_activation,
             params.mass_per_sig_op,
         );
 
@@ -182,7 +180,6 @@ impl ConsensusServices {
             params.finality_depth(),
             params.ghostdag_k(),
             params.skip_proof_of_work,
-            params.toccata_activation,
             is_consensus_exiting,
         ));
 

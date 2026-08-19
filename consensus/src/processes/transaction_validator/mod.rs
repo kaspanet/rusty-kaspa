@@ -9,11 +9,7 @@ use kaspa_txscript::{
     caches::{Cache, TxScriptCacheCounters},
 };
 
-use kaspa_consensus_core::{
-    KType,
-    config::params::{ForkActivation, ForkedParam},
-    mass::MassCalculator,
-};
+use kaspa_consensus_core::{KType, config::params::ForkedParam, mass::MassCalculator};
 
 #[derive(Clone)]
 pub struct TransactionValidator {
@@ -25,7 +21,6 @@ pub struct TransactionValidator {
     coinbase_maturity: u64,
     ghostdag_k: KType,
     sig_cache: Cache<SigCacheKey, bool>,
-    toccata_activation: ForkActivation,
     mass_per_sig_op: u64,
 
     pub(crate) mass_calculator: MassCalculator,
@@ -43,7 +38,6 @@ impl TransactionValidator {
         ghostdag_k: KType,
         counters: Arc<TxScriptCacheCounters>,
         mass_calculator: MassCalculator,
-        toccata_activation: ForkActivation,
         mass_per_sig_op: u64,
     ) -> Self {
         Self {
@@ -56,7 +50,6 @@ impl TransactionValidator {
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator,
-            toccata_activation,
             mass_per_sig_op,
         }
     }
@@ -81,7 +74,6 @@ impl TransactionValidator {
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator: MassCalculator::new(0, 0, 0),
-            toccata_activation: ForkActivation::never(),
             mass_per_sig_op: 0,
         }
     }
