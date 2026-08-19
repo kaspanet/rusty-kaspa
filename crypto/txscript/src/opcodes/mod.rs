@@ -3794,12 +3794,11 @@ mod test {
             let output_spk1 = create_mock_spk(3);
             let output_spk2 = create_mock_spk(4);
 
-            let inputs =
-                vec![
-                    Kip10Mock { spk: input_spk1.clone(), amount: 1111 },
-                    Kip10Mock { spk: input_spk2.clone(), amount: 2222 },
-                    Kip10Mock { spk: create_mock_spk(5), amount: 5555 },
-                ];
+            let inputs = vec![
+                Kip10Mock { spk: input_spk1.clone(), amount: 1111 },
+                Kip10Mock { spk: input_spk2.clone(), amount: 2222 },
+                Kip10Mock { spk: create_mock_spk(5), amount: 5555 },
+            ];
             let outputs =
                 vec![Kip10Mock { spk: output_spk1.clone(), amount: 3333 }, Kip10Mock { spk: output_spk2.clone(), amount: 4444 }];
 
