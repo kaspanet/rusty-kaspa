@@ -5,7 +5,7 @@ use crate::{
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
-use kaspa_core::debug;
+use kaspa_core::{debug, warn};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router, SharedIncomingRoute,
@@ -98,25 +98,37 @@ impl HandleRelayInvsFlow {
             let session = self.ctx.consensus().unguarded_session();
             let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
 
+            let is_new_hash = self.ctx.register_hash_for_processing_loop(self.router.key(), inv.hash).await;
+            if !is_new_hash {
+                debug!("Received inv of block {} which is already being processed, continuing...", inv.hash);
+                continue;
+            };
+
             match session.async_get_block_status(inv.hash).await {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv
                 Some(BlockStatus::StatusInvalid) => {
                     // Report a protocol error
+                    let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
                     return Err(ProtocolError::OtherOwned(format!("sent inv of an invalid block {}", inv.hash)));
                 }
                 _ => {
                     // Block is already known, skip to next inv
+                    let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
                     debug!("Relay block {} already exists, continuing...", inv.hash);
                     continue;
                 }
             }
 
             match self.ctx.get_orphan_roots_if_known(&session, inv.hash).await {
-                OrphanOutput::Unknown => {}           // Keep processing this inv
-                OrphanOutput::NoRoots(_) => continue, // Existing orphan w/o missing roots
+                OrphanOutput::Unknown => {} // Keep processing this inv
+                OrphanOutput::NoRoots(_) => {
+                    let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
+                    continue; // Existing orphan w/o missing roots
+                }
                 OrphanOutput::Roots(roots) => {
                     // Known orphan with roots to enqueue
                     self.enqueue_orphan_roots(inv.hash, roots, inv.known_within_range);
+                    let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
                     continue;
                 }
             }
@@ -125,17 +137,19 @@ impl HandleRelayInvsFlow {
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
                 debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
+                let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
                 continue;
             }
 
             // We keep the request scope alive until consensus processes the block
             let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id(), self.header_format).await? else {
-                debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
+                warn!("Relay block {} was already requested from another peer, this is unexpected, continuing...", inv.hash);
                 continue;
             };
             request_scope.report_obtained();
 
             if block.is_header_only() {
+                let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
 
@@ -152,11 +166,13 @@ impl HandleRelayInvsFlow {
                     "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
                     inv.hash, block.header.blue_work, blue_work_threshold
                 );
+                let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
                 continue;
             }
             // if in a transitional ibd state, do not wait, sync immediately
             if is_ibd_in_transitional_state {
                 self.try_trigger_ibd(block)?;
+                let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
                 continue;
             }
 
@@ -176,7 +192,10 @@ impl HandleRelayInvsFlow {
                                 Ok(_) => {}
                                 // We disconnect on invalidness even though this is not a direct relay from this peer, because
                                 // current relay is a descendant of this block (i.e. this peer claims all its ancestors are valid)
-                                Err(rule_error) => return Err(rule_error.into()),
+                                Err(rule_error) => {
+                                    let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
+                                    return Err(rule_error.into());
+                                }
                             }
                         }
 
@@ -188,15 +207,24 @@ impl HandleRelayInvsFlow {
                                     debug!("Unorphaned {} ancestors and retried orphan block {} successfully", n, block.hash())
                                 }
                             },
-                            Err(rule_error) => return Err(rule_error.into()),
+                            Err(rule_error) => {
+                                let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
+                                return Err(rule_error.into());
+                            }
                         }
                         ancestor_batch
                     } else {
                         continue;
                     }
                 }
-                Err(rule_error) => return Err(rule_error.into()),
+                Err(rule_error) => {
+                    let _ = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
+                    return Err(rule_error.into());
+                }
             };
+
+            // once we unregister the hash at this point, we know the hash will be in the status store, which then hence performs the filtering.
+            let registered_peers_for_hash = self.ctx.unregister_hash_from_processing_loop(&inv.hash).await;
 
             // As a policy, we only relay blocks who stand a chance to enter past(virtual).
             // The only mining rule which permanently excludes a block is the merge depth bound
@@ -207,15 +235,15 @@ impl HandleRelayInvsFlow {
                     .iter()
                     .map(|b| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
                     .collect();
-                // we filter out the current peer to avoid sending it back invs we know it already has
-                self.ctx.hub().broadcast_many(msgs, Some(self.router.key())).await;
+                // we filter out peers that (in the meantime) sent us the original processed hash to avoid sending it back invs we know it already has.
+                self.ctx.hub().broadcast_many(msgs, registered_peers_for_hash.as_ref()).await;
 
-                // we filter out the current peer to avoid sending it back the same invs
+                // we filter out peers that (in the meantime) sent us the original processed hash to avoid sending it back invs we know it already has.
                 self.ctx
                     .hub()
                     .broadcast(
                         make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(inv.hash.into()) }),
-                        Some(self.router.key()),
+                        registered_peers_for_hash.as_ref(),
                     )
                     .await;
             }
