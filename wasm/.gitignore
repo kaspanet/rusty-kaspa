@@ -5,3 +5,4 @@ analyzer-target
 package-lock.json
 /nodejs/*
 /docs/*
+/npm-release/
