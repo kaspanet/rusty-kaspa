@@ -4,12 +4,14 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            DB, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
+            DB, acceptance_data::DbAcceptanceDataStore, block_transactions::DbBlockTransactionsStore,
+            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore, pruning_samples::DbPruningSamplesStore, reachability::DbReachabilityStore,
             relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore,
         },
     },
+    pipeline::receipts_manager::TxReceiptsManager,
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
         parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
@@ -47,6 +49,14 @@ pub type DbPruningPointManager = PruningPointManager<
 >;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
+pub type DbTxReceiptsManager = TxReceiptsManager<
+    DbSelectedChainStore,
+    DbReachabilityStore,
+    DbHeadersStore,
+    DbAcceptanceDataStore,
+    DbBlockTransactionsStore,
+    DbPruningStore,
+>;
 
 pub struct ConsensusServices {
     // Underlying storage
@@ -67,6 +77,7 @@ pub struct ConsensusServices {
     pub depth_manager: DbBlockDepthManager,
     pub mass_calculator: MassCalculator,
     pub transaction_validator: TransactionValidator,
+    pub tx_receipts_manager: DbTxReceiptsManager,
 }
 
 impl ConsensusServices {
@@ -111,6 +122,19 @@ impl ConsensusServices {
             reachability_service.clone(),
             storage.ghostdag_store.clone(),
             storage.headers_store.clone(),
+        );
+        let tx_receipts_manager = TxReceiptsManager::new(
+            params.genesis.clone(),
+            params.finality_depth(),
+            reachability_service.clone(),
+            storage.headers_store.clone(),
+            storage.selected_chain_store.clone(),
+            storage.acceptance_data_store.clone(),
+            storage.block_transactions_store.clone(),
+            storage.pruning_point_store.clone(),
+            storage.smt_stores.clone(),
+            storage.smt_metadata_store.clone(),
+            dag_traversal_manager.clone(),
         );
         let ghostdag_manager = GhostdagManager::new(
             params.genesis.hash,
@@ -213,6 +237,7 @@ impl ConsensusServices {
             depth_manager,
             mass_calculator,
             transaction_validator,
+            tx_receipts_manager,
         })
     }
 }

@@ -1,4 +1,5 @@
-use super::{VirtualStateProcessor, bounds::SeqCommitBounds};
+use super::VirtualStateProcessor;
+use crate::pipeline::seq_commit_bounds::SeqCommitBounds;
 use crate::{
     errors::{
         BlockProcessResult,

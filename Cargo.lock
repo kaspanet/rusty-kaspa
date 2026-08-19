@@ -3226,6 +3226,7 @@ dependencies = [
  "kaspa-math",
  "kaspa-merkle",
  "kaspa-muhash",
+ "kaspa-seq-commit",
  "kaspa-smt",
  "kaspa-txscript-errors",
  "kaspa-utils",
@@ -3582,6 +3583,7 @@ name = "kaspa-merkle"
 version = "2.0.1"
 dependencies = [
  "kaspa-hashes",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

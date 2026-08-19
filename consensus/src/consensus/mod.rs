@@ -70,6 +70,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
+    receipts::TxReceipt,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{
         ComputeCommit, MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint,
@@ -81,7 +82,7 @@ use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use crossbeam_channel::{
     Receiver as CrossbeamReceiver, Sender as CrossbeamSender, bounded as bounded_crossbeam, unbounded as unbounded_crossbeam,
 };
-use itertools::Itertools;
+use itertools::{EitherOrBoth, Itertools};
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
 use kaspa_core::info;
@@ -641,6 +642,89 @@ impl Consensus {
     pub fn is_pruning_stable(&self) -> StoreResult<bool> {
         let pruning_point_read = self.pruning_point_store.read();
         Ok(pruning_point_read.retention_checkpoint()? == pruning_point_read.retention_period_root()?)
+    }
+    // Attempts to find the owning block of tx_id based on the timestamp alone
+    // The first part of the function tries to guess a block which should be nearby enough to the tx
+    // the current logic does so by estimating when approximately should a block with this timestamp have occured,
+    // based on the bps and the estimation dag_width.
+    // Next, the function searches for the owning block  within a margin of error from the guess_block.
+    // both forwards and backwards.
+    //
+    fn generate_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
+        // utility closures
+        let someize_header_if_blk_accepts_tx = |blk| {
+            if self
+                .get_block_acceptance_data(blk)
+                .ok()?
+                .iter()
+                .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
+                .contains(&tx_id)
+            {
+                Some(self.headers_store.get_header(blk).unwrap())
+            } else {
+                None
+            }
+        };
+        let first_some_out_of_either_pair = |pair: EitherOrBoth<Option<_>, Option<_>>| {
+            let (a, b) = pair.or_default();
+            a.or(b)
+        };
+
+        let bps = self.config.params.bps();
+
+        //    The Guess block estimation  should function relatively well in the common case where the transaction is a couple days old
+        //    There are two problems with this approach when dealing with old transactions:
+        //    A) due to ever increasing hash rate, real bps is oftentimes ever so slightly higher than what it should be.
+        //    This will add up.
+        //    B) The estimation of the dag width is coarse,
+        //    and represents recent dag width, while the true dag_width can vary considerbly with time.
+        //    A possible solution for B is to perform a more complicated logic iterative style estimation.
+        //    Another possible solution is to attempt a search based on the timestamps of the blocks themselves,
+        //    which are currently ignored, however as these timestamps fluctuate up and down, this again will result in more complicated logic
+        //    For the moment these optimizations seem not worth it
+        let (tip_index, tip) = self.selected_chain_store.read().get_tip().unwrap();
+        let tip_timestamp = self.headers_store.get_timestamp(tip).unwrap();
+        let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
+
+        let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
+        let elapsed_blue_score = tip_timestamp.saturating_sub(tx_timestamp).saturating_mul(bps) / 1000;
+        let estimated_bscore = tip_bscore.saturating_sub(elapsed_blue_score);
+        let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
+        let mut guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(self.config.genesis.hash);
+        if !self.is_chain_ancestor_of(self.pruning_point_store.read().retention_period_root().unwrap(), guess_block).unwrap_or(false) {
+            guess_block = self.pruning_point_store.read().retention_period_root().unwrap();
+        }
+        // we account for a deviation of "10 minutes" from the guess block and derive the expected max distance in chain blocks
+        const DEVIATION_IN_SECONDS: u64 = 600;
+        let deviation_in_chain_blocks = ((DEVIATION_IN_SECONDS * bps) / dag_width_guess) as usize;
+
+        // Checking the entire spectrum of one direction before any blocks of the other is wasteful,
+        // as the correct block is much more likely to be close to guess_block than far away from it
+        // (assuming the guess is decent)
+        // Because of this an iterator is constructed to iterate both directions simultaniously
+
+        // forward derivation
+        let forward_search_iter = self
+            .services
+            .reachability_service
+            .forward_chain_iterator(guess_block, tip, true)
+            .take(deviation_in_chain_blocks)
+            .map(someize_header_if_blk_accepts_tx);
+        // backward derivation
+        let backward_search_iter = self.services.reachability_service
+            .backward_chain_iterator(guess_block,self.pruning_point_store.read().retention_period_root().unwrap(),true)
+            .skip(1)// avoid checking guess block itself twice
+            .take(deviation_in_chain_blocks)
+            .map(someize_header_if_blk_accepts_tx);
+        let double_sided_iterator = backward_search_iter.zip_longest(forward_search_iter).map(first_some_out_of_either_pair);
+        // we iterate backwards and forwards at the same time to locate the accepting block of the transaction
+        let acc_blocks = double_sided_iterator.filter(|blk| blk.is_some());
+        for hdr in acc_blocks {
+            if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt(hdr.unwrap(), tx_id) {
+                return Ok(ret);
+            }
+        }
+        Err(ConsensusError::General("cannot find block with given timestamp"))
     }
 }
 
@@ -1731,5 +1815,73 @@ impl ConsensusApi for Consensus {
     fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
         let (_pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
         (0..=pruning_index).rev().take(n).map(|ind| self.past_pruning_points_store.get(ind).unwrap()).collect_vec()
+    }
+
+    // For archival nodes, callers should avoid the unbounded historical lookup and pass
+    // either the accepting block or a timestamp hint.
+    fn generate_tx_receipt(
+        &self,
+        tx_id: Hash,
+        accepting_block: Option<Hash>,
+        tx_timestamp: Option<u64>,
+    ) -> ConsensusResult<TxReceipt> {
+        if let Some(accepting_block) = accepting_block {
+            // if a block hash is supplied, generate receipt directly
+            let accepting_block_header = self.headers_store.get_header(accepting_block).unwrap();
+            return self
+                .services
+                .tx_receipts_manager
+                .generate_tx_receipt(accepting_block_header, tx_id)
+                .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
+        }
+        // if no block is given, try to search based on time_stamp
+
+        if let Some(tx_timestamp) = tx_timestamp {
+            return self.generate_tx_receipt_based_on_time(tx_id, tx_timestamp);
+        }
+        if self.config.is_archival {
+            return Err(ConsensusError::General(
+                "attempting to generate a transaction receipt on an archival node without any hint may require an arbitrarily deep search; please supply an accepting block or transaction timestamp",
+            ));
+        }
+        // if no timestamp is given either, search the entire database
+        // note: this is computationally wasteful and should be avoided on usual terms
+
+        for block in self.services.reachability_service.forward_chain_iterator(self.config.genesis.hash, self.get_sink(), true) {
+            let accepted_txs = self.get_block_acceptance_data(block);
+            if accepted_txs.is_err() {
+                continue;
+            }
+            let accepted_txs = accepted_txs.unwrap();
+            if accepted_txs
+                .iter()
+                .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
+                .contains(&tx_id)
+            {
+                let accepting_block_header = self.headers_store.get_header(block).unwrap();
+                if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt(accepting_block_header, tx_id) {
+                    return Ok(ret);
+                }
+            }
+        }
+        Err(ConsensusError::MissingTx(tx_id))
+    }
+    // Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored
+    fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
+        self.services.tx_receipts_manager.verify_tx_receipt(receipt)
+    }
+    fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
+        //  note: this function only asserts a posterity with blue score higher than cutoff score exists
+        // *It does not* necessarily imply this block is a posterity of a block with blue socre cutoof score:
+        // In the rare case the block is in the anticone of posterity, its posterity will be the
+        //  next posterity block after the one in question, i.e.
+        //  its existence could be queried by calling the function with cutoff_bscore+posterity_depth
+        let (_, tip) = self.selected_chain_store.read().get_tip().unwrap();
+        // a security margin of 100 seconds is taken to avoid the posterity reorgin, should be enough
+        // the minimum with 1/2 times finality depth is taken for testing purposes. For true data this minimum is meaningless.
+        let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
+
+        let security_margin = std::cmp::min(100 * self.config.bps(), self.config.finality_depth()) / 2;
+        tip_bscore > cutoff_bscore + security_margin
     }
 }
