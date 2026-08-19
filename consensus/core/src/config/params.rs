@@ -871,7 +871,7 @@ pub const DEVNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
-    toccata_activation: ForkActivation::never(),
+    toccata_activation: ForkActivation::always(),
 };
 
 #[cfg(test)]
