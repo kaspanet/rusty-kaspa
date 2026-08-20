@@ -116,10 +116,10 @@ pub type RuleResult<T> = std::result::Result<T, RuleError>;
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum NonStandardError {
     // TODO: the three variants below are unreachable, nothing constructs them. Each corresponds to a
-    // rule that is now enforced elsewhere: transaction version and signature script length are
-    // consensus rules, per-lane gas is a block template limit rather than a standardness rule, and
-    // the zero-gas requirement for native and system subnetworks is a consensus rule. Remove all
-    // three together with their `transaction_id` arms once no external consumer matches on them.
+    // rule that is now enforced elsewhere: transaction version, signature script length, per-lane
+    // gas and the zero-gas requirement for native and system subnetworks are all consensus rules,
+    // with per-lane gas additionally checked at mempool admission. Remove all three together with
+    // their `transaction_id` arms once no external consumer matches on them.
     #[error("transaction version {1} is not in the valid range of {2}-{3}")]
     RejectVersion(TransactionId, u16, u16, u16),
 
