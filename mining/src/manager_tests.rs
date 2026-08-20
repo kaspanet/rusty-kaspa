@@ -20,10 +20,7 @@ mod tests {
         api::ConsensusApi,
         block::TemplateBuildMode,
         coinbase::MinerData,
-        config::{
-            constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
-            params::ForkActivation,
-        },
+        config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::tx::TxRuleError,
         mass::{BlockLaneLimits, BlockMassLimits, NonContextualMasses, transaction_estimated_serialized_size},
@@ -53,7 +50,6 @@ mod tests {
             TARGET_TIME_PER_BLOCK,
             false,
             BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS),
-            ForkActivation::never(),
             BLOCK_LANE_LIMITS,
             None,
             Arc::new(MiningCounters::default()),
@@ -936,7 +932,7 @@ mod tests {
         // Limit the orphan pool to 2 transactions
         config.maximum_orphan_transaction_count = 2;
         let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::with_config(config.clone(), ForkActivation::never(), None, counters);
+        let mining_manager = MiningManager::with_config(config.clone(), None, counters);
 
         // Create pairs of transaction parent-and-child pairs according to the test vector
         let (parent_txs, child_txs) = create_arrays_of_parent_and_children_transactions(&consensus, tests.len());
@@ -1163,7 +1159,7 @@ mod tests {
         let tx_size = txs[0].mempool_estimated_bytes();
         let size_limit = TX_COUNT * tx_size;
         config.mempool_size_limit = size_limit;
-        let mining_manager = MiningManager::with_config(config, ForkActivation::never(), None, counters);
+        let mining_manager = MiningManager::with_config(config, None, counters);
 
         for tx in txs {
             validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
