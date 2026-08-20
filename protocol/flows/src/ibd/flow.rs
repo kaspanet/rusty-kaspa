@@ -276,15 +276,7 @@ impl IbdFlow {
 
                 let is_utxo_stable = consensus.async_is_pruning_utxoset_stable().await;
                 let is_pp_anticone_synced = consensus.async_is_pruning_point_anticone_fully_synced().await;
-                // The SMT stable flag is only meaningful once Toccata is active at the current
-                // pruning point. Before activation, `sync_new_smt_state` is a no-op and the flag
-                // is never set, so we treat it as stable to preserve pre-activation IBD behavior.
-                let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-                let is_smt_stable = if self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
-                    consensus.async_is_pruning_smt_stable().await
-                } else {
-                    true
-                };
+                let is_smt_stable = consensus.async_is_pruning_smt_stable().await;
 
                 return match (syncer_skew, is_utxo_stable && is_smt_stable && is_pp_anticone_synced) {
                     (SyncerSkew::Aligned, _) => {
@@ -392,13 +384,13 @@ impl IbdFlow {
     }
 
     async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy, relay_block: &Block) -> Result<Hash, ProtocolError> {
-        // [Toccata] Guard IBD from outdated nodes. P2P flow registration does not protect
+        // Guard IBD from outdated nodes. P2P flow registration does not protect
         // fresh IBD peers, and the relay block is usually the syncer sink, so reject an unexpected
         // block version before requesting the pruning proof.
-        let expected_relay_block_version = self.ctx.config.block_version().get(relay_block.header.daa_score);
+        let expected_relay_block_version = self.ctx.config.block_version().after();
         if relay_block.header.version != expected_relay_block_version {
             return Err(ProtocolError::OtherOwned(format!(
-                "peer relayed block {} header version mismatch: got {}, expected {} at DAA score {} (Toccata guard)",
+                "peer relayed block {} header version mismatch: got {}, expected {} at DAA score {}",
                 relay_block.hash(),
                 relay_block.header.version,
                 expected_relay_block_version,
@@ -685,10 +677,6 @@ impl IbdFlow {
         use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 
         let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-        if !self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
-            consensus.async_set_pruning_smt_stable().await;
-            return Ok(());
-        }
 
         consensus.async_clear_pruning_smt_stores().await;
 
@@ -718,11 +706,7 @@ impl IbdFlow {
             .async_get_header(shortcut_block)
             .await
             .map_err(|_| ProtocolError::Other("inactivity_shortcut_block header not found"))?;
-        let inactivity_shortcut = if !self.ctx.config.toccata_activation.is_active(shortcut_header.daa_score) {
-            kaspa_hashes::ZERO_HASH
-        } else {
-            shortcut_header.accepted_id_merkle_root
-        };
+        let inactivity_shortcut = shortcut_header.accepted_id_merkle_root;
 
         verify_smt_metadata(
             &SmtMetadata {
