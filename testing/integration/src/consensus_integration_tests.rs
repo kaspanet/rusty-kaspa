@@ -51,7 +51,7 @@ use kaspa_rpc_core::RpcHeader;
 use kaspa_seq_commit::hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, smt_leaf_hash};
 use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
 use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
-use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, pay_to_script_hash_script};
+use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
@@ -81,7 +81,7 @@ use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::{Op0, OpCat, OpChainblockSeqCommit, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
 use kaspa_txscript::{
-    EngineCtx, EngineFlags, TxScriptEngine,
+    EngineCtx, TxScriptEngine,
     caches::Cache,
     opcodes::codes::OpZkPrecompile,
     pay_to_script_hash_signature_script,
@@ -1877,10 +1877,10 @@ async fn push_limit_enforced_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
-            let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA as u64;
+            let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
             p.prior_block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
             p.new_transient_mass_limit = mass_limit;
-            p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA;
+            p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE;
             p.storage_mass_parameter = 1;
         })
         .build();
@@ -1929,10 +1929,7 @@ async fn push_limit_enforced_test() {
         let mut tx = Transaction::new(
             0,
             vec![TransactionInput::new(funding_outpoint, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
-            vec![TransactionOutput::new(
-                funding_amount - 5000,
-                ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA + 1]),
-            )],
+            vec![TransactionOutput::new(funding_amount - 5000, ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE + 1]))],
             0,
             SUBNETWORK_ID_NATIVE,
             0,
@@ -2179,7 +2176,7 @@ fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<(
 
     let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
-    let stark_signature_prefix = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+    let stark_signature_prefix = ScriptBuilder::with_flags(Default::default())
         .add_data(&claim)
         .unwrap()
         .add_data(&control_index)
@@ -2220,7 +2217,7 @@ fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<(
             0,
             &utxo_entry,
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
-            EngineFlags { covenants_enabled: true, ..Default::default() },
+            Default::default(),
         );
         vm.execute().expect("expected Stark proof to verify");
         vm.used_script_units()

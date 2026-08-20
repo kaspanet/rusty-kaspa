@@ -168,7 +168,7 @@ impl TransactionValidator {
         seq_commit_accessor: Option<&dyn SeqCommitAccessor>,
     ) -> TxResult<()> {
         let ctx = EngineCtx::new(&self.sig_cache).with_covenants_ctx(&covenants_ctx).with_seq_commit_accessor_opt(seq_commit_accessor);
-        let flags: EngineFlags = EngineFlags { covenants_enabled: true, sigop_script_units: Gram(self.mass_per_sig_op).into() };
+        let flags: EngineFlags = EngineFlags { sigop_script_units: Gram(self.mass_per_sig_op).into() };
 
         check_scripts(tx, ctx, flags)
     }
@@ -263,16 +263,11 @@ mod tests {
     fn build_parallel_push_budget_test_tx(num_inputs: usize) -> (Transaction, Vec<UtxoEntry>) {
         assert!(num_inputs > CHECK_SCRIPTS_PARALLELISM_THRESHOLD);
 
-        let signature_prefix = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+        let signature_prefix = ScriptBuilder::with_flags(Default::default())
             .add_data(&vec![1u8; SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT as usize])
             .unwrap()
             .drain();
-        let redeem_script = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
-            .add_op(OpDup)
-            .unwrap()
-            .add_op(OpDrop)
-            .unwrap()
-            .drain();
+        let redeem_script = ScriptBuilder::with_flags(Default::default()).add_op(OpDup).unwrap().add_op(OpDrop).unwrap().drain();
         let script_public_key = pay_to_script_hash_script(&redeem_script);
         let outputs = vec![TransactionOutput {
             value: 1,
@@ -309,7 +304,7 @@ mod tests {
     #[test]
     fn check_scripts_parallel_budget_behavior() {
         let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
-        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
+        let flags = Default::default();
 
         // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 9999).
         let (mut tx, entries) = build_parallel_push_budget_test_tx(2);
@@ -338,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_populated_transaction_sigop_budget_enforced_for_v0_and_v1_with_covenants_enabled() {
+    fn validate_populated_transaction_sigop_budget_enforced_for_v0_and_v1() {
         let params = MAINNET_PARAMS.clone();
         let tv = TransactionValidator::new(
             params.max_tx_inputs,
@@ -423,7 +418,7 @@ mod tests {
     // This test shows that it's possible to decouple sigop_script_units and SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT:
     // SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT is used as a conversion factor for legacy v0 sigop-count inputs, while
     // sigop_script_units goal is to determine the price of a signature operation.
-    // Thus, the test shows that by halving the sigop_script_units from the default 10,000 to 5,000, the same
+    // Thus, the test shows that by lowering the sigop_script_units from the default (Gram(1000)) to 5,000, the same
     // input with 1 sigop-count budget, can now suffice for two sigops instead of one.
     #[test]
     fn check_scripts_v0_sigop_count_input_fails_by_default_and_succeeds_with_5000_sigop_script_units() {
@@ -477,17 +472,15 @@ mod tests {
 
         let verifiable_tx = signed_tx.as_verifiable();
 
-        assert_eq!(
+        let default_limit = ComputeCommit::SigopCount(1.into()).allowed_script_units().0;
+        assert_match!(
             check_scripts(&verifiable_tx, EngineCtx::new(&sig_cache), EngineFlags::default()),
-            Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededSigOpLimit(1)))
+            Err(TxRuleError::SignatureInvalid(TxScriptError::ExceededCommittedScriptUnits { limit, .. }))
+                if limit == default_limit
         );
 
         assert_eq!(
-            check_scripts(
-                &verifiable_tx,
-                EngineCtx::new(&sig_cache),
-                EngineFlags { covenants_enabled: true, sigop_script_units: 5_000.into() }
-            ),
+            check_scripts(&verifiable_tx, EngineCtx::new(&sig_cache), EngineFlags { sigop_script_units: 5_000.into() }),
             Ok(())
         );
     }

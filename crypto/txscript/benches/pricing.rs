@@ -22,7 +22,7 @@ use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::{self, OpDrop, OpDup};
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::{
-    EngineCtx, EngineFlags, MAX_STACK_SIZE, TxScriptEngine, max_script_element_size, pay_to_address_script, pay_to_script_hash_script,
+    EngineCtx, EngineFlags, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, TxScriptEngine, pay_to_address_script, pay_to_script_hash_script,
     pay_to_script_hash_signature_script_with_flags,
     zk_precompiles::{
         tags::ZkTag,
@@ -48,7 +48,7 @@ const HASHING_KEY_LEN: usize = 32;
 const HASHING_ROUNDS: usize = 20;
 const LARGE_PUSH_DUP_CAT_CAT_COUNT: usize = 3;
 const LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR: usize = 1 << LARGE_PUSH_DUP_CAT_CAT_COUNT;
-const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = max_script_element_size(true) / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
+const LARGE_PUSH_DUP_CAT_DATA_LEN_UPPER_BOUND: usize = MAX_SCRIPT_ELEMENT_SIZE / LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR;
 const LARGE_PUSH_DUP_CAT_DUP_COUNT: usize = MAX_STACK_SIZE - 1;
 const STARK_LONG_CONTROL_PROOF_DOUBLINGS: usize = 11;
 const GROTH16_LARGE_VK_PADDING_CAT_COUNT: usize = 19;
@@ -107,16 +107,16 @@ type TxBuilder = fn(u32) -> (Transaction, Vec<UtxoEntry>);
 type RoundTxBuilder = fn(u32, usize) -> (Transaction, Vec<UtxoEntry>);
 type ResultCheck = fn(Result<(), TxScriptError>) -> Result<(), String>;
 
-fn pricing_flags(covenants_enabled: bool) -> EngineFlags {
-    EngineFlags { covenants_enabled, sigop_script_units: Gram(1000).into() }
+fn pricing_flags() -> EngineFlags {
+    EngineFlags { sigop_script_units: Gram(1000).into() }
 }
 
 fn new_script_builder() -> ScriptBuilder {
-    ScriptBuilder::with_flags(pricing_flags(true))
+    ScriptBuilder::with_flags(pricing_flags())
 }
 
 fn new_p2sh_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> Vec<u8> {
-    pay_to_script_hash_signature_script_with_flags(redeem_script, signature, pricing_flags(true)).unwrap()
+    pay_to_script_hash_signature_script_with_flags(redeem_script, signature, pricing_flags()).unwrap()
 }
 
 fn stack_entry_inline_capacity() -> usize {
@@ -621,7 +621,7 @@ fn try_build_budgeted_single_input_tx_with_result_check(
         0,
         &utxos[0],
         EngineCtx::new(&sig_cache).with_reused(&reused_values),
-        pricing_flags(true),
+        pricing_flags(),
         ScriptUnits(u64::MAX),
     );
     result_check(vm.execute())?;
@@ -919,7 +919,7 @@ fn build_stark_long_control_proof_p2sh_signature_script(redeem_script: Vec<u8>, 
     let final_control_digest_len = control_digest_seed.len() << STARK_LONG_CONTROL_PROOF_DOUBLINGS;
 
     assert!(
-        final_control_digest_len <= max_script_element_size(true),
+        final_control_digest_len <= MAX_SCRIPT_ELEMENT_SIZE,
         "long control proof should stay within the script element size limit"
     );
 
@@ -931,7 +931,7 @@ fn build_stark_long_control_proof_p2sh_signature_script(redeem_script: Vec<u8>, 
 fn stark_long_control_proof_seed_digest_count() -> usize {
     static COUNT: OnceLock<usize> = OnceLock::new();
     *COUNT.get_or_init(|| {
-        let max_seed_digest_count = max_script_element_size(true) / (32 << STARK_LONG_CONTROL_PROOF_DOUBLINGS);
+        let max_seed_digest_count = MAX_SCRIPT_ELEMENT_SIZE / (32 << STARK_LONG_CONTROL_PROOF_DOUBLINGS);
         let mut best = None;
         for seed_digest_count in 1..=max_seed_digest_count {
             let candidate = build_stark_long_control_proof_tx_with_seed_count(0, seed_digest_count);
@@ -951,7 +951,7 @@ fn stark_max_trailing_seal_len() -> usize {
         let (_, seal, _, _, _, _, _, _) = load_stark_fields();
         assert_eq!(seal.len() % 4, 0, "seal length should be word-aligned");
 
-        let max_len = max_script_element_size(true);
+        let max_len = MAX_SCRIPT_ELEMENT_SIZE;
         if let Ok(candidate) = try_build_stark_trailing_seal_tx_with_target_len(0, max_len)
             && fits_block_mass(&candidate.0)
         {
@@ -1010,7 +1010,7 @@ fn build_stark_trailing_seal_p2sh_redeem_script(target_seal_len: usize) -> Vec<u
     let stark_tag = ZkTag::R0Succinct as u8;
     assert!(target_seal_len >= seal.len(), "target seal length should not shrink the fixture seal");
     assert_eq!(target_seal_len % 4, 0, "target seal length should stay word-aligned");
-    assert!(target_seal_len <= max_script_element_size(true), "target seal length should stay within the script element size limit");
+    assert!(target_seal_len <= MAX_SCRIPT_ELEMENT_SIZE, "target seal length should stay within the script element size limit");
 
     let mut builder = new_script_builder();
     // Keep the valid proof prefix and append seal slices so verification fails at the trailing-data check.
@@ -1376,7 +1376,7 @@ fn try_build_groth16_large_vk_tx_with_params(
     padding_bytes: usize,
 ) -> Result<(Transaction, Vec<UtxoEntry>), String> {
     let redeem_script = build_groth16_prepare_inputs_large_vk_script(vk_gamma_abc_count, padding_chunks, padding_bytes)?;
-    let signature_script = pay_to_script_hash_signature_script_with_flags(redeem_script.clone(), vec![], pricing_flags(true))
+    let signature_script = pay_to_script_hash_signature_script_with_flags(redeem_script.clone(), vec![], pricing_flags())
         .map_err(|err| format!("failed to build groth16 large-vk p2sh signature script: {err}"))?;
     try_build_budgeted_single_input_tx_expecting_zk_failure(nonce, pay_to_script_hash_script(&redeem_script), signature_script)
 }
@@ -1595,7 +1595,7 @@ fn groth16_large_vk_padding() -> (usize, usize) {
         }
 
         let mut low_bytes = 0usize;
-        let mut high_bytes = max_script_element_size(true).saturating_add(1);
+        let mut high_bytes = MAX_SCRIPT_ELEMENT_SIZE.saturating_add(1);
         while low_bytes + 1 < high_bytes {
             let mid_bytes = low_bytes + (high_bytes - low_bytes) / 2;
             if valid_padding(vk_gamma_abc_count, low_chunks, mid_bytes) {
@@ -1641,7 +1641,7 @@ fn build_large_push_dup_cat_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 
     assert_eq!(LARGE_PUSH_DUP_CAT_DUP_COUNT + 1, MAX_STACK_SIZE, "large_push_dup_cat should reach the stack depth limit");
     assert!(
-        low_len * LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR <= max_script_element_size(true),
+        low_len * LARGE_PUSH_DUP_CAT_EXPANSION_FACTOR <= MAX_SCRIPT_ELEMENT_SIZE,
         "large_push_dup_cat expanded element should stay within the element size limit"
     );
 
@@ -1747,7 +1747,7 @@ fn build_max_opcodes_tx(nonce: u32) -> (Transaction, Vec<UtxoEntry>) {
 fn build_budgeted_charged_tx(label: &str, tx: &Transaction, entries: &[UtxoEntry]) -> Transaction {
     let reused_values = SigHashReusedValuesUnsync::new();
     let sig_cache = Cache::new(10_000);
-    let flags = pricing_flags(true);
+    let flags = pricing_flags();
     let populated = PopulatedTransaction::new(tx, entries.to_vec());
     let mut budgeted_tx = tx.clone();
 
@@ -2028,7 +2028,7 @@ fn check_validation_result(result: Result<(), TxScriptError>, expect_zk_failure:
 
 fn validate_block_sequential(block: &BenchBlock) {
     let cache = Cache::new(block.input_count as u64);
-    let flags = pricing_flags(true);
+    let flags = pricing_flags();
 
     for bench_tx in &block.txs {
         let verifiable = bench_tx.tx.as_verifiable();
@@ -2053,7 +2053,7 @@ fn validate_block_sequential(block: &BenchBlock) {
 
 fn validate_block_parallel(block: &BenchBlock, pool: &rayon::ThreadPool) {
     let cache = Cache::new(block.input_count as u64);
-    let flags = pricing_flags(true);
+    let flags = pricing_flags();
 
     pool.install(|| {
         block.txs.par_iter().try_for_each(|bench_tx| -> Result<(), TxScriptError> {

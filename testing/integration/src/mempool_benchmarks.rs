@@ -35,9 +35,9 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{Notification, RpcError, api::rpc::RpcApi};
 use kaspa_txscript::{
-    EngineCtx, EngineFlags, TxScriptEngine, caches::Cache, extract_script_pub_key_address, opcodes::codes::OpZkPrecompile,
-    pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script, script_builder::ScriptBuilder,
-    zk_precompiles::tags::ZkTag, zk_precompiles::tests::helpers::load_stark_fields,
+    EngineCtx, TxScriptEngine, caches::Cache, extract_script_pub_key_address, opcodes::codes::OpZkPrecompile, pay_to_address_script,
+    pay_to_script_hash_script, pay_to_script_hash_signature_script, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag,
+    zk_precompiles::tests::helpers::load_stark_fields,
 };
 use kaspa_utils::fd_budget;
 use kaspad_lib::args::Args;
@@ -513,7 +513,7 @@ async fn bench_bbt_latency_stark() {
 
     let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
-    let stark_signature_prefix = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+    let stark_signature_prefix = ScriptBuilder::with_flags(Default::default())
         .add_data(&claim)
         .unwrap()
         .add_data(&control_index)
@@ -567,7 +567,7 @@ async fn bench_bbt_latency_stark() {
             0,
             &utxo_entry,
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
-            EngineFlags { covenants_enabled: true, ..Default::default() },
+            Default::default(),
             // ScriptUnits(u64::MAX),
         );
         unrestricted_vm.execute().unwrap();
