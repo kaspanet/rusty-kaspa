@@ -96,7 +96,7 @@ impl TryFrom<ScriptBuilderOptions> for EngineFlags {
             // Deprecated no-op: covenant opcodes and their script limits are always
             // enabled. The key is still accepted (and type-checked) so existing
             // callers keep compiling, but the value has no effect.
-            value.as_bool().ok_or_else(|| Error::convert("flags.covenantsEnabled", "expected boolean"))?;
+            _ = value.as_bool().ok_or_else(|| Error::convert("flags.covenantsEnabled", "expected boolean"))?;
         }
 
         if flags.try_get_value("sigopScriptUnits")?.is_some() {
