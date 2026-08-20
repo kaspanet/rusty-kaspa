@@ -252,10 +252,10 @@ macro_rules! construct_uint {
             }
 
             #[inline(always)]
-            pub fn to_be_bytes_var(self) -> Vec<u8> {
+            pub fn to_be_bytes_var(self) -> alloc::vec::Vec<u8> {
                 let bytes = self.to_be_bytes();
                 let start = bytes.iter().copied().position(|b| b != 0).unwrap_or(bytes.len());
-                Vec::from(&bytes[start..])
+                alloc::vec::Vec::from(&bytes[start..])
             }
 
             #[inline]
@@ -431,11 +431,13 @@ macro_rules! construct_uint {
                 Ok(Self::from_be_bytes(out))
             }
 
+            #[cfg(feature = "wasm32-sdk")]
             #[inline]
             pub fn as_bigint(&self) -> Result<js_sys::BigInt, $crate::Error> {
                 self.try_into()
             }
 
+            #[cfg(feature = "wasm32-sdk")]
             #[inline]
             pub fn to_bigint(self) -> Result<js_sys::BigInt, $crate::Error> {
                 self.try_into()
@@ -443,6 +445,7 @@ macro_rules! construct_uint {
 
         }
 
+        #[cfg(feature = "std")]
         impl kaspa_utils::mem_size::MemSizeEstimator for $name {
             fn estimate_mem_units(&self) -> usize {
                 1
@@ -451,13 +454,13 @@ macro_rules! construct_uint {
         }
 
         impl kaspa_utils::hex::ToHex for $name {
-            fn to_hex(&self) -> String {
+            fn to_hex(&self) -> alloc::string::String {
                 self.to_be_bytes().as_slice().to_hex()
             }
         }
 
         impl kaspa_utils::hex::ToHex for &$name {
-            fn to_hex(&self) -> String {
+            fn to_hex(&self) -> alloc::string::String {
                 self.to_be_bytes().as_slice().to_hex()
             }
         }
@@ -813,7 +816,7 @@ macro_rules! construct_uint {
                 }
 
                 // SAFETY: everything up to `curr` is valid UTF8 because `DEC_DIGITS_LUT` is.
-                let buf_str = unsafe { std::str::from_utf8_unchecked(&buf[curr..]) };
+                let buf_str = unsafe { core::str::from_utf8_unchecked(&buf[curr..]) };
                 f.pad_integral(true, "", buf_str)
             }
         }
@@ -831,7 +834,7 @@ macro_rules! construct_uint {
                     }
                 }
                 // We only wrote '0' and '1' so this is always valid UTF-8
-                let buf_str = unsafe { std::str::from_utf8_unchecked(&buf[first_one..]) };
+                let buf_str = unsafe { core::str::from_utf8_unchecked(&buf[first_one..]) };
                 f.pad_integral(true, "0b", buf_str)
             }
         }
@@ -845,7 +848,7 @@ macro_rules! construct_uint {
                     let mut hex = [0u8; Self::BYTES * 2];
                     let bytes = self.to_be_bytes();
                     $crate::uint::faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
-                    let hex_str = unsafe { std::str::from_utf8_unchecked(&hex) };
+                    let hex_str = unsafe { core::str::from_utf8_unchecked(&hex) };
                     serializer.serialize_str(hex_str)
                 } else {
                     use $crate::uint::serde::ser::SerializeTuple;
@@ -862,7 +865,7 @@ macro_rules! construct_uint {
             #[inline]
             fn deserialize<D: $crate::uint::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
                 if deserializer.is_human_readable() {
-                    let hex = <std::string::String as serde::Deserialize>::deserialize(deserializer)?;
+                    let hex = <alloc::string::String as serde::Deserialize>::deserialize(deserializer)?;
                     Ok(Self::from_hex(&hex).map_err($crate::uint::serde::de::Error::custom)?)
                 } else {
                     use core::{fmt, marker::PhantomData};
@@ -960,6 +963,7 @@ macro_rules! construct_uint {
 
         }
 
+        #[cfg(feature = "wasm32-sdk")]
         impl TryFrom<&$name> for js_sys::BigInt {
             type Error = $crate::Error;
             #[inline]
@@ -969,6 +973,7 @@ macro_rules! construct_uint {
             }
         }
 
+        #[cfg(feature = "wasm32-sdk")]
         impl TryFrom<$name> for js_sys::BigInt {
             type Error = $crate::Error;
             #[inline]
@@ -978,6 +983,7 @@ macro_rules! construct_uint {
             }
         }
 
+        #[cfg(feature = "wasm32-sdk")]
         impl TryFrom<wasm_bindgen::JsValue> for $name {
             type Error = $crate::Error;
             fn try_from(js_value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
@@ -1003,7 +1009,7 @@ macro_rules! construct_uint {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TryFromIntError;
 
-impl std::error::Error for TryFromIntError {}
+impl core::error::Error for TryFromIntError {}
 
 impl core::fmt::Display for TryFromIntError {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -1021,7 +1027,7 @@ impl From<core::convert::Infallible> for TryFromIntError {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TryFromSliceError;
 
-impl std::error::Error for TryFromSliceError {}
+impl core::error::Error for TryFromSliceError {}
 
 impl core::fmt::Display for TryFromSliceError {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -1037,6 +1043,7 @@ impl From<core::convert::Infallible> for TryFromSliceError {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::String;
     use rand_chacha::{
         ChaCha8Rng,
         rand_core::{RngCore, SeedableRng},

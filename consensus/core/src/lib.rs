@@ -4,14 +4,31 @@
 //! This crate implements primitives used in the Kaspa node consensus processing.
 //!
 
+#![cfg_attr(not(feature = "std"), no_std)]
+// Without `atomic-mass` the mass field is `Cell`-backed, so `Transaction` is `!Sync`
+// by design (see `MassInner`); `Arc<Transaction>` on single-threaded targets is fine.
+#![cfg_attr(not(feature = "atomic-mass"), allow(clippy::arc_with_non_send_sync))]
+// Without `std`, several `match`es lose their `#[cfg(feature = "std")]` arm and collapse
+// to a single infallible arm.
+#![cfg_attr(not(feature = "std"), allow(clippy::infallible_destructuring_match))]
+
 extern crate alloc;
 extern crate core;
 extern crate self as consensus_core;
 
-use std::collections::{HashMap, HashSet};
-use std::hash::{BuildHasher, Hasher};
+use alloc::vec::Vec;
+use core::hash::{BuildHasher, Hasher};
 
 pub use kaspa_hashes::Hash;
+
+// Re-export `HashMap`/`HashSet` from a single place so the whole crate (and its
+// consumers) share one hasher policy
+#[cfg(feature = "std")]
+pub type HashMap<K, V, S = std::hash::RandomState> = hashbrown::HashMap<K, V, S>;
+#[cfg(feature = "std")]
+pub type HashSet<T, S = std::hash::RandomState> = hashbrown::HashSet<T, S>;
+#[cfg(not(feature = "std"))]
+pub use hashbrown::{HashMap, HashSet};
 
 pub mod acceptance_data;
 pub mod api;
@@ -31,6 +48,7 @@ pub mod mining_rules;
 pub mod muhash;
 pub mod network;
 pub mod pruning;
+#[cfg(feature = "sign")]
 pub mod sign;
 pub mod subnets;
 pub mod trusted;
@@ -50,7 +68,7 @@ pub const MAX_WORK_LEVEL: BlockLevel = 128;
 pub type KType = u16;
 
 /// Map from Block hash to K type
-pub type HashKTypeMap = std::sync::Arc<BlockHashMap<KType>>;
+pub type HashKTypeMap = alloc::sync::Arc<BlockHashMap<KType>>;
 
 /// This HashMap skips the hashing of the key and uses the key directly as the hash.
 /// Should only be used for block hashes that have correct DAA,
@@ -65,8 +83,8 @@ pub trait HashMapCustomHasher {
     fn with_capacity(capacity: usize) -> Self;
 }
 
-// HashMap::new and HashMap::with_capacity are only implemented on Hasher=RandomState
-// to avoid type inference problems, so we need to provide our own versions.
+// HashMap::new and HashMap::with_capacity are only implemented on hashbrown's
+// DefaultHashBuilder, so we provide our own versions for the BlockHasher aliases.
 impl<V> HashMapCustomHasher for BlockHashMap<V> {
     #[inline(always)]
     fn new() -> Self {
@@ -135,8 +153,8 @@ pub type BlockLevel = u8;
 #[cfg(test)]
 mod tests {
     use super::BlockHasher;
+    use core::hash::{Hash as _, Hasher as _};
     use kaspa_hashes::Hash;
-    use std::hash::{Hash as _, Hasher as _};
     #[test]
     fn test_block_hasher() {
         let hash = Hash::from_le_u64([1, 2, 3, 4]);

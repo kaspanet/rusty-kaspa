@@ -173,8 +173,8 @@ mod tests {
         let pipeline = NotifyPipeline::new();
         let rng = &mut SmallRng::seed_from_u64(42);
 
-        let mut to_add_collection = UtxoCollection::new();
-        let mut to_remove_collection = UtxoCollection::new();
+        let mut to_add_collection = UtxoCollection::default();
+        let mut to_remove_collection = UtxoCollection::default();
         for _ in 0..2 {
             to_add_collection.insert(generate_random_outpoint(rng), generate_random_utxo(rng));
             to_remove_collection.insert(generate_random_outpoint(rng), generate_random_utxo(rng));

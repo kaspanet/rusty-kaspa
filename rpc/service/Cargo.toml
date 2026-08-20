@@ -17,7 +17,7 @@ kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-index-core.workspace = true
-kaspa-math.workspace = true
+kaspa-math = { workspace = true, features = ["std"] }
 kaspa-mining.workspace = true
 kaspa-notify.workspace = true
 kaspa-p2p-flows.workspace = true

@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Default)]
 pub struct ProcessingCounters {

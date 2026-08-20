@@ -35,7 +35,7 @@ num_cpus.workspace = true
 rand_distr.workspace = true
 rand.workspace = true
 rayon.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 serde_json.workspace = true
 serde.workspace = true

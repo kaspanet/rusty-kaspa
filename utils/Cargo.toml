@@ -16,6 +16,7 @@ borsh.workspace = true
 cfg-if.workspace = true
 event-listener = { workspace = true, optional = true }
 faster-hex.workspace = true
+hashbrown = { workspace = true, optional = true }
 ipnet = { workspace = true }
 itertools.workspace = true
 log.workspace = true
@@ -51,7 +52,7 @@ std = ["async-channel/std", "borsh/std","faster-hex/std", "ipnet/std", "itertool
 
 semaphore-trace = []
 sync = ["std", "dep:event-listener"]
-mem_size = ["std", "dep:parking_lot"]
+mem_size = ["std", "dep:parking_lot", "dep:hashbrown"]
 triggers = ["std", "dep:triggered"]
 fd_budget = ["std", "dep:rlimit"]
 sim = ["std"]

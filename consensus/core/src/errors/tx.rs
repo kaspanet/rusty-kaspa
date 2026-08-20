@@ -132,4 +132,4 @@ pub enum PopulateGenesisCovenantsError {
     InvalidGenesisCovenantGroupArray,
 }
 
-pub type TxResult<T> = std::result::Result<T, TxRuleError>;
+pub type TxResult<T> = core::result::Result<T, TxRuleError>;

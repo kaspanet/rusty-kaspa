@@ -16,6 +16,7 @@ bincode.workspace = true
 crossbeam-channel.workspace = true
 faster-hex.workspace = true
 futures-util.workspace = true
+hashbrown.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
 kaspa-addresses.workspace = true
@@ -25,23 +26,23 @@ kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
 kaspa-hashes.workspace = true
-kaspa-math.workspace = true
+kaspa-math = { workspace = true, features = ["std"] }
 kaspa-merkle.workspace = true
-kaspa-muhash.workspace = true
+kaspa-muhash = { workspace = true, features = ["std"] }
 kaspa-notify.workspace = true
 kaspa-pow.workspace = true
 kaspa-seq-commit.workspace = true
 kaspa-smt.workspace = true
 kaspa-smt-store.workspace = true
 kaspa-txscript.workspace = true
-kaspa-txscript-errors.workspace = true
+kaspa-txscript-errors = { workspace = true, features = ["std"] }
 kaspa-utils = { workspace = true, features = ["sim"] }
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
 rayon.workspace = true
 rocksdb.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
@@ -57,7 +58,7 @@ criterion.workspace = true
 serde_json.workspace = true
 flate2.workspace = true
 rand_distr.workspace = true
-kaspa-txscript-errors.workspace = true
+kaspa-txscript-errors = { workspace = true, features = ["std"] }
 kaspa-addresses.workspace = true
 
 [[bench]]

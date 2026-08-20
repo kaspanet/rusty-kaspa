@@ -13,6 +13,7 @@ repository.workspace = true
 bincode.workspace = true
 enum-primitive-derive.workspace = true
 faster-hex.workspace = true
+hashbrown.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
 kaspa-hashes.workspace = true

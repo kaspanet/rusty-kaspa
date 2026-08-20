@@ -1,7 +1,7 @@
 use crate::ELEMENT_BYTE_SIZE;
+use core::ops::{DivAssign, MulAssign};
 use kaspa_math::Uint3072;
 use serde::{Deserialize, Serialize};
-use std::ops::{DivAssign, MulAssign};
 
 // TODO: Add u32 support for optimization on 32 bit machines.
 
@@ -296,6 +296,7 @@ impl Default for U3072 {
 #[cfg(test)]
 mod tests {
     use crate::u3072::{self, LIMBS, Limb, U3072};
+    use alloc::vec::Vec;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 

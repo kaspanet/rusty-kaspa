@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
@@ -51,4 +52,4 @@ pub enum UtxoInquirerFindTxsFromAcceptanceDataError {
     TxIdsFilterNeedsLessOrEqualThanOneElementError,
 }
 
-pub type UtxoInquirerResult<T> = std::result::Result<T, UtxoInquirerError>;
+pub type UtxoInquirerResult<T> = core::result::Result<T, UtxoInquirerError>;

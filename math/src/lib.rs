@@ -1,9 +1,16 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::JsValue;
+#[cfg(feature = "wasm32-sdk")]
 use workflow_core::sendable::Sendable;
 
 pub mod int;
 pub mod uint;
+#[cfg(feature = "wasm32-sdk")]
 pub mod wasm;
 
 construct_uint!(Uint192, 3, BorshSerialize, BorshDeserialize);
@@ -11,51 +18,71 @@ construct_uint!(Uint256, 4);
 construct_uint!(Uint320, 5);
 construct_uint!(Uint3072, 48);
 
+// Explicit discriminants pin each variant's in-memory `#[repr(u8)]` tag so it
+// stays fixed across feature configurations (std vs no_std, with/without
+// `wasm32-sdk`), regardless of which cfg-gated variants are compiled in. This is
+// in-memory repr only: the enum is never serialized (no serde/Borsh derive), and
+// both would key off the variant name/positional index rather than this tag anyway.
 #[derive(thiserror::Error, Debug)]
+#[repr(u8)]
 pub enum Error {
+    #[cfg(feature = "wasm32-sdk")]
     #[error("{0:?}")]
-    JsValue(Sendable<JsValue>),
+    JsValue(Sendable<JsValue>) = 0,
 
-    #[error("Invalid hex string: {0}")]
-    Hex(#[from] faster_hex::Error),
+    #[error("Invalid hex string: {0:?}")]
+    Hex(faster_hex::Error) = 1,
 
     #[error(transparent)]
-    TryFromSliceError(#[from] uint::TryFromSliceError),
+    TryFromSliceError(#[from] uint::TryFromSliceError) = 2,
     // TryFromSliceError(#[from] std::array::TryFromSliceError),
     #[error("Utf8 error: {0}")]
-    Utf8(#[from] std::str::Utf8Error),
+    Utf8(#[from] core::str::Utf8Error) = 3,
 
+    #[cfg(feature = "wasm32-sdk")]
     #[error(transparent)]
-    WorkflowWasm(#[from] workflow_wasm::error::Error),
+    WorkflowWasm(#[from] workflow_wasm::error::Error) = 4,
 
+    #[cfg(feature = "wasm32-sdk")]
     #[error(transparent)]
-    SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error),
+    SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error) = 5,
 
+    #[cfg(feature = "wasm32-sdk")]
     #[error("{0:?}")]
-    JsSys(Sendable<js_sys::Error>),
+    JsSys(Sendable<js_sys::Error>) = 6,
 
     #[error("Supplied value is not compatible with this type")]
-    NotCompatible,
+    NotCompatible = 7,
 
+    #[cfg(feature = "wasm32-sdk")]
     #[error("range error: {0:?}")]
-    Range(Sendable<js_sys::RangeError>),
+    Range(Sendable<js_sys::RangeError>) = 8,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl From<js_sys::Error> for Error {
     fn from(err: js_sys::Error) -> Self {
         Error::JsSys(Sendable(err))
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl From<js_sys::RangeError> for Error {
     fn from(err: js_sys::RangeError) -> Self {
         Error::Range(Sendable(err))
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl From<JsValue> for Error {
     fn from(err: JsValue) -> Self {
         Error::JsValue(Sendable(err))
+    }
+}
+
+impl From<faster_hex::Error> for Error {
+    fn from(err: faster_hex::Error) -> Self {
+        Error::Hex(err)
     }
 }
 

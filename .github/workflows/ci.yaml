@@ -202,6 +202,8 @@ jobs:
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Add thumbv7em-none-eabi target
         run: rustup target add thumbv7em-none-eabi
@@ -209,15 +211,20 @@ jobs:
       - name: Set up cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Run no_std cargo check
+      - name: Run no_std cargo clippy
         run: >
-          cargo check --target thumbv7em-none-eabi --no-default-features
+          cargo clippy --target thumbv7em-none-eabi --no-default-features
           -p kaspa-addresses
           -p kaspa-hashes
           -p kaspa-merkle
           -p kaspa-smt
           -p kaspa-seq-commit
           -p kaspa-utils
+          -p kaspa-txscript-errors
+          -p kaspa-math
+          -p kaspa-muhash
+          -p kaspa-consensus-core
+          -- -D warnings
 
 
   check-wasm32:

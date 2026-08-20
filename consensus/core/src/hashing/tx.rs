@@ -3,6 +3,7 @@ use crate::{
     mass::transaction_estimated_serialized_size,
     tx::{ComputeCommit, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
+use alloc::vec::Vec;
 use kaspa_hashes::{Hash, Hasher, HasherBase, PayloadDigest};
 
 bitflags::bitflags! {
@@ -242,7 +243,7 @@ mod tests {
         subnets::{self, SubnetworkId},
         tx::{ComputeCommit, ScriptPublicKey, scriptvec},
     };
-    use std::str::FromStr;
+    use core::str::FromStr;
 
     #[test]
     fn test_zero_payload_digest() {

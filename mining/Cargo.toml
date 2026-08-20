@@ -16,7 +16,7 @@ kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-mining-errors.workspace = true
-kaspa-muhash.workspace = true
+kaspa-muhash = { workspace = true, features = ["std"] }
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 
@@ -34,7 +34,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 [dev-dependencies]
 kaspa-txscript.workspace = true
 criterion.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 
 [[bench]]
 name = "bench"

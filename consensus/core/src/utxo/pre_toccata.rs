@@ -26,9 +26,9 @@
 //! `kaspa-consensus` crate can name it as the `TLegacy` type parameter
 //! on `CachedDbAccess`.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use alloc::sync::Arc;
 
+use crate::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
@@ -125,7 +125,7 @@ mod tests {
     /// `PreToccataUtxoDiff` and converts via `From`. Test mirrors that path.
     #[test]
     fn pre_toccata_diff_via_shadow_yields_post_toccata() {
-        let mut diff = PreToccataUtxoDiff { add: HashMap::new(), remove: HashMap::new() };
+        let mut diff = PreToccataUtxoDiff { add: HashMap::default(), remove: HashMap::default() };
         diff.add.insert(outpoint(0xaa, 0), sample_pre_entry(100, 1, false));
         diff.add.insert(outpoint(0xbb, 1), sample_pre_entry(200, 2, true));
         diff.remove.insert(outpoint(0xcc, 2), sample_pre_entry(300, 3, false));

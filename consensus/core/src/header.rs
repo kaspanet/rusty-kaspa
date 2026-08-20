@@ -1,13 +1,15 @@
 use crate::{BlueWorkType, hashing};
+use alloc::vec;
+use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(feature = "mem_size")]
+use core::mem::size_of;
 use itertools::Itertools;
 use kaspa_hashes::Hash;
-use kaspa_utils::{
-    iter::{IterExtensions, IterExtensionsRle},
-    mem_size::MemSizeEstimator,
-};
+use kaspa_utils::iter::{IterExtensions, IterExtensionsRle};
+#[cfg(feature = "mem_size")]
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
-use std::mem::size_of;
 
 /// An efficient run-length encoding for the parent-by-level vector in the block header.
 /// The i-th run `(cum_count, parents)` indicates that for all levels in the range `prev_cum_count..cum_count`,
@@ -71,7 +73,7 @@ impl CompressedParents {
             self.0.push((1, direct_parents));
             return;
         }
-        let mut parents: Vec<Vec<Hash>> = std::mem::take(self).into();
+        let mut parents: Vec<Vec<Hash>> = core::mem::take(self).into();
         parents[0] = direct_parents;
         *self = parents.try_into().unwrap();
     }
@@ -233,6 +235,7 @@ impl AsRef<Header> for Header {
     }
 }
 
+#[cfg(feature = "mem_size")]
 impl MemSizeEstimator for Header {
     fn estimate_mem_bytes(&self) -> usize {
         size_of::<Self>()

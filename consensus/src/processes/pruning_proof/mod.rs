@@ -2,11 +2,9 @@ mod apply;
 mod build;
 mod validate;
 
+use hashbrown::hash_map::Entry::{self};
 use std::{
-    collections::{
-        VecDeque,
-        hash_map::Entry::{self},
-    },
+    collections::VecDeque,
     sync::{Arc, atomic::AtomicBool},
 };
 

@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-math"
 description = "Kaspa misc math library"
+categories = ["no-std"]
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -9,20 +10,44 @@ license.workspace = true
 include.workspace = true
 repository.workspace = true
 
+[features]
+default = ["std", "wasm32-sdk"]
+std = [
+    "borsh/std",
+    "faster-hex/std",
+    "kaspa-utils/std",
+    "kaspa-utils/mem_size",
+    "malachite-base/std",
+    "malachite-nz/std",
+    "serde/std",
+    "thiserror/std",
+]
+wasm32-sdk = [
+    "std",
+    "dep:js-sys",
+    "dep:wasm-bindgen",
+    "dep:serde-wasm-bindgen",
+    "dep:workflow-core",
+    "dep:workflow-log",
+    "dep:workflow-wasm",
+]
+
 [dependencies]
 borsh.workspace = true
 faster-hex.workspace = true
-js-sys.workspace = true
-kaspa-utils = { workspace = true, features = ["mem_size"] }
+kaspa-utils.workspace = true
 malachite-base.workspace = true
 malachite-nz.workspace = true
-serde-wasm-bindgen.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-wasm-bindgen.workspace = true
-workflow-core.workspace = true
-workflow-log.workspace = true
-workflow-wasm.workspace = true
+
+# only relevant in wasm32-sdk context
+js-sys = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+serde-wasm-bindgen = { workspace = true, optional = true }
+workflow-core = { workspace = true, optional = true }
+workflow-log = { workspace = true, optional = true }
+workflow-wasm = { workspace = true, optional = true }
 
 [dev-dependencies]
 rand_chacha.workspace = true

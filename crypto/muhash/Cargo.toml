@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-muhash"
 description = "Kaspa Muhash library"
+categories = ["no-std"]
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -8,6 +9,15 @@ authors.workspace = true
 include.workspace = true
 license.workspace = true
 repository.workspace = true
+
+[features]
+default = ["std"]
+std = [
+    "kaspa-hashes/std",
+    "kaspa-math/std",
+    "rand_chacha/std",
+    "serde/std",
+]
 
 [dependencies]
 kaspa-hashes.workspace = true

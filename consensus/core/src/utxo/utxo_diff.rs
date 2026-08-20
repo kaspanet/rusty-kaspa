@@ -3,9 +3,10 @@ use super::{
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
 use crate::tx::{TransactionOutpoint, UtxoEntry, VerifiableTransaction};
+use hashbrown::hash_map::Entry::Vacant;
+#[cfg(feature = "mem_size")]
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::Entry::Vacant;
 
 pub trait ImmutableUtxoDiff {
     fn added(&self) -> &UtxoCollection;
@@ -18,6 +19,7 @@ pub struct UtxoDiff {
     pub remove: UtxoCollection,
 }
 
+#[cfg(feature = "mem_size")]
 impl MemSizeEstimator for UtxoDiff {
     fn estimate_mem_bytes(&self) -> usize {
         size_of::<Self>() + (self.add.len() + self.remove.len()) * (size_of::<TransactionOutpoint>() + size_of::<UtxoEntry>())
@@ -100,7 +102,7 @@ impl UtxoDiff {
             return Err(UtxoAlgebraError::DuplicateAddPoint(offending_outpoint));
         }
 
-        let mut intersection = UtxoCollection::new();
+        let mut intersection = UtxoCollection::default();
 
         // If does not exist neither in `add` nor in `remove` - add to `remove`
         intersection_with_remainder_having_daa_score_in_place(other.removed(), &self.add, &mut intersection, &mut self.remove);
@@ -197,7 +199,7 @@ impl UtxoDiff {
 
         // All utxos in self.add:
         // If they are not in other.add - should be added in result.remove
-        let mut in_both_to_add = UtxoCollection::new();
+        let mut in_both_to_add = UtxoCollection::default();
         subtraction_with_remainder_having_daa_score_in_place(&self.add, other.added(), &mut result.remove, &mut in_both_to_add);
         // If they are in other.remove - base utxo-set is not the same
         if in_both_to_add.intersects(&self.remove) != in_both_to_add.intersects(other.removed()) {
@@ -270,7 +272,7 @@ impl UtxoDiff {
 mod tests {
     use super::*;
     use crate::tx::{ScriptPublicKey, TransactionId};
-    use std::str::FromStr;
+    use core::str::FromStr;
 
     #[test]
     fn test_utxo_diff_rules() {

@@ -21,12 +21,18 @@
 
 use super::{ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use crate::mass::{ComputeBudget, SigopCount};
+#[cfg(feature = "std")]
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use kaspa_utils::serde_bytes::{self, ByteBuf, Bytes};
+#[cfg(feature = "std")]
+use serde::de::IntoDeserializer;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
-    de::{self, DeserializeSeed, IntoDeserializer, MapAccess, SeqAccess, Visitor},
+    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
     ser::{SerializeSeq, SerializeStruct},
 };
+#[cfg(feature = "std")]
 use serde_value::Value as BufferedValue;
 
 #[derive(Serialize)]
@@ -273,7 +279,7 @@ struct TransactionVisitor;
 impl<'de> Visitor<'de> for TransactionVisitor {
     type Value = Transaction;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter.write_str("struct Transaction")
     }
 
@@ -300,10 +306,12 @@ impl<'de> Visitor<'de> for TransactionVisitor {
         // once the version is known.
         enum LazyInputs {
             Decoded(Vec<TransactionInput>),
+            #[cfg(feature = "std")]
             Buffered(Box<BufferedValue>),
         }
         enum LazyOutputs {
             Decoded(Vec<TransactionOutput>),
+            #[cfg(feature = "std")]
             Buffered(Box<BufferedValue>),
         }
 
@@ -331,7 +339,10 @@ impl<'de> Visitor<'de> for TransactionVisitor {
                     }
                     inputs = Some(match version {
                         Some(v) => LazyInputs::Decoded(map.next_value_seed(InputsSeed(v))?),
+                        #[cfg(feature = "std")]
                         None => LazyInputs::Buffered(map.next_value()?),
+                        #[cfg(not(feature = "std"))]
+                        None => return Err(de::Error::custom("out-of-order transaction fields require the std feature")),
                     });
                 }
                 Field::Outputs => {
@@ -340,7 +351,10 @@ impl<'de> Visitor<'de> for TransactionVisitor {
                     }
                     outputs = Some(match version {
                         Some(v) => LazyOutputs::Decoded(map.next_value_seed(OutputsSeed(v))?),
+                        #[cfg(feature = "std")]
                         None => LazyOutputs::Buffered(map.next_value()?),
+                        #[cfg(not(feature = "std"))]
+                        None => return Err(de::Error::custom("out-of-order transaction fields require the std feature")),
                     });
                 }
                 Field::LockTime => {
@@ -385,10 +399,12 @@ impl<'de> Visitor<'de> for TransactionVisitor {
         let version = version.ok_or_else(|| de::Error::missing_field("version"))?;
         let inputs = match inputs.ok_or_else(|| de::Error::missing_field("inputs"))? {
             LazyInputs::Decoded(v) => v,
+            #[cfg(feature = "std")]
             LazyInputs::Buffered(buf) => InputsSeed(version).deserialize(buf.into_deserializer()).map_err(de::Error::custom)?,
         };
         let outputs = match outputs.ok_or_else(|| de::Error::missing_field("outputs"))? {
             LazyOutputs::Decoded(v) => v,
+            #[cfg(feature = "std")]
             LazyOutputs::Buffered(buf) => OutputsSeed(version).deserialize(buf.into_deserializer()).map_err(de::Error::custom)?,
         };
         let lock_time = lock_time.ok_or_else(|| de::Error::missing_field("lockTime"))?;

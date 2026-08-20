@@ -11,15 +11,13 @@ use kaspa_database::{
 };
 use kaspa_hashes::Hash;
 
+use hashbrown::hash_map::Entry::{Occupied, Vacant};
 use itertools::Itertools;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::hash_map::Entry::{Occupied, Vacant},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ReachabilityData {

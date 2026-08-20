@@ -1,6 +1,7 @@
 use crate::{BlockHashSet, HashMapCustomHasher};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use kaspa_hashes::{HASH_SIZE, Hash};
-use std::sync::Arc;
 
 pub type BlockHashes = Arc<Vec<Hash>>;
 
@@ -29,8 +30,9 @@ impl BlockHashExtensions for Hash {
 
 /// Generates a unique block hash for each call to this function.
 /// To be used for test purposes only.
+#[cfg(feature = "std")]
 pub fn new_unique() -> Hash {
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use core::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(1);
     let c = COUNTER.fetch_add(1, Ordering::Relaxed);
     Hash::from_u64_word(c)
@@ -93,4 +95,4 @@ where
     }
 }
 
-impl<I> std::iter::FusedIterator for BlockUnique<I> where I: Iterator<Item = Hash> + std::iter::FusedIterator {}
+impl<I> core::iter::FusedIterator for BlockUnique<I> where I: Iterator<Item = Hash> + core::iter::FusedIterator {}

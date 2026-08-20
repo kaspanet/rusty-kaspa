@@ -1,5 +1,5 @@
+use crate::errors::RuleError;
 use crate::model::stores::{block_window_cache::BlockWindowHeap, headers::HeaderStoreReader};
-use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_hashes::Hash;
 use std::sync::Arc;
 

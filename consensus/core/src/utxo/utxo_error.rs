@@ -38,4 +38,4 @@ impl PartialEq for UtxoAlgebraError {
     }
 }
 
-pub type UtxoResult<T> = std::result::Result<T, UtxoAlgebraError>;
+pub type UtxoResult<T> = core::result::Result<T, UtxoAlgebraError>;

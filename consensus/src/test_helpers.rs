@@ -22,7 +22,7 @@ pub fn generate_random_utxos_from_script_public_key_pool(
     script_public_key_pool: &[ScriptPublicKey],
 ) -> UtxoCollection {
     let mut i = 0;
-    let mut collection = UtxoCollection::with_capacity(amount);
+    let mut collection = UtxoCollection::with_capacity_and_hasher(amount, std::hash::RandomState::default());
     while i < amount {
         collection
             .insert(generate_random_outpoint(rng), generate_random_utxo_from_script_public_key_pool(rng, script_public_key_pool));

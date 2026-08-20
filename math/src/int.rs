@@ -91,16 +91,16 @@ impl<T: PartialEq + PartialEq<u64>> PartialEq for SignedInteger<T> {
 impl<T: PartialEq + PartialEq<u64>> Eq for SignedInteger<T> {}
 
 impl<T: PartialOrd + PartialEq<u64>> PartialOrd for SignedInteger<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         if self.abs == 0 && other.abs == 0 {
             // neg/pos zeros are considered equal
-            return Some(std::cmp::Ordering::Equal);
+            return Some(core::cmp::Ordering::Equal);
         }
         match (self.negative, other.negative) {
             (false, false) => self.abs.partial_cmp(&other.abs),
             (true, true) => other.abs.partial_cmp(&self.abs),
-            (true, false) => Some(std::cmp::Ordering::Less),
-            (false, true) => Some(std::cmp::Ordering::Greater),
+            (true, false) => Some(core::cmp::Ordering::Less),
+            (false, true) => Some(core::cmp::Ordering::Greater),
         }
     }
 }

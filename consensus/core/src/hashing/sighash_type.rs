@@ -1,6 +1,7 @@
-use std::ops::BitOr;
+use core::ops::BitOr;
 
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::prelude::*;
 
 pub const SIG_HASH_ALL: SigHashType = SigHashType(0b00000001);
@@ -22,7 +23,7 @@ const ALLOWED_SIG_HASH_TYPES_VALUES: [u8; 6] = [
 ];
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 pub struct SigHashType(pub(crate) u8);
 
 impl SigHashType {

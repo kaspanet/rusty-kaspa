@@ -25,6 +25,7 @@ use crate::{
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
+use hashbrown::hash_map::Entry::Vacant;
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel,
@@ -44,7 +45,7 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{VecDeque, hash_map::Entry::Vacant},
+    collections::VecDeque,
     ops::Deref,
     sync::{
         Arc,
