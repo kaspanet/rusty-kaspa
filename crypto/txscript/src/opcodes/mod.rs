@@ -1,10 +1,10 @@
 #[macro_use]
 mod macros;
-use crate::MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA;
+use crate::MAX_SCRIPT_ELEMENT_SIZE;
 use crate::zk_precompiles::{parse_tag, verify_zk};
 use crate::{
-    EngineFlags, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
-    ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError,
+    LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK, ScriptSource,
+    SpkEncoding, TxScriptEngine, TxScriptError,
     data_stack::{OpcodeData, StackEntry, serialize_i64},
 };
 use blake2b_simd::Params;
@@ -89,10 +89,8 @@ pub trait OpCodeMetadata: Debug {
     fn len(&self) -> usize;
     // Conditional should be executed also is not in branch
     fn is_conditional(&self) -> bool;
-    // For push data- check if we can use shorter encoding
-    fn check_minimal_data_push(&self) -> Result<(), TxScriptError>;
 
-    fn is_disabled(&self, flags: EngineFlags) -> bool;
+    fn is_disabled(&self) -> bool;
     fn always_illegal(&self) -> bool;
     fn is_push_opcode(&self) -> bool;
     fn get_data(&self) -> &[u8];
@@ -133,29 +131,8 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
         CODE
     }
 
-    fn is_disabled(&self, flags: EngineFlags) -> bool {
-        if flags.covenants_enabled {
-            matches!(CODE, codes::OpLeft | codes::OpRight | codes::Op2Mul | codes::Op2Div | codes::OpLShift | codes::OpRShift)
-        } else {
-            matches!(
-                CODE,
-                codes::OpCat
-                    | codes::OpSubstr
-                    | codes::OpLeft
-                    | codes::OpRight
-                    | codes::OpInvert
-                    | codes::OpAnd
-                    | codes::OpOr
-                    | codes::OpXor
-                    | codes::Op2Mul
-                    | codes::Op2Div
-                    | codes::OpMul
-                    | codes::OpDiv
-                    | codes::OpMod
-                    | codes::OpLShift
-                    | codes::OpRShift
-            )
-        }
+    fn is_disabled(&self) -> bool {
+        matches!(CODE, codes::OpLeft | codes::OpRight | codes::Op2Mul | codes::Op2Div | codes::OpLShift | codes::OpRShift)
     }
 
     fn always_illegal(&self) -> bool {
@@ -173,53 +150,6 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
     // TODO: add it to opcode specification
     fn is_conditional(&self) -> bool {
         self.value() >= 0x63 && self.value() <= 0x68
-    }
-
-    fn check_minimal_data_push(&self) -> Result<(), TxScriptError> {
-        let data_len = self.len();
-        let opcode = self.value();
-
-        if data_len == 0 {
-            if opcode != codes::OpFalse {
-                return Err(TxScriptError::NotMinimalData(format!(
-                    "zero length data push is encoded with opcode {self:?} instead of OpFalse"
-                )));
-            }
-        } else if data_len == 1 && OP_SMALL_INT_MIN_VAL <= self.data[0] && self.data[0] <= OP_SMALL_INT_MAX_VAL {
-            if opcode != codes::OpTrue + self.data[0] - 1 {
-                return Err(TxScriptError::NotMinimalData(format!(
-                    "zero length data push is encoded with opcode {:?} instead of Op_{}",
-                    self, self.data[0]
-                )));
-            }
-        } else if data_len == 1 && self.data[0] == OP_1_NEGATE_VAL {
-            if opcode != codes::Op1Negate {
-                return Err(TxScriptError::NotMinimalData(format!(
-                    "data push of the value -1 encoded \
-                                    with opcode {self:?} instead of OP_1NEGATE"
-                )));
-            }
-        } else if data_len <= OP_DATA_MAX_VAL as usize {
-            if opcode as usize != data_len {
-                return Err(TxScriptError::NotMinimalData(format!(
-                    "data push of {data_len} bytes encoded \
-                                    with opcode {self:?} instead of OP_DATA_{data_len}"
-                )));
-            }
-        } else if data_len <= u8::MAX as usize {
-            if opcode != codes::OpPushData1 {
-                return Err(TxScriptError::NotMinimalData(format!(
-                    "data push of {data_len} bytes encoded \
-                                    with opcode {self:?} instead of OP_PUSHDATA1"
-                )));
-            }
-        } else if data_len < u16::MAX as usize && opcode != codes::OpPushData2 {
-            return Err(TxScriptError::NotMinimalData(format!(
-                "data push of {data_len} bytes encoded \
-                                with opcode {self:?} instead of OP_PUSHDATA2"
-            )));
-        }
-        Ok(())
     }
 
     fn get_data(&self) -> &[u8] {
@@ -266,8 +196,8 @@ fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 fn substring(data: &[u8], start: usize, end: usize) -> Result<Vec<u8>, TxScriptError> {
     let diff = end.checked_sub(start).ok_or(TxScriptError::InvalidRange { start, end })?;
     // Since this function is only used post-Toccata, we can use the post-Toccata max size here.
-    if diff > MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA {
-        return Err(TxScriptError::ElementTooBig(diff, MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA));
+    if diff > MAX_SCRIPT_ELEMENT_SIZE {
+        return Err(TxScriptError::ElementTooBig(diff, MAX_SCRIPT_ELEMENT_SIZE));
     }
     data.get(start..end).map(<[u8]>::to_vec).ok_or(TxScriptError::OutOfBoundsSubstring(start, end, data.len()))
 }
@@ -427,25 +357,11 @@ opcode_list! {
 
     opcode OpIf<0x63, 1>(self, vm) {
         let cond = if vm.is_executing() {
-            if vm.flags.covenants_enabled {
-                let [cond]: [bool; 1] = vm.dstack.pop_items()?;
-                if cond {
-                    OpCond::True
-                } else {
-                    OpCond::False
-                }
+            let [cond]: [bool; 1] = vm.dstack.pop_items()?;
+            if cond {
+                OpCond::True
             } else {
-                // This code seems identical to pop_bool, but was written this way to preserve
-                // the similar flow of go-kaspad
-                let mut cond_buf = vm.dstack.pop()?;
-                if cond_buf.len() > 1 {
-                    return Err(TxScriptError::InvalidState("expected boolean".to_string()));
-                }
-                match cond_buf.pop() {
-                    Some(1) => OpCond::True,
-                    Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
-                    None => OpCond::False,
-                }
+                OpCond::False
             }
         } else {
             OpCond::Skip
@@ -457,23 +373,11 @@ opcode_list! {
 
     opcode OpNotIf<0x64, 1>(self, vm) {
         let cond = if vm.is_executing() {
-            if vm.flags.covenants_enabled {
-                let [cond]: [bool; 1] = vm.dstack.pop_items()?;
-                if cond {
-                    OpCond::False
-                } else {
-                    OpCond::True
-                }
+            let [cond]: [bool; 1] = vm.dstack.pop_items()?;
+            if cond {
+                OpCond::False
             } else {
-                let mut cond_buf = vm.dstack.pop()?;
-                if cond_buf.len() > 1 {
-                    return Err(TxScriptError::InvalidState("expected boolean".to_string()));
-                }
-                match cond_buf.pop() {
-                    Some(1) => OpCond::False,
-                    Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
-                    None => OpCond::True,
-                }
+                OpCond::True
             }
         }else{
             OpCond::Skip
@@ -534,7 +438,7 @@ opcode_list! {
 
     opcode OpIfDup<0x73, 1>(self, vm) {
         let [result] = vm.dstack.peek_raw()?;
-        if <StackEntry as OpcodeData<bool>>::deserialize(&result, !vm.flags.covenants_enabled)? {
+        if <StackEntry as OpcodeData<bool>>::deserialize(&result)? {
             vm.dstack.push(result)?;
         }
         Ok(())
@@ -587,28 +491,20 @@ opcode_list! {
     }
 
     // Splice opcodes.
-    opcode OpCat<0x7e, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let b = vm.dstack.pop()?;
-            let a = vm.dstack.pop()?;
-            let mut r = a;
-            r.extend_from_slice(&b);
-            vm.dstack.push(r)
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
-        }
+    opcode OpCat<0x7e, 1>(self, vm) {
+        let b = vm.dstack.pop()?;
+        let a = vm.dstack.pop()?;
+        let mut r = a;
+        r.extend_from_slice(&b);
+        vm.dstack.push(r)
     }
 
-    opcode OpSubstr<0x7f, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let [start, end] = vm.dstack.pop_items()?;
-            let data = vm.dstack.pop()?;
-            let [start, end] = i32s_to_usizes([start, end])?;
-            let substr = substring(&data, start, end)?;
-            vm.dstack.push(substr.into())
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
-        }
+    opcode OpSubstr<0x7f, 1>(self, vm) {
+        let [start, end] = vm.dstack.pop_items()?;
+        let data = vm.dstack.pop()?;
+        let [start, end] = i32s_to_usizes([start, end])?;
+        let substr = substring(&data, start, end)?;
+        vm.dstack.push(substr.into())
     }
 
     opcode OpLeft<0x80, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -625,56 +521,40 @@ opcode_list! {
     }
 
     // Bitwise logic opcodes.
-    opcode OpInvert<0x83, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let data = vm.dstack.pop()?;
-            let r: StackEntry = data.into_iter().map(|b| !b).collect();
-            vm.dstack.push(r)
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
-        }
+    opcode OpInvert<0x83, 1>(self, vm) {
+        let data = vm.dstack.pop()?;
+        let r: StackEntry = data.into_iter().map(|b| !b).collect();
+        vm.dstack.push(r)
     }
 
-    opcode OpAnd<0x84, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let b = vm.dstack.pop()?;
-            let a = vm.dstack.pop()?;
-            if a.len() != b.len() {
-                return Err(TxScriptError::InvalidState("AND operands must be of equal length".to_string()));
-            }
-            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
-            vm.dstack.push(r)
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpAnd<0x84, 1>(self, vm) {
+        let b = vm.dstack.pop()?;
+        let a = vm.dstack.pop()?;
+        if a.len() != b.len() {
+            return Err(TxScriptError::InvalidState("AND operands must be of equal length".to_string()));
         }
+        let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
+        vm.dstack.push(r)
     }
 
-    opcode OpOr<0x85, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let b = vm.dstack.pop()?;
-            let a = vm.dstack.pop()?;
-            if a.len() != b.len() {
-                return Err(TxScriptError::InvalidState("OR operands must be of equal length".to_string()));
-            }
-            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
-            vm.dstack.push(r)
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpOr<0x85, 1>(self, vm) {
+        let b = vm.dstack.pop()?;
+        let a = vm.dstack.pop()?;
+        if a.len() != b.len() {
+            return Err(TxScriptError::InvalidState("OR operands must be of equal length".to_string()));
         }
+        let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
+        vm.dstack.push(r)
     }
 
-    opcode OpXor<0x86, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let b = vm.dstack.pop()?;
-            let a = vm.dstack.pop()?;
-            if a.len() != b.len() {
-                return Err(TxScriptError::InvalidState("XOR operands must be of equal length".to_string()));
-            }
-            let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
-            vm.dstack.push(r)
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpXor<0x86, 1>(self, vm) {
+        let b = vm.dstack.pop()?;
+        let a = vm.dstack.pop()?;
+        if a.len() != b.len() {
+            return Err(TxScriptError::InvalidState("XOR operands must be of equal length".to_string()));
         }
+        let r: StackEntry = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
+        vm.dstack.push(r)
     }
 
     opcode OpEqual<0x87, 1>(self, vm) {
@@ -766,37 +646,25 @@ opcode_list! {
         Ok(())
     }
 
-    opcode OpMul<0x95, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let [ a, b ]: [i64; 2] = vm.dstack.pop_items()?;
-            let r = a.checked_mul(b).ok_or_else(|| TxScriptError::NumberTooBig("Product exceeds 64-bit signed integer range".to_string()))?;
-            vm.dstack.push_item(r)?;
-            Ok(())
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
-        }
+    opcode OpMul<0x95, 1>(self, vm) {
+        let [ a, b ]: [i64; 2] = vm.dstack.pop_items()?;
+        let r = a.checked_mul(b).ok_or_else(|| TxScriptError::NumberTooBig("Product exceeds 64-bit signed integer range".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
-    opcode OpDiv<0x96, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let [ a, b ]: [i64; 2] = vm.dstack.pop_items()?;
-            let r = a.checked_div(b).ok_or_else(|| TxScriptError::InvalidState("Quotient exceeds 64-bit signed integer range, or there was a division by zero".to_string()))?;
-            vm.dstack.push_item(r)?;
-            Ok(())
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
-        }
+    opcode OpDiv<0x96, 1>(self, vm) {
+        let [ a, b ]: [i64; 2] = vm.dstack.pop_items()?;
+        let r = a.checked_div(b).ok_or_else(|| TxScriptError::InvalidState("Quotient exceeds 64-bit signed integer range, or there was a division by zero".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
-    opcode OpMod<0x97, 1>(self, vm){
-        if vm.flags.covenants_enabled{
-            let [ a, b ]: [i64; 2] = vm.dstack.pop_items()?;
-            let r = a.checked_rem(b).ok_or_else(|| TxScriptError::InvalidState("Illegal modulo by zero".to_string()))?;
-            vm.dstack.push_item(r)?;
-            Ok(())
-        } else {
-            Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
-        }
+    opcode OpMod<0x97, 1>(self, vm) {
+        let [ a, b ]: [i64; 2] = vm.dstack.pop_items()?;
+        let r = a.checked_rem(b).ok_or_else(|| TxScriptError::InvalidState("Illegal modulo by zero".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpLShift<0x98, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -889,37 +757,29 @@ opcode_list! {
 
     // ZK precompile opcodes.
     opcode OpZkPrecompile<0xa6, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            // Parse the ZK Precompile tag
-            let tag = parse_tag(&mut vm.dstack)?;
+        // Parse the ZK Precompile tag
+        let tag = parse_tag(&mut vm.dstack)?;
 
-            // Consume the tag cost
-            vm.consume_script_units(tag.cost())?;
+        // Consume the tag cost
+        vm.consume_script_units(tag.cost())?;
 
-            // Verify the ZK proof
-            verify_zk(tag, &mut vm.dstack, &mut vm.runtime_resource_meter)?;
+        // Verify the ZK proof
+        verify_zk(tag, &mut vm.dstack, &mut vm.runtime_resource_meter)?;
 
-            // If no errors, push true to the stack
-            vm.dstack.push_item(true)?;
-            Ok(())
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
+        // If no errors, push true to the stack
+        vm.dstack.push_item(true)?;
+        Ok(())
     }
 
     // Crypto opcodes.
     opcode OpBlake2bWithKey<0xa7, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            let [data, key] = vm.dstack.pop_raw()?;
-            if key.len() > blake2b_simd::KEYBYTES {
-                return Err(TxScriptError::ElementTooBig(key.len(), blake2b_simd::KEYBYTES))
-            }
-            vm.consume_script_units(HashOpcodePricing::Blake2b.script_units_for_data(data.len()))?;
-            let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
-            vm.dstack.push(hash.as_bytes().into())
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        let [data, key] = vm.dstack.pop_raw()?;
+        if key.len() > blake2b_simd::KEYBYTES {
+            return Err(TxScriptError::ElementTooBig(key.len(), blake2b_simd::KEYBYTES))
         }
+        vm.consume_script_units(HashOpcodePricing::Blake2b.script_units_for_data(data.len()))?;
+        let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
+        vm.dstack.push(hash.as_bytes().into())
     }
 
     opcode OpSHA256<0xa8, 1>(self, vm) {
@@ -1107,16 +967,14 @@ opcode_list! {
     // Introspection opcodes
     // Transaction level opcodes (following Transaction struct field order)
     opcode OpTxVersion<0xb2, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_number(tx.tx().version as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxVersion only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                push_number(tx.tx().version as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxVersion only applies to transaction inputs".to_string()))
         }
+
+
     }
     opcode OpTxInputCount<0xb3, 1>(self, vm) {
         match vm.script_source {
@@ -1134,55 +992,47 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("OpOutputCount only applies to transaction inputs".to_string()))
         }
     }
-    opcode OpTxLockTime<0xb5, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_number(tx.tx().lock_time as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxLockTime only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxLockTime<0xb5, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                push_number(tx.tx().lock_time as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxLockTime only applies to transaction inputs".to_string()))
         }
+
+
     }
     opcode OpTxSubnetId<0xb6, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_data(tx.tx().subnetwork_id.into(), vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxSubnetId only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                push_data(tx.tx().subnetwork_id.into(), vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxSubnetId only applies to transaction inputs".to_string()))
         }
+
+
     }
-    opcode OpTxGas<0xb7, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_number(tx.tx().gas as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxGas only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxGas<0xb7, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                push_number(tx.tx().gas as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxGas only applies to transaction inputs".to_string()))
         }
+
+
     }
     opcode OpTxPayloadSubstr<0xb8, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
-                    let substr = substring(&tx.tx().payload, start, end)?;
-                    push_data(substr, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxPayloadSubstr only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
+                let substr = substring(&tx.tx().payload, start, end)?;
+                push_data(substr, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxPayloadSubstr only applies to transaction inputs".to_string()))
         }
+
+
     }
     // Input related opcodes (following TransactionInput struct field order)
     opcode OpTxInputIndex<0xb9, 1>(self, vm) {
@@ -1193,66 +1043,58 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("OpInputIndex only applies to transaction inputs".to_string()))
         }
     }
-    opcode OpOutpointTxId<0xba, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    push_data(input.previous_outpoint.transaction_id.as_bytes().into(), vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutpointTxId only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpOutpointTxId<0xba, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                push_data(input.previous_outpoint.transaction_id.as_bytes().into(), vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpOutpointTxId only applies to transaction inputs".to_string()))
         }
+
+
     }
     opcode OpOutpointIndex<0xbb, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    push_number(input.previous_outpoint.index as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutpointIndex only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                push_number(input.previous_outpoint.index as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpOutpointIndex only applies to transaction inputs".to_string()))
         }
+
+
     }
-    opcode OpTxInputScriptSigSubstr<0xbc, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
-                    let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    let substr = substring(&input.signature_script, start, end)?;
-                    push_data(substr, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputScriptSigSubstr only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputScriptSigSubstr<0xbc, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
+                let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                let substr = substring(&input.signature_script, start, end)?;
+                push_data(substr, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxInputScriptSigSubstr only applies to transaction inputs".to_string()))
         }
+
+
     }
-    opcode OpTxInputSeq<0xbd, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    // sequence is used as a bitflag field, so push as raw bytes (minimal number encoding doesn't apply). See CheckSequenceVerify for more details.
-                    push_data(input.sequence.to_le_bytes().into(), vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputSeq only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputSeq<0xbd, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                // sequence is used as a bitflag field, so push as raw bytes (minimal number encoding doesn't apply). See CheckSequenceVerify for more details.
+                push_data(input.sequence.to_le_bytes().into(), vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxInputSeq only applies to transaction inputs".to_string()))
         }
+
+
     }
     // UTXO related opcodes (following UtxoEntry struct field order)
     opcode OpTxInputAmount<0xbe, 1>(self, vm) {
@@ -1279,35 +1121,31 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
         }
     }
-    opcode OpTxInputDaaScore<0xc0, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    push_number(utxo.block_daa_score as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputDaaScore only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpTxInputDaaScore<0xc0, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                push_number(utxo.block_daa_score as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxInputDaaScore only applies to transaction inputs".to_string()))
         }
+
+
     }
-    opcode OpTxInputIsCoinbase<0xc1, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    push_number(utxo.is_coinbase as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputIsCoinbase only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputIsCoinbase<0xc1, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                push_number(utxo.is_coinbase as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxInputIsCoinbase only applies to transaction inputs".to_string()))
         }
+
+
     }
     // Output related opcodes (following TransactionOutput struct field order)
     opcode OpTxOutputAmount<0xc2, 1>(self, vm) {
@@ -1336,246 +1174,216 @@ opcode_list! {
     }
 
     opcode OpTxPayloadLen<0xc4, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_number(tx.tx().payload.len() as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxPayloadLen only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                push_number(tx.tx().payload.len() as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxPayloadLen only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpTxInputSpkLen<0xc5, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    // TODO: Consider adding a method to ScriptPublicKey for getting length directly, instead of converting to bytes first.
-                    let len = utxo.script_public_key.to_bytes().len() as i64;
-                    push_number(len, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputSpkLen only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                // TODO: Consider adding a method to ScriptPublicKey for getting length directly, instead of converting to bytes first.
+                let len = utxo.script_public_key.to_bytes().len() as i64;
+                push_number(len, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxInputSpkLen only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpTxInputSpkSubstr<0xc6, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
-                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    let spk_bytes = utxo.script_public_key.to_bytes();
-                    let substr = substring(&spk_bytes, start, end)?;
-                    push_data(substr, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputSpkSubstr only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
+                let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                let spk_bytes = utxo.script_public_key.to_bytes();
+                let substr = substring(&spk_bytes, start, end)?;
+                push_data(substr, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxInputSpkSubstr only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpTxOutputSpkLen<0xc7, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.outputs().len()))?;
-                    // TODO: Consider adding a method to ScriptPublicKey for getting length directly, instead of converting to bytes first.
-                    let len = output.script_public_key.to_bytes().len() as i64;
-                    push_number(len, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxOutputSpkLen only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.outputs().len()))?;
+                // TODO: Consider adding a method to ScriptPublicKey for getting length directly, instead of converting to bytes first.
+                let len = output.script_public_key.to_bytes().len() as i64;
+                push_number(len, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxOutputSpkLen only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpTxOutputSpkSubstr<0xc8, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.outputs().len()))?;
-                    let spk_bytes = output.script_public_key.to_bytes();
-                    let substr = substring(&spk_bytes, start, end)?;
-                    push_data(substr, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxOutputSpkSubstr only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
+                let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.outputs().len()))?;
+                let spk_bytes = output.script_public_key.to_bytes();
+                let substr = substring(&spk_bytes, start, end)?;
+                push_data(substr, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxOutputSpkSubstr only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpTxInputScriptSigLen<0xc9, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    let len = input.signature_script.len() as i64;
-                    push_number(len, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputScriptSigLen only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                let len = input.signature_script.len() as i64;
+                push_number(len, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpTxInputScriptSigLen only applies to transaction inputs".to_string()))
         }
+
+
     }
     opcode OpUnknown202<0xca, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpAuthOutputCount<0xcb, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [input_idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let input_idx = i32_to_usize(input_idx)?;
-                    if input_idx >= tx.inputs().len() {
-                        return Err(TxScriptError::InvalidInputIndex(input_idx.try_into().expect("casted above"), tx.inputs().len()));
-                    }
-                    let count = vm.covenants_ctx.num_auth_outputs(input_idx);
-                    push_number(count as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpAuthOutputCount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpAuthOutputCount<0xcb, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [input_idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let input_idx = i32_to_usize(input_idx)?;
+                if input_idx >= tx.inputs().len() {
+                    return Err(TxScriptError::InvalidInputIndex(input_idx.try_into().expect("casted above"), tx.inputs().len()));
+                }
+                let count = vm.covenants_ctx.num_auth_outputs(input_idx);
+                push_number(count as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpAuthOutputCount only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpAuthOutputIdx<0xcc, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [input_idx, k] = i32s_to_usizes(vm.dstack.pop_items()?)?;
-                    if input_idx >= tx.inputs().len() {
-                        return Err(TxScriptError::InvalidInputIndex(input_idx.try_into().expect("casted above"), tx.inputs().len()));
-                    }
-                    let output_idx = vm.covenants_ctx.auth_output_index(input_idx, k)?;
-                    push_number(output_idx as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpAuthOutputIdx only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [input_idx, k] = i32s_to_usizes(vm.dstack.pop_items()?)?;
+                if input_idx >= tx.inputs().len() {
+                    return Err(TxScriptError::InvalidInputIndex(input_idx.try_into().expect("casted above"), tx.inputs().len()));
+                }
+                let output_idx = vm.covenants_ctx.auth_output_index(input_idx, k)?;
+                push_number(output_idx as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpAuthOutputIdx only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpNum2Bin<0xcd, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            let [size]: [i32; 1] = vm.dstack.pop_items()?;
-            let size = i32_to_usize(size)?;
-            if size > 8 {
-                return Err(TxScriptError::NotMinimalData(format!("NUM2BIN target size {size} exceeds 8 bytes")));
-            }
-            let [num]: [i64; 1] = vm.dstack.pop_items()?;
-            let r = serialize_i64(num, Some(size))?;
-            vm.dstack.push(r)
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        let [size]: [i32; 1] = vm.dstack.pop_items()?;
+        let size = i32_to_usize(size)?;
+        if size > 8 {
+            return Err(TxScriptError::NotMinimalData(format!("NUM2BIN target size {size} exceeds 8 bytes")));
         }
+        let [num]: [i64; 1] = vm.dstack.pop_items()?;
+        let r = serialize_i64(num, Some(size))?;
+        vm.dstack.push(r)
+
+
     }
 
-    opcode OpBin2Num<0xce, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            // pop_items deserializes the stack item to `i64`, while `push_number` pushes it back as minimally encoded bytes.
-            let [num]: [i64; 1] = vm.dstack.pop_items()?;
-            push_number(num, vm)
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
+    opcode OpBin2Num<0xce, 1>(self, vm) {
+        // pop_items deserializes the stack item to `i64`, while `push_number` pushes it back as minimally encoded bytes.
+        let [num]: [i64; 1] = vm.dstack.pop_items()?;
+        push_number(num, vm)
+
+
     }
 
-    opcode OpInputCovenantId<0xcf, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    let covenant_id = utxo.covenant_id.unwrap_or(ZERO_HASH);
-                    push_data(covenant_id.as_bytes().into(), vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpInputCovenantId only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpInputCovenantId<0xcf, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                let covenant_id = utxo.covenant_id.unwrap_or(ZERO_HASH);
+                push_data(covenant_id.as_bytes().into(), vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputCovenantId only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpCovInputCount<0xd0, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
-                    let count = vm.covenants_ctx.num_covenant_inputs(covenant_id);
-                    push_number(count as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpCovInputCount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
+                let count = vm.covenants_ctx.num_covenant_inputs(covenant_id);
+                push_number(count as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpCovInputCount only applies to transaction inputs".to_string()))
         }
+
+
     }
 
-    opcode OpCovInputIdx<0xd1, 1>(self, vm){
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [k]: [i32; 1] = vm.dstack.pop_items()?;
-                    let k = i32_to_usize(k)?;
-                    let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
-                    let idx = vm.covenants_ctx.covenant_input_index(covenant_id, k)?;
-                    push_number(idx as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpCovInputIdx only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpCovInputIdx<0xd1, 1>(self, vm) {
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [k]: [i32; 1] = vm.dstack.pop_items()?;
+                let k = i32_to_usize(k)?;
+                let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
+                let idx = vm.covenants_ctx.covenant_input_index(covenant_id, k)?;
+                push_number(idx as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpCovInputIdx only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpCovOutputCount<0xd2, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
-                    let count = vm.covenants_ctx.num_covenant_outputs(covenant_id);
-                    push_number(count as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpCovOutputCount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
+                let count = vm.covenants_ctx.num_covenant_outputs(covenant_id);
+                push_number(count as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpCovOutputCount only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpCovOutputIdx<0xd3, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [k]: [i32; 1] = vm.dstack.pop_items()?;
-                    let k = i32_to_usize(k)?;
-                    let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
-                    let idx = vm.covenants_ctx.covenant_output_index(covenant_id, k)?;
-                    push_number(idx as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpCovOutputIdx only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [k]: [i32; 1] = vm.dstack.pop_items()?;
+                let k = i32_to_usize(k)?;
+                let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
+                let idx = vm.covenants_ctx.covenant_output_index(covenant_id, k)?;
+                push_number(idx as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpCovOutputIdx only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpChainblockSeqCommit<0xd4, 1>(self, vm) {
@@ -1596,86 +1404,74 @@ opcode_list! {
     }
 
     opcode OpOutputCovenantId<0xd5, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.inputs().len()))?;
-                    let covenant_id = output.covenant.map(|c| c.covenant_id).unwrap_or(ZERO_HASH);
-                    push_data(covenant_id.as_bytes().into(), vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutputCovenantId only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.inputs().len()))?;
+                let covenant_id = output.covenant.map(|c| c.covenant_id).unwrap_or(ZERO_HASH);
+                push_data(covenant_id.as_bytes().into(), vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpOutputCovenantId only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpOutputAuthorizingInput<0xd6, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.inputs().len()))?;
-                    let auth_input_idx = output.covenant.as_ref()
-                        .map(|c| c.authorizing_input as i64)
-                        .unwrap_or(-1i64);
-                    push_number(auth_input_idx, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutputAuthorizingInput only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let idx = i32_to_usize(idx)?;
+                let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.inputs().len()))?;
+                let auth_input_idx = output.covenant.as_ref()
+                    .map(|c| c.authorizing_input as i64)
+                    .unwrap_or(-1i64);
+                push_number(auth_input_idx, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpOutputAuthorizingInput only applies to transaction inputs".to_string()))
         }
+
+
     }
 
     opcode OpCheckSigFromStack<0xd7, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            let [signature, msg_hash, pubkey] = vm.dstack.pop_raw()?;
-            let msg_hash = Hash::try_from(msg_hash.as_slice()).map_err(|_| TxScriptError::InvalidState("message hash must be 32 bytes".to_string()))?;
-            let is_valid = vm.check_schnorr_signature_with_msg_hash(&pubkey, &signature, |_| msg_hash)?;
-            vm.dstack.push_item(is_valid)
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
+        let [signature, msg_hash, pubkey] = vm.dstack.pop_raw()?;
+        let msg_hash = Hash::try_from(msg_hash.as_slice()).map_err(|_| TxScriptError::InvalidState("message hash must be 32 bytes".to_string()))?;
+        let is_valid = vm.check_schnorr_signature_with_msg_hash(&pubkey, &signature, |_| msg_hash)?;
+        vm.dstack.push_item(is_valid)
+
+
     }
 
     opcode OpCheckSigFromStackECDSA<0xd8, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            let [signature, msg_hash, pubkey] = vm.dstack.pop_raw()?;
-            let msg_hash = Hash::try_from(msg_hash.as_slice()).map_err(|_| TxScriptError::InvalidState("message hash must be 32 bytes".to_string()))?;
-            let is_valid = vm.check_ecdsa_signature_with_msg_hash(&pubkey, &signature, |_| msg_hash)?;
-            vm.dstack.push_item(is_valid)
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
+        let [signature, msg_hash, pubkey] = vm.dstack.pop_raw()?;
+        let msg_hash = Hash::try_from(msg_hash.as_slice()).map_err(|_| TxScriptError::InvalidState("message hash must be 32 bytes".to_string()))?;
+        let is_valid = vm.check_ecdsa_signature_with_msg_hash(&pubkey, &signature, |_| msg_hash)?;
+        vm.dstack.push_item(is_valid)
+
+
     }
 
     opcode OpBlake3<0xd9, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            let [data] = vm.dstack.pop_raw()?;
-            vm.consume_script_units(HashOpcodePricing::Blake3.script_units_for_data(data.len()))?;
-            let hash = blake3::hash(&data);
-            vm.dstack.push(hash.as_slice().into())
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
+        let [data] = vm.dstack.pop_raw()?;
+        vm.consume_script_units(HashOpcodePricing::Blake3.script_units_for_data(data.len()))?;
+        let hash = blake3::hash(&data);
+        vm.dstack.push(hash.as_slice().into())
+
+
     }
 
     opcode OpBlake3WithKey<0xda, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            let [data, key] = vm.dstack.pop_raw()?;
-            let key: &[u8; blake3::KEY_LEN] = key.as_slice().try_into().map_err(|_| {
-                TxScriptError::MalformedPush(blake3::KEY_LEN, key.len())
-            })?;
-            vm.consume_script_units(HashOpcodePricing::Blake3.script_units_for_data(data.len()))?;
-            let hash = blake3::keyed_hash(key, &data);
-            vm.dstack.push(hash.as_slice().into())
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
+        let [data, key] = vm.dstack.pop_raw()?;
+        let key: &[u8; blake3::KEY_LEN] = key.as_slice().try_into().map_err(|_| {
+            TxScriptError::MalformedPush(blake3::KEY_LEN, key.len())
+        })?;
+        vm.consume_script_units(HashOpcodePricing::Blake3.script_units_for_data(data.len()))?;
+        let hash = blake3::keyed_hash(key, &data);
+        vm.dstack.push(hash.as_slice().into())
+
+
     }
 
     opcode OpUnknown219<0xdb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1802,19 +1598,10 @@ mod test {
     #[test]
     fn test_opcode_disabled() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
-            opcodes::OpCat::empty().expect("Should accept empty"),
-            opcodes::OpSubstr::empty().expect("Should accept empty"),
             opcodes::OpLeft::empty().expect("Should accept empty"),
             opcodes::OpRight::empty().expect("Should accept empty"),
-            opcodes::OpInvert::empty().expect("Should accept empty"),
-            opcodes::OpAnd::empty().expect("Should accept empty"),
-            opcodes::OpOr::empty().expect("Should accept empty"),
-            opcodes::OpXor::empty().expect("Should accept empty"),
             opcodes::Op2Mul::empty().expect("Should accept empty"),
             opcodes::Op2Div::empty().expect("Should accept empty"),
-            opcodes::OpMul::empty().expect("Should accept empty"),
-            opcodes::OpDiv::empty().expect("Should accept empty"),
-            opcodes::OpMod::empty().expect("Should accept empty"),
             opcodes::OpLShift::empty().expect("Should accept empty"),
             opcodes::OpRShift::empty().expect("Should accept empty"),
         ];
@@ -1841,12 +1628,6 @@ mod test {
             opcodes::OpVerNotIf::empty().expect("Should accept empty"),
             opcodes::OpReserved1::empty().expect("Should accept empty"),
             opcodes::OpReserved2::empty().expect("Should accept empty"),
-            opcodes::OpTxPayloadSubstr::empty().expect("Should accept empty"),
-            opcodes::OpOutpointTxId::empty().expect("Should accept empty"),
-            opcodes::OpOutpointIndex::empty().expect("Should accept empty"),
-            opcodes::OpTxInputScriptSigSubstr::empty().expect("Should accept empty"),
-            opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
-            opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
         ];
 
         let cache = Cache::new(10_000);
@@ -1865,32 +1646,7 @@ mod test {
     #[test]
     fn test_opcode_invalid() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
-            opcodes::OpZkPrecompile::empty().expect("Should accept empty"),
-            opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
-            opcodes::OpTxPayloadLen::empty().expect("Should accept empty"),
-            opcodes::OpTxInputSpkLen::empty().expect("Should accept empty"),
-            opcodes::OpTxInputSpkSubstr::empty().expect("Should accept empty"),
-            opcodes::OpTxOutputSpkLen::empty().expect("Should accept empty"),
-            opcodes::OpTxOutputSpkSubstr::empty().expect("Should accept empty"),
-            opcodes::OpTxInputScriptSigLen::empty().expect("Should accept empty"),
             opcodes::OpUnknown202::empty().expect("Should accept empty"),
-            opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
-            opcodes::OpAuthOutputCount::empty().expect("Should accept empty"),
-            opcodes::OpAuthOutputIdx::empty().expect("Should accept empty"),
-            opcodes::OpNum2Bin::empty().expect("Should accept empty"),
-            opcodes::OpBin2Num::empty().expect("Should accept empty"),
-            opcodes::OpInputCovenantId::empty().expect("Should accept empty"),
-            opcodes::OpCovInputCount::empty().expect("Should accept empty"),
-            opcodes::OpCovInputIdx::empty().expect("Should accept empty"),
-            opcodes::OpCovOutputCount::empty().expect("Should accept empty"),
-            opcodes::OpCovOutputIdx::empty().expect("Should accept empty"),
-            opcodes::OpChainblockSeqCommit::empty().expect("Should accept empty"),
-            opcodes::OpOutputCovenantId::empty().expect("Should accept empty"),
-            opcodes::OpOutputAuthorizingInput::empty().expect("Should accept empty"),
-            opcodes::OpCheckSigFromStack::empty().expect("Should accept empty"),
-            opcodes::OpCheckSigFromStackECDSA::empty().expect("Should accept empty"),
-            opcodes::OpBlake3::empty().expect("Should accept empty"),
-            opcodes::OpBlake3WithKey::empty().expect("Should accept empty"),
             opcodes::OpUnknown219::empty().expect("Should accept empty"),
             opcodes::OpUnknown220::empty().expect("Should accept empty"),
             opcodes::OpUnknown221::empty().expect("Should accept empty"),
@@ -4449,8 +4205,8 @@ mod test {
         use super::*;
         use crate::covenants::CovenantsContext;
         use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
-        use crate::{EngineCtx, MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, pay_to_script_hash_script};
-        use crate::{EngineFlags, SpkEncoding, opcodes::codes};
+        use crate::{EngineCtx, MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
+        use crate::{SpkEncoding, opcodes::codes};
         use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
         use kaspa_consensus_core::subnets::SubnetworkId;
         use kaspa_consensus_core::tx::{
@@ -4586,7 +4342,7 @@ mod test {
                 idx,
                 &populated_tx.entries[idx],
                 ctx,
-                EngineFlags { covenants_enabled: true, ..Default::default() },
+                Default::default(),
             );
             vm.execute()
         }
@@ -4635,7 +4391,7 @@ mod test {
             assert!(matches!(err, TxScriptError::OutOfBoundsSubstring(_, _, _)));
 
             let spk_payload_substr_too_long =
-                script(|sb| sb.add_i64(0)?.add_i64(MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA as i64 + 1)?.add_op(codes::OpTxPayloadSubstr));
+                script(|sb| sb.add_i64(0)?.add_i64(MAX_SCRIPT_ELEMENT_SIZE as i64 + 1)?.add_op(codes::OpTxPayloadSubstr));
             let err = run_script(&tx_large, entries_large.clone(), 0, spk_payload_substr_too_long).expect_err("payload substr >520");
             assert!(matches!(err, TxScriptError::ElementTooBig(_, _)));
         }
@@ -4941,10 +4697,9 @@ mod test {
 
             // Large input SPK to trigger ElementTooBig via substring length
             let mut large_entries = entries.clone();
-            large_entries[1].script_public_key = ScriptPublicKey::new(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA + 1].into());
-            let spk_large_spk_substr = script(|sb| {
-                sb.add_i64(1)?.add_i64(0)?.add_i64(MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA as i64 + 1)?.add_op(codes::OpTxInputSpkSubstr)
-            });
+            large_entries[1].script_public_key = ScriptPublicKey::new(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE + 1].into());
+            let spk_large_spk_substr =
+                script(|sb| sb.add_i64(1)?.add_i64(0)?.add_i64(MAX_SCRIPT_ELEMENT_SIZE as i64 + 1)?.add_op(codes::OpTxInputSpkSubstr));
             let err = run_script(&tx, large_entries.clone(), 0, spk_large_spk_substr).expect_err("input spk substr too long");
             assert!(matches!(err, TxScriptError::ElementTooBig(_, _)));
         }
@@ -5002,7 +4757,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true, ..Default::default() },
+                    Default::default(),
                 );
 
                 vm.execute().unwrap_or_else(|_| panic!("input {} daa score", input_idx));
@@ -5035,7 +4790,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true, ..Default::default() },
+                    Default::default(),
                 );
 
                 let err = vm.execute().expect_err("should fail with negative index");
@@ -5080,7 +4835,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true, ..Default::default() },
+                    Default::default(),
                 );
 
                 let err = vm.execute().expect_err("should fail with out of bounds index");
@@ -5132,7 +4887,7 @@ mod test {
                     0,
                     tx.utxo(0).unwrap(),
                     EngineCtx::new(&sig_cache).with_reused(&reused_values),
-                    EngineFlags { covenants_enabled: true, ..Default::default() },
+                    Default::default(),
                 );
 
                 vm.execute().expect("compare daa scores");
@@ -5170,14 +4925,8 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm = TxScriptEngine::from_transaction_input(
-                    &tx,
-                    &tx.inputs()[0],
-                    0,
-                    tx.utxo(0).unwrap(),
-                    ctx,
-                    EngineFlags { covenants_enabled: true, ..Default::default() },
-                );
+                let mut vm =
+                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), ctx, Default::default());
                 assert_eq!(vm.execute(), Ok(()), "Should pass with DAA score 60000 >= 50000");
             }
 
@@ -5193,14 +4942,8 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm = TxScriptEngine::from_transaction_input(
-                    &tx,
-                    &tx.inputs()[0],
-                    0,
-                    tx.utxo(0).unwrap(),
-                    ctx,
-                    EngineFlags { covenants_enabled: true, ..Default::default() },
-                );
+                let mut vm =
+                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), ctx, Default::default());
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse), "Should fail with DAA score 40000 < 50000");
             }
         }

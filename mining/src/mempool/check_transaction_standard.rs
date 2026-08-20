@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     tx::MutableTransaction,
 };
-use kaspa_txscript::{post_toccata_p2sh_sig_scanner, script_class::ScriptClass};
+use kaspa_txscript::{p2sh_sig_scanner, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
@@ -114,9 +114,7 @@ impl Mempool {
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
                 ScriptClass::ScriptHash => {
-                    // post-toccata scanner is valid pre-toccata as well
-                    let num_sig_ops =
-                        post_toccata_p2sh_sig_scanner(&transaction.tx.inputs[i].signature_script, &entry.script_public_key);
+                    let num_sig_ops = p2sh_sig_scanner(&transaction.tx.inputs[i].signature_script, &entry.script_public_key);
                     if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
                         return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
                     }

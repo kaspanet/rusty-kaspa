@@ -1,4 +1,4 @@
-use crate::{MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, TxScriptError};
+use crate::{MAX_SCRIPT_ELEMENT_SIZE, TxScriptError};
 use core::fmt::Debug;
 use core::iter;
 use kaspa_hashes::Hash;
@@ -67,14 +67,13 @@ pub type StackEntry = SmallVec<[u8; 8]>;
 #[derive(Clone, Debug)]
 pub(crate) struct Stack {
     inner: Vec<StackEntry>,
-    covenants_enabled: bool,
     pushed_bytes: u64,
 }
 
 #[cfg(test)]
 impl PartialEq for Stack {
     fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner && self.covenants_enabled == other.covenants_enabled
+        self.inner == other.inner
     }
 }
 
@@ -100,7 +99,7 @@ impl Index<usize> for Stack {
 #[cfg(test)]
 impl From<Vec<StackEntry>> for Stack {
     fn from(inner: Vec<StackEntry>) -> Self {
-        Self { inner, covenants_enabled: true, pushed_bytes: 0 }
+        Self { inner, pushed_bytes: 0 }
     }
 }
 
@@ -118,35 +117,10 @@ impl From<Stack> for Vec<StackEntry> {
 }
 
 pub(crate) trait OpcodeData<T> {
-    fn deserialize(&self, enforce_minimal: bool) -> Result<T, TxScriptError>;
+    fn deserialize(&self) -> Result<T, TxScriptError>;
     fn serialize(from: &T) -> Result<Self, SerializationError>
     where
         Self: Sized;
-}
-
-fn check_minimal_data_encoding(v: &[u8]) -> Result<(), TxScriptError> {
-    if v.is_empty() {
-        return Ok(());
-    }
-
-    // Check that the number is encoded with the minimum possible
-    // number of bytes.
-    //
-    // If the most-significant-byte - excluding the sign bit - is zero
-    // then we're not minimal. Note how this test also rejects the
-    // negative-zero encoding, [0x80].
-    if v[v.len() - 1] & 0x7f == 0 {
-        // One exception: if there's more than one byte and the most
-        // significant bit of the second-most-significant-byte is set
-        // it would conflict with the sign bit. An example of this case
-        // is +-255, which encode to 0xff00 and 0xff80 respectively.
-        // (big-endian).
-        if v.len() == 1 || v[v.len() - 2] & 0x80 == 0 {
-            return Err(TxScriptError::NotMinimalData(format!("numeric value encoded as {v:x?} is not minimally encoded")));
-        }
-    }
-
-    Ok(())
 }
 
 #[inline]
@@ -187,18 +161,14 @@ pub fn serialize_i64(from: i64, size: Option<usize>) -> Result<StackEntry, Seria
     Ok(number_vec)
 }
 
-pub fn deserialize_i64(v: &[u8], enforce_minimal: bool) -> Result<i64, TxScriptError> {
+pub fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
     match v.len() {
         l if l > size_of::<i64>() => {
-            // Even when `enforce_minimal` is false, we limit
+            // Numbers are not required to be minimally encoded, but they are still bounded in width.
             Err(TxScriptError::NotMinimalData(format!("numeric value encoded as {v:x?} is longer than 8 bytes")))
         }
         0 => Ok(0),
         _ => {
-            if enforce_minimal {
-                check_minimal_data_encoding(v)?;
-            }
-
             let msb = v[v.len() - 1];
             let sign = 1 - 2 * ((msb >> 7) as i64);
             let first_byte = (msb & 0x7f) as i64;
@@ -209,8 +179,8 @@ pub fn deserialize_i64(v: &[u8], enforce_minimal: bool) -> Result<i64, TxScriptE
 
 impl OpcodeData<i64> for StackEntry {
     #[inline]
-    fn deserialize(&self, enforce_minimal: bool) -> Result<i64, TxScriptError> {
-        OpcodeData::<SizedEncodeInt<8>>::deserialize(self, enforce_minimal).map(i64::from)
+    fn deserialize(&self) -> Result<i64, TxScriptError> {
+        OpcodeData::<SizedEncodeInt<8>>::deserialize(self).map(i64::from)
     }
 
     #[inline]
@@ -221,13 +191,9 @@ impl OpcodeData<i64> for StackEntry {
 
 impl OpcodeData<i32> for StackEntry {
     #[inline]
-    fn deserialize(&self, enforce_minimal: bool) -> Result<i32, TxScriptError> {
-        if enforce_minimal {
-            OpcodeData::<SizedEncodeInt<4>>::deserialize(self, true).map(|v| v.try_into().expect("number is within i32 range"))
-        } else {
-            OpcodeData::<SizedEncodeInt<8>>::deserialize(self, false)
-                .and_then(|v| v.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string())))
-        }
+    fn deserialize(&self) -> Result<i32, TxScriptError> {
+        OpcodeData::<SizedEncodeInt<8>>::deserialize(self)
+            .and_then(|v| v.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string())))
     }
 
     #[inline]
@@ -238,7 +204,7 @@ impl OpcodeData<i32> for StackEntry {
 
 impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for StackEntry {
     #[inline]
-    fn deserialize(&self, enforce_minimal: bool) -> Result<SizedEncodeInt<LEN>, TxScriptError> {
+    fn deserialize(&self) -> Result<SizedEncodeInt<LEN>, TxScriptError> {
         match self.len() > LEN {
             true => Err(TxScriptError::NumberTooBig(format!(
                 "numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}",
@@ -246,7 +212,7 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for StackEntry {
                 self.len(),
                 LEN
             ))),
-            false => deserialize_i64(self, enforce_minimal).map(SizedEncodeInt::<LEN>),
+            false => deserialize_i64(self).map(SizedEncodeInt::<LEN>),
         }
     }
 
@@ -262,7 +228,7 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for StackEntry {
 
 impl OpcodeData<bool> for StackEntry {
     #[inline]
-    fn deserialize(&self, _enforce_minimal: bool) -> Result<bool, TxScriptError> {
+    fn deserialize(&self) -> Result<bool, TxScriptError> {
         if self.is_empty() {
             Ok(false)
         } else {
@@ -286,8 +252,8 @@ where
     StackEntry: OpcodeData<T>,
 {
     #[inline]
-    fn deserialize(&self, enforce_minimal: bool) -> Result<T, TxScriptError> {
-        <StackEntry as OpcodeData<T>>::deserialize(&StackEntry::from_slice(self), enforce_minimal)
+    fn deserialize(&self) -> Result<T, TxScriptError> {
+        <StackEntry as OpcodeData<T>>::deserialize(&StackEntry::from_slice(self))
     }
 
     #[inline]
@@ -298,7 +264,7 @@ where
 
 impl OpcodeData<Hash> for StackEntry {
     #[inline]
-    fn deserialize(&self, _: bool) -> Result<Hash, TxScriptError> {
+    fn deserialize(&self) -> Result<Hash, TxScriptError> {
         Hash::try_from_slice(self).map_err(|_| TxScriptError::InvalidLengthOfBlockHash(self.len()))
     }
 
@@ -309,8 +275,8 @@ impl OpcodeData<Hash> for StackEntry {
 }
 
 impl Stack {
-    pub(crate) fn new(inner: Vec<StackEntry>, covenants_enabled: bool) -> Self {
-        Self { inner, covenants_enabled, pushed_bytes: 0 }
+    pub(crate) fn new(inner: Vec<StackEntry>) -> Self {
+        Self { inner, pushed_bytes: 0 }
     }
 
     #[inline]
@@ -324,18 +290,10 @@ impl Stack {
         std::mem::take(&mut self.pushed_bytes)
     }
 
-    fn max_element_size(&self) -> usize {
-        // Pre-toccata the element size limit was only enforced for OP_PUSHDATA opcodes, but
-        // since Pre-Toccata is missing OP_CAT, it was impossible to create elements larger
-        // than 520 bytes. Therefore it's safe to compare against usize::MAX without
-        // breaking consensus.
-        if self.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA } else { usize::MAX }
-    }
-
     #[inline]
     pub fn insert(&mut self, index: usize, element: StackEntry) -> Result<(), TxScriptError> {
-        if element.len() > self.max_element_size() {
-            return Err(TxScriptError::ElementTooBig(element.len(), self.max_element_size()));
+        if element.len() > MAX_SCRIPT_ELEMENT_SIZE {
+            return Err(TxScriptError::ElementTooBig(element.len(), MAX_SCRIPT_ELEMENT_SIZE));
         }
         self.add_pushed_bytes(element.len());
         self.inner.insert(index, element);
@@ -356,11 +314,7 @@ impl Stack {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
         Ok(<[T; SIZE]>::try_from(
-            self.inner
-                .split_off(self.len() - SIZE)
-                .iter()
-                .map(|v| v.deserialize(!self.covenants_enabled))
-                .collect::<Result<Vec<T>, _>>()?,
+            self.inner.split_off(self.len() - SIZE).iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?,
         )
         .expect("Already exact item"))
     }
@@ -515,8 +469,8 @@ impl Stack {
     }
 
     pub fn push(&mut self, item: StackEntry) -> Result<(), TxScriptError> {
-        if item.len() > self.max_element_size() {
-            return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
+        if item.len() > MAX_SCRIPT_ELEMENT_SIZE {
+            return Err(TxScriptError::ElementTooBig(item.len(), MAX_SCRIPT_ELEMENT_SIZE));
         }
         self.add_pushed_bytes(item.len());
         self.inner.push(item);
@@ -524,8 +478,8 @@ impl Stack {
     }
 
     pub fn push_unmetered(&mut self, item: StackEntry) -> Result<(), TxScriptError> {
-        if item.len() > self.max_element_size() {
-            return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
+        if item.len() > MAX_SCRIPT_ELEMENT_SIZE {
+            return Err(TxScriptError::ElementTooBig(item.len(), MAX_SCRIPT_ELEMENT_SIZE));
         }
         self.inner.push(item);
         Ok(())
@@ -619,12 +573,9 @@ mod tests {
         }
 
         let tests = vec![
-            TestCase::<i64> {
-                serialized: Vec::from_hex("80").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData("numeric value encoded as [80] is not minimally encoded".to_string())),
-            },
-            // Minimally encoded valid values with minimal encoding flag.
-            // Should not error and return expected integral number.
+            // Negative zero decodes as zero.
+            TestCase::<i64> { serialized: Vec::from_hex("80").expect("failed parsing hex"), result: Ok(0) },
+            // Minimally encoded valid values. Should not error and return expected integral number.
             TestCase::<i64> { serialized: vec![], result: Ok(0) },
             TestCase::<i64> { serialized: Vec::from_hex("01").expect("failed parsing hex"), result: Ok(1) },
             TestCase::<i64> { serialized: Vec::from_hex("81").expect("failed parsing hex"), result: Ok(-1) },
@@ -650,63 +601,19 @@ mod tests {
             TestCase::<i64> { serialized: Vec::from_hex("00008080").expect("failed parsing hex"), result: Ok(-8388608) },
             TestCase::<i64> { serialized: Vec::from_hex("ffffff7f").expect("failed parsing hex"), result: Ok(2147483647) },
             TestCase::<i64> { serialized: Vec::from_hex("ffffffff").expect("failed parsing hex"), result: Ok(-2147483647) },
-            // Non-minimally encoded, but otherwise valid values with
-            // minimal encoding flag. Should error and return 0.
-            TestCase::<i64> {
-                serialized: Vec::from_hex("00").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0] is not minimally encoded".to_string())),
-            }, // 0
-            TestCase::<i64> {
-                serialized: Vec::from_hex("0100").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData("numeric value encoded as [1, 0] is not minimally encoded".to_string())),
-            }, // 1
-            TestCase::<i64> {
-                serialized: Vec::from_hex("7f00").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData("numeric value encoded as [7f, 0] is not minimally encoded".to_string())),
-            }, // 127
-            TestCase::<i64> {
-                serialized: Vec::from_hex("800000").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData("numeric value encoded as [80, 0, 0] is not minimally encoded".to_string())),
-            }, // 128
-            TestCase::<i64> {
-                serialized: Vec::from_hex("810000").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData("numeric value encoded as [81, 0, 0] is not minimally encoded".to_string())),
-            }, // 129
-            TestCase::<i64> {
-                serialized: Vec::from_hex("000100").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0, 1, 0] is not minimally encoded".to_string())),
-            }, // 256
-            TestCase::<i64> {
-                serialized: Vec::from_hex("ff7f00").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData(
-                    "numeric value encoded as [ff, 7f, 0] is not minimally encoded".to_string(),
-                )),
-            }, // 32767
-            TestCase::<i64> {
-                serialized: Vec::from_hex("00800000").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData(
-                    "numeric value encoded as [0, 80, 0, 0] is not minimally encoded".to_string(),
-                )),
-            }, // 32768
-            TestCase::<i64> {
-                serialized: Vec::from_hex("ffff0000").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData(
-                    "numeric value encoded as [ff, ff, 0, 0] is not minimally encoded".to_string(),
-                )),
-            }, // 65535
-            TestCase::<i64> {
-                serialized: Vec::from_hex("00000800").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData(
-                    "numeric value encoded as [0, 0, 8, 0] is not minimally encoded".to_string(),
-                )),
-            }, // 524288
-            TestCase::<i64> {
-                serialized: Vec::from_hex("00007000").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData(
-                    "numeric value encoded as [0, 0, 70, 0] is not minimally encoded".to_string(),
-                )),
-            }, // 7340032
-               // Values above 8 bytes should always return error
+            // Non-minimally encoded, but otherwise valid values. Decode to the number they encode.
+            TestCase::<i64> { serialized: Vec::from_hex("00").expect("failed parsing hex"), result: Ok(0) },
+            TestCase::<i64> { serialized: Vec::from_hex("0100").expect("failed parsing hex"), result: Ok(1) },
+            TestCase::<i64> { serialized: Vec::from_hex("7f00").expect("failed parsing hex"), result: Ok(127) },
+            TestCase::<i64> { serialized: Vec::from_hex("800000").expect("failed parsing hex"), result: Ok(128) },
+            TestCase::<i64> { serialized: Vec::from_hex("810000").expect("failed parsing hex"), result: Ok(129) },
+            TestCase::<i64> { serialized: Vec::from_hex("000100").expect("failed parsing hex"), result: Ok(256) },
+            TestCase::<i64> { serialized: Vec::from_hex("ff7f00").expect("failed parsing hex"), result: Ok(32767) },
+            TestCase::<i64> { serialized: Vec::from_hex("00800000").expect("failed parsing hex"), result: Ok(32768) },
+            TestCase::<i64> { serialized: Vec::from_hex("ffff0000").expect("failed parsing hex"), result: Ok(65535) },
+            TestCase::<i64> { serialized: Vec::from_hex("00000800").expect("failed parsing hex"), result: Ok(524288) },
+            TestCase::<i64> { serialized: Vec::from_hex("00007000").expect("failed parsing hex"), result: Ok(7340032) },
+            // Values above 8 bytes should always return error
         ];
         let kip10_tests = vec![
             TestCase::<i64> { serialized: Vec::from_hex("0000008000").expect("failed parsing hex"), result: Ok(2147483648i64) },
@@ -741,9 +648,8 @@ mod tests {
                 serialized: Vec::from_hex("ffffffffffffffff").expect("failed parsing hex"),
                 result: Ok(-9223372036854775807i64),
             },
-            // Minimally encoded values that are out of range for data that
-            // is interpreted as script numbers with the minimal encoding
-            // flag set. Should error and return 0.
+            // Values that are out of range for data that is interpreted as script numbers.
+            // Should error and return 0.
             TestCase::<i64> {
                 serialized: Vec::from_hex("000000000000008080").expect("failed parsing hex"),
                 result: Err(TxScriptError::NumberTooBig(
@@ -762,10 +668,8 @@ mod tests {
             },
             TestCase::<SizedEncodeInt<5>> {
                 serialized: Vec::from_hex("0009000100").expect("failed parsing hex"),
-                result: Err(TxScriptError::NotMinimalData(
-                    "numeric value encoded as [0, 9, 0, 1, 0] is not minimally encoded".to_string(),
-                )),
-            }, // 16779520
+                result: Ok(SizedEncodeInt::<5>(16779520)),
+            },
         ];
 
         let test_of_size_8 = vec![
@@ -814,42 +718,42 @@ mod tests {
         for test in tests {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(true), test.result);
+            assert_eq!(test.serialized.deserialize(), test.result);
         }
 
         for test in test_of_size_5 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(true), test.result);
+            assert_eq!(test.serialized.deserialize(), test.result);
         }
 
         for test in test_of_size_8 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(true), test.result);
+            assert_eq!(test.serialized.deserialize(), test.result);
         }
 
         for test in test_of_size_9 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(true), test.result);
+            assert_eq!(test.serialized.deserialize(), test.result);
         }
 
         for test in test_of_size_10 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(true), test.result);
+            assert_eq!(test.serialized.deserialize(), test.result);
         }
 
         for test in test_bool {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(true), test.result);
+            assert_eq!(test.serialized.deserialize(), test.result);
         }
         for test in kip10_tests {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(true), test.result);
+            assert_eq!(test.serialized.deserialize(), test.result);
         }
     }
 }
