@@ -274,8 +274,6 @@ pub fn p2sh_sig_scanner(signature_script: &[u8], spk: &ScriptPublicKey) -> u64 {
                 prev_opcode_multisig_count = Some((opcode_value - codes::Op1 + 1) as u64);
             }
             ..=codes::OpPushData4 => {
-                // Non-minimal data pushes are allowed, so
-                // OpData*/OpPushData* forms before multisig are counted.
                 prev_opcode_multisig_count = deserialize_i64(op.get_data())
                     .ok()
                     .filter(|count| (1..=MAX_PUB_KEYS_PER_MUTLTISIG as i64).contains(count))
@@ -2048,6 +2046,16 @@ mod tests {
                 sig_op_limit: 2,
                 should_pass: true,
             },
+            TestCase {
+                name: "Mixed Schnorr and ECDSA - Exceeds limit",
+                script_builder: Box::new(|sb| sb.add_op(OpCheckSigVerify)?.add_op(OpCheckSigECDSA)),
+                sig_builder: Box::new(move |tx, reused| {
+                    SignatureScriptBuilder::Mixed(vec![create_ecdsa_signature(tx, reused), create_schnorr_signature(tx, reused)])
+                }),
+                expected_sig_ops: 2,
+                sig_op_limit: 1,
+                should_pass: false,
+            },
             // Conditional execution with sig ops
             TestCase {
                 name: "Conditional sig ops - True branch execution",
@@ -2104,13 +2112,15 @@ mod tests {
 
             // Execute script
             let tx = tx.as_verifiable();
-            let mut vm = TxScriptEngine::from_transaction_input(
+            let script_units_limit = tx.inputs()[0].compute_commit.allowed_script_units();
+            let mut vm = TxScriptEngine::from_transaction_input_with_script_units_limit(
                 &tx,
                 &tx.inputs()[0],
                 0,
                 &utxo_entry,
                 EngineCtx::new(&sig_cache).with_reused(&reused_values),
                 Default::default(),
+                script_units_limit,
             );
 
             let result = vm.execute().map(|_| vm.used_sig_ops());
