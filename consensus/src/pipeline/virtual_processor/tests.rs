@@ -6,11 +6,8 @@ use kaspa_consensus_core::{
     blockhash,
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    config::{
-        ConfigBuilder,
-        params::{ForkActivation, MAINNET_PARAMS},
-    },
-    constants::TOCCATA_BLOCK_VERSION,
+    config::{ConfigBuilder, params::MAINNET_PARAMS},
+    constants::BLOCK_VERSION,
     tx::{ScriptPublicKey, ScriptVec, Transaction},
 };
 use kaspa_hashes::Hash;
@@ -174,7 +171,7 @@ async fn template_mining_sanity_test() {
 }
 
 #[tokio::test]
-async fn block_template_uses_toccata_version() {
+async fn block_template_uses_current_block_version() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let join_handles = consensus.init();
@@ -183,7 +180,7 @@ async fn block_template_uses_toccata_version() {
     let template = consensus
         .build_block_template(miner_data, Box::new(OnetimeTxSelector::new(Default::default())), TemplateBuildMode::Standard)
         .unwrap();
-    assert_eq!(template.block.header.version, TOCCATA_BLOCK_VERSION);
+    assert_eq!(template.block.header.version, BLOCK_VERSION);
 
     consensus.shutdown(join_handles);
 }
@@ -328,7 +325,6 @@ fn inactivity_shortcut_config() -> kaspa_consensus_core::config::Config {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.finality_depth = 2;
-            p.toccata_activation = ForkActivation::always();
         })
         .build()
 }

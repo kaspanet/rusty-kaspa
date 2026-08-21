@@ -66,7 +66,6 @@ fn assert_pruning_point_smt_roundtrip(seed: u64) {
 
     let mut params = DEVNET_PARAMS;
     apply_pruning_repro_params(&mut params);
-    params.toccata_activation = ForkActivation::always();
     let config = Arc::new(
         ConfigBuilder::new(params)
             .apply_args(|config| apply_perf_params(&mut config.perf))
@@ -138,8 +137,8 @@ fn wait_for_smt_pruning_to_settle(consensus: &Consensus, seed: u64) {
 }
 
 fn apply_pruning_repro_params(params: &mut Params) {
-    // Keep this aligned with simpa's `--test-pruning` profile, with Toccata
-    // active so generated non-native lanes update the sequence-commit SMT.
+    // Keep this aligned with simpa's `--test-pruning` profile, so generated
+    // non-native lanes update the sequence-commit SMT.
     params.max_block_level = BlockLevel::MAX - 1;
     params.coinbase_maturity = 200;
 
@@ -168,7 +167,6 @@ fn apply_pruning_repro_params(params: &mut Params) {
     params.mergeset_size_limit = 32 * 2;
     params.pruning_depth = PRUNING_DEPTH;
 
-    // Toccata activation is set by the caller.
     params.storage_mass_parameter = 10_000;
 }
 
