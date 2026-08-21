@@ -68,10 +68,8 @@ impl Mempool {
         // minimum cost, whether dominated by compute or by transient byte footprint.
         // Storage mass does not require an additional relay-fee floor here since storage growth is
         // sufficiently protected even under worst-case block-limit usage.
-        // Use raw_post so all networks, including non-scheduled ones, use the same standardness
-        // pricing value and do not fluctuate with activation status.
         let masses = transaction.calculated_non_contextual_masses.unwrap();
-        let cofactors = self.config.mempool_mass_cofactors.raw_post();
+        let cofactors = self.config.mempool_mass_cofactors;
         let normalized_transient_mass = masses.normalized_transient(&cofactors);
 
         let fee_mass = masses.compute_mass.max(normalized_transient_mass);
@@ -119,7 +117,7 @@ mod tests {
     };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
-        config::params::{ForkActivation, Params},
+        config::params::Params,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
@@ -177,12 +175,8 @@ mod tests {
         for test in tests.iter() {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(
-                    params.target_time_per_block(),
-                    false,
-                    params.mempool_block_mass_limits(),
-                    params.block_lane_limits,
-                );
+                let mut config =
+                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let minimum_relay_transaction_fee = config.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
@@ -303,12 +297,8 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let config = Config::build_default(
-                    params.target_time_per_block(),
-                    false,
-                    params.mempool_block_mass_limits(),
-                    params.block_lane_limits,
-                );
+                let config =
+                    Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
 
@@ -375,11 +365,9 @@ mod tests {
             mtx
         }
 
-        // Use simnet params so prior and post-activation transient limits differ while the fork is active;
-        // this verifies that relay-fee pricing uses stable post-activation cofactors.
+        // Verifies that relay-fee pricing uses the mass-normalization cofactors correctly.
         let params: Params = NetworkType::Simnet.into();
-        assert_ne!(params.toccata_activation, ForkActivation::never(), "this test requires post-activation cofactors");
-        let cofactors = params.mempool_block_mass_cofactors().after();
+        let cofactors = params.block_mass_cofactors();
         let transient = |bytes| bytes * TRANSIENT_BYTE_TO_MASS_FACTOR;
         let normalized_transient = |bytes| NonContextualMasses::new(0, transient(bytes)).normalized_transient(&cofactors);
 
@@ -427,8 +415,7 @@ mod tests {
             },
         ];
 
-        let config =
-            Config::build_default(params.target_time_per_block(), false, params.mempool_block_mass_limits(), params.block_lane_limits);
+        let config = Config::build_default(params.target_time_per_block(), false, params.block_mass_limits, params.block_lane_limits);
         let counters = Arc::new(MiningCounters::default());
         let mempool = Mempool::new(Arc::new(config), counters);
 

@@ -438,7 +438,7 @@ impl VirtualStateProcessor {
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
         let mass_and_feerate_threshold = args.feerate_threshold.map(|threshold| {
             let mass = kaspa_consensus_core::mass::Mass::new(mutable_tx.calculated_non_contextual_masses.unwrap(), contextual_mass);
-            (mass.normalized_max(&self.mempool_mass_cofactors.after()), threshold)
+            (mass.normalized_max(&self.mempool_mass_cofactors), threshold)
         });
 
         let seq_commit_accessor =

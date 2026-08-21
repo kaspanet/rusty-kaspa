@@ -11,16 +11,12 @@ impl Mempool {
     /// the mempool must not admit a transaction which selectors can never include in a block. The transaction
     /// is expected to have its non-contextual masses populated before this call. These checks run before
     /// consensus in-context validation so transactions above compute/transient limits do not reach script execution.
-    pub(crate) fn validate_transaction_limits_in_isolation(
-        &self,
-        transaction: &MutableTransaction,
-        virtual_daa_score: u64,
-    ) -> RuleResult<()> {
+    pub(crate) fn validate_transaction_limits_in_isolation(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         if transaction.tx.gas > self.config.block_lane_limits.gas_per_lane {
             return Err(RuleError::RejectGas(transaction.id(), transaction.tx.gas, self.config.block_lane_limits.gas_per_lane));
         }
 
-        let limits = self.config.mempool_block_mass_limits.get(virtual_daa_score);
+        let limits = self.config.mempool_block_mass_limits;
         let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
         if compute_mass > limits.compute {
             return Err(RuleError::RejectComputeMass(transaction.id(), compute_mass, limits.compute));
@@ -37,12 +33,8 @@ impl Mempool {
     /// This is intentionally separate from standardness: even when non-standard transactions are accepted,
     /// the mempool must not admit a transaction which selectors can never include in a block. The transaction
     /// is expected to have contextual storage mass populated by consensus validation before this call.
-    pub(crate) fn validate_transaction_limits_in_context(
-        &self,
-        transaction: &MutableTransaction,
-        virtual_daa_score: u64,
-    ) -> RuleResult<()> {
-        let limits = self.config.mempool_block_mass_limits.get(virtual_daa_score);
+    pub(crate) fn validate_transaction_limits_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+        let limits = self.config.mempool_block_mass_limits;
         let storage_mass = transaction.tx.storage_mass();
         if storage_mass > limits.storage {
             return Err(RuleError::RejectStorageMass(transaction.id(), storage_mass, limits.storage));
@@ -160,7 +152,7 @@ mod tests {
         let mempool = mempool();
         for test in tests {
             let tx = transaction(test.gas, test.compute_mass, test.transient_mass, test.storage_mass);
-            let result = mempool.validate_transaction_limits_in_isolation(&tx, 0);
+            let result = mempool.validate_transaction_limits_in_isolation(&tx);
             assert_expected(test.name, result, &tx, test.expected);
         }
     }
@@ -189,7 +181,7 @@ mod tests {
         let mempool = mempool();
         for test in tests {
             let tx = transaction(test.gas, test.compute_mass, test.transient_mass, test.storage_mass);
-            let result = mempool.validate_transaction_limits_in_context(&tx, 0);
+            let result = mempool.validate_transaction_limits_in_context(&tx);
             assert_expected(test.name, result, &tx, test.expected);
         }
     }

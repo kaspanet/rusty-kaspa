@@ -29,7 +29,6 @@ use kaspa_consensus_core::{
     },
     block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
-    config::params::ForkedParam,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     mass::{BlockLaneLimits, BlockMassLimits},
     tx::{MutableTransaction, Transaction, TransactionId},
@@ -52,7 +51,7 @@ impl MiningManager {
     pub fn new(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
-        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
+        mempool_block_mass_limits: BlockMassLimits,
         block_lane_limits: BlockLaneLimits,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
@@ -65,7 +64,7 @@ impl MiningManager {
     pub fn new_with_extended_config(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
-        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
+        mempool_block_mass_limits: BlockMassLimits,
         block_lane_limits: BlockLaneLimits,
         ram_scale: f64,
         cache_lifetime: Option<u64>,
@@ -211,8 +210,7 @@ impl MiningManager {
 
     /// Returns realtime feerate estimations based on internal mempool state
     pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
-        let args =
-            FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mempool_mass_cofactors.after().reference);
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mempool_mass_cofactors.reference);
         let estimator = self.mempool.read().build_feerate_estimator(args);
         estimator.calc_estimations(self.config.minimum_feerate())
     }
@@ -223,8 +221,7 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         prefix: kaspa_addresses::Prefix,
     ) -> MiningManagerResult<FeeEstimateVerbose> {
-        let args =
-            FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mempool_mass_cofactors.after().reference);
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mempool_mass_cofactors.reference);
         let network_mass_per_second = args.network_mass_per_second();
         let mempool_read = self.mempool.read();
         let estimator = mempool_read.build_feerate_estimator(args);
@@ -356,8 +353,7 @@ impl MiningManager {
             // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
             let mut lower_bound: usize = 0;
             let mut validation_results = Vec::with_capacity(transactions.len());
-            let virtual_daa_score = consensus.get_virtual_daa_score();
-            while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound, virtual_daa_score) {
+            while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
                 assert!(lower_bound < upper_bound, "the chunk is never empty");
                 validation_results.extend(validate_mempool_transactions_in_parallel(
                     consensus,
@@ -469,8 +465,7 @@ impl MiningManager {
         // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
         let mut lower_bound: usize = 0;
         let mut validation_results = Vec::with_capacity(transactions.len());
-        let virtual_daa_score = consensus.get_virtual_daa_score();
-        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound, virtual_daa_score) {
+        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
             assert!(lower_bound < upper_bound, "the chunk is never empty");
             validation_results.extend(validate_mempool_transactions_in_parallel(
                 consensus,
@@ -519,16 +514,11 @@ impl MiningManager {
         insert_results
     }
 
-    fn next_transaction_chunk_upper_bound(
-        &self,
-        transactions: &[MutableTransaction],
-        lower_bound: usize,
-        virtual_daa_score: u64,
-    ) -> Option<usize> {
+    fn next_transaction_chunk_upper_bound(&self, transactions: &[MutableTransaction], lower_bound: usize) -> Option<usize> {
         if lower_bound >= transactions.len() {
             return None;
         }
-        let cofactors = self.config.mempool_mass_cofactors.get(virtual_daa_score);
+        let cofactors = self.config.mempool_mass_cofactors;
         let mut mass = 0;
         transactions[lower_bound..]
             .iter()
@@ -724,8 +714,7 @@ impl MiningManager {
         // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
         let mut lower_bound: usize = 0;
         let mut validation_results = Vec::with_capacity(transactions.len());
-        let virtual_daa_score = consensus.get_virtual_daa_score();
-        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound, virtual_daa_score) {
+        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
             assert!(lower_bound < upper_bound, "the chunk is never empty");
             let _swo = Stopwatch::<60>::with_threshold("revalidate validate_mempool_transactions_in_parallel op");
             validation_results

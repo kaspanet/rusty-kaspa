@@ -89,7 +89,7 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_signature_scripts(&self, tx: &Transaction) -> TxResult<()> {
-        let max_signature_script_len = self.max_signature_script_len.after();
+        let max_signature_script_len = self.max_signature_script_len;
         if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > max_signature_script_len) {
             return Err(TxRuleError::TooBigSignatureScript(i, max_signature_script_len));
         }
@@ -239,7 +239,7 @@ mod tests {
         let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
-            params.max_signature_script_len(),
+            params.max_signature_script_len,
             params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
@@ -348,7 +348,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len().upper_bound() + 1];
+        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len + 1];
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
 
         let mut tx = valid_tx.clone();

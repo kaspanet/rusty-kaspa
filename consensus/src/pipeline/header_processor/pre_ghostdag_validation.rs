@@ -28,7 +28,7 @@ impl HeaderProcessor {
     }
 
     fn check_header_version(&self, header: &Header) -> BlockProcessResult<()> {
-        let expected_version = self.block_version.after();
+        let expected_version = self.block_version;
         if header.version != expected_version {
             return Err(RuleError::WrongBlockVersion(header.version, expected_version));
         }
