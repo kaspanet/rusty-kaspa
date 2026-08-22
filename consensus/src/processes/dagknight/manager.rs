@@ -550,9 +550,12 @@ mod tests {
     use crate::processes::reachability::tests::{DagBlock, DagBuilder};
     use kaspa_consensus_core::blockhash::ORIGIN;
     use kaspa_consensus_core::header::Header;
+    use kaspa_math::Uint192;
     use parking_lot::RwLock;
     use std::cell::RefCell;
     use std::collections::HashMap;
+    use std::fs::File;
+    use std::str::FromStr;
 
     #[test]
     fn test_k_colouring_lock_key_constructors() {
@@ -903,5 +906,91 @@ mod tests {
             free_sp, hash_c,
             "In free search, X's selected parent should be C (selected from all parents, wins by higher work)"
         );
+    }
+
+    #[test]
+    fn test_czm_lkt_correctness() {
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+
+        let dk_map = RefCell::new(HashMap::new());
+        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map.clone()));
+
+        let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+        builder.init();
+
+        let mut add_block = |hash, parents: Vec<Hash>, blue_work, bits, blue_score, daa_score, selected_parent: Hash| -> Hash {
+            let mut header = Header::from_precomputed_hash(hash, parents.clone());
+            header.bits = bits;
+            header.blue_work = blue_work;
+            header.blue_score = blue_score;
+            header.daa_score = daa_score;
+            headers_store.insert(Arc::new(header));
+
+            builder.add_block_with_selected_parent(DagBlock::new(hash, parents.clone()), selected_parent);
+            hash
+        };
+
+        let json_filename = "test_conflict_lkt.json";
+        let file = File::open(json_filename).expect("Unable to open JSON file");
+        let json_data: serde_json::Value = serde_json::from_reader(file).expect("Unable to parse JSON");
+
+        let tips: Vec<Hash> =
+            json_data["tips"].as_array().unwrap().iter().map(|t| Hash::from_str(t.as_str().unwrap()).unwrap()).collect();
+
+        let blocks = json_data["blocks"].as_array().expect("Blocks is not an array");
+
+        let test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash)> = blocks
+            .iter()
+            .map(|block| {
+                let id = Hash::from_str(block["id"].as_str().unwrap()).unwrap();
+                let parents: Vec<Hash> = if block["parents"].as_array().map(|a| a.is_empty()).unwrap_or(false) {
+                    vec![ORIGIN]
+                } else {
+                    block["parents"].as_array().unwrap().iter().map(|p| Hash::from_str(p.as_str().unwrap()).unwrap()).collect()
+                };
+                let blue_work = Uint192::from_u64(block["blue_work"].as_str().unwrap().parse::<u64>().unwrap());
+                let bits = u32::from_str_radix(block["bits"].as_str().unwrap(), 16).unwrap();
+                let blue_score = u64::from_str(block["blue_score"].as_str().unwrap()).unwrap();
+                let daa_score = u64::from_str(block["daa_score"].as_str().unwrap()).unwrap();
+                let selected_parent = if block["selected_parent"].is_null() {
+                    ORIGIN
+                } else {
+                    Hash::from_str(block["selected_parent"].as_str().unwrap()).unwrap()
+                };
+                (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+            })
+            .collect();
+
+        let mut test_blocks = test_blocks;
+
+        test_blocks.sort_by_key(|(_, _, blue_work, _, _, _, _)| *blue_work);
+
+        for (hash, parents, blue_work, bits, blue_score, daa_score, selected_parent) in &test_blocks {
+            add_block(*hash, parents.clone(), *blue_work, *bits, *blue_score, *daa_score, *selected_parent);
+        }
+
+        // TODO: Intantiate CZM and run the fills
+        let conflict_genesis = Hash::from_str("057554b30009254cc93b2bbadc84d084b148edfe65d58a3b95476062c65b129d").unwrap();
+        let nca_1 = Hash::from_str("0770d603d43a88586e76385d3f15b0d74152a726f772a465183172dcf5e02e0b").unwrap();
+        let nca_2 = Hash::from_str("85fb472d19eed6ebad22a4d8135102c6436fbda81a002b0805852f0ba43d2363").unwrap();
+
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+        let fir_relations = FutureIntersectRelations::new(relations, reachability_service.clone(), conflict_genesis);
+
+        let czm =
+            ConflictZoneManager::new(1, conflict_genesis, dagknight_store, headers_store.clone(), fir_relations, reachability_service);
+
+        // let tips = vec![];
+        println!("lkt base: {:?}", czm.find_last_known_tips(&tips).0);
+        czm.fill_zone_data(
+            &vec![Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
+            Some(nca_2),
+        );
+        czm.fill_zone_data(&tips, Some(nca_1));
+        println!("lkt after nca_1: {:?}", czm.find_last_known_tips(&tips).0);
+        czm.fill_zone_data(&tips, Some(nca_2));
+        println!("lkt after nca_2: {:?}", czm.find_last_known_tips(&tips).0);
     }
 }
