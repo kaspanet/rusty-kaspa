@@ -434,7 +434,7 @@ async fn sanity_test() {
                     let response = rpc_client
                         .get_utxos_by_addresses_v2_call(
                             None,
-                            GetUtxosByAddressesV2Request::new(addresses, None, None, None, None, None),
+                            GetUtxosByAddressesV2Request::new(addresses, None, None, None, None, None, None, None),
                         )
                         .await
                         .unwrap();

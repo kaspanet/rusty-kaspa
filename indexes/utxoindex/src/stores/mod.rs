@@ -1,4 +1,4 @@
-mod db_version;
+pub mod db_metadata;
 mod indexed_utxos;
 pub mod store_manager;
 mod supply;

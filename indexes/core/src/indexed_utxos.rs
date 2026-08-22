@@ -1,7 +1,10 @@
+use indexmap::IndexSet;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+pub type ScriptPublicKeyIndexSet = IndexSet<ScriptPublicKey>;
 
 // TODO: explore potential optimization via custom TransactionOutpoint hasher for below,
 // One possible implementation: u64 of transaction id xor'd with 4 bytes of transaction index.
@@ -13,21 +16,29 @@ pub type OrderedUtxoCollection = Vec<(UtxoEntryKeyData, CompactUtxoEntry)>;
 /// A deterministic ordered list of UTXO collections keyed by [`ScriptPublicKey`].
 pub type OrderedUtxoSetByScriptPublicKey = Vec<(ScriptPublicKey, OrderedUtxoCollection)>;
 
+#[derive(Clone, Debug)]
+pub struct UtxoPageCursor {
+    pub script_public_key: ScriptPublicKey,
+    pub daa_score: u64,
+    pub transaction_outpoint: TransactionOutpoint,
+}
+
+impl UtxoPageCursor {
+    pub fn new(script_public_key: ScriptPublicKey, daa_score: u64, transaction_outpoint: TransactionOutpoint) -> Self {
+        Self { script_public_key, daa_score, transaction_outpoint }
+    }
+}
+
 /// A page of ordered UTXOs with an optional cursor for the next group.
 #[derive(Clone, Debug, Default)]
 pub struct OrderedUtxoSetByScriptPublicKeyPage {
     pub entries: OrderedUtxoSetByScriptPublicKey,
-    pub next_script_public_key: Option<ScriptPublicKey>,
-    pub next_daa_score: Option<u64>,
+    pub cursor: Option<UtxoPageCursor>,
 }
 
 impl OrderedUtxoSetByScriptPublicKeyPage {
-    pub fn new(
-        entries: OrderedUtxoSetByScriptPublicKey,
-        next_script_public_key: Option<ScriptPublicKey>,
-        next_daa_score: Option<u64>,
-    ) -> Self {
-        Self { entries, next_script_public_key, next_daa_score }
+    pub fn new(entries: OrderedUtxoSetByScriptPublicKey, cursor: Option<UtxoPageCursor>) -> Self {
+        Self { entries, cursor }
     }
 }
 

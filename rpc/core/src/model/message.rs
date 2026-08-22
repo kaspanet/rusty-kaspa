@@ -1,6 +1,7 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::api::stats::BlockCount;
+use kaspa_consensus_core::tx::TransactionIndexType;
 use kaspa_core::debug;
 use kaspa_notify::subscription::{Command, context::SubscriptionContext, single::UtxosChangedSubscription};
 use kaspa_utils::hex::ToHex;
@@ -1519,6 +1520,10 @@ pub struct GetUtxosByAddressesV2Request {
     pub start_address: Option<RpcAddress>,
     /// Cursor start DAA score for start_address; None starts from from_daa_score.
     pub start_daa_score: Option<u64>,
+    /// Cursor start outpoint hash for start_address; None starts from a `[ZERO_HASH]`.
+    pub start_outpoint_hash: Option<RpcHash>,
+    /// Cursor start outpoint index for start_address; None starts from 0 index.
+    pub start_outpoint_index: Option<TransactionIndexType>,
     /// Soft cap on entries; None means no limit, and a page may exceed this to finish the current script public key + DAA-score group.
     pub limit: Option<u64>,
 }
@@ -1530,9 +1535,20 @@ impl GetUtxosByAddressesV2Request {
         to_daa_score: Option<u64>,
         start_address: Option<RpcAddress>,
         start_daa_score: Option<u64>,
+        start_outpoint_hash: Option<RpcHash>,
+        start_outpoint_index: Option<TransactionIndexType>,
         limit: Option<u64>,
     ) -> Self {
-        Self { addresses, from_daa_score, to_daa_score, start_address, start_daa_score, limit }
+        Self {
+            addresses,
+            from_daa_score,
+            to_daa_score,
+            start_address,
+            start_daa_score,
+            start_outpoint_hash,
+            start_outpoint_index,
+            limit,
+        }
     }
 }
 
@@ -1544,6 +1560,8 @@ impl Serializer for GetUtxosByAddressesV2Request {
         store!(Option<u64>, &self.to_daa_score, writer)?;
         store!(Option<RpcAddress>, &self.start_address, writer)?;
         store!(Option<u64>, &self.start_daa_score, writer)?;
+        store!(Option<RpcHash>, &self.start_outpoint_hash, writer)?;
+        store!(Option<TransactionIndexType>, &self.start_outpoint_index, writer)?;
         store!(Option<u64>, &self.limit, writer)?;
         Ok(())
     }
@@ -1557,8 +1575,19 @@ impl Deserializer for GetUtxosByAddressesV2Request {
         let to_daa_score = load!(Option<u64>, reader)?;
         let start_address = load!(Option<RpcAddress>, reader)?;
         let start_daa_score = load!(Option<u64>, reader)?;
+        let start_outpoint_hash = load!(Option<RpcHash>, reader)?;
+        let start_outpoint_index = load!(Option<TransactionIndexType>, reader)?;
         let limit = load!(Option<u64>, reader)?;
-        Ok(Self { addresses, from_daa_score, to_daa_score, start_address, start_daa_score, limit })
+        Ok(Self {
+            addresses,
+            from_daa_score,
+            to_daa_score,
+            start_address,
+            start_daa_score,
+            start_outpoint_hash,
+            start_outpoint_index,
+            limit,
+        })
     }
 }
 
@@ -1571,11 +1600,21 @@ pub struct GetUtxosByAddressesV2Response {
     pub next_address: Option<RpcAddress>,
     /// Cursor DAA score for the next page; None means there is no next page.
     pub next_daa_score: Option<u64>,
+    /// Cursor outpoint hash for the next page; None means there is no next page.
+    pub next_outpoint_hash: Option<RpcHash>,
+    /// Cursor outpoint index for the next page; None means there is no next page.
+    pub next_outpoint_index: Option<TransactionIndexType>,
 }
 
 impl GetUtxosByAddressesV2Response {
-    pub fn new(entries: Vec<RpcUtxosByAddressesEntry>, next_address: Option<RpcAddress>, next_daa_score: Option<u64>) -> Self {
-        Self { entries, next_address, next_daa_score }
+    pub fn new(
+        entries: Vec<RpcUtxosByAddressesEntry>,
+        next_address: Option<RpcAddress>,
+        next_daa_score: Option<u64>,
+        next_outpoint_hash: Option<RpcHash>,
+        next_outpoint_index: Option<TransactionIndexType>,
+    ) -> Self {
+        Self { entries, next_address, next_daa_score, next_outpoint_hash, next_outpoint_index }
     }
 }
 
@@ -1585,6 +1624,8 @@ impl Serializer for GetUtxosByAddressesV2Response {
         serialize!(Vec<RpcUtxosByAddressesEntry>, &self.entries, writer)?;
         store!(Option<RpcAddress>, &self.next_address, writer)?;
         store!(Option<u64>, &self.next_daa_score, writer)?;
+        store!(Option<RpcHash>, &self.next_outpoint_hash, writer)?;
+        store!(Option<TransactionIndexType>, &self.next_outpoint_index, writer)?;
         Ok(())
     }
 }
@@ -1595,7 +1636,15 @@ impl Deserializer for GetUtxosByAddressesV2Response {
         let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
         let next_address = load!(Option<RpcAddress>, reader)?;
         let next_daa_score = load!(Option<u64>, reader)?;
-        Ok(Self { entries, next_address, next_daa_score })
+        let _next_outpoint_hash = load!(Option<RpcHash>, reader)?;
+        let _next_outpoint_index = load!(Option<TransactionIndexType>, reader)?;
+        Ok(Self {
+            entries,
+            next_address,
+            next_daa_score,
+            next_outpoint_hash: load!(Option<RpcHash>, reader)?,
+            next_outpoint_index: load!(Option<TransactionIndexType>, reader)?,
+        })
     }
 }
 

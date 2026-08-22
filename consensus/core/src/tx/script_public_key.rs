@@ -38,7 +38,7 @@ pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 const TS_SCRIPT_PUBLIC_KEY: &'static str = r#"
 /**
  * Interface defines the structure of a Script Public Key.
- * 
+ *
  * @category Consensus
  */
 export interface IScriptPublicKey {
@@ -49,11 +49,17 @@ export interface IScriptPublicKey {
 
 /// Represents a Kaspad ScriptPublicKey
 /// @category Consensus
-#[derive(Default, PartialEq, Eq, Clone, Hash, CastFromJs)]
+#[derive(Default, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
     pub(super) script: ScriptVec, // Kept private to preserve read-only semantics
+}
+
+impl ScriptPublicKey {
+    pub fn empty() -> Self {
+        Self { version: 0, script: SmallVec::new() }
+    }
 }
 
 impl std::fmt::Debug for ScriptPublicKey {

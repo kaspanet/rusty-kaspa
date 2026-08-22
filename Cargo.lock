@@ -2907,6 +2907,7 @@ dependencies = [
  "async-trait",
  "derive_more 0.99.18",
  "futures",
+ "indexmap 2.14.0",
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-notify",
@@ -3470,6 +3471,8 @@ name = "kaspa-utxoindex"
 version = "1.1.0"
 dependencies = [
  "futures",
+ "indexmap 2.14.0",
+ "itertools 0.13.0",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensusmanager",

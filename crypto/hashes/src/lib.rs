@@ -202,6 +202,7 @@ impl TryCastFromJs for Hash {
 }
 
 pub const ZERO_HASH: Hash = Hash([0; HASH_SIZE]);
+pub const MAX_HASH: Hash = Hash([0xff; HASH_SIZE]);
 
 #[cfg(test)]
 mod tests {

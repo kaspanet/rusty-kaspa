@@ -4,7 +4,7 @@ use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
 use serde::{Serialize, de::DeserializeOwned};
-use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
+use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, ops::RangeInclusive, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -213,7 +213,6 @@ where
     }
 
     /// A dynamic iterator that can iterate through a specific prefix / bucket, or from a certain start point.
-    //TODO: loop and chain iterators for multi-prefix / bucket iterator.
     pub fn seek_iterator(
         &self,
         bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
@@ -260,6 +259,57 @@ where
         })
     }
 
+    pub fn multi_range_seek_iterator<'a>(
+        &'a self,
+        mut seek_ranges: impl Iterator<Item = RangeInclusive<TKey>> + 'a,
+        seek_min: Option<TKey>,
+        seek_max: Option<TKey>,
+        limit: usize,
+    ) -> impl Iterator<Item = KeyDataResult<TData>> + 'a
+    where
+        TKey: Clone + AsRef<[u8]>,
+        TData: DeserializeOwned,
+    {
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_range(rocksdb::PrefixRange(self.prefix.as_slice()));
+
+        if let Some(seek_min) = &seek_min {
+            read_opts.set_iterate_lower_bound(DbKey::new(&self.prefix, seek_min).as_ref());
+        }
+        if let Some(seek_max) = &seek_max {
+            read_opts.set_iterate_upper_bound(DbKey::new(&self.prefix, seek_max).as_ref());
+        }
+
+        let mut db_iterator = self.db.raw_iterator_opt(read_opts);
+        let mut count = 0usize;
+        // Use Option to unify the "no ranges" and "ranges exhausted" cases in a single return path.
+        let mut current_seek_range = seek_ranges.next().inspect(|range| {
+            db_iterator.seek(DbKey::new(&self.prefix, range.start().clone()).as_ref());
+        });
+
+        std::iter::from_fn(move || {
+            while db_iterator.valid() && count < limit && current_seek_range.is_some() {
+                let key_bytes: Box<[u8]> = db_iterator.key().unwrap()[self.prefix.len()..].into();
+                if key_bytes.as_ref() > current_seek_range.as_ref().unwrap().end().as_ref() {
+                    current_seek_range = seek_ranges.next().inspect(|next_range| {
+                        db_iterator.seek(DbKey::new(&self.prefix, next_range.start().clone()).as_ref());
+                    });
+                    continue;
+                }
+                let value_bytes = db_iterator.value().unwrap();
+                let res = match bincode::deserialize::<TData>(value_bytes) {
+                    Ok(value) => Some(Ok((key_bytes, value))),
+                    Err(err) => Some(Err(err.into())),
+                };
+                db_iterator.next();
+                count += 1;
+                return res;
+            }
+            None
+        })
+    }
+
+    #[inline(always)]
     pub fn prefix(&self) -> &[u8] {
         &self.prefix
     }
@@ -335,5 +385,74 @@ mod tests {
 
         // Check for key that doesn't exist, should not be found
         assert!(!access.has_with_fallback(&fallback_prefix, key_not_found).unwrap());
+    }
+
+    fn range_key(n: u64) -> Vec<u8> {
+        n.to_be_bytes().to_vec()
+    }
+
+    #[test]
+    fn test_multi_range_seek_iterator_empty_ranges() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let access = CachedDbAccess::<Vec<u8>, u64>::new(db.clone(), CachePolicy::Count(10), vec![5]);
+        access.write_many(DirectDbWriter::new(&db), &mut (0u64..10).map(|i| (range_key(i), i))).unwrap();
+
+        let results: Vec<_> = access.multi_range_seek_iterator(std::iter::empty(), None, None, 100).collect();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_multi_range_seek_iterator_single_range() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let access = CachedDbAccess::<Vec<u8>, u64>::new(db.clone(), CachePolicy::Count(10), vec![5]);
+        access.write_many(DirectDbWriter::new(&db), &mut (0u64..10).map(|i| (range_key(i), i))).unwrap();
+
+        let ranges = [range_key(2)..=range_key(5)];
+        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter(), None, None, 100).map(|r| r.unwrap()).collect();
+
+        let values: Vec<u64> = results.iter().map(|(_, v)| *v).collect();
+        assert_eq!(values, vec![2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_multi_range_seek_iterator_multiple_ranges() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let access = CachedDbAccess::<Vec<u8>, u64>::new(db.clone(), CachePolicy::Count(10), vec![5]);
+        access.write_many(DirectDbWriter::new(&db), &mut (0u64..20).map(|i| (range_key(i), i))).unwrap();
+
+        let ranges = [range_key(1)..=range_key(3), range_key(7)..=range_key(9)];
+        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter(), None, None, 100).map(|r| r.unwrap()).collect();
+
+        let values: Vec<u64> = results.iter().map(|(_, v)| *v).collect();
+        assert_eq!(values, vec![1, 2, 3, 7, 8, 9]);
+    }
+
+    #[test]
+    fn test_multi_range_iterator_limit() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let access = CachedDbAccess::<Vec<u8>, u64>::new(db.clone(), CachePolicy::Count(10), vec![5]);
+        access.write_many(DirectDbWriter::new(&db), &mut (0u64..20).map(|i| (range_key(i), i))).unwrap();
+
+        let ranges = [range_key(0)..=range_key(19)];
+        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter(), None, None, 5).map(|r| r.unwrap()).collect();
+
+        assert_eq!(results.len(), 5);
+        assert_eq!(results[0].1, 0);
+        assert_eq!(results[4].1, 4);
+    }
+
+    #[test]
+    fn test_multi_range_iterator_sparse_data() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let access = CachedDbAccess::<Vec<u8>, u64>::new(db.clone(), CachePolicy::Count(10), vec![5]);
+        // Only store even values: 0, 2, 4, 6, 8
+        access.write_many(DirectDbWriter::new(&db), &mut (0u64..5).map(|i| (range_key(i * 2), i * 2))).unwrap();
+
+        // Range [1, 7] should return 2, 4, 6
+        let ranges = [range_key(1)..=range_key(7)];
+        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter(), None, None, 100).map(|r| r.unwrap()).collect();
+
+        let values: Vec<u64> = results.iter().map(|(_, v)| *v).collect();
+        assert_eq!(values, vec![2, 4, 6]);
     }
 }

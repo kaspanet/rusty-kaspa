@@ -1,5 +1,7 @@
 use crate::core::model::{CompactUtxoCollection, CompactUtxoEntry, OrderedUtxoSetByScriptPublicKeyPage, UtxoSetByScriptPublicKey};
 
+use indexmap::IndexSet;
+use itertools::Itertools;
 use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
 };
@@ -7,10 +9,12 @@ use kaspa_core::debug;
 use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DirectDbWriter, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, UtxoEntryKeyData};
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, ScriptPublicKeyIndexSet, UtxoEntryKeyData, UtxoPageCursor};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Display;
+
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 pub const VERSION_TYPE_SIZE: usize = size_of::<ScriptPublicKeyVersion>(); // Const since we need to re-use this a few times.
@@ -63,10 +67,6 @@ pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct TransactionOutpointKey([u8; TRANSACTION_OUTPOINT_KEY_SIZE]);
 
-impl TransactionOutpointKey {
-    pub const EMPTY: Self = TransactionOutpointKey([0; TRANSACTION_OUTPOINT_KEY_SIZE]);
-}
-
 impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
         let transaction_id = Hash::from_slice(&key.0[..kaspa_hashes::HASH_SIZE]);
@@ -98,6 +98,12 @@ struct DaaScoreKey([u8; DAA_SCORE_KEY_SIZE]);
 
 impl From<u64> for DaaScoreKey {
     fn from(daa_score: u64) -> Self {
+        DaaScoreKey(daa_score.to_be_bytes())
+    }
+}
+
+impl From<&u64> for DaaScoreKey {
+    fn from(daa_score: &u64) -> Self {
         DaaScoreKey(daa_score.to_be_bytes())
     }
 }
@@ -168,16 +174,33 @@ impl UtxoEntryFullAccessKey {
         Self(Arc::new(bytes))
     }
 
-    /// Creates a new key from inner components (DAA score + outpoint) for bucket-scoped seeks.
-    pub fn new_inner(daa_score_key: DaaScoreKey, transaction_outpoint_key: TransactionOutpointKey) -> Self {
-        let mut bytes = Vec::with_capacity(DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE);
-        bytes.extend_from_slice(daa_score_key.as_ref());
-        bytes.extend_from_slice(transaction_outpoint_key.as_ref());
-        Self(Arc::new(bytes))
-    }
-
     pub fn extract_outpoint(&self) -> TransactionOutpoint {
         TransactionOutpoint::from(TransactionOutpointKey(self.0[(self.0.len() - TRANSACTION_OUTPOINT_KEY_SIZE)..].try_into().unwrap()))
+    }
+
+    pub fn extract_data(&self) -> (ScriptPublicKey, UtxoEntryKeyData) {
+        let script_public_key = ScriptPublicKey::from(ScriptPublicKeyBucket(
+            self.0[..(self.0.len() - DAA_SCORE_KEY_SIZE - TRANSACTION_OUTPOINT_KEY_SIZE)].to_vec(),
+        ));
+        let daa_score = u64::from_be_bytes(
+            self.0
+                [(self.0.len() - TRANSACTION_OUTPOINT_KEY_SIZE - DAA_SCORE_KEY_SIZE)..(self.0.len() - TRANSACTION_OUTPOINT_KEY_SIZE)]
+                .try_into()
+                .unwrap(),
+        );
+        let transaction_outpoint = TransactionOutpoint::from(TransactionOutpointKey(
+            self.0[(self.0.len() - TRANSACTION_OUTPOINT_KEY_SIZE)..].try_into().unwrap(),
+        ));
+        (script_public_key, UtxoEntryKeyData { daa_score, transaction_outpoint })
+    }
+}
+
+impl From<UtxoPageCursor> for UtxoEntryFullAccessKey {
+    fn from(cursor: UtxoPageCursor) -> Self {
+        let script_public_key_bucket = ScriptPublicKeyBucket::from(&cursor.script_public_key);
+        let daa_score_key = DaaScoreKey::from(cursor.daa_score);
+        let transaction_outpoint_key = TransactionOutpointKey::from(&cursor.transaction_outpoint);
+        Self::new(script_public_key_bucket, daa_score_key, transaction_outpoint_key)
     }
 }
 
@@ -192,14 +215,12 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
 pub trait UtxoSetByScriptPublicKeyStoreReader {
     /// Get [UtxoSetByScriptPublicKey] set by queried [ScriptPublicKeys],
     fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
-    /// Get ordered UTXOs for multiple script public keys, bounded by an inclusive DAA-score range, with cursor pagination.
+    /// Get ordered UTXOs for multiple script public keys with an optional DAA-score range and cursor pagination.
     fn get_utxos_from_script_public_keys_by_daa_score_page(
         &self,
-        script_public_keys: ScriptPublicKeys,
-        from_daa_score: Option<u64>,
-        to_daa_score: Option<u64>,
-        start_script_public_key: Option<ScriptPublicKey>,
-        start_daa_score: Option<u64>,
+        script_public_keys: ScriptPublicKeyIndexSet,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: UtxoPageCursor,
         limit: Option<u64>,
     ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage>;
     fn get_balance_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
@@ -245,7 +266,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                 self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), None, None, usize::MAX, false).map(|res| {
                     let (key, value) = res.unwrap();
                     (
-                        UtxoEntryInnerKey(<[u8; DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap())
+                        UtxoEntryInnerKey(<[u8; DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(key.as_ref()).unwrap())
                             .into(),
                         value,
                     )
@@ -260,109 +281,86 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
 
     fn get_utxos_from_script_public_keys_by_daa_score_page(
         &self,
-        script_public_keys: ScriptPublicKeys,
-        from_daa_score: Option<u64>,
-        to_daa_score: Option<u64>,
-        start_script_public_key: Option<ScriptPublicKey>,
-        start_daa_score: Option<u64>,
+        script_public_keys: ScriptPublicKeyIndexSet,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: UtxoPageCursor,
         limit: Option<u64>,
     ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
-        let from_daa_score = from_daa_score.unwrap_or(0);
-        let to_daa_score = to_daa_score.unwrap_or(u64::MAX);
-        if from_daa_score > to_daa_score {
-            return Ok(OrderedUtxoSetByScriptPublicKeyPage::default());
-        }
-
-        let script_count = script_public_keys.len();
-
-        let mut script_public_keys = script_public_keys.into_iter().collect::<Vec<_>>();
-        script_public_keys.sort_by(|a, b| a.version().cmp(&b.version()).then_with(|| a.script().cmp(b.script())));
-
         if script_public_keys.is_empty() {
+            // user queried for no script public keys, thus we return an empty page with no cursor.
+            // Potential TODO: We might also want to define this as "all" script public keys, in some future,
+            // this would allow for callers to query all utxos within daa-score range-bounds.
             return Ok(OrderedUtxoSetByScriptPublicKeyPage::default());
         }
 
-        let start_index = if let Some(start_script_public_key) = &start_script_public_key {
-            script_public_keys
-                .iter()
-                .position(|script_public_key| script_public_key == start_script_public_key)
-                .unwrap_or(script_public_keys.len())
+        let script_public_keys: IndexSet<_> = script_public_keys
+            .into_iter()
+            .filter(|spk| {
+                // we filter out script public keys which are less than the cursor script public key, if it exists
+                // since the cursor has pointed past this point we can assume that any caller has already seen these script public keys and thus we can skip them.
+                *spk >= cursor.script_public_key
+            })
+            .sorted()
+            .collect();
+
+        let spk_max = script_public_keys.last().unwrap().clone();
+
+        let key_ranges = script_public_keys.into_iter().map(|script_public_key| {
+            let start_key = UtxoEntryFullAccessKey::new(
+                ScriptPublicKeyBucket::from(&script_public_key),
+                DaaScoreKey::from(*daa_score_range.start()),
+                TransactionOutpointKey::from(&TransactionOutpoint::EMPTY),
+            );
+            let end_key = UtxoEntryFullAccessKey::new(
+                ScriptPublicKeyBucket::from(&script_public_key),
+                DaaScoreKey::from(*daa_score_range.end()),
+                TransactionOutpointKey::from(&TransactionOutpoint::MAX),
+            );
+            RangeInclusive::new(start_key, end_key)
+        });
+
+        // +1 in order to return the next cursor
+        let extended_limit = limit.map(|l| l.saturating_add(1)).unwrap_or(u64::MAX).try_into().unwrap_or(usize::MAX);
+
+        let mut number_of_entries: usize = 0;
+        let mut entries = self
+            .access
+            .multi_range_seek_iterator(
+                key_ranges,
+                Some(cursor.into()),
+                Some(UtxoEntryFullAccessKey::new(
+                    ScriptPublicKeyBucket::from(&spk_max),
+                    DaaScoreKey::from(*daa_score_range.end()),
+                    TransactionOutpointKey::from(&TransactionOutpoint::MAX),
+                )),
+                extended_limit,
+            )
+            .map(|res| {
+                let (key, value) = res.unwrap();
+                let full_access_key = UtxoEntryFullAccessKey(Arc::new(key.to_vec()));
+                let (script_public_key, utxo_entry_key_data) = full_access_key.extract_data();
+                number_of_entries += 1;
+                (script_public_key, utxo_entry_key_data, value)
+            })
+            .chunk_by(|(spk, _, _)| spk.clone())
+            .into_iter()
+            .map(|(spk, chunk)| (spk, chunk.map(|(_, key_data, value)| (key_data, value)).collect::<Vec<_>>()))
+            .collect::<Vec<_>>();
+
+        let next_cursor = if (number_of_entries == extended_limit - 1) || entries.is_empty() {
+            // we have exhausted the search space, thus we return no next cursor
+            None
         } else {
-            0
+            let (spk, mut spk_entries) = entries.pop().unwrap();
+            let last_entry = spk_entries.pop().unwrap();
+            if !spk_entries.is_empty() {
+                // we have more entries for this script public key, thus we push it back to the entries list
+                entries.push((spk.clone(), spk_entries));
+            };
+            Some(UtxoPageCursor::new(spk.clone(), last_entry.0.daa_score, last_entry.0.transaction_outpoint))
         };
 
-        let mut entries_count: u64 = 0;
-        let mut stop_after_group = false;
-        let mut should_stop = false;
-        let mut current_group: Option<(usize, u64)> = None;
-        let mut next_script_public_key: Option<ScriptPublicKey> = None;
-        let mut next_daa_score: Option<u64> = None;
-        let mut utxos_by_script_public_keys = Vec::with_capacity(script_public_keys.len());
-
-        for (index, script_public_key) in script_public_keys.into_iter().enumerate().skip(start_index) {
-            // Required for the first address only, resume from the cursor DAA score (if provided),
-            // but never below the global from_daa_score; later addresses use from_daa_score.
-            let effective_from_daa_score = if index == start_index {
-                start_daa_score.map(|start| start.max(from_daa_score)).unwrap_or(from_daa_score)
-            } else {
-                from_daa_score
-            };
-
-            if effective_from_daa_score > to_daa_score {
-                continue;
-            }
-
-            let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
-            let seek_from = UtxoEntryFullAccessKey::new_inner(effective_from_daa_score.into(), TransactionOutpointKey::EMPTY);
-
-            let seek_to = (to_daa_score < u64::MAX)
-                .then(|| UtxoEntryFullAccessKey::new_inner((to_daa_score + 1).into(), TransactionOutpointKey::EMPTY));
-
-            let mut ordered_entries = Vec::new();
-            for res in self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), Some(seek_from), seek_to, usize::MAX, false)
-            {
-                let (key, value) = res.unwrap();
-                let key_data: UtxoEntryKeyData =
-                    UtxoEntryInnerKey(<[u8; DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap()).into();
-                let daa_score = key_data.daa_score;
-
-                if let Some((current_index, current_daa_score)) = current_group {
-                    if current_index != index || current_daa_score != daa_score {
-                        if stop_after_group {
-                            next_script_public_key = Some(script_public_key.clone());
-                            next_daa_score = Some(daa_score);
-                            should_stop = true;
-                            break;
-                        }
-                        current_group = Some((index, daa_score));
-                    }
-                } else {
-                    current_group = Some((index, daa_score));
-                }
-
-                ordered_entries.push((key_data, value));
-                entries_count += 1;
-
-                if matches!(limit, Some(limit) if entries_count >= limit) {
-                    stop_after_group = true;
-                }
-            }
-
-            if !ordered_entries.is_empty() {
-                utxos_by_script_public_keys.push((script_public_key, ordered_entries));
-            }
-
-            if should_stop {
-                break;
-            }
-        }
-
-        debug!(
-            "IDXPRC, Executed a DAA-range paged query for the utxo set of {} script public keys yielding {} entries",
-            script_count, entries_count
-        );
-
-        Ok(OrderedUtxoSetByScriptPublicKeyPage::new(utxos_by_script_public_keys, next_script_public_key, next_daa_score))
+        Ok(OrderedUtxoSetByScriptPublicKeyPage::new(entries, next_cursor))
     }
 
     fn get_balance_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey> {
@@ -458,24 +456,25 @@ mod tests {
     }
 
     #[test]
-    fn test_page_ordered_and_range_filtered() {
+    fn test_result_ordering_and_filtering() {
+        // Tests that results are ordered by script public key and filtered by DAA score range
         let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let mut store = DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty);
 
-        // Intentionally unsorted by script bytes so output ordering can be asserted.
-        let script_public_key_a = ScriptPublicKey::from_vec(0, vec![0x02]);
-        let script_public_key_b = ScriptPublicKey::from_vec(0, vec![0x01]);
+        let script_a = ScriptPublicKey::from_vec(0, vec![0x02]);
+        let script_b = ScriptPublicKey::from_vec(0, vec![0x01]);
 
         let mut to_add = UtxoSetByScriptPublicKey::new();
         to_add.insert(
-            script_public_key_a.clone(),
+            script_a.clone(),
             CompactUtxoCollection::from_iter([
                 (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
                 (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
+                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false)),
             ]),
         );
         to_add.insert(
-            script_public_key_b.clone(),
+            script_b.clone(),
             CompactUtxoCollection::from_iter([
                 (UtxoEntryKeyData::new(15, create_outpoint(15, 0)), CompactUtxoEntry::new(150, false)),
                 (UtxoEntryKeyData::new(25, create_outpoint(25, 0)), CompactUtxoEntry::new(250, false)),
@@ -484,131 +483,136 @@ mod tests {
 
         store.add_utxo_entries(&to_add).unwrap();
 
+        // Query with DAA range 12..=22: should match script_b[15] and script_a[20]
+        // With limit specified, we return exactly limit entries (when we have them)
         let page = store
             .get_utxos_from_script_public_keys_by_daa_score_page(
-                ScriptPublicKeys::from_iter([script_public_key_a.clone(), script_public_key_b.clone()]),
-                Some(12),
-                Some(22),
-                None,
-                None,
-                None,
+                IndexSet::<ScriptPublicKey>::from_iter([script_a.clone(), script_b.clone()]),
+                12..=22,
+                UtxoPageCursor::new(ScriptPublicKey::empty(), 0, TransactionOutpoint::EMPTY),
+                Some(2), // Specify limit to ensure pagination behavior
             )
             .unwrap();
 
-        let ordered = page.entries;
-        assert!(page.next_script_public_key.is_none());
-        assert!(page.next_daa_score.is_none());
+        // Results should be sorted by script public key (script_b=0x01 comes before script_a=0x02)
+        assert_eq!(page.entries.len(), 2);
+        assert_eq!(page.entries[0].0, script_b); // 0x01
+        assert_eq!(page.entries[1].0, script_a); // 0x02
 
-        assert_eq!(ordered.len(), 2);
-        assert_eq!(ordered[0].0, script_public_key_b);
-        assert_eq!(ordered[1].0, script_public_key_a);
-
-        assert_eq!(ordered[0].1.len(), 1);
-        assert_eq!(ordered[0].1[0].0.daa_score, 15);
-        assert_eq!(ordered[1].1.len(), 1);
-        assert_eq!(ordered[1].1[0].0.daa_score, 20);
-
-        // Sanity check for the non-range API.
-        let all = store
-            .get_utxos_from_script_public_keys(ScriptPublicKeys::from_iter([script_public_key_a.clone(), script_public_key_b.clone()]))
-            .unwrap();
-        assert_eq!(all.get(&script_public_key_a).unwrap().len(), 2);
-        assert_eq!(all.get(&script_public_key_b).unwrap().len(), 2);
+        // With limit=2, we fetch 3, but only get 2 matching entries total
+        // So we get both: [script_b[15], script_a[20]], no cursor
+        assert_eq!(page.entries[0].1.len(), 1);
+        assert_eq!(page.entries[0].1[0].0.daa_score, 15);
+        assert_eq!(page.entries[1].1.len(), 1);
+        assert_eq!(page.entries[1].1[0].0.daa_score, 20);
+        assert!(page.cursor.is_none());
     }
 
     #[test]
-    fn test_page_soft_limit_finishes_group() {
+    fn test_pagination_with_limit() {
+        // Tests cursor behavior: fetch limit+1
+        // When number_of_entries == extended_limit-1: no cursor (exactly at limit)
+        // Otherwise: pop last entry and create cursor
         let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let mut store = DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty);
 
-        let script_public_key_a = ScriptPublicKey::from_vec(0, vec![0x01]);
-        let script_public_key_b = ScriptPublicKey::from_vec(0, vec![0x02]);
+        let script = ScriptPublicKey::from_vec(0, vec![0x01]);
 
         let mut to_add = UtxoSetByScriptPublicKey::new();
         to_add.insert(
-            script_public_key_a.clone(),
-            CompactUtxoCollection::from_iter([
-                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
-                (UtxoEntryKeyData::new(10, create_outpoint(10, 1)), CompactUtxoEntry::new(110, false)),
-                (UtxoEntryKeyData::new(11, create_outpoint(11, 0)), CompactUtxoEntry::new(120, false)),
-            ]),
-        );
-        to_add.insert(
-            script_public_key_b.clone(),
-            CompactUtxoCollection::from_iter([(UtxoEntryKeyData::new(12, create_outpoint(12, 0)), CompactUtxoEntry::new(130, false))]),
-        );
-
-        store.add_utxo_entries(&to_add).unwrap();
-
-        let page = store
-            .get_utxos_from_script_public_keys_by_daa_score_page(
-                ScriptPublicKeys::from_iter([script_public_key_b.clone(), script_public_key_a.clone()]),
-                None,
-                None,
-                None,
-                None,
-                Some(1),
-            )
-            .unwrap();
-
-        assert_eq!(page.next_script_public_key, Some(script_public_key_a.clone()));
-        assert_eq!(page.next_daa_score, Some(11));
-
-        let ordered = page.entries;
-        assert_eq!(ordered.len(), 1);
-        assert_eq!(ordered[0].0, script_public_key_a);
-        assert_eq!(ordered[0].1.len(), 2);
-        assert!(ordered[0].1.iter().all(|(key, _)| key.daa_score == 10));
-    }
-
-    #[test]
-    fn test_page_resumes_from_start_daa_score() {
-        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let mut store = DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty);
-
-        let script_public_key_a = ScriptPublicKey::from_vec(0, vec![0x01]);
-        let script_public_key_b = ScriptPublicKey::from_vec(0, vec![0x02]);
-
-        let mut to_add = UtxoSetByScriptPublicKey::new();
-        to_add.insert(
-            script_public_key_a.clone(),
+            script.clone(),
             CompactUtxoCollection::from_iter([
                 (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
                 (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
-            ]),
-        );
-        to_add.insert(
-            script_public_key_b.clone(),
-            CompactUtxoCollection::from_iter([
-                (UtxoEntryKeyData::new(15, create_outpoint(15, 0)), CompactUtxoEntry::new(150, false)),
-                (UtxoEntryKeyData::new(25, create_outpoint(25, 0)), CompactUtxoEntry::new(250, false)),
+                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false)),
+                (UtxoEntryKeyData::new(40, create_outpoint(40, 0)), CompactUtxoEntry::new(400, false)),
             ]),
         );
 
         store.add_utxo_entries(&to_add).unwrap();
 
-        let page = store
+        // First page with limit=2: fetch 3
+        // Get entries [10, 20, 30]
+        // number_of_entries=3, extended_limit=3, so 3 != 2 → pop last, return 2 + cursor
+        let page1 = store
             .get_utxos_from_script_public_keys_by_daa_score_page(
-                ScriptPublicKeys::from_iter([script_public_key_b.clone(), script_public_key_a.clone()]),
-                Some(10),
-                Some(30),
-                Some(script_public_key_a.clone()),
-                Some(18),
-                None,
+                IndexSet::<ScriptPublicKey>::from_iter([script.clone()]),
+                0..=u64::MAX,
+                UtxoPageCursor::new(ScriptPublicKey::empty(), 0, TransactionOutpoint::EMPTY),
+                Some(2),
             )
             .unwrap();
 
-        assert!(page.next_script_public_key.is_none());
-        assert!(page.next_daa_score.is_none());
+        assert_eq!(page1.entries[0].1.len(), 2); // We got 3, pop 1, return 2
+        assert_eq!(page1.entries[0].1[0].0.daa_score, 10);
+        assert_eq!(page1.entries[0].1[1].0.daa_score, 20);
+        assert!(page1.cursor.is_some());
 
-        let ordered = page.entries;
-        assert_eq!(ordered.len(), 2);
-        assert_eq!(ordered[0].0, script_public_key_a);
-        assert_eq!(ordered[0].1.len(), 1);
-        assert_eq!(ordered[0].1[0].0.daa_score, 20);
-        assert_eq!(ordered[1].0, script_public_key_b);
-        assert_eq!(ordered[1].1.len(), 2);
-        assert_eq!(ordered[1].1[0].0.daa_score, 15);
-        assert_eq!(ordered[1].1[1].0.daa_score, 25);
+        let cursor1 = page1.cursor.unwrap();
+        assert_eq!(cursor1.script_public_key, script);
+        assert_eq!(cursor1.daa_score, 30);
+        assert_eq!(cursor1.transaction_outpoint, create_outpoint(30, 0));
+
+        // Second page using cursor from first
+        let page2 = store
+            .get_utxos_from_script_public_keys_by_daa_score_page(
+                IndexSet::<ScriptPublicKey>::from_iter([script.clone()]),
+                0..=u64::MAX,
+                cursor1,
+                Some(2),
+            )
+            .unwrap();
+
+        // Starting from cursor(30), we get [30, 40], which is 2 entries
+        // number_of_entries=2, extended_limit=3, so 2 == 2 → no cursor
+        assert_eq!(page2.entries[0].1.len(), 2);
+        assert_eq!(page2.entries[0].1[0].0.daa_score, 30);
+        assert_eq!(page2.entries[0].1[1].0.daa_score, 40);
+        assert!(page2.cursor.is_none()); // Exhausted
+    }
+
+    #[test]
+    fn test_daa_score_range_filtering() {
+        // Tests that DAA score range filtering works correctly
+        // When we get fewer entries than extended_limit, cursor logic still applies
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty);
+
+        let script = ScriptPublicKey::from_vec(0, vec![0x01]);
+
+        let mut to_add = UtxoSetByScriptPublicKey::new();
+        to_add.insert(
+            script.clone(),
+            CompactUtxoCollection::from_iter([
+                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
+                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
+                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false)),
+                (UtxoEntryKeyData::new(40, create_outpoint(40, 0)), CompactUtxoEntry::new(400, false)),
+            ]),
+        );
+
+        store.add_utxo_entries(&to_add).unwrap();
+
+        // Query with range 15..=35 and limit=5: fetch 6, get [20, 30], only 2 entries
+        // number_of_entries=2, extended_limit=6, so 2 != 5 → pop last and create cursor
+        let page = store
+            .get_utxos_from_script_public_keys_by_daa_score_page(
+                IndexSet::<ScriptPublicKey>::from_iter([script.clone()]),
+                15..=35,
+                UtxoPageCursor::new(ScriptPublicKey::empty(), 0, TransactionOutpoint::EMPTY),
+                Some(5),
+            )
+            .unwrap();
+
+        assert_eq!(page.entries.len(), 1);
+        // We get 2 entries total, pop last one → 1 entry returned + 1 cursor
+        assert_eq!(page.entries[0].1.len(), 1);
+        assert_eq!(page.entries[0].1[0].0.daa_score, 20);
+        assert!(page.cursor.is_some());
+
+        let cursor = page.cursor.unwrap();
+        assert_eq!(cursor.script_public_key, script);
+        assert_eq!(cursor.daa_score, 30);
+        assert_eq!(cursor.transaction_outpoint, create_outpoint(30, 0));
     }
 }

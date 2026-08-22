@@ -32,6 +32,7 @@ use kaspa_core::{
     task::tick::TickService,
     trace, warn,
 };
+use kaspa_hashes::ZERO_HASH;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
@@ -72,7 +73,8 @@ use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use kaspa_utxoindex::model::OrderedUtxoSetByScriptPublicKeyPage;
+use kaspa_utxoindex::model::{OrderedUtxoSetByScriptPublicKeyPage, UtxoPageCursor};
+use std::ops::RangeInclusive;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -279,10 +281,8 @@ impl RpcCoreService {
     async fn get_ordered_utxo_set_by_script_public_key_page<'a>(
         &self,
         addresses: impl Iterator<Item = &'a RpcAddress>,
-        from_daa_score: Option<u64>,
-        to_daa_score: Option<u64>,
-        start_address: Option<&'a RpcAddress>,
-        start_daa_score: Option<u64>,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: UtxoPageCursor,
         limit: Option<u64>,
     ) -> OrderedUtxoSetByScriptPublicKeyPage {
         self.utxoindex
@@ -290,10 +290,8 @@ impl RpcCoreService {
             .unwrap()
             .get_utxos_by_script_public_keys_by_daa_score_page(
                 addresses.map(pay_to_address_script).collect(),
-                from_daa_score,
-                to_daa_score,
-                start_address.map(pay_to_address_script),
-                start_daa_score,
+                daa_score_range,
+                cursor,
                 limit,
             )
             .await
@@ -741,21 +739,16 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        if request.start_daa_score.is_some() && request.start_address.is_none() {
-            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("start_daa_score requires start_address".to_string()));
-        }
 
-        if request.limit == Some(0) {
-            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("limit must be greater than zero".to_string()));
-        }
-
-        if matches!(
-            request.start_address.as_ref(),
-            Some(start_address) if !request.addresses.iter().any(|address| address == start_address)
-        ) {
-            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("start_address must be included in addresses".to_string()));
-        }
-
+        let start_spk = request
+            .start_address
+            .map_or_else(|| request.addresses.iter().map(pay_to_address_script).min(), |addr| Some(pay_to_address_script(&addr)))
+            .unwrap();
+        let start_daa_score = request.start_daa_score.unwrap_or(0);
+        let start_outpoint = RpcTransactionOutpoint {
+            transaction_id: request.start_outpoint_hash.unwrap_or(ZERO_HASH),
+            index: request.start_outpoint_index.unwrap_or_default(),
+        };
         let from_daa_score = request.from_daa_score.unwrap_or(0);
         let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
         if from_daa_score > to_daa_score {
@@ -771,6 +764,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             ));
         }
 
+        let limit = request.limit;
+        if limit == Some(0) {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("limit must be greater than zero".to_string()));
+        }
+
         let session = self.consensus_manager.consensus().unguarded_session();
         // do not retrieve utxos while in unstable ibd state.
         if session.async_is_consensus_in_transitional_ibd_state().await {
@@ -780,25 +778,28 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let page = self
             .get_ordered_utxo_set_by_script_public_key_page(
                 request.addresses.iter(),
-                request.from_daa_score,
-                request.to_daa_score,
-                request.start_address.as_ref(),
-                request.start_daa_score,
-                request.limit,
+                from_daa_score..=to_daa_score,
+                UtxoPageCursor::new(start_spk, start_daa_score, start_outpoint.into()),
+                limit,
             )
             .await;
+        let next_cursor = page.cursor;
+        let entries = page.entries;
 
-        let OrderedUtxoSetByScriptPublicKeyPage { entries, next_script_public_key, next_daa_score } = page;
         let entries = self.index_converter.get_ordered_utxos_by_addresses_entries(&entries);
-        let next_address = match next_script_public_key.as_ref() {
-            Some(script_public_key) => Some(
-                extract_script_pub_key_address(script_public_key, self.config.prefix())
-                    .map_err(|err| RpcError::General(err.to_string()))?,
-            ),
-            None => None,
+        let (next_address, next_outpoint_hash, next_outpoint_index, next_daa_score) = match next_cursor.as_ref() {
+            Some(cursor) => {
+                let address = extract_script_pub_key_address(&cursor.script_public_key, self.config.prefix())
+                    .map_err(|err| RpcError::General(err.to_string()))?;
+                let outpoint_hash = cursor.transaction_outpoint.transaction_id;
+                let outpoint_index = cursor.transaction_outpoint.index;
+                let daa_score = cursor.daa_score;
+                (Some(address), Some(outpoint_hash), Some(outpoint_index), Some(daa_score))
+            }
+            None => (None, None, None, None),
         };
 
-        Ok(GetUtxosByAddressesV2Response::new(entries, next_address, next_daa_score))
+        Ok(GetUtxosByAddressesV2Response::new(entries, next_address, next_daa_score, next_outpoint_hash, next_outpoint_index))
     }
 
     async fn get_balance_by_address_call(

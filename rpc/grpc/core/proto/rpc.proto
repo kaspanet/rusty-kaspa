@@ -574,12 +574,19 @@ message GetUtxosByAddressesV2RequestMessage {
   optional uint64 fromDaaScore = 2;
   // Inclusive DAA-score range end; omitted defaults to u64::MAX.
   optional uint64 toDaaScore = 3;
+
+  // ### Cursor based fields. ###
   // Cursor start address; omitted starts from the first address.
   optional string startAddress = 4;
   // Cursor start DAA score for startAddress; omitted starts from fromDaaScore.
   optional uint64 startDaaScore = 5;
-  // Soft cap on entries; omitted means no limit and a page may exceed this to finish the current address + DAA-score group.
-  optional uint64 limit = 6;
+  // Cursor start pointing to outpoint hash; omitted starts from the first outpoint for startAddress and startDaaScore.,
+  optional string startOutpointHash = 6;
+  // Cursor start pointing to outpoint index; omitted starts from the first outpoint index for startOutpointHash, startAddress and startDaaScore.
+  optional uint32 startOutpointIndex = 7;
+
+  // limit on the number of entries to return; omitted means no limit.
+  optional uint64 limit = 8;
 }
 
 message GetUtxosByAddressesV2ResponseMessage {
@@ -589,6 +596,10 @@ message GetUtxosByAddressesV2ResponseMessage {
   optional string nextAddress = 2;
   // Cursor DAA score for the next page; omitted means there is no next page.
   optional uint64 nextDaaScore = 3;
+  // Cursor outpoint hash for the next page; omitted means there is no next page.
+  optional string nextOutpointHash = 4;
+  // Cursor outpoint index for the next page; omitted means there is no next page.
+  optional uint32 nextOutpointIndex = 5;
 
   RPCError error = 1000;
 }

@@ -9,6 +9,7 @@ pub struct DbKey {
 }
 
 impl DbKey {
+    #[inline(always)]
     pub fn new<TKey>(prefix: &[u8], key: TKey) -> Self
     where
         TKey: Clone + AsRef<[u8]>,
@@ -16,6 +17,7 @@ impl DbKey {
         Self { path: prefix.iter().chain(key.as_ref().iter()).copied().collect(), prefix_len: prefix.len() }
     }
 
+    #[inline(always)]
     pub fn new_with_bucket<TKey, TBucket>(prefix: &[u8], bucket: TBucket, key: TKey) -> Self
     where
         TKey: Clone + AsRef<[u8]>,
@@ -27,11 +29,13 @@ impl DbKey {
         db_key
     }
 
+    #[inline(always)]
     pub fn prefix_only(prefix: &[u8]) -> Self {
         Self::new(prefix, [])
     }
 
     /// add a bucket to the DBkey, this adds to the prefix length
+    #[inline(always)]
     pub fn add_bucket<TBucket>(&mut self, bucket: TBucket)
     where
         TBucket: Copy + AsRef<[u8]>,
@@ -40,6 +44,7 @@ impl DbKey {
         self.prefix_len += bucket.as_ref().len();
     }
 
+    #[inline(always)]
     pub fn add_key<TKey>(&mut self, key: TKey)
     where
         TKey: Clone + AsRef<[u8]>,
@@ -48,12 +53,14 @@ impl DbKey {
         self.prefix_len += key.as_ref().len();
     }
 
+    #[inline(always)]
     pub fn prefix_len(&self) -> usize {
         self.prefix_len
     }
 }
 
 impl AsRef<[u8]> for DbKey {
+    #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         &self.path
     }

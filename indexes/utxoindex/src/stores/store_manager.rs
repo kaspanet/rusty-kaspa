@@ -1,19 +1,21 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, ops::RangeInclusive, sync::Arc};
 
 use kaspa_consensus_core::{
     BlockHashSet,
-    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKeys, TransactionOutpoint},
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage};
+use kaspa_index_core::indexed_utxos::{
+    BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage, ScriptPublicKeyIndexSet, UtxoPageCursor,
+};
 
 use crate::{
     IDENT,
     errors::{UtxoIndexError, UtxoIndexResult},
     model::UtxoSetByScriptPublicKey,
     stores::{
-        db_version::{DbUtxoIndexDbVersionStore, UtxoIndexDbVersionStore, UtxoIndexDbVersionStoreReader},
+        db_metadata::{DbUtxoIndexDbMetaStore, UtxoIndexDbMetaData, UtxoIndexDbMetaStore, UtxoIndexDbMetaStoreReader},
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
@@ -26,7 +28,7 @@ pub const UTXOINDEX_DB_VERSION: u16 = 1;
 pub struct Store {
     utxoindex_tips_store: DbUtxoIndexTipsStore,
     circulating_supply_store: DbCirculatingSupplyStore,
-    db_version_store: DbUtxoIndexDbVersionStore,
+    db_version_store: DbUtxoIndexDbMetaStore,
     utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore,
 }
 
@@ -35,7 +37,7 @@ impl Store {
         Self {
             utxoindex_tips_store: DbUtxoIndexTipsStore::new(db.clone()),
             circulating_supply_store: DbCirculatingSupplyStore::new(db.clone()),
-            db_version_store: DbUtxoIndexDbVersionStore::new(db.clone()),
+            db_version_store: DbUtxoIndexDbMetaStore::new(db.clone()),
             utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty),
         }
     }
@@ -60,7 +62,7 @@ impl Store {
         };
 
         match self.db_version_store.get() {
-            Ok(version) => Ok(version != UTXOINDEX_DB_VERSION),
+            Ok(meta) => Ok(meta.version != UTXOINDEX_DB_VERSION),
             Err(kaspa_database::prelude::StoreError::KeyNotFound(_)) => Ok(tips_exist || supply_exists),
             Err(err) => Err(UtxoIndexError::StoreAccessError(err)),
         }
@@ -68,9 +70,9 @@ impl Store {
 
     pub fn ensure_db_version_current(&mut self) -> UtxoIndexResult<()> {
         match self.db_version_store.get() {
-            Ok(version) if version == UTXOINDEX_DB_VERSION => Ok(()),
+            Ok(meta) if meta.version == UTXOINDEX_DB_VERSION => Ok(()),
             Ok(_) | Err(kaspa_database::prelude::StoreError::KeyNotFound(_)) => {
-                self.db_version_store.set(UTXOINDEX_DB_VERSION)?;
+                self.db_version_store.set(UtxoIndexDbMetaData { version: UTXOINDEX_DB_VERSION })?;
                 Ok(())
             }
             Err(err) => Err(UtxoIndexError::StoreAccessError(err)),
@@ -83,19 +85,15 @@ impl Store {
 
     pub fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
-        script_public_keys: ScriptPublicKeys,
-        from_daa_score: Option<u64>,
-        to_daa_score: Option<u64>,
-        start_script_public_key: Option<ScriptPublicKey>,
-        start_daa_score: Option<u64>,
+        script_public_keys: ScriptPublicKeyIndexSet,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: UtxoPageCursor,
         limit: Option<u64>,
     ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys_by_daa_score_page(
-            script_public_keys,
-            from_daa_score,
-            to_daa_score,
-            start_script_public_key,
-            start_daa_score,
+            script_public_keys.into_iter().collect(),
+            daa_score_range,
+            cursor,
             limit,
         )
     }

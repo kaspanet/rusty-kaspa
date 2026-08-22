@@ -345,6 +345,8 @@ from!(item: &kaspa_rpc_core::GetUtxosByAddressesV2Request, protowire::GetUtxosBy
         to_daa_score: item.to_daa_score,
         start_address: item.start_address.as_ref().map(|address| address.to_string()),
         start_daa_score: item.start_daa_score,
+        start_outpoint_hash: item.start_outpoint_hash.as_ref().map(|hash| hash.to_string()),
+        start_outpoint_index: item.start_outpoint_index,
         limit: item.limit,
     }
 });
@@ -354,6 +356,8 @@ from!(item: RpcResult<&kaspa_rpc_core::GetUtxosByAddressesV2Response>, protowire
         entries: item.entries.iter().map(|x| x.into()).collect(),
         next_address: item.next_address.as_ref().map(|address| address.to_string()),
         next_daa_score: item.next_daa_score,
+        next_outpoint_hash: item.next_outpoint_hash.as_ref().map(|hash| hash.to_string()),
+        next_outpoint_index: item.next_outpoint_index,
         error: None,
     }
 });
@@ -886,6 +890,8 @@ try_from!(item: &protowire::GetUtxosByAddressesV2RequestMessage, kaspa_rpc_core:
         to_daa_score: item.to_daa_score,
         start_address: item.start_address.as_deref().map(|address| address.try_into()).transpose()?,
         start_daa_score: item.start_daa_score,
+        start_outpoint_hash: item.start_outpoint_hash.as_deref().map(RpcHash::from_str).transpose()?,
+        start_outpoint_index: item.start_outpoint_index,
         limit: item.limit,
     }
 });
@@ -894,6 +900,8 @@ try_from!(item: &protowire::GetUtxosByAddressesV2ResponseMessage, RpcResult<kasp
         entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
         next_address: item.next_address.as_deref().map(|address| address.try_into()).transpose()?,
         next_daa_score: item.next_daa_score,
+        next_outpoint_hash: item.next_outpoint_hash.as_deref().map(RpcHash::from_str).transpose()?,
+        next_outpoint_index: item.next_outpoint_index,
     }
 });
 

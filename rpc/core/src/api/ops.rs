@@ -143,6 +143,7 @@ pub enum RpcApiOps {
     /// Get a list of UTXOs for multiple addresses with optional DAA-score range filtering.
     /// Supports cursor pagination via start_address/start_daa_score and a soft limit that completes
     /// the current script public key + DAA-score group before returning next_address/next_daa_score.
+    /// A single large group can therefore make the returned page much larger than the requested limit.
     GetUtxosByAddressesV2 = 152,
 }
 

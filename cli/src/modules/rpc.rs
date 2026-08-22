@@ -326,11 +326,21 @@ impl Rpc {
                     if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(value.parse::<u64>()?)) }
                 };
 
+                let parse_optional_u32 = |value: String| -> Result<Option<u32>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(value.parse::<u32>()?)) }
+                };
+
                 let parse_optional_address = |value: String| -> Result<Option<Address>> {
                     if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(Address::try_from(value.as_str())?)) }
                 };
 
+                let parse_optional_hash = |value: String| -> Result<Option<RpcHash>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(RpcHash::from_hex(value.as_str())?)) }
+                };
+
                 let limit = parse_optional_u64(args.pop().unwrap())?;
+                let start_outpoint_index = parse_optional_u32(args.pop().unwrap())?;
+                let start_outpoint_hash = parse_optional_hash(args.pop().unwrap())?;
                 let start_daa_score = parse_optional_u64(args.pop().unwrap())?;
                 let start_address = parse_optional_address(args.pop().unwrap())?;
                 let to_daa_score = parse_optional_u64(args.pop().unwrap())?;
@@ -350,6 +360,8 @@ impl Rpc {
                             to_daa_score,
                             start_address,
                             start_daa_score,
+                            start_outpoint_hash,
+                            start_outpoint_index,
                             limit,
                         ),
                     )
