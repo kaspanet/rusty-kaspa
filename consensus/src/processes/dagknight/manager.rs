@@ -392,9 +392,13 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         }
     }
 
-    pub fn find_last_known_tips(&self, tips: &[Hash]) -> (Vec<Hash>, BlockHashSet) {
+    pub fn find_last_known_tips(&self, tips: &[Hash], next_chain_ancestor: Option<Hash>) -> (Vec<Hash>, BlockHashSet) {
         let mut visited = BlockHashSet::new();
-        let mut queue: VecDeque<Hash> = VecDeque::from_iter(tips.iter().copied());
+        let mut queue: VecDeque<Hash> = VecDeque::from_iter(
+            tips.iter()
+                .filter(|&&t| next_chain_ancestor.is_none_or(|nca| self.reachability_service.is_chain_ancestor_of(nca, t)))
+                .copied(),
+        );
 
         let mut roots = vec![];
 
@@ -403,15 +407,18 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 continue;
             }
 
-            if !self.free_search && !self.reachability_service.is_chain_ancestor_of(self.root, curr) {
+            if !self.free_search
+                && self.root != curr
+                && !next_chain_ancestor.is_none_or(|nca| self.reachability_service.is_chain_ancestor_of(nca, curr))
+            {
                 continue;
             }
 
             if self.has(curr) {
                 roots.push(curr);
             } else {
-                for parent in self.relations_store.get_parents(curr).unwrap().iter() {
-                    queue.push_back(*parent);
+                for &parent in self.relations_store.get_parents(curr).unwrap().iter() {
+                    queue.push_back(parent);
                 }
             }
         }
@@ -452,7 +459,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
         self.init_root();
 
-        let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips);
+        let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips, next_chain_ancestor);
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
 
@@ -500,6 +507,24 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                         current_hash,
                         parents
                     );
+                    // all parents here must already exist assuming topological sorting is honored
+                    // so finding one that doesn't means an error in processing and must be diagnosed
+                    agreeing_parents.iter().for_each(|&parent| {
+                        if !self.has(parent) {
+                            last_known_tips.iter().for_each(|&lk_tip| {
+                                if self.reachability_service.is_dag_ancestor_of(parent, lk_tip) {
+                                    println!(
+                                        "cg: {} | k: {} | fs: {} | nca: {:?} | parent {} is in the past of a last known tip {}",
+                                        self.root, self.k, self.free_search, next_chain_ancestor, parent, lk_tip
+                                    );
+                                }
+                            });
+                            panic!(
+                                "cg: {} | k: {} | fs: {} | nca: {:?} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
+                                self.root, self.k, self.free_search, next_chain_ancestor_of_current, last_known_tips, current_hash, parent, parents, tips
+                            );
+                        }
+                    });
                     self.find_selected_parent(agreeing_parents.iter().copied())
                 };
 
@@ -774,8 +799,8 @@ mod tests {
         // Tips are F and W (no records yet)
         let tips = vec![hash_f, hash_w];
 
-        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips);
-        let (roots_free, _) = manager_free.find_last_known_tips(&tips);
+        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips, None);
+        let (roots_free, _) = manager_free.find_last_known_tips(&tips, None);
 
         assert_eq!(roots_committed.len(), 2, "Committed should find D, E");
         assert!(roots_committed.contains(&hash_d));
@@ -983,14 +1008,16 @@ mod tests {
             ConflictZoneManager::new(1, conflict_genesis, dagknight_store, headers_store.clone(), fir_relations, reachability_service);
 
         // let tips = vec![];
-        println!("lkt base: {:?}", czm.find_last_known_tips(&tips).0);
+        println!("lkt base: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
         czm.fill_zone_data(
             &vec![Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
             Some(nca_2),
         );
+        println!("lkt before nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
         czm.fill_zone_data(&tips, Some(nca_1));
-        println!("lkt after nca_1: {:?}", czm.find_last_known_tips(&tips).0);
+        println!("lkt after nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
+        println!("lkt before nca_2: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
         czm.fill_zone_data(&tips, Some(nca_2));
-        println!("lkt after nca_2: {:?}", czm.find_last_known_tips(&tips).0);
+        println!("lkt after nca_2: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
     }
 }
