@@ -5,7 +5,7 @@ use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::de::{Error as DeError, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
-use std::fmt;
+use std::fmt::{self, Display};
 
 pub type ScriptPublicKeyIndexSet = IndexSet<ScriptPublicKey>;
 
@@ -31,14 +31,28 @@ impl UtxoEntryKeyData {
 
 #[derive(Clone, Debug)]
 pub struct UtxoPageCursor {
-    pub script_public_key: ScriptPublicKey,
-    pub daa_score: u64,
-    pub transaction_outpoint: TransactionOutpoint,
+    pub script_public_key: Option<ScriptPublicKey>,
+    pub daa_score: Option<u64>,
+    pub transaction_outpoint: Option<TransactionOutpoint>,
 }
 
 impl UtxoPageCursor {
-    pub fn new(script_public_key: ScriptPublicKey, daa_score: u64, transaction_outpoint: TransactionOutpoint) -> Self {
+    pub fn new(
+        script_public_key: Option<ScriptPublicKey>,
+        daa_score: Option<u64>,
+        transaction_outpoint: Option<TransactionOutpoint>,
+    ) -> Self {
         Self { script_public_key, daa_score, transaction_outpoint }
+    }
+}
+
+impl Display for UtxoPageCursor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "UtxoPageCursor {{ script_public_key: {:?}, daa_score: {:?}, transaction_outpoint: {:?} }}",
+            self.script_public_key, self.daa_score, self.transaction_outpoint
+        )
     }
 }
 

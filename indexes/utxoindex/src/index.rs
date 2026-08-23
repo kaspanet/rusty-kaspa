@@ -77,7 +77,7 @@ impl UtxoIndexApi for UtxoIndex {
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
+    ) -> UtxoIndexResult<OrderedUtxoSetByScriptPublicKeyPage> {
         trace!("[{0}] retrieving utxos by daa-score range for {1} script public keys (paged)", IDENT, script_public_keys.len());
         self.store.get_utxos_by_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)
     }

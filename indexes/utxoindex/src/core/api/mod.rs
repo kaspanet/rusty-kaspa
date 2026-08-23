@@ -36,7 +36,7 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage>;
+    ) -> UtxoIndexResult<OrderedUtxoSetByScriptPublicKeyPage>;
 
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
 
@@ -91,7 +91,7 @@ impl UtxoIndexProxy {
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
+    ) -> UtxoIndexResult<OrderedUtxoSetByScriptPublicKeyPage> {
         spawn_blocking(move || {
             self.inner.read().get_utxos_by_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)
         })

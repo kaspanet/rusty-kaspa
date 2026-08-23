@@ -89,7 +89,7 @@ impl Store {
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> StoreResult<OrderedUtxoSetByScriptPublicKeyPage> {
+    ) -> UtxoIndexResult<OrderedUtxoSetByScriptPublicKeyPage> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys_by_daa_score_page(
             script_public_keys.into_iter().collect(),
             daa_score_range,
