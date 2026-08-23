@@ -97,7 +97,6 @@ impl From<UtxoEntry> for CompactUtxoEntry {
 #[derive(Deserialize)]
 struct CompactUtxoEntryHumanReadable {
     amount: u64,
-    block_daa_score: u64,
     is_coinbase: bool,
     #[serde(default)]
     covenant_id: Option<Hash>,
