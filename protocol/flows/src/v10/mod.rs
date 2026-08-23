@@ -1,8 +1,9 @@
-use crate::v7::{
+use self::{
     address::{ReceiveAddressesFlow, SendAddressesFlow},
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ping::{ReceivePingsFlow, SendPingsFlow},
     request_antipast::HandleAntipastRequests,
+    request_block_bodies::HandleBlockBodyRequests,
     request_block_locator::RequestBlockLocatorFlow,
     request_headers::RequestHeadersFlow,
     request_ibd_blocks::HandleIbdBlockRequests,
@@ -12,8 +13,20 @@ use crate::v7::{
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
-use crate::v8::request_block_bodies::HandleBlockBodyRequests;
+pub(crate) mod address;
+pub(crate) mod blockrelay;
+pub(crate) mod ping;
+pub(crate) mod request_antipast;
+pub(crate) mod request_block_bodies;
+pub(crate) mod request_block_locator;
+pub(crate) mod request_headers;
+pub(crate) mod request_ibd_blocks;
+pub(crate) mod request_ibd_chain_block_locator;
+pub(crate) mod request_pp_proof;
+pub(crate) mod request_pruning_point_and_anticone;
 pub(crate) mod request_pruning_point_smt_state;
+pub(crate) mod request_pruning_point_utxo_set;
+pub(crate) mod txrelay;
 use request_pruning_point_smt_state::RequestPruningPointSmtStateFlow;
 
 use crate::{flow_context::FlowContext, flow_trait::Flow, ibd::IbdFlow};
