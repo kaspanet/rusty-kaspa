@@ -468,16 +468,16 @@ mod tests {
         to_add.insert(
             script_a.clone(),
             CompactUtxoCollection::from_iter([
-                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
-                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
-                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false)),
+                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false, None)),
+                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false, None)),
+                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false, None)),
             ]),
         );
         to_add.insert(
             script_b.clone(),
             CompactUtxoCollection::from_iter([
-                (UtxoEntryKeyData::new(15, create_outpoint(15, 0)), CompactUtxoEntry::new(150, false)),
-                (UtxoEntryKeyData::new(25, create_outpoint(25, 0)), CompactUtxoEntry::new(250, false)),
+                (UtxoEntryKeyData::new(15, create_outpoint(15, 0)), CompactUtxoEntry::new(150, false, None)),
+                (UtxoEntryKeyData::new(25, create_outpoint(25, 0)), CompactUtxoEntry::new(250, false, None)),
             ]),
         );
 
@@ -522,10 +522,10 @@ mod tests {
         to_add.insert(
             script.clone(),
             CompactUtxoCollection::from_iter([
-                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
-                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
-                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false)),
-                (UtxoEntryKeyData::new(40, create_outpoint(40, 0)), CompactUtxoEntry::new(400, false)),
+                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false, None)),
+                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false, None)),
+                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false, None)),
+                (UtxoEntryKeyData::new(40, create_outpoint(40, 0)), CompactUtxoEntry::new(400, false, None)),
             ]),
         );
 
@@ -584,10 +584,10 @@ mod tests {
         to_add.insert(
             script.clone(),
             CompactUtxoCollection::from_iter([
-                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false)),
-                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false)),
-                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false)),
-                (UtxoEntryKeyData::new(40, create_outpoint(40, 0)), CompactUtxoEntry::new(400, false)),
+                (UtxoEntryKeyData::new(10, create_outpoint(10, 0)), CompactUtxoEntry::new(100, false, None)),
+                (UtxoEntryKeyData::new(20, create_outpoint(20, 0)), CompactUtxoEntry::new(200, false, None)),
+                (UtxoEntryKeyData::new(30, create_outpoint(30, 0)), CompactUtxoEntry::new(300, false, None)),
+                (UtxoEntryKeyData::new(40, create_outpoint(40, 0)), CompactUtxoEntry::new(400, false, None)),
             ]),
         );
 

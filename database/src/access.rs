@@ -4,7 +4,7 @@ use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
 use serde::{Serialize, de::DeserializeOwned};
-use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, ops::RangeInclusive, marker::PhantomData, sync::Arc};
+use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, marker::PhantomData, ops::RangeInclusive, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 ///
