@@ -329,10 +329,9 @@ fn inactivity_shortcut_config() -> kaspa_consensus_core::config::Config {
         .build()
 }
 
-/// Blocks with `bs <= finality_depth` have no resolvable shortcut yet;
-/// the recorded `inactivity_shortcut_block` clamps to genesis, which folds
-/// to `ZERO_HASH` via `inactivity_shortcut()` and seeds forward walks
-/// correctly once descendants cross `bs = finality_depth + 1`.
+/// Blocks with `bs <= finality_depth` have no older chain block at the target
+/// depth, so the recorded `inactivity_shortcut_block` clamps to genesis. Forward
+/// walks begin advancing it once descendants cross `bs = finality_depth + 1`.
 #[tokio::test]
 async fn inactivity_shortcut_block_clamps_to_genesis_within_finality_depth() {
     let config = inactivity_shortcut_config();
