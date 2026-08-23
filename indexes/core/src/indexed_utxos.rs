@@ -160,14 +160,14 @@ impl UtxoChanges {
 mod tests {
     use super::*;
 
-    /// Bincode encoding produced by the pre-Toccata `CompactUtxoEntry` (3-field
+    /// Bincode encoding produced by the pre-Toccata `CompactUtxoEntry` (2-field
     /// layout, no trailing `covenant_id` Option tag).
-    const PRE_TOCCATA_HEX: &str = "efcdab89674523012a0000000000000001";
+    const PRE_TOCCATA_HEX: &str = "efcdab896745230101";
     /// Post-Toccata wire for the same logical entry with `covenant_id = None`.
-    const POST_TOCCATA_NONE_HEX: &str = "efcdab89674523012a000000000000000100";
+    const POST_TOCCATA_NONE_HEX: &str = "efcdab89674523010100";
     /// Post-Toccata wire with `covenant_id = Some(Hash::from_bytes([0x5a; 32]))`.
     const POST_TOCCATA_SOME_HEX: &str =
-        "efcdab89674523012a0000000000000001015a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
+        "efcdab896745230101015a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
     const SHARED_AMOUNT: u64 = 0x0123_4567_89ab_cdef;
 
     fn bytes_from_hex(hex: &str) -> Vec<u8> {
