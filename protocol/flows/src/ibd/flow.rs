@@ -21,10 +21,7 @@ use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
-    convert::{
-        header::{HeaderFormat, Versioned},
-        model::trusted::TrustedDataPackage,
-    },
+    convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message, make_request,
     pb::{
         RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestPruningPointAndItsAnticoneMessage,
@@ -46,7 +43,6 @@ pub struct IbdFlow {
     pub(super) ctx: FlowContext,
     pub(super) router: Arc<Router>,
     pub(super) incoming_route: IncomingRoute,
-    header_format: HeaderFormat,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: JobReceiver<Block>,
@@ -77,14 +73,8 @@ struct QueueChunkOutput {
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
-    pub fn new(
-        ctx: FlowContext,
-        router: Arc<Router>,
-        incoming_route: IncomingRoute,
-        relay_receiver: JobReceiver<Block>,
-        header_format: HeaderFormat,
-    ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, header_format }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: JobReceiver<Block>) -> Self {
+        Self { ctx, router, incoming_route, relay_receiver }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -399,7 +389,7 @@ impl IbdFlow {
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
-        let proof: PruningPointProof = Versioned(self.header_format, msg).try_into()?;
+        let proof: PruningPointProof = msg.try_into()?;
         info!(
             "Received headers proof with overall {} headers ({} unique)",
             proof.iter().map(|l| l.len()).sum::<usize>(),
@@ -432,7 +422,7 @@ impl IbdFlow {
             .await?;
         // First, all pruning points up to the last are sent
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
-        let pruning_points: PruningPointsList = Versioned(self.header_format, msg).try_into()?;
+        let pruning_points: PruningPointsList = msg.try_into()?;
 
         if pruning_points.is_empty() || pruning_points.last().unwrap().hash != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the last pruning point in the list"));
@@ -468,10 +458,10 @@ impl IbdFlow {
         // The latter, the trusted data entries, each represent a block (with daa) from the anticone of the pruning point
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
-        let pkg: TrustedDataPackage = Versioned(self.header_format, msg).try_into()?;
+        let pkg: TrustedDataPackage = msg.try_into()?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
-        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route, self.header_format);
+        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
         // The first entry of the trusted data is the pruning point itself.
         let Some(pruning_point_entry) = entry_stream.next().await? else {
             return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
@@ -621,7 +611,7 @@ impl IbdFlow {
                 }
             ))
             .await?;
-        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route, self.header_format);
+        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
         if let Some(chunk) = chunk_stream.next().await? {
             let (mut prev_daa_score, mut prev_timestamp) = {
@@ -776,7 +766,7 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
-        let chunk: HeadersChunk = Versioned(self.header_format, msg).try_into()?;
+        let chunk: HeadersChunk = msg.try_into()?;
         let jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
         try_join_all(jobs).await?;
