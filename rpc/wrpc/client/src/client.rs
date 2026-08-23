@@ -633,6 +633,7 @@ impl RpcApi for KaspaRpcClient {
             GetBlocks,
             GetBlockTemplate,
             GetCurrentBlockColor,
+            GetBlockRewardInfo,
             GetCoinSupply,
             GetConnectedPeerInfo,
             GetConnections,
@@ -664,6 +665,7 @@ impl RpcApi for KaspaRpcClient {
             SubmitTransaction,
             SubmitTransactionReplacement,
             Unban,
+            GetSeqCommitLaneProof,
         ]
     );
 

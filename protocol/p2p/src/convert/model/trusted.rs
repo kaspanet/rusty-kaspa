@@ -69,7 +69,7 @@ impl TrustedDataPackage {
         }
 
         // Topological sort
-        blocks.sort_by(|a, b| a.block.header.blue_work.cmp(&b.block.header.blue_work));
+        blocks.sort_by_key(|a| a.block.header.blue_work);
 
         Ok(blocks)
     }

@@ -106,6 +106,24 @@ impl StratumContext {
         self.remote_port
     }
 
+    /// Assign a stable display label when the miner omits `wallet.worker` in authorize.
+    ///
+    /// Uses connection id (`asic-3`), not IP, so Prometheus/dashboard metrics stay non-empty and
+    /// do not leak addresses.
+    pub fn ensure_default_worker_name(&self) {
+        let mut name = self.worker_name.lock();
+        if !name.trim().is_empty() {
+            return;
+        }
+        *name = if let Some(id) = self.id() { format!("asic-{}", id) } else { format!("asic-{}", self.remote_port) };
+    }
+
+    /// Worker label for stats, Prometheus, and dashboard (never empty after authorize).
+    pub fn effective_worker_name(&self) -> String {
+        self.ensure_default_worker_name();
+        self.worker_name.lock().clone()
+    }
+
     /// Send a JSON-RPC response
     pub async fn reply(&self, response: JsonRpcResponse) -> Result<(), ErrorDisconnected> {
         if self.disconnecting.load(Ordering::Acquire) {

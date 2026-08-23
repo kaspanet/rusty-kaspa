@@ -1,5 +1,4 @@
 use super::*;
-use crate::constants;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::statuses::StatusesStoreReader;
@@ -29,8 +28,9 @@ impl HeaderProcessor {
     }
 
     fn check_header_version(&self, header: &Header) -> BlockProcessResult<()> {
-        if header.version != constants::BLOCK_VERSION {
-            return Err(RuleError::WrongBlockVersion(header.version));
+        let expected_version = self.block_version;
+        if header.version != expected_version {
+            return Err(RuleError::WrongBlockVersion(header.version, expected_version));
         }
         Ok(())
     }

@@ -1,5 +1,5 @@
 use crate::hex::FromHex;
-use std::{fmt::Display, str};
+use core::{fmt::Display, str};
 
 pub trait Deserialize<'de>: Sized + FromHex + TryFrom<&'de [u8]> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -25,8 +25,8 @@ where
 }
 
 pub struct FromHexVisitor<'de, T: FromHex> {
-    marker: std::marker::PhantomData<T>,
-    lifetime: std::marker::PhantomData<&'de ()>,
+    marker: core::marker::PhantomData<T>,
+    lifetime: core::marker::PhantomData<&'de ()>,
 }
 
 impl<T: FromHex> Default for FromHexVisitor<'_, T> {
@@ -38,7 +38,7 @@ impl<T: FromHex> Default for FromHexVisitor<'_, T> {
 impl<'de, T: FromHex> serde::de::Visitor<'de> for FromHexVisitor<'de, T> {
     type Value = T;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(formatter, "string, str or slice, vec of bytes")
     }
     #[inline]
@@ -58,7 +58,7 @@ impl<'de, T: FromHex> serde::de::Visitor<'de> for FromHexVisitor<'de, T> {
     }
 
     #[inline]
-    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    fn visit_string<E>(self, v: alloc::string::String) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
@@ -84,7 +84,7 @@ impl<'de, T: FromHex> serde::de::Visitor<'de> for FromHexVisitor<'de, T> {
     }
 
     #[inline]
-    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+    fn visit_byte_buf<E>(self, v: alloc::vec::Vec<u8>) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {

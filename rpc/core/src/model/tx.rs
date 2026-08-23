@@ -1,17 +1,18 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::{
-    ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
-    UtxoEntry,
-};
-use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
-use serde::{Deserialize, Serialize};
-use workflow_serializer::prelude::*;
-
 use crate::{
     RpcOptionalHeader, RpcOptionalTransaction,
     prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
+use kaspa_addresses::Address;
+use kaspa_consensus_core::tx::{
+    CovenantBinding, ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint,
+    TransactionOutput, UtxoEntry,
+};
+use kaspa_hashes::Hash;
+use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
+use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
+use workflow_serializer::prelude::*;
 
 /// Represents the ID of a Kaspa transaction
 pub type RpcTransactionId = TransactionId;
@@ -26,11 +27,18 @@ pub struct RpcUtxoEntry {
     pub script_public_key: ScriptPublicKey,
     pub block_daa_score: u64,
     pub is_coinbase: bool,
+    pub covenant_id: Option<RpcHash>,
 }
 
 impl RpcUtxoEntry {
-    pub fn new(amount: u64, script_public_key: ScriptPublicKey, block_daa_score: u64, is_coinbase: bool) -> Self {
-        Self { amount, script_public_key, block_daa_score, is_coinbase }
+    pub fn new(
+        amount: u64,
+        script_public_key: ScriptPublicKey,
+        block_daa_score: u64,
+        is_coinbase: bool,
+        covenant_id: Option<RpcHash>,
+    ) -> Self {
+        Self { amount, script_public_key, block_daa_score, is_coinbase, covenant_id }
     }
 }
 
@@ -41,6 +49,7 @@ impl From<UtxoEntry> for RpcUtxoEntry {
             script_public_key: entry.script_public_key,
             block_daa_score: entry.block_daa_score,
             is_coinbase: entry.is_coinbase,
+            covenant_id: entry.covenant_id,
         }
     }
 }
@@ -52,17 +61,19 @@ impl From<RpcUtxoEntry> for UtxoEntry {
             script_public_key: entry.script_public_key,
             block_daa_score: entry.block_daa_score,
             is_coinbase: entry.is_coinbase,
+            covenant_id: entry.covenant_id,
         }
     }
 }
 
 impl Serializer for RpcUtxoEntry {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(u64, &self.amount, writer)?;
         store!(ScriptPublicKey, &self.script_public_key, writer)?;
         store!(u64, &self.block_daa_score, writer)?;
         store!(bool, &self.is_coinbase, writer)?;
+        store!(Option<RpcHash>, &self.covenant_id, writer)?;
 
         Ok(())
     }
@@ -70,13 +81,14 @@ impl Serializer for RpcUtxoEntry {
 
 impl Deserializer for RpcUtxoEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let amount = load!(u64, reader)?;
         let script_public_key = load!(ScriptPublicKey, reader)?;
         let block_daa_score = load!(u64, reader)?;
         let is_coinbase = load!(bool, reader)?;
+        let covenant_id = if version > 1 { load!(Option<RpcHash>, reader)? } else { None };
 
-        Ok(Self { amount, script_public_key, block_daa_score, is_coinbase })
+        Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, covenant_id })
     }
 }
 
@@ -142,6 +154,8 @@ pub struct RpcTransactionInput {
     pub signature_script: Vec<u8>,
     pub sequence: u64,
     pub sig_op_count: u8,
+    #[serde(default)]
+    pub compute_budget: u16,
     pub verbose_data: Option<RpcTransactionInputVerboseData>,
 }
 
@@ -152,6 +166,7 @@ impl std::fmt::Debug for RpcTransactionInput {
             .field("signature_script", &self.signature_script.to_hex())
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.sig_op_count)
+            .field("compute_budget", &self.compute_budget)
             .field("verbose_data", &self.verbose_data)
             .finish()
     }
@@ -163,7 +178,8 @@ impl From<TransactionInput> for RpcTransactionInput {
             previous_outpoint: input.previous_outpoint.into(),
             signature_script: input.signature_script,
             sequence: input.sequence,
-            sig_op_count: input.sig_op_count,
+            sig_op_count: input.compute_commit.sig_op_count().unwrap_or(0),
+            compute_budget: input.compute_commit.compute_budget().unwrap_or(0),
             verbose_data: None,
         }
     }
@@ -177,12 +193,13 @@ impl RpcTransactionInput {
 
 impl Serializer for RpcTransactionInput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         serialize!(RpcTransactionOutpoint, &self.previous_outpoint, writer)?;
         store!(Vec<u8>, &self.signature_script, writer)?;
         store!(u64, &self.sequence, writer)?;
         store!(u8, &self.sig_op_count, writer)?;
         serialize!(Option<RpcTransactionInputVerboseData>, &self.verbose_data, writer)?;
+        store!(u16, &self.compute_budget, writer)?;
 
         Ok(())
     }
@@ -190,14 +207,15 @@ impl Serializer for RpcTransactionInput {
 
 impl Deserializer for RpcTransactionInput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let previous_outpoint = deserialize!(RpcTransactionOutpoint, reader)?;
         let signature_script = load!(Vec<u8>, reader)?;
         let sequence = load!(u64, reader)?;
         let sig_op_count = load!(u8, reader)?;
         let verbose_data = deserialize!(Option<RpcTransactionInputVerboseData>, reader)?;
+        let compute_budget = if version > 1 { load!(u16, reader)? } else { 0 };
 
-        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data })
+        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, verbose_data })
     }
 }
 
@@ -227,6 +245,7 @@ pub struct RpcTransactionOutput {
     pub value: u64,
     pub script_public_key: RpcScriptPublicKey,
     pub verbose_data: Option<RpcTransactionOutputVerboseData>,
+    pub covenant: Option<RpcCovenantBinding>,
 }
 
 impl RpcTransactionOutput {
@@ -237,29 +256,81 @@ impl RpcTransactionOutput {
 
 impl From<TransactionOutput> for RpcTransactionOutput {
     fn from(output: TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: output.script_public_key, verbose_data: None }
+        Self {
+            value: output.value,
+            script_public_key: output.script_public_key,
+            verbose_data: None,
+            covenant: output.covenant.map(Into::into),
+        }
     }
 }
 
 impl Serializer for RpcTransactionOutput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(u64, &self.value, writer)?;
         store!(RpcScriptPublicKey, &self.script_public_key, writer)?;
         serialize!(Option<RpcTransactionOutputVerboseData>, &self.verbose_data, writer)?;
-
+        serialize!(Option<RpcCovenantBinding>, &self.covenant, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for RpcTransactionOutput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let value = load!(u64, reader)?;
         let script_public_key = load!(RpcScriptPublicKey, reader)?;
         let verbose_data = deserialize!(Option<RpcTransactionOutputVerboseData>, reader)?;
+        let covenant = if version > 1 { deserialize!(Option<RpcCovenantBinding>, reader)? } else { None };
 
-        Ok(Self { value, script_public_key, verbose_data })
+        Ok(Self { value, script_public_key, verbose_data, covenant })
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Debug, Serialize, Deserialize, Copy)]
+pub struct RpcCovenantBinding(pub CovenantBinding);
+
+impl RpcCovenantBinding {
+    pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
+        Self(CovenantBinding { authorizing_input, covenant_id })
+    }
+}
+
+impl From<CovenantBinding> for RpcCovenantBinding {
+    fn from(value: CovenantBinding) -> Self {
+        Self(value)
+    }
+}
+
+impl From<RpcCovenantBinding> for CovenantBinding {
+    fn from(value: RpcCovenantBinding) -> Self {
+        value.0
+    }
+}
+
+impl From<kaspa_consensus_client::CovenantBinding> for RpcCovenantBinding {
+    fn from(covenant: kaspa_consensus_client::CovenantBinding) -> Self {
+        CovenantBinding::from(covenant).into()
+    }
+}
+
+impl Serializer for RpcCovenantBinding {
+    fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(u16, &self.0.authorizing_input, writer)?;
+        store!(Hash, &self.0.covenant_id, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcCovenantBinding {
+    fn deserialize<R: Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let authorizing_input = load!(u16, reader)?;
+        let covenant_id = load!(Hash, reader)?;
+        Ok(Self(CovenantBinding { authorizing_input, covenant_id }))
     }
 }
 
@@ -292,8 +363,7 @@ impl Deserializer for RpcTransactionOutputVerboseData {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone)]
 pub struct RpcTransaction {
     pub version: u16,
     pub inputs: Vec<RpcTransactionInput>,
@@ -301,10 +371,92 @@ pub struct RpcTransaction {
     pub lock_time: u64,
     pub subnetwork_id: RpcSubnetworkId,
     pub gas: u64,
-    #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
-    pub mass: u64,
+    pub storage_mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
+}
+
+// This struct is used only for human-readable serialization of RpcTransaction, and is not intended to be used directly.
+// It exists to avoid breaking existing clients that rely on the "mass" field in JSON serialization of RpcTransaction,
+// while allowing us to rename the internal storage mass field to storage_mass for better clarity.
+// Once the "mass" field is removed from RpcTransaction, this struct and the related code can be removed as well.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RpcTransactionHumanReadable {
+    version: u16,
+    inputs: Vec<RpcTransactionInput>,
+    outputs: Vec<RpcTransactionOutput>,
+    lock_time: u64,
+    subnetwork_id: RpcSubnetworkId,
+    gas: u64,
+    #[serde(with = "hex::serde")]
+    payload: Vec<u8>,
+    storage_mass: Option<u64>,
+    mass: Option<u64>, // Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future.
+    verbose_data: Option<RpcTransactionVerboseData>,
+}
+
+impl<'de> serde::Deserialize<'de> for RpcTransaction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            return Err(serde::de::Error::custom("RpcTransaction does not support non-human-readable deserialization"));
+        }
+
+        let value = RpcTransactionHumanReadable::deserialize(deserializer)?;
+        let storage_mass = match (value.storage_mass, value.mass) {
+            (Some(storage_mass), Some(mass)) if storage_mass != mass => {
+                return Err(serde::de::Error::custom(format!(
+                    "storageMass and mass must match when both are provided: storageMass={storage_mass}, mass={mass}"
+                )));
+            }
+            (Some(storage_mass), _) => storage_mass,
+            (None, None) => return Err(serde::de::Error::custom("Either storageMass or mass must be provided")),
+            (None, Some(mass)) => mass,
+        };
+
+        Ok(Self {
+            version: value.version,
+            inputs: value.inputs,
+            outputs: value.outputs,
+            lock_time: value.lock_time,
+            subnetwork_id: value.subnetwork_id,
+            gas: value.gas,
+            payload: value.payload,
+            storage_mass,
+            verbose_data: value.verbose_data,
+        })
+    }
+}
+
+impl Serialize for RpcTransaction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if !serializer.is_human_readable() {
+            return Err(serde::ser::Error::custom("RpcTransaction does not support non-human-readable serialization"));
+        }
+
+        // We use this destructuring so any change in the fields of RpcTransaction will cause a compile error here, reminding us to update the serialization code of RpcTransactionHumanReadable accordingly.
+        let Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass, verbose_data } = self;
+
+        let hr = RpcTransactionHumanReadable {
+            version: *version,
+            inputs: inputs.clone(),
+            outputs: outputs.clone(),
+            lock_time: *lock_time,
+            subnetwork_id: *subnetwork_id,
+            gas: *gas,
+            payload: payload.clone(),
+            storage_mass: Some(*storage_mass),
+            mass: Some(*storage_mass),
+            verbose_data: verbose_data.clone(),
+        };
+        hr.serialize(serializer)
+    }
 }
 
 impl std::fmt::Debug for RpcTransaction {
@@ -315,7 +467,7 @@ impl std::fmt::Debug for RpcTransaction {
             .field("subnetwork_id", &self.subnetwork_id)
             .field("gas", &self.gas)
             .field("payload", &self.payload.to_hex())
-            .field("mass", &self.mass)
+            .field("storage_mass", &self.storage_mass)
             .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
@@ -333,7 +485,7 @@ impl Serializer for RpcTransaction {
         store!(RpcSubnetworkId, &self.subnetwork_id, writer)?;
         store!(u64, &self.gas, writer)?;
         store!(Vec<u8>, &self.payload, writer)?;
-        store!(u64, &self.mass, writer)?;
+        store!(u64, &self.storage_mass, writer)?;
         serialize!(Option<RpcTransactionVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -353,7 +505,107 @@ impl Deserializer for RpcTransaction {
         let mass = load!(u64, reader)?;
         let verbose_data = deserialize!(Option<RpcTransactionVerboseData>, reader)?;
 
-        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data })
+        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass: mass, verbose_data })
+    }
+}
+
+#[cfg(test)]
+mod rpc_transaction_json_tests {
+    use super::*;
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use serde_json::json;
+
+    fn transaction() -> RpcTransaction {
+        RpcTransaction {
+            version: 1,
+            inputs: vec![],
+            outputs: vec![],
+            lock_time: 0,
+            subnetwork_id: SubnetworkId::from_byte(0),
+            gas: 0,
+            payload: vec![],
+            storage_mass: 123,
+            verbose_data: None,
+        }
+    }
+
+    #[test]
+    fn rpc_transaction_json_serializes_mass_and_storage_mass() {
+        let json = serde_json::to_value(transaction()).unwrap();
+
+        assert_eq!(json["mass"], json!(123));
+        assert_eq!(json["storageMass"], json!(123));
+    }
+
+    #[test]
+    fn rpc_transaction_json_deserializes_mass_or_storage_mass_to_storage_mass() {
+        let storage_mass_json = r#"{
+            "version": 1,
+            "inputs": [],
+            "outputs": [],
+            "lockTime": 0,
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": 0,
+            "payload": "",
+            "storageMass": 123,
+            "verboseData": null
+        }"#;
+        let storage_mass_tx: RpcTransaction = serde_json::from_str(storage_mass_json).unwrap();
+        assert_eq!(storage_mass_tx.storage_mass, 123);
+
+        let mass_json = r#"{
+            "version": 1,
+            "inputs": [],
+            "outputs": [],
+            "lockTime": 0,
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": 0,
+            "payload": "",
+            "mass": 123,
+            "verboseData": null
+        }"#;
+        let mass_tx: RpcTransaction = serde_json::from_str(mass_json).unwrap();
+        assert_eq!(mass_tx.storage_mass, 123);
+    }
+
+    #[test]
+    fn rpc_transaction_json_deserializes_matching_mass_and_storage_mass_to_storage_mass() {
+        let json = r#"{
+            "version": 1,
+            "inputs": [],
+            "outputs": [],
+            "lockTime": 0,
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": 0,
+            "payload": "",
+            "storageMass": 123,
+            "mass": 123,
+            "verboseData": null
+        }"#;
+
+        let tx: RpcTransaction = serde_json::from_str(json).unwrap();
+
+        assert_eq!(tx.storage_mass, 123);
+    }
+
+    #[test]
+    fn rpc_transaction_json_rejects_conflicting_positive_mass_and_storage_mass() {
+        let json = r#"{
+            "version": 1,
+            "inputs": [],
+            "outputs": [],
+            "lockTime": 0,
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": 0,
+            "payload": "",
+            "storageMass": 123,
+            "mass": 456,
+            "verboseData": null
+        }"#;
+
+        let err = serde_json::from_str::<RpcTransaction>(json).unwrap_err();
+
+        assert!(err.to_string().contains("storageMass and mass must match when both are provided"), "got: {err}");
     }
 }
 

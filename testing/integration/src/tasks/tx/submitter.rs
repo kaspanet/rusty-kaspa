@@ -27,7 +27,7 @@ pub struct TransactionSubmitterTask {
 }
 
 impl TransactionSubmitterTask {
-    const MAX_ATTEMPTS: usize = 5;
+    const MAX_ATTEMPTS: usize = 500;
 
     pub fn new(pool: ClientPool<IndexedTransaction>, allow_orphan: bool, stopper: Stopper) -> Self {
         Self { pool, allow_orphan, stopper }

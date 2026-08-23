@@ -1,3 +1,4 @@
+pub(crate) mod bounds;
 pub mod errors;
 mod processor;
 mod utxo_inquirer;

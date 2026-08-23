@@ -1,5 +1,6 @@
 use std::collections::{HashMap, hash_map::Entry};
 use std::hash::Hash;
+use std::vec::Vec;
 
 pub trait NestedHashMapExtensions<K, K2, V> {
     /// For use with a hashmap within a hashmap, takes an outer and inner key, and an inner value

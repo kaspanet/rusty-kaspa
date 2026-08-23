@@ -24,7 +24,7 @@ kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["triggers"] }
 log.workspace = true
 parking_lot.workspace = true
 paste.workspace = true

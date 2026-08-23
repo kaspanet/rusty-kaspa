@@ -1012,6 +1012,9 @@ build_wrpc_wasm_bindgen_interface!(
         /// Checks if block is blue or not.
         /// Returned information: Block blueness.
         GetCurrentBlockColor,
+        /// Retrieves reward information for a block.
+        /// Returned information: block color, confirmation count, reward, merging chain block, and header.
+        GetBlockRewardInfo,
         /// Retrieves the estimated DAA (Difficulty Adjustment Algorithm)
         /// score timestamp estimate.
         /// Returned information: DAA score timestamp estimate.

@@ -8,16 +8,12 @@ use kaspa_consensus_core::{
     config::params::MAX_DIFFICULTY_TARGET_AS_F64,
     errors::difficulty::{DifficultyError, DifficultyResult},
 };
-use kaspa_core::{info, log::CRESCENDO_KEYWORD};
 use kaspa_hashes::Hash;
 use kaspa_math::{Uint256, Uint320};
 use std::{
     cmp::{Ordering, max},
     ops::Deref,
-    sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering as AtomicOrdering},
-    },
+    sync::Arc,
 };
 
 use super::ghostdag::ordering::SortableBlock;
@@ -74,52 +70,6 @@ trait DifficultyManagerExtension {
             min_difficulty_window_size,
             difficulty_window_size
         );
-    }
-}
-
-#[derive(Clone)]
-struct _CrescendoLogger {
-    _steps: Arc<AtomicU8>,
-}
-
-impl _CrescendoLogger {
-    fn _new() -> Self {
-        Self { _steps: Arc::new(AtomicU8::new(Self::_ACTIVATE)) }
-    }
-
-    const _ACTIVATE: u8 = 0;
-    const _DYNAMIC: u8 = 1;
-    const _FULL: u8 = 2;
-
-    pub fn _report_activation_progress(&self, step: u8) -> bool {
-        if self._steps.compare_exchange(step, step + 1, AtomicOrdering::SeqCst, AtomicOrdering::SeqCst).is_ok() {
-            match step {
-                Self::_ACTIVATE => {
-                    info!(target: CRESCENDO_KEYWORD,
-                        r#"
-        ____                                  _             
-       / ___|_ __ ___  ___  ___ ___ _ __   __| | ___        
-      | |   | '__/ _ \/ __|/ __/ _ \ '_ \ / _` |/ _ \       
-      | |___| | |  __/\__ \ (_|  __/ | | | (_| | (_) |      
-       \____|_|  \___||___/\___\___|_| |_|\__,_|\___/       
-  _ _                       __      _  ___  _               
- / | |__  _ __  ___         \ \    / |/ _ \| |__  _ __  ___ 
- | | '_ \| '_ \/ __|    _____\ \   | | | | | '_ \| '_ \/ __|
- | | |_) | |_) \__ \   |_____/ /   | | |_| | |_) | |_) \__ \
- |_|_.__/| .__/|___/        /_/    |_|\___/|_.__/| .__/|___/
-         |_|                                     |_|    
-"#
-                    );
-                    info!(target: CRESCENDO_KEYWORD, "[Crescendo] Accelerating block rate 10 fold")
-                }
-                Self::_DYNAMIC => {}
-                Self::_FULL => {}
-                _ => {}
-            }
-            true
-        } else {
-            false
-        }
     }
 }
 

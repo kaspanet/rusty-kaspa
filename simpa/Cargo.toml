@@ -42,6 +42,9 @@ serde.workspace = true
 faster-hex.workspace = true
 kaspa-testing-integration.workspace = true
 
+[dev-dependencies]
+kaspa-consensus = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
+kaspa-smt-store = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]

@@ -34,7 +34,11 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
   "mass_per_tx_byte": 1,
   "mass_per_script_pub_key_byte": 10,
   "mass_per_sig_op": 1000,
-  "max_block_mass": 500000,
+  "block_mass_limits": {
+    "storage": 500000,
+    "compute": 500000,
+    "transient": 1000000
+  },
   "storage_mass_parameter": 10000,
   "deflationary_phase_daa_score": 15519600,
   "pre_deflationary_phase_base_subsidy": 50000000000,
@@ -53,13 +57,17 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
     "pruning_depth": 1080000,
     "coinbase_maturity": 200
   },
+  "block_lane_limits": {
+    "lanes_per_block": 16,
+    "gas_per_lane": 500000
+  },
   "crescendo_activation": 0
 }
 ```
 
 All high level (non-nested) fields are optional, and if omitted, their default values in the respective network will be used. 
-The `blockrate` field must either be absent or provided in full with all subfields (missing subfields will default to zero and not to default network params). This is
-because they have logical relations and should be modified as a unit.  
+Unknown field names are rejected, so misspelled or obsolete keys make startup fail instead of being ignored.
+The `blockrate` field must either be absent or provided in full with all subfields. This is because they have logical relations and should be modified as a unit.
 
 ## Available parameters
 | Field                                       | Description                |
@@ -78,7 +86,8 @@ because they have logical relations and should be modified as a unit.
 | mass_per_tx_byte                            | Mass per transaction byte     |
 | mass_per_script_pub_key_byte                | Mass per script public key byte |
 | mass_per_sig_op                             | Mass per signature operation  |
-| max_block_mass                              | Maximum block mass            |
+| block_mass_limits                           | Per-dimension block mass limits |
+| block_lane_limits                           | Block lane limits |
 | storage_mass_parameter                      | Storage mass parameter        |
 | deflationary_phase_daa_score                | Deflationary phase DAA score  |
 | pre_deflationary_phase_base_subsidy         | Pre-deflationary phase base subsidy |
@@ -102,6 +111,21 @@ because they have logical relations and should be modified as a unit.
 | finality_depth                      | Finality depth                      |
 | pruning_depth                       | Pruning depth                       |
 | coinbase_maturity                   | Coinbase maturity                   |
+
+**block_mass_limits sub-fields:**
+
+| Field                              | Description                |
+|-------------------------------------|----------------------------|
+| storage                             | Storage mass limit         |
+| compute                             | Compute mass limit         |
+| transient                           | Transient mass limit       |
+
+**block_lane_limits sub-fields:**
+
+| Field                              | Description                |
+|-------------------------------------|----------------------------|
+| lanes_per_block                     | Maximum lanes per block    |
+| gas_per_lane                        | Maximum gas per lane       |
 
 Refer to the source definition in
 `consensus/core/src/config/params.rs` for the full list of available fields and

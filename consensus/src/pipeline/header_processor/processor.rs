@@ -108,6 +108,7 @@ pub struct HeaderProcessor {
     pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
+    pub(super) block_version: u16,
 
     // DB
     db: Arc<DB>,
@@ -194,6 +195,7 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit(),
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
+            block_version: params.block_version(),
         }
     }
 
@@ -287,10 +289,12 @@ impl HeaderProcessor {
         let mut ctx = self.build_processing_context(header, block_level);
         self.ghostdag(&mut ctx);
         self.pre_pow_validation(&mut ctx, header)?;
+
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
             return Err(e);
         }
+
         Ok(ctx)
     }
 
@@ -319,7 +323,7 @@ impl HeaderProcessor {
                 .direct_parents()
                 .iter()
                 .copied()
-                // filter out parents not part of the kept contiguous Dag - which is representd by the stored relations 
+                // filter out parents not part of the kept contiguous Dag - which is represented by the stored relations 
                 .filter(|&parent| relations_read.has(parent).unwrap())
                 .collect_vec()
                 // This kicks-in only for trusted blocks. If an ordinary block is 

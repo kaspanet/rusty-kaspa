@@ -1,4 +1,4 @@
-use super::sighash_type::{self, SigHashType};
+use super::sighash_type::{self, SigHashType as SigHashTypeNative};
 use wasm_bindgen::prelude::*;
 
 /// Kaspa Sighash types allowed by consensus
@@ -13,15 +13,15 @@ pub enum SighashType {
     SingleAnyOneCanPay,
 }
 
-impl From<SighashType> for SigHashType {
-    fn from(sighash_type: SighashType) -> SigHashType {
+impl From<SighashType> for SigHashTypeNative {
+    fn from(sighash_type: SighashType) -> SigHashTypeNative {
         match sighash_type {
             SighashType::All => sighash_type::SIG_HASH_ALL,
             SighashType::None => sighash_type::SIG_HASH_NONE,
             SighashType::Single => sighash_type::SIG_HASH_SINGLE,
-            SighashType::AllAnyOneCanPay => sighash_type::SIG_HASH_ANY_ONE_CAN_PAY,
-            SighashType::NoneAnyOneCanPay => SigHashType(sighash_type::SIG_HASH_NONE.0 | sighash_type::SIG_HASH_ANY_ONE_CAN_PAY.0),
-            SighashType::SingleAnyOneCanPay => SigHashType(sighash_type::SIG_HASH_SINGLE.0 | sighash_type::SIG_HASH_ANY_ONE_CAN_PAY.0),
+            SighashType::AllAnyOneCanPay => sighash_type::SIG_HASH_ALL | sighash_type::SIG_HASH_ANY_ONE_CAN_PAY,
+            SighashType::NoneAnyOneCanPay => sighash_type::SIG_HASH_NONE | sighash_type::SIG_HASH_ANY_ONE_CAN_PAY,
+            SighashType::SingleAnyOneCanPay => sighash_type::SIG_HASH_SINGLE | sighash_type::SIG_HASH_ANY_ONE_CAN_PAY,
         }
     }
 }

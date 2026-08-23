@@ -1,5 +1,5 @@
-use std::{cmp::Reverse, collections::BinaryHeap};
-
+use alloc::collections::BinaryHeap;
+use core::cmp::Reverse;
 pub trait BinaryHeapExtensions<T> {
     fn into_sorted_iter(self) -> BinaryHeapIntoSortedIter<T>;
 }

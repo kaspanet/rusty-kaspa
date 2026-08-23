@@ -15,13 +15,14 @@ wasm32-types = []
 [dependencies]
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-hashes.workspace = true
+kaspa-hashes = { workspace = true, features = ["workflow"] }
 kaspa-math.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
 
 ahash.workspace = true
+borsh.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 hex.workspace = true
@@ -37,6 +38,9 @@ itertools.workspace = true
 
 workflow-wasm.workspace = true
 workflow-log.workspace = true
+
+[dev-dependencies]
+wasm-bindgen-test.workspace = true
 
 [lints]
 workspace = true

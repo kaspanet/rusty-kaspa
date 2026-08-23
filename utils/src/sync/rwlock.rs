@@ -112,6 +112,7 @@ impl Drop for RfRwLockOwnedWriteGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::println;
     use std::{
         sync::atomic::{AtomicBool, Ordering::SeqCst},
         time::Duration,

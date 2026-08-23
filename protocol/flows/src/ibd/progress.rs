@@ -22,7 +22,7 @@ impl ProgressReporter {
     pub fn new(low_daa_score: u64, mut high_daa_score: u64, object_name: &'static str) -> Self {
         if high_daa_score <= low_daa_score {
             // Avoid a zero or negative diff
-            high_daa_score = low_daa_score + 1;
+            high_daa_score = low_daa_score.saturating_add(1);
         }
         Self {
             low_daa_score,
@@ -44,7 +44,7 @@ impl ProgressReporter {
         self.processed += self.current_batch;
         self.current_batch = 0;
         if current_daa_score > self.high_daa_score {
-            self.high_daa_score = current_daa_score + 1; // + 1 for keeping it at 99%
+            self.high_daa_score = current_daa_score.saturating_add(1); // + 1 for keeping it at 99%
         }
         let relative_daa_score = current_daa_score.saturating_sub(self.low_daa_score);
         let percent = ((relative_daa_score as f64 / (self.high_daa_score - self.low_daa_score) as f64) * 100.0) as i32;

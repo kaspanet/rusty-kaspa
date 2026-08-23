@@ -13,7 +13,7 @@ repository.workspace = true
 borsh.workspace = true
 faster-hex.workspace = true
 js-sys.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["mem_size"] }
 malachite-base.workspace = true
 malachite-nz.workspace = true
 serde-wasm-bindgen.workspace = true

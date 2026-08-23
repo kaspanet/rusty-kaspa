@@ -55,6 +55,24 @@ impl Mempool {
         }
     }
 
+    /// Validates the same RBF policy constraints as [`Self::get_replace_by_fee_constraint`],
+    /// but skips computing the feerate threshold for callers that do not need it.
+    pub(super) fn validate_replace_by_fee_policy_constraints(
+        &self,
+        transaction: &MutableTransaction,
+        rbf_policy: RbfPolicy,
+    ) -> RuleResult<()> {
+        match rbf_policy {
+            RbfPolicy::Forbidden => self.transaction_pool.check_double_spends(transaction),
+            RbfPolicy::Allowed => Ok(()),
+            RbfPolicy::Mandatory => match self.transaction_pool.get_double_spend_transaction_ids(transaction).len() {
+                0 => Err(RuleError::RejectRbfNoDoubleSpend),
+                1 => Ok(()),
+                _ => Err(RuleError::RejectRbfTooManyDoubleSpendingTransactions),
+            },
+        }
+    }
+
     /// Executes replace by fee (RBF) for an incoming transaction and a policy.
     ///
     /// See [`RbfPolicy`] variants for details of each policy process and success conditions.
@@ -119,7 +137,9 @@ impl Mempool {
 
     fn get_double_spend_feerate(&self, double_spend: &DoubleSpend) -> RuleResult<f64> {
         let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
-        match owner.mtx.calculated_feerate() {
+        // RBF compares both transactions under the current mempool policy.
+        let cofactors = self.config.mempool_mass_cofactors;
+        match owner.mtx.calculated_feerate(&cofactors) {
             Some(double_spend_feerate) => Ok(double_spend_feerate),
             // Getting here is unexpected since a mempool owned tx should be populated with fee
             // and mass at this stage but nonetheless we fail gracefully
@@ -133,8 +153,9 @@ impl Mempool {
         double_spend: &DoubleSpend,
     ) -> RuleResult<&'a MempoolTransaction> {
         let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
+        let cofactors = self.config.mempool_mass_cofactors;
         if let (Some(transaction_feerate), Some(double_spend_feerate)) =
-            (transaction.calculated_feerate(), owner.mtx.calculated_feerate())
+            (transaction.calculated_feerate(&cofactors), owner.mtx.calculated_feerate(&cofactors))
         {
             if transaction_feerate > double_spend_feerate {
                 return Ok(owner);

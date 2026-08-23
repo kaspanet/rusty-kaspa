@@ -1,4 +1,5 @@
 use crate::{
+    EngineFlags,
     opcodes::codes::{OpBlake2b, OpCheckSig, OpCheckSigECDSA, OpData32, OpData33, OpEqual},
     script_builder::{ScriptBuilder, ScriptBuilderResult},
     script_class::ScriptClass,
@@ -55,7 +56,16 @@ pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
 
 /// Generates a signature script that fits a pay-to-script-hash script
 pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> ScriptBuilderResult<Vec<u8>> {
-    let redeem_script_as_data = ScriptBuilder::new().add_data(&redeem_script)?.drain();
+    pay_to_script_hash_signature_script_with_flags(redeem_script, signature, EngineFlags::default())
+}
+
+/// Generates a signature script that fits a pay-to-script-hash script, given engine flags to be used for the script builder.
+pub fn pay_to_script_hash_signature_script_with_flags(
+    redeem_script: Vec<u8>,
+    signature: Vec<u8>,
+    flags: EngineFlags,
+) -> ScriptBuilderResult<Vec<u8>> {
+    let redeem_script_as_data = ScriptBuilder::with_flags(flags).add_data(&redeem_script)?.drain();
     Ok(Vec::from_iter(signature.iter().copied().chain(redeem_script_as_data.iter().copied())))
 }
 
