@@ -166,8 +166,7 @@ mod tests {
     /// Post-Toccata wire for the same logical entry with `covenant_id = None`.
     const POST_TOCCATA_NONE_HEX: &str = "efcdab89674523010100";
     /// Post-Toccata wire with `covenant_id = Some(Hash::from_bytes([0x5a; 32]))`.
-    const POST_TOCCATA_SOME_HEX: &str =
-        "efcdab896745230101015a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
+    const POST_TOCCATA_SOME_HEX: &str = "efcdab896745230101015a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
     const SHARED_AMOUNT: u64 = 0x0123_4567_89ab_cdef;
 
     fn bytes_from_hex(hex: &str) -> Vec<u8> {

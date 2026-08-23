@@ -481,6 +481,7 @@ where
         })
     }
 
+    // For seeking multiple disjointed ranges in one db iterator pass
     pub fn multi_range_seek_iterator<'a>(
         &'a self,
         mut seek_ranges: impl Iterator<Item = RangeInclusive<TKey>> + 'a,

@@ -9,6 +9,7 @@ pub struct DbKey {
 }
 
 impl DbKey {
+    #[inline(always)]
     pub fn new<TKey>(prefix: &[u8], key: TKey) -> Self
     where
         TKey: Clone + AsRef<[u8]>,
