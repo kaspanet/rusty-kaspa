@@ -27,9 +27,8 @@ use kaspa_p2p_lib::{
     },
     dequeue_with_timeout, make_message, make_request,
     pb::{
-        RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
-        RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
-        kaspad_message::Payload,
+        RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestPruningPointAndItsAnticoneMessage,
+        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage, kaspad_message::Payload,
     },
 };
 use kaspa_utils::channel::JobReceiver;
@@ -47,7 +46,6 @@ pub struct IbdFlow {
     pub(super) ctx: FlowContext,
     pub(super) router: Arc<Router>,
     pub(super) incoming_route: IncomingRoute,
-    pub(super) body_only_ibd_permitted: bool,
     header_format: HeaderFormat,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
@@ -84,10 +82,9 @@ impl IbdFlow {
         router: Arc<Router>,
         incoming_route: IncomingRoute,
         relay_receiver: JobReceiver<Block>,
-        body_only_ibd_permitted: bool,
         header_format: HeaderFormat,
     ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted, header_format }
+        Self { ctx, router, incoming_route, relay_receiver, header_format }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -842,11 +839,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
     async fn sync_missing_trusted_bodies(&mut self, consensus: &ConsensusProxy) -> Result<(), ProtocolError> {
         info!("downloading pruning point anticone missing block data");
         let diesembodied_hashes = consensus.async_get_body_missing_anticone().await;
-        if self.body_only_ibd_permitted {
-            self.sync_missing_trusted_bodies_no_headers(consensus, diesembodied_hashes).await?
-        } else {
-            self.sync_missing_trusted_bodies_full_blocks(consensus, diesembodied_hashes).await?;
-        }
+        self.sync_missing_trusted_bodies_no_headers(consensus, diesembodied_hashes).await?;
         consensus.async_clear_body_missing_anticone_set().await;
         Ok(())
     }
@@ -878,44 +871,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                     return Err(ProtocolError::OtherOwned(format!("sent empty block body for block {}", hash)));
                 }
                 let block = Block { header: blk_header, transactions: blk_body.into() };
-                // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
-                // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
-                // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
-                jobs.push(
-                    consensus
-                        .validate_and_insert_trusted_block(TrustedBlock::new(block, consensus.async_get_ghostdag_data(hash).await?))
-                        .virtual_state_task,
-                );
-            }
-            try_join_all(jobs).await?; // TODO (relaxed): be more efficient with batching as done with block bodies in general
-        }
-        Ok(())
-    }
-    async fn sync_missing_trusted_bodies_full_blocks(
-        &mut self,
-        consensus: &ConsensusProxy,
-        diesembodied_hashes: Vec<Hash>,
-    ) -> Result<(), ProtocolError> {
-        let iter = diesembodied_hashes.chunks(IBD_BATCH_SIZE);
-        for chunk in iter {
-            self.router
-                .enqueue(make_message!(
-                    Payload::RequestIbdBlocks,
-                    RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
-                ))
-                .await?;
-            let mut jobs = Vec::with_capacity(chunk.len());
-
-            for &hash in chunk.iter() {
-                // TODO: change to BodyOnly requests when incorporated
-                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let block: Block = Versioned(self.header_format, msg).try_into()?;
-                if block.hash() != hash {
-                    return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", hash, block.hash())));
-                }
-                if block.is_header_only() {
-                    return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-                }
                 // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
                 // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
                 // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
@@ -981,48 +936,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
     }
 
     async fn queue_block_processing_chunk(
-        &mut self,
-        consensus: &ConsensusProxy,
-        chunk: &[Hash],
-    ) -> Result<QueueChunkOutput, ProtocolError> {
-        if self.body_only_ibd_permitted {
-            self.queue_block_processing_chunk_body_only(consensus, chunk).await
-        } else {
-            self.queue_block_processing_chunk_full_block(consensus, chunk).await
-        }
-    }
-
-    async fn queue_block_processing_chunk_full_block(
-        &mut self,
-        consensus: &ConsensusProxy,
-        chunk: &[Hash],
-    ) -> Result<QueueChunkOutput, ProtocolError> {
-        let mut jobs = Vec::with_capacity(chunk.len());
-        let mut current_daa_score = 0;
-        let mut current_timestamp = 0;
-        self.router
-            .enqueue(make_message!(
-                Payload::RequestIbdBlocks,
-                RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
-            ))
-            .await?;
-        for &expected_hash in chunk {
-            let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-            let block: Block = Versioned(self.header_format, msg).try_into()?;
-            if block.hash() != expected_hash {
-                return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
-            }
-            if block.is_header_only() {
-                return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-            }
-            current_daa_score = block.header.daa_score;
-            current_timestamp = block.header.timestamp;
-            jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
-        }
-        Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
-    }
-
-    async fn queue_block_processing_chunk_body_only(
         &mut self,
         consensus: &ConsensusProxy,
         chunk: &[Hash],

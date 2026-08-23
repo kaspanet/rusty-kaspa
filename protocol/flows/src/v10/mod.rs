@@ -36,7 +36,6 @@ use std::sync::Arc;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) -> Vec<Box<dyn Flow>> {
     let (ibd_sender, relay_receiver) = channel::job();
-    let body_only_ibd_permitted = true;
     let header_format = HeaderFormat::from(protocol_version);
     let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
@@ -50,7 +49,6 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::BlockWithTrustedDataV4,
                 KaspadMessagePayloadType::DoneBlocksWithTrustedData,
                 KaspadMessagePayloadType::IbdChainBlockLocator,
-                KaspadMessagePayloadType::IbdBlock,
                 KaspadMessagePayloadType::BlockBody,
                 KaspadMessagePayloadType::TrustedData,
                 KaspadMessagePayloadType::PruningPoints,
@@ -62,7 +60,6 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::SmtLaneChunk,
             ]),
             relay_receiver,
-            body_only_ibd_permitted,
             header_format,
         )),
         Box::new(HandleRelayBlockRequests::new(
@@ -115,6 +112,8 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::RequestNextPruningPointSmtChunk,
             ]),
         )),
+        // The IBD client flow currently requests block bodies only. Keep serving full-block
+        // requests in case a future IBD flow needs them again.
         Box::new(HandleIbdBlockRequests::new(
             ctx.clone(),
             router.clone(),
