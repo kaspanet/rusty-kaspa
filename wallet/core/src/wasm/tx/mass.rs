@@ -63,7 +63,7 @@ pub fn update_unsigned_transaction_mass(network_id: NetworkIdT, tx: &Transaction
     if mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
         Ok(false)
     } else {
-        tx.set_mass(mass);
+        tx.set_storage_mass(mass);
         Ok(true)
     }
 }

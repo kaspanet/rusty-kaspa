@@ -18,7 +18,7 @@ kaspa-addresses.workspace=true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-core.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["sync"] }
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true

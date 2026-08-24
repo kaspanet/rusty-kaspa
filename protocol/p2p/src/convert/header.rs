@@ -5,41 +5,23 @@ use kaspa_hashes::Hash;
 use super::error::ConversionError;
 use super::option::TryIntoOptionEx;
 
-#[derive(Copy, Clone)]
-pub enum HeaderFormat {
-    Legacy,
-    Compressed,
-}
-
-/// Determines the header format based on the protocol version.
-impl From<u32> for HeaderFormat {
-    fn from(version: u32) -> Self {
-        if version >= 9 { Self::Compressed } else { Self::Legacy }
-    }
-}
-
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
 // ----------------------------------------------------------------------------
 
-impl From<(HeaderFormat, &Header)> for protowire::BlockHeader {
-    fn from(value: (HeaderFormat, &Header)) -> Self {
-        let (header_type, item) = value;
-
+impl From<&Header> for protowire::BlockHeader {
+    fn from(item: &Header) -> Self {
         Self {
             version: item.version.into(),
-            parents: match header_type {
-                HeaderFormat::Legacy => item.parents_by_level.expanded_iter().map(protowire::BlockLevelParents::from).collect(),
-                HeaderFormat::Compressed => item
-                    .parents_by_level
-                    .raw()
-                    .iter()
-                    .map(|(cum, hashes)| protowire::BlockLevelParents {
-                        cumulative_level: (*cum).into(),
-                        parent_hashes: hashes.iter().map(|h| h.into()).collect(),
-                    })
-                    .collect(),
-            },
+            parents: item
+                .parents_by_level
+                .raw()
+                .iter()
+                .map(|(cum, hashes)| protowire::BlockLevelParents {
+                    cumulative_level: (*cum).into(),
+                    parent_hashes: hashes.iter().map(|h| h.into()).collect(),
+                })
+                .collect(),
             hash_merkle_root: Some(item.hash_merkle_root.into()),
             accepted_id_merkle_root: Some(item.accepted_id_merkle_root.into()),
             utxo_commitment: Some(item.utxo_commitment.into()),
@@ -55,43 +37,23 @@ impl From<(HeaderFormat, &Header)> for protowire::BlockHeader {
     }
 }
 
-impl From<&[Hash]> for protowire::BlockLevelParents {
-    fn from(item: &[Hash]) -> Self {
-        // When converting to legacy p2p header, cumulative_level is set to 0
-        Self { parent_hashes: item.iter().map(|h| h.into()).collect(), cumulative_level: 0 }
-    }
-}
-
 // ----------------------------------------------------------------------------
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
-/// A wrapper for P2P header messages indicating the expected header format during conversion.
-pub struct Versioned<T>(pub HeaderFormat, pub T);
-
-impl TryFrom<Versioned<protowire::BlockHeader>> for Header {
+impl TryFrom<protowire::BlockHeader> for Header {
     type Error = ConversionError;
-    fn try_from(value: Versioned<protowire::BlockHeader>) -> Result<Self, Self::Error> {
-        let Versioned(header_format, item) = value;
-
-        let parents_by_level = match header_format {
-            HeaderFormat::Compressed => item
-                .parents
-                .into_iter()
-                .map(|p| {
-                    let cum = u8::try_from(p.cumulative_level)?;
-                    let parents = p.parent_hashes.into_iter().map(Hash::try_from).collect::<Result<_, _>>()?;
-                    Ok((cum, parents))
-                })
-                .collect::<Result<Vec<(u8, Vec<Hash>)>, ConversionError>>()?
-                .try_into()?,
-            HeaderFormat::Legacy => item
-                .parents
-                .into_iter()
-                .map(|p| p.parent_hashes.into_iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>())
-                .collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?
-                .try_into()?,
-        };
+    fn try_from(item: protowire::BlockHeader) -> Result<Self, Self::Error> {
+        let parents_by_level = item
+            .parents
+            .into_iter()
+            .map(|p| {
+                let cum = u8::try_from(p.cumulative_level)?;
+                let parents = p.parent_hashes.into_iter().map(Hash::try_from).collect::<Result<_, _>>()?;
+                Ok((cum, parents))
+            })
+            .collect::<Result<Vec<(u8, Vec<Hash>)>, ConversionError>>()?
+            .try_into()?;
 
         Ok(Header::new_finalized(
             item.version.try_into()?,
@@ -111,9 +73,37 @@ impl TryFrom<Versioned<protowire::BlockHeader>> for Header {
     }
 }
 
-impl TryFrom<protowire::BlockLevelParents> for Vec<Hash> {
-    type Error = ConversionError;
-    fn try_from(item: protowire::BlockLevelParents) -> Result<Self, Self::Error> {
-        item.parent_hashes.into_iter().map(|x| x.try_into()).collect()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compressed_parents_wire_roundtrip() {
+        let first_run = vec![1.into(), 2.into()];
+        let second_run = vec![3.into()];
+        let third_run = vec![4.into(), 5.into()];
+        let parents_by_level =
+            vec![first_run.clone(), first_run.clone(), first_run, second_run.clone(), second_run, third_run].try_into().unwrap();
+        let header = Header::new_finalized(
+            2,
+            parents_by_level,
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            1,
+            2,
+            3,
+            4,
+            5.into(),
+            6,
+            Default::default(),
+        );
+
+        let wire: protowire::BlockHeader = (&header).into();
+        assert_eq!(wire.parents.iter().map(|run| run.cumulative_level).collect::<Vec<_>>(), vec![3, 5, 6]);
+
+        let decoded: Header = wire.try_into().unwrap();
+        assert_eq!(decoded.parents_by_level, header.parents_by_level);
+        assert_eq!(decoded.hash, header.hash);
     }
 }

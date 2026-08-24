@@ -31,9 +31,12 @@ kaspa-merkle.workspace = true
 kaspa-muhash.workspace = true
 kaspa-notify.workspace = true
 kaspa-pow.workspace = true
+kaspa-seq-commit.workspace = true
+kaspa-smt.workspace = true
+kaspa-smt-store.workspace = true
 kaspa-txscript.workspace = true
 kaspa-txscript-errors.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["sim"] }
 log.workspace = true
 num-traits.workspace = true
 once_cell.workspace = true
@@ -75,6 +78,7 @@ harness = false
 [features]
 html_reports = []
 devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]
+test-smt-pruning-diagnostics = ["kaspa-smt-store/test-smt-pruning-diagnostics"]
 baseline-debugging = []
 
 [lints]

@@ -56,7 +56,13 @@ impl ConsensusMock {
         transaction.tx.outputs.iter().enumerate().for_each(|(i, x)| {
             utxos.insert(
                 TransactionOutpoint::new(transaction.id(), i as u32),
-                UtxoEntry::new(x.value, x.script_public_key.clone(), block_daa_score, transaction.tx.is_coinbase()),
+                UtxoEntry::new(
+                    x.value,
+                    x.script_public_key.clone(),
+                    block_daa_score,
+                    transaction.tx.is_coinbase(),
+                    x.covenant.map(|y| y.covenant_id),
+                ),
             );
         });
         // Register the transaction
@@ -133,7 +139,7 @@ impl ConsensusApi for ConsensusMock {
         // At this point we know all UTXO entries are populated, so we can safely calculate the fee
         let total_in: u64 = mutable_tx.entries.iter().map(|x| x.as_ref().unwrap().amount).sum();
         let total_out: u64 = mutable_tx.tx.outputs.iter().map(|x| x.value).sum();
-        mutable_tx.tx.set_mass(self.calculate_transaction_contextual_masses(mutable_tx).unwrap().storage_mass);
+        mutable_tx.tx.set_storage_mass(self.calculate_transaction_contextual_masses(mutable_tx).unwrap().storage_mass);
 
         if mutable_tx.calculated_fee.is_none() {
             let calculated_fee = total_in - total_out;
@@ -154,9 +160,9 @@ impl ConsensusApi for ConsensusMock {
         transactions.iter_mut().map(|x| self.validate_mempool_transaction(x, &Default::default())).collect()
     }
 
-    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
         let mass = if transaction.is_coinbase() { 0 } else { transaction_estimated_serialized_size(transaction) };
-        NonContextualMasses::new(mass, mass)
+        Ok(NonContextualMasses::new(mass, mass))
     }
 
     fn calculate_transaction_contextual_masses(&self, _transaction: &MutableTransaction) -> Option<ContextualMasses> {

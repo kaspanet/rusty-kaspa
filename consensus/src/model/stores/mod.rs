@@ -15,6 +15,7 @@ pub mod pruning_samples;
 pub mod reachability;
 pub mod relations;
 pub mod selected_chain;
+pub mod smt_metadata;
 pub mod statuses;
 pub mod tips;
 pub mod utxo_diffs;

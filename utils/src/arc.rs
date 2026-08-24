@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use alloc::sync::Arc;
 
 pub trait ArcExtensions<T> {
     fn unwrap_or_clone(self) -> T;

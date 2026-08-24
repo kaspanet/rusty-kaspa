@@ -544,7 +544,7 @@ pub mod test_helpers {
     use async_channel::Sender;
     use std::time::Duration;
 
-    pub const SYNC_MAX_DELAY: Duration = Duration::from_secs(2);
+    pub const SYNC_MAX_DELAY: Duration = Duration::from_secs(10);
 
     pub type TestConnection = ChannelConnection<TestNotification>;
     pub type TestNotifier = Notifier<TestNotification, ChannelConnection<TestNotification>>;

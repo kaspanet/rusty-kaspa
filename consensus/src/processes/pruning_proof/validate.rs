@@ -184,8 +184,8 @@ impl ProofContext {
             }
             let level_idx = level as usize;
             let mut selected_tip =
-                proof[level as usize].first().map(|header| header.hash).ok_or(PruningImportError::PruningProofNotEnoughHeaders)?;
-            for (i, header) in proof[level as usize].iter().enumerate() {
+                proof[level_idx].first().map(|header| header.hash).ok_or(PruningImportError::PruningProofNotEnoughHeaders)?;
+            for (i, header) in proof[level_idx].iter().enumerate() {
                 let (header_level, pow_passes) = calc_block_level_check_pow(header, ppm.max_block_level);
                 if header_level < level {
                     return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));
@@ -268,6 +268,11 @@ impl ProofContext {
                 }
             } else if !ppm.parents_manager.parents_at_level(&proof_pp_header, level).contains(&selected_tip) {
                 return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(selected_tip, level));
+            }
+
+            let level_tip = proof[level_idx].last().expect("checked earlier").hash;
+            if level_tip != selected_tip {
+                return Err(PruningImportError::PruningProofSelectedTipNotLast(level_tip, selected_tip, level));
             }
 
             let tip_blue_score = ghostdag_stores[level_idx].get_blue_score(selected_tip).expect("tip expected");

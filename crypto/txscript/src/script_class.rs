@@ -141,6 +141,7 @@ impl From<Version> for ScriptClass {
 #[cfg(test)]
 mod tests {
     use kaspa_consensus_core::tx::ScriptVec;
+    use kaspa_utils::hex::FromHex;
 
     use super::*;
 
@@ -157,37 +158,37 @@ mod tests {
         let tests = vec![
             Test {
                 name: "valid pubkey script",
-                script: hex::decode("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ac").unwrap(),
+                script: Vec::from_hex("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ac").unwrap(),
                 version: 0,
                 class: ScriptClass::PubKey,
             },
             Test {
                 name: "valid pubkey ecdsa script",
-                script: hex::decode("21fd4a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ab").unwrap(),
+                script: Vec::from_hex("21fd4a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ab").unwrap(),
                 version: 0,
                 class: ScriptClass::PubKeyECDSA,
             },
             Test {
                 name: "valid scripthash script",
-                script: hex::decode("aa204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f815187").unwrap(),
+                script: Vec::from_hex("aa204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f815187").unwrap(),
                 version: 0,
                 class: ScriptClass::ScriptHash,
             },
             Test {
                 name: "non standard script (unexpected version)",
-                script: hex::decode("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ac").unwrap(),
+                script: Vec::from_hex("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ac").unwrap(),
                 version: MAX_SCRIPT_PUBLIC_KEY_VERSION + 1,
                 class: ScriptClass::NonStandard,
             },
             Test {
                 name: "non standard script (unexpected key len)",
-                script: hex::decode("1f4a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f81ac").unwrap(),
+                script: Vec::from_hex("1f4a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f81ac").unwrap(),
                 version: 0,
                 class: ScriptClass::NonStandard,
             },
             Test {
                 name: "non standard script (unexpected final check sig op)",
-                script: hex::decode("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ad").unwrap(),
+                script: Vec::from_hex("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ad").unwrap(),
                 version: 0,
                 class: ScriptClass::NonStandard,
             },
