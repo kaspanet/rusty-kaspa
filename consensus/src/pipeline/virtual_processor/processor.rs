@@ -772,9 +772,9 @@ impl VirtualStateProcessor {
     /// `inactivity_shortcut` value is this block's seq_commit (see
     /// [`Self::inactivity_shortcut`]).
     ///
-    /// Never returns `ZERO_HASH`. Before a real seqcommit-bearing shortcut block
-    /// is reachable, the returned block can be genesis or another pre-Toccata
-    /// ancestor and [`Self::inactivity_shortcut`] folds it to `ZERO_HASH`.
+    /// Never returns `ZERO_HASH`. For a chain shallower than `finality_depth + 1`,
+    /// the returned block is genesis; [`Self::inactivity_shortcut`] reads the
+    /// returned header's accepted-ID merkle root.
     pub(super) fn compute_inactivity_shortcut_block(&self, ghostdag_data: &GhostdagData) -> Hash {
         let selected_parent = ghostdag_data.selected_parent;
 
@@ -808,13 +808,12 @@ impl VirtualStateProcessor {
         // v != ZERO_HASH` arm above. That gives us `current.bs <= pp.bs + finality_depth + 1`:
         // we are in the narrow post-IBD window of at most `finality_depth + 1` blocks past pp.
         //
-        // Inside that window, `selected_parent` is either pp itself, a post-IBD local
-        // descendant of pp, or a pre-Toccata selected parent right after activation:
+        // Inside that window, `selected_parent` is either pp itself or a post-IBD local
+        // descendant of pp:
         //   - pp: inserted by `Consensus::import_pruning_point_smt` via `SmtBlockMetadata::new(...)`.
         //   - local descendant: committed by `commit_virtual_state` via `SmtBlockMetadata::new(...)`.
-        //   - pre-Toccata sp: has no metadata row, so it is used directly and
-        //     folded to ZERO_HASH by `inactivity_shortcut` until a later chain
-        //     child is deep enough for the coinbase-lane fast path.
+        // The fallback to `selected_parent` also covers bootstrap and test setups where the
+        // metadata row has not been populated yet.
         let search_from = self
             .smt_metadata_store
             .get(selected_parent)

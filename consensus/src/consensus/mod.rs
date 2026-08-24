@@ -1547,9 +1547,9 @@ impl ConsensusApi for Consensus {
         let metadata =
             self.storage.smt_metadata_store.get(block_hash).map_err(|e| ConsensusError::GeneralOwned(format!("smt_metadata: {e}")))?;
 
-        // Toccata is active (checked above), so the metadata carries a concrete
-        // shortcut block. Its header must exist: block_hash was verified to be a
-        // chain block between the pruning point and sink, so its shortcut block
+        // The metadata carries a concrete shortcut block. Its header must exist:
+        // block_hash was verified to be a chain block between the pruning point
+        // and sink, so its shortcut block
         // lies on the chain segment [pp - F, sink] which is not pruned (and we
         // hold the pruning lock read guard). Fold to seq_commit via the virtual
         // processor.
