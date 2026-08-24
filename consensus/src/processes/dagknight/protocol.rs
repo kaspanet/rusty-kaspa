@@ -1,29 +1,14 @@
-use std::{
-    cell::Cell,
-    cmp::Reverse,
-    collections::{BinaryHeap, HashMap},
-    sync::Arc,
-};
+use std::{cell::Cell, collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
-
-#[cfg(feature = "baseline-debugging")]
-use kaspa_consensus_core::BlueWorkType;
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
-
-#[cfg(feature = "baseline-debugging")]
-use kaspa_math::int::SignedInteger;
-#[cfg(feature = "baseline-debugging")]
-use num_traits::Zero;
 use parking_lot::RwLock;
 
 #[cfg(feature = "baseline-debugging")]
-type SignedWork = SignedInteger<BlueWorkType>;
-
-#[cfg(feature = "baseline-debugging")]
-use crate::processes::dagknight::Bucket;
+use crate::processes::dagknight::umc_baseline::BaselineUmcVoter;
+use crate::processes::dagknight::umc_voting::{UmcVoter, UmcVotingContext};
 
 use crate::{
     model::{
@@ -43,9 +28,10 @@ use crate::{
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
-            umc_cascade::{BlockColor, CascadeResult},
+            umc_cascade::SegmentTreeUmcVoter,
+            umc_cascade_persistence::{UmcCascadeStore, UmcCascadeStoreReader},
+            umc_voting::CascadeResult,
         },
-        difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
         reachability::relations::FutureIntersectRelations,
     },
@@ -107,12 +93,14 @@ pub struct DagknightExecutor<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
+    E: UmcCascadeStoreReader + Clone + 'static,
     R: ReachabilityStoreReader + Clone,
 > {
     pub genesis_hash: Hash,
     pub dagknight_store: Arc<C>,
     pub headers_store: Arc<O>,
     pub relations_store: Arc<RwLock<D>>,
+    pub umc_persistence_store: Arc<E>,
     pub reachability_service: MTReachabilityService<R>,
     pub counters: Arc<DagknightCounters>,
 }
@@ -123,91 +111,13 @@ pub struct DagknightData {
     pub conflict_ordered_parents: Vec<Hash>, // The rest of the parents, ordered by conflict hierarchy (parents from latest/topmost conflicts first)
 }
 
-/// Baseline cascade: iterate blues topologically (tips→past) using a heap of SortableBlock.
-/// vote(B) = sign(Σ vote(blue ∈ future(B)) - red_work(future(B)) + deficit) * work(B)
-#[cfg(feature = "baseline-debugging")]
-struct BaselineCascadeHelper<'a> {
-    blues: Vec<(Hash, BlueWorkType, BlueWorkType)>,
-    reds: Vec<(Hash, BlueWorkType, BlueWorkType)>,
-    deficit: BlueWorkType,
-    is_ancestor: &'a dyn Fn(Hash, Hash) -> bool,
-    conflict_genesis: Hash,
-}
-
-#[cfg(feature = "baseline-debugging")]
-impl<'a> BaselineCascadeHelper<'a> {
-    fn new(
-        blues: Vec<(Hash, BlueWorkType, BlueWorkType)>,
-        reds: Vec<(Hash, BlueWorkType, BlueWorkType)>,
-        deficit: BlueWorkType,
-        is_ancestor: &'a dyn Fn(Hash, Hash) -> bool,
-        conflict_genesis: Hash,
-    ) -> Self {
-        Self { blues, reds, deficit, is_ancestor, conflict_genesis }
-    }
-
-    fn compute_all_votes(&self) -> (SignedWork, SignedWork, HashMap<Hash, Bucket>) {
-        use std::collections::BinaryHeap;
-
-        let mut votes: HashMap<Hash, SignedWork> = HashMap::new();
-        let mut block_work_map: HashMap<Hash, BlueWorkType> = HashMap::new();
-        let mut heap: BinaryHeap<SortableBlock> = self
-            .blues
-            .iter()
-            .map(|(hash, block_work, header_work)| {
-                block_work_map.insert(*hash, *block_work);
-                SortableBlock { hash: *hash, blue_work: *header_work }
-            })
-            .collect();
-
-        while let Some(SortableBlock { hash: bh, .. }) = heap.pop() {
-            let blue_work_signed = SignedWork::from(block_work_map[&bh]);
-
-            // Only blues already processed (higher blue_work) can be in future of bh
-            let future_blue_votes: SignedWork = votes
-                .iter()
-                .filter(|(other, _)| (self.is_ancestor)(bh, **other))
-                .map(|(_, v)| *v)
-                .fold(SignedWork::zero(), |acc, v| acc + v);
-
-            let future_red_work: BlueWorkType =
-                self.reds.iter().filter(|&&(rh, _, _)| (self.is_ancestor)(bh, rh)).map(|&(_, rw, _)| rw).sum();
-
-            // score = future_blue_votes - future_red_work + deficit
-            let score: SignedWork = future_blue_votes - SignedWork::from(future_red_work) + SignedWork::from(self.deficit);
-            let v = if score >= SignedWork::zero() { blue_work_signed } else { SignedWork::zero() - blue_work_signed };
-
-            // println!(
-            //     "cg: {} | compute_all_votes | curr: {} | bw: {} \n\t-> future_blue_votes: {} | future_red_work: {} | deficit: {} | blue_work_signed: {}",
-            //     self.conflict_genesis, bh, blue_work, future_blue_votes, future_red_work, self.deficit, blue_work_signed
-            // );
-            votes.insert(bh, v);
-        }
-
-        // Convert votes to buckets for each blue based on vote sign.
-        // CG's bucket is determined by its actual vote (same as all other blues).
-        let per_blue_buckets: HashMap<Hash, Bucket> = votes
-            .iter()
-            .map(|(hash, vote)| {
-                let bucket = if *vote >= SignedWork::zero() { Bucket::Positive } else { Bucket::Negative };
-                (*hash, bucket)
-            })
-            .collect();
-
-        let signed_blue_work = votes.values().copied().fold(SignedWork::zero(), |total, vote| total + vote);
-        let red_work: BlueWorkType = self.reds.iter().map(|&(_, work, _)| work).sum();
-        let virtual_score = signed_blue_work + SignedWork::from(self.deficit) - SignedWork::from(red_work);
-
-        (votes[&self.conflict_genesis], virtual_score, per_blue_buckets)
-    }
-}
-
 impl<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
+    E: UmcCascadeStore + Clone,
     R: ReachabilityStoreReader + Clone,
-> DagknightExecutor<C, O, D, R>
+> DagknightExecutor<C, O, D, E, R>
 {
     pub fn dagknight(&self, parents: &[Hash]) -> DagknightData {
         /*
@@ -323,19 +233,9 @@ impl<
         panic!("")
     }
 
-    /// Pure (naive) baseline UMC cascade voting with memoization.
-    /// Recursive implementation of Algorithm 6 from the DK paper, work-weighted.
-    ///
-    /// Paper Algorithm 6:
-    ///   UMC-Voting(G, U, e):
-    ///     v ← Σ_{B ∈ U} UMC-Voting(future(B), U ∩ future(B), e)
-    ///     return sign(v - |G \ U| + e)
-    ///
-    /// Work-weighted adaptation:
-    ///   vote(B) = sign(Σ vote(blue ∈ future(B)) - red_work(future(B)) + deficit) * work(B)
-    ///   Genesis accepts if Σ vote(blue) > 0
-    ///
-    /// Grays (reds that are chain ancestors of subgroup's next chain ancestor) are excluded from voting.
+    /// Baseline UMC cascade voting: naive reference impl of paper Algorithm 6 (work-weighted),
+    /// used to cross-check `SegmentTreeUmcVoter` (see the comparison in
+    /// `select_parent_from_k_colouring`).
     #[cfg(feature = "baseline-debugging")]
     fn baseline_umc_cascade_voting(
         &self,
@@ -345,43 +245,9 @@ impl<
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
-        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-
-        // Collect blues and reds (excluding grays)
-        let mut blues = Vec::new();
-        let mut reds = Vec::new();
-
-        let mut curr_gd = Arc::new(virtual_gd);
-        while curr_gd.selected_parent != conflict_genesis {
-            for &blue_block in curr_gd.mergeset_blues.iter() {
-                let blue_work = calc_work(self.headers_store.get_bits(blue_block).unwrap());
-                let header_work = self.headers_store.get_header(blue_block).unwrap().blue_work;
-                blues.push((blue_block, blue_work, header_work));
-            }
-            for &red_block in curr_gd.mergeset_reds.iter() {
-                let red_work = calc_work(self.headers_store.get_bits(red_block).unwrap());
-                let header_work = self.headers_store.get_header(red_block).unwrap().blue_work;
-                if !self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
-                    reds.push((red_block, red_work, header_work));
-                }
-            }
-            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
-        }
-
-        let cg_block_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-        blues.push((conflict_genesis, cg_block_work, 0.into()));
-
-        // Deficit work = sqrt(k) * conflict_genesis_work
-        let deficit_work =
-            BlueWorkType::from_u64(u64::from(k.isqrt())) * calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-
-        // Compute votes topologically from tips backwards using a Reverse heap of SortableBlock
-        let voting_blocks = (blues.len() + reds.len()) as u64;
-        let is_ancestor = |a: Hash, b: Hash| self.reachability_service.is_dag_ancestor_of(a, b);
-        let helper = BaselineCascadeHelper::new(blues, reds, deficit_work, &is_ancestor, conflict_genesis);
-        let (total_vote, virtual_score, _per_blue_buckets) = helper.compute_all_votes();
-
-        CascadeResult { virtual_score, accepted: total_vote >= SignedWork::zero(), flips: 0, voting_blocks }
+        let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
+        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        voter.vote(&ctx)
     }
 
     /// UMC Cascade Voting using chain-based segment tree
@@ -393,85 +259,13 @@ impl<
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
-        /*
-            inputs: G, U, d
-            output: does U have a subset U' s.t. U' is d-UMC of G
-                    where d-UMC means that each block in U' is majority covered by U' (up to d)
-        */
-        use crate::processes::dagknight::umc_cascade::{BlockWithWork, run_cascade};
-
-        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-
-        // Collect blues, reds, and grays by traversing virtual GD chain backward
-        let mut blues = Vec::new();
-        let mut reds = Vec::new();
-        let mut grays = Vec::new();
-
-        let mut curr_gd = Arc::new(virtual_gd);
-
-        let mut topological_heap: BinaryHeap<_> = Default::default();
-        let mut block_map = BlockHashMap::default();
-
-        while curr_gd.selected_parent != conflict_genesis {
-            for &blue_block in curr_gd.mergeset_blues.iter() {
-                let blue_work = calc_work(self.headers_store.get_bits(blue_block).unwrap());
-                let block_with_work = BlockWithWork::new(blue_block, blue_work);
-                blues.push(block_with_work);
-
-                topological_heap.push(Reverse(SortableBlock {
-                    hash: blue_block,
-                    blue_work: self.headers_store.get_header(blue_block).unwrap().blue_work,
-                }));
-
-                block_map.insert(blue_block, (block_with_work, BlockColor::BLUE));
-            }
-
-            for &red_block in curr_gd.mergeset_reds.iter() {
-                let red_work = calc_work(self.headers_store.get_bits(red_block).unwrap());
-                let block = BlockWithWork::new(red_block, red_work);
-
-                // Gray blocks agree with the current side (chain ancestors of subgroup's next chain ancestor).
-                // They are recorded separately but contribute no vote or work to either side.
-                if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
-                    grays.push(block);
-                } else {
-                    reds.push(block);
-
-                    topological_heap.push(Reverse(SortableBlock {
-                        hash: red_block,
-                        blue_work: self.headers_store.get_header(red_block).unwrap().blue_work,
-                    }));
-
-                    block_map.insert(red_block, (block, BlockColor::RED));
-                }
-            }
-
-            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
-        }
-
-        let conflict_genesis_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-        let conflict_genesis_block = BlockWithWork::new(conflict_genesis, conflict_genesis_work);
-
-        // CG is a voting blue: include it in topological processing
-        topological_heap.push(Reverse(SortableBlock {
-            hash: conflict_genesis,
-            blue_work: self.headers_store.get_header(conflict_genesis).unwrap().blue_work,
-        }));
-        block_map.insert(conflict_genesis, (conflict_genesis_block, BlockColor::BLUE));
-
-        blues.push(conflict_genesis_block);
-
-        debug!(
-            "k = {} | blues = {} | reds = {} | grays = {} | voting_deficit = {} | conflict_genesis_work = {}",
-            k,
-            blues.len(),
-            reds.len(),
-            grays.len(),
-            k.isqrt(),
-            conflict_genesis_work
+        let voter = SegmentTreeUmcVoter::new(
+            self.headers_store.clone(),
+            self.umc_persistence_store.clone(),
+            self.reachability_service.clone(),
         );
-
-        run_cascade(topological_heap, block_map, conflict_genesis_block, k, &self.reachability_service)
+        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        voter.vote(&ctx)
     }
 
     /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
@@ -598,6 +392,11 @@ impl<
         }
 
         self.counters.record_cascade_stats(cascade_result.flips, cascade_result.voting_blocks);
+        self.counters.record_checkpoint_stats(
+            cascade_result.from_checkpoint,
+            cascade_result.estimated_effort_saved,
+            cascade_result.estimated_effort_total,
+        );
 
         if cascade_result.accepted {
             Some(SortableBlock {
@@ -849,6 +648,7 @@ mod tests {
     use super::*;
     use crate::model::stores::ghostdag::{GhostdagStore, GhostdagStoreReader};
     use crate::model::stores::headers::MemoryHeaderStore;
+    use crate::processes::dagknight::umc_cascade_persistence::MemoryUmcCascadeStore;
     use crate::processes::ghostdag::protocol::GhostdagManager;
     use crate::processes::reachability::tests::r#gen::generate_complex_dag;
     use crate::{
@@ -953,6 +753,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
         builder.init();
@@ -1157,6 +958,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
         builder.init();
@@ -1237,6 +1039,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
 
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
@@ -1353,6 +1156,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
             relations_store: Arc::new(RwLock::new(relations)),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
 
         // Two identical parents: [T1, T1]
@@ -1403,6 +1207,7 @@ mod tests {
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
             relations_store: Arc::new(RwLock::new(relations)),
             counters: Arc::new(DagknightCounters::new()),
+            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
 
         // Three parents where first two are identical: [T1, T1, T2]

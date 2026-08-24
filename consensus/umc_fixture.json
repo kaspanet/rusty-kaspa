@@ -1,0 +1,230 @@
+{
+  "genesis": 1,
+  "k": 0,
+  "subgroup": [
+    11
+  ],
+  "blocks": [
+    {
+      "id": 1,
+      "parents": [],
+      "sp": 0,
+      "blue_work": 0,
+      "gd": {
+        "blues": [],
+        "reds": [],
+        "blue_score": 0
+      }
+    },
+    {
+      "id": 2,
+      "parents": [
+        1
+      ],
+      "sp": 1,
+      "blue_work": 1,
+      "gd": {
+        "blues": [
+          1
+        ],
+        "reds": [],
+        "blue_score": 1
+      }
+    },
+    {
+      "id": 3,
+      "parents": [
+        2
+      ],
+      "sp": 2,
+      "blue_work": 2,
+      "gd": {
+        "blues": [
+          2
+        ],
+        "reds": [],
+        "blue_score": 2
+      }
+    },
+    {
+      "id": 4,
+      "parents": [
+        3
+      ],
+      "sp": 3,
+      "blue_work": 3,
+      "gd": {
+        "blues": [
+          3
+        ],
+        "reds": [],
+        "blue_score": 3
+      }
+    },
+    {
+      "id": 5,
+      "parents": [
+        4
+      ],
+      "sp": 4,
+      "blue_work": 4,
+      "gd": {
+        "blues": [
+          4
+        ],
+        "reds": [],
+        "blue_score": 4
+      }
+    },
+    {
+      "id": 6,
+      "parents": [
+        5
+      ],
+      "sp": 5,
+      "blue_work": 5,
+      "gd": {
+        "blues": [
+          5
+        ],
+        "reds": [],
+        "blue_score": 5
+      }
+    },
+    {
+      "id": 7,
+      "parents": [
+        6
+      ],
+      "sp": 6,
+      "blue_work": 6,
+      "gd": {
+        "blues": [
+          6
+        ],
+        "reds": [],
+        "blue_score": 6
+      }
+    },
+    {
+      "id": 8,
+      "parents": [
+        7
+      ],
+      "sp": 7,
+      "blue_work": 7
+    },
+    {
+      "id": 9,
+      "parents": [
+        7
+      ],
+      "sp": 7,
+      "blue_work": 7,
+      "gd": {
+        "blues": [
+          7
+        ],
+        "reds": [],
+        "blue_score": 7
+      }
+    },
+    {
+      "id": 10,
+      "parents": [
+        8,
+        9
+      ],
+      "sp": 9,
+      "blue_work": 9,
+      "gd": {
+        "blues": [
+          9
+        ],
+        "reds": [
+          8
+        ],
+        "blue_score": 8
+      }
+    },
+    {
+      "id": 11,
+      "parents": [
+        10
+      ],
+      "sp": 10,
+      "blue_work": 10,
+      "gd": {
+        "blues": [
+          10
+        ],
+        "reds": [],
+        "blue_score": 9
+      }
+    },
+    {
+      "id": 12,
+      "parents": [
+        1
+      ],
+      "sp": 1,
+      "blue_work": 1
+    },
+    {
+      "id": 13,
+      "parents": [
+        12
+      ],
+      "sp": 12,
+      "blue_work": 2
+    },
+    {
+      "id": 14,
+      "parents": [
+        13
+      ],
+      "sp": 13,
+      "blue_work": 3
+    },
+    {
+      "id": 15,
+      "parents": [
+        14
+      ],
+      "sp": 14,
+      "blue_work": 4
+    },
+    {
+      "id": 16,
+      "parents": [
+        15
+      ],
+      "sp": 15,
+      "blue_work": 5
+    },
+    {
+      "id": 17,
+      "parents": [
+        6,
+        16
+      ],
+      "sp": 16,
+      "blue_work": 11
+    }
+  ],
+  "virtual": {
+    "sp": 11,
+    "blues": [
+      11
+    ],
+    "reds": [
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ],
+    "blue_score": 10
+  }
+}
