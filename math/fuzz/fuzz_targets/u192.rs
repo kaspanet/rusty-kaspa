@@ -7,7 +7,7 @@ use libfuzzer_sys::fuzz_target;
 use num_bigint::{BigInt, BigUint};
 use num_integer::Integer;
 use num_traits::{Signed, Zero};
-use std::convert::TryInto;
+use std::{any::type_name, convert::TryInto};
 use utils::{assert_same, consume, try_opt};
 
 // This is important as it's a non power of two.
@@ -32,8 +32,63 @@ where
             break (lib2, native2);
         }
     };
-    assert_same!(op_lib(lib, lib2), op_native(native, native2), "lib: {lib}, lib2: {lib2}");
+    assert_same!(op_lib(lib, lib2), op_native(native, native2), "lib: {lib}, lib2: {lib2}, op: {}", type_name::<T>());
     Some(())
+}
+
+#[track_caller]
+fn assert_op_with_overflow<T, U>(data: &mut &[u8], op_lib: T, op_native: U, ok_by_zero: bool) -> Option<()>
+where
+    T: Fn(Uint192, Uint192) -> (Uint192, bool),
+    U: Fn(&BigUint, &BigUint) -> (BigUint, bool),
+{
+    let (lib, native) = generate_ints(data)?;
+    let (lib2, native2) = loop {
+        let (lib2, native2) = generate_ints(data)?;
+        if ok_by_zero || !native2.is_zero() {
+            break (lib2, native2);
+        }
+    };
+    let (lib_result, lib_overflow) = op_lib(lib, lib2);
+    let (native_result, native_overflow) = op_native(&native, &native2);
+    assert_same!(lib_result, native_result, "native: {native}, native2: {native2}, op: {}", type_name::<T>());
+    assert_eq!(lib_overflow, native_overflow, "native: {native}, native2: {native2}, op: {}", type_name::<T>());
+    Some(())
+}
+
+fn biguint_overflowing_op<F, A, B>(a: A, b: B, mask: &BigUint, op: F) -> (BigUint, bool)
+where
+    F: Fn(A, B) -> BigUint,
+{
+    let result = op(a, b);
+    let masked = &result & mask;
+    let overflow = result != masked;
+    (masked, overflow)
+}
+
+fn overflowing_sub_bigint(a: &BigUint, b: &BigUint, mask: &BigUint) -> (BigUint, bool) {
+    if a >= b {
+        (a - b, false)
+    } else {
+        (mask - b + a + 1u8, true)
+    }
+}
+/// Shifts self left by rhs bits.
+/// Returns a tuple of the shifted version of self along with a boolean indicating whether the shift value was larger than or equal to the number of bits.
+/// If the shift value is too large, then value is reduced modulo the number of bits, and this value is then used to perform the shift. (for powers of 2 this is equivalent to masking the shift value by (N-1) where N is the number of bits).
+fn overflowing_shl_bigint(a: &BigUint, b: u32, mask: &BigUint) -> (BigUint, bool) {
+    let overflow = b >= 192;
+    let b = b % 192; // mask shift to be within bounds
+    ((a << b) & mask, overflow)
+}
+
+/// Shifts self right by rhs bits.
+/// Returns a tuple of the shifted version of self along with a boolean indicating whether the shift value was larger than or equal to the number of bits.
+/// If the shift value is too large, then value is reduced modulo the number of bits, and this value is then used to perform the shift. (for powers of 2 this is equivalent to masking the shift value by (N-1) where N is the number of bits, but for non-powers of two we need to do an actual modulo).
+fn overflowing_shr_bigint(a: &BigUint, b: u32) -> (BigUint, bool) {
+    let overflow = b >= 192;
+    let b = b % 192; // mask shift to be within bounds
+    (a >> b, overflow)
 }
 
 fuzz_target!(|data: &[u8]| {
@@ -43,16 +98,19 @@ fuzz_target!(|data: &[u8]| {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         assert_same!(lib, native, "lib: {lib}");
     }
-    let modulo = &BigUint::from_bytes_le(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
 
-    // Full addition
-    assert_op(&mut data, Add::add, |a, b| (a + b) % modulo, true);
-    // Full multiplication
-    assert_op(&mut data, Mul::mul, |a, b| (a * b) % modulo, true);
+    let mask = &BigUint::from_bytes_le(&[u8::MAX; 24]);
+
+    // Full Overflow addition
+    assert_op_with_overflow(&mut data, Uint192::overflowing_add, |a, b| biguint_overflowing_op(a, b, mask, Add::add), true);
+    // Full Overflow multiplication
+    assert_op_with_overflow(&mut data, Uint192::overflowing_mul, |a, b| biguint_overflowing_op(a, b, mask, Mul::mul), true);
+    // Full Overflow subtraction
+    assert_op_with_overflow(&mut data, Uint192::overflowing_sub, |a, b| overflowing_sub_bigint(a, b, mask), true);
     // Full division
-    assert_op(&mut data, Div::div, |a, b| (a / b) % modulo, false);
+    assert_op(&mut data, Div::div, |a, b| (a / b) & mask, false);
     // Full remainder
-    assert_op(&mut data, Rem::rem, |a, b| (a % b) % modulo, false);
+    assert_op(&mut data, Rem::rem, |a, b| (a % b) & mask, false);
     // Full bitwise And
     assert_op(&mut data, BitAnd::bitand, BitAnd::bitand, true);
     // Full bitwise Or
@@ -64,25 +122,40 @@ fuzz_target!(|data: &[u8]| {
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_same!(lib + word, (native + word) % modulo, "lib: {lib}, word: {word}");
+        let (lib_result, lib_overflow) = lib.overflowing_add_u64(word);
+        let (native_result, native_overflow) = biguint_overflowing_op(native, word, mask, Add::add);
+        assert_same!(lib_result, native_result, "lib: {lib}, word: {word}");
+        assert_eq!(lib_overflow, native_overflow, "lib: {lib}, word: {word}");
     }
     // U64 multiplication
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_same!(lib * word, (native * word) % modulo, "lib: {lib}, word: {word}");
+        let (lib_result, lib_overflow) = lib.overflowing_mul_u64(word);
+        let (native_result, native_overflow) = biguint_overflowing_op(native, word, mask, Mul::mul);
+        assert_same!(lib_result, native_result, "lib: {lib}, word: {word}");
+        assert_eq!(lib_overflow, native_overflow, "lib: {lib}, word: {word}");
     }
     // Left shift
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let lshift = u32::from(u16::from_le_bytes(try_opt!(consume(&mut data))) % 192);
-        assert_same!(lib << lshift, (native << lshift) % modulo, "lib: {lib}, lshift: {lshift}");
+
+        let (native_res, native_overflow) = overflowing_shl_bigint(&native, lshift, mask);
+        let (lib_res, lib_overflow) = lib.overflowing_shl(lshift);
+        assert_same!(lib_res, native_res, "native: {native}, lshift: {lshift}");
+        assert_eq!(lib_overflow, native_overflow, "native: {native}, lshift: {lshift}");
     }
     // Right shift
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let rshift = u32::from(u16::from_le_bytes(try_opt!(consume(&mut data))) % 192);
-        assert_same!(lib >> rshift, (native >> rshift) % modulo, "lib: {lib}, rshift: {rshift}");
+        assert_same!(lib >> rshift, (&native >> rshift) & mask, "lib: {lib}, rshift: {rshift}");
+
+        let (native_res, native_overflow) = overflowing_shr_bigint(&native, rshift);
+        let (lib_res, lib_overflow) = lib.overflowing_shr(rshift);
+        assert_same!(lib_res, native_res, "native: {native}, rshift: {rshift}");
+        assert_eq!(lib_overflow, native_overflow, "native: {native}, rshift: {rshift}");
     }
     // bits
     {

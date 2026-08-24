@@ -1,5 +1,5 @@
 #[doc(hidden)]
-pub use {faster_hex, malachite_base, malachite_nz, serde};
+pub use {faster_hex, js_sys, kaspa_utils, malachite_base, malachite_nz, serde, wasm_bindgen};
 
 // TODO: Add u32 support for optimization on 32 bit machines.
 
@@ -191,19 +191,24 @@ macro_rules! construct_uint {
 
             #[inline]
             pub fn overflowing_mul(self, other: Self) -> (Self, bool) {
-                // We should probably replace this with a Montgomery multiplication algorithm
                 let mut result = Self::ZERO;
                 let mut carry_out = false;
                 for j in 0..Self::LIMBS {
                     let mut carry = 0;
-                    let mut i = 0;
-                    while i + j < Self::LIMBS {
+                    // Accumulate all cross-terms a[i] * b[j] that fit within LIMBS
+                    for i in 0..Self::LIMBS - j {
+                        // Note: wide is at most (2^64-1)^2 + (2^64-1) + (2^64-1) = 2^128 - 1, so it fits within u128
                         let n = (self.0[i] as u128) * (other.0[j] as u128) + (result.0[i + j] as u128) + (carry as u128);
                         result.0[i + j] = n as u64;
                         carry = (n >> 64) as u64;
-                        i += 1;
                     }
+
+                    // Carry spilling out of the top limb means the result exceeds LIMBS limbs
                     carry_out |= carry != 0;
+                    // Any nonzero cross-term a[i] * b[j] with i+j >= LIMBS is a direct overflow
+                    for i in (Self::LIMBS - j)..Self::LIMBS {
+                        carry_out |= (self.0[i] != 0) & (other.0[j] != 0);
+                    }
                 }
                 (result, carry_out)
             }
@@ -269,11 +274,13 @@ macro_rules! construct_uint {
                 (self, rem)
             }
 
+            /// Implements the same algorithm as (u* as f64) in the standard library, but for arbitrary large integers.
+            /// Note that for numbers bigger than ~2^1024, this will return `[f64::INFINITY]` since f64 cannot represent them.
             #[inline]
             pub fn as_f64(&self) -> f64 {
                 // Reference: https://blog.m-ou.se/floats/
                 // Step 1: Get leading zeroes
-                let leading_zeroes =  self.leading_zeros();
+                let leading_zeroes = self.leading_zeros();
                 // Step 2: Align the bits to the left, so the highest bit will be 1.
                 let left_aligned = self.wrapping_shl(leading_zeroes);
                 // Step 3: Take the highest 53 bits as the mantissa (equivalent to shifting by (Self::BITS - 53))
@@ -300,6 +307,14 @@ macro_rules! construct_uint {
                 // Otherwise, (Self::BITS - 1 - leading_zeros) + 1022 so it simplifies to Self::BITS + 1021 - leading_zeroes
                 // 1023 and 1022 are the cutoffs for the exponent having the msb next to the decimal point
                 let exponent = if self.is_zero() { 0 } else { u64::from(Self::BITS) + 1021 - u64::from(leading_zeroes) };
+
+                // For integers >= 1024 bits, the exponent may overflow the 11-bit f64 exponent field (max 0x7FF).
+                // We check the final encoded exponent, including the potential carry from rounding,
+                // to saturate to infinity instead of producing NaN.
+                const SATURATING_EXPONENT: u64 = (1 << 11) - 1;
+                if Self::BITS >= 1024 && (exponent + (mantissa >> 52)) >= SATURATING_EXPONENT {
+                    return f64::INFINITY;
+                }
                 // Step 7: sign bit is always 0, exponent is shifted into place
                 // Use addition instead of bitwise OR to saturate the exponent if mantissa overflows
                 f64::from_bits((exponent << 52) + mantissa)
@@ -396,7 +411,8 @@ macro_rules! construct_uint {
                     }
                     #[inline]
                     fn size_hint(&self) -> (usize, Option<usize>) {
-                        let remaining_bits = $n_words * (u64::BITS as usize) - self.bit;
+                        let total = $n_words * (u64::BITS as usize);
+                        let remaining_bits = total.saturating_sub(self.bit);
                         (remaining_bits, Some(remaining_bits))
                     }
                 }
@@ -432,37 +448,37 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn as_bigint(&self) -> Result<js_sys::BigInt, $crate::Error> {
+            pub fn as_bigint(&self) -> Result<$crate::uint::js_sys::BigInt, $crate::Error> {
                 self.try_into()
             }
 
             #[inline]
-            pub fn to_bigint(self) -> Result<js_sys::BigInt, $crate::Error> {
+            pub fn to_bigint(self) -> Result<$crate::uint::js_sys::BigInt, $crate::Error> {
                 self.try_into()
             }
 
         }
 
-        impl kaspa_utils::mem_size::MemSizeEstimator for $name {
+        impl $crate::uint::kaspa_utils::mem_size::MemSizeEstimator for $name {
             fn estimate_mem_units(&self) -> usize {
                 1
 
             }
         }
 
-        impl kaspa_utils::hex::ToHex for $name {
+        impl $crate::uint::kaspa_utils::hex::ToHex for $name {
             fn to_hex(&self) -> String {
                 self.to_be_bytes().as_slice().to_hex()
             }
         }
 
-        impl kaspa_utils::hex::ToHex for &$name {
+        impl $crate::uint::kaspa_utils::hex::ToHex for &$name {
             fn to_hex(&self) -> String {
                 self.to_be_bytes().as_slice().to_hex()
             }
         }
 
-        impl kaspa_utils::hex::FromHex for $name {
+        impl $crate::uint::kaspa_utils::hex::FromHex for $name {
             type Error = $crate::Error;
             fn from_hex(hex: &str) -> Result<$name, Self::Error> {
                 Ok($name::from_hex(hex)?)
@@ -862,7 +878,7 @@ macro_rules! construct_uint {
             #[inline]
             fn deserialize<D: $crate::uint::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
                 if deserializer.is_human_readable() {
-                    let hex = <std::string::String as serde::Deserialize>::deserialize(deserializer)?;
+                    let hex = <std::string::String as $crate::uint::serde::Deserialize>::deserialize(deserializer)?;
                     Ok(Self::from_hex(&hex).map_err($crate::uint::serde::de::Error::custom)?)
                 } else {
                     use core::{fmt, marker::PhantomData};
@@ -960,27 +976,27 @@ macro_rules! construct_uint {
 
         }
 
-        impl TryFrom<&$name> for js_sys::BigInt {
+        impl TryFrom<&$name> for $crate::uint::js_sys::BigInt {
             type Error = $crate::Error;
             #[inline]
-            fn try_from(value: &$name) -> Result<js_sys::BigInt, Self::Error> {
+            fn try_from(value: &$name) -> Result<$crate::uint::js_sys::BigInt, Self::Error> {
                 use $crate::wasm::*;
                 BigInt::new(&JsValue::from_str(&format!("0x{value:x}"))).map_err(|err|$crate::Error::JsSys(Sendable(err)))
             }
         }
 
-        impl TryFrom<$name> for js_sys::BigInt {
+        impl TryFrom<$name> for $crate::uint::js_sys::BigInt {
             type Error = $crate::Error;
             #[inline]
-            fn try_from(value: $name) -> Result<js_sys::BigInt, Self::Error> {
+            fn try_from(value: $name) -> Result<$crate::uint::js_sys::BigInt, Self::Error> {
                 use $crate::wasm::*;
                 BigInt::try_from(&value)
             }
         }
 
-        impl TryFrom<wasm_bindgen::JsValue> for $name {
+        impl TryFrom<$crate::uint::wasm_bindgen::JsValue> for $name {
             type Error = $crate::Error;
-            fn try_from(js_value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+            fn try_from(js_value: $crate::uint::wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
                 use $crate::wasm::*;
 
                 if js_value.is_string() || js_value.is_array() {
@@ -1075,7 +1091,7 @@ mod tests {
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
         let mut buf = [0u8; 16];
         let mut str_buf = String::with_capacity(32);
-        for i in 0..80_000 {
+        for i in 0..1 << 17 {
             // Checking all the fmt's is quite expensive.
             let check_fmt = i % 8 == 1;
             rng.fill_bytes(&mut buf);
@@ -1087,9 +1103,27 @@ mod tests {
             assert_equal(mine, default, check_fmt);
             assert_equal(mine2, default2, check_fmt);
 
-            let mine = mine.overflowing_add(mine2).0.overflowing_mul(mine2).0;
-            let default = default.overflowing_add(default2).0.overflowing_mul(default2).0;
-            assert_equal(mine, default, check_fmt);
+            // Test add
+            {
+                let mine_overflow_add = mine.overflowing_add(mine2);
+                let default_overflow_add = default.overflowing_add(default2);
+                assert_equal(mine_overflow_add.0, default_overflow_add.0, check_fmt);
+                assert_eq!(mine_overflow_add.1, default_overflow_add.1);
+            }
+            // Test sub
+            {
+                let mine_overflow_sub = mine.overflowing_sub(mine2);
+                let default_overflow_sub = default.overflowing_sub(default2);
+                assert_equal(mine_overflow_sub.0, default_overflow_sub.0, check_fmt);
+                assert_eq!(mine_overflow_sub.1, default_overflow_sub.1);
+            }
+            // Test mul
+            {
+                let mine_overflow_mul = mine.overflowing_mul(mine2);
+                let default_overflow_mul = default.overflowing_mul(default2);
+                assert_equal(mine_overflow_mul.0, default_overflow_mul.0, check_fmt);
+                assert_eq!(mine_overflow_mul.1, default_overflow_mul.1);
+            }
             let shift = rng.next_u32() % 4096;
             {
                 let mine_overflow_shl = mine.overflowing_shl(shift);
@@ -1098,8 +1132,8 @@ mod tests {
                 assert_eq!(mine_overflow_shl.1, default_overflow_shl.1);
             }
             {
-                let mine_overflow_shr = mine.overflowing_shl(shift);
-                let default_overflow_shr = default.overflowing_shl(shift);
+                let mine_overflow_shr = mine.overflowing_shr(shift);
+                let default_overflow_shr = default.overflowing_shr(shift);
                 assert_equal(mine_overflow_shr.0, default_overflow_shr.0, check_fmt);
                 assert_eq!(mine_overflow_shr.1, default_overflow_shr.1);
             }
@@ -1173,6 +1207,76 @@ mod tests {
         // Add
         assert_eq!(u1.saturating_add(Uint128::from_u64(1)), Uint128::MAX);
         assert_eq!(u2.saturating_add(Uint128::from_u64(1)), Uint128::from_u128(u64::MAX as u128 + 1));
+    }
+
+    #[test]
+    fn test_mul_overflow() {
+        let a: u128 = 848550227390639374336;
+        let b: u128 = 2614529362970723404469741027328;
+
+        let my_a = Uint128::from_u128(a);
+        let my_b = Uint128::from_u128(b);
+
+        let (expected_val, expected_overflow) = a.overflowing_mul(b);
+        let (actual_val, actual_overflow) = my_a.overflowing_mul(my_b);
+        assert_eq!(expected_val, actual_val.as_u128());
+        assert_eq!(expected_overflow, actual_overflow);
+    }
+
+    #[test]
+    fn test_iter_be_bits() {
+        let mut rng = ChaCha8Rng::from_seed([42; 32]);
+        let mut buf = [0u8; 16];
+        rng.fill_bytes(&mut buf);
+        let val = Uint128::from_le_bytes(buf);
+        let be_bytes = val.to_be_bytes();
+
+        // Collect the expected bits from the big-endian byte representation
+        let expected_bits: Vec<bool> = be_bytes.iter().flat_map(|byte| (0..8).map(move |i| (byte >> (7 - i)) & 1 == 1)).collect();
+        assert_eq!(expected_bits.len(), 128);
+
+        // Test next() exhaustively and size_hint() at every step
+        let mut iter = val.iter_be_bits();
+        assert_eq!(iter.len(), 128);
+        for (i, expected) in expected_bits.iter().enumerate() {
+            assert_eq!(iter.size_hint(), (128 - i, Some(128 - i)));
+            assert_eq!(iter.next(), Some(*expected), "next() mismatch at bit {i}");
+        }
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+        assert_eq!(iter.next(), None);
+        // FusedIterator: stays None
+        assert_eq!(iter.next(), None);
+
+        // Test nth(): loop over all split points and use nth() to skip to it
+        for skip in 0..128 {
+            let mut iter = val.iter_be_bits();
+            // nth(skip) should return the element at index `skip`
+            assert_eq!(iter.nth(skip), Some(expected_bits[skip]), "nth({skip}) mismatch");
+            let expected_len = 128 - skip - 1;
+            assert_eq!(iter.len(), expected_len);
+            assert_eq!(iter.size_hint(), (expected_len, Some(expected_len)));
+            // Remaining elements after nth should be correct
+            for (i, expected) in expected_bits[skip + 1..].iter().enumerate() {
+                assert_eq!(iter.next(), Some(*expected), "next() after nth({skip}) mismatch at offset {i}");
+            }
+            assert_eq!(iter.next(), None);
+            assert_eq!(iter.len(), 0);
+            assert_eq!(iter.size_hint(), (0, Some(0)));
+        }
+
+        // Test nth() past the end
+        let mut iter = val.iter_be_bits();
+        assert_eq!(iter.nth(128), None);
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+
+        // Test nth() usize::MAX
+        let mut iter = val.iter_be_bits();
+        assert_eq!(iter.nth(usize::MAX), None);
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.size_hint(), (0, Some(0)));
     }
 
     #[test]
