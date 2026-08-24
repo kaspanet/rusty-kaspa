@@ -578,7 +578,7 @@ mod tests {
     use kaspa_math::Uint192;
     use parking_lot::RwLock;
     use std::cell::RefCell;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::fs::File;
     use std::str::FromStr;
 
@@ -1019,5 +1019,164 @@ mod tests {
         println!("lkt before nca_2: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
         czm.fill_zone_data(&tips, Some(nca_2));
         println!("lkt after nca_2: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
+    }
+
+    #[test]
+    fn test_czm_lkt_correctness_2() {
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+
+        let dk_map = RefCell::new(HashMap::new());
+        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map.clone()));
+
+        let json_filename = "test_captured_k5.json";
+        let file = File::open(json_filename).expect("Unable to open JSON file");
+        let json_data: serde_json::Value = serde_json::from_reader(file).expect("Unable to parse JSON");
+
+        let tips: Vec<Hash> =
+            json_data["tips"].as_array().unwrap().iter().map(|t| Hash::from_str(t.as_str().unwrap()).unwrap()).collect();
+        let conflict_genesis = Hash::from_str(json_data["conflict_genesis"].as_str().unwrap()).unwrap();
+
+        // (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+        let mut test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Option<Hash>)> = json_data["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|block| {
+                let id = Hash::from_str(block["id"].as_str().unwrap()).unwrap();
+                let parents: Vec<Hash> =
+                    block["parents"].as_array().unwrap().iter().map(|p| Hash::from_str(p.as_str().unwrap()).unwrap()).collect();
+                let blue_work = Uint192::from_u64(block["blue_work"].as_str().unwrap().parse::<u64>().unwrap());
+                // bits may be "0x"-prefixed (captured zones) or bare hex
+                let bits = u32::from_str_radix(block["bits"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+                let blue_score = u64::from_str(block["blue_score"].as_str().unwrap()).unwrap();
+                let daa_score = u64::from_str(block["daa_score"].as_str().unwrap()).unwrap();
+                let selected_parent = block["selected_parent"].as_str().map(|s| Hash::from_str(s).unwrap());
+                (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+            })
+            .collect();
+
+        // Stand-in blocks for selected parents that are referenced but not in the file
+        let known: HashSet<Hash> = test_blocks.iter().map(|(id, ..)| *id).collect();
+        let mut external_sps: Vec<Hash> = vec![];
+        for sp in test_blocks.iter().filter_map(|(_, _, _, _, _, _, sp)| *sp) {
+            if !known.contains(&sp) && !external_sps.contains(&sp) {
+                external_sps.push(sp);
+            }
+        }
+        for sp in external_sps {
+            // copy the header fields of the first block that references this SP
+            let (bw, bits, blue_score, daa_score) = test_blocks
+                .iter()
+                .find(|(_, _, _, _, _, _, sp_ref)| sp_ref.as_ref() == Some(&sp))
+                .map(|(_, _, bw, bits, bs, ds, _)| (*bw, *bits, *bs, *ds))
+                .expect("stand-in should have a referrer");
+            test_blocks.push((sp, vec![], bw, bits, blue_score, daa_score, None));
+        }
+
+        test_blocks.sort_by_key(|(_, _, blue_work, _, _, _, _)| *blue_work);
+
+        let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+        builder.init();
+
+        // Insert in topological order (a block only once all its parents are in)
+        let mut remaining = test_blocks;
+        let mut added: HashSet<Hash> = HashSet::new();
+        while let Some(pos) = remaining.iter().position(|(_, parents, ..)| parents.iter().all(|p| p.is_origin() || added.contains(p)))
+        {
+            let (hash, mut parents, blue_work, bits, blue_score, daa_score, selected_parent) = remaining.remove(pos);
+            if parents.is_empty() {
+                parents.push(ORIGIN);
+            }
+            let chain_parent = match selected_parent {
+                Some(sp) if parents.contains(&sp) => sp,
+                Some(sp) => {
+                    // SP filtered out of the zone's parent list: restore it
+                    parents.push(sp);
+                    sp
+                }
+                None if parents.len() == 1 => parents[0],
+                None => parents.iter().max_by_key(|p| headers_store.get_header(**p).unwrap().blue_work).copied().unwrap(),
+            };
+
+            let mut header = Header::from_precomputed_hash(hash, parents.clone());
+            header.bits = bits;
+            header.blue_work = blue_work;
+            header.blue_score = blue_score;
+            header.daa_score = daa_score;
+            headers_store.insert(Arc::new(header));
+
+            builder.add_block_with_selected_parent(DagBlock::new(hash, parents), chain_parent);
+            added.insert(hash);
+        }
+        assert!(remaining.is_empty(), "DAG is not acyclic: {remaining:?}");
+
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+        let nca_service = reachability_service.clone();
+        let fir_relations = FutureIntersectRelations::new(relations, reachability_service.clone(), conflict_genesis);
+
+        let czm =
+            ConflictZoneManager::new(5, conflict_genesis, dagknight_store, headers_store.clone(), fir_relations, reachability_service);
+
+        // The captured last-known tips; their LCA is the conflict genesis
+        let lkt_tips: Vec<Hash> = [
+            "7060636f8d0df73776bcb313bf1d82eaacb3e73019f992b160a8c399f8fc0668",
+            "8e742298cd2c0b52fe3d15500ed22bb751fdbfbc3877004f63f5bb88b44d2f53",
+            "ecff100eb4017c319a57536cdec0297cc4fcf0b62629cd704506eec7cdfbaf4f",
+            "11b3b68baddf89943c302fed1d1a9cb6ab0a2ae6d977f68a67f74aee62caca34",
+            "91015a3c99995f8eb65622833aba4ca8842604c28b5b5b1e714c03266f965020",
+            "e834b5f79d3f9e626fb1c3dd773a7f2cf5a25268b5dfde61b6effcd9913e41f5",
+            "320c2bd043a480994503b9d35abb85654e788a261d2f2c37dbb0184910f301fe",
+            "57a75061912b083b0950b91fd517edd331b39148796254cfdfa1d76bcc6c5094",
+        ]
+        .iter()
+        .map(|s| Hash::from_str(s).unwrap())
+        .collect();
+
+        // NCA of the single-tip (6fe29520…) zone subgroup
+        let nca_2 = Hash::from_str("551db5c4501097ecc608815ac50b72c483d41d85419a2d82d48afab2b26ba325").unwrap();
+
+        // Group the LKTs by NCA w.r.t. their LCA (= conflict genesis), as in protocol.rs
+        let mut subgroups: Vec<(Hash, Vec<Hash>)> = Vec::new();
+        for tip in &lkt_tips {
+            let nca = nca_service.get_next_chain_ancestor(*tip, conflict_genesis);
+            match subgroups.iter_mut().find(|(n, _)| *n == nca) {
+                Some((_, group)) => group.push(*tip),
+                None => subgroups.push((nca, vec![*tip])),
+            }
+        }
+        for (nca, group) in &subgroups {
+            println!("subgroup: nca={} tips={:?}", nca, group);
+        }
+
+        let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
+        println!("lkt base: lkt={:?} zone={:?}", lkt, zone);
+
+        for (nca, subgroup) in &subgroups {
+            println!("fill subgroup: nca={} tips={}", nca, subgroup.len());
+            czm.fill_zone_data(subgroup, Some(*nca));
+            let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
+            println!("lkt after subgroup fill: lkt={:?} zone={:?}", lkt, zone);
+        }
+
+        println!("fill all zone tips: nca={}", nca_2);
+        czm.fill_zone_data(&tips, Some(nca_2));
+        let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
+        println!("lkt after all-tips fill: lkt={:?} zone={:?}", lkt, zone);
+    }
+
+    fn lkt_snapshot<
+        C: DagknightStore + DagknightStoreReader,
+        O: HeaderStoreReader,
+        D: RelationsStoreReader,
+        R: ReachabilityStoreReader + Clone,
+    >(
+        czm: &ConflictZoneManager<C, O, D, R>,
+        lkt_tips: &[Hash],
+        zone_tips: &[Hash],
+        nca: Hash,
+    ) -> (Vec<Hash>, Vec<Hash>) {
+        (czm.find_last_known_tips(lkt_tips, Some(nca)).0, czm.find_last_known_tips(zone_tips, Some(nca)).0)
     }
 }
