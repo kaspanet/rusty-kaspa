@@ -1,64 +1,51 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-    <head>
-        <link rel="stylesheet" href="./resources/style.css">
-        <script type="module">
-            import { 
-                log,
-                logToId,
-                clearId,
-                randomId,
-                stringify,
-                currentNetwork,
-                disconnectHandler
-            } from './resources/utils.js';
+  <head>
+    <link rel="stylesheet" href="./resources/style.css" />
+    <script type="importmap">
+      { "imports": { "kaspa": "../../web/kaspa-rpc/kaspa.js" } }
+    </script>
+    <script type="module">
+      import {
+        log,
+        logToId,
+        clearId,
+        randomId,
+        currentNetwork,
+        disconnectHandler,
+      } from "./resources/utils.js";
+      import init, { Resolver, RpcClient } from "kaspa";
 
-            // import WASM32 SDK
-            import * as kaspa from '../../web/kaspa-rpc/kaspa.js';
-            let { Resolver, RpcClient, Encoding } = kaspa;
+      await init(); // load the WASM32 SDK binaries
 
-            (async () => {
-                // load WASM32 SDK binaries 
-                await kaspa.default('../../web/kaspa-rpc/kaspa_bg.wasm');
+      const networkId = currentNetwork();
+      const rpc = new RpcClient({ resolver: new Resolver(), networkId });
 
-                let networkId = currentNetwork();
-                log(`Connecting to Kaspa network...`);
-                log(`Selected network is ${networkId.class("network")}...`);
+      // (Re)subscribe on every connect, streaming blocks into a fresh log line.
+      let id;
+      rpc.addEventListener("connect", async () => {
+        clearId(id);
+        id = randomId();
+        log("Connected to", rpc.url.class("network"));
+        log("Subscribing to block-added notifications...");
+        await rpc.subscribeBlockAdded();
+      });
 
-                const rpc = new RpcClient({
-                    resolver : new Resolver(),
-                    networkId,
-                });
+      rpc.addEventListener("disconnect", () => {
+        log("Disconnected from", rpc.url.class("network"));
+      });
 
-                let id;
-                rpc.addEventListener("connect", async (event) => {
-                    clearId(id);
-                    id = randomId();
+      rpc.addEventListener("block-added", (event) => {
+        // Drop parentsByLevel to keep the rendered output compact.
+        delete event.data.block.header.parentsByLevel;
+        logToId(id, event);
+      });
 
-                    log("Connected to", rpc.url.class("network"));
-                    log("Subscribing to Block Added...");
-                    await rpc.subscribeBlockAdded();
-                });
-                
-                rpc.addEventListener("disconnect", async (event) => {
-                    log("Disconnected from", rpc.url.class("network"));
-                    console.log("Disconnect",event);
-                });
+      log(`Connecting to ${networkId.class("network")}...`);
+      await rpc.connect();
 
-                rpc.addEventListener("block-added", async (event) => {
-                    // remove parentsByLevel from header (reduce data output)
-                    delete event.data.block.header.parentsByLevel;
-                    logToId(id, event);
-                });
-
-
-                log("Connecting to public node...");
-                await rpc.connect();
-
-                disconnectHandler(rpc);
-            })();
-
-        </script>
-    </head>
-    <body></body>
+      disconnectHandler(rpc);
+    </script>
+  </head>
+  <body></body>
 </html>
