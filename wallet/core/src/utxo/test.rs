@@ -1,13 +1,15 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::tests::RpcCoreMock;
 use crate::tx::generator::test::*;
 use crate::tx::*;
 use crate::utils::*;
-use crate::utxo::*;
 
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::test]
 async fn test_utxo_subsystem_bootstrap() -> Result<()> {
+    use crate::tests::RpcCoreMock;
+    use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoProcessor};
+
     let network_id = NetworkId::with_suffix(NetworkType::Testnet, 10);
     let rpc_api_mock = Arc::new(RpcCoreMock::new());
     let processor = UtxoProcessor::new(Some(rpc_api_mock.clone().into()), Some(network_id), None, None);

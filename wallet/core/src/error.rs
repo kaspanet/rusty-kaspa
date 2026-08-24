@@ -268,6 +268,9 @@ pub enum Error {
     #[error("Invalid transaction amount")]
     GeneratorPaymentOutputZeroAmount,
 
+    #[error("Covenant cannot be used within generator")]
+    GeneratorPaymentOutputCovenantNotAllowed,
+
     #[error("Priority fees can not be included into transactions with multiple outputs")]
     GeneratorIncludeFeesRequiresOneOutput,
 

@@ -30,7 +30,7 @@ pub use metadata::AccountMetadata;
 pub use storable::Storable;
 pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionRecord};
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
 
     use super::*;

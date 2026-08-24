@@ -7,9 +7,9 @@ use crate::utils::kaspa_to_sompi;
 use crate::utxo::UtxoEntryReference;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
-use kaspa_consensus_core::mass::{UtxoCell, transaction_estimated_serialized_size};
+use kaspa_consensus_core::mass::UtxoCell;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
-use kaspa_consensus_core::tx::{CovenantBinding, Transaction};
+use kaspa_consensus_core::tx::{ComputeCommit, CovenantBinding, Transaction};
 use kaspa_hashes::Hash;
 use rand::prelude::*;
 use std::cell::RefCell;
@@ -173,13 +173,13 @@ fn validate(pt: &PendingTransaction) {
 
     let calc = MassCalculator::new(&pt.network_type().into());
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
-    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
-
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
-    let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or(u64::MAX);
-    let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
+    let masses = calc.calc_unsigned_consensus_transaction_masses(&tx, &utxo_entries, pt.minimum_signatures()).unwrap();
+    let storage_mass = masses.contextual.storage_mass;
+    let calculated_mass = calc.calc_standard_mass(&masses) + additional_mass;
 
     assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
+    assert_eq!(tx.storage_mass(), storage_mass, "transaction storage mass commitment does not match calculated storage mass");
 }
 
 fn expect<SOMPI>(pt: &PendingTransaction, expected: &Expected<SOMPI>)
@@ -203,17 +203,19 @@ where
     let calc = MassCalculator::new(&pt.network_type().into());
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
 
-    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
-
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
-    let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or(u64::MAX);
+    let masses = calc.calc_unsigned_consensus_transaction_masses(&tx, &utxo_entries, pt.minimum_signatures()).unwrap();
+    let storage_mass = masses.contextual.storage_mass;
     if DISPLAY_LOGS && storage_mass != 0 {
-        println!("calculated storage mass: {} calculated_compute_mass: {}", storage_mass, compute_mass,);
+        println!(
+            "calculated storage mass: {} calculated_compute_mass: {} calculated_transient_mass: {}",
+            storage_mass, masses.non_contextual.compute_mass, masses.non_contextual.transient_mass
+        );
     }
 
-    let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
-    // Minimum standard relay fee requires only compute mass.
-    let calculated_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass + additional_mass);
+    let calculated_mass = calc.calc_standard_mass(&masses) + additional_mass;
+    // Minimum standard relay fee is based on non-contextual relay mass.
+    let calculated_fees = calc.calc_minimum_relay_fee_with_additional_mass(&masses, additional_mass);
 
     if storage_mass != 0 {
         println!("PT outputs: {}", tx.outputs.len());
@@ -221,6 +223,7 @@ where
     }
 
     assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
+    assert_eq!(tx.storage_mass(), storage_mass, "transaction storage mass commitment does not match calculated storage mass");
 
     match expected.priority_fees {
         FeesExpected::Sender(priority_fees) => {
@@ -441,7 +444,6 @@ where
 
     let utxo_entries: Vec<UtxoEntryReference> = values.into_iter().map(kaspa_to_sompi).map(UtxoEntryReference::simulated).collect();
     let multiplexer = None;
-    let sig_op_count = 1;
     let minimum_signatures = 1;
     let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> = Box::new(utxo_entries.into_iter());
     let priority_utxo_entries = None;
@@ -451,9 +453,10 @@ where
     let change_address = change_address(network_id.into());
 
     let settings = GeneratorSettings {
+        version: 0,
         network_id,
         multiplexer,
-        sig_op_count,
+        compute_commit: ComputeCommit::SigopCount(1.into()),
         minimum_signatures,
         change_address,
         utxo_iterator,
@@ -559,13 +562,12 @@ fn test_generator_large_payload_min_relay_fee() -> Result<()> {
         priority_fees: FeesExpected::sender(Kaspa(0.0)),
     });
 
-    const NORMALIZED_TRANSIENT_BYTE_FACTOR: u64 = 2;
-
     let pt = harness.accumulator.borrow().list[0].clone();
     let tx = pt.transaction();
     let calc = MassCalculator::new(&network_id.into());
-    let mempool_minimum_fee =
-        calc.calc_minimum_transaction_fee_from_mass(transaction_estimated_serialized_size(&tx) * NORMALIZED_TRANSIENT_BYTE_FACTOR);
+    let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
+    let masses = calc.calc_unsigned_consensus_transaction_masses(&tx, &utxo_entries, pt.minimum_signatures())?;
+    let mempool_minimum_fee = calc.calc_minimum_relay_fee(&masses);
     assert!(pt.fees() >= mempool_minimum_fee, "large payloads must cover the mempool transient fee floor");
 
     harness.finalize();
@@ -691,29 +693,29 @@ fn test_generator_inputs_2_outputs_2_fees_exclude() -> Result<()> {
 }
 
 #[test]
-fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
-    // generator(test_network_id(), &[10.0; 100], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(990.0))].as_slice())
-    generator(test_network_id(), &[10.0; 100], &[], None, Fees::sender(Kaspa(0.0)), [(output_address, Kaspa(990.0))].as_slice())
+fn test_generator_inputs_500_outputs_1_fees_exclude_success() -> Result<()> {
+    // generator(test_network_id(), &[10.0; 500], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(4990.0))].as_slice())
+    generator(test_network_id(), &[10.0; 500], &[], None, Fees::sender(Kaspa(0.0)), [(output_address, Kaspa(4990.0))].as_slice())
         .unwrap()
         .harness()
         .fetch(&Expected {
             is_final: false,
-            input_count: 88,
-            aggregate_input_value: Kaspa(880.0),
+            input_count: 446,
+            aggregate_input_value: Kaspa(4460.0),
             output_count: 1,
             priority_fees: FeesExpected::None,
         })
         .fetch(&Expected {
             is_final: false,
-            input_count: 12,
-            aggregate_input_value: Kaspa(120.0),
+            input_count: 54,
+            aggregate_input_value: Kaspa(540.0),
             output_count: 1,
             priority_fees: FeesExpected::None,
         })
         .fetch(&Expected {
             is_final: true,
             input_count: 2,
-            aggregate_input_value: Sompi(999_88657600),
+            aggregate_input_value: Sompi(499943978800),
             output_count: 2,
             // priority_fees: FeesExpected::sender(Kaspa(5.0)),
             priority_fees: FeesExpected::sender(Kaspa(0.0)),
@@ -724,36 +726,36 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
 }
 
 #[test]
-fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
+fn test_generator_inputs_500_outputs_1_fees_include_success() -> Result<()> {
     generator(
         test_network_id(),
-        &[1.0; 100],
+        &[1.0; 500],
         &[],
         None,
         Fees::receiver(Kaspa(5.0)),
-        // [(output_address, Kaspa(100.0))].as_slice(),
-        [(output_address, Kaspa(100.0))].as_slice(),
+        // [(output_address, Kaspa(500.0))].as_slice(),
+        [(output_address, Kaspa(500.0))].as_slice(),
     )
     .unwrap()
     .harness()
     .fetch(&Expected {
         is_final: false,
-        input_count: 88,
-        aggregate_input_value: Kaspa(88.0),
+        input_count: 446,
+        aggregate_input_value: Kaspa(446.0),
         output_count: 1,
         priority_fees: FeesExpected::None,
     })
     .fetch(&Expected {
         is_final: false,
-        input_count: 12,
-        aggregate_input_value: Kaspa(12.0),
+        input_count: 54,
+        aggregate_input_value: Kaspa(54.0),
         output_count: 1,
         priority_fees: FeesExpected::None,
     })
     .fetch(&Expected {
         is_final: true,
         input_count: 2,
-        aggregate_input_value: Sompi(99_88657600),
+        aggregate_input_value: Sompi(49943978800),
         output_count: 1,
         priority_fees: FeesExpected::receiver(Kaspa(5.0)),
     })
@@ -763,14 +765,14 @@ fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
 }
 
 #[test]
-fn test_generator_inputs_100_outputs_1_fees_exclude_insufficient_funds() -> Result<()> {
-    generator(test_network_id(), &[10.0; 100], &[], None, Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(1000.0))].as_slice())
+fn test_generator_inputs_500_outputs_1_fees_exclude_insufficient_funds() -> Result<()> {
+    generator(test_network_id(), &[10.0; 500], &[], None, Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(5000.0))].as_slice())
         .unwrap()
         .harness()
         .fetch(&Expected {
             is_final: false,
-            input_count: 88,
-            aggregate_input_value: Kaspa(880.0),
+            input_count: 446,
+            aggregate_input_value: Kaspa(4460.0),
             output_count: 1,
             priority_fees: FeesExpected::None,
         })
@@ -785,26 +787,26 @@ fn test_generator_inputs_1k_outputs_2_fees_exclude() -> Result<()> {
         .unwrap()
         .harness()
         .drain(
-            10,
+            2,
             &Expected {
                 is_final: false,
-                input_count: 88,
-                aggregate_input_value: Kaspa(880.0),
+                input_count: 446,
+                aggregate_input_value: Kaspa(4460.0),
                 output_count: 1,
                 priority_fees: FeesExpected::None,
             },
         )
         .fetch(&Expected {
             is_final: false,
-            input_count: 21,
-            aggregate_input_value: Kaspa(210.0),
+            input_count: 9,
+            aggregate_input_value: Kaspa(90.0),
             output_count: 1,
             priority_fees: FeesExpected::None,
         })
         .fetch(&Expected {
             is_final: true,
-            input_count: 11,
-            aggregate_input_value: Sompi(9008_98189600),
+            input_count: 3,
+            aggregate_input_value: Sompi(900899086400),
             output_count: 2,
             priority_fees: FeesExpected::receiver(Kaspa(5.0)),
         })
@@ -826,7 +828,7 @@ fn test_generator_inputs_32k_outputs_2_fees_exclude() -> Result<()> {
     )
     .unwrap()
     .harness()
-    .accumulate(379)
+    .accumulate(75)
     .finalize();
     Ok(())
 }
@@ -836,7 +838,7 @@ fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
     let f = 130.0;
     let head = vec![f; 250_000];
     let generator = make_generator(test_network_id(), &head, &[], None, Fees::None, change_address, PaymentDestination::Change);
-    generator.unwrap().harness().accumulate(2875).finalize();
+    generator.unwrap().harness().accumulate(564).finalize();
     Ok(())
 }
 
@@ -881,18 +883,48 @@ fn test_generator_fan_out_1() -> Result<()> {
 }
 
 #[test]
-fn test_generator_preserves_output_covenant_binding() -> Result<()> {
+fn test_generator_rejects_output_covenant_binding() {
     let network_id = test_network_id();
     let covenant = CovenantBinding::new(0, Hash::from_u64_word(1));
     let output = PaymentOutput::with_covenant(output_address(network_id.into()), kaspa_to_sompi(10.0), covenant.into());
     let destination = PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![output] });
 
-    let generator = make_generator(network_id, &[20.0], &[], None, Fees::sender(Kaspa(0.0)), change_address, destination)?;
+    assert!(make_generator(network_id, &[20.0], &[], None, Fees::sender(Kaspa(0.0)), change_address, destination.clone()).is_err());
+}
+
+#[test]
+fn test_generator_skips_utxos_with_defined_covenant_id() -> Result<()> {
+    let network_id = test_network_id();
+    let mut covenanted_utxo = UtxoEntryReference::simulated(kaspa_to_sompi(100.0)).as_ref().clone();
+    covenanted_utxo.covenant_id = Some(Hash::from_u64_word(2));
+    let covenanted_entry = UtxoEntryReference::from(covenanted_utxo);
+    let selected_entry = UtxoEntryReference::simulated(kaspa_to_sompi(20.0));
+    let output = PaymentOutput::new(output_address(network_id.into()), kaspa_to_sompi(10.0));
+    let destination = PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![output] });
+
+    let settings = GeneratorSettings {
+        version: 0,
+        network_id,
+        multiplexer: None,
+        compute_commit: ComputeCommit::SigopCount(1.into()),
+        minimum_signatures: 1,
+        change_address: change_address(network_id.into()),
+        // covenant entry is first in the iterator, processed first by the generator
+        utxo_iterator: Box::new(vec![covenanted_entry, selected_entry.clone()].into_iter()),
+        source_utxo_context: None,
+        priority_utxo_entries: None,
+        destination_utxo_context: None,
+        fee_rate: None,
+        final_transaction_priority_fee: Fees::sender(Kaspa(0.0)),
+        final_transaction_destination: destination,
+        final_transaction_payload: None,
+    };
+    let generator = Generator::try_new(settings, None, None)?;
     let pending = generator.generate_transaction()?.expect("expected transaction");
     let tx = pending.transaction();
 
-    assert_eq!(tx.outputs.first().and_then(|output| output.covenant), Some(covenant));
-    assert!(generator.generate_transaction()?.is_none(), "expected no additional transactions");
+    assert_eq!(tx.inputs.len(), 1);
+    assert_eq!(tx.inputs[0].previous_outpoint, selected_entry.utxo.outpoint.clone().into());
 
     Ok(())
 }
