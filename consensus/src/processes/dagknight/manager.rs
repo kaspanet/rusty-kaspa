@@ -501,30 +501,61 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                                 || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
                         })
                         .collect::<Vec<_>>();
+
+                    // sanity checks - start
                     assert!(
                         !agreeing_parents.is_empty(),
                         "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
                         current_hash,
                         parents
                     );
+
                     // all parents here must already exist assuming topological sorting is honored
                     // so finding one that doesn't means an error in processing and must be diagnosed
-                    agreeing_parents.iter().for_each(|&parent| {
-                        if !self.has(parent) {
-                            last_known_tips.iter().for_each(|&lk_tip| {
-                                if self.reachability_service.is_dag_ancestor_of(parent, lk_tip) {
-                                    println!(
-                                        "cg: {} | k: {} | fs: {} | nca: {:?} | parent {} is in the past of a last known tip {}",
-                                        self.root, self.k, self.free_search, next_chain_ancestor, parent, lk_tip
-                                    );
-                                }
+                    if let Some(&parent) = agreeing_parents
+                        .iter()
+                        .filter(|&&parent| !self.has(parent))
+                        .filter(|&&parent| tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
+                        .next()
+                    {
+                        last_known_tips
+                            .iter()
+                            .filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip))
+                            .for_each(|&lk_tip| {
+                                println!(
+                                    "cg: {} | k: {} | fs: {} | nca: {:?} | parent {} is in the past of a last known tip {}",
+                                    self.root, self.k, self.free_search, next_chain_ancestor, parent, lk_tip
+                                );
                             });
-                            panic!(
-                                "cg: {} | k: {} | fs: {} | nca: {:?} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
-                                self.root, self.k, self.free_search, next_chain_ancestor_of_current, last_known_tips, current_hash, parent, parents, tips
-                            );
-                        }
-                    });
+                        panic!(
+                            "cg: {} | k: {} | fs: {} | nca: {:?} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
+                            self.root,
+                            self.k,
+                            self.free_search,
+                            next_chain_ancestor_of_current,
+                            last_known_tips,
+                            current_hash,
+                            parent,
+                            parents,
+                            tips
+                        );
+                    };
+
+                    if !agreeing_parents.iter().any(|&parent| self.has(parent)) {
+                        panic!(
+                            "cg: {} | k: {} | fs: {} | nca: {:?} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:#?} | tips: {:?}",
+                            self.root,
+                            self.k,
+                            self.free_search,
+                            next_chain_ancestor_of_current,
+                            last_known_tips,
+                            current_hash,
+                            agreeing_parents,
+                            tips
+                        );
+                    }
+                    // sanity checks - end
+
                     self.find_selected_parent(agreeing_parents.iter().copied())
                 };
 
