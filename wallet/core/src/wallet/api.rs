@@ -655,6 +655,25 @@ impl WalletApi for super::Wallet {
         Ok(TransactionsReplaceMetadataResponse {})
     }
 
+    async fn transactions_export_csv_call(
+        self: Arc<Self>,
+        request: TransactionsExportCsvRequest,
+    ) -> Result<TransactionsExportCsvResponse> {
+        let TransactionsExportCsvRequest { account_id, network_id: _, filter, start_date, end_date } = request;
+
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self
+            .get_account_by_id(&account_id, &guard)
+            .await?
+            .ok_or_else(|| Error::AccountNotFound(account_id))?;
+
+        let (csv_content, transaction_count) = account.export_transaction_history_csv(filter, start_date, end_date).await?;
+
+        Ok(TransactionsExportCsvResponse { csv_content, transaction_count })
+    }
+
     async fn address_book_enumerate_call(
         self: Arc<Self>,
         _request: AddressBookEnumerateRequest,
