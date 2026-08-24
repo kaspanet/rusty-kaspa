@@ -3,7 +3,6 @@ use std::sync::Arc;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
-    convert::header::HeaderFormat,
     dequeue_with_request_id, make_response,
     pb::{PruningPointProofMessage, kaspad_message::Payload},
 };
@@ -15,7 +14,6 @@ pub struct RequestPruningPointProofFlow {
     ctx: FlowContext,
     router: Arc<Router>,
     incoming_route: IncomingRoute,
-    header_format: HeaderFormat,
 }
 
 #[async_trait::async_trait]
@@ -30,8 +28,8 @@ impl Flow for RequestPruningPointProofFlow {
 }
 
 impl RequestPruningPointProofFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, header_format: HeaderFormat) -> Self {
-        Self { ctx, router, incoming_route, header_format }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
+        Self { ctx, router, incoming_route }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -42,7 +40,7 @@ impl RequestPruningPointProofFlow {
             self.router
                 .enqueue(make_response!(
                     Payload::PruningPointProof,
-                    PruningPointProofMessage { headers: proof.iter().map(|headers| (self.header_format, headers).into()).collect() },
+                    PruningPointProofMessage { headers: proof.iter().map(|headers| headers.into()).collect() },
                     request_id
                 ))
                 .await?;

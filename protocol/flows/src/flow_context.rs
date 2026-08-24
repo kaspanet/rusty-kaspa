@@ -764,7 +764,7 @@ impl ConnectionInitializer for FlowContext {
 
         // Peers must advertise at least the current protocol version. Register all flows according to version.
         let (flows, applied_protocol_version) = match peer_protocol_version {
-            v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+            v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone()), PROTOCOL_VERSION),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
