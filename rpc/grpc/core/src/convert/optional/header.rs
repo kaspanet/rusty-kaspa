@@ -52,13 +52,13 @@ from!(item: &kaspa_rpc_core::RpcOptionalHeader, protowire::RpcOptionalHeader, {
 
 try_from!(item: &protowire::RpcOptionalHeader, kaspa_rpc_core::RpcOptionalHeader, {
     Self {
-        version: item.version.map(|x| x as u16),
+        version: item.version.map(u16::try_from).transpose()?,
         hash: item.hash.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
         parents_by_level: Some(compressed_parents_from_protowire(&item.parents_by_level)?),
         hash_merkle_root: item.hash_merkle_root.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
         accepted_id_merkle_root: item.accepted_id_merkle_root.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
         utxo_commitment: item.utxo_commitment.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
-        timestamp: item.timestamp.map(|x| x as u64),
+        timestamp: item.timestamp.map(u64::try_from).transpose()?,
         bits: item.bits,
         nonce: item.nonce,
         daa_score: item.daa_score,
@@ -67,3 +67,26 @@ try_from!(item: &protowire::RpcOptionalHeader, kaspa_rpc_core::RpcOptionalHeader
         pruning_point: item.pruning_point.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
     }
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_out_of_range_optional_header_fields() {
+        let wire = protowire::RpcOptionalHeader {
+            version: Some(u16::MAX as u32 + 1),
+            ..Default::default()
+        };
+        assert!(matches!(
+            kaspa_rpc_core::RpcOptionalHeader::try_from(&wire),
+            Err(RpcError::IntConversionError(_))
+        ));
+
+        let wire = protowire::RpcOptionalHeader { timestamp: Some(-1), ..Default::default() };
+        assert!(matches!(
+            kaspa_rpc_core::RpcOptionalHeader::try_from(&wire),
+            Err(RpcError::IntConversionError(_))
+        ));
+    }
+}
