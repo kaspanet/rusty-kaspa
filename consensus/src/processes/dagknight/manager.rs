@@ -26,6 +26,7 @@ use crate::{
         },
     },
     processes::{
+        dagknight::umc_voting::ColoringReader,
         difficulty::calc_work,
         ghostdag::{
             mergeset::unordered_mergeset_without_selected_parent,
@@ -528,6 +529,14 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         visited_subdag
     }
     // END Copied from GD Manager
+}
+
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityStoreReader + Clone>
+    ColoringReader for ConflictZoneManager<C, O, D, R>
+{
+    fn get_coloring_data(&self, hash: Hash) -> Arc<GhostdagData> {
+        self.get_data(hash).expect("zone coloring data missing for a chain block that was filled")
+    }
 }
 
 #[cfg(test)]

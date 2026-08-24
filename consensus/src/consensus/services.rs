@@ -13,10 +13,10 @@ use crate::{
     },
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, dagknight::DagknightCounters,
-        dagknight::protocol::DagknightExecutor, ghostdag::protocol::GhostdagManager,
-        parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager,
-        sync::SyncManager, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
-        window::SampledWindowManager,
+        dagknight::protocol::DagknightExecutor, dagknight::umc_cascade_persistence::DbUmcCascadeStore,
+        ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, pruning::PruningPointManager,
+        pruning_proof::PruningProofManager, sync::SyncManager, transaction_validator::TransactionValidator,
+        traversal_manager::DagTraversalManager, window::SampledWindowManager,
     },
 };
 use kaspa_consensus_core::mass::MassCalculator;
@@ -52,7 +52,7 @@ pub type DbPruningPointManager = PruningPointManager<
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 pub type DbDagknightExecutor =
-    DagknightExecutor<DbDagknightStore, DbHeadersStore, MTRelationsService<DbRelationsStore>, DbReachabilityStore>;
+    DagknightExecutor<DbDagknightStore, DbHeadersStore, MTRelationsService<DbRelationsStore>, DbUmcCascadeStore, DbReachabilityStore>;
 
 pub struct ConsensusServices {
     // Underlying storage
@@ -148,6 +148,7 @@ impl ConsensusServices {
             relations_store: Arc::new(RwLock::new(relations_service.clone())),
             reachability_service: reachability_service.clone(),
             counters: dagknight_counters.clone(),
+            umc_persistence_store: storage.umc_persistence_store.clone(),
         });
 
         let coinbase_manager = CoinbaseManager::new(

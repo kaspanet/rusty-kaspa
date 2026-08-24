@@ -68,6 +68,7 @@ pub enum DatabaseStorePrefixes {
 
     // ---- DagKnight ----
     DagKnight = 70,
+    DagKnightUMC = 71,
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
