@@ -1,20 +1,28 @@
-use kaspa_consensus_core::trusted::{TrustedGhostdagData, TrustedHeader};
+use kaspa_consensus_core::{
+    header::Header,
+    trusted::{TrustedGhostdagData, TrustedHeader},
+};
+use std::sync::Arc;
 
-use crate::convert::header::HeaderFormat;
 use crate::pb as protowire;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
 // ----------------------------------------------------------------------------
 
-impl From<(HeaderFormat, &TrustedHeader)> for protowire::DaaBlockV4 {
-    fn from(value: (HeaderFormat, &TrustedHeader)) -> Self {
-        let (header_format, item) = value;
+impl From<&TrustedHeader> for protowire::DaaBlockV4 {
+    fn from(item: &TrustedHeader) -> Self {
         Self {
-            header: Some((header_format, &*item.header).into()),
+            header: Some((&*item.header).into()),
             coloring_ghostdag_data: Some((&item.coloring_ghostdag).into()),
             topology_ghostdag_data: Some((&item.topology_ghostdag).into()),
         }
+    }
+}
+
+impl From<&Arc<Header>> for protowire::DaaBlockV4 {
+    fn from(header: &Arc<Header>) -> Self {
+        Self { header: Some((&**header).into()), coloring_ghostdag_data: None, topology_ghostdag_data: None }
     }
 }
 

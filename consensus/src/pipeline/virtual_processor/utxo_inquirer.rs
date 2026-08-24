@@ -140,8 +140,13 @@ impl VirtualStateProcessor {
         // so we use the transaction (which also has acceptance data in this block) and look at its outputs
         let other_tx = &self.find_txs_from_acceptance_data(Some(vec![outpoint.transaction_id]), acceptance_data)?[0];
         let output = &other_tx.outputs[outpoint.index as usize];
-        let utxo_entry =
-            UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_block_daa_score, other_tx.is_coinbase());
+        let utxo_entry = UtxoEntry::new(
+            output.value,
+            output.script_public_key.clone(),
+            accepting_block_daa_score,
+            other_tx.is_coinbase(),
+            output.covenant.map(|x| x.covenant_id),
+        );
         Ok(utxo_entry)
     }
 
@@ -175,7 +180,13 @@ impl VirtualStateProcessor {
                 } else if let Some(utxo) = populated_txs.iter().map(|ptx| &ptx.tx).chain(txs.iter()).find_map(|tx| {
                     if tx.id() == input.previous_outpoint.transaction_id {
                         let output = &tx.outputs[input.previous_outpoint.index as usize];
-                        Some(UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_daa_score, tx.is_coinbase()))
+                        Some(UtxoEntry::new(
+                            output.value,
+                            output.script_public_key.clone(),
+                            accepting_daa_score,
+                            tx.is_coinbase(),
+                            output.covenant.map(|x| x.covenant_id),
+                        ))
                     } else {
                         None
                     }
@@ -235,7 +246,13 @@ impl VirtualStateProcessor {
                 } else if let Some(utxo) = populated_txs.iter().map(|ptx| &ptx.tx).chain(txs.iter()).find_map(|tx| {
                     if tx.id() == input.previous_outpoint.transaction_id {
                         let output = &tx.outputs[input.previous_outpoint.index as usize];
-                        Some(UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_daa_score, tx.is_coinbase()))
+                        Some(UtxoEntry::new(
+                            output.value,
+                            output.script_public_key.clone(),
+                            accepting_daa_score,
+                            tx.is_coinbase(),
+                            output.covenant.map(|x| x.covenant_id),
+                        ))
                     } else {
                         None
                     }

@@ -201,6 +201,8 @@ pub struct StateObserver {
     utxo_resync: Regex,
     utxo_sync: Regex,
     trust_blocks: Regex,
+    smt_import_start: Regex,
+    smt_import: Regex,
     // accepted_block: Regex,
 }
 
@@ -213,6 +215,8 @@ impl Default for StateObserver {
             utxo_resync: Regex::new(r"Resyncing the utxoindex...").unwrap(),
             utxo_sync: Regex::new(r"Received (\d+) UTXO set chunks so far, totaling in (\d+) UTXOs").unwrap(),
             trust_blocks: Regex::new(r"Processed (\d) trusted blocks in the last .* (total (\d))").unwrap(),
+            smt_import_start: Regex::new(r"downloading the pruning point SMT state from").unwrap(),
+            smt_import: Regex::new(r"SMT import (\d+) of (\d+)").unwrap(),
             // accepted_block: Regex::new(r"Accepted block .* via").unwrap(),
         }
     }
@@ -245,6 +249,14 @@ impl StateObserver {
                 && let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>())
             {
                 state = Some(SyncState::TrustSync { processed, total });
+            }
+        } else if self.smt_import_start.is_match(line) {
+            state = Some(SyncState::SmtSync { processed: 0, total: 0 });
+        } else if let Some(captures) = self.smt_import.captures(line) {
+            if let (Some(processed), Some(total)) = (captures.get(1), captures.get(2))
+                && let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>())
+            {
+                state = Some(SyncState::SmtSync { processed, total });
             }
         } else if let Some(captures) = self.proof.captures(line) {
             if let Some(level) = captures.get(1)

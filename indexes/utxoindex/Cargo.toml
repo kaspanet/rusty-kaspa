@@ -17,7 +17,7 @@ kaspa-core.workspace = true
 kaspa-database.workspace = true
 kaspa-hashes.workspace = true
 kaspa-index-core.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["hashmap"] }
 log.workspace = true
 parking_lot.workspace = true
 rocksdb.workspace = true

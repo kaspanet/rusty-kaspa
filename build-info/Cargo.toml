@@ -1,0 +1,19 @@
+[package]
+name = "kaspa-build-info"
+description = "Compile-time git/build information embedded via build script"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[build-dependencies]
+duct = "0.13.7"
+
+[dependencies]
+faster-hex.workspace = true
+
+[lints]
+workspace = true

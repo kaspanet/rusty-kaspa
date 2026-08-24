@@ -21,11 +21,13 @@ pub struct TransactionValidator {
     coinbase_maturity: u64,
     ghostdag_k: KType,
     sig_cache: Cache<SigCacheKey, bool>,
+    mass_per_sig_op: u64,
 
     pub(crate) mass_calculator: MassCalculator,
 }
 
 impl TransactionValidator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         max_tx_inputs: usize,
         max_tx_outputs: usize,
@@ -36,6 +38,7 @@ impl TransactionValidator {
         ghostdag_k: KType,
         counters: Arc<TxScriptCacheCounters>,
         mass_calculator: MassCalculator,
+        mass_per_sig_op: u64,
     ) -> Self {
         Self {
             max_tx_inputs,
@@ -47,6 +50,7 @@ impl TransactionValidator {
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator,
+            mass_per_sig_op,
         }
     }
 
@@ -69,7 +73,8 @@ impl TransactionValidator {
             coinbase_maturity,
             ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
-            mass_calculator: MassCalculator::new(0, 0, 0, 0),
+            mass_calculator: MassCalculator::new(0, 0, 0),
+            mass_per_sig_op: 0,
         }
     }
 }

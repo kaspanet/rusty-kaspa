@@ -41,6 +41,11 @@ pub enum SyncState {
     NotSynced,
     /// Node is fully synced with the network.
     Synced,
+    /// Node is importing the pruning point SMT state.
+    SmtSync {
+        processed: u64,
+        total: u64,
+    },
 }
 
 impl SyncState {

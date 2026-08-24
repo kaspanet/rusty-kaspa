@@ -1,6 +1,6 @@
+use core::str;
 use serde::Serializer;
 use serde::ser::SerializeTuple;
-use std::str;
 
 /// Trait for serialization of types which can be referenced as fixed-size byte arrays.
 pub trait Serialize<const N: usize> {
@@ -17,7 +17,7 @@ impl<const N: usize, T: AsRef<[u8; N]>> Serialize<N> for T {
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            let mut hex = vec![0u8; self.as_ref().len() * 2];
+            let mut hex = alloc::vec![0u8; self.as_ref().len() * 2];
             faster_hex::hex_encode(self.as_ref(), &mut hex[..]).map_err(serde::ser::Error::custom)?;
             serializer.serialize_str(unsafe { str::from_utf8_unchecked(&hex) })
         } else {
@@ -41,15 +41,15 @@ macro_rules! serde_impl_ser_fixed_bytes_ref {
             where
                 S: serde::Serializer,
             {
-                let len = std::convert::AsRef::<[u8; $size]>::as_ref(self).len();
+                let len = core::convert::AsRef::<[u8; $size]>::as_ref(self).len();
                 if serializer.is_human_readable() {
-                    let mut hex = vec![0u8; len * 2];
-                    faster_hex::hex_encode(&std::convert::AsRef::<[u8; $size]>::as_ref(self)[..], &mut hex[..])
+                    let mut hex = alloc::vec![0u8; len * 2];
+                    faster_hex::hex_encode(&core::convert::AsRef::<[u8; $size]>::as_ref(self)[..], &mut hex[..])
                         .map_err(serde::ser::Error::custom)?;
-                    serializer.serialize_str(unsafe { std::str::from_utf8_unchecked(&hex) })
+                    serializer.serialize_str(unsafe { core::str::from_utf8_unchecked(&hex) })
                 } else {
                     let mut t = serializer.serialize_tuple(len)?;
-                    for v in std::convert::AsRef::<[u8; $size]>::as_ref(self) {
+                    for v in core::convert::AsRef::<[u8; $size]>::as_ref(self) {
                         serde::ser::SerializeTuple::serialize_element(&mut t, v)?
                     }
                     serde::ser::SerializeTuple::end(t)

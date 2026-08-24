@@ -2,7 +2,7 @@ fn main() {
     let proto_files = &["./proto/messages.proto", "./proto/p2p.proto"];
     let dirs = &["./proto"];
 
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
         .compile_protos(&proto_files[0..1], dirs)

@@ -1,0 +1,49 @@
+[package]
+name = "kaspa-txscript-zk-sdk"
+description = "Kaspa txscript ZK SDK"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+wasm32-core = [
+    "dep:borsh",
+    "dep:js-sys",
+    "dep:kaspa-wasm-core",
+    "dep:wasm-bindgen",
+    "dep:workflow-wasm",
+    "kaspa-txscript/wasm32-sdk",
+]
+wasm32-sdk = ["wasm32-core"]
+default = []
+
+[dependencies]
+ark-bn254.workspace = true
+ark-ec.workspace = true
+ark-groth16.workspace = true
+ark-serialize.workspace = true
+borsh = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+kaspa-txscript.workspace = true
+kaspa-wasm-core = { workspace = true, optional = true }
+risc0-binfmt.workspace = true
+risc0-groth16.workspace = true
+risc0-zkvm.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+wasm-bindgen = { workspace = true, optional = true }
+workflow-wasm = { workspace = true, optional = true }
+
+[dev-dependencies]
+bincode.workspace = true
+borsh.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-hashes.workspace = true
+kaspa-txscript-errors.workspace = true
+
+[lints]
+workspace = true

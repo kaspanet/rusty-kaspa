@@ -291,6 +291,7 @@ pub struct RpcTransactionOutputVerbosity {
     pub include_amount: Option<bool>,
     pub include_script_public_key: Option<bool>,
     pub verbose_data_verbosity: Option<RpcTransactionOutputVerboseDataVerbosity>,
+    pub include_covenant: Option<bool>,
 }
 
 impl RpcTransactionOutputVerbosity {
@@ -298,14 +299,15 @@ impl RpcTransactionOutputVerbosity {
         include_amount: Option<bool>,
         include_script_public_key: Option<bool>,
         verbose_data_verbosity: Option<RpcTransactionOutputVerboseDataVerbosity>,
+        include_covenant: Option<bool>,
     ) -> Self {
-        Self { include_amount, include_script_public_key, verbose_data_verbosity }
+        Self { include_amount, include_script_public_key, verbose_data_verbosity, include_covenant }
     }
 }
 
 impl Serializer for RpcTransactionOutputVerbosity {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(Option<bool>, &self.include_amount, writer)?;
         store!(Option<bool>, &self.include_script_public_key, writer)?;
         serialize!(Option<RpcTransactionOutputVerboseDataVerbosity>, &self.verbose_data_verbosity, writer)?;
@@ -316,13 +318,13 @@ impl Serializer for RpcTransactionOutputVerbosity {
 
 impl Deserializer for RpcTransactionOutputVerbosity {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
 
         let include_amount = load!(Option<bool>, reader)?;
         let include_script_public_key = load!(Option<bool>, reader)?;
         let verbose_data_verbosity = deserialize!(Option<RpcTransactionOutputVerboseDataVerbosity>, reader)?;
-
-        Ok(Self { include_amount, include_script_public_key, verbose_data_verbosity })
+        let include_covenant = if version < 2 { None } else { load!(Option<bool>, reader)? };
+        Ok(Self { include_amount, include_script_public_key, verbose_data_verbosity, include_covenant })
     }
 }
 
@@ -372,7 +374,7 @@ pub struct RpcTransactionVerbosity {
     pub include_subnetwork_id: Option<bool>,
     pub include_gas: Option<bool>,
     pub include_payload: Option<bool>,
-    pub include_mass: Option<bool>,
+    pub include_storage_mass: Option<bool>,
     pub verbose_data_verbosity: Option<RpcTransactionVerboseDataVerbosity>,
 }
 
@@ -385,7 +387,7 @@ impl RpcTransactionVerbosity {
         include_subnetwork_id: Option<bool>,
         include_gas: Option<bool>,
         include_payload: Option<bool>,
-        include_mass: Option<bool>,
+        include_storage_mass: Option<bool>,
         verbose_data_verbosity: Option<RpcTransactionVerboseDataVerbosity>,
     ) -> Self {
         Self {
@@ -396,7 +398,7 @@ impl RpcTransactionVerbosity {
             include_subnetwork_id,
             include_gas,
             include_payload,
-            include_mass,
+            include_storage_mass,
             verbose_data_verbosity,
         }
     }
@@ -426,7 +428,7 @@ impl Serializer for RpcTransactionVerbosity {
         store!(Option<bool>, &self.include_subnetwork_id, writer)?;
         store!(Option<bool>, &self.include_gas, writer)?;
         store!(Option<bool>, &self.include_payload, writer)?;
-        store!(Option<bool>, &self.include_mass, writer)?;
+        store!(Option<bool>, &self.include_storage_mass, writer)?;
         serialize!(Option<RpcTransactionVerboseDataVerbosity>, &self.verbose_data_verbosity, writer)?;
 
         Ok(())
@@ -444,7 +446,7 @@ impl Deserializer for RpcTransactionVerbosity {
         let include_subnetwork_id = load!(Option<bool>, reader)?;
         let include_gas = load!(Option<bool>, reader)?;
         let include_payload = load!(Option<bool>, reader)?;
-        let include_mass = load!(Option<bool>, reader)?;
+        let include_storage_mass = load!(Option<bool>, reader)?;
         let verbose_data_verbosity = deserialize!(Option<RpcTransactionVerboseDataVerbosity>, reader)?;
 
         Ok(Self {
@@ -455,7 +457,7 @@ impl Deserializer for RpcTransactionVerbosity {
             include_subnetwork_id,
             include_gas,
             include_payload,
-            include_mass,
+            include_storage_mass,
             verbose_data_verbosity,
         })
     }

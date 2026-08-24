@@ -11,13 +11,13 @@ macro_rules! serde_impl_deser_fixed_bytes_ref {
                 D: serde::Deserializer<'de>,
             {
                 struct MyVisitor<'de> {
-                    marker: std::marker::PhantomData<$t>,
-                    lifetime: std::marker::PhantomData<&'de ()>,
+                    marker: core::marker::PhantomData<$t>,
+                    lifetime: core::marker::PhantomData<&'de ()>,
                 }
                 impl<'de> serde::de::Visitor<'de> for MyVisitor<'de> {
                     type Value = $t;
 
-                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
                         write!(formatter, "a byte array of size {} to ", $size)?;
                         write!(formatter, "{}", stringify!($t))
                     }

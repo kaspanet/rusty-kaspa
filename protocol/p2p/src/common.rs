@@ -80,6 +80,9 @@ const LOOPBACK_CONNECTION_MESSAGE: &str = "LOOPBACK_CONNECTION";
 /// String used as a P2P convention to signal connection is rejected because the peer already exists
 const DUPLICATE_CONNECTION_MESSAGE: &str = "DUPLICATE_CONNECTION";
 
+/// Maximum reject reason length retained for processing and logging.
+const MAX_REJECT_REASON_LEN: usize = 2048;
+
 impl ProtocolError {
     pub fn is_connection_closed_error(&self) -> bool {
         matches!(self, Self::ConnectionClosed)
@@ -97,11 +100,13 @@ impl ProtocolError {
         }
     }
 
-    pub fn from_reject_message(reason: String) -> Self {
+    pub fn from_reject_message(mut reason: String) -> Self {
+        reason.truncate(reason.floor_char_boundary(MAX_REJECT_REASON_LEN));
+        reason.shrink_to_fit();
         if reason == LOOPBACK_CONNECTION_MESSAGE || reason == DUPLICATE_CONNECTION_MESSAGE {
             ProtocolError::IgnorableReject(reason)
         } else if reason.contains("cannot find full block") {
-            let hint = "Hint: If this error persists, it might be due to the other peer having pruned block data after syncing headers and UTXOs. In such a case, you may need to reset the database.";
+            let hint = "Hint: This is expected to be handled by pruning catch-up.";
             let detailed_reason = format!("{}. {}", reason, hint);
             ProtocolError::Rejected(detailed_reason)
         } else {

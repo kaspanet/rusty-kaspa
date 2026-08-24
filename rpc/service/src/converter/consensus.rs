@@ -5,6 +5,8 @@ use kaspa_consensus_core::{
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     block::Block,
     config::Config,
+    errors::consensus::ConsensusError,
+    errors::tx::TxRuleError,
     hashing::tx::hash,
     header::Header,
     tx::{
@@ -85,7 +87,10 @@ impl ConsensusConverter {
             block
                 .transactions
                 .iter()
-                .map(|x| self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data))
+                .map(|x| {
+                    self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data)
+                        .expect("consensus block txs are valid")
+                })
                 .collect::<Vec<_>>()
         } else {
             vec![]
@@ -96,7 +101,7 @@ impl ConsensusConverter {
 
     pub fn get_mempool_entry(&self, consensus: &ConsensusProxy, transaction: &MutableTransaction) -> RpcMempoolEntry {
         let is_orphan = !transaction.is_fully_populated();
-        let rpc_transaction = self.get_transaction(consensus, &transaction.tx, None, true);
+        let rpc_transaction = self.get_transaction(consensus, &transaction.tx, None, true).expect("mempool txs are valid");
         RpcMempoolEntry::new(transaction.calculated_fee.unwrap_or_default(), rpc_transaction, is_orphan)
     }
 
@@ -130,29 +135,29 @@ impl ConsensusConverter {
         transaction: &Transaction,
         header: Option<&Header>,
         include_verbose_data: bool,
-    ) -> RpcTransaction {
+    ) -> Result<RpcTransaction, TxRuleError> {
         if include_verbose_data {
             let verbose_data = Some(RpcTransactionVerboseData {
                 transaction_id: transaction.id(),
                 hash: hash(transaction),
-                compute_mass: consensus.calculate_transaction_non_contextual_masses(transaction).compute_mass,
+                compute_mass: consensus.calculate_transaction_non_contextual_masses(transaction)?.compute_mass,
                 // TODO: make block_hash an option
                 block_hash: header.map_or_else(RpcHash::default, |x| x.hash),
                 block_time: header.map_or(0, |x| x.timestamp),
             });
-            RpcTransaction {
+            Ok(RpcTransaction {
                 version: transaction.version,
                 inputs: transaction.inputs.iter().map(|x| self.get_transaction_input(x)).collect(),
                 outputs: transaction.outputs.iter().map(|x| self.get_transaction_output(x)).collect(),
                 lock_time: transaction.lock_time,
-                subnetwork_id: transaction.subnetwork_id.clone(),
+                subnetwork_id: transaction.subnetwork_id,
                 gas: transaction.gas,
                 payload: transaction.payload.clone(),
-                mass: transaction.mass(),
+                storage_mass: transaction.storage_mass(),
                 verbose_data,
-            }
+            })
         } else {
-            transaction.into()
+            Ok(transaction.into())
         }
     }
 
@@ -165,7 +170,12 @@ impl ConsensusConverter {
         let address = extract_script_pub_key_address(&output.script_public_key, self.config.prefix()).ok();
         let verbose_data =
             address.map(|address| RpcTransactionOutputVerboseData { script_public_key_type, script_public_key_address: address });
-        RpcTransactionOutput { value: output.value, script_public_key: output.script_public_key.clone(), verbose_data }
+        RpcTransactionOutput {
+            value: output.value,
+            script_public_key: output.script_public_key.clone(),
+            verbose_data,
+            covenant: output.covenant.map(Into::into),
+        }
     }
 
     pub async fn get_virtual_chain_accepted_transaction_ids(
@@ -254,6 +264,7 @@ impl ConsensusConverter {
             } else {
                 Default::default()
             },
+            covenant_id: utxo.covenant_id,
         })
     }
 
@@ -357,6 +368,7 @@ impl ConsensusConverter {
             } else {
                 Default::default()
             },
+            covenant: if verbosity.include_covenant.is_some_and(|v| v) { output.covenant.map(Into::into) } else { Default::default() },
         })
     }
 
@@ -378,7 +390,16 @@ impl ConsensusConverter {
                 Default::default()
             },
             sequence: if verbosity.include_sequence.unwrap_or(false) { Some(input.sequence) } else { Default::default() },
-            sig_op_count: if verbosity.include_sig_op_count.unwrap_or(false) { Some(input.sig_op_count) } else { Default::default() },
+            sig_op_count: if verbosity.include_sig_op_count.unwrap_or(false) {
+                Some(input.compute_commit.sig_op_count().unwrap_or(0))
+            } else {
+                Default::default()
+            },
+            compute_budget: if verbosity.include_sig_op_count.unwrap_or(false) {
+                Some(input.compute_commit.compute_budget().unwrap_or(0))
+            } else {
+                Default::default()
+            }, // TODO: consider having a separate flag for compute_mass
             verbose_data: if let Some(input_verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
                 Some(self.get_input_verbose_data_with_verbosity(utxo, input_verbose_data_verbosity)?)
             } else {
@@ -417,21 +438,30 @@ impl ConsensusConverter {
             },
             lock_time: if verbosity.include_lock_time.unwrap_or(false) { Some(transaction.lock_time) } else { Default::default() },
             subnetwork_id: if verbosity.include_subnetwork_id.unwrap_or(false) {
-                Some(transaction.subnetwork_id.clone())
+                Some(transaction.subnetwork_id)
             } else {
                 Default::default()
             },
             gas: if verbosity.include_gas.unwrap_or(false) { Some(transaction.gas) } else { Default::default() },
             payload: if verbosity.include_payload.unwrap_or(false) { Some(transaction.payload.clone()) } else { Default::default() },
-            mass: if verbosity.include_mass.unwrap_or(false) { Some(transaction.mass()) } else { Default::default() },
+            storage_mass: if verbosity.include_storage_mass.unwrap_or(false) {
+                Some(transaction.storage_mass())
+            } else {
+                Default::default()
+            },
             verbose_data: if let Some(verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
-                Some(self.get_transaction_verbose_data_with_verbosity(
-                    transaction,
-                    block_hash.unwrap(),
-                    block_time,
-                    consensus.calculate_transaction_non_contextual_masses(transaction).compute_mass,
-                    verbose_data_verbosity,
-                )?)
+                Some(
+                    self.get_transaction_verbose_data_with_verbosity(
+                        transaction,
+                        block_hash.unwrap(),
+                        block_time,
+                        consensus
+                            .calculate_transaction_non_contextual_masses(transaction)
+                            .map_err(|err: TxRuleError| RpcError::ConsensusError(ConsensusError::GeneralOwned(err.to_string())))?
+                            .compute_mass,
+                        verbose_data_verbosity,
+                    )?,
+                )
             } else {
                 Default::default()
             },
@@ -470,10 +500,10 @@ impl ConsensusConverter {
                 Default::default()
             },
             lock_time: if verbosity.include_lock_time.unwrap_or(false) { Some(transaction.tx.lock_time) } else { Default::default() },
-            subnetwork_id: Some(transaction.tx.subnetwork_id.clone()),
+            subnetwork_id: Some(transaction.tx.subnetwork_id),
             gas: Some(transaction.tx.gas),
             payload: Some(transaction.tx.payload.clone()),
-            mass: Some(transaction.tx.mass()),
+            storage_mass: Some(transaction.tx.storage_mass()),
             verbose_data: if let Some(verbose_data_verbosity) = verbosity.verbose_data_verbosity.as_ref() {
                 Some(
                     self.get_transaction_verbose_data_with_verbosity(
@@ -482,7 +512,12 @@ impl ConsensusConverter {
                         block_time,
                         transaction
                             .calculated_non_contextual_masses
-                            .unwrap_or(consensus.calculate_transaction_non_contextual_masses(transaction.tx.as_ref()))
+                            .map(Ok)
+                            .unwrap_or_else(|| {
+                                consensus.calculate_transaction_non_contextual_masses(transaction.tx.as_ref()).map_err(
+                                    |err: TxRuleError| RpcError::ConsensusError(ConsensusError::GeneralOwned(err.to_string())),
+                                )
+                            })?
                             .compute_mass,
                         verbose_data_verbosity,
                     )?,

@@ -321,7 +321,7 @@ impl PSKT {
     pub fn output(&self, output: &TransactionOutputT) -> Result<PSKT> {
         let output = TransactionOutput::try_owned_from(output)?;
         let state = match self.take() {
-            State::Constructor(pskt) => State::Constructor(pskt.output(output.try_into()?)),
+            State::Constructor(pskt) => State::Constructor(pskt.output(output.try_into()?)?),
             _ => Err(Error::expected_state("Constructor"))?,
         };
 
@@ -382,6 +382,6 @@ impl PSKT {
         let tx = extractor
             .extract_tx_unchecked(&network_id.into())
             .map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
-        Ok(tx.tx.mass())
+        Ok(tx.tx.storage_mass())
     }
 }

@@ -2670,6 +2670,125 @@ impl Deserializer for GetCurrentBlockColorResponse {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "lowercase")]
+#[borsh(use_discriminant = true)]
+#[repr(i32)]
+pub enum RpcBlockColor {
+    Unknown = 0,
+    Blue = 1,
+    Red = 2,
+}
+
+impl From<RpcBlockColor> for i32 {
+    fn from(value: RpcBlockColor) -> Self {
+        value as i32
+    }
+}
+
+impl From<i32> for RpcBlockColor {
+    fn from(value: i32) -> Self {
+        match value {
+            1 => Self::Blue,
+            2 => Self::Red,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl Serializer for RpcBlockColor {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(i32, &i32::from(*self), writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcBlockColor {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let value = load!(i32, reader)?;
+        Ok(RpcBlockColor::from(value))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockRewardInfoRequest {
+    pub hash: RpcHash,
+}
+
+impl GetBlockRewardInfoRequest {
+    pub fn new(hash: RpcHash) -> Self {
+        Self { hash }
+    }
+}
+
+impl Serializer for GetBlockRewardInfoRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.hash, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetBlockRewardInfoRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let hash = load!(RpcHash, reader)?;
+        Ok(Self { hash })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockRewardInfoResponse {
+    pub header: RpcHeader,
+    pub block_color: RpcBlockColor,
+    /// guaranteed to be populated when block color != Unknown
+    pub confirmation_count: Option<u64>,
+    /// guaranteed to be populated when block color != Unknown
+    pub merging_chain_block_hash: Option<RpcHash>,
+    /// guaranteed to be populated when block color == Blue
+    pub reward_amount: Option<u64>,
+}
+
+impl GetBlockRewardInfoResponse {
+    pub fn new(
+        header: RpcHeader,
+        block_color: RpcBlockColor,
+        confirmation_count: Option<u64>,
+        merging_chain_block_hash: Option<RpcHash>,
+        reward_amount: Option<u64>,
+    ) -> Self {
+        Self { header, block_color, confirmation_count, merging_chain_block_hash, reward_amount }
+    }
+}
+
+impl Serializer for GetBlockRewardInfoResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHeader, &self.header, writer)?;
+        store!(RpcBlockColor, &self.block_color, writer)?;
+        store!(Option<u64>, &self.confirmation_count, writer)?;
+        store!(Option<RpcHash>, &self.merging_chain_block_hash, writer)?;
+        store!(Option<u64>, &self.reward_amount, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetBlockRewardInfoResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let header = load!(RpcHeader, reader)?;
+        let block_color = load!(RpcBlockColor, reader)?;
+        let confirmation_count = load!(Option<u64>, reader)?;
+        let merging_chain_block_hash = load!(Option<RpcHash>, reader)?;
+        let reward_amount = load!(Option<u64>, reader)?;
+        Ok(Self { header, block_color, confirmation_count, merging_chain_block_hash, reward_amount })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxoReturnAddressRequest {
@@ -3584,5 +3703,111 @@ impl Deserializer for UnsubscribeResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader);
         Ok(Self {})
+    }
+}
+
+/// Request data needed to prove a single KIP-21 lane's state against the
+/// `seq_commit` carried in `block_hash`'s header.
+///
+/// `block_hash` must be a chain (selected-parent-chain) block.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSeqCommitLaneProofRequest {
+    pub block_hash: RpcHash,
+    pub lane_key: RpcHash,
+}
+
+impl GetSeqCommitLaneProofRequest {
+    pub fn new(block_hash: RpcHash, lane_key: RpcHash) -> Self {
+        Self { block_hash, lane_key }
+    }
+}
+
+impl Serializer for GetSeqCommitLaneProofRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.block_hash, writer)?;
+        store!(RpcHash, &self.lane_key, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetSeqCommitLaneProofRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block_hash = load!(RpcHash, reader)?;
+        let lane_key = load!(RpcHash, reader)?;
+        Ok(Self { block_hash, lane_key })
+    }
+}
+
+/// Self-contained witness a client can verify locally against the block header's
+/// `seq_commit` (= `accepted_id_merkle_root`).
+///
+/// `smt_proof` is the `OwnedSmtProof` wire format (`bitmap || terminal || siblings`),
+/// parsed via `kaspa_smt::proof::OwnedSmtProof::from_bytes`.
+///
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcLaneEntry {
+    pub tip: RpcHash,
+    pub blue_score: u64,
+}
+
+impl Serializer for RpcLaneEntry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(RpcHash, &self.tip, writer)?;
+        store!(u64, &self.blue_score, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcLaneEntry {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let tip = load!(RpcHash, reader)?;
+        let blue_score = load!(u64, reader)?;
+        Ok(Self { tip, blue_score })
+    }
+}
+
+/// When the lane has no entry in the active-lanes SMT at this block's POV,
+/// `lane` is `None` and `smt_proof` is a non-inclusion proof.
+///
+/// `inactivity_shortcut` (KIP-21): the `accepted_id_merkle_root` of the anchor
+/// block. Folded into `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`
+/// during seq_commit verification.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSeqCommitLaneProofResponse {
+    pub smt_proof: Vec<u8>,
+    pub lane: Option<RpcLaneEntry>,
+    pub payload_and_ctx_digest: RpcHash,
+    pub parent_seq_commit: RpcHash,
+    pub inactivity_shortcut: RpcHash,
+}
+
+impl Serializer for GetSeqCommitLaneProofResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<u8>, &self.smt_proof, writer)?;
+        serialize!(Option<RpcLaneEntry>, &self.lane, writer)?;
+        store!(RpcHash, &self.payload_and_ctx_digest, writer)?;
+        store!(RpcHash, &self.parent_seq_commit, writer)?;
+        store!(RpcHash, &self.inactivity_shortcut, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetSeqCommitLaneProofResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let smt_proof = load!(Vec<u8>, reader)?;
+        let lane = deserialize!(Option<RpcLaneEntry>, reader)?;
+        let payload_and_ctx_digest = load!(RpcHash, reader)?;
+        let parent_seq_commit = load!(RpcHash, reader)?;
+        let inactivity_shortcut = load!(RpcHash, reader)?;
+        Ok(Self { smt_proof, lane, payload_and_ctx_digest, parent_seq_commit, inactivity_shortcut })
     }
 }
