@@ -360,7 +360,7 @@ mod tests {
                 let utxo_entry = virtual_change_emulator
                     .accumulated_utxo_diff
                     .add
-                    .get(&utxo_key_suffix_record.transaction_outpoint())
+                    .get(utxo_key_suffix_record.transaction_outpoint())
                     .expect("expected utxo_entry");
                 assert_eq!(*script_public_key, utxo_entry.script_public_key);
                 assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
@@ -376,12 +376,12 @@ mod tests {
         for (script_public_key, compact_utxo_collection) in utxo_changes.removed.iter() {
             for (utxo_key_suffix_record, compact_utxo_entry) in compact_utxo_collection.iter() {
                 assert!(
-                    virtual_change_emulator.accumulated_utxo_diff.remove.contains_key(&utxo_key_suffix_record.transaction_outpoint())
+                    virtual_change_emulator.accumulated_utxo_diff.remove.contains_key(utxo_key_suffix_record.transaction_outpoint())
                 );
                 let utxo_entry = virtual_change_emulator
                     .accumulated_utxo_diff
                     .remove
-                    .get(&utxo_key_suffix_record.transaction_outpoint())
+                    .get(utxo_key_suffix_record.transaction_outpoint())
                     .expect("expected utxo_entry");
                 assert_eq!(*script_public_key, utxo_entry.script_public_key);
                 assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
