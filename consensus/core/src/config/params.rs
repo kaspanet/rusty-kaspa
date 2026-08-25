@@ -614,9 +614,9 @@ pub const MAINNET_PARAMS: Params = Params {
     // Limit the cost of calculating compute/transient/storage masses
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Transient mass caps the entire block's transient footprint at 250KB, so no individual signature script can exceed it.
     max_signature_script_len: MAX_SIGNATURE_SCRIPT_LEN,
-    // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Retain a 10KB per-output guard; compute mass caps aggregate script-public-key bytes at roughly 45.5KB per block.
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
 
@@ -671,9 +671,9 @@ pub const TESTNET_PARAMS: Params = Params {
     // Limit the cost of calculating compute/transient/storage masses
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Transient mass caps the entire block's transient footprint at 250KB, so no individual signature script can exceed it.
     max_signature_script_len: MAX_SIGNATURE_SCRIPT_LEN,
-    // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Retain a 10KB per-output guard; compute mass caps aggregate script-public-key bytes at roughly 45.5KB per block.
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
 
