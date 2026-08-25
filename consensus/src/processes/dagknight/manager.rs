@@ -465,10 +465,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
         let mut visited = BlockHashSet::new();
 
-        loop {
-            let Some(current) = topological_heap.pop() else {
-                break;
-            };
+        while let Some(current) = topological_heap.pop() {
             let current_hash = current.0.hash;
             if !visited.insert(current_hash) {
                 continue;
