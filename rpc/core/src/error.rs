@@ -60,6 +60,9 @@ pub enum RpcError {
     #[error("If includeTransactions is set, then includeBlockVerboseData must be set as well.")]
     InvalidGetBlocksRequest,
 
+    #[error("Invalid GetUtxosByAddressesV2 request: {0}")]
+    InvalidGetUtxosByAddressesV2Request(String),
+
     #[error("Transaction {0} not found")]
     TransactionNotFound(TransactionId),
 

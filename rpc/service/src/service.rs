@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
-use kaspa_consensus_core::tx::{TransactionQueryResult, TransactionType};
+use kaspa_consensus_core::tx::{TransactionOutpoint, TransactionQueryResult, TransactionType};
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
     block::Block,
@@ -32,6 +32,7 @@ use kaspa_core::{
     task::tick::TickService,
     trace, warn,
 };
+use kaspa_hashes::ZERO_HASH;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
@@ -72,6 +73,9 @@ use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use kaspa_utxoindex::errors::UtxoIndexError;
+use kaspa_utxoindex::model::{OrderedUtxoEntriesPage, UtxoPageCursor};
+use std::ops::RangeInclusive;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -273,6 +277,26 @@ impl RpcCoreService {
             .get_balance_by_script_public_keys(addresses.map(pay_to_address_script).collect())
             .await
             .unwrap_or_default()
+    }
+
+    async fn get_ordered_utxo_set_by_script_public_key_page<'a>(
+        &self,
+        addresses: impl Iterator<Item = &'a RpcAddress>,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: UtxoPageCursor,
+        limit: Option<u64>,
+    ) -> RpcResult<OrderedUtxoEntriesPage> {
+        self.utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_by_script_public_keys_by_daa_score_page(
+                addresses.map(pay_to_address_script).collect(),
+                daa_score_range,
+                cursor,
+                limit,
+            )
+            .await
+            .map_err(|e| RpcError::InvalidGetUtxosByAddressesV2Request(e.to_string()))
     }
 
     fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
@@ -800,6 +824,99 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         //       (the current impl does not retain an entry order matching the request addresses order)
         let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
+    }
+
+    async fn get_utxos_by_addresses_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxosByAddressesV2Request,
+    ) -> RpcResult<GetUtxosByAddressesV2Response> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+
+        // because the address list and limit is potentially unbounded, we require unsafe_rpc to be enabled for this call
+        if !self.config.unsafe_rpc {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+
+        // We define an empty address set as an invalid request, as the user should be aware proactively that this is an empty query. This is also a safety measure to prevent accidental unbounded queries, as the user may not be aware that this is an empty query.
+        // TODO: Potentially we could redefine this case to get all utxos in the DAA range, but this is somewhat of an engineering effort to implement.
+        if request.addresses.is_empty() {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request(UtxoIndexError::QueryingEmptyAddressSet.to_string()));
+        }
+
+        let start_spk = request.start_address.map(|addr| pay_to_address_script(&addr));
+        let start_daa_score = request.start_daa_score;
+        let start_outpoint_hash = request.start_outpoint_hash;
+        let start_outpoint_index = request.start_outpoint_index;
+
+        let from_daa_score = request.from_daa_score.unwrap_or(0);
+        let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
+        if from_daa_score > to_daa_score {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("from_daa_score must be <= to_daa_score".to_string()));
+        }
+
+        // a start defined outside of the specified range is invalid.
+        if start_daa_score.is_some_and(|sds| sds < from_daa_score || sds > to_daa_score) {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request(format!(
+                "start_daa_score {} must be within from_daa_score and to_daa_score",
+                start_daa_score.unwrap_or(0)
+            )));
+        }
+
+        let limit = request.limit;
+        if limit == Some(0) {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("limit must be greater than zero".to_string()));
+        }
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let page = self
+            .get_ordered_utxo_set_by_script_public_key_page(
+                request.addresses.iter(),
+                from_daa_score..=to_daa_score,
+                UtxoPageCursor::new(
+                    start_spk,
+                    start_daa_score,
+                    match (start_outpoint_hash, start_outpoint_index) {
+                        (None, None) => None,
+                        _ => Some(TransactionOutpoint {
+                            transaction_id: start_outpoint_hash.unwrap_or(ZERO_HASH),
+                            index: start_outpoint_index.unwrap_or(0),
+                        }),
+                    },
+                ),
+                limit,
+            )
+            .await?;
+        let next_cursor = page.next_cursor();
+        let entries = page.entries();
+
+        let entries = self.index_converter.get_ordered_utxos_by_addresses_entries(entries);
+        let (next_address, next_daa_score, next_outpoint_hash, next_outpoint_index) = match next_cursor.as_ref() {
+            Some(cursor) => {
+                // if we get a cursor returned we can expect that all inner fields are Some.
+                let address = cursor
+                    .script_public_key
+                    .as_ref()
+                    .map(|spk| {
+                        extract_script_pub_key_address(spk, self.config.prefix()).map_err(|err| RpcError::General(err.to_string()))
+                    })
+                    .transpose()?;
+                let daa_score = cursor.daa_score;
+                let outpoint_hash = cursor.transaction_outpoint.map(|to| to.transaction_id);
+                let outpoint_index = cursor.transaction_outpoint.map(|to| to.index);
+                (address, daa_score, outpoint_hash, outpoint_index)
+            }
+            None => (None, None, None, None),
+        };
+
+        Ok(GetUtxosByAddressesV2Response::new(entries, next_address, next_daa_score, next_outpoint_hash, next_outpoint_index))
     }
 
     async fn get_balance_by_address_call(

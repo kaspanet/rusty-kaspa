@@ -20,6 +20,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_hashes::Hash;
+use kaspa_hashes::ZERO_HASH;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::serde_bytes_fixed_ref;
@@ -54,6 +55,8 @@ pub struct TransactionOutpoint {
 }
 
 impl TransactionOutpoint {
+    pub const EMPTY: Self = Self { transaction_id: ZERO_HASH, index: 0 };
+    pub const MAX: Self = Self { transaction_id: kaspa_hashes::MAX_HASH, index: u32::MAX };
     pub fn new(transaction_id: TransactionId, index: u32) -> Self {
         Self { transaction_id, index }
     }

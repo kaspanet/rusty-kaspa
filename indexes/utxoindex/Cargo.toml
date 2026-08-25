@@ -11,6 +11,8 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
+indexmap.workspace = true
+itertools.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
