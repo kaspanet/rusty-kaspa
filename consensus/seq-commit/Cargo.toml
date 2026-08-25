@@ -1,0 +1,26 @@
+[package]
+name = "kaspa-seq-commit"
+description = "Sequencing commitment types and hashing"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+
+[dependencies]
+kaspa-hashes.workspace = true
+kaspa-merkle.workspace = true
+kaspa-smt.workspace = true
+
+thiserror.workspace = true
+
+[dev-dependencies]
+kaspa-consensus-core.workspace = true
+kaspa-smt = { workspace = true, features = ["test-utils"] }
+
+[lints]
+workspace = true

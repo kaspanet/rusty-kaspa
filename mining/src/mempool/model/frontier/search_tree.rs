@@ -170,6 +170,13 @@ impl Default for SearchTree {
     }
 }
 
+impl Clone for SearchTree {
+    fn clone(&self) -> Self {
+        // `bulk_load` requires sorted keys; `ascending_iter` provides the tree order.
+        Self { tree: InnerTree::bulk_load(self.ascending_iter().cloned().map(|key| (key, ())).collect()) }
+    }
+}
+
 impl SearchTree {
     pub fn new() -> Self {
         Self { tree: InnerTree::new(Default::default()) }
@@ -196,6 +203,11 @@ impl SearchTree {
     /// Search for a weight point `query ∈ [0, total_weight)` in log(n) time
     pub fn search(&self, query: f64) -> &FeerateKey {
         self.tree.get_by_argument(query).expect("clamped").0
+    }
+
+    /// Remove the key located by a weight point `query ∈ [0, total_weight)` in log(n) time.
+    pub fn remove_by_query(&mut self, query: f64) -> FeerateKey {
+        self.tree.remove_by_argument(query).expect("clamped").0
     }
 
     /// Access the total weight in O(1) time
@@ -331,6 +343,82 @@ mod tests {
         for (expected, item) in v.into_iter().rev().zip(tree.descending_iter()) {
             assert_eq!(&expected, item);
             assert!(expected.cmp(item).is_eq()); // Assert Ord equality as well
+        }
+    }
+
+    #[test]
+    fn test_remove_by_query_removes_searched_key() {
+        let mut tree = SearchTree::new();
+        let keys = (0..200).map(|i| build_feerate_key(i + 1, 1650, i)).collect_vec();
+
+        for key in keys.iter().cloned() {
+            tree.insert(key);
+        }
+
+        let query = tree.total_weight() / 2.0;
+        let expected = tree.search(query).clone();
+        let removed = tree.remove_by_query(query);
+
+        assert_eq!(removed, expected);
+        assert!(!tree.ascending_iter().any(|candidate| candidate == &removed));
+        assert_eq!(tree.len(), keys.len() - 1);
+    }
+
+    #[test]
+    fn test_clone_preserves_order_and_weight_queries() {
+        for size in [1, 2, 63, 64, 65, 4096, 4097] {
+            let mut tree = SearchTree::new();
+            for i in 0..size {
+                let fee = ((i * 1_103 + size * 37) % 1_000_000 + 1) as u64;
+                let mass = ((i * 97 + size * 13) % 10_000 + 1_000) as u64;
+                tree.insert(build_feerate_key(fee, mass, i as u64));
+            }
+
+            let cloned = tree.clone();
+            let original_keys = tree.ascending_iter().cloned().collect_vec();
+            let cloned_keys = cloned.ascending_iter().cloned().collect_vec();
+
+            assert_eq!(original_keys, cloned_keys, "size {size}");
+            assert_eq!(tree.len(), cloned.len(), "size {size}");
+            let total_weight = original_keys.iter().map(|key| key.weight()).sum::<f64>();
+            let eps = total_weight * 1e-10;
+            assert!(tree.total_weight().sub(cloned.total_weight()).abs() < eps, "size {size}");
+
+            let mut prefix = 0.0;
+            let stride = (size / 32).max(1);
+            for (idx, key) in original_keys.iter().enumerate() {
+                let sample = prefix + key.weight() / 2.0;
+                prefix += key.weight();
+                if idx % stride == 0 {
+                    assert_eq!(tree.search(sample), cloned.search(sample), "size {size}, idx {idx}");
+                    assert!(tree.prefix_weight(key).sub(cloned.prefix_weight(key)).abs() < eps, "size {size}, idx {idx}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_clone_is_independent_after_mutation() {
+        let mut tree = SearchTree::new();
+        let keys = (0..200).map(|i| build_feerate_key(i + 1, 1650, i)).collect_vec();
+
+        for key in keys.iter().cloned() {
+            tree.insert(key);
+        }
+
+        let mut cloned = tree.clone();
+        for key in keys.iter().take(50) {
+            cloned.remove(key);
+        }
+        for key in keys.iter().skip(200 - 25) {
+            tree.remove(key);
+        }
+
+        assert_eq!(tree.len(), 175);
+        assert_eq!(cloned.len(), 150);
+        for key in keys.iter().take(50) {
+            assert!(tree.ascending_iter().any(|candidate| candidate == key));
+            assert!(!cloned.ascending_iter().any(|candidate| candidate == key));
         }
     }
 }

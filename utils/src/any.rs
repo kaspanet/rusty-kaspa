@@ -1,6 +1,6 @@
 /// Provides a best-effort short type name
 pub fn type_name_short<T: ?Sized>() -> &'static str {
-    let s = std::any::type_name::<T>();
+    let s = core::any::type_name::<T>();
     const SEP: &str = "::";
     if s.find('<').is_some() {
         // T is generic so would require more sophisticated processing
@@ -15,7 +15,8 @@ pub fn type_name_short<T: ?Sized>() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::IpAddr;
+    use alloc::string::String;
+    use core::net::IpAddr;
 
     #[test]
     fn test_type_name_short() {

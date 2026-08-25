@@ -3,7 +3,8 @@ use crate::flowcontext::{
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
-use crate::{v7, v8};
+use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
+use crate::v10;
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -59,7 +60,7 @@ use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 9;
+const PROTOCOL_VERSION: u32 = 10;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -90,7 +91,7 @@ pub struct BlockEventLogger {
 }
 
 impl BlockEventLogger {
-    pub fn new(bps: usize) -> Self {
+    fn new(bps: usize) -> Self {
         let (sender, receiver) = unbounded_channel();
         Self { bps, sender, receiver: Mutex::new(Some(receiver)) }
     }
@@ -160,11 +161,11 @@ impl BlockEventLogger {
                     match ev {
                         BlockLogEvent::Relay(hash) => {
                             summary.relay_count += 1;
-                            summary.relay_rep = Some(hash)
+                            summary.relay_rep = Some(hash);
                         }
                         BlockLogEvent::Submit(hash) => {
                             summary.submit_count += 1;
-                            summary.submit_rep = Some(hash)
+                            summary.submit_rep = Some(hash);
                         }
                         BlockLogEvent::Orphaned(hash, roots_count) => {
                             summary.orphan_roots_count += roots_count;
@@ -221,6 +222,7 @@ pub struct FlowContextInner {
     mining_manager: MiningManagerProxy,
     pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
+    user_agent_rules: UserAgentRuleSet,
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
@@ -310,6 +312,7 @@ impl FlowContext {
     ) -> Self {
         let bps = config.bps() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
+        let user_agent_rules = UserAgentRuleSet::parse_lossy(&config.user_agent_rules);
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
@@ -330,6 +333,7 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
+                user_agent_rules,
                 block_event_logger: Some(BlockEventLogger::new(bps)),
                 bps,
                 orphan_resolution_range,
@@ -538,7 +542,7 @@ impl FlowContext {
         blocks.sort_by(|a, b| a.0.header.blue_work.partial_cmp(&b.0.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks.into_iter()) {
+        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks) {
             // We only care about waiting for virtual to process the block at this point, before proceeding with post-processing
             // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
             let _ = virtual_state_task.await;
@@ -712,7 +716,6 @@ impl ConnectionInitializer for FlowContext {
         // Subnets are not currently supported
         let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
-        // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd
 
         // Perform the handshake
@@ -735,23 +738,43 @@ impl ConnectionInitializer for FlowContext {
             return Err(ProtocolError::WrongNetwork(network_name, peer_version.network));
         }
 
+        if let Some(reason) = self.user_agent_rules.reject_reason(&peer_version.user_agent) {
+            match reason {
+                UserAgentRuleRejectReason::AllowanceExcluded => {
+                    info!(
+                        "Rejecting peer {} because user agent is outside configured allowance rules: {}",
+                        router, peer_version.user_agent
+                    );
+                }
+                UserAgentRuleRejectReason::Rejection(rule) => {
+                    info!(
+                        "Rejecting peer {} because user agent matched rejection rule `{}`: {}",
+                        router,
+                        rule.source(),
+                        peer_version.user_agent
+                    );
+                }
+            }
+            return Err(ProtocolError::OtherOwned(format!("peer user agent rejected: {}", peer_version.user_agent)));
+        }
+
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
-        // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
-            8 => (v8::register(self.clone(), router.clone(), 8), 8),
-            7 => (v7::register(self.clone(), router.clone()), 7),
+        let peer_protocol_version = peer_version.protocol_version;
+
+        // Peers must advertise at least the current protocol version. Register all flows according to version.
+        let (flows, applied_protocol_version) = match peer_protocol_version {
+            v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone()), PROTOCOL_VERSION),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
         // Build and register the peer properties
         let peer_properties = Arc::new(PeerProperties {
-            user_agent: peer_version.user_agent.to_owned(),
+            user_agent: peer_version.user_agent,
             advertised_protocol_version: peer_version.protocol_version,
             protocol_version: applied_protocol_version,
             disable_relay_tx: peer_version.disable_relay_tx,
-            subnetwork_id: peer_version.subnetwork_id.to_owned(),
+            subnetwork_id: peer_version.subnetwork_id,
             time_offset,
         });
         router.set_properties(peer_properties);

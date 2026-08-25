@@ -1,0 +1,29 @@
+[package]
+name = "kaspa-smt"
+description = "256-bit Sparse Merkle Tree for Kaspa"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["std"]
+std = []
+test-utils = ["std"]
+
+[dependencies]
+kaspa-hashes = { workspace = true, features = ["zerocopy"] }
+thiserror.workspace = true
+zerocopy.workspace = true
+
+[build-dependencies]
+blake3 = { workspace = true, features = ["pure"] }
+
+[dev-dependencies]
+rand.workspace = true
+
+[lints]
+workspace = true

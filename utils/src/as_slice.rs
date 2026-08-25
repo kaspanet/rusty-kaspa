@@ -1,5 +1,7 @@
-use std::rc::Rc;
-use std::sync::Arc;
+use alloc::boxed::Box;
+use alloc::rc::Rc;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 
 /// Something that can be seen as an immutable slice
 pub trait AsSlice {
@@ -89,21 +91,24 @@ impl<T> AsSlice for Arc<[T]> {
     type Element = T;
 
     fn as_slice(&self) -> &[Self::Element] {
-        self.as_ref().as_slice()
+        // Calling AsSlice::as_slice explicitly to avoid confusion with future standard library impls of AsSlice for Arc<[T]>
+        AsSlice::as_slice(self.as_ref())
     }
 }
 impl<T> AsSlice for Rc<[T]> {
     type Element = T;
 
     fn as_slice(&self) -> &[Self::Element] {
-        self.as_ref().as_slice()
+        // Calling AsSlice::as_slice explicitly to avoid confusion with future standard library impls of AsSlice for Rc<[T]>
+        AsSlice::as_slice(self.as_ref())
     }
 }
 impl<T> AsSlice for Box<[T]> {
     type Element = T;
 
     fn as_slice(&self) -> &[Self::Element] {
-        self.as_ref().as_slice()
+        // Calling AsSlice::as_slice explicitly to avoid confusion with future standard library impls of AsSlice for Box<[T]>
+        AsSlice::as_slice(self.as_ref())
     }
 }
 

@@ -711,7 +711,7 @@ impl MetricsSnapshot {
 
 #[inline(always)]
 fn per_sec(a: u64, b: u64, duration_millis: f64) -> f64 {
-    b.checked_sub(a).unwrap_or_default() as f64 * 1000. / duration_millis
+    b.saturating_sub(a) as f64 * 1000. / duration_millis
 }
 
 impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {

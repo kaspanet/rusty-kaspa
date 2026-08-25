@@ -1,5 +1,8 @@
 use crate::mempool::tx::{Priority, RbfPolicy};
-use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint};
+use kaspa_consensus_core::{
+    mass::MassCofactors,
+    tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint},
+};
 use kaspa_mining_errors::mempool::RuleError;
 use std::{
     fmt::{Display, Formatter},
@@ -22,8 +25,8 @@ impl MempoolTransaction {
         self.mtx.tx.id()
     }
 
-    pub(crate) fn feerate(&self) -> f64 {
-        self.mtx.calculated_feerate().unwrap()
+    pub(crate) fn feerate(&self, cofactors: &MassCofactors) -> f64 {
+        self.mtx.calculated_feerate(cofactors).unwrap()
     }
 }
 

@@ -161,6 +161,7 @@ cfg_if::cfg_if! {
         pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
         pub use kaspa_pow::wasm::*;
         pub use kaspa_txscript::wasm::*;
+        pub use kaspa_txscript_zk_sdk::wasm::*;
 
         pub mod rpc {
             //! Kaspa RPC interface
@@ -189,6 +190,7 @@ cfg_if::cfg_if! {
         pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
         pub use kaspa_pow::wasm::*;
         pub use kaspa_txscript::wasm::*;
+        pub use kaspa_txscript_zk_sdk::wasm::*;
 
         pub mod rpc {
             //! Kaspa RPC interface

@@ -1,6 +1,7 @@
 // Example of VCCv2 endpoint
 
 use kaspa_addresses::Address;
+use kaspa_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
 use kaspa_rpc_core::{RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction, api::rpc::RpcApi};
 use kaspa_wrpc_client::{
     KaspaRpcClient, WrpcEncoding,
@@ -67,7 +68,7 @@ async fn get_vcc_v2() -> Result<()> {
     // and keep iterating checkpoints to checkpoints to get a live view (high reactivity environment)
     let pp_hash = dag_info.pruning_point_hash;
 
-    let response = client.get_virtual_chain_from_block_v2(pp_hash, Some(RpcDataVerbosityLevel::High), None).await?;
+    let response = client.get_virtual_chain_from_block_v2(pp_hash, Some(RpcDataVerbosityLevel::Full), None).await?;
 
     // keep track of accepted transaction ids
     let mut global_seen_tx = HashSet::<RpcHash>::with_capacity(30_000);
@@ -99,6 +100,14 @@ async fn get_vcc_v2() -> Result<()> {
             // Example: use first input's sender address, if available
             if let Some(sender_address) = first_input_sender_address(tx) {
                 println!("{id} - {sender_address}");
+            }
+
+            // Example: inspect transaction subnet and gas
+            if tx.version == Some(1)
+                && let Some(subnet) = tx.subnetwork_id
+                && !matches!(subnet, SUBNETWORK_ID_NATIVE | SUBNETWORK_ID_COINBASE)
+            {
+                println!("subnet {subnet} - gas {}", tx.gas.unwrap());
             }
 
             global_seen_tx.insert(id);

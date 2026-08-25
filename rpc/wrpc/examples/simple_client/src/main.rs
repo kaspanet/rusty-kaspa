@@ -95,6 +95,14 @@ async fn check_node_status() -> Result<()> {
     println!("Virtual DAA score: {virtual_daa_score}");
     println!("Sink: {sink}");
 
+    // get block reward by block hash
+    let result = client.get_block_reward_info(sink).await?;
+
+    println!(
+        "confirmation count: {:?}, reward: {:?}, color: {:?}",
+        result.confirmation_count, result.reward_amount, result.block_color
+    );
+
     // Disconnect client from Kaspa node
     client.disconnect().await?;
 

@@ -2,7 +2,7 @@ fn main() {
     let protowire_files = &["./proto/messages.proto", "./proto/rpc.proto"];
     let dirs = &["./proto"];
 
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
 

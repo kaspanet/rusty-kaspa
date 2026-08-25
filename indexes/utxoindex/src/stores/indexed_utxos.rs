@@ -16,13 +16,14 @@ use std::sync::Arc;
 pub const VERSION_TYPE_SIZE: usize = size_of::<ScriptPublicKeyVersion>(); // Const since we need to re-use this a few times.
 
 /// [`ScriptPublicKeyBucket`].
-/// Consists of 2 bytes of little endian [VersionType] bytes, followed by a variable size of [ScriptVec].
+/// Consists of 2 bytes of little endian [VersionType] bytes, followed by the script length (8) and by a variable size of [ScriptVec].
 #[derive(Eq, Hash, PartialEq, Debug, Clone)]
 struct ScriptPublicKeyBucket(Vec<u8>);
 
 impl From<&ScriptPublicKey> for ScriptPublicKeyBucket {
     fn from(script_public_key: &ScriptPublicKey) -> Self {
-        let mut bytes: Vec<u8> = Vec::with_capacity(VERSION_TYPE_SIZE + script_public_key.script().len());
+        // version (2) + length (8) + dynamic script
+        let mut bytes: Vec<u8> = Vec::with_capacity(VERSION_TYPE_SIZE + size_of::<u64>() + script_public_key.script().len());
         bytes.extend_from_slice(&script_public_key.version().to_le_bytes());
         bytes.extend_from_slice(&(script_public_key.script().len() as u64).to_le_bytes()); // TODO: Consider using a smaller integer
         bytes.extend_from_slice(script_public_key.script());
@@ -101,7 +102,7 @@ impl Display for UtxoEntryFullAccessKey {
 impl UtxoEntryFullAccessKey {
     /// Creates a new [UtxoEntryFullAccessKey] from a [ScriptPublicKeyBucket] and [TransactionOutpointKey].
     pub fn new(script_public_key_bucket: ScriptPublicKeyBucket, transaction_outpoint_key: TransactionOutpointKey) -> Self {
-        let mut bytes = Vec::with_capacity(TRANSACTION_OUTPOINT_KEY_SIZE + script_public_key_bucket.as_ref().len());
+        let mut bytes = Vec::with_capacity(script_public_key_bucket.as_ref().len() + TRANSACTION_OUTPOINT_KEY_SIZE);
         bytes.extend_from_slice(script_public_key_bucket.as_ref());
         bytes.extend_from_slice(transaction_outpoint_key.as_ref());
         Self(Arc::new(bytes))

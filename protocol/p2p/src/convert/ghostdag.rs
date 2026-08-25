@@ -1,5 +1,4 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
-use crate::convert::header::Versioned;
 use crate::pb as protowire;
 use kaspa_consensus_core::{
     BlockHashMap, BlueWorkType, HashMapCustomHasher, KType,
@@ -68,13 +67,12 @@ impl TryFrom<protowire::BlockGhostdagDataHashPair> for TrustedGhostdagData {
     }
 }
 
-impl TryFrom<Versioned<protowire::DaaBlockV4>> for TrustedHeader {
+impl TryFrom<protowire::DaaBlockV4> for TrustedHeader {
     type Error = ConversionError;
-    fn try_from(value: Versioned<protowire::DaaBlockV4>) -> Result<Self, Self::Error> {
-        let Versioned(header_format, b) = value;
+    fn try_from(b: protowire::DaaBlockV4) -> Result<Self, Self::Error> {
         let header = b.header.ok_or(ConversionError::NoneValue)?;
         let coloring_ghostdag: ExternalGhostdagData = b.coloring_ghostdag_data.try_into_ex()?;
         let topology_ghostdag: ExternalGhostdagData = b.topology_ghostdag_data.try_into_ex()?;
-        Ok(TrustedHeader::new(Versioned(header_format, header).try_into().map(Arc::new)?, coloring_ghostdag, topology_ghostdag))
+        Ok(TrustedHeader::new(header.try_into().map(Arc::new)?, coloring_ghostdag, topology_ghostdag))
     }
 }
