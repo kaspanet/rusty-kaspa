@@ -74,7 +74,7 @@ use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use kaspa_utxoindex::errors::UtxoIndexError;
-use kaspa_utxoindex::model::{OrderedUtxoSetByScriptPublicKeyPage, UtxoPageCursor};
+use kaspa_utxoindex::model::{OrderedUtxoEntriesPage, UtxoPageCursor};
 use std::ops::RangeInclusive;
 use std::time::Duration;
 use std::{
@@ -285,7 +285,7 @@ impl RpcCoreService {
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> OrderedUtxoSetByScriptPublicKeyPage {
+    ) -> RpcResult<OrderedUtxoEntriesPage> {
         self.utxoindex
             .clone()
             .unwrap()
@@ -296,7 +296,7 @@ impl RpcCoreService {
                 limit,
             )
             .await
-            .unwrap_or_default()
+            .map_err(|e| RpcError::InvalidGetUtxosByAddressesV2Request(e.to_string()))
     }
 
     fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
@@ -893,11 +893,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 ),
                 limit,
             )
-            .await;
-        let next_cursor = page.cursor;
-        let entries = page.entries;
+            .await?;
+        let next_cursor = page.next_cursor();
+        let entries = page.entries();
 
-        let entries = self.index_converter.get_ordered_utxos_by_addresses_entries(&entries);
+        let entries = self.index_converter.get_ordered_utxos_by_addresses_entries(entries);
         let (next_address, next_daa_score, next_outpoint_hash, next_outpoint_index) = match next_cursor.as_ref() {
             Some(cursor) => {
                 // if we get a cursor returned we can expect that all inner fields are Some.

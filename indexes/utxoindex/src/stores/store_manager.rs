@@ -1,14 +1,13 @@
 use std::{collections::HashSet, ops::RangeInclusive, sync::Arc};
 
+use indexmap::IndexSet;
 use kaspa_consensus_core::{
     BlockHashSet,
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
-use kaspa_index_core::indexed_utxos::{
-    BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage, ScriptPublicKeyIndexSet, UtxoPageCursor,
-};
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoEntriesPage, UtxoPageCursor};
 
 use crate::{
     IDENT,
@@ -85,11 +84,11 @@ impl Store {
 
     pub fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
-        script_public_keys: ScriptPublicKeyIndexSet,
+        script_public_keys: IndexSet<ScriptPublicKey>,
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> UtxoIndexResult<OrderedUtxoSetByScriptPublicKeyPage> {
+    ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys_by_daa_score_page(
             script_public_keys.into_iter().collect(),
             daa_score_range,

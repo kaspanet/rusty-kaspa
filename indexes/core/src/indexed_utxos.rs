@@ -1,4 +1,3 @@
-use indexmap::IndexSet;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 use kaspa_hashes::Hash;
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -6,26 +5,38 @@ use serde::de::{Error as DeError, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
+use std::sync::Arc;
 
-pub type ScriptPublicKeyIndexSet = IndexSet<ScriptPublicKey>;
+pub type CompactUtxoCollection = HashMap<UtxoEntryKeySuffixRecord, CompactUtxoEntry>;
 
-pub type CompactUtxoCollection = HashMap<UtxoEntryKeyData, CompactUtxoEntry>;
+/// UTXOs immutably grouped by [`ScriptPublicKey`] and ordered according to rocksDB key ordering.
+/// Each spk group contains entries ordered by [`UtxoEntryKeySuffixRecord`] (daa_score, then transaction_outpoint),
+/// which in turn holds a [`CompactUtxoEntry`] value.
+pub type OrderedUtxoEntries = Arc<Vec<(ScriptPublicKey, Vec<(UtxoEntryKeySuffixRecord, CompactUtxoEntry)>)>>;
 
-/// A deterministic ordered list of UTXOs keyed by [`UtxoEntryKeyData`].
-pub type OrderedUtxoCollection = Vec<(UtxoEntryKeyData, CompactUtxoEntry)>;
-
-/// A deterministic ordered list of UTXO collections keyed by [`ScriptPublicKey`].
-pub type OrderedUtxoSetByScriptPublicKey = Vec<(ScriptPublicKey, OrderedUtxoCollection)>;
-
+/// A composite key combining DAA score and transaction outpoint.
+///
+/// Used as the key in [`CompactUtxoCollection`] to uniquely identify a UTXO within a script public key group.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct UtxoEntryKeyData {
-    pub daa_score: u64,
-    pub transaction_outpoint: TransactionOutpoint,
+pub struct UtxoEntryKeySuffixRecord {
+    daa_score: u64,
+    transaction_outpoint: TransactionOutpoint,
 }
 
-impl UtxoEntryKeyData {
+impl UtxoEntryKeySuffixRecord {
+    #[inline(always)]
     pub fn new(daa_score: u64, transaction_outpoint: TransactionOutpoint) -> Self {
         Self { daa_score, transaction_outpoint }
+    }
+
+    #[inline(always)]
+    pub fn daa_score(&self) -> u64 {
+        self.daa_score
+    }
+
+    #[inline(always)]
+    pub fn transaction_outpoint(&self) -> &TransactionOutpoint {
+        &self.transaction_outpoint
     }
 }
 
@@ -57,15 +68,23 @@ impl Display for UtxoPageCursor {
 }
 
 /// A page of ordered UTXOs with an optional cursor for the next group.
-#[derive(Clone, Debug, Default)]
-pub struct OrderedUtxoSetByScriptPublicKeyPage {
-    pub entries: OrderedUtxoSetByScriptPublicKey,
-    pub cursor: Option<UtxoPageCursor>,
+#[derive(Clone, Debug)]
+pub struct OrderedUtxoEntriesPage {
+    entries: OrderedUtxoEntries,
+    next_cursor: Option<UtxoPageCursor>,
 }
 
-impl OrderedUtxoSetByScriptPublicKeyPage {
-    pub fn new(entries: OrderedUtxoSetByScriptPublicKey, cursor: Option<UtxoPageCursor>) -> Self {
-        Self { entries, cursor }
+impl OrderedUtxoEntriesPage {
+    pub fn new(entries: OrderedUtxoEntries, next_cursor: Option<UtxoPageCursor>) -> Self {
+        Self { entries, next_cursor }
+    }
+
+    pub fn entries(&self) -> &OrderedUtxoEntries {
+        &self.entries
+    }
+
+    pub fn next_cursor(&self) -> Option<&UtxoPageCursor> {
+        self.next_cursor.as_ref()
     }
 }
 

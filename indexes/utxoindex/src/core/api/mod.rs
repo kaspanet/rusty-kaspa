@@ -1,14 +1,13 @@
+use indexmap::IndexSet;
 use kaspa_consensus_core::{
     BlockHashSet,
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
 };
 use kaspa_consensusmanager::spawn_blocking;
 use kaspa_database::prelude::StoreResult;
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::{
-    BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage, ScriptPublicKeyIndexSet, UtxoPageCursor,
-};
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoEntriesPage, UtxoPageCursor};
 use parking_lot::RwLock;
 use std::{collections::HashSet, fmt::Debug, ops::RangeInclusive, sync::Arc};
 
@@ -32,11 +31,11 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     /// Retrieve ordered UTXOs for multiple script public keys with cursor pagination.
     fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
-        script_public_keys: ScriptPublicKeyIndexSet,
+        script_public_keys: IndexSet<ScriptPublicKey>,
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> UtxoIndexResult<OrderedUtxoSetByScriptPublicKeyPage>;
+    ) -> UtxoIndexResult<OrderedUtxoEntriesPage>;
 
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
 
@@ -87,11 +86,11 @@ impl UtxoIndexProxy {
 
     pub async fn get_utxos_by_script_public_keys_by_daa_score_page(
         self,
-        script_public_keys: ScriptPublicKeyIndexSet,
+        script_public_keys: IndexSet<ScriptPublicKey>,
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> UtxoIndexResult<OrderedUtxoSetByScriptPublicKeyPage> {
+    ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
         spawn_blocking(move || {
             self.inner.read().get_utxos_by_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)
         })

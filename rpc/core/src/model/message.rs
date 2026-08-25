@@ -1636,15 +1636,9 @@ impl Deserializer for GetUtxosByAddressesV2Response {
         let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
         let next_address = load!(Option<RpcAddress>, reader)?;
         let next_daa_score = load!(Option<u64>, reader)?;
-        let _next_outpoint_hash = load!(Option<RpcHash>, reader)?;
-        let _next_outpoint_index = load!(Option<TransactionIndexType>, reader)?;
-        Ok(Self {
-            entries,
-            next_address,
-            next_daa_score,
-            next_outpoint_hash: load!(Option<RpcHash>, reader)?,
-            next_outpoint_index: load!(Option<TransactionIndexType>, reader)?,
-        })
+        let next_outpoint_hash = load!(Option<RpcHash>, reader)?;
+        let next_outpoint_index = load!(Option<TransactionIndexType>, reader)?;
+        Ok(Self { entries, next_address, next_daa_score, next_outpoint_hash, next_outpoint_index })
     }
 }
 

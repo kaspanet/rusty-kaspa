@@ -6,14 +6,17 @@ use crate::{
     stores::store_manager::Store,
     update_container::UtxoIndexChanges,
 };
-use kaspa_consensus_core::{BlockHashSet, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
+use indexmap::IndexSet;
+use kaspa_consensus_core::{
+    BlockHashSet,
+    tx::{ScriptPublicKey, ScriptPublicKeys},
+    utxo::utxo_diff::UtxoDiff,
+};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{DB, StoreError, StoreResult};
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::{
-    BalanceByScriptPublicKey, OrderedUtxoSetByScriptPublicKeyPage, ScriptPublicKeyIndexSet, UtxoPageCursor,
-};
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoEntriesPage, UtxoPageCursor};
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
@@ -73,11 +76,11 @@ impl UtxoIndexApi for UtxoIndex {
 
     fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
-        script_public_keys: ScriptPublicKeyIndexSet,
+        script_public_keys: IndexSet<ScriptPublicKey>,
         daa_score_range: RangeInclusive<u64>,
         cursor: UtxoPageCursor,
         limit: Option<u64>,
-    ) -> UtxoIndexResult<OrderedUtxoSetByScriptPublicKeyPage> {
+    ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
         trace!("[{0}] retrieving utxos by daa-score range for {1} script public keys (paged)", IDENT, script_public_keys.len());
         self.store.get_utxos_by_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)
     }
@@ -244,7 +247,7 @@ mod tests {
     use crate::{
         UtxoIndex,
         api::UtxoIndexApi,
-        model::{CirculatingSupply, UtxoEntryKeyData},
+        model::{CirculatingSupply, UtxoEntryKeySuffixRecord},
         testutils::virtual_change_emulator::VirtualChangeEmulator,
     };
     use kaspa_consensus::{
@@ -320,12 +323,12 @@ mod tests {
                 .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
                 .expect("expected script public key to be in database");
             for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
-                let utxo_entry_key_data = UtxoEntryKeyData::new(utxo_entry.block_daa_score, tx_outpoint);
+                let utxo_key_suffix_record = UtxoEntryKeySuffixRecord::new(utxo_entry.block_daa_score, tx_outpoint);
                 let compact_utxo =
-                    indexed_compact_utxo_collection.get(&utxo_entry_key_data).expect("expected utxo entry key data as key");
+                    indexed_compact_utxo_collection.get(&utxo_key_suffix_record).expect("expected utxo entry key data as key");
                 assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
                 assert_eq!(utxo_entry.amount, compact_utxo.amount);
-                assert_eq!(utxo_entry.block_daa_score, utxo_entry_key_data.daa_score);
+                assert_eq!(utxo_entry.block_daa_score, utxo_key_suffix_record.daa_score());
                 assert_eq!(utxo_entry.is_coinbase, compact_utxo.is_coinbase);
                 i += 1;
             }
@@ -353,15 +356,15 @@ mod tests {
 
         let mut i = 0;
         for (script_public_key, compact_utxo_collection) in utxo_changes.added.iter() {
-            for (utxo_entry_key_data, compact_utxo_entry) in compact_utxo_collection.iter() {
+            for (utxo_key_suffix_record, compact_utxo_entry) in compact_utxo_collection.iter() {
                 let utxo_entry = virtual_change_emulator
                     .accumulated_utxo_diff
                     .add
-                    .get(&utxo_entry_key_data.transaction_outpoint)
+                    .get(&utxo_key_suffix_record.transaction_outpoint())
                     .expect("expected utxo_entry");
                 assert_eq!(*script_public_key, utxo_entry.script_public_key);
                 assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
-                assert_eq!(utxo_entry_key_data.daa_score, utxo_entry.block_daa_score);
+                assert_eq!(utxo_key_suffix_record.daa_score(), utxo_entry.block_daa_score);
                 assert_eq!(compact_utxo_entry.is_coinbase, utxo_entry.is_coinbase);
                 i += 1;
             }
@@ -371,16 +374,18 @@ mod tests {
         i = 0;
 
         for (script_public_key, compact_utxo_collection) in utxo_changes.removed.iter() {
-            for (utxo_entry_key_data, compact_utxo_entry) in compact_utxo_collection.iter() {
-                assert!(virtual_change_emulator.accumulated_utxo_diff.remove.contains_key(&utxo_entry_key_data.transaction_outpoint));
+            for (utxo_key_suffix_record, compact_utxo_entry) in compact_utxo_collection.iter() {
+                assert!(
+                    virtual_change_emulator.accumulated_utxo_diff.remove.contains_key(&utxo_key_suffix_record.transaction_outpoint())
+                );
                 let utxo_entry = virtual_change_emulator
                     .accumulated_utxo_diff
                     .remove
-                    .get(&utxo_entry_key_data.transaction_outpoint)
+                    .get(&utxo_key_suffix_record.transaction_outpoint())
                     .expect("expected utxo_entry");
                 assert_eq!(*script_public_key, utxo_entry.script_public_key);
                 assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
-                assert_eq!(utxo_entry_key_data.daa_score, utxo_entry.block_daa_score);
+                assert_eq!(utxo_key_suffix_record.daa_score(), utxo_entry.block_daa_score);
                 assert_eq!(compact_utxo_entry.is_coinbase, utxo_entry.is_coinbase);
                 i += 1;
             }
@@ -409,12 +414,12 @@ mod tests {
                 .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
                 .expect("expected script public key to be in database");
             for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
-                let utxo_entry_key_data = UtxoEntryKeyData::new(utxo_entry.block_daa_score, tx_outpoint);
+                let utxo_key_suffix_record = UtxoEntryKeySuffixRecord::new(utxo_entry.block_daa_score, tx_outpoint);
                 let compact_utxo =
-                    indexed_compact_utxo_collection.get(&utxo_entry_key_data).expect("expected utxo entry key data as key");
+                    indexed_compact_utxo_collection.get(&utxo_key_suffix_record).expect("expected utxo entry key data as key");
                 assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
                 assert_eq!(utxo_entry.amount, compact_utxo.amount);
-                assert_eq!(utxo_entry.block_daa_score, utxo_entry_key_data.daa_score);
+                assert_eq!(utxo_entry.block_daa_score, utxo_key_suffix_record.daa_score());
                 assert_eq!(utxo_entry.is_coinbase, compact_utxo.is_coinbase);
                 i += 1;
             }
