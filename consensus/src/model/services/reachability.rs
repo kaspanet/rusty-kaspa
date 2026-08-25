@@ -16,8 +16,8 @@ pub trait ReachabilityService {
     }
 
     /// Checks if `this` block is a chain ancestor all the blocks in `queried`
-    fn is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> bool {
-        queried.iter().all(|&hash| self.is_chain_ancestor_of(this, hash))
+    fn is_chain_ancestor_of_all<'a>(&self, this: Hash, queried: impl IntoIterator<Item = &'a Hash>) -> bool {
+        queried.into_iter().all(|&hash| self.is_chain_ancestor_of(this, hash))
     }
 
     /// Result version of [`Self::is_chain_ancestor_of`] (avoids unwrapping internally)

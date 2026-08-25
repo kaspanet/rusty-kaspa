@@ -1,14 +1,14 @@
-use std::{cell::Cell, collections::HashMap, sync::Arc};
-
-use itertools::Itertools;
-use kaspa_consensus_core::KType;
-use kaspa_core::debug;
-use kaspa_hashes::Hash;
-use parking_lot::RwLock;
-
 #[cfg(feature = "baseline-debugging")]
 use crate::processes::dagknight::umc_baseline::BaselineUmcVoter;
 use crate::processes::dagknight::umc_voting::{UmcVoter, UmcVotingContext};
+use itertools::Itertools;
+use kaspa_consensus_core::{BlockHashSet, HashMapCustomHasher, KType};
+use kaspa_core::debug;
+use kaspa_hashes::Hash;
+use parking_lot::RwLock;
+use smallvec::SmallVec;
+use std::ops::Deref;
+use std::{cell::Cell, collections::HashMap, sync::Arc};
 
 use crate::{
     model::{
@@ -406,6 +406,158 @@ impl<
             None
         }
     }
+}
+
+/// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
+#[derive(Clone)]
+pub struct DagknightExecutorNext<
+    C: DagknightStore + DagknightStoreReader,
+    O: HeaderStoreReader,
+    D: RelationsStoreReader,
+    E: UmcCascadeStoreReader,
+    R: ReachabilityStoreReader,
+> {
+    pub genesis_hash: Hash,
+    pub dagknight_store: C,
+    pub headers_store: O,
+    pub relations_store: D,
+    pub umc_persistence_store: E,
+    pub reachability_service: MTReachabilityService<R>,
+    pub counters: Arc<DagknightCounters>,
+}
+
+impl<
+    C: DagknightStore + DagknightStoreReader,
+    O: HeaderStoreReader,
+    D: RelationsStoreReader,
+    E: UmcCascadeStoreReader,
+    R: ReachabilityStoreReader,
+> DagknightExecutorNext<C, O, D, E, R>
+{
+    // TODO[DK]: drop the allows once rank/tie-breaking is implemented and this is wired into block processing
+    #[allow(dead_code, unreachable_code, clippy::diverging_sub_expression)]
+    fn dagknight_next<'a>(&self, parents: &'a [Hash]) -> DagknightDataNext<'a> {
+        /*
+            input: a set of block parents
+            output: the selected parent + incremental metadata
+
+            Algo scheme:
+                Run DK from the bottom up per conflict, for each conflict search through k and find the minimal
+                committed k-cluster which confirms to UMC cascade voting with parameter d=sqrt(k)
+
+            High-level tasks/challenges:
+                1. Incremental k-colouring -- known from GD
+                2. Iterating through conflicts -- requires finding the common chain-ancestor which
+                   is a simple operation, though it might require optimizing with an indexed chain
+                   (and using logarithmic step searches)
+                3. Representatives (alternatively: gray blocks)
+                4. Tie-breaking rule
+                5. Cascade voting -- requires most thought for making incremental
+        */
+        assert!(parents.len() <= u16::MAX as usize);
+        // Deduplicate while preserving order (mirrors `.unique()` in `dagknight`); duplicate parents
+        // would always land in the same group and could never be split apart
+        let mut seen = BlockHashSet::with_capacity(parents.len());
+        let mut curr_subgroup: SmallVec<[u16; 20]> =
+            (0..parents.len() as u16).filter(|&parent| seen.insert(parents[parent as usize])).collect();
+        #[allow(unused_mut)] // TODO[DK]: the push below only becomes reachable once the rank/tie-breaking placeholder is implemented
+        let mut conflict_ordered_parents: SmallVec<[u16; 20]> = SmallVec::with_capacity(parents.len());
+        loop {
+            curr_subgroup = match core::mem::take(&mut curr_subgroup).deref() {
+                [sp] => {
+                    // Returned in natural push order (bottom-most conflicts first) so consumers can
+                    // reverse-iterate to walk parents from latest/topmost conflicts first
+                    debug!("dk::sp: {} | reverse_conflict_ordered_parents: {:?}", sp, conflict_ordered_parents);
+                    return DagknightDataNext {
+                        tips: parents,
+                        selected_parent: *sp,
+                        reverse_conflict_ordered_parents: conflict_ordered_parents,
+                    };
+                }
+                curr_subgroup => {
+                    // g = find the LCCA of the current subgroup -- the genesis of this conflict level
+                    let conflict_genesis = self.common_chain_ancestor(parents, curr_subgroup);
+                    debug!("conflict_genesis: {:#}", conflict_genesis);
+
+                    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+                    struct Group {
+                        common_ancestor: Hash,
+                        parent: u16,
+                    }
+
+                    // Split the subgroup by the chain ancestor each parent follows above `conflict_genesis`;
+                    // parents within each group agree about the conflict zone induced by `conflict_genesis`
+                    let mut agreement_grouping: Vec<Group> = curr_subgroup
+                        .iter()
+                        .map(|&parent| Group {
+                            common_ancestor: self
+                                .reachability_service
+                                .get_next_chain_ancestor(parents[parent as usize], conflict_genesis),
+                            parent,
+                        })
+                        .collect();
+                    agreement_grouping.sort_unstable();
+
+                    if agreement_grouping.iter().map(|group| &group.common_ancestor).all_equal() {
+                        // There is exactly one group, we don't rank; the loop head re-derives the
+                        // conflict genesis from this same subgroup to skip to the next level
+                        agreement_grouping.into_iter().map(|group| group.parent).collect()
+                    } else {
+                        // Pick a "winner" among these subgroups
+                        // TODO[DK]: rank the groups (k-cluster + UMC cascade voting search) and tie-break;
+                        // expected to return the winning (next chain ancestor, subgroup) pair
+                        let (winning_chain_ancestor, winning_subgroup): (&Hash, SmallVec<[u16; 20]>) = todo!("rank and tie breaking");
+
+                        // Add the non-winners to the ordered parents
+                        agreement_grouping.into_iter().for_each(|Group { common_ancestor, parent }| {
+                            // TODO[DK]: Asserting here that order of the non-winning parents within a conflict level doesn't matter
+                            if &common_ancestor != winning_chain_ancestor {
+                                conflict_ordered_parents.push(parent);
+                            }
+                        });
+
+                        winning_subgroup
+                    }
+                }
+            }
+        }
+    }
+
+    /// Finds the latest common chain ancestor of the given subgroup (indices into `parents`),
+    /// serving as the genesis of the conflict level the caller is about to resolve
+    fn common_chain_ancestor(&self, parents: &[Hash], subgroup: &[u16]) -> Hash {
+        // TODO: DK
+        /*
+           Notes:
+               - ignore/exclude/make-lose parents not agreeing on the pruning point as a chain block
+               - optimize for shortest path
+               - optimize with index
+        */
+
+        let start = parents[subgroup[0] as usize];
+
+        if start == self.genesis_hash {
+            return self.genesis_hash;
+        }
+
+        for cb in self.reachability_service.default_backward_chain_iterator(start).skip(1) {
+            if self.reachability_service.is_chain_ancestor_of_all(cb, subgroup.iter().skip(1).map(|&parent| &parents[parent as usize]))
+            {
+                return cb;
+            }
+        }
+
+        unreachable!()
+    }
+}
+
+pub struct DagknightDataNext<'a> {
+    pub tips: &'a [Hash],
+    /// Index into `tips`
+    pub selected_parent: u16,
+    /// Indices into `tips`, ordered by conflict hierarchy with bottom-most conflicts first;
+    /// reverse-iterate to get parents from latest/topmost conflicts first (as `dagknight` returns)
+    pub reverse_conflict_ordered_parents: SmallVec<[u16; 20]>,
 }
 
 #[cfg(test)]
