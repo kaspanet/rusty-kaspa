@@ -262,7 +262,7 @@ declare! {
      */
     export interface ISyncState {
         event : string;
-        data? : ISyncProofEvent | ISyncHeadersEvent | ISyncBlocksEvent | ISyncUtxoSyncEvent | ISyncTrustSyncEvent;
+        data? : ISyncProofEvent | ISyncHeadersEvent | ISyncBlocksEvent | ISyncUtxoSyncEvent | ISyncTrustSyncEvent | ISyncSmtSyncEvent;
     }
     
     /**
@@ -705,6 +705,21 @@ declare! {
      * @category Wallet Events
      */
     export interface ISyncTrustSyncEvent {
+        processed : number;
+        total : number;
+    }
+    "#,
+}
+
+declare! {
+    ISyncSmtSync,
+    r#"
+    /**
+     * Emitted by {@link UtxoProcessor} when node is importing the pruning point SMT state as a part of the IBD (Initial Block Download) process.
+     * 
+     * @category Wallet Events
+     */
+    export interface ISyncSmtSyncEvent {
         processed : number;
         total : number;
     }

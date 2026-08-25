@@ -99,11 +99,10 @@ impl OrphanPool {
     }
 
     fn check_orphan_mass(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        if transaction.calculated_non_contextual_masses.unwrap().max() > self.config.maximum_orphan_transaction_mass {
-            return Err(RuleError::RejectBadOrphanMass(
-                transaction.calculated_non_contextual_masses.unwrap().max(),
-                self.config.maximum_orphan_transaction_mass,
-            ));
+        let cofactors = self.config.mempool_mass_cofactors;
+        let normalized_mass = transaction.calculated_non_contextual_masses.unwrap().normalized_max(&cofactors);
+        if normalized_mass > self.config.maximum_orphan_transaction_normalized_mass {
+            return Err(RuleError::RejectBadOrphanMass(normalized_mass, self.config.maximum_orphan_transaction_normalized_mass));
         }
         Ok(())
     }

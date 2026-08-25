@@ -1,15 +1,15 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    CovenantBinding, ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoEntry,
 };
-use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
+use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref, serde_bytes_fixed_ref_optional, serde_bytes_optional};
 use serde::{Deserialize, Serialize};
-use serde_nested_with::serde_nested;
 use workflow_serializer::prelude::*;
 
 use crate::{
-    RpcError, RpcResult, RpcScriptPublicKey, RpcTransactionId,
+    RpcCovenantBinding, RpcError, RpcResult, RpcScriptPublicKey, RpcTransactionId,
     prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
 };
 
@@ -25,6 +25,7 @@ pub struct RpcOptionalUtxoEntry {
     /// Level: High
     pub is_coinbase: Option<bool>,
     pub verbose_data: Option<RpcOptionalUtxoEntryVerboseData>,
+    pub covenant_id: Option<RpcHash>,
 }
 
 impl RpcOptionalUtxoEntry {
@@ -42,8 +43,9 @@ impl RpcOptionalUtxoEntry {
         block_daa_score: Option<u64>,
         is_coinbase: Option<bool>,
         verbose_data: Option<RpcOptionalUtxoEntryVerboseData>,
+        covenant_id: Option<RpcHash>,
     ) -> Self {
-        Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data }
+        Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data, covenant_id }
     }
 }
 
@@ -55,6 +57,7 @@ impl From<UtxoEntry> for RpcOptionalUtxoEntry {
             block_daa_score: Some(entry.block_daa_score),
             is_coinbase: Some(entry.is_coinbase),
             verbose_data: None,
+            covenant_id: entry.covenant_id,
         }
     }
 }
@@ -74,18 +77,20 @@ impl TryFrom<RpcOptionalUtxoEntry> for UtxoEntry {
             is_coinbase: entry
                 .is_coinbase
                 .ok_or(RpcError::MissingRpcFieldError("RpcUtxoEntry".to_string(), "is_coinbase".to_string()))?,
+            covenant_id: entry.covenant_id,
         })
     }
 }
 
 impl Serializer for RpcOptionalUtxoEntry {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(Option<u64>, &self.amount, writer)?;
         store!(Option<ScriptPublicKey>, &self.script_public_key, writer)?;
         store!(Option<u64>, &self.block_daa_score, writer)?;
         store!(Option<bool>, &self.is_coinbase, writer)?;
         serialize!(Option<RpcOptionalUtxoEntryVerboseData>, &self.verbose_data, writer)?;
+        store!(Option<RpcHash>, &self.covenant_id, writer)?;
 
         Ok(())
     }
@@ -93,14 +98,16 @@ impl Serializer for RpcOptionalUtxoEntry {
 
 impl Deserializer for RpcOptionalUtxoEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
+
         let amount = load!(Option<u64>, reader)?;
         let script_public_key = load!(Option<ScriptPublicKey>, reader)?;
         let block_daa_score = load!(Option<u64>, reader)?;
         let is_coinbase = load!(Option<bool>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalUtxoEntryVerboseData>, reader)?;
 
-        Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data })
+        let covenant_id = if version > 1 { load!(Option<RpcHash>, reader)? } else { None };
+        Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data, covenant_id })
     }
 }
 
@@ -145,10 +152,9 @@ impl Deserializer for RpcOptionalUtxoEntryVerboseData {
 
 /// Represents a Kaspa transaction outpoint
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionOutpoint {
-    #[serde_nested(sub = "TransactionId", serde(with = "serde_bytes_fixed_ref"))]
+    #[serde(with = "serde_bytes_fixed_ref_optional")]
     pub transaction_id: Option<TransactionId>,
     pub index: Option<TransactionIndexType>,
 }
@@ -208,18 +214,19 @@ impl Deserializer for RpcOptionalTransactionOutpoint {
 
 /// Represents a Kaspa transaction input
 #[derive(Clone, Serialize, Deserialize)]
-#[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionInput {
     /// Level: High
     pub previous_outpoint: Option<RpcOptionalTransactionOutpoint>,
-    #[serde_nested(sub = "Vec<u8>", serde(with = "hex::serde"))]
+    #[serde(with = "serde_bytes_optional")]
     /// Level: Low
     pub signature_script: Option<Vec<u8>>,
     /// Level: High
     pub sequence: Option<u64>,
     /// Level: High
     pub sig_op_count: Option<u8>,
+    /// Level: High
+    pub compute_budget: Option<u16>,
     pub verbose_data: Option<RpcOptionalTransactionInputVerboseData>,
 }
 
@@ -230,6 +237,7 @@ impl std::fmt::Debug for RpcOptionalTransactionInput {
             .field("signature_script", &self.signature_script.as_ref().map(|v| v.to_hex()))
             .field("sequence", &self.sequence)
             .field("sig_op_count", &self.sig_op_count)
+            .field("compute_budget", &self.compute_budget)
             .field("verbose_data", &self.verbose_data)
             .finish()
     }
@@ -241,7 +249,8 @@ impl From<TransactionInput> for RpcOptionalTransactionInput {
             previous_outpoint: Some(input.previous_outpoint.into()),
             signature_script: Some(input.signature_script),
             sequence: Some(input.sequence),
-            sig_op_count: Some(input.sig_op_count),
+            sig_op_count: Some(input.compute_commit.sig_op_count().unwrap_or(0)),
+            compute_budget: Some(input.compute_commit.compute_budget().unwrap_or(0)),
             verbose_data: None,
         }
     }
@@ -258,18 +267,20 @@ impl RpcOptionalTransactionInput {
             && self.signature_script.is_none()
             && self.sequence.is_none()
             && self.sig_op_count.is_none()
+            && self.compute_budget.is_none()
             && (self.verbose_data.is_none() || self.verbose_data.as_ref().is_some_and(|x| x.is_empty()))
     }
 }
 
 impl Serializer for RpcOptionalTransactionInput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         serialize!(Option<RpcOptionalTransactionOutpoint>, &self.previous_outpoint, writer)?;
         store!(Option<Vec<u8>>, &self.signature_script, writer)?;
         store!(Option<u64>, &self.sequence, writer)?;
         store!(Option<u8>, &self.sig_op_count, writer)?;
         serialize!(Option<RpcOptionalTransactionInputVerboseData>, &self.verbose_data, writer)?;
+        store!(Option<u16>, &self.compute_budget, writer)?;
 
         Ok(())
     }
@@ -277,14 +288,15 @@ impl Serializer for RpcOptionalTransactionInput {
 
 impl Deserializer for RpcOptionalTransactionInput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let previous_outpoint = deserialize!(Option<RpcOptionalTransactionOutpoint>, reader)?;
         let signature_script = load!(Option<Vec<u8>>, reader)?;
         let sequence = load!(Option<u64>, reader)?;
         let sig_op_count = load!(Option<u8>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalTransactionInputVerboseData>, reader)?;
+        let compute_budget = if version > 1 { load!(Option<u16>, reader)? } else { None };
 
-        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data })
+        Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, compute_budget, verbose_data })
     }
 }
 
@@ -326,6 +338,7 @@ pub struct RpcOptionalTransactionOutput {
     /// Level - Low
     pub script_public_key: Option<RpcScriptPublicKey>,
     pub verbose_data: Option<RpcOptionalTransactionOutputVerboseData>,
+    pub covenant: Option<RpcNullableCovenantBinding>,
 }
 
 impl RpcOptionalTransactionOutput {
@@ -342,16 +355,22 @@ impl RpcOptionalTransactionOutput {
 
 impl From<TransactionOutput> for RpcOptionalTransactionOutput {
     fn from(output: TransactionOutput) -> Self {
-        Self { value: Some(output.value), script_public_key: Some(output.script_public_key), verbose_data: None }
+        Self {
+            value: Some(output.value),
+            script_public_key: Some(output.script_public_key),
+            verbose_data: None,
+            covenant: output.covenant.map(Into::into),
+        }
     }
 }
 
 impl Serializer for RpcOptionalTransactionOutput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(Option<u64>, &self.value, writer)?;
         store!(Option<RpcScriptPublicKey>, &self.script_public_key, writer)?;
         serialize!(Option<RpcOptionalTransactionOutputVerboseData>, &self.verbose_data, writer)?;
+        serialize!(Option<RpcNullableCovenantBinding>, &self.covenant, writer)?;
 
         Ok(())
     }
@@ -359,12 +378,13 @@ impl Serializer for RpcOptionalTransactionOutput {
 
 impl Deserializer for RpcOptionalTransactionOutput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let value = load!(Option<u64>, reader)?;
         let script_public_key = load!(Option<RpcScriptPublicKey>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalTransactionOutputVerboseData>, reader)?;
+        let covenant = if version > 1 { deserialize!(Option<RpcNullableCovenantBinding>, reader)? } else { None };
 
-        Ok(Self { value, script_public_key, verbose_data })
+        Ok(Self { value, script_public_key, verbose_data, covenant })
     }
 }
 
@@ -403,10 +423,57 @@ impl Deserializer for RpcOptionalTransactionOutputVerboseData {
     }
 }
 
-/// Represents a Kaspa transaction
-#[derive(Clone, Serialize, Deserialize)]
-#[serde_nested]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[repr(transparent)]
+pub struct RpcNullableCovenantBinding(pub Option<RpcCovenantBinding>);
+
+impl Serializer for RpcNullableCovenantBinding {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        serialize!(Option<RpcCovenantBinding>, &self.0, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcNullableCovenantBinding {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let covenant = deserialize!(Option<RpcCovenantBinding>, reader)?;
+        Ok(Self(covenant))
+    }
+}
+
+impl From<RpcCovenantBinding> for RpcNullableCovenantBinding {
+    fn from(value: RpcCovenantBinding) -> Self {
+        Self(Some(value))
+    }
+}
+
+impl From<Option<RpcCovenantBinding>> for RpcNullableCovenantBinding {
+    fn from(value: Option<RpcCovenantBinding>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<CovenantBinding> for RpcNullableCovenantBinding {
+    fn from(value: CovenantBinding) -> Self {
+        Self(Some(value.into()))
+    }
+}
+
+impl TryFrom<RpcNullableCovenantBinding> for RpcCovenantBinding {
+    type Error = RpcError;
+
+    fn try_from(covenant: RpcNullableCovenantBinding) -> RpcResult<Self> {
+        let covenant = covenant.0.ok_or(RpcError::General("covenant binding is none".to_string()))?;
+        Ok(Self(CovenantBinding { authorizing_input: covenant.0.authorizing_input, covenant_id: covenant.0.covenant_id }))
+    }
+}
+
+/// Represents a Kaspa transaction
+#[derive(Clone)]
 pub struct RpcOptionalTransaction {
     /// Level: Full
     pub version: Option<u16>,
@@ -418,12 +485,94 @@ pub struct RpcOptionalTransaction {
     pub subnetwork_id: Option<RpcSubnetworkId>,
     /// Level: Full
     pub gas: Option<u64>,
-    #[serde_nested(sub = "Vec<u8>", serde(with = "hex::serde"))]
     /// Level: High
     pub payload: Option<Vec<u8>>,
     /// Level: High
-    pub mass: Option<u64>,
+    pub storage_mass: Option<u64>,
     pub verbose_data: Option<RpcOptionalTransactionVerboseData>,
+}
+
+// This struct is used only for human-readable serialization of RpcOptionalTransaction, and is not intended to be used directly.
+// It exists to avoid breaking existing clients that rely on the "mass" field in JSON serialization of RpcOptionalTransaction,
+// while allowing us to rename the internal storage mass field to storage_mass for better clarity.
+// Once the "mass" field is removed from RpcOptionalTransaction, this struct and the related code can be removed as well.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RpcOptionalTransactionHumanReadable {
+    version: Option<u16>,
+    inputs: Vec<RpcOptionalTransactionInput>,
+    outputs: Vec<RpcOptionalTransactionOutput>,
+    lock_time: Option<u64>,
+    subnetwork_id: Option<RpcSubnetworkId>,
+    gas: Option<u64>,
+    #[serde(with = "serde_bytes_optional")]
+    payload: Option<Vec<u8>>,
+    storage_mass: Option<u64>,
+    mass: Option<u64>, // Deprecated field for storage mass to avoid breaking existing clients. Should be removed in the future.
+    verbose_data: Option<RpcOptionalTransactionVerboseData>,
+}
+
+impl<'de> serde::Deserialize<'de> for RpcOptionalTransaction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            return Err(serde::de::Error::custom("RpcOptionalTransaction does not support non-human-readable deserialization"));
+        }
+
+        let value = RpcOptionalTransactionHumanReadable::deserialize(deserializer)?;
+        let storage_mass = match (value.storage_mass, value.mass) {
+            (Some(storage_mass), Some(mass)) if storage_mass != mass => {
+                return Err(serde::de::Error::custom(format!(
+                    "storageMass and mass must match when both are provided: storageMass={storage_mass}, mass={mass}"
+                )));
+            }
+            (Some(storage_mass), _) => Some(storage_mass),
+            (None, mass) => mass,
+        };
+
+        Ok(Self {
+            version: value.version,
+            inputs: value.inputs,
+            outputs: value.outputs,
+            lock_time: value.lock_time,
+            subnetwork_id: value.subnetwork_id,
+            gas: value.gas,
+            payload: value.payload,
+            storage_mass,
+            verbose_data: value.verbose_data,
+        })
+    }
+}
+
+impl Serialize for RpcOptionalTransaction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if !serializer.is_human_readable() {
+            return Err(serde::ser::Error::custom("RpcOptionalTransaction does not support non-human-readable serialization"));
+        }
+
+        // We use this destructuring so any change in the fields of RpcOptionalTransaction will cause a compile error here, reminding us to update the serialization code of RpcOptionalTransactionHumanReadable accordingly.
+        let Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass, verbose_data } = self;
+
+        let hr = RpcOptionalTransactionHumanReadable {
+            version: *version,
+            inputs: inputs.clone(),
+            outputs: outputs.clone(),
+            lock_time: *lock_time,
+            subnetwork_id: *subnetwork_id,
+            gas: *gas,
+            payload: payload.clone(),
+            storage_mass: *storage_mass,
+            #[allow(deprecated)]
+            mass: *storage_mass,
+            verbose_data: verbose_data.clone(),
+        };
+        hr.serialize(serializer)
+    }
 }
 
 impl RpcOptionalTransaction {
@@ -435,20 +584,20 @@ impl RpcOptionalTransaction {
             && self.subnetwork_id.is_none()
             && self.gas.is_none()
             && self.payload.is_none()
-            && self.mass.is_none()
+            && self.storage_mass.is_none()
             && (self.verbose_data.is_none() || self.verbose_data.as_ref().is_some_and(|x| x.is_empty()))
     }
 }
 
 impl std::fmt::Debug for RpcOptionalTransaction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RpcTransaction")
+        f.debug_struct("RpcOptionalTransaction")
             .field("version", &self.version)
             .field("lock_time", &self.lock_time)
             .field("subnetwork_id", &self.subnetwork_id)
             .field("gas", &self.gas)
             .field("payload", &self.payload.as_ref().map(|v|v.to_hex()))
-            .field("mass", &self.mass)
+            .field("storage_mass", &self.storage_mass)
             .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
@@ -466,7 +615,7 @@ impl Serializer for RpcOptionalTransaction {
         store!(Option<RpcSubnetworkId>, &self.subnetwork_id, writer)?;
         store!(Option<u64>, &self.gas, writer)?;
         store!(Option<Vec<u8>>, &self.payload, writer)?;
-        store!(Option<u64>, &self.mass, writer)?;
+        store!(Option<u64>, &self.storage_mass, writer)?;
         serialize!(Option<RpcOptionalTransactionVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -484,27 +633,26 @@ impl Deserializer for RpcOptionalTransaction {
         let subnetwork_id = load!(Option<RpcSubnetworkId>, reader)?;
         let gas = load!(Option<u64>, reader)?;
         let payload = load!(Option<Vec<u8>>, reader)?;
-        let mass = load!(Option<u64>, reader)?;
+        let storage_mass = load!(Option<u64>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalTransactionVerboseData>, reader)?;
 
-        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data })
+        Ok(Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, storage_mass, verbose_data })
     }
 }
 
 /// Represent Kaspa transaction verbose data
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionVerboseData {
-    #[serde_nested(sub = "RpcTransactionId", serde(with = "serde_bytes_fixed_ref"))]
+    #[serde(with = "serde_bytes_fixed_ref_optional")]
     /// Level: Low
     pub transaction_id: Option<RpcTransactionId>,
-    #[serde_nested(sub = "RpcHash", serde(with = "serde_bytes_fixed_ref"))]
+    #[serde(with = "serde_bytes_fixed_ref_optional")]
     /// Level: Low
     pub hash: Option<RpcHash>,
     /// Level: High
     pub compute_mass: Option<u64>,
-    #[serde_nested(sub = "RpcHash", serde(with = "serde_bytes_fixed_ref"))]
+    #[serde(with = "serde_bytes_fixed_ref_optional")]
     /// Level: Low
     pub block_hash: Option<RpcHash>,
     /// Level: Low

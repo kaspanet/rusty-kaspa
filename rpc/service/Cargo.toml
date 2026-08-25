@@ -25,8 +25,9 @@ kaspa-p2p-lib.workspace = true
 kaspa-p2p-mining.workspace = true
 kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-system-info.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["expiring-cache", "triggers"] }
 kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
 

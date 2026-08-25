@@ -1,11 +1,12 @@
 pub use super::{
     bps::{Bps, TenBps},
     constants::consensus::*,
-    genesis::{DEVNET_GENESIS, GENESIS, GenesisBlock, SIMNET_GENESIS, TESTNET_GENESIS, TESTNET11_GENESIS},
+    genesis::{DEVNET_GENESIS, GENESIS, GenesisBlock, SIMNET_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
     BlockLevel, KType,
-    constants::STORAGE_MASS_PARAMETER,
+    constants::{BLOCK_VERSION, STORAGE_MASS_PARAMETER},
+    mass::{BlockLaneLimits, BlockMassLimits, MassCofactors},
     network::{NetworkId, NetworkType},
 };
 use kaspa_addresses::Prefix;
@@ -15,6 +16,13 @@ use std::{
     cmp::min,
     ops::{Deref, DerefMut},
 };
+
+// Increased for stark proofs. This value is effectively covered by the
+// transient block mass limit: 1_000_000 transient mass / 4 grams-per-byte = 250_000
+// bytes for the entire block, so a larger signature script cannot be accepted anyway.
+// TODO: check whether this early signature-script length guard can be
+// removed entirely, or whether it remains useful as cheap early protection.
+const MAX_SIGNATURE_SCRIPT_LEN: usize = 250_000;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForkActivation(u64);
@@ -46,6 +54,20 @@ impl ForkActivation {
         current_daa_score >= self.0
     }
 
+    pub fn delayed_by(self, daa_score_delta: u64) -> Self {
+        match self.0 {
+            Self::ALWAYS | Self::NEVER => self,
+            daa_score => Self(daa_score.saturating_add(daa_score_delta)),
+        }
+    }
+
+    pub fn early_by(self, daa_score_delta: u64) -> Self {
+        match self.0 {
+            Self::ALWAYS | Self::NEVER => self,
+            daa_score => Self(daa_score.saturating_sub(daa_score_delta)),
+        }
+    }
+
     /// Checks if the fork was "recently" activated, i.e., in the time frame of the provided range.
     /// This function returns false for forks that were always active, since they were never activated.
     pub fn is_within_range_from_activation(self, current_daa_score: u64, range: u64) -> bool {
@@ -53,7 +75,7 @@ impl ForkActivation {
     }
 
     /// Checks if the fork is expected to be activated "soon", i.e., in the time frame of the provided range.
-    /// Returns the distance from activation if so, or `None` otherwise.  
+    /// Returns the distance from activation if so, or `None` otherwise.
     pub fn is_within_range_before_activation(self, current_daa_score: u64, range: u64) -> Option<u64> {
         if !self.is_active(current_daa_score) && current_daa_score + range > self.0 { Some(self.0 - current_daa_score) } else { None }
     }
@@ -84,6 +106,10 @@ impl<T: Copy> ForkedParam<T> {
         if self.activation.is_active(daa_score) { self.post } else { self.pre }
     }
 
+    pub fn with_delayed_activation(&self, delay_daa_score: u64) -> Self {
+        Self::new(self.pre, self.post, self.activation.delayed_by(delay_daa_score))
+    }
+
     /// Returns the value before activation (=pre unless activation = always)
     pub fn before(&self) -> T {
         match self.activation.0 {
@@ -100,9 +126,20 @@ impl<T: Copy> ForkedParam<T> {
         }
     }
 
+    /// Returns the configured post-fork value regardless of whether activation is scheduled.
+    pub fn raw_post(&self) -> T {
+        self.post
+    }
+
     /// Maps the ForkedParam<T> to a new ForkedParam<U> by applying a map function on both pre and post
     pub fn map<U: Copy, F: Fn(T) -> U>(&self, f: F) -> ForkedParam<U> {
         ForkedParam::new(f(self.pre), f(self.post), self.activation)
+    }
+}
+
+impl<T: Copy> From<T> for ForkedParam<T> {
+    fn from(value: T) -> Self {
+        Self::new_const(value)
     }
 }
 
@@ -139,6 +176,7 @@ impl<T: Copy + Ord> ForkedParam<T> {
 /// in order to easily support **future BPS acceleration hardforks** (by simply adding
 /// a forked instance of blockrate params to the main [`Params`]).
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockrateParams {
     pub target_time_per_block: u64, // (milliseconds)
     pub ghostdag_k: KType,
@@ -177,6 +215,7 @@ impl BlockrateParams {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OverrideParams {
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: Option<u64>,
@@ -200,7 +239,8 @@ pub struct OverrideParams {
     pub mass_per_tx_byte: Option<u64>,
     pub mass_per_script_pub_key_byte: Option<u64>,
     pub mass_per_sig_op: Option<u64>,
-    pub max_block_mass: Option<u64>,
+    pub block_mass_limits: Option<BlockMassLimits>,
+    pub block_lane_limits: Option<BlockLaneLimits>,
 
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
     pub storage_mass_parameter: Option<u64>,
@@ -240,7 +280,8 @@ impl From<Params> for OverrideParams {
             mass_per_tx_byte: Some(p.mass_per_tx_byte),
             mass_per_script_pub_key_byte: Some(p.mass_per_script_pub_key_byte),
             mass_per_sig_op: Some(p.mass_per_sig_op),
-            max_block_mass: Some(p.max_block_mass),
+            block_mass_limits: Some(p.block_mass_limits),
+            block_lane_limits: Some(p.block_lane_limits),
             storage_mass_parameter: Some(p.storage_mass_parameter),
             deflationary_phase_daa_score: Some(p.deflationary_phase_daa_score),
             pre_deflationary_phase_base_subsidy: Some(p.pre_deflationary_phase_base_subsidy),
@@ -291,7 +332,8 @@ pub struct Params {
     pub mass_per_tx_byte: u64,
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
-    pub max_block_mass: u64,
+    pub block_mass_limits: BlockMassLimits,
+    pub block_lane_limits: BlockLaneLimits,
 
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
     pub storage_mass_parameter: u64,
@@ -330,7 +372,7 @@ impl Params {
         self.blockrate.difficulty_sample_rate
     }
 
-    /// Returns the target time per block
+    /// Returns the target time per block (milliseconds)
     #[inline]
     #[must_use]
     pub fn target_time_per_block(&self) -> u64 {
@@ -354,6 +396,13 @@ impl Params {
             1000 / self.blockrate.target_time_per_block,
             self.crescendo_activation,
         )
+    }
+
+    /// Returns the cofactors for normalizing block mass dimensions.
+    #[inline]
+    #[must_use]
+    pub fn block_mass_cofactors(&self) -> MassCofactors {
+        self.block_mass_limits.cofactors()
     }
 
     pub fn ghostdag_k(&self) -> KType {
@@ -414,6 +463,10 @@ impl Params {
         min(self.blockrate.pruning_depth, anticone_finalization_depth)
     }
 
+    pub fn block_version(&self) -> u16 {
+        BLOCK_VERSION
+    }
+
     pub fn network_name(&self) -> String {
         self.net.to_prefixed()
     }
@@ -458,7 +511,8 @@ impl Params {
             mass_per_tx_byte: overrides.mass_per_tx_byte.unwrap_or(self.mass_per_tx_byte),
             mass_per_script_pub_key_byte: overrides.mass_per_script_pub_key_byte.unwrap_or(self.mass_per_script_pub_key_byte),
             mass_per_sig_op: overrides.mass_per_sig_op.unwrap_or(self.mass_per_sig_op),
-            max_block_mass: overrides.max_block_mass.unwrap_or(self.max_block_mass),
+            block_mass_limits: overrides.block_mass_limits.unwrap_or(self.block_mass_limits),
+            block_lane_limits: overrides.block_lane_limits.unwrap_or(self.block_lane_limits),
 
             storage_mass_parameter: overrides.storage_mass_parameter.unwrap_or(self.storage_mass_parameter),
 
@@ -560,16 +614,17 @@ pub const MAINNET_PARAMS: Params = Params {
     // Limit the cost of calculating compute/transient/storage masses
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
-    max_signature_script_len: 10_000,
-    // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Transient mass caps the entire block's transient footprint at 250KB, so no individual signature script can exceed it.
+    max_signature_script_len: MAX_SIGNATURE_SCRIPT_LEN,
+    // Retain a 10KB per-output guard; compute mass caps aggregate script-public-key bytes at roughly 45.5KB per block.
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -596,7 +651,7 @@ pub const MAINNET_PARAMS: Params = Params {
 pub const TESTNET_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Tiram
-        "seeder1-testnet.kaspad.net",
+        "seeder1-tn.kaspad.net",
         // This DNS seeder is run by -gerri-
         "dnsseeder-kaspa-testnet.x-con.at",
         // This DNS seeder is run by supertypo
@@ -616,16 +671,17 @@ pub const TESTNET_PARAMS: Params = Params {
     // Limit the cost of calculating compute/transient/storage masses
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
-    max_signature_script_len: 10_000,
-    // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Transient mass caps the entire block's transient footprint at 250KB, so no individual signature script can exceed it.
+    max_signature_script_len: MAX_SIGNATURE_SCRIPT_LEN,
+    // Retain a 10KB per-output guard; compute mass caps aggregate script-public-key bytes at roughly 45.5KB per block.
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
@@ -666,13 +722,15 @@ pub const SIMNET_PARAMS: Params = Params {
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    max_signature_script_len: 10_000,
+    max_signature_script_len: MAX_SIGNATURE_SCRIPT_LEN,
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
+    // Transient mass is increased for stark proofs
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -703,25 +761,81 @@ pub const DEVNET_PARAMS: Params = Params {
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    max_signature_script_len: 10_000,
+    max_signature_script_len: MAX_SIGNATURE_SCRIPT_LEN,
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
+
+    // Transient mass is increased for stark proofs
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
     deflationary_phase_daa_score: 0,
-    pre_deflationary_phase_base_subsidy: 50000000000,
+    pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
 
     blockrate: BlockrateParams::new::<10>(),
 
-    pre_crescendo_target_time_per_block: 1000,
+    pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn override_params_rejects_unknown_top_level_fields() {
+        let err = serde_json::from_str::<OverrideParams>(r#"{"toccata_activation":42}"#).unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `toccata_activation`"), "{err}");
+    }
+
+    #[test]
+    fn override_params_rejects_unknown_nested_blockrate_fields() {
+        let err = serde_json::from_str::<OverrideParams>(
+            r#"{
+                "blockrate": {
+                    "target_time_per_block": 100,
+                    "ghostdag_k": 124,
+                    "past_median_time_sample_rate": 10,
+                    "difficulty_sample_rate": 2,
+                    "max_block_parents": 16,
+                    "mergeset_size_limit": 248,
+                    "merge_depth": 36000,
+                    "finality_depth": 432000,
+                    "pruning_depth": 1080000,
+                    "coinbase_maturity": 200,
+                    "unexpected": 1
+                }
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `unexpected`"), "{err}");
+    }
+
+    #[test]
+    fn override_params_rejects_unknown_nested_mass_limit_fields() {
+        let err = serde_json::from_str::<OverrideParams>(
+            r#"{
+                "block_mass_limits": {
+                    "storage": 500000,
+                    "compute": 500000,
+                    "transient": 500000,
+                    "unexpected": 1
+                }
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown field `unexpected`"), "{err}");
+    }
+}

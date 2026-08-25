@@ -174,7 +174,7 @@ async fn handle_extranonce_subscribe(
     Ok(())
 }
 
-/// Handle authorize request (v0.1 canxium-patch)
+/// Handle authorize request
 /// If client_handler and kaspa_api are provided, sends immediate job after authorization
 pub async fn handle_authorize(
     ctx: Arc<StratumContext>,
@@ -224,7 +224,13 @@ pub async fn handle_authorize(
     tracing::debug!("[AUTHORIZE] Final parsed - address: '{}', worker: '{}', canxium: '{}'", address, worker_name, canxium_address);
 
     *ctx.wallet_addr.lock() = address.clone();
-    *ctx.worker_name.lock() = worker_name.clone();
+    *ctx.worker_name.lock() = worker_name;
+    ctx.ensure_default_worker_name();
+    let worker_name = ctx.effective_worker_name();
+
+    if let Some(ref client_handler) = client_handler {
+        client_handler.sync_worker_prom_metrics(&ctx);
+    }
 
     let remote_app = ctx.remote_app.lock().clone();
     tracing::info!("[HANDSHAKE] authorized {}:{} worker='{}' app='{}'", ctx.remote_addr, ctx.remote_port, worker_name, remote_app);

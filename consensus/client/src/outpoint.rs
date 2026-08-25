@@ -22,6 +22,14 @@ export interface ITransactionOutpoint {
 }
 "#;
 
+#[wasm_bindgen]
+extern "C" {
+    /// WASM (TypeScript) type representing `ITransactionOutpoint | TransactionOutpoint`
+    /// @category Consensus
+    #[wasm_bindgen(typescript_type = "ITransactionOutpoint | TransactionOutpoint")]
+    pub type TransactionOutpointT;
+}
+
 /// Inner type used by [`TransactionOutpoint`]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]

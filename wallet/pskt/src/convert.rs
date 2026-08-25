@@ -21,7 +21,8 @@ impl TryFrom<Transaction> for Inner {
 impl TryFrom<TransactionInput> for Input {
     type Error = Error;
     fn try_from(input: TransactionInput) -> std::result::Result<Input, Self::Error> {
-        let TransactionInputInner { previous_outpoint, signature_script: _, sequence: _, sig_op_count, utxo } = &*input.inner();
+        let TransactionInputInner { previous_outpoint, signature_script: _, sequence: _, sig_op_count, compute_budget: _, utxo } =
+            &*input.inner();
 
         let input = InputBuilder::default()
         .utxo_entry(utxo.as_ref().ok_or(Error::MissingUtxoEntry)?.into())
@@ -45,11 +46,12 @@ impl TryFrom<TransactionOutput> for Output {
     fn try_from(output: TransactionOutput) -> std::result::Result<Output, Self::Error> {
         // Self::Transaction(transaction)
 
-        let TransactionOutputInner { value, script_public_key } = &*output.inner();
+        let TransactionOutputInner { value, script_public_key, covenant } = &*output.inner();
 
         let output = OutputBuilder::default()
-        .amount(*value)
-        .script_public_key(script_public_key.clone())
+            .amount(*value)
+            .script_public_key(script_public_key.clone())
+            .covenant(covenant.clone().map(cctx::CovenantBinding::from))
         // .redeem_script
         // .bip32_derivations
         // .proprietaries
@@ -72,7 +74,7 @@ impl TryFrom<(cctx::Transaction, Vec<(&cctx::TransactionInput, &cctx::UtxoEntry)
                 InputBuilder::default()
                     .utxo_entry(utxo.to_owned().clone())
                     .previous_outpoint(input.previous_outpoint)
-                    .sig_op_count(input.sig_op_count)
+                    .sig_op_count(input.compute_commit.sig_op_count().unwrap_or(0)) // TODO: Add support for v1 transactions with ComputeCommit::ComputeBudget
                     .build()
                     .map_err(Error::TxToInnerConversionInputBuildingError)
                 // Handle the error

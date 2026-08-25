@@ -66,10 +66,6 @@ pub enum DatabaseStorePrefixes {
     PruningUtxosetSyncFlag = 60,
     BodyMissingAnticone = 61,
 
-    // ---- DagKnight ----
-    DagKnight = 70,
-    DagKnightUMC = 71,
-
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,
@@ -82,6 +78,17 @@ pub enum DatabaseStorePrefixes {
     UtxoIndex = 192,
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
+
+    // ---- SMT Versioned Store ----
+    SmtBranchVersions = 71,
+    SmtLaneVersions = 73,
+    SmtScoreIndex = 74,
+    SmtSyncFlag = 75,
+    SmtSeqCommitMeta = 76,
+
+    // ---- DagKnight ----
+    DagKnight = 80,
+    DagKnightUMC = 81,
 
     // ---- Separator ----
     /// Reserved as a separator

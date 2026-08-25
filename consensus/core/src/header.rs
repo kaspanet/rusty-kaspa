@@ -100,6 +100,10 @@ impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
 impl TryFrom<Vec<(u8, Vec<Hash>)>> for CompressedParents {
     type Error = CompressedParentsError;
     fn try_from(parents: Vec<(u8, Vec<Hash>)>) -> Result<Self, Self::Error> {
+        if matches!(parents.first(), Some((0, _))) {
+            return Err(CompressedParentsError::LevelsNotStrictlyIncreasing);
+        }
+
         for ((last_cumulative_level, last_parents), (cumulative_level, parents)) in parents.iter().tuple_windows() {
             // Make sure any next cumulative_level is strictly greater than the last
             if cumulative_level <= last_cumulative_level {
@@ -193,6 +197,14 @@ impl Header {
             Some(parents) => parents,
             None => &[],
         }
+    }
+
+    /// Returns the selected parent of this header, relying on the post-Toccata
+    /// rule that the first direct parent of a virtual selected chain block is
+    /// its selected parent. Callers must verify the header is a post-Toccata
+    /// chain block before using this.
+    pub fn post_toccata_chainblock_selected_parent(&self) -> Hash {
+        self.direct_parents()[0]
     }
 
     /// WARNING: To be used for test purposes only
