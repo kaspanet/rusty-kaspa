@@ -476,11 +476,7 @@ impl<
                 5. Cascade voting -- requires most thought for making incremental
         */
         assert!(parents.len() <= u16::MAX as usize);
-        // Deduplicate while preserving order (mirrors `.unique()` in `dagknight`); duplicate parents
-        // would always land in the same group and could never be split apart
-        let mut seen = BlockHashSet::with_capacity(parents.len());
-        let mut curr_subgroup: SmallVec<[u16; 20]> =
-            (0..parents.len() as u16).filter(|&parent| seen.insert(parents[parent as usize])).collect();
+        let mut curr_subgroup: SmallVec<[u16; 20]> = (0..parents.len() as u16).collect();
         let mut conflict_ordered_parents: SmallVec<[u16; 20]> = SmallVec::with_capacity(parents.len());
         loop {
             curr_subgroup = match core::mem::take(&mut curr_subgroup).deref() {
