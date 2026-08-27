@@ -1,6 +1,6 @@
 use super::interval::Interval;
 use super::{tree::*, *};
-use crate::model::stores::reachability::{ReachabilityStore, ReachabilityStoreReader};
+use crate::model::stores::reachability::{ReachabilityData, ReachabilityStore, ReachabilityStoreReader};
 use kaspa_consensus_core::blockhash;
 use kaspa_hashes::Hash;
 
@@ -168,6 +168,73 @@ pub fn is_chain_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), thi
     Ok(store.get_interval(this)?.contains(store.get_interval(queried)?))
 }
 
+/// Checks if `this` block is a chain ancestor of all the blocks in `queried`.
+pub fn is_chain_ancestor_of_all<'a>(
+    store: &(impl ReachabilityStoreReader + ?Sized),
+    this: Hash,
+    queried: impl IntoIterator<Item = &'a Hash>,
+) -> Result<bool> {
+    let this_interval = store.get_interval(this)?;
+    let mut queried = queried.into_iter();
+    let Some(&first) = queried.next() else {
+        // An empty queried set is vacuously satisfied
+        return Ok(true);
+    };
+    let mut hull = store.get_interval(first)?;
+    if !this_interval.contains(hull) {
+        return Ok(false);
+    }
+    for &hash in queried {
+        hull = hull.hull(store.get_interval(hash)?);
+        if !this_interval.contains(hull) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Seed for a common chain ancestor query: the hull of the member intervals plus the
+/// data of the shallowest member, from which the chain walk towards the ancestor is shortest
+struct CommonAncestorSeed {
+    hull: Interval,
+    start: Hash,
+    start_data: ReachabilityData,
+}
+
+/// Finds the latest common chain ancestor of the given non-empty `members`.
+pub fn common_chain_ancestor<'a>(
+    store: &(impl ReachabilityStoreReader + ?Sized),
+    members: impl IntoIterator<Item = &'a Hash>,
+) -> Result<Hash> {
+    let seed = members
+        .into_iter()
+        .try_fold(None::<CommonAncestorSeed>, |seed, &hash| {
+            let data = store.get_reachability_data(hash)?;
+            let seed = match seed {
+                None => CommonAncestorSeed { hull: data.interval, start: hash, start_data: data },
+                Some(mut seed) => {
+                    seed.hull = seed.hull.hull(data.interval);
+                    if data.height < seed.start_data.height {
+                        seed.start = hash;
+                        seed.start_data = data;
+                    }
+                    seed
+                }
+            };
+            Ok::<_, ReachabilityError>(Some(seed))
+        })?
+        .ok_or(ReachabilityError::BadQuery)?;
+
+    let (mut current, mut data) = (seed.start, seed.start_data);
+    loop {
+        if data.interval.contains(seed.hull) {
+            return Ok(current);
+        }
+        current = data.parent;
+        data = store.get_reachability_data(current)?;
+    }
+}
+
 /// Returns true if `this` is a DAG ancestor of `queried` (i.e., `queried ∈ future(this) ∪ {this}`).
 /// Note: this method will return true if `this == queried`.
 /// The complexity of this method is `O(log(|future_covering_set(this)|))`
@@ -314,6 +381,71 @@ mod tests {
         // Should trigger an earlier than reindex root allocation
         builder.add_block(100.into(), 2.into());
         store.validate_intervals(root).unwrap();
+    }
+
+    #[test]
+    fn test_is_chain_ancestor_of_all() {
+        // Arrange
+        let mut store = MemoryReachabilityStore::new();
+        let root: Hash = 1.into();
+        TreeBuilder::new(&mut store)
+            .init_with_params(root, Interval::new(1, 15))
+            .add_block(2.into(), root)
+            .add_block(3.into(), 2.into())
+            .add_block(4.into(), 3.into())
+            .add_block(5.into(), 3.into())
+            .add_block(6.into(), 2.into())
+            .add_block(7.into(), 6.into());
+
+        // Assert
+        assert!(is_chain_ancestor_of_all(&store, 2.into(), [&4.into(), &5.into(), &7.into()]).unwrap());
+        assert!(is_chain_ancestor_of_all(&store, 3.into(), [&4.into(), &5.into()]).unwrap());
+        assert!(!is_chain_ancestor_of_all(&store, 3.into(), [&4.into(), &7.into()]).unwrap());
+        // a block is an ancestor of itself
+        assert!(is_chain_ancestor_of_all(&store, 4.into(), [&4.into()]).unwrap());
+        // empty queried set
+        assert!(is_chain_ancestor_of_all(&store, 5.into(), std::iter::empty::<&Hash>()).unwrap());
+    }
+
+    #[test]
+    fn test_common_chain_ancestor() {
+        // Arrange
+        let mut store = MemoryReachabilityStore::new();
+        let root: Hash = 1.into();
+        TreeBuilder::new(&mut store)
+            .init_with_params(root, Interval::new(1, 15))
+            .add_block(2.into(), root)
+            .add_block(3.into(), 2.into())
+            .add_block(4.into(), 3.into())
+            .add_block(5.into(), 3.into())
+            .add_block(6.into(), 2.into())
+            .add_block(7.into(), 6.into())
+            .add_block(8.into(), 4.into());
+
+        // Tree:
+        //        1
+        //        2
+        //      /   \
+        //     3     6
+        //    / \    |
+        //   4   5   7
+        //   |
+        //   8
+
+        // Assert
+        assert_eq!(common_chain_ancestor(&store, [&4.into(), &5.into()]).unwrap(), 3.into());
+        assert_eq!(common_chain_ancestor(&store, [&4.into(), &7.into()]).unwrap(), 2.into());
+        // asymmetric heights: deep branch vs shallow branch
+        assert_eq!(common_chain_ancestor(&store, [&8.into(), &7.into()]).unwrap(), 2.into());
+        // a member which is itself the ancestor of the other member
+        assert_eq!(common_chain_ancestor(&store, [&3.into(), &4.into()]).unwrap(), 3.into());
+        assert_eq!(common_chain_ancestor(&store, [&8.into(), &4.into()]).unwrap(), 4.into());
+        // three members spanning both branches
+        assert_eq!(common_chain_ancestor(&store, [&8.into(), &5.into(), &7.into()]).unwrap(), 2.into());
+        // empty members set is rejected
+        assert!(common_chain_ancestor(&store, std::iter::empty::<&Hash>()).is_err());
+        // unknown member hash is rejected
+        assert!(common_chain_ancestor(&store, [&100.into()]).is_err());
     }
 
     #[derive(Clone)]

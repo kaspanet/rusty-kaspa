@@ -17,8 +17,11 @@ pub trait ReachabilityService {
 
     /// Checks if `this` block is a chain ancestor all the blocks in `queried`
     fn is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> bool {
-        queried.iter().all(|&hash| self.is_chain_ancestor_of(this, hash))
+        self.try_is_chain_ancestor_of_all(this, queried).unwrap()
     }
+
+    /// Result version of [`Self::is_chain_ancestor_of_all`] (avoids unwrapping internally)
+    fn try_is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> Result<bool>;
 
     /// Result version of [`Self::is_chain_ancestor_of`] (avoids unwrapping internally)
     fn try_is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool>;
@@ -48,6 +51,14 @@ pub trait ReachabilityService {
     /// (A "tree child of X" is a block which X is its chain parent)
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash;
 
+    /// Finds the latest common chain ancestor of the given non-empty `members`
+    fn common_chain_ancestor<'a>(&self, members: impl IntoIterator<Item = &'a Hash>) -> Hash {
+        self.try_common_chain_ancestor(members).unwrap()
+    }
+
+    /// Result version of [`Self::common_chain_ancestor`] (avoids unwrapping internally)
+    fn try_common_chain_ancestor<'a>(&self, members: impl IntoIterator<Item = &'a Hash>) -> Result<Hash>;
+
     /// Returns the chain parent of `this`
     fn get_chain_parent(&self, this: Hash) -> Hash;
 
@@ -60,8 +71,16 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for T {
         inquirer::is_chain_ancestor_of(self, this, queried)
     }
 
+    fn try_is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> Result<bool> {
+        inquirer::is_chain_ancestor_of_all(self, this, queried)
+    }
+
     fn try_is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool> {
         inquirer::is_dag_ancestor_of(self, this, queried)
+    }
+
+    fn try_common_chain_ancestor<'a>(&self, members: impl IntoIterator<Item = &'a Hash>) -> Result<Hash> {
+        inquirer::common_chain_ancestor(self, members)
     }
 
     fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool {
@@ -108,9 +127,19 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for MTReachability
         inquirer::is_chain_ancestor_of(read_guard.deref(), this, queried)
     }
 
+    fn try_is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> Result<bool> {
+        let read_guard = self.store.read();
+        inquirer::is_chain_ancestor_of_all(read_guard.deref(), this, queried)
+    }
+
     fn try_is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool> {
         let read_guard = self.store.read();
         inquirer::is_dag_ancestor_of(read_guard.deref(), this, queried)
+    }
+
+    fn try_common_chain_ancestor<'a>(&self, members: impl IntoIterator<Item = &'a Hash>) -> Result<Hash> {
+        let read_guard = self.store.read();
+        inquirer::common_chain_ancestor(read_guard.deref(), members)
     }
 
     fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool {
