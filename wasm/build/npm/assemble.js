@@ -1,0 +1,85 @@
+// @ts-check
+// Assembles the publishable @kaspa/sdk-wasm npm package from the wasm-pack
+// output in web/kaspa.
+//
+// Invoked by `assemble-npm`, which packs the result.
+
+const fs = require('fs');
+const path = require('path');
+
+const wasmDir = path.resolve(__dirname, '..', '..');
+const sourceDir = path.join(wasmDir, 'web', 'kaspa');
+const releaseDir = path.join(wasmDir, 'npm-release');
+const stagingDir = path.join(releaseDir, 'sdk-wasm');
+
+const BUILD_FILES = ['kaspa.js', 'kaspa.d.ts', 'kaspa_bg.wasm', 'kaspa_bg.wasm.d.ts'];
+
+class Failure extends Error { name = 'Failure' }
+
+function workspaceVersion() {
+  const cargoTomlPath = path.join(wasmDir, '..', 'Cargo.toml');
+  const cargoToml = fs.readFileSync(cargoTomlPath, 'utf8');
+  const section = cargoToml.split(/^\[workspace\.package\]\s*$/m)[1];
+  const match = section && section.split(/^\[/m)[0].match(/^version\s*=\s*"([^"]+)"/m);
+  if (!match) {
+    throw new Failure(`unable to parse [workspace.package] version from ${cargoTomlPath}`);
+  }
+  return match[1];
+}
+
+function assemble() {
+  if (!fs.existsSync(path.join(sourceDir, 'package.json'))) {
+    throw new Failure(`missing wasm-pack output at ${sourceDir}\n` + "run 'bash build-release' first");
+  }
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(sourceDir, 'package.json'), 'utf8'));
+  const version = workspaceVersion();
+
+  if (pkg.version !== version) {
+    throw new Failure(
+      `web/kaspa is stale: built version ${pkg.version} != workspace version ${version}\n` + "rebuild with 'bash build-release'",
+    );
+  }
+
+  for (const file of BUILD_FILES) {
+    if (!fs.existsSync(path.join(sourceDir, file))) {
+      throw new Failure(`missing ${file} in ${sourceDir}\n` + "rebuild with 'bash build-release'");
+    }
+  }
+
+  pkg.name = '@kaspa/sdk-wasm';
+  pkg.homepage = 'https://github.com/kaspanet/rusty-kaspa#readme';
+  pkg.bugs = { url: 'https://github.com/kaspanet/rusty-kaspa/issues' };
+  pkg.keywords = ['kaspa', 'wasm', 'sdk', 'blockdag', 'wallet', 'rpc'];
+  pkg.publishConfig = { access: 'public' };
+  // wasm-pack omits kaspa_bg.wasm.d.ts from files; drop this once
+  // https://github.com/wasm-bindgen/wasm-pack/issues/1193 is fixed
+  if (!pkg.files.includes('kaspa_bg.wasm.d.ts')) {
+    pkg.files.push('kaspa_bg.wasm.d.ts');
+  }
+
+  fs.rmSync(releaseDir, { recursive: true, force: true });
+  fs.mkdirSync(stagingDir, { recursive: true });
+
+  for (const file of BUILD_FILES) {
+    fs.copyFileSync(path.join(sourceDir, file), path.join(stagingDir, file));
+  }
+
+  fs.copyFileSync(path.join(__dirname, 'README.md'), path.join(stagingDir, 'README.md'));
+  fs.copyFileSync(path.join(wasmDir, 'LICENSE'), path.join(stagingDir, 'LICENSE'));
+  fs.writeFileSync(path.join(stagingDir, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
+
+  console.log(`assembled ${pkg.name}@${pkg.version} at ${path.relative(process.cwd(), stagingDir)}`);
+}
+
+if (require.main === module) {
+  try {
+    assemble();
+  } catch (err) {
+    if (!(err instanceof Failure)) throw err;
+    console.error(`assemble-npm: ${err.message}`);
+    process.exitCode = 1;
+  }
+}
+
+module.exports = { workspaceVersion, Failure };
