@@ -456,6 +456,7 @@ impl<
 > DagknightExecutorNext<C, O, D, E, R>
 {
     // TODO[DK]: drop the allow once this is wired into block processing
+    // TODO[DK]: accept slice with unique values so we don't need to verify it again
     #[allow(dead_code)]
     fn dagknight_next<'a>(&self, parents: &'a [Hash]) -> DagknightDataNext<'a> {
         /*
@@ -476,7 +477,8 @@ impl<
                 5. Cascade voting -- requires most thought for making incremental
         */
         assert!(parents.len() <= u16::MAX as usize);
-        let mut curr_subgroup: SmallVec<[u16; 20]> = (0..parents.len() as u16).collect();
+        // Duplicate parents always land in one group and can never be split apart
+        let mut curr_subgroup: SmallVec<[u16; 20]> = (0..parents.len() as u16).unique_by(|&parent| parents[parent as usize]).collect();
         let mut conflict_ordered_parents: SmallVec<[u16; 20]> = SmallVec::with_capacity(parents.len());
         loop {
             curr_subgroup = match core::mem::take(&mut curr_subgroup).deref() {
@@ -643,8 +645,8 @@ impl<
         let conflict_zone_manager = ConflictZoneManager::new(
             k_to_check,
             conflict_genesis,
-            &*self.dagknight_store,
-            &*self.headers_store,
+            self.dagknight_store.as_ref(),
+            self.headers_store.as_ref(),
             relations_service,
             &self.reachability_service,
         );
