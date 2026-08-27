@@ -14,14 +14,16 @@ use kaspa_consensus_core::{
 use kaspa_database::prelude::{StoreError, StoreResultUnitExt};
 use kaspa_hashes::Hash;
 
+#[cfg(test)]
+use crate::model::services::reachability::MTReachabilityService;
+
 use crate::{
     model::{
-        services::reachability::{MTReachabilityService, ReachabilityService},
+        services::reachability::ReachabilityService,
         stores::{
             dagknight::{DagknightKey, DagknightStore, DagknightStoreReader},
             ghostdag::GhostdagData,
             headers::HeaderStoreReader,
-            reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
         },
     },
@@ -94,27 +96,27 @@ pub struct ConflictZoneManager<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader,
     D: RelationsStoreReader,
-    R: ReachabilityStoreReader + Clone,
+    S: ReachabilityService,
 > {
     k: KType,
     root: Hash,
     free_search: bool,
     dagknight_store: Arc<C>,
     headers_store: Arc<O>,
-    relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
-    reachability_service: MTReachabilityService<R>,
+    relations_store: FutureIntersectRelations<D, S>,
+    reachability_service: S,
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityStoreReader + Clone>
-    ConflictZoneManager<C, O, D, R>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, S: ReachabilityService>
+    ConflictZoneManager<C, O, D, S>
 {
     pub fn new(
         k: KType,
         root: Hash,
         dagknight_store: Arc<C>,
         headers_store: Arc<O>,
-        relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
-        reachability_service: MTReachabilityService<R>,
+        relations_store: FutureIntersectRelations<D, S>,
+        reachability_service: S,
     ) -> Self {
         Self { k, root, free_search: false, dagknight_store, headers_store, reachability_service, relations_store }
     }
@@ -124,8 +126,8 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         root: Hash,
         dagknight_store: Arc<C>,
         headers_store: Arc<O>,
-        relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
-        reachability_service: MTReachabilityService<R>,
+        relations_store: FutureIntersectRelations<D, S>,
+        reachability_service: S,
         free_search: bool,
     ) -> Self {
         Self { k, root, free_search, dagknight_store, headers_store, reachability_service, relations_store }
@@ -528,8 +530,8 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     // END Copied from GD Manager
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityStoreReader + Clone>
-    ColoringReader for ConflictZoneManager<C, O, D, R>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, S: ReachabilityService> ColoringReader
+    for ConflictZoneManager<C, O, D, S>
 {
     fn get_coloring_data(&self, hash: Hash) -> Arc<GhostdagData> {
         self.get_data(hash).expect("zone coloring data missing for a chain block that was filled")

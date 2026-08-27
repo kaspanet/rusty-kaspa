@@ -3,7 +3,7 @@ use crate::processes::dagknight::tie_breaking::{ReferenceCluster, SubgroupChainB
 use crate::processes::dagknight::umc_baseline::BaselineUmcVoter;
 use crate::processes::dagknight::umc_voting::{UmcVoter, UmcVotingContext};
 use itertools::Itertools;
-use kaspa_consensus_core::{BlockHashSet, HashMapCustomHasher, KType};
+use kaspa_consensus_core::{BlockHashSet, KType};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -243,7 +243,7 @@ impl<
         subgroup: &[Hash],
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+        conflict_zone_manager: &ConflictZoneManager<C, O, impl RelationsStoreReader, impl ReachabilityService>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
         let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
@@ -257,7 +257,7 @@ impl<
         subgroup: &[Hash],
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+        conflict_zone_manager: &ConflictZoneManager<C, O, impl RelationsStoreReader, impl ReachabilityService>,
     ) -> CascadeResult {
         let voter = SegmentTreeUmcVoter::new(
             self.headers_store.clone(),
@@ -604,7 +604,7 @@ impl<
         subgroup: &[Hash],
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+        conflict_zone_manager: &ConflictZoneManager<C, O, impl RelationsStoreReader, impl ReachabilityService>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
         let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
@@ -618,7 +618,7 @@ impl<
         subgroup: &[Hash],
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+        conflict_zone_manager: &ConflictZoneManager<C, O, impl RelationsStoreReader, impl ReachabilityService>,
     ) -> CascadeResult {
         let voter = SegmentTreeUmcVoter::new(
             self.headers_store.clone(),
@@ -639,16 +639,14 @@ impl<
         all_tips: &[Hash],
         k_to_check: KType,
     ) -> Option<SortableBlock> {
-        let reachability_service = self.reachability_service.clone();
-        let relations_service =
-            FutureIntersectRelations::new(self.relations_store.clone(), reachability_service.clone(), conflict_genesis);
+        let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
         let conflict_zone_manager = ConflictZoneManager::new(
             k_to_check,
             conflict_genesis,
             self.dagknight_store.clone(),
             self.headers_store.clone(),
             relations_service,
-            reachability_service.clone(),
+            &self.reachability_service,
         );
 
         // Calculate the subgroup's next chain ancestor above conflict_genesis
@@ -765,9 +763,7 @@ impl<
     ///
     /// Returns the blue set and chain backbone.
     fn compute_reference_cluster(&self, conflict_genesis: Hash, all_tips: &[Hash], k: KType) -> ReferenceCluster {
-        let reachability_service = self.reachability_service.clone();
-        let relations_service =
-            FutureIntersectRelations::new(self.relations_store.clone(), reachability_service.clone(), conflict_genesis);
+        let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
 
         let conflict_zone_manager = ConflictZoneManager::with_free_search(
             k,
@@ -775,7 +771,7 @@ impl<
             self.dagknight_store.clone(),
             self.headers_store.clone(),
             relations_service,
-            reachability_service.clone(),
+            &self.reachability_service,
             true, // free_search = true
         );
 
@@ -822,9 +818,7 @@ impl<
         all_tips: &[Hash],
         k_prime: KType,
     ) -> SubgroupChainBlocks {
-        let reachability_service = self.reachability_service.clone();
-        let relations_service =
-            FutureIntersectRelations::new(self.relations_store.clone(), reachability_service.clone(), conflict_genesis);
+        let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
 
         // Committed (non-free-search) manager
         let conflict_zone_manager = ConflictZoneManager::with_free_search(
@@ -833,7 +827,7 @@ impl<
             self.dagknight_store.clone(),
             self.headers_store.clone(),
             relations_service,
-            reachability_service.clone(),
+            &self.reachability_service,
             false, // free_search = false (committed)
         );
 

@@ -136,6 +136,36 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for MTReachability
     }
 }
 
+impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for &MTReachabilityService<T> {
+    fn try_is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool> {
+        (*self).try_is_chain_ancestor_of(this, queried)
+    }
+
+    fn try_is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool> {
+        (*self).try_is_dag_ancestor_of(this, queried)
+    }
+
+    fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool {
+        (*self).is_dag_ancestor_of_any(this, queried)
+    }
+
+    fn try_is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> Result<bool> {
+        (*self).try_is_any_dag_ancestor(list, queried)
+    }
+
+    fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash {
+        (*self).get_next_chain_ancestor(descendant, ancestor)
+    }
+
+    fn get_chain_parent(&self, this: Hash) -> Hash {
+        (*self).get_chain_parent(this)
+    }
+
+    fn has_reachability_data(&self, this: Hash) -> bool {
+        (*self).has_reachability_data(this)
+    }
+}
+
 impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
     /// Returns a forward iterator walking up the chain-selection tree from `from_ancestor`
     /// to `to_descendant`, where `to_descendant` is included if `inclusive` is set to true.
