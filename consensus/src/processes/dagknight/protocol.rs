@@ -243,7 +243,7 @@ impl<
         subgroup: &[Hash],
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, impl RelationsStoreReader, impl ReachabilityService>,
+        conflict_zone_manager: &ConflictZoneManager<Arc<C>, Arc<O>, D, MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
         let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
@@ -257,7 +257,7 @@ impl<
         subgroup: &[Hash],
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, impl RelationsStoreReader, impl ReachabilityService>,
+        conflict_zone_manager: &ConflictZoneManager<Arc<C>, Arc<O>, D, MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = SegmentTreeUmcVoter::new(
             self.headers_store.clone(),
@@ -586,8 +586,8 @@ impl<
         let all_tips: SmallVec<[Hash; 20]> = agreement_grouping.iter().map(|group| parents[group.parent as usize]).collect();
 
         DagknightTieBreakerNext {
-            dagknight_store: self.dagknight_store.clone(),
-            headers_store: self.headers_store.clone(),
+            dagknight_store: &*self.dagknight_store,
+            headers_store: &*self.headers_store,
             relations_store: self.relations_store.clone(),
             reachability_service: self.reachability_service.clone(),
         }
@@ -604,7 +604,7 @@ impl<
         subgroup: &[Hash],
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, impl RelationsStoreReader, impl ReachabilityService>,
+        conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
         let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
@@ -618,7 +618,7 @@ impl<
         subgroup: &[Hash],
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, impl RelationsStoreReader, impl ReachabilityService>,
+        conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = SegmentTreeUmcVoter::new(
             self.headers_store.clone(),
@@ -643,8 +643,8 @@ impl<
         let conflict_zone_manager = ConflictZoneManager::new(
             k_to_check,
             conflict_genesis,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
+            &*self.dagknight_store,
+            &*self.headers_store,
             relations_service,
             &self.reachability_service,
         );
@@ -738,19 +738,19 @@ impl<
 /// stores needed for tie-breaking, not the full executor.
 struct DagknightTieBreakerNext<
     C: DagknightStore + DagknightStoreReader,
-    O: HeaderStoreReader + 'static,
+    O: HeaderStoreReader,
     D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
 > {
-    dagknight_store: Arc<C>,
-    headers_store: Arc<O>,
+    dagknight_store: C,
+    headers_store: O,
     relations_store: D,
     reachability_service: MTReachabilityService<R>,
 }
 
 impl<
     C: DagknightStore + DagknightStoreReader,
-    O: HeaderStoreReader + 'static,
+    O: HeaderStoreReader,
     D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
 > DagknightTieBreakerNext<C, O, D, R>
@@ -768,8 +768,8 @@ impl<
         let conflict_zone_manager = ConflictZoneManager::with_free_search(
             k,
             conflict_genesis,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
+            &self.dagknight_store,
+            &self.headers_store,
             relations_service,
             &self.reachability_service,
             true, // free_search = true
@@ -824,8 +824,8 @@ impl<
         let conflict_zone_manager = ConflictZoneManager::with_free_search(
             k_prime,
             conflict_genesis,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
+            &self.dagknight_store,
+            &self.headers_store,
             relations_service,
             &self.reachability_service,
             false, // free_search = false (committed)

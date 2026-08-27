@@ -101,8 +101,8 @@ pub struct ConflictZoneManager<
     k: KType,
     root: Hash,
     free_search: bool,
-    dagknight_store: Arc<C>,
-    headers_store: Arc<O>,
+    dagknight_store: C,
+    headers_store: O,
     relations_store: FutureIntersectRelations<D, S>,
     reachability_service: S,
 }
@@ -113,8 +113,8 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     pub fn new(
         k: KType,
         root: Hash,
-        dagknight_store: Arc<C>,
-        headers_store: Arc<O>,
+        dagknight_store: C,
+        headers_store: O,
         relations_store: FutureIntersectRelations<D, S>,
         reachability_service: S,
     ) -> Self {
@@ -124,8 +124,8 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     pub fn with_free_search(
         k: KType,
         root: Hash,
-        dagknight_store: Arc<C>,
-        headers_store: Arc<O>,
+        dagknight_store: C,
+        headers_store: O,
         relations_store: FutureIntersectRelations<D, S>,
         reachability_service: S,
         free_search: bool,
