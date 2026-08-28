@@ -1,0 +1,156 @@
+{
+    "tips": [
+        "9e38d2a3c757230b01845fe2d3013eb0371ddb5a29db9e7c5821833204811342",
+        "f0b59f189bb4745ce177736baca81cd280949b2ee7ba97ad90b0b0a7c353abba"
+    ],
+    "blocks": [
+        {
+            "id": "057554b30009254cc93b2bbadc84d084b148edfe65d58a3b95476062c65b129d",
+            "parents": [],
+            "blue_work": "57253787579951",
+            "bits": "1E17AA5C",
+            "blue_score": "139660784",
+            "daa_score": "140099316",
+            "selected_parent": null
+        },
+        {
+            "id": "0770d603d43a88586e76385d3f15b0d74152a726f772a465183172dcf5e02e0b",
+            "parents": [
+                "057554b30009254cc93b2bbadc84d084b148edfe65d58a3b95476062c65b129d"
+            ],
+            "blue_work": "57253789706747",
+            "bits": "1E17AA5C",
+            "blue_score": "139660787",
+            "daa_score": "140099319",
+            "selected_parent": "057554b30009254cc93b2bbadc84d084b148edfe65d58a3b95476062c65b129d"
+        },
+        {
+            "id": "13ca40327e0fdd10e58d3dfc39f51b3ebda31334bf106f8cb73c137881d0d92c",
+            "parents": [
+                "057554b30009254cc93b2bbadc84d084b148edfe65d58a3b95476062c65b129d"
+            ],
+            "blue_work": "57253790415679",
+            "bits": "1E17A749",
+            "blue_score": "139660788",
+            "daa_score": "140099320",
+            "selected_parent": "057554b30009254cc93b2bbadc84d084b148edfe65d58a3b95476062c65b129d"
+        },
+        {
+            "id": "85fb472d19eed6ebad22a4d8135102c6436fbda81a002b0805852f0ba43d2363",
+            "parents": [
+                "057554b30009254cc93b2bbadc84d084b148edfe65d58a3b95476062c65b129d"
+            ],
+            "blue_work": "57253790415679",
+            "bits": "1E17A749",
+            "blue_score": "139660788",
+            "daa_score": "140099320",
+            "selected_parent": "057554b30009254cc93b2bbadc84d084b148edfe65d58a3b95476062c65b129d"
+        },
+        {
+            "id": "2518d5b6b7586d8eb58dded0ce712cd2750a7d8fc6091172f20f8a112b76125d",
+            "parents": [
+                "0770d603d43a88586e76385d3f15b0d74152a726f772a465183172dcf5e02e0b"
+            ],
+            "blue_work": "57253791124611",
+            "bits": "1E17A5C1",
+            "blue_score": "139660789",
+            "daa_score": "140099321",
+            "selected_parent": "0770d603d43a88586e76385d3f15b0d74152a726f772a465183172dcf5e02e0b"
+        },
+        {
+            "id": "0f2841b2ce5b4e8ad3ea0f0610c4c194c8e782cd8a70cdc1438ddb852e7df810",
+            "parents": [
+                "0770d603d43a88586e76385d3f15b0d74152a726f772a465183172dcf5e02e0b",
+                "85fb472d19eed6ebad22a4d8135102c6436fbda81a002b0805852f0ba43d2363"
+            ],
+            "blue_work": "57253791833903",
+            "bits": "1E17A749",
+            "blue_score": "139660790",
+            "daa_score": "140099322",
+            "selected_parent": "85fb472d19eed6ebad22a4d8135102c6436fbda81a002b0805852f0ba43d2363"
+        },
+        {
+            "id": "b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e",
+            "parents": [
+                "85fb472d19eed6ebad22a4d8135102c6436fbda81a002b0805852f0ba43d2363",
+                "13ca40327e0fdd10e58d3dfc39f51b3ebda31334bf106f8cb73c137881d0d92c"
+            ],
+            "blue_work": "57253791834263",
+            "bits": "1E17A749",
+            "blue_score": "139660790",
+            "daa_score": "140099322",
+            "selected_parent": "85fb472d19eed6ebad22a4d8135102c6436fbda81a002b0805852f0ba43d2363"
+        },
+        {
+            "id": "47aa09bc14d7d19fe08379d7ad3bd55735a73804c2e539a98fb46c0baabe1819",
+            "parents": [
+                "85fb472d19eed6ebad22a4d8135102c6436fbda81a002b0805852f0ba43d2363",
+                "2518d5b6b7586d8eb58dded0ce712cd2750a7d8fc6091172f20f8a112b76125d"
+            ],
+            "blue_work": "57253792543374",
+            "bits": "1E17A5C1",
+            "blue_score": "139660791",
+            "daa_score": "140099323",
+            "selected_parent": "2518d5b6b7586d8eb58dded0ce712cd2750a7d8fc6091172f20f8a112b76125d"
+        },
+        {
+            "id": "0261a00da46a76c49d2db65fe461693954aa812171a32a9870ca58958b706244",
+            "parents": [
+                "2518d5b6b7586d8eb58dded0ce712cd2750a7d8fc6091172f20f8a112b76125d",
+                "0f2841b2ce5b4e8ad3ea0f0610c4c194c8e782cd8a70cdc1438ddb852e7df810"
+            ],
+            "blue_work": "57253793252666",
+            "bits": "1E17A749",
+            "blue_score": "139660792",
+            "daa_score": "140099324",
+            "selected_parent": "0f2841b2ce5b4e8ad3ea0f0610c4c194c8e782cd8a70cdc1438ddb852e7df810"
+        },
+        {
+            "id": "243fcaa3dd30e6e0f8815f4d8b601bf054ebe9ad79b3d3dcdd67c0468e9fd7cf",
+            "parents": [
+                "47aa09bc14d7d19fe08379d7ad3bd55735a73804c2e539a98fb46c0baabe1819"
+            ],
+            "blue_work": "57253793252845",
+            "bits": "1E17A5C1",
+            "blue_score": "139660792",
+            "daa_score": "140099324",
+            "selected_parent": "47aa09bc14d7d19fe08379d7ad3bd55735a73804c2e539a98fb46c0baabe1819"
+        },
+        {
+            "id": "9a89a4f720466c17897bfc4afaecc15fac2b763a148dcfbdbf384a616026d59a",
+            "parents": [
+                "b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e",
+                "2518d5b6b7586d8eb58dded0ce712cd2750a7d8fc6091172f20f8a112b76125d"
+            ],
+            "blue_work": "57253793961958",
+            "bits": "1E17A749",
+            "blue_score": "139660793",
+            "daa_score": "140099325",
+            "selected_parent": "b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e"
+        },
+        {
+            "id": "9e38d2a3c757230b01845fe2d3013eb0371ddb5a29db9e7c5821833204811342",
+            "parents": [
+                "9a89a4f720466c17897bfc4afaecc15fac2b763a148dcfbdbf384a616026d59a"
+            ],
+            "blue_work": "57253794671250",
+            "bits": "1E17A749",
+            "blue_score": "139660794",
+            "daa_score": "140099326",
+            "selected_parent": "9a89a4f720466c17897bfc4afaecc15fac2b763a148dcfbdbf384a616026d59a"
+        },
+        {
+            "id": "f0b59f189bb4745ce177736baca81cd280949b2ee7ba97ad90b0b0a7c353abba",
+            "parents": [
+                "0261a00da46a76c49d2db65fe461693954aa812171a32a9870ca58958b706244",
+                "243fcaa3dd30e6e0f8815f4d8b601bf054ebe9ad79b3d3dcdd67c0468e9fd7cf",
+                "13ca40327e0fdd10e58d3dfc39f51b3ebda31334bf106f8cb73c137881d0d92c"
+            ],
+            "blue_work": "57253796090192",
+            "bits": "1E17A5C1",
+            "blue_score": "139660796",
+            "daa_score": "140099328",
+            "selected_parent": "243fcaa3dd30e6e0f8815f4d8b601bf054ebe9ad79b3d3dcdd67c0468e9fd7cf"
+        }
+    ]
+}
