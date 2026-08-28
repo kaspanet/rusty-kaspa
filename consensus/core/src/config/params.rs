@@ -261,6 +261,9 @@ pub struct OverrideParams {
 
     /// Crescendo activation DAA score
     pub crescendo_activation: Option<ForkActivation>,
+
+    /// DAGKnight activation DAA score
+    pub dagknight_activation: Option<ForkActivation>,
 }
 
 impl From<Params> for OverrideParams {
@@ -290,6 +293,7 @@ impl From<Params> for OverrideParams {
             pruning_proof_m: Some(p.pruning_proof_m),
             blockrate: Some(p.blockrate),
             crescendo_activation: Some(p.crescendo_activation),
+            dagknight_activation: Some(p.dagknight_activation),
         }
     }
 }
@@ -355,6 +359,9 @@ pub struct Params {
 
     /// Crescendo activation DAA score
     pub crescendo_activation: ForkActivation,
+
+    /// DAGKnight activation DAA score
+    pub dagknight_activation: ForkActivation,
 }
 
 impl Params {
@@ -535,6 +542,8 @@ impl Params {
                 .unwrap_or(self.pre_crescendo_target_time_per_block),
 
             crescendo_activation: overrides.crescendo_activation.unwrap_or(self.crescendo_activation),
+
+            dagknight_activation: overrides.dagknight_activation.unwrap_or(self.dagknight_activation),
         }
     }
 }
@@ -646,6 +655,8 @@ pub const MAINNET_PARAMS: Params = Params {
 
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
+
+    dagknight_activation: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -702,6 +713,8 @@ pub const TESTNET_PARAMS: Params = Params {
 
     // 18:30 UTC, March 6, 2025
     crescendo_activation: ForkActivation::new(88_657_000),
+
+    dagknight_activation: ForkActivation::never(),
 };
 
 pub const SIMNET_PARAMS: Params = Params {
@@ -744,6 +757,8 @@ pub const SIMNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
+
+    dagknight_activation: ForkActivation::never(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -785,6 +800,8 @@ pub const DEVNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
+
+    dagknight_activation: ForkActivation::never(),
 };
 
 #[cfg(test)]
