@@ -6,11 +6,10 @@ use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashSet, KType};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
-use parking_lot::RwLock;
 use smallvec::SmallVec;
 use std::iter::once;
 use std::ops::Deref;
-use std::{cell::Cell, collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     model::{
@@ -25,10 +24,9 @@ use crate::{
     },
     processes::{
         dagknight::{
-            DagknightCounters, GroupMetadata,
-            manager::{ConflictZoneManager, ConflictZoneManagerNext},
+            DagknightCounters,
+            manager::ConflictZoneManager,
             rank_search::RankSearcher,
-            tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
             umc_cascade::SegmentTreeUmcVoter,
             umc_cascade_persistence::{UmcCascadeStore, UmcCascadeStoreReader},
             umc_voting::CascadeResult,
@@ -88,344 +86,16 @@ use crate::{
         3. switch GD/k-coloring to committed coloring
 */
 
-/// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
-#[derive(Clone)]
-pub struct DagknightExecutor<
-    C: DagknightStore + DagknightStoreReader,
-    O: HeaderStoreReader + 'static,
-    D: RelationsStoreReader + Clone,
-    E: UmcCascadeStoreReader + Clone + 'static,
-    R: ReachabilityStoreReader + Clone,
-> {
-    pub genesis_hash: Hash,
-    pub dagknight_store: Arc<C>,
-    pub headers_store: Arc<O>,
-    pub relations_store: Arc<RwLock<D>>,
-    pub umc_persistence_store: Arc<E>,
-    pub reachability_service: MTReachabilityService<R>,
-    pub counters: Arc<DagknightCounters>,
-}
-
 #[derive(Clone)]
 pub struct DagknightData {
     pub selected_parent: Hash,               // The selected parent for this call
     pub conflict_ordered_parents: Vec<Hash>, // The rest of the parents, ordered by conflict hierarchy (parents from latest/topmost conflicts first)
 }
 
-impl<
-    C: DagknightStore + DagknightStoreReader,
-    O: HeaderStoreReader + 'static,
-    D: RelationsStoreReader + Clone,
-    E: UmcCascadeStore + Clone,
-    R: ReachabilityStoreReader + Clone,
-> DagknightExecutor<C, O, D, E, R>
-{
-    pub fn dagknight(&self, parents: &[Hash]) -> DagknightData {
-        /*
-            input: a set of block parents
-            output: the selected parent + incremental metadata
-
-            Algo scheme:
-                Run DK from the bottom up per conflict, for each conflict search through k and find the minimal
-                committed k-cluster which confirms to UMC cascade voting with parameter d=sqrt(k)
-
-            High-level tasks/challenges:
-                1. Incremental k-colouring -- known from GD
-                2. Iterating through conflicts -- requires finding the common chain-ancestor which
-                   is a simple operation, though it might require optimizing with an indexed chain
-                   (and using logarithmic step searches)
-                3. Representatives (alternatively: gray blocks)
-                4. Tie-breaking rule
-                5. Cascade voting -- requires most thought for making incremental
-        */
-
-        // g = find LCCA
-        let mut conflict_genesis = self.common_chain_ancestor(parents);
-        let mut curr_subgroup = Arc::new(parents.iter().unique().copied().collect_vec());
-        let mut conflict_ordered_parents = vec![];
-        debug!("conflict_genesis: {:#?}", conflict_genesis);
-
-        while curr_subgroup.len() > 1 {
-            let agreement_grouping: HashMap<Hash, Arc<Vec<Hash>>> = curr_subgroup
-                .iter()
-                .copied()
-                .into_group_map_by(|&parent| self.reachability_service.get_next_chain_ancestor(parent, conflict_genesis))
-                .into_iter()
-                .map(|(k, v)| (k, Arc::new(v)))
-                .collect();
-
-            // Shortcut condition to avoid doing unnecessary work
-            if agreement_grouping.len() == 1 {
-                // There is exactly one group, we don't rank anymore.
-                let (_, subgroup) = agreement_grouping.iter().next().unwrap();
-                curr_subgroup = subgroup.clone();
-                // Deduplication via `.unique()` may have reduced curr_subgroup to a single
-                // element (e.g., [T1, T1] -> [T1]). In that case we're done.
-                if curr_subgroup.len() <= 1 {
-                    break;
-                }
-                let next_conflict_genesis = self.common_chain_ancestor(&curr_subgroup);
-                assert_ne!(
-                    next_conflict_genesis, conflict_genesis,
-                    "Expected the conflict genesis to change after skipping a level of the conflict hierarchy but got {}",
-                    conflict_genesis
-                );
-                conflict_genesis = next_conflict_genesis;
-                continue;
-            }
-
-            // Pick a "winner" among these subgroups
-            let (winning_conflict_genesis, winning_subgroup) = {
-                let best_groups = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
-
-                #[allow(clippy::style)]
-                let final_winner = if best_groups.len() > 1 {
-                    self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups)
-                } else {
-                    let single_winner = best_groups.into_iter().next().expect("best_groups should be non-empty after filtering");
-                    (single_winner.conflict_genesis, single_winner.subgroup)
-                };
-
-                // This will always be Some since curr_subgroup.len() > 1 and thus there is at least one subgroup
-                final_winner
-            };
-
-            // Add the non-winners to the ordered parents
-            agreement_grouping.iter().for_each(|(&conflict_genesis, subgroup)| {
-                // TODO[DK]: Asserting here that order of the non-winning parents within a conflict hierarchy doesn't matter
-                if conflict_genesis != winning_conflict_genesis {
-                    conflict_ordered_parents.extend(subgroup.as_ref().iter().copied());
-                }
-            });
-
-            curr_subgroup = winning_subgroup;
-            // Skip to the top-most new common chain ancestor:
-            conflict_genesis = self.common_chain_ancestor(&curr_subgroup);
-        }
-        assert_eq!(1, curr_subgroup.len(), "Expected dagknight to have only a single parent at the end");
-
-        conflict_ordered_parents.reverse();
-
-        debug!("dk::sp: {} | conflict_ordered_parents: {:?}", curr_subgroup[0], conflict_ordered_parents);
-
-        DagknightData { selected_parent: curr_subgroup[0], conflict_ordered_parents }
-    }
-
-    fn common_chain_ancestor(&self, parents: &[Hash]) -> Hash {
-        /*
-           Notes:
-               - ignore parents not agreeing on the pruning point as a chain block
-               - optimize for shortest path
-               - optimize with index
-        */
-
-        let start = parents[0];
-
-        if start == self.genesis_hash {
-            return self.genesis_hash;
-        }
-
-        for cb in self.reachability_service.default_backward_chain_iterator(start).skip(1) {
-            if self.reachability_service.is_chain_ancestor_of_all(cb, &parents[1..]) {
-                return cb;
-            }
-        }
-
-        panic!("")
-    }
-
-    /// Baseline UMC cascade voting: naive reference impl of paper Algorithm 6 (work-weighted),
-    /// used to cross-check `SegmentTreeUmcVoter` (see the comparison in
-    /// `select_parent_from_k_colouring`).
-    #[cfg(feature = "baseline-debugging")]
-    fn baseline_umc_cascade_voting(
-        &self,
-        conflict_genesis: Hash,
-        subgroup: &[Hash],
-        virtual_gd: GhostdagData,
-        k: KType,
-        conflict_zone_manager: &ConflictZoneManager<Arc<C>, Arc<O>, D, MTReachabilityService<R>>,
-    ) -> CascadeResult {
-        let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
-        let ctx = UmcVotingContext {
-            conflict_genesis,
-            subgroup_member: &subgroup[0],
-            virtual_gd: &virtual_gd,
-            k,
-            coloring_reader: conflict_zone_manager,
-        };
-        voter.vote(&ctx)
-    }
-
-    /// UMC Cascade Voting using chain-based segment tree
-    fn umc_cascade_voting(
-        &self,
-        conflict_genesis: Hash,
-        subgroup: &[Hash],
-        virtual_gd: GhostdagData,
-        k: KType,
-        conflict_zone_manager: &ConflictZoneManager<Arc<C>, Arc<O>, D, MTReachabilityService<R>>,
-    ) -> CascadeResult {
-        let voter = SegmentTreeUmcVoter::new(
-            self.headers_store.clone(),
-            self.umc_persistence_store.clone(),
-            self.reachability_service.clone(),
-        );
-        let ctx = UmcVotingContext {
-            conflict_genesis,
-            subgroup_member: &subgroup[0],
-            virtual_gd: &virtual_gd,
-            k,
-            coloring_reader: conflict_zone_manager,
-        };
-        voter.vote(&ctx)
-    }
-
-    /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
-    fn tie_breaking(&self, conflict_genesis: Hash, all_tips: &[Hash], subgroups: &[GroupMetadata]) -> (Hash, Arc<Vec<Hash>>) {
-        debug!("Winning groups had rank k = {}", subgroups[0].k);
-        let mutual_k = subgroups[0].k;
-
-        let winning_index = DagknightTieBreaker::new(
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
-            self.relations_store.clone(),
-            self.reachability_service.clone(),
-        )
-        .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: mutual_k });
-
-        let winning_conflict_genesis = subgroups[winning_index].conflict_genesis;
-        let winning_subgroup = subgroups[winning_index].subgroup.clone();
-
-        (winning_conflict_genesis, winning_subgroup)
-    }
-
-    /// Follows the Calculate-Rank algorithm in the DK paper
-    ///
-    /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
-    /// in the caller is simply using blue_work + hash to break ties between subgroups.
-    ///
-    /// Returns an array of winning subgroups with their metadata
-    fn rank(
-        &self,
-        conflict_genesis: Hash,
-        agreeing_subgroups: &HashMap<Hash, Arc<Vec<Hash>>>,
-        all_tips: &[Hash],
-    ) -> Vec<GroupMetadata> {
-        let mut group_map = Cell::new(agreeing_subgroups.clone());
-        let best_groups_cell = Cell::new(vec![]);
-        let evaluate = |k: KType| -> Option<()> {
-            let (filtered_groups_kv, best_groups): (HashMap<_, _>, Vec<GroupMetadata>) = group_map
-                .get_mut()
-                .iter()
-                .filter_map(|(curr_conflict_genesis, subgroup)| {
-                    // `subgroup` is an `&Arc<Vec<Hash>>` here; pass a `&[Hash]` to the colouring function
-                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k).map(|selected_parent| {
-                        (
-                            (*curr_conflict_genesis, subgroup.clone()),
-                            GroupMetadata { conflict_genesis: *curr_conflict_genesis, subgroup: subgroup.clone(), k, selected_parent },
-                        )
-                    })
-                })
-                .unzip();
-
-            if filtered_groups_kv.is_empty() {
-                None
-            } else {
-                group_map.swap(&Cell::new(filtered_groups_kv));
-                best_groups_cell.swap(&Cell::new(best_groups));
-                Some(())
-            }
-        };
-
-        let _search_result = RankSearcher::search(evaluate);
-        // let (best_k) = search_result.map(|r| (r.k, r.result)).unwrap();
-        best_groups_cell.take()
-    }
-
-    /// Applies a coloring to the conflict zone, and determines if the
-    /// coloring represents a majority over "g" only (as opposed to full UMC)
-    /// TODO[DK]: Implement full UMC cascade voting after coloring
-    fn select_parent_from_k_colouring(
-        &self,
-        conflict_genesis: Hash,
-        subgroup: &[Hash],
-        all_tips: &[Hash],
-        k_to_check: KType,
-    ) -> Option<SortableBlock> {
-        let reachability_service = self.reachability_service.clone();
-        let relations_store = self.relations_store.read();
-        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
-        let conflict_zone_manager = ConflictZoneManager::new(
-            k_to_check,
-            conflict_genesis,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
-            relations_service,
-            reachability_service.clone(),
-        );
-
-        // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(subgroup, Some(subgroup_nca));
-
-        // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
-        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
-        let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
-
-        let cascade_result =
-            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
-
-        #[cfg(feature = "baseline-debugging")]
-        {
-            // Compare baseline (per-blue recursive) against cascade (global virtual score)
-            // These use different acceptance criteria and are not expected to always agree.
-            // The baseline is Algorithm 6 from the paper; the cascade is the optimized implementation.
-            let baseline_result =
-                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
-
-            if baseline_result.virtual_score != cascade_result.virtual_score {
-                if baseline_result.accepted != cascade_result.accepted {
-                    self.counters.record_baseline_disagreement(baseline_result.accepted, cascade_result.accepted);
-                }
-
-                panic!(
-                    "BASELINE vs CASCADE SCORE DISAGREEMENT: k={}, conflict_genesis={:?}, baseline_score={}, \
-                     cascade_score={}, baseline_accepted={}, cascade_accepted={}, flips={}, voting_blocks={}",
-                    k_to_check,
-                    conflict_genesis,
-                    baseline_result.virtual_score,
-                    cascade_result.virtual_score,
-                    baseline_result.accepted,
-                    cascade_result.accepted,
-                    cascade_result.flips,
-                    cascade_result.voting_blocks
-                );
-            }
-        }
-
-        self.counters.record_cascade_stats(cascade_result.flips, cascade_result.voting_blocks);
-        self.counters.record_checkpoint_stats(
-            cascade_result.from_checkpoint,
-            cascade_result.estimated_effort_saved,
-            cascade_result.estimated_effort_total,
-        );
-
-        if cascade_result.accepted {
-            Some(SortableBlock {
-                hash: subgroup_virtual_sp,
-                blue_work: self.headers_store.get_header(subgroup_virtual_sp).unwrap().blue_work,
-            })
-        } else {
-            None
-        }
-    }
-}
-
 /// A parent (index into the tips slice) paired with the chain ancestor it follows
 /// above the current conflict genesis; ordering by (common_ancestor, parent) keeps
 /// each agreement group contiguous within a sorted grouping
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Group {
     common_ancestor: Hash,
     parent: u16,
@@ -436,7 +106,7 @@ struct Group {
 /// found for it. The subgroup is uniform in `common_ancestor` (the left part of
 /// each member), so the group's conflict genesis is read off the members instead
 /// of being duplicated here.
-struct GroupMetadataNext<'a> {
+struct GroupMetadata<'a> {
     subgroup: &'a [Group],
     k: KType,
     selected_parent: SortableBlock,
@@ -444,7 +114,7 @@ struct GroupMetadataNext<'a> {
 
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 #[derive(Clone)]
-pub struct DagknightExecutorNext<
+pub struct DagknightExecutor<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
@@ -466,12 +136,24 @@ impl<
     D: RelationsStoreReader + Clone,
     E: UmcCascadeStore + Clone,
     R: ReachabilityStoreReader + Clone,
-> DagknightExecutorNext<C, O, D, E, R>
+> DagknightExecutor<C, O, D, E, R>
 {
-    // TODO[DK]: drop the allow once this is wired into block processing
+    /// Resolves the selected parent and conflict-ordered parents for the given block parents
+    pub fn dagknight(&self, parents: &[Hash]) -> DagknightData {
+        let data = self.dagknight_indices(parents);
+        DagknightData {
+            selected_parent: parents[data.selected_parent as usize],
+            conflict_ordered_parents: data
+                .reverse_conflict_ordered_parents
+                .iter()
+                .rev()
+                .map(|&parent| parents[parent as usize])
+                .collect(),
+        }
+    }
+
     // TODO[DK]: accept slice with unique values so we don't need to verify it again
-    #[allow(dead_code)]
-    fn dagknight_next<'a>(&self, parents: &'a [Hash]) -> DagknightDataNext<'a> {
+    fn dagknight_indices(&self, parents: &[Hash]) -> DagknightDataIndices {
         /*
             input: a set of block parents
             output: the selected parent + incremental metadata
@@ -499,11 +181,7 @@ impl<
                     // Returned in natural push order (bottom-most conflicts first) so consumers can
                     // reverse-iterate to walk parents from latest/topmost conflicts first
                     debug!("dk::sp: {} | reverse_conflict_ordered_parents: {:?}", sp, conflict_ordered_parents);
-                    return DagknightDataNext {
-                        tips: parents,
-                        selected_parent: *sp,
-                        reverse_conflict_ordered_parents: conflict_ordered_parents,
-                    };
+                    return DagknightDataIndices { selected_parent: *sp, reverse_conflict_ordered_parents: conflict_ordered_parents };
                 }
                 curr_subgroup => {
                     // g = find the LCCA of the current subgroup -- the genesis of this conflict level
@@ -532,7 +210,7 @@ impl<
                         let best_groups = self.rank(conflict_genesis, parents, &agreement_grouping);
 
                         // Multiple best groups (same winning k) are resolved by a tie-breaking rule
-                        let winner: &GroupMetadataNext = if best_groups.len() > 1 {
+                        let winner: &GroupMetadata = if best_groups.len() > 1 {
                             &best_groups[self.tie_breaking(conflict_genesis, parents, &agreement_grouping, &best_groups)]
                         } else {
                             best_groups.first().expect("rank should return at least one best group")
@@ -554,17 +232,12 @@ impl<
     /// Follows the Calculate-Rank algorithm in the DK paper: returns the best
     /// agreement groups (all surviving at the winning k) with their metadata,
     /// each subgroup being a contiguous slice into the sorted agreement grouping
-    fn rank<'a>(
-        &self,
-        conflict_genesis: Hash,
-        parents: &[Hash],
-        agreement_grouping: &'a [Group],
-    ) -> SmallVec<[GroupMetadataNext<'a>; 4]> {
+    fn rank<'a>(&self, conflict_genesis: Hash, parents: &[Hash], agreement_grouping: &'a [Group]) -> SmallVec<[GroupMetadata<'a>; 4]> {
         // Groups failing a k evaluation are dropped from further consideration
         // (passing the UMC cascade is monotone in k)
         let mut survivors: SmallVec<[&'a [Group]; 10]> =
             agreement_grouping.chunk_by(|a, b| a.common_ancestor == b.common_ancestor).collect();
-        let evaluate = |k: KType| -> Option<SmallVec<[GroupMetadataNext<'a>; 4]>> {
+        let evaluate = |k: KType| -> Option<SmallVec<[GroupMetadata<'a>; 4]>> {
             let (next_survivors, best_groups): (SmallVec<_>, SmallVec<_>) = survivors
                 .iter()
                 .filter_map(|&subgroup| {
@@ -574,7 +247,7 @@ impl<
                         agreement_grouping.iter().map(|group| &parents[group.parent as usize]),
                         k,
                     )
-                    .map(|selected_parent| (subgroup, GroupMetadataNext { subgroup, k, selected_parent }))
+                    .map(|selected_parent| (subgroup, GroupMetadata { subgroup, k, selected_parent }))
                 })
                 .unzip();
 
@@ -595,12 +268,12 @@ impl<
         conflict_genesis: Hash,
         parents: &[Hash],
         agreement_grouping: &[Group],
-        subgroups: &[GroupMetadataNext],
+        subgroups: &[GroupMetadata],
     ) -> usize {
         debug!("Winning groups had rank k = {}", subgroups[0].k);
         let mutual_k = subgroups[0].k;
 
-        DagknightTieBreakerNext {
+        DagknightTieBreaker {
             dagknight_store: &*self.dagknight_store,
             headers_store: &*self.headers_store,
             relations_store: self.relations_store.clone(),
@@ -625,7 +298,7 @@ impl<
         first_subgroup_member: &Hash,
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManagerNext<&C, &O, &D, &MTReachabilityService<R>>,
+        conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
         let ctx = UmcVotingContext {
@@ -645,7 +318,7 @@ impl<
         first_subgroup_member: &Hash,
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManagerNext<&C, &O, &D, &MTReachabilityService<R>>,
+        conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = SegmentTreeUmcVoter::new(
             self.headers_store.clone(),
@@ -685,18 +358,18 @@ impl<
 
         let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
 
-        // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(first_subgroup_member, conflict_genesis);
-        let conflict_zone_manager = ConflictZoneManagerNext::committed_search(
+        let conflict_zone_manager = ConflictZoneManager::committed_search(
             k_to_check,
             conflict_genesis,
-            subgroup_nca,
             self.dagknight_store.as_ref(),
             self.headers_store.as_ref(),
             relations_service,
             &self.reachability_service,
         );
-        conflict_zone_manager.fill_zone_data(subgroup.clone());
+
+        // Calculate the subgroup's next chain ancestor above conflict_genesis
+        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(first_subgroup_member, conflict_genesis);
+        conflict_zone_manager.fill_zone_data(subgroup.clone(), Some(subgroup_nca));
 
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup);
@@ -783,10 +456,9 @@ impl<
     }
 }
 
-/// DAGKnight tie-breaker over the next executor's store shapes (relations accessed
-/// directly, without a lock), implementing Algorithm 4 of the paper. Holds only the
+/// DAGKnight tie-breaker implementing Algorithm 4 of the paper. Holds only the
 /// stores needed for tie-breaking, not the full executor.
-struct DagknightTieBreakerNext<
+struct DagknightTieBreaker<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader,
     D: RelationsStoreReader + Clone,
@@ -803,7 +475,7 @@ impl<
     O: HeaderStoreReader,
     D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
-> DagknightTieBreakerNext<C, O, D, R>
+> DagknightTieBreaker<C, O, D, R>
 {
     /// Computes the free-search k-colouring reference cluster.
     ///
@@ -820,7 +492,7 @@ impl<
         let all_tips = all_tips.into_iter();
         let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
 
-        let conflict_zone_manager = ConflictZoneManagerNext::free_search(
+        let conflict_zone_manager = ConflictZoneManager::free_search(
             k,
             conflict_genesis,
             &self.dagknight_store,
@@ -829,7 +501,7 @@ impl<
             &self.reachability_service,
         );
 
-        conflict_zone_manager.fill_zone_data(all_tips.clone());
+        conflict_zone_manager.fill_zone_data(all_tips.clone(), None);
 
         // Run k-colouring with free search: no custom selected parent is passed,
         // so the manager freely selects from all parents.
@@ -886,16 +558,15 @@ impl<
 
         // Calculate the subgroup's next chain ancestor above conflict_genesis
         let subgroup_nca = self.reachability_service.get_next_chain_ancestor(*first_tip, conflict_genesis);
-        let conflict_zone_manager = ConflictZoneManagerNext::committed_search(
+        let conflict_zone_manager = ConflictZoneManager::committed_search(
             k_prime,
             conflict_genesis,
-            subgroup_nca,
             &self.dagknight_store,
             &self.headers_store,
             relations_service,
             &self.reachability_service,
         );
-        conflict_zone_manager.fill_zone_data(all_tips.clone());
+        conflict_zone_manager.fill_zone_data(all_tips.clone(), Some(subgroup_nca));
 
         // Condition virtual on the group: force selected parent from group_tips
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips);
@@ -967,14 +638,7 @@ impl<
     /// 1. Compute reference cluster F using free search at g(k) = floor(sqrt(k))
     /// 2. For each subgroup, compute C_i = high-rank witnesses against F
     /// 3. Select the subgroup whose max(C_i) is earliest (argmin by blue_work, ties by hash)
-    fn tie_break<'a, T>(
-        &self,
-        conflict_genesis: Hash,
-        all_tips: T,
-        subgroups: &[GroupMetadataNext],
-        parents: &[Hash],
-        k: KType,
-    ) -> usize
+    fn tie_break<'a, T>(&self, conflict_genesis: Hash, all_tips: T, subgroups: &[GroupMetadata], parents: &[Hash], k: KType) -> usize
     where
         T: IntoIterator<Item = &'a Hash>,
         T::IntoIter: Clone,
@@ -1001,13 +665,11 @@ impl<
     }
 }
 
-pub struct DagknightDataNext<'a> {
-    pub tips: &'a [Hash],
-    /// Index into `tips`
-    pub selected_parent: u16,
+struct DagknightDataIndices {
+    selected_parent: u16,
     /// Indices into `tips`, ordered by conflict hierarchy with bottom-most conflicts first;
     /// reverse-iterate to get parents from latest/topmost conflicts first (as `dagknight` returns)
-    pub reverse_conflict_ordered_parents: SmallVec<[u16; 20]>,
+    reverse_conflict_ordered_parents: SmallVec<[u16; 20]>,
 }
 
 #[cfg(test)]
@@ -1019,7 +681,7 @@ mod tests {
 
     use kaspa_consensus_core::blockhash::ORIGIN;
     use kaspa_consensus_core::header::Header;
-    use kaspa_consensus_core::{BlockHashSet, HashMapCustomHasher};
+    use kaspa_consensus_core::{BlockHashSet, BlueWorkType, HashMapCustomHasher};
     use kaspa_math::Uint192;
     use parking_lot::lock_api::RwLock;
 
@@ -1137,7 +799,7 @@ mod tests {
             dagknight_store: dagknight_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-            relations_store: Arc::new(RwLock::new(relations.clone())),
+            relations_store: relations.clone(),
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -1342,7 +1004,7 @@ mod tests {
             dagknight_store: dagknight_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-            relations_store: Arc::new(RwLock::new(relations.clone())),
+            relations_store: relations.clone(),
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -1423,7 +1085,7 @@ mod tests {
             dagknight_store: dagknight_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-            relations_store: Arc::new(RwLock::new(relations.clone())),
+            relations_store: relations.clone(),
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -1540,7 +1202,7 @@ mod tests {
             dagknight_store,
             headers_store,
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
-            relations_store: Arc::new(RwLock::new(relations)),
+            relations_store: relations,
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -1591,7 +1253,7 @@ mod tests {
             dagknight_store,
             headers_store,
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
-            relations_store: Arc::new(RwLock::new(relations)),
+            relations_store: relations,
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -1610,231 +1272,340 @@ mod tests {
         );
     }
 
-    type MemoryDagknightExecutor = DagknightExecutor<
-        MemoryDagknightStore,
-        MemoryHeaderStore,
-        MemoryRelationsStore,
-        MemoryUmcCascadeStore,
-        MemoryReachabilityStore,
-    >;
-    type MemoryDagknightExecutorNext = DagknightExecutorNext<
-        MemoryDagknightStore,
-        MemoryHeaderStore,
-        MemoryRelationsStore,
-        MemoryUmcCascadeStore,
-        MemoryReachabilityStore,
-    >;
-
-    fn build_executor_pair(
-        genesis_hash: Hash,
-        reachability: MemoryReachabilityStore,
-        relations: MemoryRelationsStore,
+    /// Shared test DAG used by the tie-breaking tests.
+    ///
+    /// ```text
+    ///        A (conflict genesis)
+    ///       / \
+    ///      B   Z
+    ///      |   |
+    ///      C   Y
+    ///      | \ /
+    ///      D  X
+    /// ```
+    ///
+    /// Reachability chain parents: X→Y, Y→Z, Z→A | D→C, C→B, B→A
+    /// Blue work: A=0, B=1, C=3, D=4, Z=1, Y=2, X=6
+    ///
+    /// The low-work side (X→Y→Z→A) has chain parents wired to Z, while the high-work
+    /// side (D→C→B→A) has chain parents wired through B. Free search will override
+    /// chain parents and follow max blue work (X→C→B→A).
+    struct TieBreakTestDag {
+        hash_a: Hash,
+        hash_b: Hash,
+        hash_c: Hash,
+        hash_d: Hash,
+        hash_z: Hash,
+        hash_y: Hash,
+        hash_x: Hash,
+        dagknight_store: Arc<MemoryDagknightStore>,
         headers_store: Arc<MemoryHeaderStore>,
-    ) -> (MemoryDagknightExecutor, MemoryDagknightExecutorNext) {
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(RefCell::new(HashMap::new())));
-        (
-            DagknightExecutor {
-                genesis_hash,
-                dagknight_store: dagknight_store.clone(),
-                headers_store: headers_store.clone(),
-                relations_store: Arc::new(RwLock::new(relations.clone())),
-                umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
-                reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-                counters: Arc::new(DagknightCounters::new()),
-            },
-            DagknightExecutorNext {
-                genesis_hash,
+        relations_store: MemoryRelationsStore,
+        reachability_service: MTReachabilityService<MemoryReachabilityStore>,
+    }
+
+    impl TieBreakTestDag {
+        fn new() -> Self {
+            let hash_a: Hash = 1_u64.into();
+            let hash_b: Hash = 2_u64.into();
+            let hash_c: Hash = 3_u64.into();
+            let hash_d: Hash = 4_u64.into();
+            let hash_z: Hash = 5_u64.into();
+            let hash_y: Hash = 6_u64.into();
+            let hash_x: Hash = 7_u64.into();
+
+            let dk_map = RefCell::new(HashMap::new());
+            let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+            let headers_store = Arc::new(MemoryHeaderStore::new());
+            let mut reachability = MemoryReachabilityStore::new();
+            let mut relations_store = MemoryRelationsStore::new();
+
+            {
+                let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+                builder.init();
+                builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
+                builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_c, vec![hash_b]), hash_b);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_d, vec![hash_c]), hash_c);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_z, vec![hash_a]), hash_a);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y, hash_c]), hash_y);
+
+                let insert = |h: Hash, p: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, bw: BlueWorkType| {
+                    let mut header = Header::from_precomputed_hash(h, p);
+                    header.bits = bits;
+                    header.blue_work = bw;
+                    store.insert(Arc::new(header));
+                };
+
+                insert(hash_a, vec![], 0x207fffff, &headers_store, 0.into());
+                insert(hash_b, vec![hash_a], 0x204fffff, &headers_store, 1.into());
+                insert(hash_c, vec![hash_b], 0x207fffff, &headers_store, 3.into());
+                insert(hash_d, vec![hash_c], 0x207fffff, &headers_store, 4.into());
+                insert(hash_z, vec![hash_a], 0x207fffff, &headers_store, 1.into());
+                insert(hash_y, vec![hash_z], 0x207fffff, &headers_store, 2.into());
+                insert(hash_x, vec![hash_c, hash_y], 0x207fffff, &headers_store, 6.into());
+            }
+
+            let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+            Self {
+                hash_a,
+                hash_b,
+                hash_c,
+                hash_d,
+                hash_z,
+                hash_y,
+                hash_x,
                 dagknight_store,
                 headers_store,
-                relations_store: relations,
-                umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
-                reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
-                counters: Arc::new(DagknightCounters::new()),
-            },
-        )
+                relations_store,
+                reachability_service,
+            }
+        }
+
+        fn tie_breaker(
+            &self,
+        ) -> DagknightTieBreaker<&MemoryDagknightStore, &MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore> {
+            DagknightTieBreaker {
+                dagknight_store: &self.dagknight_store,
+                headers_store: &self.headers_store,
+                relations_store: self.relations_store.clone(),
+                reachability_service: self.reachability_service.clone(),
+            }
+        }
     }
 
-    /// Both executors must agree on the selected parent and the conflict-ordered parents
-    /// (compared as sets: the order within a single conflict level is unspecified)
+    /// Verifies that `compute_subgroup_chain_blocks` follows the reachability store's chain
+    /// parents (committed mode).
+    ///
+    /// Conditioned on [X]: chain follows reachability chain X → Y → Z → A
+    /// Conditioned on [D]: chain follows reachability chain D → C → B → A
     #[test]
-    fn test_next_matches_previous_executor() {
-        // The whitepaper sample DAG (test_dag_dk_sample): a fork at block 7 merging back,
-        // plus a long side chain rejoining at the top
-        assert_next_matches_previous(
-            &DagPlan {
-                genesis: 1,
-                blocks: vec![
-                    (2, vec![1]),
-                    (3, vec![2]),
-                    (4, vec![3]),
-                    (5, vec![4]),
-                    (6, vec![5]),
-                    (7, vec![6]),
-                    (8, vec![7]),
-                    (9, vec![7]),
-                    (10, vec![8, 9]),
-                    (11, vec![10]),
-                    (12, vec![1]),
-                    (13, vec![12]),
-                    (14, vec![13]),
-                    (15, vec![14]),
-                    (16, vec![15]),
-                    (17, vec![6, 16]),
-                ],
-            },
-            0,
-        );
+    fn test_subgroup_chain_blocks() {
+        let dag = TieBreakTestDag::new();
+        let tie_breaker = dag.tie_breaker();
+        let all_tips = vec![dag.hash_x, dag.hash_d];
 
-        // A generated two-cluster DAG (as in test_complex_dag): a main cluster plus an
-        // attacker cluster re-pointed at the same genesis
-        let (genesis, mut blocks) = generate_complex_dag(0.1, 10.0, 50);
-        let (_, attacker_blocks) = generate_complex_dag(0.1, 10.0, 40);
-        let attacker_blocks = attacker_blocks
-            .iter()
-            .map(|(block, parents)| {
-                let block = if *block == genesis { *block } else { block + 100 };
-                let parents = parents.iter().map(|&p| if p == genesis { p } else { p + 100 }).collect_vec();
-                (block, parents)
-            })
-            .collect_vec();
-        blocks.extend(attacker_blocks);
-        assert_next_matches_previous(&DagPlan { genesis, blocks }, 5);
+        // Conditioned on [X]: must follow reachability chain X → Y → Z → A
+        let chain_x = tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_x], &all_tips, 2);
+        assert_eq!(chain_x.len(), 4, "X conditioned chain should have 4 blocks: X, Y, Z, A");
+        assert_eq!(chain_x[0], dag.hash_x, "virtual selected parent is X");
+        assert_eq!(chain_x[1], dag.hash_y, "X's committed parent must be Y");
+        assert_eq!(chain_x[2], dag.hash_z, "Y's committed parent must be Z");
+        assert_eq!(chain_x[3], dag.hash_a, "Z's committed parent is genesis A");
+
+        // Conditioned on [D]: must follow reachability chain D → C → B → A
+        let chain_d = tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_d], &all_tips, 2);
+        assert_eq!(chain_d.len(), 4, "D conditioned chain should have 4 blocks: D, C, B, A");
+        assert_eq!(chain_d[0], dag.hash_d, "virtual selected parent is D");
+        assert_eq!(chain_d[1], dag.hash_c, "D's committed parent must be C");
+        assert_eq!(chain_d[2], dag.hash_b, "C's committed parent must be B");
+        assert_eq!(chain_d[3], dag.hash_a, "B's committed parent is genesis A");
+
+        // The two chains diverge: X-side goes through Y/Z, D-side goes through C/B
+        assert!(!chain_d.contains(&dag.hash_y), "D's chain must NOT contain Y (different side of conflict)");
+        assert!(!chain_d.contains(&dag.hash_z), "D's chain must NOT contain Z (different side of conflict)");
+        assert!(!chain_x.contains(&dag.hash_b), "X's chain must NOT contain B (different side of conflict)");
+        assert!(!chain_x.contains(&dag.hash_c), "X's chain must NOT contain C (different side of conflict)");
     }
 
-    /// Drives both executors over every block (and the final virtual block) of the plan,
-    /// asserting they agree on the selected parent and the conflict-ordered parents
-    fn assert_next_matches_previous(plan: &DagPlan, k_max: KType) {
-        let genesis_hash = plan.genesis.into();
+    /// Verifies that `compute_reference_cluster` overrides the reachability store's chain
+    /// parents and follows the max blue work path.
+    ///
+    /// Reachability chain from X: X → Y → Z → A (low-work side)
+    /// Free search chain from X: X → C → B → A (max blue work side)
+    #[test]
+    fn test_free_coloring() {
+        let dag = TieBreakTestDag::new();
+        let tie_breaker = dag.tie_breaker();
+        let all_tips = vec![dag.hash_x];
+
+        let ref_cluster = tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
+
+        // Verify the exact free search chain: X → C → B → A
+        assert_eq!(ref_cluster.chain_blocks.len(), 4, "chain should have exactly 4 blocks: X, C, B, A");
+        assert_eq!(ref_cluster.chain_blocks[0], dag.hash_x, "virtual selected parent must be X (max blue_work)");
+        assert_eq!(ref_cluster.chain_blocks[1], dag.hash_c, "X's free-selected parent must be C (bw=3 > Y's bw=2)");
+        assert_eq!(ref_cluster.chain_blocks[2], dag.hash_b, "C's free-selected parent must be B");
+        assert_eq!(ref_cluster.chain_blocks[3], dag.hash_a, "B's parent is genesis A");
+
+        // All 6 discovered blocks should be blue within k=2 (D is dead-end, not discovered)
+        assert_eq!(ref_cluster.blues.len(), 6, "6 zone blocks should be blue (k=2 is sufficient)");
+        for &h in &[dag.hash_a, dag.hash_b, dag.hash_c, dag.hash_z, dag.hash_y, dag.hash_x] {
+            assert!(ref_cluster.blues.contains(&h), "block must be in blue cluster");
+        }
+        assert!(!ref_cluster.blues.contains(&dag.hash_d), "D is not discovered by zone traversal (dead-end)");
+    }
+
+    /// Verifies that `count_anticone_with_chain` correctly identifies anticone blocks.
+    ///
+    /// Uses a symmetric diamond DAG with two concurrent branches from A merging at D:
+    ///
+    /// ```text
+    ///       A
+    ///      / \
+    ///     B   Z
+    ///     |   |
+    ///     C   Y
+    ///     |   |
+    ///     |   X
+    ///      \ /
+    ///       D  (D's parents: [C, X], sp: C)
+    /// ```
+    ///
+    /// Left branch:  A → B → C
+    /// Right branch: A → Z → Y → X
+    ///
+    /// Chain 1: [C, B, A] (left side, towards genesis)
+    /// Chain 2: [X, Y, Z, A] (right side, towards genesis)
+    ///
+    /// Key property: every block on one side is concurrent with every block on the other.
+    /// B and C are concurrent with all of {Z, Y, X} → anticone count = 3 against Chain 2.
+    /// Z, Y, X are concurrent with all of {B, C} → anticone count = 2 against Chain 1.
+    #[test]
+    fn test_count_anticone_with_chain() {
+        let hash_a: Hash = 1_u64.into();
+        let hash_b: Hash = 2_u64.into();
+        let hash_c: Hash = 3_u64.into();
+        let hash_z: Hash = 4_u64.into();
+        let hash_y: Hash = 5_u64.into();
+        let hash_x: Hash = 6_u64.into();
+        let hash_d: Hash = 7_u64.into();
 
         let dk_map = RefCell::new(HashMap::new());
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations = MemoryRelationsStore::new();
-        let headers_store = Arc::new(MemoryHeaderStore::new());
-        let topology_ghostdag_store = Arc::new(MemoryGhostdagStore::new());
-        let topology_gd_manager = GhostdagManager::new(
-            genesis_hash,
-            k_max,
-            topology_ghostdag_store.clone(),
-            relations.clone(),
-            headers_store.clone(),
-            reachability.clone(),
-        );
-        topology_ghostdag_store.insert(genesis_hash, Arc::new(topology_gd_manager.genesis_ghostdag_data())).unwrap();
-
-        let coloring_ghostdag_store = Arc::new(MemoryGhostdagStore::new());
-        let coloring_gd_manager = GhostdagManager::with_custom_topology_store(
-            genesis_hash,
-            k_max,
-            coloring_ghostdag_store.clone(),
-            relations.clone(),
-            headers_store.clone(),
-            reachability.clone(),
-            topology_ghostdag_store.clone(),
-        );
-        coloring_ghostdag_store.insert(genesis_hash, Arc::new(coloring_gd_manager.genesis_ghostdag_data())).unwrap();
-
         let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
-        let dk_executor = DagknightExecutor {
-            genesis_hash,
-            dagknight_store: dagknight_store.clone(),
-            headers_store: headers_store.clone(),
-            relations_store: Arc::new(RwLock::new(relations.clone())),
-            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
-            reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-            counters: Arc::new(DagknightCounters::new()),
-        };
-        let dk_next_executor = DagknightExecutorNext {
-            genesis_hash,
-            dagknight_store,
-            headers_store: headers_store.clone(),
-            relations_store: relations.clone(),
-            umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
-            reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-            counters: Arc::new(DagknightCounters::new()),
-        };
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations_store = MemoryRelationsStore::new();
 
-        let assert_match = |parents: &[Hash], block: Hash| {
-            let prev = dk_executor.dagknight(parents);
-            let next = dk_next_executor.dagknight_next(parents);
-            assert_eq!(parents[next.selected_parent as usize], prev.selected_parent, "selected parent mismatch at {}", block);
-            let mut prev_ordered = prev.conflict_ordered_parents;
-            let mut next_ordered: Vec<Hash> =
-                next.reverse_conflict_ordered_parents.iter().rev().map(|&parent| parents[parent as usize]).collect();
-            prev_ordered.sort_unstable();
-            next_ordered.sort_unstable();
-            assert_eq!(next_ordered, prev_ordered, "conflict-ordered parents mismatch at {}", block);
-            prev.selected_parent
-        };
+        {
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+            builder.init();
+            builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
+            builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_c, vec![hash_b]), hash_b);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_z, vec![hash_a]), hash_a);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y]), hash_y);
+            builder.add_block_with_selected_parent(DagBlock::new(hash_d, vec![hash_c, hash_x]), hash_c);
 
-        let mut builder = DagBuilder::new(&mut reachability, &mut relations);
-        builder.init();
-        builder.add_block(DagBlock::new(genesis_hash, vec![ORIGIN]));
-        let mut tips = BlockHashSet::new();
-        tips.insert(genesis_hash);
-        let mut genesis_header = Header::from_precomputed_hash(genesis_hash, vec![]);
-        genesis_header.bits = 0x207fffff;
-        headers_store.insert(Arc::new(genesis_header));
+            let insert = |h: Hash, p: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, bw: BlueWorkType| {
+                let mut header = Header::from_precomputed_hash(h, p);
+                header.bits = bits;
+                header.blue_work = bw;
+                store.insert(Arc::new(header));
+            };
 
-        for block_data in &plan.blocks {
-            let block_hash: Hash = block_data.0.into();
-            tips.insert(block_hash);
-            let parent_hashes: Vec<Hash> = block_data.1.iter().map(|&parent| Hash::from_u64_word(parent)).collect();
-            parent_hashes.iter().for_each(|parent| {
-                tips.remove(parent);
-            });
-
-            let new_block = DagBlock::new(block_hash, parent_hashes.clone());
-            let topology_gd_data = topology_gd_manager.ghostdag(&new_block.parents);
-            let selected_parent = assert_match(&new_block.parents, block_hash);
-
-            let gd_data = coloring_gd_manager.incremental_coloring(&new_block.parents, selected_parent);
-            builder.add_block_with_selected_parent(new_block, selected_parent);
-
-            let mut curr_header = Header::from_precomputed_hash(block_hash, parent_hashes);
-            curr_header.bits = 0x207fffff;
-            curr_header.daa_score = gd_data.blue_score;
-            curr_header.blue_score = gd_data.blue_score;
-            curr_header.blue_work = topology_gd_data.blue_work;
-            topology_ghostdag_store.insert(block_hash, Arc::new(topology_gd_data)).unwrap();
-            coloring_ghostdag_store.insert(block_hash, Arc::new(gd_data)).unwrap();
-            headers_store.insert(Arc::new(curr_header));
+            insert(hash_a, vec![], 0x207fffff, &headers_store, 0.into());
+            insert(hash_b, vec![hash_a], 0x207fffff, &headers_store, 1.into());
+            insert(hash_c, vec![hash_b], 0x207fffff, &headers_store, 2.into());
+            insert(hash_z, vec![hash_a], 0x207fffff, &headers_store, 1.into());
+            insert(hash_y, vec![hash_z], 0x207fffff, &headers_store, 2.into());
+            insert(hash_x, vec![hash_y], 0x207fffff, &headers_store, 3.into());
+            insert(hash_d, vec![hash_c, hash_x], 0x207fffff, &headers_store, 4.into());
         }
 
-        let tip_hashes = tips.iter().copied().collect_vec();
-        let virtual_hash = Hash::from_u64_word(plan.blocks.last().unwrap().0 + 1);
-        assert_match(&tip_hashes, virtual_hash);
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+        let tie_breaker = DagknightTieBreaker {
+            dagknight_store: &dagknight_store,
+            headers_store: &headers_store,
+            relations_store,
+            reachability_service,
+        };
+
+        // Chain 2: [X, Y, Z, A] (right side, towards genesis)
+        let chain_right = vec![hash_x, hash_y, hash_z, hash_a];
+
+        // B is concurrent with Z, Y, X → anticone count = 3
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_b, &chain_right), 3, "B is concurrent with Z, Y, X");
+
+        // C is concurrent with Z, Y, X → anticone count = 3
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_c, &chain_right), 3, "C is concurrent with Z, Y, X");
+
+        // A is ancestor of everything → anticone count = 0
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_a, &chain_right), 0, "genesis A is ancestor of all chain blocks");
+
+        // X, Y, Z are in the chain → anticone count = 0
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_x, &chain_right), 0, "X is in its own chain");
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_y, &chain_right), 0, "Y is in its own chain");
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_z, &chain_right), 0, "Z is in its own chain");
+
+        // Chain 1: [C, B, A] (left side, towards genesis)
+        let chain_left = vec![hash_c, hash_b, hash_a];
+
+        // Z is concurrent with B, C → anticone count = 2
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_z, &chain_left), 2, "Z is concurrent with B, C");
+
+        // Y is concurrent with B, C → anticone count = 2
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_y, &chain_left), 2, "Y is concurrent with B, C");
+
+        // X is concurrent with B, C → anticone count = 2
+        assert_eq!(tie_breaker.count_anticone_with_chain(hash_x, &chain_left), 2, "X is concurrent with B, C");
     }
 
-    /// Duplicate parent sets must agree with the previous executor and never panic
+    /// Verifies that `compute_high_rank_witnesses` correctly identifies F blocks
+    /// that exceed the k'-cluster bound against the conditioned chain.
+    ///
+    /// With k=4, k' iterates from 2 to 4. The method computes conditioned chains
+    /// for each k' and collects F blocks whose anticone with the chain exceeds k'.
     #[test]
-    fn test_next_duplicate_parents_match_previous() {
-        // genesis -> T1, genesis -> T2
-        let genesis_hash = Hash::from_u64_word(1);
-        let t1 = Hash::from_u64_word(2);
-        let t2 = Hash::from_u64_word(3);
+    fn test_high_rank_witnesses() {
+        let dag = TieBreakTestDag::new();
+        let tie_breaker = dag.tie_breaker();
+        let all_tips = vec![dag.hash_x, dag.hash_d];
 
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations = MemoryRelationsStore::new();
-        {
-            let mut builder = DagBuilder::new(&mut reachability, &mut relations);
-            builder.init();
-            builder.add_block(DagBlock::new(genesis_hash, vec![ORIGIN]));
-            builder.add_block(DagBlock::new(t1, vec![genesis_hash]));
-            builder.add_block(DagBlock::new(t2, vec![genesis_hash]));
-        }
-        let headers_store = Arc::new(MemoryHeaderStore::new());
-        for (hash, parents) in [(genesis_hash, vec![]), (t1, vec![genesis_hash]), (t2, vec![genesis_hash])] {
-            let mut header = Header::from_precomputed_hash(hash, parents);
-            header.bits = 0x207fffff;
-            headers_store.insert(Arc::new(header));
-        }
-        let (dk_executor, dk_next_executor) = build_executor_pair(genesis_hash, reachability, relations, headers_store);
+        // Compute F cluster at g(4) = 2
+        let ref_cluster = tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
+        let f_cluster = ref_cluster.blues;
 
-        for parents in [vec![t1, t1], vec![t1, t1, t2]] {
-            let prev = dk_executor.dagknight(&parents);
-            let next = dk_next_executor.dagknight_next(&parents);
-            assert!(parents.contains(&prev.selected_parent));
-            assert_eq!(parents[next.selected_parent as usize], prev.selected_parent, "parents: {:?}", parents);
-        }
+        // Compute C_i for [X] side
+        let c_x = tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_x], &all_tips, &f_cluster, 4);
+
+        // Compute C_i for [D] side
+        let c_d = tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_d], &all_tips, &f_cluster, 4);
+
+        // All non-genesis blocks in C_i must be a subset of F
+        assert!(f_cluster.contains(&c_x.hash), "X's witness must be in F");
+        assert!(f_cluster.contains(&c_d.hash), "D's witness must be in F");
+    }
+
+    /// Verifies that `tie_break` is invariant to the order of subgroups in the
+    /// input: the winning *subgroup content* must be the same even if the index differs.
+    #[test]
+    fn test_tie_break_subgroup_ordering_invariance() {
+        let dag = TieBreakTestDag::new();
+        let tie_breaker = dag.tie_breaker();
+        let parents = [dag.hash_x, dag.hash_d];
+        let all_tips = vec![dag.hash_x, dag.hash_d];
+
+        let mutual_k = 4;
+        let sp_x = SortableBlock { hash: dag.hash_x, blue_work: dag.headers_store.get_header(dag.hash_x).unwrap().blue_work };
+        let sp_d = SortableBlock { hash: dag.hash_d, blue_work: dag.headers_store.get_header(dag.hash_d).unwrap().blue_work };
+
+        // Forward order: [X], [D]
+        let sg_x = [Group { common_ancestor: dag.hash_z, parent: 0 }];
+        let sg_d = [Group { common_ancestor: dag.hash_b, parent: 1 }];
+        let subgroups_forward = vec![
+            GroupMetadata { subgroup: &sg_x, k: mutual_k, selected_parent: sp_x.clone() },
+            GroupMetadata { subgroup: &sg_d, k: mutual_k, selected_parent: sp_d.clone() },
+        ];
+
+        // Reversed order: [D], [X]
+        let subgroups_reversed = vec![
+            GroupMetadata { subgroup: &sg_d, k: mutual_k, selected_parent: sp_d },
+            GroupMetadata { subgroup: &sg_x, k: mutual_k, selected_parent: sp_x },
+        ];
+
+        let output_forward = tie_breaker.tie_break(dag.hash_a, &all_tips, &subgroups_forward, &parents, mutual_k);
+        let output_reversed = tie_breaker.tie_break(dag.hash_a, &all_tips, &subgroups_reversed, &parents, mutual_k);
+
+        // The winning subgroup *content* must be the same
+        assert_eq!(
+            subgroups_forward[output_forward].subgroup, subgroups_reversed[output_reversed].subgroup,
+            "winning subgroup content must be invariant to input ordering"
+        );
+
+        // The winning_index must be flipped (forward index 0 == reversed index 1, etc.)
+        // But we only assert content equality since the tie-break could pick either side.
     }
 }

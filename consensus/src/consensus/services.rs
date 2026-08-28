@@ -21,7 +21,6 @@ use crate::{
 };
 use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use parking_lot::RwLock;
 use std::sync::{Arc, atomic::AtomicBool};
 
 pub type DbGhostdagManager =
@@ -140,16 +139,15 @@ impl ConsensusServices {
             storage.topology_ghostdag_store.clone(),
         );
 
-        // TODO[DK]: Use a config or ForkActivation to gate this
         let dagknight_counters = Arc::<crate::processes::dagknight::DagknightCounters>::default();
         let dagknight_executor = storage.dagknight_store.as_ref().map(|dagknight_store| DagknightExecutor {
             genesis_hash: params.genesis.hash,
             dagknight_store: dagknight_store.clone(),
             headers_store: storage.headers_store.clone(),
-            relations_store: Arc::new(RwLock::new(relations_service.clone())),
+            relations_store: relations_service.clone(),
+            umc_persistence_store: storage.umc_persistence_store.clone(),
             reachability_service: reachability_service.clone(),
             counters: dagknight_counters.clone(),
-            umc_persistence_store: storage.umc_persistence_store.clone(),
         });
 
         let coinbase_manager = CoinbaseManager::new(

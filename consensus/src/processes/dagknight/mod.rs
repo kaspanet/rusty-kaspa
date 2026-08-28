@@ -1,11 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-
-use kaspa_consensus_core::KType;
-use kaspa_hashes::Hash;
-
-use crate::processes::ghostdag::ordering::SortableBlock;
 
 mod appendable_segment_tree_api;
 mod appendable_segment_tree_impl;
@@ -20,13 +14,6 @@ pub mod umc_baseline;
 pub mod umc_cascade;
 pub mod umc_cascade_persistence;
 pub mod umc_voting;
-
-pub struct GroupMetadata {
-    conflict_genesis: Hash,
-    subgroup: Arc<Vec<Hash>>,
-    k: KType,
-    selected_parent: SortableBlock,
-}
 
 /// UMC cascade voting performance counters.
 pub struct DagknightCounters {
