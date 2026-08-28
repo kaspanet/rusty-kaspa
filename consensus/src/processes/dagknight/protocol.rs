@@ -367,7 +367,7 @@ impl<
 
         // Calculate the subgroup's next chain ancestor above conflict_genesis
         let subgroup_nca = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(all_tips, Some(subgroup_nca));
+        conflict_zone_manager.fill_zone_data(subgroup, Some(subgroup_nca));
 
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
@@ -1103,16 +1103,6 @@ mod tests {
         // Global GD store. To be used for global coloring:
         let coloring_ghostdag_store = Arc::new(MemoryGhostdagStore::new());
         let headers_store = Arc::new(MemoryHeaderStore::new());
-        let coloring_gd_manager = GhostdagManager::new(
-            genesis_hash,
-            k_max,
-            coloring_ghostdag_store.clone(),
-            relations.clone(),
-            headers_store.clone(),
-            reachability.clone(),
-        );
-
-        coloring_ghostdag_store.insert(genesis_hash, Arc::new(coloring_gd_manager.genesis_ghostdag_data())).unwrap();
 
         // Global GD store. To be used for topology:
         let topology_ghostdag_store = Arc::new(MemoryGhostdagStore::new());
@@ -1127,6 +1117,18 @@ mod tests {
         );
 
         topology_ghostdag_store.insert(genesis_hash, Arc::new(topology_gd_manager.genesis_ghostdag_data())).unwrap();
+
+        let coloring_gd_manager = GhostdagManager::with_custom_topology_store(
+            genesis_hash,
+            k_max,
+            coloring_ghostdag_store.clone(),
+            relations.clone(),
+            headers_store.clone(),
+            reachability.clone(),
+            topology_ghostdag_store.clone(),
+        );
+
+        coloring_ghostdag_store.insert(genesis_hash, Arc::new(coloring_gd_manager.genesis_ghostdag_data())).unwrap();
 
         let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
 
