@@ -1,7 +1,6 @@
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, VecDeque},
-    iter::once,
     sync::{Arc, OnceLock},
 };
 
@@ -512,12 +511,9 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
                     // all parents here must already exist assuming topological sorting is honored
                     // so finding one that doesn't means an error in processing and must be diagnosed
-                    if let Some(&parent) = agreeing_parents
-                        .iter()
-                        .filter(|&&parent| !self.has(parent))
-                        .filter(|&&parent| tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
-                        .next()
-                    {
+                    if let Some(&parent) = agreeing_parents.iter().find(|&&parent| {
+                        !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip))
+                    }) {
                         last_known_tips
                             .iter()
                             .filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip))
@@ -614,6 +610,11 @@ pub trait SearchMode {
     /// Whether a child reached during the zone fill belongs to the zone: free search bounds by
     /// DAG ancestry of the conflict genesis, committed search by chain ancestry of the NCA
     fn child_in_zone<S: ReachabilityService>(nca: Self::Nca, root: Hash, reachability: &S, child: Hash) -> bool;
+
+    /// Whether a block belongs to the search region traversed back from the tips: free
+    /// search covers the entire zone past, committed search only the NCA's chain region
+    /// (the conflict genesis root itself is always part of the region)
+    fn in_region<S: ReachabilityService>(nca: Self::Nca, root: Hash, reachability: &S, hash: Hash) -> bool;
 }
 
 /// Unrestricted k-cluster search over the entire zone past the conflict genesis
@@ -637,6 +638,10 @@ impl SearchMode for FreeSearch {
     fn child_in_zone<S: ReachabilityService>((): Self::Nca, root: Hash, reachability: &S, child: Hash) -> bool {
         reachability.try_is_dag_ancestor_of(root, child).unwrap_or(false)
     }
+
+    fn in_region<S: ReachabilityService>((): Self::Nca, _: Hash, _: &S, _: Hash) -> bool {
+        true
+    }
 }
 
 impl SearchMode for CommittedSearch {
@@ -653,6 +658,10 @@ impl SearchMode for CommittedSearch {
 
     fn child_in_zone<S: ReachabilityService>(nca: Self::Nca, _: Hash, reachability: &S, child: Hash) -> bool {
         reachability.try_is_chain_ancestor_of(nca, child).unwrap_or(false)
+    }
+
+    fn in_region<S: ReachabilityService>(nca: Self::Nca, root: Hash, reachability: &S, hash: Hash) -> bool {
+        root == hash || reachability.is_chain_ancestor_of(nca, hash)
     }
 }
 
@@ -987,7 +996,9 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     where
         T: IntoIterator<Item = &'a Hash>,
     {
-        let mut queue: VecDeque<Hash> = VecDeque::from_iter(tips.into_iter().copied());
+        let mut queue: VecDeque<Hash> = VecDeque::from_iter(
+            tips.into_iter().copied().filter(|&tip| M::in_region(self.nca, self.root, &self.reachability_service, tip)),
+        );
         let mut visited = BlockHashSet::with_capacity(queue.len());
 
         let mut roots = Vec::with_capacity(queue.len());
@@ -997,7 +1008,9 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 continue;
             }
 
-            if !M::IS_FREE && !self.reachability_service.is_chain_ancestor_of(self.root, curr) {
+            // Out-of-region blocks reached from the tips are skipped together with
+            // their past, so the traversal never leaves the committed search region
+            if !M::in_region(self.nca, self.root, &self.reachability_service, curr) {
                 continue;
             }
 
@@ -1065,12 +1078,51 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 let selected_parent = if M::IS_FREE {
                     self.find_selected_parent(parents.iter())
                 } else {
-                    let mut agreeing_parents =
-                        parents.iter().filter(|&p| M::is_agreeing_parent(self.nca, current_hash, *p, &self.reachability_service));
-                    let first_agreeing = agreeing_parents.next().unwrap_or_else(|| {
-                        panic!("Expected at least one agreeing parent | current: {:#?} | parents: {:#?}", current_hash, parents)
-                    });
-                    self.find_selected_parent(once(first_agreeing).chain(agreeing_parents))
+                    let agreeing_parents: Vec<&Hash> = parents
+                        .iter()
+                        .filter(|&p| M::is_agreeing_parent(self.nca, current_hash, *p, &self.reachability_service))
+                        .collect();
+                    assert!(
+                        !agreeing_parents.is_empty(),
+                        "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
+                        current_hash,
+                        parents
+                    );
+
+                    // sanity checks - start
+                    // all parents here must already exist assuming topological sorting is honored
+                    // so finding one that doesn't means an error in processing and must be diagnosed
+                    if let Some(&parent) = agreeing_parents.iter().copied().find(|&parent| {
+                        !self.has(*parent) && tips.clone().any(|&tip| self.reachability_service.is_chain_ancestor_of(*parent, tip))
+                    }) {
+                        panic!(
+                            "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
+                            self.root,
+                            self.k,
+                            M::IS_FREE,
+                            last_known_tips,
+                            current_hash,
+                            parent,
+                            parents,
+                            tips.clone().copied().collect::<Vec<_>>()
+                        );
+                    }
+
+                    if !agreeing_parents.iter().any(|&parent| self.has(*parent)) {
+                        panic!(
+                            "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:?} | tips: {:?}",
+                            self.root,
+                            self.k,
+                            M::IS_FREE,
+                            last_known_tips,
+                            current_hash,
+                            agreeing_parents,
+                            tips.clone().copied().collect::<Vec<_>>()
+                        );
+                    }
+                    // sanity checks - end
+
+                    self.find_selected_parent(agreeing_parents)
                 };
 
                 let current_gd = self.k_colouring(parents.iter(), self.k, Some(selected_parent));
@@ -1235,9 +1287,10 @@ mod tests {
     /// F and W are tips (no records)
     ///
     /// TEST with tips = [F, W]:
-    /// - free_search=false: find_last_known_tips returns [D, E]
-    ///   (F→D,E; W→X,E but X skipped since not chain ancestor)
-    /// - free_search=true: find_last_known_tips returns [D, E, X]
+    /// - free_search=false with next_chain_ancestor = C: find_last_known_tips returns [E]
+    ///   (F's chain is F→E→C; D is in B's branch and W is out-of-zone entirely - both
+    ///   skipped on dequeue, so D and X are never reached)
+    /// - free_search=true with next_chain_ancestor = None: find_last_known_tips returns [D, E, X]
     ///   (F→D,E; W→X,E; all are DAG ancestors)
     #[test]
     fn test_find_last_known_tips_uses_correct_ancestry_type() {
@@ -1337,12 +1390,16 @@ mod tests {
         // Tips are F and W (no records yet)
         let tips = vec![hash_f, hash_w];
 
-        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips, None);
+        // Committed search is scoped by the nca argument: C covers F's chain
+        // (F→E→C - add_block selects E as F's selected parent by height tie) but not
+        // D (D→B→A, sibling branch) nor the foreign tip W (W→X→Y→Z→ORIGIN), so both
+        // are skipped on dequeue and D/X are never rooted
+        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips, Some(hash_c));
         let (roots_free, _) = manager_free.find_last_known_tips(&tips, None);
 
-        assert_eq!(roots_committed.len(), 2, "Committed should find D, E");
-        assert!(roots_committed.contains(&hash_d));
+        assert_eq!(roots_committed.len(), 1, "Committed (nca=C) should find only E");
         assert!(roots_committed.contains(&hash_e));
+        assert!(!roots_committed.contains(&hash_d), "D should not be in committed roots (not under nca=C)");
         assert!(!roots_committed.contains(&hash_x), "X should not be in committed roots");
 
         assert_eq!(roots_free.len(), 3, "Free search should find D, E, X");
@@ -1530,7 +1587,7 @@ mod tests {
         let manager_committed = ConflictZoneManagerNext::committed_search(
             0,
             hash_a,
-            hash_b, // any chain descendant of the root; unused by find_last_known_tips
+            hash_c, // NCA scopes the search to C's chain region, as in the slice-based test above
             dagknight_store.clone(),
             headers_store.clone(),
             relations_service.clone(),
@@ -1565,12 +1622,15 @@ mod tests {
 
         let tips = vec![hash_f, hash_w];
 
+        // Committed search is scoped to the NCA's region: C covers F's chain (F→E→C)
+        // but not D (D→B→A, sibling branch) nor the foreign tip W, so D and X are
+        // never rooted; free search covers the whole zone past
         let (roots_committed, _) = manager_committed.find_last_known_tips(&tips);
         let (roots_free, _) = manager_free.find_last_known_tips(&tips);
 
-        assert_eq!(roots_committed.len(), 2, "Committed should find D, E");
-        assert!(roots_committed.contains(&hash_d));
+        assert_eq!(roots_committed.len(), 1, "Committed (nca=C) should find only E");
         assert!(roots_committed.contains(&hash_e));
+        assert!(!roots_committed.contains(&hash_d), "D should not be in committed roots (not under nca=C)");
         assert!(!roots_committed.contains(&hash_x), "X should not be in committed roots");
 
         assert_eq!(roots_free.len(), 3, "Free search should find D, E, X");
@@ -1662,6 +1722,9 @@ mod tests {
         );
     }
 
+    /// (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+    type JsonTestBlock<SP = Hash> = (Hash, Vec<Hash>, Uint192, u32, u64, u64, SP);
+
     #[test]
     fn test_czm_lkt_correctness() {
         let mut reachability = MemoryReachabilityStore::new();
@@ -1695,7 +1758,7 @@ mod tests {
 
         let blocks = json_data["blocks"].as_array().expect("Blocks is not an array");
 
-        let test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash)> = blocks
+        let test_blocks: Vec<JsonTestBlock> = blocks
             .iter()
             .map(|block| {
                 let id = Hash::from_str(block["id"].as_str().unwrap()).unwrap();
@@ -1739,7 +1802,7 @@ mod tests {
         // let tips = vec![];
         println!("lkt base: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
         czm.fill_zone_data(
-            &vec![Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
+            &[Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
             Some(nca_2),
         );
         println!("lkt before nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
@@ -1768,7 +1831,7 @@ mod tests {
         let conflict_genesis = Hash::from_str(json_data["conflict_genesis"].as_str().unwrap()).unwrap();
 
         // (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
-        let mut test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Option<Hash>)> = json_data["blocks"]
+        let mut test_blocks: Vec<JsonTestBlock<Option<Hash>>> = json_data["blocks"]
             .as_array()
             .unwrap()
             .iter()
@@ -1899,9 +1962,9 @@ mod tests {
         C: DagknightStore + DagknightStoreReader,
         O: HeaderStoreReader,
         D: RelationsStoreReader,
-        R: ReachabilityStoreReader + Clone,
+        S: ReachabilityService,
     >(
-        czm: &ConflictZoneManager<C, O, D, R>,
+        czm: &ConflictZoneManager<C, O, D, S>,
         lkt_tips: &[Hash],
         zone_tips: &[Hash],
         nca: Hash,
