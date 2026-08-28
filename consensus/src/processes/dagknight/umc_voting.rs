@@ -25,8 +25,9 @@ pub trait ColoringReader {
 pub struct UmcVotingContext<'a> {
     /// The latest common chain ancestor of the zone (conflict genesis).
     pub conflict_genesis: Hash,
-    /// Tips of the subgroup being evaluated (virtual block conditioned on these).
-    pub subgroup: &'a [Hash],
+    /// A member of the subgroup being evaluated; the subgroup shares one next chain
+    /// ancestor above the conflict genesis, so a single member identifies it.
+    pub subgroup_member: &'a Hash,
     /// The k-coloring data of the virtual GD — head of the virtual GD chain.
     pub virtual_gd: &'a GhostdagData,
     /// The rank `k` under test.
@@ -167,7 +168,7 @@ pub mod test_fixtures {
         pub headers: Arc<MemoryHeaderStore>,
         pub reader: MemoryColoringReader,
         pub virtual_gd: Arc<GhostdagData>,
-        pub subgroup: Vec<Hash>,
+        pub subgroup_member: Hash,
         pub conflict_genesis: Hash,
         pub k: KType,
     }
@@ -230,7 +231,7 @@ pub mod test_fixtures {
                 headers,
                 reader,
                 virtual_gd,
-                subgroup: data.subgroup.iter().map(|&s| s.into()).collect(),
+                subgroup_member: data.subgroup[0].into(),
                 conflict_genesis: data.genesis.into(),
                 k: data.k,
             }
@@ -239,7 +240,7 @@ pub mod test_fixtures {
         pub fn context(&self) -> UmcVotingContext<'_> {
             UmcVotingContext {
                 conflict_genesis: self.conflict_genesis,
-                subgroup: &self.subgroup,
+                subgroup_member: &self.subgroup_member,
                 virtual_gd: &self.virtual_gd,
                 k: self.k,
                 coloring_reader: &self.reader,

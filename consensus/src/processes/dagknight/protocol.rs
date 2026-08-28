@@ -8,6 +8,7 @@ use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use smallvec::SmallVec;
+use std::iter::once;
 use std::ops::Deref;
 use std::{cell::Cell, collections::HashMap, sync::Arc};
 
@@ -25,7 +26,7 @@ use crate::{
     processes::{
         dagknight::{
             DagknightCounters, GroupMetadata,
-            manager::ConflictZoneManager,
+            manager::{ConflictZoneManager, ConflictZoneManagerNext},
             rank_search::RankSearcher,
             tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
             umc_cascade::SegmentTreeUmcVoter,
@@ -246,7 +247,13 @@ impl<
         conflict_zone_manager: &ConflictZoneManager<Arc<C>, Arc<O>, D, MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext {
+            conflict_genesis,
+            subgroup_member: &subgroup[0],
+            virtual_gd: &virtual_gd,
+            k,
+            coloring_reader: conflict_zone_manager,
+        };
         voter.vote(&ctx)
     }
 
@@ -264,7 +271,13 @@ impl<
             self.umc_persistence_store.clone(),
             self.reachability_service.clone(),
         );
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext {
+            conflict_genesis,
+            subgroup_member: &subgroup[0],
+            virtual_gd: &virtual_gd,
+            k,
+            coloring_reader: conflict_zone_manager,
+        };
         voter.vote(&ctx)
     }
 
@@ -547,9 +560,6 @@ impl<
         parents: &[Hash],
         agreement_grouping: &'a [Group],
     ) -> SmallVec<[GroupMetadataNext<'a>; 4]> {
-        // The full tip set of this conflict level, shared by every k evaluation
-        let all_tips: SmallVec<[Hash; 20]> = agreement_grouping.iter().map(|group| parents[group.parent as usize]).collect();
-
         // Groups failing a k evaluation are dropped from further consideration
         // (passing the UMC cascade is monotone in k)
         let mut survivors: SmallVec<[&'a [Group]; 10]> =
@@ -558,9 +568,13 @@ impl<
             let (next_survivors, best_groups): (SmallVec<_>, SmallVec<_>) = survivors
                 .iter()
                 .filter_map(|&subgroup| {
-                    let subgroup_hashes: SmallVec<[Hash; 20]> = subgroup.iter().map(|group| parents[group.parent as usize]).collect();
-                    self.select_parent_from_k_colouring(conflict_genesis, &subgroup_hashes, &all_tips, k)
-                        .map(|selected_parent| (subgroup, GroupMetadataNext { subgroup, k, selected_parent }))
+                    self.select_parent_from_k_colouring(
+                        conflict_genesis,
+                        subgroup.iter().map(|group| &parents[group.parent as usize]),
+                        agreement_grouping.iter().map(|group| &parents[group.parent as usize]),
+                        k,
+                    )
+                    .map(|selected_parent| (subgroup, GroupMetadataNext { subgroup, k, selected_parent }))
                 })
                 .unzip();
 
@@ -585,7 +599,6 @@ impl<
     ) -> usize {
         debug!("Winning groups had rank k = {}", subgroups[0].k);
         let mutual_k = subgroups[0].k;
-        let all_tips: SmallVec<[Hash; 20]> = agreement_grouping.iter().map(|group| parents[group.parent as usize]).collect();
 
         DagknightTieBreakerNext {
             dagknight_store: &*self.dagknight_store,
@@ -593,7 +606,13 @@ impl<
             relations_store: self.relations_store.clone(),
             reachability_service: self.reachability_service.clone(),
         }
-        .tie_break(conflict_genesis, &all_tips, subgroups, parents, mutual_k)
+        .tie_break(
+            conflict_genesis,
+            agreement_grouping.iter().map(|group| &parents[group.parent as usize]),
+            subgroups,
+            parents,
+            mutual_k,
+        )
     }
 
     /// Baseline UMC cascade voting: naive reference impl of paper Algorithm 6 (work-weighted),
@@ -603,13 +622,19 @@ impl<
     fn baseline_umc_cascade_voting(
         &self,
         conflict_genesis: Hash,
-        subgroup: &[Hash],
+        first_subgroup_member: &Hash,
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
+        conflict_zone_manager: &ConflictZoneManagerNext<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext {
+            conflict_genesis,
+            subgroup_member: first_subgroup_member,
+            virtual_gd: &virtual_gd,
+            k,
+            coloring_reader: conflict_zone_manager,
+        };
         voter.vote(&ctx)
     }
 
@@ -617,58 +642,81 @@ impl<
     fn umc_cascade_voting(
         &self,
         conflict_genesis: Hash,
-        subgroup: &[Hash],
+        first_subgroup_member: &Hash,
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
+        conflict_zone_manager: &ConflictZoneManagerNext<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = SegmentTreeUmcVoter::new(
             self.headers_store.clone(),
             self.umc_persistence_store.clone(),
             self.reachability_service.clone(),
         );
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext {
+            conflict_genesis,
+            subgroup_member: first_subgroup_member,
+            virtual_gd: &virtual_gd,
+            k,
+            coloring_reader: conflict_zone_manager,
+        };
         voter.vote(&ctx)
     }
 
     /// Applies a coloring to the conflict zone, and determines if the
     /// coloring represents a majority over "g" only (as opposed to full UMC)
     /// TODO[DK]: Implement full UMC cascade voting after coloring
-    fn select_parent_from_k_colouring(
+    fn select_parent_from_k_colouring<'a, P, T>(
         &self,
         conflict_genesis: Hash,
-        subgroup: &[Hash],
-        all_tips: &[Hash],
+        subgroup: P,
+        all_tips: T,
         k_to_check: KType,
-    ) -> Option<SortableBlock> {
+    ) -> Option<SortableBlock>
+    where
+        P: IntoIterator<Item = &'a Hash>,
+        P::IntoIter: Clone,
+        T: IntoIterator<Item = &'a Hash>,
+        T::IntoIter: Clone,
+    {
+        let subgroup = subgroup.into_iter();
+        // UMC voting only reads the subgroup's first member, so keep it alongside the iterator
+        let first_subgroup_member = *subgroup.clone().next().expect("subgroup must be non-empty");
+        let all_tips = all_tips.into_iter();
+
         let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
-        let conflict_zone_manager = ConflictZoneManager::new(
+
+        // Calculate the subgroup's next chain ancestor above conflict_genesis
+        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(first_subgroup_member, conflict_genesis);
+        let conflict_zone_manager = ConflictZoneManagerNext::committed_search(
             k_to_check,
             conflict_genesis,
+            subgroup_nca,
             self.dagknight_store.as_ref(),
             self.headers_store.as_ref(),
             relations_service,
             &self.reachability_service,
         );
-
-        // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(all_tips, Some(subgroup_nca));
+        conflict_zone_manager.fill_zone_data(all_tips.clone());
 
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
-        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
+        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup);
         let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
         let cascade_result =
-            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+            self.umc_cascade_voting(conflict_genesis, &first_subgroup_member, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
 
         #[cfg(feature = "baseline-debugging")]
         {
             // Compare baseline (per-blue recursive) against cascade (global virtual score)
             // These use different acceptance criteria and are not expected to always agree.
             // The baseline is Algorithm 6 from the paper; the cascade is the optimized implementation.
-            let baseline_result =
-                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+            let baseline_result = self.baseline_umc_cascade_voting(
+                conflict_genesis,
+                &first_subgroup_member,
+                virtual_gd.clone(),
+                k_to_check,
+                &conflict_zone_manager,
+            );
 
             if baseline_result.virtual_score != cascade_result.virtual_score {
                 if baseline_result.accepted != cascade_result.accepted {
@@ -759,27 +807,31 @@ impl<
 {
     /// Computes the free-search k-colouring reference cluster.
     ///
-    /// This is equivalent to `select_parent_from_k_colouring` but uses
-    /// `ConflictZoneManager::with_free_search` with `free_search = true`,
-    /// allowing unrestricted maximization of the k-cluster across all parents.
+    /// This is equivalent to `select_parent_from_k_colouring` but uses a
+    /// free-search conflict zone manager, allowing unrestricted maximization
+    /// of the k-cluster across all parents.
     ///
     /// Returns the blue set and chain backbone.
-    fn compute_reference_cluster(&self, conflict_genesis: Hash, all_tips: &[Hash], k: KType) -> ReferenceCluster {
+    fn compute_reference_cluster<'a, T>(&self, conflict_genesis: Hash, all_tips: T, k: KType) -> ReferenceCluster
+    where
+        T: IntoIterator<Item = &'a Hash>,
+        T::IntoIter: Clone,
+    {
+        let all_tips = all_tips.into_iter();
         let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
 
-        let conflict_zone_manager = ConflictZoneManager::with_free_search(
+        let conflict_zone_manager = ConflictZoneManagerNext::free_search(
             k,
             conflict_genesis,
             &self.dagknight_store,
             &self.headers_store,
             relations_service,
             &self.reachability_service,
-            true, // free_search = true
         );
 
-        conflict_zone_manager.fill_zone_data(all_tips, None); // free_search: NCA is None
+        conflict_zone_manager.fill_zone_data(all_tips.clone());
 
-        // Run k-colouring with free search — no custom selected parent is passed,
+        // Run k-colouring with free search: no custom selected parent is passed,
         // so the manager freely selects from all parents.
         let virtual_gd: GhostdagData = conflict_zone_manager.k_colouring(all_tips, k, None);
 
@@ -813,32 +865,40 @@ impl<
     /// Computes the k'-chain conditioned on the virtual block agreeing with a specific subgroup.
     ///
     /// Returns the chain blocks from virtual towards conflict_genesis (inclusive).
-    fn compute_subgroup_chain_blocks(
+    fn compute_subgroup_chain_blocks<'a, 'b, P, T>(
         &self,
         conflict_genesis: Hash,
-        group_tips: &[Hash],
-        all_tips: &[Hash],
+        group_tips: P,
+        all_tips: T,
         k_prime: KType,
-    ) -> SubgroupChainBlocks {
+    ) -> SubgroupChainBlocks
+    where
+        P: IntoIterator<Item = &'a Hash>,
+        T: IntoIterator<Item = &'b Hash>,
+        T::IntoIter: Clone,
+    {
         let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
 
-        // Committed (non-free-search) manager
-        let conflict_zone_manager = ConflictZoneManager::with_free_search(
+        let mut group_tips = group_tips.into_iter();
+        let first_tip = group_tips.next().expect("group must be non-empty");
+        let group_tips = once(first_tip).chain(group_tips);
+        let all_tips = all_tips.into_iter();
+
+        // Calculate the subgroup's next chain ancestor above conflict_genesis
+        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(*first_tip, conflict_genesis);
+        let conflict_zone_manager = ConflictZoneManagerNext::committed_search(
             k_prime,
             conflict_genesis,
+            subgroup_nca,
             &self.dagknight_store,
             &self.headers_store,
             relations_service,
             &self.reachability_service,
-            false, // free_search = false (committed)
         );
-
-        // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(group_tips[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(all_tips, Some(subgroup_nca));
+        conflict_zone_manager.fill_zone_data(all_tips.clone());
 
         // Condition virtual on the group: force selected parent from group_tips
-        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips.iter().copied());
+        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips);
         let virtual_gd: GhostdagData = conflict_zone_manager.k_colouring(all_tips, k_prime, Some(subgroup_virtual_sp));
 
         // Walk the chain from virtual's selected parent back to conflict_genesis
@@ -869,14 +929,19 @@ impl<
     /// Per Algorithm 4, C_i is the union over k' ∈ {⌊k/2⌋, ..., k} of all blocks B in
     /// the reference cluster F where |anticone(B) ∩ chain_{i,k'}| > k'. The conflict
     /// genesis is always included in C_i as a baseline witness.
-    fn compute_high_rank_witnesses(
+    fn compute_high_rank_witnesses<'a, 'b, P, T>(
         &self,
         conflict_genesis: Hash,
-        group_tips: &[Hash],
-        all_tips: &[Hash],
+        group_tips: P,
+        all_tips: T,
         f_cluster: &BlockHashSet,
         k: KType,
-    ) -> SortableBlock {
+    ) -> SortableBlock
+    where
+        P: IntoIterator<Item = &'a Hash>,
+        T: IntoIterator<Item = &'b Hash>,
+        T::IntoIter: Clone,
+    {
         let mut witness_block_data: SortableBlock =
             SortableBlock { hash: conflict_genesis, blue_work: self.headers_store.get_header(conflict_genesis).unwrap().blue_work };
 
@@ -902,26 +967,31 @@ impl<
     /// 1. Compute reference cluster F using free search at g(k) = floor(sqrt(k))
     /// 2. For each subgroup, compute C_i = high-rank witnesses against F
     /// 3. Select the subgroup whose max(C_i) is earliest (argmin by blue_work, ties by hash)
-    fn tie_break(
+    fn tie_break<'a, T>(
         &self,
         conflict_genesis: Hash,
-        all_tips: &[Hash],
+        all_tips: T,
         subgroups: &[GroupMetadataNext],
         parents: &[Hash],
         k: KType,
-    ) -> usize {
+    ) -> usize
+    where
+        T: IntoIterator<Item = &'a Hash>,
+        T::IntoIter: Clone,
+    {
+        let all_tips = all_tips.into_iter();
+
         // Step 1: Compute reference cluster F using free search with g(k) = floor(sqrt(k))
         let g_k = k.isqrt() as KType;
-        let ref_cluster = self.compute_reference_cluster(conflict_genesis, all_tips, g_k);
+        let ref_cluster = self.compute_reference_cluster(conflict_genesis, all_tips.clone(), g_k);
         let f_cluster = ref_cluster.blues;
 
         // Step 2: For each group P_i, compute C_i (high-rank witnesses)
         let mut group_scores: Vec<(usize, SortableBlock, Hash)> = Vec::with_capacity(subgroups.len());
 
         for (idx, group_metadata) in subgroups.iter().enumerate() {
-            let group_tips: SmallVec<[Hash; 20]> =
-                group_metadata.subgroup.iter().map(|group| parents[group.parent as usize]).collect();
-            let max_c_i = self.compute_high_rank_witnesses(conflict_genesis, &group_tips, all_tips, &f_cluster, k);
+            let group_tips = group_metadata.subgroup.iter().map(|group| &parents[group.parent as usize]);
+            let max_c_i = self.compute_high_rank_witnesses(conflict_genesis, group_tips, all_tips.clone(), &f_cluster, k);
 
             group_scores.push((idx, max_c_i, group_metadata.selected_parent.hash));
         }
