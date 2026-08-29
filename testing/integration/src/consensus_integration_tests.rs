@@ -296,7 +296,7 @@ async fn ghostdag_test() {
         for block in test.blocks.iter() {
             info!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);
-            let block_header = consensus.build_header_with_parents(block_id, strings_to_hashes(&block.parents));
+            let block_header = consensus.build_header_with_parents(block_id, strings_to_hashes(&block.parents), false);
 
             // Submit to consensus
             consensus.validate_and_insert_block(Block::from_header(block_header)).virtual_state_task.await.unwrap();
@@ -338,6 +338,11 @@ async fn ghostdag_test() {
 
         consensus.shutdown(wait_handles);
     }
+}
+
+#[tokio::test]
+async fn dagknight_test() {
+    // TODO[DK]: Add an actual e2e test with from a DAG fixture, similar to ghostdag_test above. Use is_dk_active = true for that
 }
 
 fn string_to_hash(s: &str) -> Hash {
@@ -1048,7 +1053,7 @@ async fn difficulty_test() {
         let block_time = block_time.unwrap_or_else(|| {
             consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block()
         });
-        let mut header = consensus.build_header_with_parents(new_unique(), parents);
+        let mut header = consensus.build_header_with_parents(new_unique(), parents, false);
         header.timestamp = block_time;
         consensus.validate_and_insert_block(Block::new(header.clone(), vec![])).virtual_state_task.await.unwrap();
         header
