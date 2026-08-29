@@ -1,7 +1,7 @@
 pub use super::{
     bps::{Bps, TenBps},
     constants::consensus::*,
-    genesis::{DEVNET_GENESIS, GENESIS, GenesisBlock, SIMNET_GENESIS, TESTNET_GENESIS},
+    genesis::{DEVNET_GENESIS, GENESIS, GenesisBlock, SIMNET_GENESIS, TESTNET_GENESIS, TESTNET13_GENESIS},
 };
 use crate::{
     BlockLevel, KType,
@@ -579,6 +579,7 @@ impl From<NetworkId> for Params {
             NetworkType::Mainnet => MAINNET_PARAMS,
             NetworkType::Testnet => match value.suffix {
                 Some(10) => TESTNET_PARAMS,
+                Some(13) => TESTNET13_PARAMS,
                 Some(x) => panic!("Testnet suffix {} is not supported", x),
                 None => panic!("Testnet suffix not provided"),
             },
@@ -715,6 +716,16 @@ pub const TESTNET_PARAMS: Params = Params {
     crescendo_activation: ForkActivation::new(88_657_000),
 
     dagknight_activation: ForkActivation::never(),
+};
+
+// The DAGKnight testnet: equivalent to TESTNET_PARAMS, with its own genesis, an empty DNS
+// seeders list (first iteration), DAGKnight enabled from genesis, and dedicated default ports
+pub const TESTNET13_PARAMS: Params = Params {
+    net: NetworkId::with_suffix(NetworkType::Testnet, 13),
+    genesis: TESTNET13_GENESIS,
+    dns_seeders: &[],
+    dagknight_activation: ForkActivation::always(),
+    ..TESTNET_PARAMS
 };
 
 pub const SIMNET_PARAMS: Params = Params {
