@@ -6,6 +6,9 @@
 mod rpc_core_mock;
 pub use rpc_core_mock::*;
 
+#[cfg(test)]
+mod account_remove;
+
 mod keys;
 pub use keys::*;
 
