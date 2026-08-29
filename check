@@ -64,3 +64,46 @@ do
         exit $status
     fi
 done
+
+# Compile the wasm32 test suites. These crates contain `#[cfg(target_arch =
+# "wasm32")] #[wasm_bindgen_test]` modules that are NOT built by the native
+# `cargo clippy --workspace --tests` above, nor by the wasm32 clippy passes
+# (which don't enable `--tests` for these crates). They are only exercised by
+# CI's `test-wasm32` job (`wasm-pack test --node`), so without this section a
+# wasm-only test break (e.g. the wasm-bindgen 0.2.x `into_abi()` ABI change)
+# reaches CI undetected. Keep this list in sync with the CI test-wasm32 job.
+declare -a wasm_test_crates=(
+    "kaspa-consensus-core"
+    "kaspa-addresses"
+    "kaspa-wallet-pskt"
+)
+
+for crate in "${wasm_test_crates[@]}"
+do
+    cargo clippy -p $crate --target wasm32-unknown-unknown --tests
+    status=$?
+    if [ $status -ne 0 ]; then
+        echo
+        echo "--> wasm32 test-suite check of $crate failed"
+        echo
+        exit $status
+    fi
+done
+
+# Same as above, for the wasm32 test suites that require the wasm32-sdk feature.
+declare -a wasm_test_crates_sdk=(
+    "kaspa-txscript"
+    "kaspa-consensus-client"
+)
+
+for crate in "${wasm_test_crates_sdk[@]}"
+do
+    cargo clippy -p $crate --target wasm32-unknown-unknown --tests --features wasm32-sdk
+    status=$?
+    if [ $status -ne 0 ]; then
+        echo
+        echo "--> wasm32 test-suite check of $crate (wasm32-sdk) failed"
+        echo
+        exit $status
+    fi
+done

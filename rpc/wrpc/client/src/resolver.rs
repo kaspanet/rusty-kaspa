@@ -104,6 +104,7 @@ impl Resolver {
     /// Create a new [`Resolver`] client with the specified list of resolver URLs and an optional `tls` flag.
     /// The `tls` flag can be used to enforce secure connection to the node.
     pub fn new(urls: Option<Vec<Arc<String>>>, tls: bool) -> Self {
+        crate::ensure_crypto_provider();
         Self { inner: Arc::new(Inner::new(urls, tls)) }
     }
 
