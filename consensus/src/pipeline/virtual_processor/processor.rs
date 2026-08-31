@@ -1172,6 +1172,11 @@ impl VirtualStateProcessor {
                 // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
                 warn!("Finality Violation Detected. Block {} violates finality and is ignored from Virtual chain.", candidate);
             }
+            // Same as GHOSTDAG sink search popping the heap: drop a rejected candidate
+            // before considering its parents. Leaving it in tip_set makes every parent
+            // look like a DAG ancestor of the current set, so genesis is never added
+            // and the loop retries the same UTXO-invalid tip forever.
+            tip_set.remove(&candidate);
             // PRUNE SAFETY: see comment within [`resolve_virtual`]
             let prune_guard = self.pruning_lock.blocking_read();
             for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
@@ -1182,6 +1187,7 @@ impl VirtualStateProcessor {
                 }
             }
             drop(prune_guard);
+            assert!(!tip_set.is_empty(), "sink search exhausted all candidates without a UTXO-valid sink");
         }
     }
 
