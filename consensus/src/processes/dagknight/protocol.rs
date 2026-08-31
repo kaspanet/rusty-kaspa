@@ -369,7 +369,7 @@ impl<
 
         // Calculate the subgroup's next chain ancestor above conflict_genesis
         let subgroup_nca = self.reachability_service.get_next_chain_ancestor(first_subgroup_member, conflict_genesis);
-        conflict_zone_manager.fill_zone_data(subgroup.clone(), Some(subgroup_nca));
+        conflict_zone_manager.fill_zone_data(subgroup.clone(), subgroup_nca);
 
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup);
@@ -501,7 +501,7 @@ impl<
             &self.reachability_service,
         );
 
-        conflict_zone_manager.fill_zone_data(all_tips.clone(), None);
+        conflict_zone_manager.fill_zone_data(all_tips.clone(), ());
 
         // Run k-colouring with free search: no custom selected parent is passed,
         // so the manager freely selects from all parents.
@@ -566,7 +566,7 @@ impl<
             relations_service,
             &self.reachability_service,
         );
-        conflict_zone_manager.fill_zone_data(all_tips.clone(), Some(subgroup_nca));
+        conflict_zone_manager.fill_zone_data(all_tips.clone(), subgroup_nca);
 
         // Condition virtual on the group: force selected parent from group_tips
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips);
