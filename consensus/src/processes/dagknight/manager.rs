@@ -515,8 +515,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                     if let Some(&parent) = agreeing_parents
                         .iter()
                         .filter(|&&parent| !self.has(parent))
-                        .filter(|&&parent| tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
-                        .next()
+                        .find(|&&parent| tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
                     {
                         last_known_tips
                             .iter()
@@ -612,6 +611,10 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::fs::File;
     use std::str::FromStr;
+
+    // JSON fixture rows: (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+    type ConflictLktTestBlock = (Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash);
+    type CapturedZoneTestBlock = (Hash, Vec<Hash>, Uint192, u32, u64, u64, Option<Hash>);
 
     #[test]
     fn test_k_colouring_lock_key_constructors() {
@@ -997,7 +1000,7 @@ mod tests {
 
         let blocks = json_data["blocks"].as_array().expect("Blocks is not an array");
 
-        let test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash)> = blocks
+        let test_blocks: Vec<ConflictLktTestBlock> = blocks
             .iter()
             .map(|block| {
                 let id = Hash::from_str(block["id"].as_str().unwrap()).unwrap();
@@ -1041,7 +1044,7 @@ mod tests {
         // let tips = vec![];
         println!("lkt base: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
         czm.fill_zone_data(
-            &vec![Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
+            &[Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
             Some(nca_2),
         );
         println!("lkt before nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
@@ -1070,7 +1073,7 @@ mod tests {
         let conflict_genesis = Hash::from_str(json_data["conflict_genesis"].as_str().unwrap()).unwrap();
 
         // (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
-        let mut test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Option<Hash>)> = json_data["blocks"]
+        let mut test_blocks: Vec<CapturedZoneTestBlock> = json_data["blocks"]
             .as_array()
             .unwrap()
             .iter()
