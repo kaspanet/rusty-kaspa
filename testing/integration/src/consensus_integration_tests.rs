@@ -774,11 +774,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
         }
     };
 
-    let mut config = Config::new(params);
+    // Goref JSON fixtures are GHOSTDAG-recorded headers. DK coloring can pick a
+    // different selected parent, so bits / DAA / blue_score would not match.
+    let mut config = ConfigBuilder::new(params).disable_dagknight();
     if proof_exists {
-        config.process_genesis = false;
+        config = config.skip_adding_genesis();
     }
-    let config = Arc::new(config);
+    let config = Arc::new(config.build());
 
     let tick_service = Arc::new(TickService::default());
     let (notification_send, notification_recv) = unbounded();

@@ -270,8 +270,7 @@ impl ConsensusStorage {
 
         // TODO[DK]: Small cache policy for dagknight data; this can be tuned via perf params later
         let dagknight_builder = PolicyBuilder::new().bytes_budget(scaled(5_000_000)).tracked_bytes();
-        // TODO[DK]: Use a config or ForkActivation to gate this
-        let dagknight_store = Some(Arc::new(DbDagknightStore::new(db.clone(), dagknight_builder.build())));
+        let dagknight_store = config.enable_dagknight.then(|| Arc::new(DbDagknightStore::new(db.clone(), dagknight_builder.build())));
         let umc_persistence_store = Arc::new(DbUmcCascadeStore::new(db.clone(), CachePolicy::Count(256)));
 
         Arc::new(Self {
