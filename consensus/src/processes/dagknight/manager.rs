@@ -407,9 +407,11 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 continue;
             }
 
+            // Committed search stays on the NCA chain when one is provided, otherwise
+            // on the conflict-genesis chain. Free search walks DAG ancestry (no skip).
             if !self.free_search
                 && self.root != curr
-                && !next_chain_ancestor.is_none_or(|nca| self.reachability_service.is_chain_ancestor_of(nca, curr))
+                && !self.reachability_service.is_chain_ancestor_of(next_chain_ancestor.unwrap_or(self.root), curr)
             {
                 continue;
             }
