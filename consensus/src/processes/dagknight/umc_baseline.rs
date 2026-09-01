@@ -40,12 +40,11 @@ impl<O: HeaderStoreReader + 'static, R: ReachabilityStoreReader + Clone> Baselin
 impl<O: HeaderStoreReader + 'static, R: ReachabilityStoreReader + Clone> UmcVoter for BaselineUmcVoter<O, R> {
     fn vote(&self, ctx: &UmcVotingContext<'_>) -> CascadeResult {
         let conflict_genesis = ctx.conflict_genesis;
-        let subgroup_member = ctx.subgroup_member;
         let virtual_gd = ctx.virtual_gd;
         let k = ctx.k;
         let coloring_reader = ctx.coloring_reader;
 
-        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(*subgroup_member, conflict_genesis);
+        let next_chain_ancestor_of_subgroup = *ctx.next_chain_ancestor;
 
         let mut blues = Vec::new();
         let mut reds = Vec::new();

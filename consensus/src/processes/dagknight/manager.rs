@@ -173,20 +173,20 @@ pub struct ConflictZoneManager<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader,
     D: RelationsStoreReader,
-    S: ReachabilityService,
-    M: SearchMode = CommittedSearch,
+    R: ReachabilityService,
+    S: SearchMode = CommittedSearch,
 > {
     k: KType,
     root: Hash,
     dagknight_store: C,
     headers_store: O,
-    relations_store: FutureIntersectRelations<D, S>,
-    reachability_service: S,
-    mode: PhantomData<M>,
+    relations_store: FutureIntersectRelations<D, R>,
+    reachability_service: R,
+    mode: PhantomData<S>,
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, S: ReachabilityService>
-    ConflictZoneManager<C, O, D, S, CommittedSearch>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityService>
+    ConflictZoneManager<C, O, D, R, CommittedSearch>
 {
     /// Creates a committed-search manager; its search methods scope the zone
     /// to the next chain ancestor supplied per call
@@ -195,15 +195,15 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         root: Hash,
         dagknight_store: C,
         headers_store: O,
-        relations_store: FutureIntersectRelations<D, S>,
-        reachability_service: S,
+        relations_store: FutureIntersectRelations<D, R>,
+        reachability_service: R,
     ) -> Self {
         Self { k, root, dagknight_store, headers_store, reachability_service, relations_store, mode: PhantomData }
     }
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, S: ReachabilityService>
-    ConflictZoneManager<C, O, D, S, FreeSearch>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityService>
+    ConflictZoneManager<C, O, D, R, FreeSearch>
 {
     /// Creates a free-search manager; the search is not bounded by any next chain ancestor
     pub fn free_search(
@@ -211,15 +211,15 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         root: Hash,
         dagknight_store: C,
         headers_store: O,
-        relations_store: FutureIntersectRelations<D, S>,
-        reachability_service: S,
+        relations_store: FutureIntersectRelations<D, R>,
+        reachability_service: R,
     ) -> Self {
         Self { k, root, dagknight_store, headers_store, reachability_service, relations_store, mode: PhantomData }
     }
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, S: ReachabilityService, M: SearchMode>
-    ConflictZoneManager<C, O, D, S, M>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityService, S: SearchMode>
+    ConflictZoneManager<C, O, D, R, S>
 {
     pub fn has(&self, pov_hash: Hash) -> bool {
         let key = self.get_key(pov_hash);
@@ -234,7 +234,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     }
 
     fn get_key(&self, pov_hash: Hash) -> DagknightKey {
-        DagknightKey::new(self.root, pov_hash, self.k, M::IS_FREE)
+        DagknightKey::new(self.root, pov_hash, self.k, S::IS_FREE)
     }
 
     pub fn get_blue_score(&self, pov_hash: Hash) -> Result<u64, StoreError> {
@@ -458,7 +458,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
             .unwrap()
             .hash;
 
-        if !M::IS_FREE {
+        if !S::IS_FREE {
             assert!(
                 self.reachability_service.is_chain_ancestor_of(self.root, selected_parent),
                 "conflict genesis {} not a chain ancestor of selected parent {}",
@@ -488,12 +488,12 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         }
     }
 
-    pub fn find_last_known_tips<'a, T>(&self, tips: T, nca: M::Nca) -> (Vec<Hash>, BlockHashSet)
+    pub fn find_last_known_tips<'a, T>(&self, tips: T, nca: S::Nca) -> (Vec<Hash>, BlockHashSet)
     where
         T: IntoIterator<Item = &'a Hash>,
     {
         let mut queue: VecDeque<Hash> = VecDeque::from_iter(
-            tips.into_iter().copied().filter(|&tip| M::in_region(nca, self.root, &self.reachability_service, tip)),
+            tips.into_iter().copied().filter(|&tip| S::in_region(nca, self.root, &self.reachability_service, tip)),
         );
         let mut visited = BlockHashSet::with_capacity(queue.len());
 
@@ -506,7 +506,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
             // Out-of-region blocks reached from the tips are skipped together with
             // their past, so the traversal never leaves the committed search region
-            if !M::in_region(nca, self.root, &self.reachability_service, curr) {
+            if !S::in_region(nca, self.root, &self.reachability_service, curr) {
                 continue;
             }
 
@@ -531,7 +531,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     // (whose chain must include `root`)
     //
     // Returns the conflict zone manager which gives access to the coloring data of the conflict zone
-    pub fn fill_zone_data<'a, T>(&self, tips: T, nca: M::Nca) -> BlockHashSet
+    pub fn fill_zone_data<'a, T>(&self, tips: T, nca: S::Nca) -> BlockHashSet
     where
         T: IntoIterator<Item = &'a Hash>,
         T::IntoIter: Clone,
@@ -539,7 +539,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         let tips = tips.into_iter();
 
         // Construct the lock key for this zone fill (validated per search mode)
-        let lock_key = M::lock_key(self.root, self.k, nca, &self.reachability_service);
+        let lock_key = S::lock_key(self.root, self.k, nca, &self.reachability_service);
 
         // Acquire the lock for this zone fill
         let locks = get_k_colouring_locks();
@@ -575,11 +575,11 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 let parents = &self.relations_store.get_parents(current_hash).unwrap();
 
                 // For free search, select from all parents; committed search only from agreeing parents
-                let selected_parent = if M::IS_FREE {
+                let selected_parent = if S::IS_FREE {
                     self.find_selected_parent(parents.iter())
                 } else {
                     let agreeing_parents: Vec<&Hash> =
-                        parents.iter().filter(|&p| M::is_agreeing_parent(nca, current_hash, *p, &self.reachability_service)).collect();
+                        parents.iter().filter(|&p| S::is_agreeing_parent(nca, current_hash, *p, &self.reachability_service)).collect();
                     assert!(
                         !agreeing_parents.is_empty(),
                         "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
@@ -597,7 +597,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                             "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
                             self.root,
                             self.k,
-                            M::IS_FREE,
+                            S::IS_FREE,
                             last_known_tips,
                             current_hash,
                             parent,
@@ -611,7 +611,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                             "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:?} | tips: {:?}",
                             self.root,
                             self.k,
-                            M::IS_FREE,
+                            S::IS_FREE,
                             last_known_tips,
                             current_hash,
                             agreeing_parents,
@@ -629,7 +629,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
             }
 
             for child in self.relations_store.get_children(current_hash).unwrap().read().iter().copied() {
-                if !M::child_in_zone(nca, self.root, &self.reachability_service, child) {
+                if !S::child_in_zone(nca, self.root, &self.reachability_service, child) {
                     continue;
                 }
                 topological_heap
@@ -644,8 +644,8 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     }
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, S: ReachabilityService, M: SearchMode>
-    ColoringReader for ConflictZoneManager<C, O, D, S, M>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityService, S: SearchMode>
+    ColoringReader for ConflictZoneManager<C, O, D, R, S>
 {
     fn get_coloring_data(&self, hash: Hash) -> Arc<GhostdagData> {
         self.get_data(hash).expect("zone coloring data missing for a chain block that was filled")
@@ -1274,13 +1274,13 @@ mod tests {
         C: DagknightStore + DagknightStoreReader,
         O: HeaderStoreReader,
         D: RelationsStoreReader,
-        S: ReachabilityService,
-        M: SearchMode,
+        R: ReachabilityService,
+        S: SearchMode,
     >(
-        czm: &ConflictZoneManager<C, O, D, S, M>,
+        czm: &ConflictZoneManager<C, O, D, R, S>,
         lkt_tips: &[Hash],
         zone_tips: &[Hash],
-        nca: M::Nca,
+        nca: S::Nca,
     ) -> (Vec<Hash>, Vec<Hash>) {
         (czm.find_last_known_tips(lkt_tips, nca).0, czm.find_last_known_tips(zone_tips, nca).0)
     }
