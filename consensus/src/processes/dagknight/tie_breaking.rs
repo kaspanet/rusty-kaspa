@@ -15,7 +15,7 @@ use crate::{
         },
     },
     processes::{
-        dagknight::{manager::ConflictZoneManager, protocol::GroupMetadata},
+        dagknight::{GroupMetadata, manager::ConflictZoneManager},
         ghostdag::ordering::SortableBlock,
         reachability::relations::FutureIntersectRelations,
     },
@@ -268,7 +268,7 @@ mod tests {
             relations::MemoryRelationsStore,
         },
         processes::{
-            dagknight::protocol::Group,
+            dagknight::Group,
             reachability::tests::{DagBlock, DagBuilder},
         },
     };

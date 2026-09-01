@@ -1,6 +1,11 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
+use kaspa_consensus_core::KType;
+use kaspa_hashes::Hash;
+
+use crate::processes::ghostdag::ordering::SortableBlock;
+
 mod appendable_segment_tree_api;
 mod appendable_segment_tree_impl;
 pub use appendable_segment_tree_api::{AppendableSegmentTreeApi, Bucket, bucket_for_score};
@@ -14,6 +19,26 @@ pub mod umc_baseline;
 pub mod umc_cascade;
 pub mod umc_cascade_persistence;
 pub mod umc_voting;
+
+/// A parent (index into the tips slice) paired with the chain ancestor it follows
+/// above the current conflict genesis; ordering by (common_ancestor, parent) keeps
+/// each agreement group contiguous within a sorted grouping
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Group {
+    pub common_ancestor: Hash,
+    pub parent: u16,
+}
+
+/// Ranking metadata for an agreement group: the group as a contiguous slice of the
+/// sorted agreement grouping, together with the winning k and the selected parent
+/// found for it. The subgroup is uniform in `common_ancestor` (the left part of
+/// each member), so the group's conflict genesis is read off the members instead
+/// of being duplicated here.
+pub struct GroupMetadata<'a> {
+    pub subgroup: &'a [Group],
+    pub k: KType,
+    pub selected_parent: SortableBlock,
+}
 
 /// UMC cascade voting performance counters.
 pub struct DagknightCounters {

@@ -23,7 +23,7 @@ use crate::{
     },
     processes::{
         dagknight::{
-            DagknightCounters,
+            DagknightCounters, Group, GroupMetadata,
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
             umc_cascade::SegmentTreeUmcVoter,
@@ -85,32 +85,6 @@ use crate::{
         3. switch GD/k-coloring to committed coloring
 */
 
-#[derive(Clone)]
-pub struct DagknightData {
-    pub selected_parent: Hash,               // The selected parent for this call
-    pub conflict_ordered_parents: Vec<Hash>, // The rest of the parents, ordered by conflict hierarchy (parents from latest/topmost conflicts first)
-}
-
-/// A parent (index into the tips slice) paired with the chain ancestor it follows
-/// above the current conflict genesis; ordering by (common_ancestor, parent) keeps
-/// each agreement group contiguous within a sorted grouping
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Group {
-    pub common_ancestor: Hash,
-    pub parent: u16,
-}
-
-/// Ranking metadata for an agreement group: the group as a contiguous slice of the
-/// sorted agreement grouping, together with the winning k and the selected parent
-/// found for it. The subgroup is uniform in `common_ancestor` (the left part of
-/// each member), so the group's conflict genesis is read off the members instead
-/// of being duplicated here.
-pub struct GroupMetadata<'a> {
-    pub subgroup: &'a [Group],
-    pub k: KType,
-    pub selected_parent: SortableBlock,
-}
-
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 #[derive(Clone)]
 pub struct DagknightExecutor<
@@ -127,6 +101,12 @@ pub struct DagknightExecutor<
     pub umc_persistence_store: Arc<E>,
     pub reachability_service: MTReachabilityService<R>,
     pub counters: Arc<DagknightCounters>,
+}
+
+#[derive(Clone)]
+pub struct DagknightData {
+    pub selected_parent: Hash,               // The selected parent for this call
+    pub conflict_ordered_parents: Vec<Hash>, // The rest of the parents, ordered by conflict hierarchy (parents from latest/topmost conflicts first)
 }
 
 impl<
