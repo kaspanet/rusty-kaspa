@@ -374,6 +374,18 @@ mod tests {
                 self.reachability_service.clone(),
             )
         }
+
+        /// Agreement groups for the given subgroup members: the parent index is derived
+        /// from the member's position in `parents` and the common ancestor from the chain
+        fn agreement_groups(&self, conflict_genesis: Hash, parents: &[Hash], members: &[Hash]) -> Vec<Group> {
+            members
+                .iter()
+                .map(|&member| Group {
+                    common_ancestor: self.reachability_service.get_next_chain_ancestor(member, conflict_genesis),
+                    parent: parents.iter().position(|&parent| parent == member).expect("member must be in parents") as u16,
+                })
+                .collect()
+        }
     }
 
     /// Verifies that `compute_subgroup_chain_blocks` follows the reachability store's chain
@@ -579,8 +591,8 @@ mod tests {
         let sp_d = SortableBlock { hash: dag.hash_d, blue_work: dag.headers_store.get_header(dag.hash_d).unwrap().blue_work };
 
         // Forward order: [X], [D]
-        let sg_x = [Group { common_ancestor: dag.hash_z, parent: 0 }];
-        let sg_d = [Group { common_ancestor: dag.hash_b, parent: 1 }];
+        let sg_x = dag.agreement_groups(dag.hash_a, &parents, &[dag.hash_x]);
+        let sg_d = dag.agreement_groups(dag.hash_a, &parents, &[dag.hash_d]);
         let subgroups_forward = vec![
             GroupMetadata { subgroup: &sg_x, k: mutual_k, selected_parent: sp_x.clone() },
             GroupMetadata { subgroup: &sg_d, k: mutual_k, selected_parent: sp_d.clone() },

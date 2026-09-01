@@ -118,6 +118,7 @@ impl<
 > DagknightExecutor<C, O, D, E, R>
 {
     /// Resolves the selected parent and conflict-ordered parents for the given block parents
+    // TODO[DK]: return the conflict-ordered parents as u16 indices into `parents` instead of collecting the hashes
     pub fn dagknight(&self, parents: &[Hash]) -> DagknightData {
         let data = self.dagknight_indices(parents);
         DagknightData {
@@ -247,6 +248,7 @@ impl<
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
+        // TODO[DK]: use references instead of clones once the store traits are implemented for &T
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
         let ctx = UmcVotingContext {
             conflict_genesis,
@@ -293,6 +295,7 @@ impl<
         debug!("Winning groups had rank k = {}", subgroups[0].k);
         let mutual_k = subgroups[0].k;
 
+        // TODO[DK]: use references for relations/reachability as well once the traits are implemented for &T
         DagknightTieBreaker::new(
             &*self.dagknight_store,
             &*self.headers_store,
