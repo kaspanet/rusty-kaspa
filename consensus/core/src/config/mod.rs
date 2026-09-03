@@ -74,11 +74,6 @@ pub struct Config {
 
     /// The number of days to keep data for
     pub retention_period_days: Option<f64>,
-
-    /// Enable DAGKNIGHT selected-parent / coloring. Off for GHOSTDAG-recorded
-    /// replay tests (goref JSON fixtures). Production on this branch keeps it on.
-    /// TODO[DK]: replace with ForkActivation when the activation height is defined.
-    pub enable_dagknight: bool,
 }
 
 impl Config {
@@ -108,7 +103,6 @@ impl Config {
             disable_upnp: false,
             ram_scale: 1.0,
             retention_period_days: None,
-            enable_dagknight: true,
         }
     }
 
@@ -183,11 +177,6 @@ impl ConfigBuilder {
 
     pub fn skip_adding_genesis(mut self) -> Self {
         self.config.process_genesis = false;
-        self
-    }
-
-    pub fn disable_dagknight(mut self) -> Self {
-        self.config.enable_dagknight = false;
         self
     }
 

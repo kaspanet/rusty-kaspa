@@ -774,13 +774,11 @@ async fn json_test(file_path: &str, concurrency: bool) {
         }
     };
 
-    // Goref JSON fixtures are GHOSTDAG-recorded headers. DK coloring can pick a
-    // different selected parent, so bits / DAA / blue_score would not match.
-    let mut config = ConfigBuilder::new(params).disable_dagknight();
+    let mut config = Config::new(params);
     if proof_exists {
-        config = config.skip_adding_genesis();
+        config.process_genesis = false;
     }
-    let config = Arc::new(config.build());
+    let config = Arc::new(config);
 
     let tick_service = Arc::new(TickService::default());
     let (notification_send, notification_recv) = unbounded();
@@ -1386,31 +1384,17 @@ async fn selected_chain_test() {
     }
     assert!(consensus.selected_chain_store.read().get_by_index(8).is_err());
 
-    // Merge 8 genesis children. GHOSTDAG treats 23 as higher blue work than the
-    // 8–14 chain and reorgs to genesis → 22 → 23 (tie-break picks 22). DAGKNIGHT
-    // ranks conflict groups among tips {6, 7, 14, 23} and can keep the original
-    // chain through 6, leaving 23 UTXO-pending. The store must match virtual.
+    // We now check a situation where there's a shorter selected chain (3 blocks) with more blue work
     for i in 15..23 {
         consensus.add_utxo_valid_block_with_parents(i.into(), vec![config.genesis.hash], vec![]).await.unwrap();
     }
-    let status_23 =
-        consensus.add_utxo_valid_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec(), vec![]).await.unwrap();
-    assert!(status_23.is_utxo_valid_or_pending(), "block 23 status: {status_23:?}");
+    consensus.add_utxo_valid_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec(), vec![]).await.unwrap();
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie-breaking rules.
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(2).unwrap(), 23.into());
+    assert!(consensus.selected_chain_store.read().get_by_index(3).is_err());
     assert_selected_chain_store_matches_virtual_chain(&consensus);
-    if config.enable_dagknight {
-        assert_eq!(consensus.get_sink(), 6.into());
-        for i in 1..7 {
-            assert_eq!(consensus.selected_chain_store.read().get_by_index(i).unwrap(), i.into());
-        }
-        assert!(consensus.selected_chain_store.read().get_by_index(7).is_err());
-    } else {
-        // GHOSTDAG tie-breaking: 23's selected parent is 22.
-        assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), 22.into());
-        assert_eq!(consensus.selected_chain_store.read().get_by_index(2).unwrap(), 23.into());
-        assert!(consensus.selected_chain_store.read().get_by_index(3).is_err());
-    }
 
     consensus.shutdown(wait_handles);
 }
@@ -2572,9 +2556,6 @@ async fn sighash_type_commitment_test() {
         ScriptBuilder::new().add_data(&signature).unwrap().add_data(&redeem_script).unwrap().drain()
     };
 
-    // Chain each signed tx so DAGKNIGHT coloring keeps the new block as sink.
-    // Sibling-of-genesis topology leaves later blocks UTXO-pending (not selected).
-    let mut parent = config.genesis.hash;
     let mut block_index: u64 = 0;
 
     // SIGHASH_ALL commits to every input and output. Signed transaction is accepted as-is.
@@ -2593,11 +2574,9 @@ async fn sighash_type_commitment_test() {
     let mut tx_all = MutableTransaction::from_tx(tx_all);
     let _ = consensus.validate_mempool_transaction(&mut tx_all, &TransactionValidationArgs::default());
     let tx_all = tx_all.tx.unwrap_or_clone();
-    let hash = (block_index + 1).into();
-    let status = consensus.add_utxo_valid_block_with_parents(hash, vec![parent], vec![tx_all]).await;
-    parent = hash;
+    let status = consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_all]).await;
     block_index += 1;
-    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {status:?}");
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 
     // SIGHASH_NONE commits to inputs only; outputs can be added after signing.
     let mut tx_none = Transaction::new(
@@ -2616,11 +2595,9 @@ async fn sighash_type_commitment_test() {
     let mut tx_none = MutableTransaction::from_tx(tx_none);
     let _ = consensus.validate_mempool_transaction(&mut tx_none, &TransactionValidationArgs::default());
     let tx_none = tx_none.tx.unwrap_or_clone();
-    let hash = (block_index + 1).into();
-    let status = consensus.add_utxo_valid_block_with_parents(hash, vec![parent], vec![tx_none]).await;
-    parent = hash;
+    let status = consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_none]).await;
     block_index += 1;
-    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {status:?}");
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 
     // SIGHASH_SINGLE commits input 0 to output 0 only; later outputs do not invalidate the signature.
     let mut tx_single = Transaction::new(
@@ -2639,11 +2616,10 @@ async fn sighash_type_commitment_test() {
     let mut tx_single = MutableTransaction::from_tx(tx_single);
     let _ = consensus.validate_mempool_transaction(&mut tx_single, &TransactionValidationArgs::default());
     let tx_single = tx_single.tx.unwrap_or_clone();
-    let hash = (block_index + 1).into();
-    let status = consensus.add_utxo_valid_block_with_parents(hash, vec![parent], vec![tx_single]).await;
-    parent = hash;
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_single]).await;
     block_index += 1;
-    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {status:?}");
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 
     // SIGHASH_ALL | ANYONECANPAY commits to this input and all outputs; adding inputs later remains valid.
     let mut tx_all_acp = Transaction::new(
@@ -2665,11 +2641,10 @@ async fn sighash_type_commitment_test() {
     let mut tx_all_acp = MutableTransaction::from_tx(tx_all_acp);
     let _ = consensus.validate_mempool_transaction(&mut tx_all_acp, &TransactionValidationArgs::default());
     let tx_all_acp = tx_all_acp.tx.unwrap_or_clone();
-    let hash = (block_index + 1).into();
-    let status = consensus.add_utxo_valid_block_with_parents(hash, vec![parent], vec![tx_all_acp]).await;
-    parent = hash;
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_all_acp]).await;
     block_index += 1;
-    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {status:?}");
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 
     // SIGHASH_NONE | ANYONECANPAY commits to this input only; outputs and additional inputs may be appended after signing.
     let mut tx_none_acp = Transaction::new(
@@ -2689,11 +2664,10 @@ async fn sighash_type_commitment_test() {
     let mut tx_none_acp = MutableTransaction::from_tx(tx_none_acp);
     let _ = consensus.validate_mempool_transaction(&mut tx_none_acp, &TransactionValidationArgs::default());
     let tx_none_acp = tx_none_acp.tx.unwrap_or_clone();
-    let hash = (block_index + 1).into();
-    let status = consensus.add_utxo_valid_block_with_parents(hash, vec![parent], vec![tx_none_acp]).await;
-    parent = hash;
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_none_acp]).await;
     block_index += 1;
-    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {status:?}");
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 
     // SIGHASH_SINGLE | ANYONECANPAY commits to this input and its matching output; other outputs and inputs are free to change.
     let mut tx_single_acp = Transaction::new(
@@ -2713,9 +2687,9 @@ async fn sighash_type_commitment_test() {
     let mut tx_single_acp = MutableTransaction::from_tx(tx_single_acp);
     let _ = consensus.validate_mempool_transaction(&mut tx_single_acp, &TransactionValidationArgs::default());
     let tx_single_acp = tx_single_acp.tx.unwrap_or_clone();
-    let hash = (block_index + 1).into();
-    let status = consensus.add_utxo_valid_block_with_parents(hash, vec![parent], vec![tx_single_acp]).await;
-    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {status:?}");
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_single_acp]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 }
 
 // Checks that pruning works and that we do not allow attaching a body to a pruned block

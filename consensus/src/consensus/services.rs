@@ -140,6 +140,7 @@ impl ConsensusServices {
             storage.topology_ghostdag_store.clone(),
         );
 
+        // TODO[DK]: Use a config or ForkActivation to gate this
         let dagknight_counters = Arc::<crate::processes::dagknight::DagknightCounters>::default();
         let dagknight_executor = storage.dagknight_store.as_ref().map(|dagknight_store| DagknightExecutor {
             genesis_hash: params.genesis.hash,
