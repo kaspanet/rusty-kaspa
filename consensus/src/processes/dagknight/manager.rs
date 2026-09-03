@@ -392,7 +392,20 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         }
     }
 
-    pub fn find_last_known_tips(&self, tips: &[Hash], next_chain_ancestor: Option<Hash>) -> (Vec<Hash>, BlockHashSet) {
+    /// Finds the known-colouring boundary blocks in the inclusive DAG past of `tips`.
+    ///
+    /// The traversal walks backward through blocks without stored DK colouring data for this (`root`, `k`, search mode)
+    /// context and stops each explored parent path at the first block for which such data exists.
+    ///
+    /// In free-search mode, `next_chain_ancestor` must be `None`. In committed-search mode, it must be `Some(nca)`, and the
+    /// traversal is restricted to the inclusive chain future of `nca`. The conflict genesis is exempt because it is the last
+    /// possible known boundary of the backward traversal.
+    ///
+    /// Returns the known boundary blocks and all visited blocks. The latter includes blocks rejected by committed-search
+    /// filtering.
+    pub fn find_known_ancestor_boundary_blocks(&self, tips: &[Hash], next_chain_ancestor: Option<Hash>) -> (Vec<Hash>, BlockHashSet) {
+        assert_eq!(self.free_search, next_chain_ancestor.is_none(), "free search expects no NCA. committed search expects an NCA");
+
         let mut visited = BlockHashSet::new();
         let mut queue: VecDeque<Hash> = VecDeque::from_iter(
             tips.iter()
@@ -400,13 +413,15 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 .copied(),
         );
 
-        let mut roots = vec![];
+        let mut known_boundary_blocks = vec![];
 
         while let Some(curr) = queue.pop_front() {
             if !visited.insert(curr) {
                 continue;
             }
 
+            // In committed search, prune blocks outside the subgroup's inclusive NCA chain future.
+            // Keep the conflict genesis as the last possible known boundary of the backward traversal.
             if !self.free_search
                 && self.root != curr
                 && !next_chain_ancestor.is_none_or(|nca| self.reachability_service.is_chain_ancestor_of(nca, curr))
@@ -415,7 +430,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
             }
 
             if self.has(curr) {
-                roots.push(curr);
+                known_boundary_blocks.push(curr);
             } else {
                 for &parent in self.relations_store.get_parents(curr).unwrap().iter() {
                     queue.push_back(parent);
@@ -423,7 +438,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
             }
         }
 
-        (roots, visited)
+        (known_boundary_blocks, visited)
     }
 
     // Calculates the rank of the subgroup over the region: <root, tips>
@@ -446,7 +461,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
             let nca = next_chain_ancestor.expect("committed_search expects Some(next_chain_ancestor)");
             // Assert NCA's selected parent is self.root (conflict_genesis)
             assert!(
-                self.reachability_service.is_chain_ancestor_of(self.root, next_chain_ancestor.unwrap()),
+                self.reachability_service.is_chain_ancestor_of(self.root, nca),
                 "conflict_genesis must be a chain ancestor of next_chain_ancestor"
             );
             KColouringLockKey::committed_search_key(self.root, self.k, nca)
@@ -457,13 +472,14 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         let lock_arc = locks.entry(lock_key).or_insert_with(|| Arc::new(RwLock::new(()))).clone();
         let _guard = lock_arc.write();
 
+        // populate dummy root to DKStore
         self.init_root();
 
-        let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips, next_chain_ancestor);
+        let (known_ancestor_boundary_blocks, visited_subdag) = self.find_known_ancestor_boundary_blocks(tips, next_chain_ancestor);
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
 
-        last_known_tips.iter().for_each(|current_root| {
+        known_ancestor_boundary_blocks.iter().for_each(|current_root| {
             topological_heap.push(Reverse(SortableBlock {
                 hash: *current_root,
                 blue_work: self.headers_store.get_header(*current_root).unwrap().blue_work,
@@ -518,22 +534,22 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                         .filter(|&&parent| tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
                         .next()
                     {
-                        last_known_tips
+                        known_ancestor_boundary_blocks
                             .iter()
-                            .filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip))
-                            .for_each(|&lk_tip| {
+                            .filter(|&&boundary_block| self.reachability_service.is_dag_ancestor_of(parent, boundary_block))
+                            .for_each(|&boundary_block| {
                                 println!(
-                                    "cg: {} | k: {} | fs: {} | nca: {:?} | parent {} is in the past of a last known tip {}",
-                                    self.root, self.k, self.free_search, next_chain_ancestor, parent, lk_tip
+                                    "cg: {} | k: {} | fs: {} | nca: {:?} | parent {} is in the past of known boundary block {}",
+                                    self.root, self.k, self.free_search, next_chain_ancestor, parent, boundary_block
                                 );
                             });
                         panic!(
-                            "cg: {} | k: {} | fs: {} | nca: {:?} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
+                            "cg: {} | k: {} | fs: {} | nca: {:?} | known_ancestor_boundary_blocks: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
                             self.root,
                             self.k,
                             self.free_search,
                             next_chain_ancestor_of_current,
-                            last_known_tips,
+                            known_ancestor_boundary_blocks,
                             current_hash,
                             parent,
                             parents,
@@ -543,12 +559,12 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
                     if !agreeing_parents.iter().any(|&parent| self.has(parent)) {
                         panic!(
-                            "cg: {} | k: {} | fs: {} | nca: {:?} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:#?} | tips: {:?}",
+                            "cg: {} | k: {} | fs: {} | nca: {:?} | known_ancestor_boundary_blocks: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:#?} | tips: {:?}",
                             self.root,
                             self.k,
                             self.free_search,
                             next_chain_ancestor_of_current,
-                            last_known_tips,
+                            known_ancestor_boundary_blocks,
                             current_hash,
                             agreeing_parents,
                             tips
@@ -697,43 +713,41 @@ mod tests {
         assert!(!map.contains_key(&key), "Lock should be cleaned up after all external references are dropped");
     }
 
-    /// Test that `find_last_known_tips` correctly uses chain ancestry (committed)
-    /// vs DAG ancestry (free_search) when traversing back from tips.
+    /// Test that `find_known_ancestor_boundary_blocks` correctly uses chain ancestry (committed) vs DAG ancestry (free
+    /// search) when traversing back from tips.
     ///
     /// DAG structure:
     ///
     ///         A <= B <= D -- F
-    ///          \       /
-    ///            \  /
+    ///          \           /
+    ///            \       /
     ///        Z <- C <= E -- W
-    ///         \    \   /
-    ///           \   \ /
+    ///         \    \      /
+    ///           \   \   /
     ///            Y <= X
     ///
     /// Selected parents:
     /// - A: ORIGIN, B: A, D: B, Z: ORIGIN
     /// - C: A (agrees with A), E: C
     /// - Y: Z, X: Y (X does NOT agree with A - its chain goes X→Y→Z→ORIGIN)
-    /// - F, W: tips (no selected parent yet)
+    /// - F, W: tips without colouring records
     ///
     /// Parents:
     /// - A:[ORIGIN], B:[A], D:[B], F:[D,E]
     /// - Z:[ORIGIN], C:[A,Z], E:[C], W:[X,E]
     /// - Y:[Z], X:[Y,C]
     ///
-    /// Chain ancestry from A: A→B→D, A→C→E
-    /// X is NOT a chain ancestor of A
+    /// Chain ancestry from A: A→B→D and A→C→E
+    /// A is not a chain ancestor of X
     ///
     /// Records filled for: A, B, C, D, E, Y, Z, X
     /// F and W are tips (no records)
     ///
     /// TEST with tips = [F, W]:
-    /// - free_search=false: find_last_known_tips returns [D, E]
-    ///   (F→D,E; W→X,E but X skipped since not chain ancestor)
-    /// - free_search=true: find_last_known_tips returns [D, E, X]
-    ///   (F→D,E; W→X,E; all are DAG ancestors)
+    /// - committed search returns [D, E];
+    /// - free search returns [D, E, X].
     #[test]
-    fn test_find_last_known_tips_uses_correct_ancestry_type() {
+    fn test_find_known_ancestor_boundary_blocks_respects_search_mode() {
         let hash_a: Hash = 1_u64.into(); // root
         let hash_b: Hash = 2_u64.into();
         let hash_d: Hash = 3_u64.into();
@@ -830,18 +844,18 @@ mod tests {
         // Tips are F and W (no records yet)
         let tips = vec![hash_f, hash_w];
 
-        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips, None);
-        let (roots_free, _) = manager_free.find_last_known_tips(&tips, None);
+        let (boundary_blocks_committed, _) = manager_committed.find_known_ancestor_boundary_blocks(&tips, None);
+        let (boundary_blocks_free, _) = manager_free.find_known_ancestor_boundary_blocks(&tips, None);
 
-        assert_eq!(roots_committed.len(), 2, "Committed should find D, E");
-        assert!(roots_committed.contains(&hash_d));
-        assert!(roots_committed.contains(&hash_e));
-        assert!(!roots_committed.contains(&hash_x), "X should not be in committed roots");
+        assert_eq!(boundary_blocks_committed.len(), 2, "Committed should find D, E");
+        assert!(boundary_blocks_committed.contains(&hash_d));
+        assert!(boundary_blocks_committed.contains(&hash_e));
+        assert!(!boundary_blocks_committed.contains(&hash_x), "X should not be in committed boundary blocks");
 
-        assert_eq!(roots_free.len(), 3, "Free search should find D, E, X");
-        assert!(roots_free.contains(&hash_d));
-        assert!(roots_free.contains(&hash_e));
-        assert!(roots_free.contains(&hash_x));
+        assert_eq!(boundary_blocks_free.len(), 3, "Free search should find D, E, X");
+        assert!(boundary_blocks_free.contains(&hash_d));
+        assert!(boundary_blocks_free.contains(&hash_e));
+        assert!(boundary_blocks_free.contains(&hash_x));
     }
 
     /// Test demonstrating the key difference between free_search and committed search.
@@ -1039,17 +1053,17 @@ mod tests {
             ConflictZoneManager::new(1, conflict_genesis, dagknight_store, headers_store.clone(), fir_relations, reachability_service);
 
         // let tips = vec![];
-        println!("lkt base: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
+        println!("boundary base: {:?}", czm.find_known_ancestor_boundary_blocks(&tips, Some(nca_2)).0);
         czm.fill_zone_data(
             &vec![Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
             Some(nca_2),
         );
-        println!("lkt before nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
+        println!("boundary before nca_1: {:?}", czm.find_known_ancestor_boundary_blocks(&tips, Some(nca_1)).0);
         czm.fill_zone_data(&tips, Some(nca_1));
-        println!("lkt after nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
-        println!("lkt before nca_2: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
+        println!("boundary after nca_1: {:?}", czm.find_known_ancestor_boundary_blocks(&tips, Some(nca_1)).0);
+        println!("boundary before nca_2: {:?}", czm.find_known_ancestor_boundary_blocks(&tips, Some(nca_2)).0);
         czm.fill_zone_data(&tips, Some(nca_2));
-        println!("lkt after nca_2: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
+        println!("boundary after nca_2: {:?}", czm.find_known_ancestor_boundary_blocks(&tips, Some(nca_2)).0);
     }
 
     #[test]
@@ -1181,23 +1195,23 @@ mod tests {
             println!("subgroup: nca={} tips={:?}", nca, group);
         }
 
-        let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
-        println!("lkt base: lkt={:?} zone={:?}", lkt, zone);
+        let (lkt_boundary, zone_boundary) = boundary_snapshot(&czm, &lkt_tips, &tips, nca_2);
+        println!("boundary base: lkt={:?} zone={:?}", lkt_boundary, zone_boundary);
 
         for (nca, subgroup) in &subgroups {
             println!("fill subgroup: nca={} tips={}", nca, subgroup.len());
             czm.fill_zone_data(subgroup, Some(*nca));
-            let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
-            println!("lkt after subgroup fill: lkt={:?} zone={:?}", lkt, zone);
+            let (lkt_boundary, zone_boundary) = boundary_snapshot(&czm, &lkt_tips, &tips, nca_2);
+            println!("boundary after subgroup fill: lkt={:?} zone={:?}", lkt_boundary, zone_boundary);
         }
 
         println!("fill all zone tips: nca={}", nca_2);
         czm.fill_zone_data(&tips, Some(nca_2));
-        let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
-        println!("lkt after all-tips fill: lkt={:?} zone={:?}", lkt, zone);
+        let (lkt_boundary, zone_boundary) = boundary_snapshot(&czm, &lkt_tips, &tips, nca_2);
+        println!("boundary after all-tips fill: lkt={:?} zone={:?}", lkt_boundary, zone_boundary);
     }
 
-    fn lkt_snapshot<
+    fn boundary_snapshot<
         C: DagknightStore + DagknightStoreReader,
         O: HeaderStoreReader,
         D: RelationsStoreReader,
@@ -1208,6 +1222,9 @@ mod tests {
         zone_tips: &[Hash],
         nca: Hash,
     ) -> (Vec<Hash>, Vec<Hash>) {
-        (czm.find_last_known_tips(lkt_tips, Some(nca)).0, czm.find_last_known_tips(zone_tips, Some(nca)).0)
+        (
+            czm.find_known_ancestor_boundary_blocks(lkt_tips, Some(nca)).0,
+            czm.find_known_ancestor_boundary_blocks(zone_tips, Some(nca)).0,
+        )
     }
 }

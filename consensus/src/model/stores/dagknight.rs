@@ -21,6 +21,10 @@ pub trait DagknightStoreReader {
     fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError>;
 }
 
+/// Identifies stored DK colouring data for `pov_hash` in a specific (`root_hash`, `k`, search mode) context.
+///
+/// The search mode is encoded by `free_search`.
+/// layout: `root_hash <32b> || k <BE_U16> || pov_hash <32b> || free_search <1b>`.
 #[derive(Clone)]
 pub struct DagknightKey {
     pub pov_hash: Hash,
