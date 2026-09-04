@@ -1,6 +1,7 @@
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, VecDeque},
+    marker::PhantomData,
     sync::{Arc, OnceLock},
 };
 
@@ -14,14 +15,16 @@ use kaspa_consensus_core::{
 use kaspa_database::prelude::{StoreError, StoreResultUnitExt};
 use kaspa_hashes::Hash;
 
+#[cfg(test)]
+use crate::model::services::reachability::MTReachabilityService;
+
 use crate::{
     model::{
-        services::reachability::{MTReachabilityService, ReachabilityService},
+        services::reachability::ReachabilityService,
         stores::{
             dagknight::{DagknightKey, DagknightStore, DagknightStoreReader},
             ghostdag::GhostdagData,
             headers::HeaderStoreReader,
-            reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
         },
     },
@@ -86,51 +89,138 @@ fn cleanup_k_colouring_locks() {
     }
 }
 
-// START Copied from GD Manager
-// NOTE: This is a copy from GD Manager right now, but the idea here is that it will update k_colouring to
-// be more in line with what the paper needs
-// Renamed from ghostdag_customized to k_colouring
+/// The search mode of a conflict zone colouring. Used as a type parameter of
+/// `ConflictZoneManager` so that free vs committed search differ in the manager
+/// type rather than in runtime options. The associated `Nca` type is the search
+/// bound the mode requires: free search carries none, committed search is scoped
+/// by the next chain ancestor passed per call.
+pub trait SearchMode {
+    /// Whether the search is unrestricted (free) or bounded to a subgroup region (committed)
+    const IS_FREE: bool;
+
+    /// The next chain ancestor bound: `()` for free search, `Hash` for committed search
+    type Nca: Copy;
+
+    /// The granular lock key for k-colouring operations under this search mode
+    fn lock_key<S: ReachabilityService>(root: Hash, k: KType, nca: Self::Nca, reachability: &S) -> KColouringLockKey;
+
+    /// Whether a parent of a zone block agrees with the subgroup region; only consulted for committed search
+    fn is_agreeing_parent<S: ReachabilityService>(nca: Self::Nca, current: Hash, parent: Hash, reachability: &S) -> bool;
+
+    /// Whether a child reached during the zone fill belongs to the zone: free search bounds by
+    /// DAG ancestry of the conflict genesis, committed search by chain ancestry of the NCA
+    fn child_in_zone<S: ReachabilityService>(nca: Self::Nca, root: Hash, reachability: &S, child: Hash) -> bool;
+
+    /// Whether a block belongs to the search region traversed back from the tips: free
+    /// search covers the entire zone past, committed search only the NCA's chain region
+    /// (the conflict genesis root itself is always part of the region)
+    fn in_region<S: ReachabilityService>(nca: Self::Nca, root: Hash, reachability: &S, hash: Hash) -> bool;
+}
+
+/// Unrestricted k-cluster search over the entire zone past the conflict genesis
+pub struct FreeSearch;
+
+/// Search committed to a specific subgroup, bounded by its next chain ancestor
+pub struct CommittedSearch;
+
+impl SearchMode for FreeSearch {
+    const IS_FREE: bool = true;
+    type Nca = ();
+
+    fn lock_key<S: ReachabilityService>(root: Hash, k: KType, _: Self::Nca, _: &S) -> KColouringLockKey {
+        KColouringLockKey::free_search_key(root, k)
+    }
+
+    fn is_agreeing_parent<S: ReachabilityService>(_: Self::Nca, _: Hash, _: Hash, _: &S) -> bool {
+        true
+    }
+
+    fn child_in_zone<S: ReachabilityService>(_: Self::Nca, root: Hash, reachability: &S, child: Hash) -> bool {
+        reachability.try_is_dag_ancestor_of(root, child).unwrap_or(false)
+    }
+
+    fn in_region<S: ReachabilityService>(_: Self::Nca, _: Hash, _: &S, _: Hash) -> bool {
+        true
+    }
+}
+
+impl SearchMode for CommittedSearch {
+    const IS_FREE: bool = false;
+    type Nca = Hash;
+
+    fn lock_key<S: ReachabilityService>(root: Hash, k: KType, nca: Hash, reachability: &S) -> KColouringLockKey {
+        assert!(reachability.is_chain_ancestor_of(root, nca), "conflict genesis must be a chain ancestor of next_chain_ancestor");
+        KColouringLockKey::committed_search_key(root, k, nca)
+    }
+
+    fn is_agreeing_parent<S: ReachabilityService>(nca: Hash, current: Hash, parent: Hash, reachability: &S) -> bool {
+        nca == current || reachability.is_chain_ancestor_of(nca, parent)
+    }
+
+    fn child_in_zone<S: ReachabilityService>(nca: Hash, _: Hash, reachability: &S, child: Hash) -> bool {
+        reachability.try_is_chain_ancestor_of(nca, child).unwrap_or(false)
+    }
+
+    fn in_region<S: ReachabilityService>(nca: Hash, root: Hash, reachability: &S, hash: Hash) -> bool {
+        root == hash || reachability.is_chain_ancestor_of(nca, hash)
+    }
+}
+
+/// Conflict zone manager with the search mode (free vs committed) encoded as a type
+/// parameter. Committed searches are scoped per call by the next chain ancestor
+/// passed to the search methods, so no NCA is held as struct state.
 pub struct ConflictZoneManager<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader,
     D: RelationsStoreReader,
-    R: ReachabilityStoreReader + Clone,
+    R: ReachabilityService,
+    S: SearchMode = CommittedSearch,
 > {
     k: KType,
     root: Hash,
-    free_search: bool,
-    dagknight_store: Arc<C>,
-    headers_store: Arc<O>,
-    relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
-    reachability_service: MTReachabilityService<R>,
+    dagknight_store: C,
+    headers_store: O,
+    relations_store: FutureIntersectRelations<D, R>,
+    reachability_service: R,
+    mode: PhantomData<S>,
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityStoreReader + Clone>
-    ConflictZoneManager<C, O, D, R>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityService>
+    ConflictZoneManager<C, O, D, R, CommittedSearch>
 {
-    pub fn new(
+    /// Creates a committed-search manager; its search methods scope the zone
+    /// to the next chain ancestor supplied per call
+    pub fn committed_search(
         k: KType,
         root: Hash,
-        dagknight_store: Arc<C>,
-        headers_store: Arc<O>,
-        relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
-        reachability_service: MTReachabilityService<R>,
+        dagknight_store: C,
+        headers_store: O,
+        relations_store: FutureIntersectRelations<D, R>,
+        reachability_service: R,
     ) -> Self {
-        Self { k, root, free_search: false, dagknight_store, headers_store, reachability_service, relations_store }
+        Self { k, root, dagknight_store, headers_store, reachability_service, relations_store, mode: PhantomData }
     }
+}
 
-    pub fn with_free_search(
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityService>
+    ConflictZoneManager<C, O, D, R, FreeSearch>
+{
+    /// Creates a free-search manager; the search is not bounded by any next chain ancestor
+    pub fn free_search(
         k: KType,
         root: Hash,
-        dagknight_store: Arc<C>,
-        headers_store: Arc<O>,
-        relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
-        reachability_service: MTReachabilityService<R>,
-        free_search: bool,
+        dagknight_store: C,
+        headers_store: O,
+        relations_store: FutureIntersectRelations<D, R>,
+        reachability_service: R,
     ) -> Self {
-        Self { k, root, free_search, dagknight_store, headers_store, reachability_service, relations_store }
+        Self { k, root, dagknight_store, headers_store, reachability_service, relations_store, mode: PhantomData }
     }
+}
 
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityService, S: SearchMode>
+    ConflictZoneManager<C, O, D, R, S>
+{
     pub fn has(&self, pov_hash: Hash) -> bool {
         let key = self.get_key(pov_hash);
 
@@ -144,7 +234,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     }
 
     fn get_key(&self, pov_hash: Hash) -> DagknightKey {
-        DagknightKey::new(self.root, pov_hash, self.k, self.free_search)
+        DagknightKey::new(self.root, pov_hash, self.k, S::IS_FREE)
     }
 
     pub fn get_blue_score(&self, pov_hash: Hash) -> Result<u64, StoreError> {
@@ -177,11 +267,16 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         self.dagknight_store.get_data(key)
     }
 
-    pub fn k_colouring(&self, parents: &[Hash], k: KType, custom_selected_parent: Option<Hash>) -> GhostdagData {
-        assert!(!parents.is_empty(), "genesis must be added via a call to init");
+    pub fn k_colouring<'a, P>(&self, parents: P, k: KType, custom_selected_parent: Option<Hash>) -> GhostdagData
+    where
+        P: IntoIterator<Item = &'a Hash>,
+        P::IntoIter: Clone,
+    {
+        let parents = parents.into_iter();
+        assert!(parents.clone().next().is_some(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
-        let selected_parent = custom_selected_parent.unwrap_or(self.find_selected_parent(parents.iter().copied()));
+        let selected_parent = custom_selected_parent.unwrap_or_else(|| self.find_selected_parent(parents.clone()));
         // Handle the special case of origin children first
         if selected_parent.is_origin() {
             // ORIGIN is always a single parent so both blue score and work should remain zero
@@ -286,10 +381,6 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                 return *size;
             }
 
-            // if current_selected_parent == self.genesis_hash || current_selected_parent == blockhash::ORIGIN {
-            //     panic!("block {block} is not in blue set of the given context");
-            // }
-
             current_blues_anticone_sizes = self.get_blues_anticone_sizes(current_selected_parent).unwrap();
             current_selected_parent = self.get_selected_parent(current_selected_parent).unwrap();
         }
@@ -342,27 +433,32 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         sorted_blocks
     }
 
-    pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> Vec<Hash> {
+    pub fn ordered_mergeset_without_selected_parent<'a>(
+        &self,
+        selected_parent: Hash,
+        parents: impl IntoIterator<Item = &'a Hash>,
+    ) -> Vec<Hash> {
         self.sort_blocks(self.unordered_mergeset_without_selected_parent(selected_parent, parents))
     }
 
-    pub fn unordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> BlockHashSet {
-        unordered_mergeset_without_selected_parent(&self.relations_store, &self.reachability_service, selected_parent, parents)
+    pub fn unordered_mergeset_without_selected_parent<'a>(
+        &self,
+        selected_parent: Hash,
+        parents: impl IntoIterator<Item = &'a Hash>,
+    ) -> BlockHashSet {
+        let parents: Vec<Hash> = parents.into_iter().copied().collect();
+        unordered_mergeset_without_selected_parent(&self.relations_store, &self.reachability_service, selected_parent, &parents)
     }
 
-    pub fn is_free_search(&self) -> bool {
-        self.free_search
-    }
-
-    pub fn find_selected_parent(&self, parents: impl IntoIterator<Item = Hash>) -> Hash {
+    pub fn find_selected_parent<'a>(&self, parents: impl IntoIterator<Item = &'a Hash>) -> Hash {
         let selected_parent = parents
             .into_iter()
-            .filter_map(|parent| self.get_blue_work(parent).map(|blue_work| SortableBlock { hash: parent, blue_work }).ok())
+            .filter_map(|&parent| self.get_blue_work(parent).map(|blue_work| SortableBlock { hash: parent, blue_work }).ok())
             .max()
             .unwrap()
             .hash;
 
-        if !self.free_search {
+        if !S::IS_FREE {
             assert!(
                 self.reachability_service.is_chain_ancestor_of(self.root, selected_parent),
                 "conflict genesis {} not a chain ancestor of selected parent {}",
@@ -392,33 +488,33 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
         }
     }
 
-    pub fn find_last_known_tips(&self, tips: &[Hash], next_chain_ancestor: Option<Hash>) -> (Vec<Hash>, BlockHashSet) {
-        let mut visited = BlockHashSet::new();
+    pub fn find_last_known_tips<'a, T>(&self, tips: T, nca: S::Nca) -> (Vec<Hash>, BlockHashSet)
+    where
+        T: IntoIterator<Item = &'a Hash>,
+    {
         let mut queue: VecDeque<Hash> = VecDeque::from_iter(
-            tips.iter()
-                .filter(|&&t| next_chain_ancestor.is_none_or(|nca| self.reachability_service.is_chain_ancestor_of(nca, t)))
-                .copied(),
+            tips.into_iter().copied().filter(|&tip| S::in_region(nca, self.root, &self.reachability_service, tip)),
         );
+        let mut visited = BlockHashSet::with_capacity(queue.len());
 
-        let mut roots = vec![];
+        let mut roots = Vec::with_capacity(queue.len());
 
         while let Some(curr) = queue.pop_front() {
             if !visited.insert(curr) {
                 continue;
             }
 
-            if !self.free_search
-                && self.root != curr
-                && !next_chain_ancestor.is_none_or(|nca| self.reachability_service.is_chain_ancestor_of(nca, curr))
-            {
+            // Out-of-region blocks reached from the tips are skipped together with
+            // their past, so the traversal never leaves the committed search region
+            if !S::in_region(nca, self.root, &self.reachability_service, curr) {
                 continue;
             }
 
             if self.has(curr) {
                 roots.push(curr);
             } else {
-                for &parent in self.relations_store.get_parents(curr).unwrap().iter() {
-                    queue.push_back(parent);
+                for parent in self.relations_store.get_parents(curr).unwrap().iter() {
+                    queue.push_back(*parent);
                 }
             }
         }
@@ -428,38 +524,31 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
     // Calculates the rank of the subgroup over the region: <root, tips>
     // root = conflict genesis
-    // subgroup = the current subgroup
     // tips = all tips in this conflict. part of which is the subgroup
     //
-    // `next_chain_ancestor`:
-    //   - If `free_search` is true, this must be `None` (asserted).
-    //   - If `free_search` is false, this must be `Some(nca)` where `nca` is a block whose selected
-    //     parent is `root` (asserted). This bounds the zone fill to the subgroup's region.
+    // `nca` is the search bound typed by the mode: free search carries none,
+    // committed search takes the next chain ancestor scoping its subgroup region
+    // (whose chain must include `root`)
     //
     // Returns the conflict zone manager which gives access to the coloring data of the conflict zone
-    pub fn fill_zone_data(&self, tips: &[Hash], next_chain_ancestor: Option<Hash>) -> BlockHashSet {
-        // Construct lock key and validate parameters
-        let lock_key = if self.free_search {
-            assert!(next_chain_ancestor.is_none(), "free_search expects None for next_chain_ancestor");
-            KColouringLockKey::free_search_key(self.root, self.k)
-        } else {
-            let nca = next_chain_ancestor.expect("committed_search expects Some(next_chain_ancestor)");
-            // Assert NCA's selected parent is self.root (conflict_genesis)
-            assert!(
-                self.reachability_service.is_chain_ancestor_of(self.root, next_chain_ancestor.unwrap()),
-                "conflict_genesis must be a chain ancestor of next_chain_ancestor"
-            );
-            KColouringLockKey::committed_search_key(self.root, self.k, nca)
-        };
+    pub fn fill_zone_data<'a, T>(&self, tips: T, nca: S::Nca) -> BlockHashSet
+    where
+        T: IntoIterator<Item = &'a Hash>,
+        T::IntoIter: Clone,
+    {
+        let tips = tips.into_iter();
 
-        // Acquire lock for this zone fill
+        // Construct the lock key for this zone fill (validated per search mode)
+        let lock_key = S::lock_key(self.root, self.k, nca, &self.reachability_service);
+
+        // Acquire the lock for this zone fill
         let locks = get_k_colouring_locks();
         let lock_arc = locks.entry(lock_key).or_insert_with(|| Arc::new(RwLock::new(()))).clone();
         let _guard = lock_arc.write();
 
         self.init_root();
 
-        let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips, next_chain_ancestor);
+        let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips.clone(), nca);
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
 
@@ -472,37 +561,25 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
         let mut visited = BlockHashSet::new();
 
-        loop {
-            let Some(current) = topological_heap.pop() else {
-                break;
-            };
+        while let Some(current) = topological_heap.pop() {
             let current_hash = current.0.hash;
             if !visited.insert(current_hash) {
                 continue;
             }
 
-            if !self.reachability_service.is_dag_ancestor_of_any(current_hash, &mut tips.iter().copied()) {
+            if !self.reachability_service.is_dag_ancestor_of_any(current_hash, &mut tips.clone().copied()) {
                 continue;
             }
 
             if !self.has(current_hash) {
                 let parents = &self.relations_store.get_parents(current_hash).unwrap();
 
-                // For free_search, select from all parents; for committed search, only from agreeing parents
-                let selected_parent = if self.free_search {
-                    self.find_selected_parent(parents.iter().copied())
+                // For free search, select from all parents; committed search only from agreeing parents
+                let selected_parent = if S::IS_FREE {
+                    self.find_selected_parent(parents.iter())
                 } else {
-                    let next_chain_ancestor_of_current = next_chain_ancestor.unwrap();
-                    let agreeing_parents = parents
-                        .iter()
-                        .copied()
-                        .filter(|&p| {
-                            next_chain_ancestor_of_current == current_hash
-                                || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
-                        })
-                        .collect::<Vec<_>>();
-
-                    // sanity checks - start
+                    let agreeing_parents: Vec<&Hash> =
+                        parents.iter().filter(|&p| S::is_agreeing_parent(nca, current_hash, *p, &self.reachability_service)).collect();
                     assert!(
                         !agreeing_parents.is_empty(),
                         "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
@@ -510,68 +587,49 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
                         parents
                     );
 
+                    // sanity checks - start
                     // all parents here must already exist assuming topological sorting is honored
                     // so finding one that doesn't means an error in processing and must be diagnosed
-                    if let Some(&parent) = agreeing_parents
-                        .iter()
-                        .filter(|&&parent| !self.has(parent))
-                        .filter(|&&parent| tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
-                        .next()
-                    {
-                        last_known_tips
-                            .iter()
-                            .filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip))
-                            .for_each(|&lk_tip| {
-                                println!(
-                                    "cg: {} | k: {} | fs: {} | nca: {:?} | parent {} is in the past of a last known tip {}",
-                                    self.root, self.k, self.free_search, next_chain_ancestor, parent, lk_tip
-                                );
-                            });
+                    if let Some(&parent) = agreeing_parents.iter().copied().find(|&parent| {
+                        !self.has(*parent) && tips.clone().any(|&tip| self.reachability_service.is_chain_ancestor_of(*parent, tip))
+                    }) {
                         panic!(
-                            "cg: {} | k: {} | fs: {} | nca: {:?} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
+                            "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
                             self.root,
                             self.k,
-                            self.free_search,
-                            next_chain_ancestor_of_current,
+                            S::IS_FREE,
                             last_known_tips,
                             current_hash,
                             parent,
                             parents,
-                            tips
+                            tips.clone().copied().collect::<Vec<_>>()
                         );
-                    };
+                    }
 
-                    if !agreeing_parents.iter().any(|&parent| self.has(parent)) {
+                    if !agreeing_parents.iter().any(|&parent| self.has(*parent)) {
                         panic!(
-                            "cg: {} | k: {} | fs: {} | nca: {:?} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:#?} | tips: {:?}",
+                            "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:?} | tips: {:?}",
                             self.root,
                             self.k,
-                            self.free_search,
-                            next_chain_ancestor_of_current,
+                            S::IS_FREE,
                             last_known_tips,
                             current_hash,
                             agreeing_parents,
-                            tips
+                            tips.clone().copied().collect::<Vec<_>>()
                         );
                     }
                     // sanity checks - end
 
-                    self.find_selected_parent(agreeing_parents.iter().copied())
+                    self.find_selected_parent(agreeing_parents)
                 };
 
-                let current_gd = self.k_colouring(parents, self.k, Some(selected_parent));
+                let current_gd = self.k_colouring(parents.iter(), self.k, Some(selected_parent));
 
                 self.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
             }
 
             for child in self.relations_store.get_children(current_hash).unwrap().read().iter().copied() {
-                // For free_search, use DAG ancestry; for committed search, use chain ancestry
-                let is_in_zone = if self.free_search {
-                    self.reachability_service.try_is_dag_ancestor_of(self.root, child).unwrap_or(false)
-                } else {
-                    self.reachability_service.try_is_chain_ancestor_of(next_chain_ancestor.unwrap(), child).unwrap_or(false)
-                };
-                if !is_in_zone {
+                if !S::child_in_zone(nca, self.root, &self.reachability_service, child) {
                     continue;
                 }
                 topological_heap
@@ -584,11 +642,10 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
         visited_subdag
     }
-    // END Copied from GD Manager
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityStoreReader + Clone>
-    ColoringReader for ConflictZoneManager<C, O, D, R>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityService, S: SearchMode>
+    ColoringReader for ConflictZoneManager<C, O, D, R, S>
 {
     fn get_coloring_data(&self, hash: Hash) -> Arc<GhostdagData> {
         self.get_data(hash).expect("zone coloring data missing for a chain block that was filled")
@@ -728,9 +785,10 @@ mod tests {
     /// F and W are tips (no records)
     ///
     /// TEST with tips = [F, W]:
-    /// - free_search=false: find_last_known_tips returns [D, E]
-    ///   (F→D,E; W→X,E but X skipped since not chain ancestor)
-    /// - free_search=true: find_last_known_tips returns [D, E, X]
+    /// - committed search with nca = C: find_last_known_tips returns [E]
+    ///   (F's chain is F→E→C; D is in B's branch and W is out-of-zone entirely - both
+    ///   skipped on dequeue, so D and X are never reached)
+    /// - free search: find_last_known_tips returns [D, E, X]
     ///   (F→D,E; W→X,E; all are DAG ancestors)
     #[test]
     fn test_find_last_known_tips_uses_correct_ancestry_type() {
@@ -789,7 +847,7 @@ mod tests {
         let relations_service = FutureIntersectRelations::new(relations.clone(), reachability_service.clone(), hash_a);
 
         // Create both managers sharing the same stores
-        let manager_committed = ConflictZoneManager::new(
+        let manager_committed = ConflictZoneManager::committed_search(
             0,
             hash_a,
             dagknight_store.clone(),
@@ -798,14 +856,13 @@ mod tests {
             reachability_service.clone(),
         );
 
-        let manager_free = ConflictZoneManager::with_free_search(
+        let manager_free = ConflictZoneManager::free_search(
             0,
             hash_a,
             dagknight_store.clone(),
             headers_store.clone(),
             relations_service,
             reachability_service,
-            true,
         );
 
         // Initialize root and fill records for all blocks except tips F and W
@@ -830,12 +887,16 @@ mod tests {
         // Tips are F and W (no records yet)
         let tips = vec![hash_f, hash_w];
 
-        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips, None);
-        let (roots_free, _) = manager_free.find_last_known_tips(&tips, None);
+        // Committed search is scoped by the NCA: C covers F's chain
+        // (F→E→C - add_block selects E as F's selected parent by height tie) but not
+        // D (D→B→A, sibling branch) nor the foreign tip W (W→X→Y→Z→ORIGIN), so both
+        // are skipped on dequeue and D/X are never rooted
+        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips, hash_c);
+        let (roots_free, _) = manager_free.find_last_known_tips(&tips, ());
 
-        assert_eq!(roots_committed.len(), 2, "Committed should find D, E");
-        assert!(roots_committed.contains(&hash_d));
+        assert_eq!(roots_committed.len(), 1, "Committed (nca=C) should find only E");
         assert!(roots_committed.contains(&hash_e));
+        assert!(!roots_committed.contains(&hash_d), "D should not be in committed roots (not under nca=C)");
         assert!(!roots_committed.contains(&hash_x), "X should not be in committed roots");
 
         assert_eq!(roots_free.len(), 3, "Free search should find D, E, X");
@@ -918,8 +979,8 @@ mod tests {
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
         let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), hash_a);
 
-        // Create committed manager (free_search = false)
-        let manager_committed = ConflictZoneManager::new(
+        // Create committed manager scoped to Z's region (Z's chain includes hash_a, the conflict genesis)
+        let manager_committed = ConflictZoneManager::committed_search(
             0,
             hash_a,
             dagknight_store.clone(),
@@ -928,17 +989,9 @@ mod tests {
             reachability_service.clone(),
         );
 
-        // Create free search manager (free_search = true)
-        let manager_free = ConflictZoneManager::with_free_search(
-            0,
-            hash_a,
-            dagknight_store,
-            headers_store,
-            relations_service,
-            reachability_service,
-            true,
-        );
-        assert!(manager_free.is_free_search(), "Manager should have free_search=true");
+        // Create free search manager
+        let manager_free =
+            ConflictZoneManager::free_search(0, hash_a, dagknight_store, headers_store, relations_service, reachability_service);
 
         // Pre-populate the store with blocks (simulating that they were already processed)
         // For committed search
@@ -946,10 +999,8 @@ mod tests {
 
         // Now fill zone data
         let tips = vec![hash_x, hash_d];
-        // For committed search, NCA is hash_z (whose selected parent is hash_a, the conflict genesis)
-        manager_committed.fill_zone_data(&tips, Some(hash_z));
-        // For free search, NCA is None
-        manager_free.fill_zone_data(&tips, None);
+        manager_committed.fill_zone_data(&tips, hash_z);
+        manager_free.fill_zone_data(&tips, ());
 
         // Get X's selected parent from both managers
         let committed_sp = manager_committed.get_selected_parent(hash_x).unwrap();
@@ -963,6 +1014,9 @@ mod tests {
             "In free search, X's selected parent should be C (selected from all parents, wins by higher work)"
         );
     }
+
+    /// (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+    type JsonTestBlock<SP = Hash> = (Hash, Vec<Hash>, Uint192, u32, u64, u64, SP);
 
     #[test]
     fn test_czm_lkt_correctness() {
@@ -997,7 +1051,7 @@ mod tests {
 
         let blocks = json_data["blocks"].as_array().expect("Blocks is not an array");
 
-        let test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash)> = blocks
+        let test_blocks: Vec<JsonTestBlock> = blocks
             .iter()
             .map(|block| {
                 let id = Hash::from_str(block["id"].as_str().unwrap()).unwrap();
@@ -1035,21 +1089,30 @@ mod tests {
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
         let fir_relations = FutureIntersectRelations::new(relations, reachability_service.clone(), conflict_genesis);
 
-        let czm =
-            ConflictZoneManager::new(1, conflict_genesis, dagknight_store, headers_store.clone(), fir_relations, reachability_service);
+        // Managers scoped per NCA, sharing the same stores
+        let mk_czm = || {
+            ConflictZoneManager::committed_search(
+                1,
+                conflict_genesis,
+                dagknight_store.clone(),
+                headers_store.clone(),
+                fir_relations.clone(),
+                reachability_service.clone(),
+            )
+        };
+        let czm_nca_1 = mk_czm();
+        let czm_nca_2 = mk_czm();
 
         // let tips = vec![];
-        println!("lkt base: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
-        czm.fill_zone_data(
-            &vec![Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
-            Some(nca_2),
-        );
-        println!("lkt before nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
-        czm.fill_zone_data(&tips, Some(nca_1));
-        println!("lkt after nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
-        println!("lkt before nca_2: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
-        czm.fill_zone_data(&tips, Some(nca_2));
-        println!("lkt after nca_2: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
+        println!("lkt base: {:?}", czm_nca_2.find_last_known_tips(&tips, nca_2).0);
+        czm_nca_2
+            .fill_zone_data(&[Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()], nca_2);
+        println!("lkt before nca_1: {:?}", czm_nca_1.find_last_known_tips(&tips, nca_1).0);
+        czm_nca_1.fill_zone_data(&tips, nca_1);
+        println!("lkt after nca_1: {:?}", czm_nca_1.find_last_known_tips(&tips, nca_1).0);
+        println!("lkt before nca_2: {:?}", czm_nca_2.find_last_known_tips(&tips, nca_2).0);
+        czm_nca_2.fill_zone_data(&tips, nca_2);
+        println!("lkt after nca_2: {:?}", czm_nca_2.find_last_known_tips(&tips, nca_2).0);
     }
 
     #[test]
@@ -1070,7 +1133,7 @@ mod tests {
         let conflict_genesis = Hash::from_str(json_data["conflict_genesis"].as_str().unwrap()).unwrap();
 
         // (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
-        let mut test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Option<Hash>)> = json_data["blocks"]
+        let mut test_blocks: Vec<JsonTestBlock<Option<Hash>>> = json_data["blocks"]
             .as_array()
             .unwrap()
             .iter()
@@ -1147,8 +1210,17 @@ mod tests {
         let nca_service = reachability_service.clone();
         let fir_relations = FutureIntersectRelations::new(relations, reachability_service.clone(), conflict_genesis);
 
-        let czm =
-            ConflictZoneManager::new(5, conflict_genesis, dagknight_store, headers_store.clone(), fir_relations, reachability_service);
+        // Managers scoped per NCA, sharing the same stores
+        let mk_czm = || {
+            ConflictZoneManager::committed_search(
+                5,
+                conflict_genesis,
+                dagknight_store.clone(),
+                headers_store.clone(),
+                fir_relations.clone(),
+                reachability_service.clone(),
+            )
+        };
 
         // The captured last-known tips; their LCA is the conflict genesis
         let lkt_tips: Vec<Hash> = [
@@ -1167,6 +1239,7 @@ mod tests {
 
         // NCA of the single-tip (6fe29520…) zone subgroup
         let nca_2 = Hash::from_str("551db5c4501097ecc608815ac50b72c483d41d85419a2d82d48afab2b26ba325").unwrap();
+        let czm_nca_2 = mk_czm();
 
         // Group the LKTs by NCA w.r.t. their LCA (= conflict genesis), as in protocol.rs
         let mut subgroups: Vec<(Hash, Vec<Hash>)> = Vec::new();
@@ -1181,19 +1254,19 @@ mod tests {
             println!("subgroup: nca={} tips={:?}", nca, group);
         }
 
-        let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
+        let (lkt, zone) = lkt_snapshot(&czm_nca_2, &lkt_tips, &tips, nca_2);
         println!("lkt base: lkt={:?} zone={:?}", lkt, zone);
 
         for (nca, subgroup) in &subgroups {
             println!("fill subgroup: nca={} tips={}", nca, subgroup.len());
-            czm.fill_zone_data(subgroup, Some(*nca));
-            let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
+            czm_nca_2.fill_zone_data(subgroup, *nca);
+            let (lkt, zone) = lkt_snapshot(&czm_nca_2, &lkt_tips, &tips, nca_2);
             println!("lkt after subgroup fill: lkt={:?} zone={:?}", lkt, zone);
         }
 
         println!("fill all zone tips: nca={}", nca_2);
-        czm.fill_zone_data(&tips, Some(nca_2));
-        let (lkt, zone) = lkt_snapshot(&czm, &lkt_tips, &tips, nca_2);
+        czm_nca_2.fill_zone_data(&tips, nca_2);
+        let (lkt, zone) = lkt_snapshot(&czm_nca_2, &lkt_tips, &tips, nca_2);
         println!("lkt after all-tips fill: lkt={:?} zone={:?}", lkt, zone);
     }
 
@@ -1201,13 +1274,14 @@ mod tests {
         C: DagknightStore + DagknightStoreReader,
         O: HeaderStoreReader,
         D: RelationsStoreReader,
-        R: ReachabilityStoreReader + Clone,
+        R: ReachabilityService,
+        S: SearchMode,
     >(
-        czm: &ConflictZoneManager<C, O, D, R>,
+        czm: &ConflictZoneManager<C, O, D, R, S>,
         lkt_tips: &[Hash],
         zone_tips: &[Hash],
-        nca: Hash,
+        nca: S::Nca,
     ) -> (Vec<Hash>, Vec<Hash>) {
-        (czm.find_last_known_tips(lkt_tips, Some(nca)).0, czm.find_last_known_tips(zone_tips, Some(nca)).0)
+        (czm.find_last_known_tips(lkt_tips, nca).0, czm.find_last_known_tips(zone_tips, nca).0)
     }
 }

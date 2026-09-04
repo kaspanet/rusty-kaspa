@@ -1,33 +1,31 @@
-use std::{cell::Cell, collections::HashMap, sync::Arc};
-
-use itertools::Itertools;
-use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
-use kaspa_core::debug;
-use kaspa_hashes::Hash;
-use parking_lot::RwLock;
-
+use crate::processes::dagknight::tie_breaking::DagknightTieBreaker;
 #[cfg(feature = "baseline-debugging")]
 use crate::processes::dagknight::umc_baseline::BaselineUmcVoter;
 use crate::processes::dagknight::umc_voting::{UmcVoter, UmcVotingContext};
+use itertools::Itertools;
+use kaspa_consensus_core::KType;
+use kaspa_core::debug;
+use kaspa_hashes::Hash;
+use smallvec::SmallVec;
+use std::ops::Deref;
+use std::sync::Arc;
 
 use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            children::ChildrenStore,
             dagknight::{DagknightStore, DagknightStoreReader},
             ghostdag::GhostdagData,
             headers::HeaderStoreReader,
-            reachability::{MemoryReachabilityStore, ReachabilityStore, ReachabilityStoreReader},
-            relations::{MemoryRelationsStore, RelationsStore, RelationsStoreReader},
+            reachability::ReachabilityStoreReader,
+            relations::RelationsStoreReader,
         },
     },
     processes::{
         dagknight::{
-            DagknightCounters, GroupMetadata,
+            DagknightCounters, Group, GroupMetadata,
             manager::ConflictZoneManager,
             rank_search::RankSearcher,
-            tie_breaking::{DagknightTieBreaker, TieBreakContext, TieBreaker},
             umc_cascade::SegmentTreeUmcVoter,
             umc_cascade_persistence::{UmcCascadeStore, UmcCascadeStoreReader},
             umc_voting::CascadeResult,
@@ -99,7 +97,7 @@ pub struct DagknightExecutor<
     pub genesis_hash: Hash,
     pub dagknight_store: Arc<C>,
     pub headers_store: Arc<O>,
-    pub relations_store: Arc<RwLock<D>>,
+    pub relations_store: D,
     pub umc_persistence_store: Arc<E>,
     pub reachability_service: MTReachabilityService<R>,
     pub counters: Arc<DagknightCounters>,
@@ -119,7 +117,23 @@ impl<
     R: ReachabilityStoreReader + Clone,
 > DagknightExecutor<C, O, D, E, R>
 {
+    /// Resolves the selected parent and conflict-ordered parents for the given block parents
+    // TODO[DK]: return the conflict-ordered parents as u16 indices into `parents` instead of collecting the hashes
     pub fn dagknight(&self, parents: &[Hash]) -> DagknightData {
+        let data = self.dagknight_indices(parents);
+        DagknightData {
+            selected_parent: parents[data.selected_parent as usize],
+            conflict_ordered_parents: data
+                .reverse_conflict_ordered_parents
+                .iter()
+                .rev()
+                .map(|&parent| parents[parent as usize])
+                .collect(),
+        }
+    }
+
+    // TODO[DK]: accept slice with unique values so we don't need to verify it again
+    fn dagknight_indices(&self, parents: &[Hash]) -> DagknightDataIndices {
         /*
             input: a set of block parents
             output: the selected parent + incremental metadata
@@ -137,100 +151,89 @@ impl<
                 4. Tie-breaking rule
                 5. Cascade voting -- requires most thought for making incremental
         */
-
-        // g = find LCCA
-        let mut conflict_genesis = self.common_chain_ancestor(parents);
-        let mut curr_subgroup = Arc::new(parents.iter().unique().copied().collect_vec());
-        let mut conflict_ordered_parents = vec![];
-        debug!("conflict_genesis: {:#?}", conflict_genesis);
-
-        while curr_subgroup.len() > 1 {
-            let agreement_grouping: HashMap<Hash, Arc<Vec<Hash>>> = curr_subgroup
-                .iter()
-                .copied()
-                .into_group_map_by(|&parent| self.reachability_service.get_next_chain_ancestor(parent, conflict_genesis))
-                .into_iter()
-                .map(|(k, v)| (k, Arc::new(v)))
-                .collect();
-
-            // Shortcut condition to avoid doing unnecessary work
-            if agreement_grouping.len() == 1 {
-                // There is exactly one group, we don't rank anymore.
-                let (_, subgroup) = agreement_grouping.iter().next().unwrap();
-                curr_subgroup = subgroup.clone();
-                // Deduplication via `.unique()` may have reduced curr_subgroup to a single
-                // element (e.g., [T1, T1] -> [T1]). In that case we're done.
-                if curr_subgroup.len() <= 1 {
-                    break;
+        assert!(parents.len() <= u16::MAX as usize);
+        // Duplicate parents always land in one group and can never be split apart
+        let mut curr_subgroup: SmallVec<[u16; 20]> = (0..parents.len() as u16).unique_by(|&parent| parents[parent as usize]).collect();
+        let mut conflict_ordered_parents: SmallVec<[u16; 20]> = SmallVec::with_capacity(parents.len());
+        loop {
+            curr_subgroup = match core::mem::take(&mut curr_subgroup).deref() {
+                [sp] => {
+                    // Returned in natural push order (bottom-most conflicts first) so consumers can
+                    // reverse-iterate to walk parents from latest/topmost conflicts first
+                    debug!("dk::sp: {} | reverse_conflict_ordered_parents: {:?}", sp, conflict_ordered_parents);
+                    return DagknightDataIndices { selected_parent: *sp, reverse_conflict_ordered_parents: conflict_ordered_parents };
                 }
-                let next_conflict_genesis = self.common_chain_ancestor(&curr_subgroup);
-                assert_ne!(
-                    next_conflict_genesis, conflict_genesis,
-                    "Expected the conflict genesis to change after skipping a level of the conflict hierarchy but got {}",
-                    conflict_genesis
-                );
-                conflict_genesis = next_conflict_genesis;
-                continue;
+                curr_subgroup => {
+                    // g = find the LCCA of the current subgroup -- the genesis of this conflict level
+                    let conflict_genesis = self.common_chain_ancestor(parents, curr_subgroup);
+                    debug!("conflict_genesis: {:#}", conflict_genesis);
+
+                    // Split the subgroup by the chain ancestor each parent follows above `conflict_genesis`;
+                    // parents within each group agree about the conflict zone induced by `conflict_genesis`
+                    let mut agreement_grouping: SmallVec<[Group; 10]> = curr_subgroup
+                        .iter()
+                        .map(|&parent| Group {
+                            common_ancestor: self
+                                .reachability_service
+                                .get_next_chain_ancestor(parents[parent as usize], conflict_genesis),
+                            parent,
+                        })
+                        .collect();
+                    agreement_grouping.sort_unstable();
+
+                    if agreement_grouping.iter().map(|group| &group.common_ancestor).all_equal() {
+                        // There is exactly one group, we don't rank; the loop head re-derives the
+                        // conflict genesis from this same subgroup to skip to the next level
+                        agreement_grouping.into_iter().map(|group| group.parent).collect()
+                    } else {
+                        // Pick a "winner" among these subgroups
+                        let best_groups = self.rank(conflict_genesis, parents, &agreement_grouping);
+
+                        // Multiple best groups (same winning k) are resolved by a tie-breaking rule
+                        let winner: &GroupMetadata = if best_groups.len() > 1 {
+                            &best_groups[self.tie_breaking(conflict_genesis, parents, &agreement_grouping, &best_groups)]
+                        } else {
+                            best_groups.first().expect("rank should return at least one best group")
+                        };
+
+                        // The winners continue as the next subgroup; the losers join the conflict-ordered parents
+                        let winning_ancestor = winner.subgroup[0].common_ancestor;
+                        agreement_grouping
+                            .iter()
+                            .filter(|group| group.common_ancestor != winning_ancestor)
+                            .for_each(|group| conflict_ordered_parents.push(group.parent));
+                        winner.subgroup.iter().map(|group| group.parent).collect()
+                    }
+                }
             }
-
-            // Pick a "winner" among these subgroups
-            let (winning_conflict_genesis, winning_subgroup) = {
-                let best_groups = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
-
-                #[allow(clippy::style)]
-                let final_winner = if best_groups.len() > 1 {
-                    self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups)
-                } else {
-                    let single_winner = best_groups.into_iter().next().expect("best_groups should be non-empty after filtering");
-                    (single_winner.conflict_genesis, single_winner.subgroup)
-                };
-
-                // This will always be Some since curr_subgroup.len() > 1 and thus there is at least one subgroup
-                final_winner
-            };
-
-            // Add the non-winners to the ordered parents
-            agreement_grouping.iter().for_each(|(&conflict_genesis, subgroup)| {
-                // TODO[DK]: Asserting here that order of the non-winning parents within a conflict hierarchy doesn't matter
-                if conflict_genesis != winning_conflict_genesis {
-                    conflict_ordered_parents.extend(subgroup.as_ref().iter().copied());
-                }
-            });
-
-            curr_subgroup = winning_subgroup;
-            // Skip to the top-most new common chain ancestor:
-            conflict_genesis = self.common_chain_ancestor(&curr_subgroup);
         }
-        assert_eq!(1, curr_subgroup.len(), "Expected dagknight to have only a single parent at the end");
-
-        conflict_ordered_parents.reverse();
-
-        debug!("dk::sp: {} | conflict_ordered_parents: {:?}", curr_subgroup[0], conflict_ordered_parents);
-
-        DagknightData { selected_parent: curr_subgroup[0], conflict_ordered_parents }
     }
 
-    fn common_chain_ancestor(&self, parents: &[Hash]) -> Hash {
+    /// Finds the latest common chain ancestor of the given subgroup (indices into `parents`),
+    /// serving as the genesis of the conflict level the caller is about to resolve
+    fn common_chain_ancestor(&self, parents: &[Hash], subgroup: &[u16]) -> Hash {
+        // TODO: DK
         /*
            Notes:
-               - ignore parents not agreeing on the pruning point as a chain block
+               - ignore/exclude/make-lose parents not agreeing on the pruning point as a chain block
                - optimize for shortest path
                - optimize with index
         */
 
-        let start = parents[0];
+        let start = parents[subgroup[0] as usize];
 
         if start == self.genesis_hash {
             return self.genesis_hash;
         }
 
         for cb in self.reachability_service.default_backward_chain_iterator(start).skip(1) {
-            if self.reachability_service.is_chain_ancestor_of_all(cb, &parents[1..]) {
+            if self.reachability_service.is_chain_ancestor_of_all(cb, subgroup.iter().skip(1).map(|&parent| &parents[parent as usize]))
+            {
                 return cb;
             }
         }
 
-        panic!("")
+        unreachable!()
     }
 
     /// Baseline UMC cascade voting: naive reference impl of paper Algorithm 6 (work-weighted),
@@ -240,13 +243,20 @@ impl<
     fn baseline_umc_cascade_voting(
         &self,
         conflict_genesis: Hash,
-        subgroup: &[Hash],
+        next_chain_ancestor: &Hash,
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+        conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
+        // TODO[DK]: use references instead of clones once the store traits are implemented for &T
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext {
+            conflict_genesis,
+            next_chain_ancestor,
+            virtual_gd: &virtual_gd,
+            k,
+            coloring_reader: conflict_zone_manager,
+        };
         voter.vote(&ctx)
     }
 
@@ -254,122 +264,139 @@ impl<
     fn umc_cascade_voting(
         &self,
         conflict_genesis: Hash,
-        subgroup: &[Hash],
+        next_chain_ancestor: &Hash,
         virtual_gd: GhostdagData,
         k: KType,
-        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
+        conflict_zone_manager: &ConflictZoneManager<&C, &O, &D, &MTReachabilityService<R>>,
     ) -> CascadeResult {
         let voter = SegmentTreeUmcVoter::new(
             self.headers_store.clone(),
             self.umc_persistence_store.clone(),
             self.reachability_service.clone(),
         );
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext {
+            conflict_genesis,
+            next_chain_ancestor,
+            virtual_gd: &virtual_gd,
+            k,
+            coloring_reader: conflict_zone_manager,
+        };
         voter.vote(&ctx)
     }
 
-    /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
-    fn tie_breaking(&self, conflict_genesis: Hash, all_tips: &[Hash], subgroups: &[GroupMetadata]) -> (Hash, Arc<Vec<Hash>>) {
+    /// Tie-breaking rule in case of multiple winning subgroups with the same rank value
+    fn tie_breaking(
+        &self,
+        conflict_genesis: Hash,
+        parents: &[Hash],
+        agreement_grouping: &[Group],
+        subgroups: &[GroupMetadata],
+    ) -> usize {
         debug!("Winning groups had rank k = {}", subgroups[0].k);
         let mutual_k = subgroups[0].k;
 
-        let winning_index = DagknightTieBreaker::new(
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
+        // TODO[DK]: use references for relations/reachability as well once the traits are implemented for &T
+        DagknightTieBreaker::new(
+            &*self.dagknight_store,
+            &*self.headers_store,
             self.relations_store.clone(),
             self.reachability_service.clone(),
         )
-        .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: mutual_k });
-
-        let winning_conflict_genesis = subgroups[winning_index].conflict_genesis;
-        let winning_subgroup = subgroups[winning_index].subgroup.clone();
-
-        (winning_conflict_genesis, winning_subgroup)
+        .tie_break(
+            conflict_genesis,
+            agreement_grouping.iter().map(|group| &parents[group.parent as usize]),
+            subgroups,
+            parents,
+            mutual_k,
+        )
     }
 
-    /// Follows the Calculate-Rank algorithm in the DK paper
-    ///
-    /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
-    /// in the caller is simply using blue_work + hash to break ties between subgroups.
-    ///
-    /// Returns an array of winning subgroups with their metadata
-    fn rank(
-        &self,
-        conflict_genesis: Hash,
-        agreeing_subgroups: &HashMap<Hash, Arc<Vec<Hash>>>,
-        all_tips: &[Hash],
-    ) -> Vec<GroupMetadata> {
-        let mut group_map = Cell::new(agreeing_subgroups.clone());
-        let best_groups_cell = Cell::new(vec![]);
-        let evaluate = |k: KType| -> Option<()> {
-            let (filtered_groups_kv, best_groups): (HashMap<_, _>, Vec<GroupMetadata>) = group_map
-                .get_mut()
+    /// Follows the Calculate-Rank algorithm in the DK paper: returns the best
+    /// agreement groups (all surviving at the winning k) with their metadata,
+    /// each subgroup being a contiguous slice into the sorted agreement grouping
+    fn rank<'a>(&self, conflict_genesis: Hash, parents: &[Hash], agreement_grouping: &'a [Group]) -> SmallVec<[GroupMetadata<'a>; 4]> {
+        // Groups failing a k evaluation are dropped from further consideration
+        // (passing the UMC cascade is monotone in k)
+        let mut survivors: SmallVec<[&'a [Group]; 10]> =
+            agreement_grouping.chunk_by(|a, b| a.common_ancestor == b.common_ancestor).collect();
+        let evaluate = |k: KType| -> Option<SmallVec<[GroupMetadata<'a>; 4]>> {
+            let (next_survivors, best_groups): (SmallVec<_>, SmallVec<_>) = survivors
                 .iter()
-                .filter_map(|(curr_conflict_genesis, subgroup)| {
-                    // `subgroup` is an `&Arc<Vec<Hash>>` here; pass a `&[Hash]` to the colouring function
-                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k).map(|selected_parent| {
-                        (
-                            (*curr_conflict_genesis, subgroup.clone()),
-                            GroupMetadata { conflict_genesis: *curr_conflict_genesis, subgroup: subgroup.clone(), k, selected_parent },
-                        )
-                    })
+                .filter_map(|&subgroup| {
+                    self.select_parent_from_k_colouring(
+                        conflict_genesis,
+                        subgroup[0].common_ancestor,
+                        subgroup.iter().map(|group| &parents[group.parent as usize]),
+                        agreement_grouping.iter().map(|group| &parents[group.parent as usize]),
+                        k,
+                    )
+                    .map(|selected_parent| (subgroup, GroupMetadata { subgroup, k, selected_parent }))
                 })
                 .unzip();
 
-            if filtered_groups_kv.is_empty() {
+            if next_survivors.is_empty() {
                 None
             } else {
-                group_map.swap(&Cell::new(filtered_groups_kv));
-                best_groups_cell.swap(&Cell::new(best_groups));
-                Some(())
+                survivors = next_survivors;
+                Some(best_groups)
             }
         };
 
-        let _search_result = RankSearcher::search(evaluate);
-        // let (best_k) = search_result.map(|r| (r.k, r.result)).unwrap();
-        best_groups_cell.take()
+        RankSearcher::search(evaluate).map(|result| result.result).unwrap_or_default()
     }
 
     /// Applies a coloring to the conflict zone, and determines if the
     /// coloring represents a majority over "g" only (as opposed to full UMC)
     /// TODO[DK]: Implement full UMC cascade voting after coloring
-    fn select_parent_from_k_colouring(
+    fn select_parent_from_k_colouring<'a, P, T>(
         &self,
         conflict_genesis: Hash,
-        subgroup: &[Hash],
-        all_tips: &[Hash],
+        subgroup_nca: Hash,
+        subgroup: P,
+        all_tips: T,
         k_to_check: KType,
-    ) -> Option<SortableBlock> {
-        let reachability_service = self.reachability_service.clone();
-        let relations_store = self.relations_store.read();
-        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
-        let conflict_zone_manager = ConflictZoneManager::new(
+    ) -> Option<SortableBlock>
+    where
+        P: IntoIterator<Item = &'a Hash>,
+        P::IntoIter: Clone,
+        T: IntoIterator<Item = &'a Hash>,
+        T::IntoIter: Clone,
+    {
+        let subgroup = subgroup.into_iter();
+        let all_tips = all_tips.into_iter();
+
+        let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
+
+        let conflict_zone_manager = ConflictZoneManager::committed_search(
             k_to_check,
             conflict_genesis,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
+            self.dagknight_store.as_ref(),
+            self.headers_store.as_ref(),
             relations_service,
-            reachability_service.clone(),
+            &self.reachability_service,
         );
 
-        // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(subgroup, Some(subgroup_nca));
+        conflict_zone_manager.fill_zone_data(subgroup.clone(), subgroup_nca);
 
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
-        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
+        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup);
         let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
         let cascade_result =
-            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+            self.umc_cascade_voting(conflict_genesis, &subgroup_nca, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
 
         #[cfg(feature = "baseline-debugging")]
         {
             // Compare baseline (per-blue recursive) against cascade (global virtual score)
             // These use different acceptance criteria and are not expected to always agree.
             // The baseline is Algorithm 6 from the paper; the cascade is the optimized implementation.
-            let baseline_result =
-                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+            let baseline_result = self.baseline_umc_cascade_voting(
+                conflict_genesis,
+                &subgroup_nca,
+                virtual_gd.clone(),
+                k_to_check,
+                &conflict_zone_manager,
+            );
 
             if baseline_result.virtual_score != cascade_result.virtual_score {
                 if baseline_result.accepted != cascade_result.accepted {
@@ -385,8 +412,8 @@ impl<
                     cascade_result.virtual_score,
                     baseline_result.accepted,
                     cascade_result.accepted,
-                    cascade_result.flips,
-                    cascade_result.voting_blocks
+                    baseline_result.flips,
+                    baseline_result.voting_blocks
                 );
             }
         }
@@ -409,227 +436,11 @@ impl<
     }
 }
 
-mod ct {
-    use super::*;
-    use std::{
-        cmp::Ordering,
-        collections::{
-            BTreeSet,
-            hash_map::Entry::{Occupied, Vacant},
-        },
-    };
-
-    /// BTree entry
-    #[derive(Eq, Clone)]
-    pub struct CascadeTreeEntry {
-        pub hash: Hash,
-        pub floor: i64,
-    }
-
-    impl CascadeTreeEntry {
-        pub fn new(hash: Hash, floor: i64) -> Self {
-            Self { hash, floor }
-        }
-    }
-
-    impl PartialEq for CascadeTreeEntry {
-        fn eq(&self, other: &Self) -> bool {
-            self.floor == other.floor && self.hash == other.hash
-        }
-    }
-
-    impl PartialOrd for CascadeTreeEntry {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    impl Ord for CascadeTreeEntry {
-        fn cmp(&self, other: &Self) -> Ordering {
-            self.floor.cmp(&other.floor).then_with(|| self.hash.cmp(&other.hash))
-        }
-    }
-
-    #[derive(Default)]
-    pub struct CascadeTree {
-        btree: BTreeSet<CascadeTreeEntry>,
-        rev_index: BlockHashMap<i64>,
-
-        // Exact counters
-        past_blues: BlockHashMap<u64>,
-        past_reds: BlockHashMap<u64>,
-        anticone_blues: BlockHashMap<u64>,
-
-        /// Anticone reds lower bound
-        arlb: BlockHashMap<u64>,
-    }
-
-    impl CascadeTree {
-        /// Insert a new block.
-        pub fn insert(
-            &mut self,
-            hash: Hash,
-            past_blues: u64,
-            past_reds: u64,
-            anticone_blues: u64,
-            anticone_reds_lower_bound: u64,
-        ) -> bool {
-            match self.past_blues.entry(hash) {
-                Occupied(_) => return false,
-                Vacant(e) => e.insert(past_blues),
-            };
-            self.past_reds.insert(hash, past_reds).is_none().then_some(()).unwrap();
-            self.anticone_blues.insert(hash, anticone_blues).is_none().then_some(()).unwrap();
-            self.arlb.insert(hash, anticone_reds_lower_bound).is_none().then_some(()).unwrap();
-
-            let floor = past_reds as i64 + anticone_reds_lower_bound as i64 - past_blues as i64 - anticone_blues as i64;
-            self.btree.insert(CascadeTreeEntry::new(hash, floor)).then_some(()).unwrap();
-            self.rev_index.insert(hash, floor).is_none().then_some(()).unwrap();
-
-            true
-        }
-
-        /// Update `anticone_blues` of an existing block.
-        ///
-        /// TODO: Result
-        pub fn _update_anticone_blues(&mut self, hash: Hash, anticone_blues: u64) {
-            let prev_floor = self.rev_index[&hash];
-            let prev_anticone_blues = self.anticone_blues.insert(hash, anticone_blues).unwrap();
-            let new_floor = prev_floor - (anticone_blues as i64 - prev_anticone_blues as i64);
-            self.btree.remove(&CascadeTreeEntry::new(hash, prev_floor)).then_some(()).unwrap();
-            self.btree.insert(CascadeTreeEntry::new(hash, new_floor)).then_some(()).unwrap();
-            self.rev_index.insert(hash, new_floor);
-            assert!(anticone_blues > prev_anticone_blues);
-        }
-
-        /// Update `anticone_reds_lower_bound` of an existing block.
-        ///
-        /// TODO: Result
-        pub fn _update_anticone_reds_lower_bound(&mut self, hash: Hash, anticone_reds_lower_bound: u64) {
-            let prev_floor = self.rev_index[&hash];
-            let prev_arlb = self.arlb.insert(hash, anticone_reds_lower_bound).unwrap();
-            let new_floor = prev_floor + (anticone_reds_lower_bound as i64 - prev_arlb as i64);
-            self.btree.remove(&CascadeTreeEntry::new(hash, prev_floor)).then_some(()).unwrap();
-            self.btree.insert(CascadeTreeEntry::new(hash, new_floor)).then_some(()).unwrap();
-            self.rev_index.insert(hash, new_floor);
-            assert!(anticone_reds_lower_bound > prev_arlb);
-        }
-
-        // pub fn peek_min(&self) -> CascadeTreeEntry {
-        //     self.btree.first().cloned().unwrap()
-        // }
-    }
-}
-
-use ct::CascadeTree;
-
-/// Cascade related data structures
-#[derive(Default)]
-pub struct CascadeDast {
-    /// TEMP: the full DAG (as of this processing point)
-    g: BlockHashSet,
-
-    /// Blue set
-    blueset: BlockHashSet,
-
-    // B tree ordered by floor values
-    tree: CascadeTree,
-}
-
-pub struct TraversalContext<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Sized> {
-    /// The reachability oracle
-    _oracle: &'a T,
-    /// The relations oracle (local DAG area)
-    _relations: &'a S,
-}
-
-impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Sized> TraversalContext<'a, T, S> {
-    pub fn new(reachability: &'a T, _relations: &'a S) -> Self {
-        Self { _oracle: reachability, _relations }
-    }
-}
-
-pub type MemTraversalContext<'a> = TraversalContext<'a, MemoryReachabilityStore, MemoryRelationsStore>;
-
-pub enum BlockColouring {
-    Blue { anticone_blues: u64, past: u64 },
-    Red,
-}
-
-pub struct CascadeContext<'a> {
-    /// Traversal ctx
-    _ctx: MemTraversalContext<'a>,
-
-    /// Cascade data structure
-    dast: CascadeDast,
-
-    /// The allowed deficit
-    /// TODO: should this be measured by work units?
-    _deficit_parameter: i64,
-
-    /// Cached result of cascade voting
-    cached_vote: bool,
-}
-
-impl<'a> CascadeContext<'a> {
-    pub fn new(_ctx: MemTraversalContext<'a>, _deficit_parameter: i64) -> Self {
-        let cached_vote = true; // The empty set is a d-UMC by definition
-        Self { _ctx, dast: Default::default(), _deficit_parameter, cached_vote }
-    }
-
-    /// Insert a new block `hash` where `blue` indicates whether the block is blue or not.
-    /// Returns whether the resulting blue cluster *contains* a subset of blocks which is
-    /// a d-UMC (via incremental cascade voting)
-    pub fn insert(&mut self, hash: Hash, colouring: BlockColouring) -> bool {
-        self.dast.g.insert(hash).then_some(()).unwrap();
-        if let BlockColouring::Blue { anticone_blues, past } = colouring {
-            self.dast.blueset.insert(hash).then_some(()).unwrap();
-
-            let total_blues = self.dast.blueset.len() as u64;
-            let total_reds = self.dast.g.len() as u64 - total_blues;
-            let past_blues = total_blues - 1 - anticone_blues; // -1 for this block; future is empty
-            let past_reds = past - past_blues;
-            let anticone_reds = total_reds - past_reds; // this block is not red, so there is no need to subtract 1; future is empty
-
-            self.dast.tree.insert(hash, past_blues, past_reds, anticone_blues, anticone_reds).then_some(()).unwrap();
-
-            if self.cached_vote {
-                // A blue block preserves the positive vote
-                return true;
-            }
-        } else if !self.cached_vote {
-            // A red block preserves the negative votes
-            return true;
-        }
-
-        self.cached_vote = self.vote();
-        self.cached_vote
-    }
-
-    // fn peek_min(&self) -> CascadeTreeEntry {
-    //     self.dast.tree.peek_min()
-    // }
-
-    pub fn vote(&mut self) -> bool {
-        todo!()
-    }
-}
-
-#[derive(Clone)]
-pub struct DagPlan {
-    genesis: u64,
-    blocks: Vec<(u64, Vec<u64>)>, // All blocks other than genesis
-}
-
-impl DagPlan {
-    /// Returns all block ids other than genesis
-    pub fn ids(&self) -> impl Iterator<Item = u64> + '_ {
-        self.blocks.iter().map(|(i, _)| *i)
-    }
-
-    pub fn genesis(&self) -> u64 {
-        self.genesis
-    }
+struct DagknightDataIndices {
+    selected_parent: u16,
+    /// Indices into `tips`, ordered by conflict hierarchy with bottom-most conflicts first;
+    /// reverse-iterate to get parents from latest/topmost conflicts first (as `dagknight` returns)
+    reverse_conflict_ordered_parents: SmallVec<[u16; 20]>,
 }
 
 #[cfg(test)]
@@ -639,9 +450,9 @@ mod tests {
     use std::str::FromStr;
     use std::{cell::RefCell, fs::File};
 
-    use kaspa_consensus_core::HashMapCustomHasher;
     use kaspa_consensus_core::blockhash::ORIGIN;
     use kaspa_consensus_core::header::Header;
+    use kaspa_consensus_core::{BlockHashSet, HashMapCustomHasher};
     use kaspa_math::Uint192;
     use parking_lot::lock_api::RwLock;
 
@@ -659,6 +470,12 @@ mod tests {
         processes::reachability::tests::{DagBlock, DagBuilder},
         test_helpers::generate_dot_with_chain,
     };
+
+    #[derive(Clone)]
+    pub struct DagPlan {
+        genesis: u64,
+        blocks: Vec<(u64, Vec<u64>)>, // All blocks other than genesis
+    }
 
     /// Block data parsed from a JSON fixture for conflict zone tie-breaking tests.
     struct TestBlock {
@@ -753,7 +570,7 @@ mod tests {
             dagknight_store: dagknight_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-            relations_store: Arc::new(RwLock::new(relations.clone())),
+            relations_store: relations.clone(),
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -958,7 +775,7 @@ mod tests {
             dagknight_store: dagknight_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-            relations_store: Arc::new(RwLock::new(relations.clone())),
+            relations_store: relations.clone(),
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -1039,7 +856,7 @@ mod tests {
             dagknight_store: dagknight_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-            relations_store: Arc::new(RwLock::new(relations.clone())),
+            relations_store: relations.clone(),
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -1156,7 +973,7 @@ mod tests {
             dagknight_store,
             headers_store,
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
-            relations_store: Arc::new(RwLock::new(relations)),
+            relations_store: relations,
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };
@@ -1207,7 +1024,7 @@ mod tests {
             dagknight_store,
             headers_store,
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
-            relations_store: Arc::new(RwLock::new(relations)),
+            relations_store: relations,
             counters: Arc::new(DagknightCounters::new()),
             umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
         };

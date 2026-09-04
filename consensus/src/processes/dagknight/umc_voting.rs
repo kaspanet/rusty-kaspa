@@ -25,8 +25,8 @@ pub trait ColoringReader {
 pub struct UmcVotingContext<'a> {
     /// The latest common chain ancestor of the zone (conflict genesis).
     pub conflict_genesis: Hash,
-    /// Tips of the subgroup being evaluated (virtual block conditioned on these).
-    pub subgroup: &'a [Hash],
+    /// The next chain ancestor of the subgroup being evaluated above the conflict genesis
+    pub next_chain_ancestor: &'a Hash,
     /// The k-coloring data of the virtual GD — head of the virtual GD chain.
     pub virtual_gd: &'a GhostdagData,
     /// The rank `k` under test.
@@ -82,7 +82,7 @@ pub mod test_fixtures {
     };
     use crate::{
         model::{
-            services::reachability::MTReachabilityService,
+            services::reachability::{MTReachabilityService, ReachabilityService},
             stores::{
                 ghostdag::GhostdagData, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
                 relations::MemoryRelationsStore,
@@ -167,7 +167,7 @@ pub mod test_fixtures {
         pub headers: Arc<MemoryHeaderStore>,
         pub reader: MemoryColoringReader,
         pub virtual_gd: Arc<GhostdagData>,
-        pub subgroup: Vec<Hash>,
+        pub next_chain_ancestor: Hash,
         pub conflict_genesis: Hash,
         pub k: KType,
     }
@@ -225,12 +225,14 @@ pub mod test_fixtures {
                 data.virtual_gd.blue_score,
             ));
 
+            let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+            let next_chain_ancestor = reachability_service.get_next_chain_ancestor(data.subgroup[0].into(), data.genesis.into());
             Self {
-                reachability: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
+                reachability: reachability_service,
                 headers,
                 reader,
                 virtual_gd,
-                subgroup: data.subgroup.iter().map(|&s| s.into()).collect(),
+                next_chain_ancestor,
                 conflict_genesis: data.genesis.into(),
                 k: data.k,
             }
@@ -239,7 +241,7 @@ pub mod test_fixtures {
         pub fn context(&self) -> UmcVotingContext<'_> {
             UmcVotingContext {
                 conflict_genesis: self.conflict_genesis,
-                subgroup: &self.subgroup,
+                next_chain_ancestor: &self.next_chain_ancestor,
                 virtual_gd: &self.virtual_gd,
                 k: self.k,
                 coloring_reader: &self.reader,

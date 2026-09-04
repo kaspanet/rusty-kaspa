@@ -24,14 +24,12 @@ impl RankSearcher {
         let mut increments: KType = 1;
         let mut lkg_k: KType = 0;
         let mut lower_k: KType = 0;
-        let mut found_lkg = false;
 
-        while !found_lkg && lkg_k != u16::MAX {
+        while result.is_none() && lkg_k != u16::MAX {
             debug!("Finding upper bound k = {}", lkg_k);
             if let Some(r) = evaluate(lkg_k) {
                 debug!("Found a valid result at upper bound k = {}", lkg_k);
                 result = Some(r);
-                found_lkg = true;
             } else {
                 lower_k = lkg_k + 1;
                 lkg_k = increments;

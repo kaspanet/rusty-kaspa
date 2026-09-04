@@ -1,8 +1,7 @@
-use std::sync::Arc;
+use std::iter::once;
 
 use kaspa_consensus_core::{BlockHashSet, KType};
 use kaspa_hashes::Hash;
-use parking_lot::RwLock;
 
 use crate::{
     model::{
@@ -33,83 +32,58 @@ pub struct ReferenceCluster {
     pub chain_blocks: Vec<Hash>,
 }
 
-/// Input data for a tie-breaking call.
-pub struct TieBreakContext<'a> {
-    /// The latest common chain ancestor of all competing tips (conflict genesis).
-    pub conflict_genesis: Hash,
-    /// All tips of the DAG (parents of the virtual block).
-    pub all_tips: &'a [Hash],
-    /// The tied subgroups — each subgroup is a slice of tip hashes that agree on a common chain ancestor above the conflict genesis.
-    pub subgroups: &'a [GroupMetadata],
-    /// The mutual rank `k` shared by all tied subgroups.
-    pub k: KType,
-}
-
-/// Trait for tie-breaking logic, isolating it from the DAGKnight executor for testability.
-pub trait TieBreaker {
-    /// Performs tie-breaking among competing subgroups that share the same rank.
-    ///
-    /// Returns the index of the winning subgroup
-    fn tie_break(&self, input: &TieBreakContext<'_>) -> usize;
-}
-
-/// DAGKnight tie-breaker backed by the consensus stores.
-///
-/// Holds only the stores needed for tie-breaking, not the full `DagknightExecutor`,
-/// enabling isolated unit testing of tie-breaking logic.
+/// DAGKnight tie-breaker implementing Algorithm 4 of the paper. Holds only the
+/// stores needed for tie-breaking, not the full executor.
 pub struct DagknightTieBreaker<
     C: DagknightStore + DagknightStoreReader,
-    O: HeaderStoreReader + 'static,
+    O: HeaderStoreReader,
     D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
 > {
-    pub dagknight_store: Arc<C>,
-    pub headers_store: Arc<O>,
-    pub relations_store: Arc<RwLock<D>>,
-    pub reachability_service: MTReachabilityService<R>,
+    dagknight_store: C,
+    headers_store: O,
+    relations_store: D,
+    reachability_service: MTReachabilityService<R>,
 }
 
 impl<
     C: DagknightStore + DagknightStoreReader,
-    O: HeaderStoreReader + 'static,
+    O: HeaderStoreReader,
     D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
 > DagknightTieBreaker<C, O, D, R>
 {
-    pub fn new(
-        dagknight_store: Arc<C>,
-        headers_store: Arc<O>,
-        relations_store: Arc<RwLock<D>>,
-        reachability_service: MTReachabilityService<R>,
-    ) -> Self {
+    pub fn new(dagknight_store: C, headers_store: O, relations_store: D, reachability_service: MTReachabilityService<R>) -> Self {
         Self { dagknight_store, headers_store, relations_store, reachability_service }
     }
 
     /// Computes the free-search k-colouring reference cluster.
     ///
-    /// This is equivalent to `select_parent_from_k_colouring` but uses
-    /// `ConflictZoneManager::with_free_search` with `free_search = true`,
-    /// allowing unrestricted maximization of the k-cluster across all parents.
+    /// This is equivalent to `select_parent_from_k_colouring` but uses a
+    /// free-search conflict zone manager, allowing unrestricted maximization
+    /// of the k-cluster across all parents.
     ///
     /// Returns the blue set and chain backbone.
-    pub fn compute_reference_cluster(&self, conflict_genesis: Hash, all_tips: &[Hash], k: KType) -> ReferenceCluster {
-        let reachability_service = self.reachability_service.clone();
-        let relations_store = self.relations_store.read();
-        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
+    fn compute_reference_cluster<'a, T>(&self, conflict_genesis: Hash, all_tips: T, k: KType) -> ReferenceCluster
+    where
+        T: IntoIterator<Item = &'a Hash>,
+        T::IntoIter: Clone,
+    {
+        let all_tips = all_tips.into_iter();
+        let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
 
-        let conflict_zone_manager = ConflictZoneManager::with_free_search(
+        let conflict_zone_manager = ConflictZoneManager::free_search(
             k,
             conflict_genesis,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
+            &self.dagknight_store,
+            &self.headers_store,
             relations_service,
-            reachability_service.clone(),
-            true, // free_search = true
+            &self.reachability_service,
         );
 
-        conflict_zone_manager.fill_zone_data(all_tips, None); // free_search: NCA is None
+        conflict_zone_manager.fill_zone_data(all_tips.clone(), ());
 
-        // Run k-colouring with free search — no custom selected parent is passed,
+        // Run k-colouring with free search: no custom selected parent is passed,
         // so the manager freely selects from all parents.
         let virtual_gd: GhostdagData = conflict_zone_manager.k_colouring(all_tips, k, None);
 
@@ -143,34 +117,39 @@ impl<
     /// Computes the k'-chain conditioned on the virtual block agreeing with a specific subgroup.
     ///
     /// Returns the chain blocks from virtual towards conflict_genesis (inclusive).
-    pub fn compute_subgroup_chain_blocks(
+    fn compute_subgroup_chain_blocks<'a, 'b, P, T>(
         &self,
         conflict_genesis: Hash,
-        group_tips: &[Hash],
-        all_tips: &[Hash],
+        group_tips: P,
+        all_tips: T,
         k_prime: KType,
-    ) -> SubgroupChainBlocks {
-        let reachability_service = self.reachability_service.clone();
-        let relations_store = self.relations_store.read();
-        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
+    ) -> SubgroupChainBlocks
+    where
+        P: IntoIterator<Item = &'a Hash>,
+        T: IntoIterator<Item = &'b Hash>,
+        T::IntoIter: Clone,
+    {
+        let relations_service = FutureIntersectRelations::new(&self.relations_store, &self.reachability_service, conflict_genesis);
 
-        // Committed (non-free-search) manager
-        let conflict_zone_manager = ConflictZoneManager::with_free_search(
-            k_prime,
-            conflict_genesis,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
-            relations_service,
-            reachability_service.clone(),
-            false, // free_search = false (committed)
-        );
+        let mut group_tips = group_tips.into_iter();
+        let first_tip = group_tips.next().expect("group must be non-empty");
+        let group_tips = once(first_tip).chain(group_tips);
+        let all_tips = all_tips.into_iter();
 
         // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(group_tips[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(all_tips, Some(subgroup_nca));
+        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(*first_tip, conflict_genesis);
+        let conflict_zone_manager = ConflictZoneManager::committed_search(
+            k_prime,
+            conflict_genesis,
+            &self.dagknight_store,
+            &self.headers_store,
+            relations_service,
+            &self.reachability_service,
+        );
+        conflict_zone_manager.fill_zone_data(all_tips.clone(), subgroup_nca);
 
         // Condition virtual on the group: force selected parent from group_tips
-        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips.iter().copied());
+        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips);
         let virtual_gd: GhostdagData = conflict_zone_manager.k_colouring(all_tips, k_prime, Some(subgroup_virtual_sp));
 
         // Walk the chain from virtual's selected parent back to conflict_genesis
@@ -201,14 +180,19 @@ impl<
     /// Per Algorithm 4, C_i is the union over k' ∈ {⌊k/2⌋, ..., k} of all blocks B in
     /// the reference cluster F where |anticone(B) ∩ chain_{i,k'}| > k'. The conflict
     /// genesis is always included in C_i as a baseline witness.
-    pub fn compute_high_rank_witnesses(
+    fn compute_high_rank_witnesses<'a, 'b, P, T>(
         &self,
         conflict_genesis: Hash,
-        group_tips: &[Hash],
-        all_tips: &[Hash],
+        group_tips: P,
+        all_tips: T,
         f_cluster: &BlockHashSet,
         k: KType,
-    ) -> SortableBlock {
+    ) -> SortableBlock
+    where
+        P: IntoIterator<Item = &'a Hash>,
+        T: IntoIterator<Item = &'b Hash>,
+        T::IntoIter: Clone,
+    {
         let mut witness_block_data: SortableBlock =
             SortableBlock { hash: conflict_genesis, blue_work: self.headers_store.get_header(conflict_genesis).unwrap().blue_work };
 
@@ -228,67 +212,68 @@ impl<
 
         witness_block_data
     }
-}
 
-impl<
-    C: DagknightStore + DagknightStoreReader,
-    O: HeaderStoreReader + 'static,
-    D: RelationsStoreReader + Clone,
-    R: ReachabilityStoreReader + Clone,
-> TieBreaker for DagknightTieBreaker<C, O, D, R>
-{
     /// Implements Algorithm 4 from the DAGKnight paper.
     ///
     /// 1. Compute reference cluster F using free search at g(k) = floor(sqrt(k))
     /// 2. For each subgroup, compute C_i = high-rank witnesses against F
     /// 3. Select the subgroup whose max(C_i) is earliest (argmin by blue_work, ties by hash)
-    ///
-    /// If any C_i is empty (small conflict zone), falls back to SimpleTieBreaker
-    /// logic (pick the subgroup with the highest selected_parent).
-    fn tie_break(&self, input: &TieBreakContext<'_>) -> usize {
-        let TieBreakContext { conflict_genesis, all_tips, subgroups, k } = input;
+    pub fn tie_break<'a, T>(
+        &self,
+        conflict_genesis: Hash,
+        all_tips: T,
+        subgroups: &[GroupMetadata],
+        parents: &[Hash],
+        k: KType,
+    ) -> usize
+    where
+        T: IntoIterator<Item = &'a Hash>,
+        T::IntoIter: Clone,
+    {
+        let all_tips = all_tips.into_iter();
 
         // Step 1: Compute reference cluster F using free search with g(k) = floor(sqrt(k))
         let g_k = k.isqrt() as KType;
-        let ref_cluster = self.compute_reference_cluster(*conflict_genesis, all_tips, g_k);
+        let ref_cluster = self.compute_reference_cluster(conflict_genesis, all_tips.clone(), g_k);
         let f_cluster = ref_cluster.blues;
 
         // Step 2: For each group P_i, compute C_i (high-rank witnesses)
-        let mut group_scores: Vec<Option<(usize, SortableBlock, Hash)>> = Vec::with_capacity(subgroups.len());
+        let mut group_scores: Vec<(usize, SortableBlock, Hash)> = Vec::with_capacity(subgroups.len());
 
         for (idx, group_metadata) in subgroups.iter().enumerate() {
-            let group_tips = group_metadata.subgroup.clone();
-            let max_c_i = self.compute_high_rank_witnesses(*conflict_genesis, &group_tips, all_tips, &f_cluster, *k);
+            let group_tips = group_metadata.subgroup.iter().map(|group| &parents[group.parent as usize]);
+            let max_c_i = self.compute_high_rank_witnesses(conflict_genesis, group_tips, all_tips.clone(), &f_cluster, k);
 
-            group_scores.push(Some((idx, max_c_i, group_metadata.selected_parent.hash)));
+            group_scores.push((idx, max_c_i, group_metadata.selected_parent.hash));
         }
 
         // Step 3: Select winner
-        group_scores
-            .iter()
-            .flatten()
-            .min_by(|(_, a, ah), (_, b, bh)| a.cmp(b).then_with(|| ah.cmp(bh)))
-            .map(|(idx, _, _)| *idx)
-            .unwrap()
+        group_scores.iter().min_by(|(_, a, ah), (_, b, bh)| a.cmp(b).then_with(|| ah.cmp(bh))).map(|(idx, _, _)| *idx).unwrap()
     }
 }
 
 #[cfg(test)]
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
-    use super::*;
-    use kaspa_consensus_core::{BlueWorkType, blockhash::ORIGIN, header::Header};
-    use std::{cell::RefCell, collections::HashMap};
+    use std::collections::HashMap;
+    use std::{cell::RefCell, sync::Arc};
 
+    use kaspa_consensus_core::{BlueWorkType, blockhash::ORIGIN, header::Header};
+    use parking_lot::lock_api::RwLock;
+
+    use super::*;
     use crate::{
         model::stores::{
             dagknight::MemoryDagknightStore, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
             relations::MemoryRelationsStore,
         },
-        processes::reachability::tests::{DagBlock, DagBuilder},
+        processes::{
+            dagknight::Group,
+            reachability::tests::{DagBlock, DagBuilder},
+        },
     };
 
-    /// Shared test DAG used by all tie_breaking tests.
+    /// Shared test DAG used by the tie-breaking tests.
     ///
     /// ```text
     ///        A (conflict genesis)
@@ -306,18 +291,21 @@ mod tests {
     /// The low-work side (X→Y→Z→A) has chain parents wired to Z, while the high-work
     /// side (D→C→B→A) has chain parents wired through B. Free search will override
     /// chain parents and follow max blue work (X→C→B→A).
-    struct TestDag {
-        pub hash_a: Hash,
-        pub hash_b: Hash,
-        pub hash_c: Hash,
-        pub hash_d: Hash,
-        pub hash_z: Hash,
-        pub hash_y: Hash,
-        pub hash_x: Hash,
-        pub tie_breaker: DagknightTieBreaker<MemoryDagknightStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>,
+    struct TieBreakTestDag {
+        hash_a: Hash,
+        hash_b: Hash,
+        hash_c: Hash,
+        hash_d: Hash,
+        hash_z: Hash,
+        hash_y: Hash,
+        hash_x: Hash,
+        dagknight_store: Arc<MemoryDagknightStore>,
+        headers_store: Arc<MemoryHeaderStore>,
+        relations_store: MemoryRelationsStore,
+        reachability_service: MTReachabilityService<MemoryReachabilityStore>,
     }
 
-    impl TestDag {
+    impl TieBreakTestDag {
         fn new() -> Self {
             let hash_a: Hash = 1_u64.into();
             let hash_b: Hash = 2_u64.into();
@@ -361,10 +349,42 @@ mod tests {
             }
 
             let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
-            let tie_breaker =
-                DagknightTieBreaker::new(dagknight_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
+            Self {
+                hash_a,
+                hash_b,
+                hash_c,
+                hash_d,
+                hash_z,
+                hash_y,
+                hash_x,
+                dagknight_store,
+                headers_store,
+                relations_store,
+                reachability_service,
+            }
+        }
 
-            Self { hash_a, hash_b, hash_c, hash_d, hash_z, hash_y, hash_x, tie_breaker }
+        fn tie_breaker(
+            &self,
+        ) -> DagknightTieBreaker<&MemoryDagknightStore, &MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore> {
+            DagknightTieBreaker::new(
+                &self.dagknight_store,
+                &self.headers_store,
+                self.relations_store.clone(),
+                self.reachability_service.clone(),
+            )
+        }
+
+        /// Agreement groups for the given subgroup members: the parent index is derived
+        /// from the member's position in `parents` and the common ancestor from the chain
+        fn agreement_groups(&self, conflict_genesis: Hash, parents: &[Hash], members: &[Hash]) -> Vec<Group> {
+            members
+                .iter()
+                .map(|&member| Group {
+                    common_ancestor: self.reachability_service.get_next_chain_ancestor(member, conflict_genesis),
+                    parent: parents.iter().position(|&parent| parent == member).expect("member must be in parents") as u16,
+                })
+                .collect()
         }
     }
 
@@ -375,11 +395,12 @@ mod tests {
     /// Conditioned on [D]: chain follows reachability chain D → C → B → A
     #[test]
     fn test_subgroup_chain_blocks() {
-        let dag = TestDag::new();
+        let dag = TieBreakTestDag::new();
+        let tie_breaker = dag.tie_breaker();
         let all_tips = vec![dag.hash_x, dag.hash_d];
 
         // Conditioned on [X]: must follow reachability chain X → Y → Z → A
-        let chain_x = dag.tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_x], &all_tips, 2);
+        let chain_x = tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_x], &all_tips, 2);
         assert_eq!(chain_x.len(), 4, "X conditioned chain should have 4 blocks: X, Y, Z, A");
         assert_eq!(chain_x[0], dag.hash_x, "virtual selected parent is X");
         assert_eq!(chain_x[1], dag.hash_y, "X's committed parent must be Y");
@@ -387,7 +408,7 @@ mod tests {
         assert_eq!(chain_x[3], dag.hash_a, "Z's committed parent is genesis A");
 
         // Conditioned on [D]: must follow reachability chain D → C → B → A
-        let chain_d = dag.tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_d], &all_tips, 2);
+        let chain_d = tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_d], &all_tips, 2);
         assert_eq!(chain_d.len(), 4, "D conditioned chain should have 4 blocks: D, C, B, A");
         assert_eq!(chain_d[0], dag.hash_d, "virtual selected parent is D");
         assert_eq!(chain_d[1], dag.hash_c, "D's committed parent must be C");
@@ -408,10 +429,11 @@ mod tests {
     /// Free search chain from X: X → C → B → A (max blue work side)
     #[test]
     fn test_free_coloring() {
-        let dag = TestDag::new();
+        let dag = TieBreakTestDag::new();
+        let tie_breaker = dag.tie_breaker();
         let all_tips = vec![dag.hash_x];
 
-        let ref_cluster = dag.tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
+        let ref_cluster = tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
 
         // Verify the exact free search chain: X → C → B → A
         assert_eq!(ref_cluster.chain_blocks.len(), 4, "chain should have exactly 4 blocks: X, C, B, A");
@@ -497,8 +519,7 @@ mod tests {
         }
 
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
-        let tie_breaker =
-            DagknightTieBreaker::new(dagknight_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
+        let tie_breaker = DagknightTieBreaker::new(&dagknight_store, &headers_store, relations_store, reachability_service);
 
         // Chain 2: [X, Y, Z, A] (right side, towards genesis)
         let chain_right = vec![hash_x, hash_y, hash_z, hash_a];
@@ -537,18 +558,19 @@ mod tests {
     /// for each k' and collects F blocks whose anticone with the chain exceeds k'.
     #[test]
     fn test_high_rank_witnesses() {
-        let dag = TestDag::new();
+        let dag = TieBreakTestDag::new();
+        let tie_breaker = dag.tie_breaker();
         let all_tips = vec![dag.hash_x, dag.hash_d];
 
         // Compute F cluster at g(4) = 2
-        let ref_cluster = dag.tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
+        let ref_cluster = tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
         let f_cluster = ref_cluster.blues;
 
         // Compute C_i for [X] side
-        let c_x = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_x], &all_tips, &f_cluster, 4);
+        let c_x = tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_x], &all_tips, &f_cluster, 4);
 
         // Compute C_i for [D] side
-        let c_d = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_d], &all_tips, &f_cluster, 4);
+        let c_d = tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_d], &all_tips, &f_cluster, 4);
 
         // All non-genesis blocks in C_i must be a subset of F
         assert!(f_cluster.contains(&c_x.hash), "X's witness must be in F");
@@ -556,68 +578,34 @@ mod tests {
     }
 
     /// Verifies that `tie_break` is invariant to the order of subgroups in the
-    /// input — the winning *subgroup content* must be the same even if the index differs.
+    /// input: the winning *subgroup content* must be the same even if the index differs.
     #[test]
     fn test_tie_break_subgroup_ordering_invariance() {
-        let dag = TestDag::new();
+        let dag = TieBreakTestDag::new();
+        let tie_breaker = dag.tie_breaker();
+        let parents = [dag.hash_x, dag.hash_d];
         let all_tips = vec![dag.hash_x, dag.hash_d];
 
         let mutual_k = 4;
+        let sp_x = SortableBlock { hash: dag.hash_x, blue_work: dag.headers_store.get_header(dag.hash_x).unwrap().blue_work };
+        let sp_d = SortableBlock { hash: dag.hash_d, blue_work: dag.headers_store.get_header(dag.hash_d).unwrap().blue_work };
 
         // Forward order: [X], [D]
-        let sg_x = Arc::new(vec![dag.hash_x]);
-        let sg_d = Arc::new(vec![dag.hash_d]);
+        let sg_x = dag.agreement_groups(dag.hash_a, &parents, &[dag.hash_x]);
+        let sg_d = dag.agreement_groups(dag.hash_a, &parents, &[dag.hash_d]);
         let subgroups_forward = vec![
-            GroupMetadata {
-                conflict_genesis: dag.hash_z,
-                subgroup: sg_x,
-                k: mutual_k,
-                selected_parent: SortableBlock {
-                    hash: dag.hash_x,
-                    blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_x).unwrap().blue_work,
-                },
-            },
-            GroupMetadata {
-                conflict_genesis: dag.hash_b,
-                subgroup: sg_d,
-                k: mutual_k,
-                selected_parent: SortableBlock {
-                    hash: dag.hash_d,
-                    blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_d).unwrap().blue_work,
-                },
-            },
+            GroupMetadata { subgroup: &sg_x, k: mutual_k, selected_parent: sp_x.clone() },
+            GroupMetadata { subgroup: &sg_d, k: mutual_k, selected_parent: sp_d.clone() },
         ];
-        let input_forward =
-            TieBreakContext { conflict_genesis: dag.hash_a, all_tips: &all_tips, subgroups: &subgroups_forward, k: mutual_k };
 
         // Reversed order: [D], [X]
-        let sg_d2 = Arc::new(vec![dag.hash_d]);
-        let sg_x2 = Arc::new(vec![dag.hash_x]);
         let subgroups_reversed = vec![
-            GroupMetadata {
-                conflict_genesis: dag.hash_b,
-                subgroup: sg_d2,
-                k: mutual_k,
-                selected_parent: SortableBlock {
-                    hash: dag.hash_d,
-                    blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_d).unwrap().blue_work,
-                },
-            },
-            GroupMetadata {
-                conflict_genesis: dag.hash_z,
-                subgroup: sg_x2,
-                k: mutual_k,
-                selected_parent: SortableBlock {
-                    hash: dag.hash_x,
-                    blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_x).unwrap().blue_work,
-                },
-            },
+            GroupMetadata { subgroup: &sg_d, k: mutual_k, selected_parent: sp_d },
+            GroupMetadata { subgroup: &sg_x, k: mutual_k, selected_parent: sp_x },
         ];
-        let input_reversed =
-            TieBreakContext { conflict_genesis: dag.hash_a, all_tips: &all_tips, subgroups: &subgroups_reversed, k: mutual_k };
 
-        let output_forward = dag.tie_breaker.tie_break(&input_forward);
-        let output_reversed = dag.tie_breaker.tie_break(&input_reversed);
+        let output_forward = tie_breaker.tie_break(dag.hash_a, &all_tips, &subgroups_forward, &parents, mutual_k);
+        let output_reversed = tie_breaker.tie_break(dag.hash_a, &all_tips, &subgroups_reversed, &parents, mutual_k);
 
         // The winning subgroup *content* must be the same
         assert_eq!(
