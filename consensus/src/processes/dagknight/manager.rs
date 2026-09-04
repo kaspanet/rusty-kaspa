@@ -702,19 +702,19 @@ mod tests {
     ///
     /// DAG structure:
     ///
-    ///         A <= B <= D -- F
-    ///          \       /
-    ///            \  /
-    ///        Z <- C <= E -- W
-    ///         \    \   /
-    ///           \   \ /
+    ///         A <= B <= D <= F
+    ///          \           /
+    ///            \       /
+    ///        Z <- C <= E <= W
+    ///         \    \      /
+    ///           \   \   /
     ///            Y <= X
     ///
     /// Selected parents:
     /// - A: ORIGIN, B: A, D: B, Z: ORIGIN
     /// - C: A (agrees with A), E: C
     /// - Y: Z, X: Y (X does NOT agree with A - its chain goes X→Y→Z→ORIGIN)
-    /// - F, W: tips (no selected parent yet)
+    /// - F: D, W: E
     ///
     /// Parents:
     /// - A:[ORIGIN], B:[A], D:[B], F:[D,E]
@@ -763,8 +763,8 @@ mod tests {
             builder.add_block_with_selected_parent(DagBlock::new(hash_e, vec![hash_c]), hash_c);
             builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
             builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y, hash_c]), hash_y);
-            builder.add_block(DagBlock::new(hash_f, vec![hash_d, hash_e])); // Tip
-            builder.add_block(DagBlock::new(hash_w, vec![hash_x, hash_e])); // Tip
+            builder.add_block_with_selected_parent(DagBlock::new(hash_f, vec![hash_d, hash_e]), hash_d); // Tip
+            builder.add_block_with_selected_parent(DagBlock::new(hash_w, vec![hash_x, hash_e]), hash_e); // Tip
 
             // Insert headers with valid bits
             for (hash, parents) in [
@@ -830,13 +830,17 @@ mod tests {
         // Tips are F and W (no records yet)
         let tips = vec![hash_f, hash_w];
 
-        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips, None);
-        let (roots_free, _) = manager_free.find_last_known_tips(&tips, None);
+        // First coloring for one subgroup
+        let (roots_committed_with_hash_b, _) = manager_committed.find_last_known_tips(&tips, Some(hash_b));
+        assert_eq!(roots_committed_with_hash_b.len(), 1, "Committed LKT with NCA=B should find D only");
+        assert!(roots_committed_with_hash_b.contains(&hash_d));
 
-        assert_eq!(roots_committed.len(), 2, "Committed should find D, E");
-        assert!(roots_committed.contains(&hash_d));
-        assert!(roots_committed.contains(&hash_e));
-        assert!(!roots_committed.contains(&hash_x), "X should not be in committed roots");
+        // Second coloring for another subgroup
+        let (roots_committed_with_hash_c, _) = manager_committed.find_last_known_tips(&tips, Some(hash_c));
+        assert_eq!(roots_committed_with_hash_c.len(), 1, "Committed LKT with NCA=C should find E only");
+        assert!(roots_committed_with_hash_c.contains(&hash_e));
+
+        let (roots_free, _) = manager_free.find_last_known_tips(&tips, None);
 
         assert_eq!(roots_free.len(), 3, "Free search should find D, E, X");
         assert!(roots_free.contains(&hash_d));
