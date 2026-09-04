@@ -968,6 +968,9 @@ mod tests {
         );
     }
 
+    /// (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+    type JsonTestBlock<SP = Hash> = (Hash, Vec<Hash>, Uint192, u32, u64, u64, SP);
+
     #[test]
     fn test_czm_lkt_correctness() {
         let mut reachability = MemoryReachabilityStore::new();
@@ -1001,7 +1004,7 @@ mod tests {
 
         let blocks = json_data["blocks"].as_array().expect("Blocks is not an array");
 
-        let test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash)> = blocks
+        let test_blocks: Vec<JsonTestBlock> = blocks
             .iter()
             .map(|block| {
                 let id = Hash::from_str(block["id"].as_str().unwrap()).unwrap();
@@ -1074,7 +1077,7 @@ mod tests {
         let conflict_genesis = Hash::from_str(json_data["conflict_genesis"].as_str().unwrap()).unwrap();
 
         // (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
-        let mut test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Option<Hash>)> = json_data["blocks"]
+        let mut test_blocks: Vec<JsonTestBlock<Option<Hash>>> = json_data["blocks"]
             .as_array()
             .unwrap()
             .iter()
