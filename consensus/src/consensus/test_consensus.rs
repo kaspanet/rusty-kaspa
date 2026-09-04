@@ -136,13 +136,23 @@ impl TestConsensus {
         let mut header = header_from_precomputed_hash(hash, parents.clone());
         let parents_by_level = self.consensus.services.parents_manager.calc_block_parents(self.pruning_point(), &parents);
         header.parents_by_level = parents_by_level;
-        let ghostdag_data = self.consensus.services.ghostdag_manager.ghostdag(header.direct_parents());
-        let daa_window = self.consensus.services.window_manager.block_daa_window(&ghostdag_data).unwrap();
-        header.bits = self.consensus.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
+        let direct_parents = header.direct_parents();
+        // Match header-processor validation: blue_score / DAA / bits / PMT come from
+        // coloring (DK selected parent when the executor is present); blue_work from topology.
+        let topology_ghostdag_data = self.consensus.services.ghostdag_manager.ghostdag(direct_parents);
+        let coloring_ghostdag_data = match &self.consensus.services.dagknight_executor {
+            Some(executor) => {
+                let dk_sp = executor.dagknight(direct_parents).selected_parent;
+                self.consensus.services.coloring_ghostdag_manager.incremental_coloring(direct_parents, dk_sp)
+            }
+            None => self.consensus.services.coloring_ghostdag_manager.ghostdag(direct_parents),
+        };
+        let daa_window = self.consensus.services.window_manager.block_daa_window(&coloring_ghostdag_data).unwrap();
+        header.bits = self.consensus.services.window_manager.calculate_difficulty_bits(&coloring_ghostdag_data, &daa_window);
         header.daa_score = daa_window.daa_score;
-        header.timestamp = self.consensus.services.window_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
-        header.blue_score = ghostdag_data.blue_score;
-        header.blue_work = ghostdag_data.blue_work;
+        header.timestamp = self.consensus.services.window_manager.calc_past_median_time(&coloring_ghostdag_data).unwrap().0 + 1;
+        header.blue_score = coloring_ghostdag_data.blue_score;
+        header.blue_work = topology_ghostdag_data.blue_work;
 
         header
     }
