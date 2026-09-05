@@ -1167,15 +1167,21 @@ impl VirtualStateProcessor {
                     return (candidate, parents.into());
                 } else {
                     debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate);
-                    tip_set.remove(&candidate);
                 }
             } else if finality_point != pruning_point {
                 // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
                 warn!("Finality Violation Detected. Block {} violates finality and is ignored from Virtual chain.", candidate);
             }
+
+            // Same as GHOSTDAG sink search popping the heap: drop a rejected candidate
+            // before considering its parents. Leaving it in tip_set makes every parent
+            // look like a DAG ancestor of the current set, so genesis is never added
+            // and the loop retries the same UTXO-invalid tip forever.
+            tip_set.remove(&candidate);
+
             // PRUNE SAFETY: see comment within [`resolve_virtual`]
             let prune_guard = self.pruning_lock.blocking_read();
-           
+
             // Update the tip set with 'chain qualified' representatives from the ancestory of the candidate block, which are:
             // 1) not covered by some other tip in the current tip set,
             // 2) not violating finality,
@@ -1185,10 +1191,7 @@ impl VirtualStateProcessor {
             while let Some(parent) = parent_queue.pop_front() {
                 if !seen.contains(&parent)
                     && self.reachability_service.is_dag_ancestor_of(finality_point, parent)
-                    && !self.reachability_service.is_dag_ancestor_of_any(
-                        parent,
-                        &mut tip_set.iter().copied(),
-                    )
+                    && !self.reachability_service.is_dag_ancestor_of_any(parent, &mut tip_set.iter().copied())
                 {
                     seen.insert(parent);
                     diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, parent);
