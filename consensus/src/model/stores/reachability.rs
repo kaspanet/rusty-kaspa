@@ -22,7 +22,7 @@ use std::{
 };
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct ReachabilityData {
+pub struct ReachabilityData {
     pub parent: Hash,
     pub interval: Interval,
     pub height: u64,
@@ -40,6 +40,8 @@ impl ReachabilityData {
 pub trait ReachabilityStoreReader {
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError>;
+    /// Returns the full reachability data of `hash`: tree parent, interval and height
+    fn get_reachability_data(&self, hash: Hash) -> Result<ReachabilityData, StoreError>;
     /// Returns the reachability *tree* parent of `hash`
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError>;
     /// Returns the reachability *tree* children of `hash`
@@ -312,6 +314,10 @@ impl ReachabilityStoreReader for DbReachabilityStore {
 
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError> {
         Ok(self.access.read(hash)?.interval)
+    }
+
+    fn get_reachability_data(&self, hash: Hash) -> Result<ReachabilityData, StoreError> {
+        self.access.read(hash)
     }
 
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
@@ -599,6 +605,11 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         }
     }
 
+    fn get_reachability_data(&self, hash: Hash) -> Result<ReachabilityData, StoreError> {
+        self.check_not_in_deletions(hash)?;
+        if let Some(data) = self.staging_writes.get(&hash) { Ok(data.clone()) } else { self.store_read.access.read(hash) }
+    }
+
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
         self.check_not_in_deletions(hash)?;
         if let Some(data) = self.staging_writes.get(&hash) { Ok(data.parent) } else { Ok(self.store_read.access.read(hash)?.parent) }
@@ -797,6 +808,13 @@ impl ReachabilityStoreReader for MemoryReachabilityStore {
         let data =
             map.get(&hash).ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
         Ok(data.interval)
+    }
+
+    fn get_reachability_data(&self, hash: Hash) -> Result<ReachabilityData, StoreError> {
+        let map = self.map.read();
+        let data =
+            map.get(&hash).ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
+        Ok(ReachabilityData::new(data.parent, data.interval, data.height))
     }
 
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
