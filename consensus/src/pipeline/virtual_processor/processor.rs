@@ -1196,6 +1196,8 @@ impl VirtualStateProcessor {
                     seen.insert(parent);
                     diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, parent);
                     if diff_point == parent {
+                        // remove any tips that are DAG descendants of the current parent
+                        tip_set.retain(|t| !self.reachability_service.is_dag_ancestor_of(*t, parent));
                         tip_set.insert(parent);
                     } else {
                         parent_queue.extend(self.relations_service.get_parents(parent).unwrap().iter().copied());
