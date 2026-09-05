@@ -35,7 +35,7 @@ use crate::{
             virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
         },
     },
-    params::Params,
+    params::{ForkActivation, Params},
     pipeline::{
         ProcessingCounters, deps_manager::VirtualStateProcessingMessage, pruning_processor::processor::PruningProcessingMessage,
         virtual_processor::utxo_validation::UtxoProcessingContext,
@@ -180,7 +180,8 @@ pub struct VirtualStateProcessor {
     // Mining Rule
     _mining_rules: Arc<MiningRules>,
 
-    pub(super) dagknight_executor: Option<DbDagknightExecutor>,
+    pub(super) dagknight_executor: DbDagknightExecutor,
+    pub(super) dagknight_activation: ForkActivation,
 }
 
 impl VirtualStateProcessor {
@@ -246,6 +247,7 @@ impl VirtualStateProcessor {
             parents_manager: services.parents_manager.clone(),
             depth_manager: services.depth_manager.clone(),
             dagknight_executor: services.dagknight_executor.clone(),
+            dagknight_activation: params.dagknight_activation,
 
             pruning_lock,
             notification_root,
@@ -317,29 +319,34 @@ impl VirtualStateProcessor {
         let prev_sink = prev_state.coloring_ghostdag_data.selected_parent;
         let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
 
-        let (new_sink, virtual_parent_candidates) = if let Some(dk_executor) = &self.dagknight_executor {
+        // The regime of this virtual resolution is determined by the previous virtual state's DAA score,
+        // keeping the coloring regime of a given virtual state self-consistent
+        let dk_active = self.dagknight_activation.is_active(prev_state.daa_score);
+
+        let (new_sink, virtual_parent_candidates) = if dk_active {
             // TODO[DK]: Revisit this filtering logic and verify it's alright. Or implement a more robust way to do it.
             let prev_sink_merge_depth_root =
                 self.depth_manager.calc_merge_depth_root(&prev_state.coloring_ghostdag_data, pruning_point);
+            let pre_filtered_tips = tips
+                .clone()
+                .iter()
+                .cloned()
+                .filter(|&t| self.reachability_service.is_dag_ancestor_of(prev_sink_merge_depth_root, t))
+                .collect_vec();
             self.sink_search_algorithm_v2(
                 &virtual_read,
                 &mut accumulated_diff,
                 prev_sink,
-                tips.clone()
-                    .iter()
-                    .cloned()
-                    .filter(|&t| self.reachability_service.is_dag_ancestor_of(prev_sink_merge_depth_root, t))
-                    .collect_vec(),
+                pre_filtered_tips,
                 finality_point,
                 pruning_point,
-                dk_executor,
             )
         } else {
             self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips.clone(), finality_point, pruning_point)
         };
 
         let (virtual_parents, virtual_topology_ghostdag_data, virtual_coloring_ghostdag_data) =
-            self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point);
+            self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point, dk_active);
 
         assert_eq!(virtual_coloring_ghostdag_data.selected_parent, new_sink);
 
@@ -1097,7 +1104,6 @@ impl VirtualStateProcessor {
         tips: Vec<Hash>,
         finality_point: Hash,
         pruning_point: Hash,
-        dagknight_executor: &DbDagknightExecutor,
     ) -> (Hash, VecDeque<Hash>) {
         // TODO (relaxed): additional tests
 
@@ -1123,13 +1129,14 @@ impl VirtualStateProcessor {
                 // else:
                 //    break inner loop with (candidate, parents)
                 let DagknightData { selected_parent: inner_candidate, conflict_ordered_parents } =
-                    dagknight_executor.dagknight(&sub_tips.iter().copied().collect_vec());
+                    self.dagknight_executor.dagknight(&sub_tips.iter().copied().collect_vec());
 
                 debug!("Dagknight selected candidate: {}", inner_candidate);
                 debug!("Dagknight conflict ordered parents: {:#?}", conflict_ordered_parents);
 
+                // v2 is only invoked when DAGKnight is active
                 let (parents, _, _) =
-                    self.pick_virtual_parents(inner_candidate, conflict_ordered_parents.clone().into(), pruning_point);
+                    self.pick_virtual_parents(inner_candidate, conflict_ordered_parents.clone().into(), pruning_point, true);
 
                 let mut parents_no_sp = BlockHashSet::from(parents.iter().copied().collect());
                 let cg_hashset = BlockHashSet::from(conflict_ordered_parents.iter().copied().collect());
@@ -1201,6 +1208,7 @@ impl VirtualStateProcessor {
         selected_parent: Hash,
         mut candidates: VecDeque<Hash>,
         pruning_point: Hash,
+        dk_active: bool,
     ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
         // TODO (relaxed): additional tests
 
@@ -1262,7 +1270,7 @@ impl VirtualStateProcessor {
         }
         assert!(mergeset_size <= mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
-        self.remove_bounded_merge_breaking_parents(virtual_parents, pruning_point)
+        self.remove_bounded_merge_breaking_parents(virtual_parents, pruning_point, dk_active)
     }
 
     fn mergeset_increase(&self, selected_parents: &[Hash], candidate: Hash, budget: u64) -> MergesetIncreaseResult {
@@ -1300,10 +1308,11 @@ impl VirtualStateProcessor {
         &self,
         mut virtual_parents: Vec<Hash>,
         current_pruning_point: Hash,
+        dk_active: bool,
     ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
         let mut topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
-        let mut coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
-            let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&virtual_parents);
+        let mut coloring_ghostdag_data = if dk_active {
+            let DagknightData { selected_parent: dk_sp, .. } = self.dagknight_executor.dagknight(&virtual_parents);
             self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
         } else {
             self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
@@ -1335,8 +1344,8 @@ impl VirtualStateProcessor {
             virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
             // Recompute ghostdag data since parents changed
             topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
-            coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
-                let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&virtual_parents);
+            coloring_ghostdag_data = if dk_active {
+                let DagknightData { selected_parent: dk_sp, .. } = self.dagknight_executor.dagknight(&virtual_parents);
                 self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
             } else {
                 self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
@@ -1758,9 +1767,11 @@ impl VirtualStateProcessor {
 
         // Calculate the virtual state, treating the pruning point as the only virtual parent
         let virtual_parents = vec![new_pruning_point];
-        let virtual_coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
+        // TODO[DK][Activation]: Revisit if this is the correct wiring here where new_pruning_point_header.daa_score is the basis
+        let dk_active = self.dagknight_activation.is_active(new_pruning_point_header.daa_score);
+        let virtual_coloring_ghostdag_data = if dk_active {
             // Ensure we compute coloring GD (for blue score decisions) with the DK selected parent
-            let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&virtual_parents);
+            let DagknightData { selected_parent: dk_sp, .. } = self.dagknight_executor.dagknight(&virtual_parents);
             self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
         } else {
             self.coloring_ghostdag_manager.ghostdag(&virtual_parents)

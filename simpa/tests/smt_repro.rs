@@ -152,6 +152,7 @@ fn apply_pruning_repro_params(params: &mut Params) {
     params.merge_depth = (params.merge_depth as f64 * BPS) as u64;
     params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, BPS * DELAY * 0.25)) as u64;
     params.crescendo_activation = ForkActivation::always();
+    params.dagknight_activation = ForkActivation::always();
     params.timestamp_deviation_tolerance = (600.0 * BPS) as u64;
     params.past_median_time_sample_rate = (10.0 * BPS) as u64;
     params.difficulty_sample_rate = (2.0 * BPS) as u64;

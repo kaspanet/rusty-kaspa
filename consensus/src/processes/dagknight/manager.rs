@@ -472,10 +472,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
         let mut visited = BlockHashSet::new();
 
-        loop {
-            let Some(current) = topological_heap.pop() else {
-                break;
-            };
+        while let Some(current) = topological_heap.pop() {
             let current_hash = current.0.hash;
             if !visited.insert(current_hash) {
                 continue;
@@ -512,12 +509,9 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
                     // all parents here must already exist assuming topological sorting is honored
                     // so finding one that doesn't means an error in processing and must be diagnosed
-                    if let Some(&parent) = agreeing_parents
-                        .iter()
-                        .filter(|&&parent| !self.has(parent))
-                        .filter(|&&parent| tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
-                        .next()
-                    {
+                    if let Some(&parent) = agreeing_parents.iter().find(|&&parent| {
+                        !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip))
+                    }) {
                         last_known_tips
                             .iter()
                             .filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip))
@@ -702,19 +696,19 @@ mod tests {
     ///
     /// DAG structure:
     ///
-    ///         A <= B <= D -- F
-    ///          \       /
-    ///            \  /
-    ///        Z <- C <= E -- W
-    ///         \    \   /
-    ///           \   \ /
+    ///         A <= B <= D <= F
+    ///          \           /
+    ///            \       /
+    ///        Z <- C <= E <= W
+    ///         \    \      /
+    ///           \   \   /
     ///            Y <= X
     ///
     /// Selected parents:
     /// - A: ORIGIN, B: A, D: B, Z: ORIGIN
     /// - C: A (agrees with A), E: C
     /// - Y: Z, X: Y (X does NOT agree with A - its chain goes X→Y→Z→ORIGIN)
-    /// - F, W: tips (no selected parent yet)
+    /// - F: D, W: E
     ///
     /// Parents:
     /// - A:[ORIGIN], B:[A], D:[B], F:[D,E]
@@ -763,8 +757,8 @@ mod tests {
             builder.add_block_with_selected_parent(DagBlock::new(hash_e, vec![hash_c]), hash_c);
             builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
             builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y, hash_c]), hash_y);
-            builder.add_block(DagBlock::new(hash_f, vec![hash_d, hash_e])); // Tip
-            builder.add_block(DagBlock::new(hash_w, vec![hash_x, hash_e])); // Tip
+            builder.add_block_with_selected_parent(DagBlock::new(hash_f, vec![hash_d, hash_e]), hash_d); // Tip
+            builder.add_block_with_selected_parent(DagBlock::new(hash_w, vec![hash_x, hash_e]), hash_e); // Tip
 
             // Insert headers with valid bits
             for (hash, parents) in [
@@ -830,13 +824,17 @@ mod tests {
         // Tips are F and W (no records yet)
         let tips = vec![hash_f, hash_w];
 
-        let (roots_committed, _) = manager_committed.find_last_known_tips(&tips, None);
-        let (roots_free, _) = manager_free.find_last_known_tips(&tips, None);
+        // First coloring for one subgroup
+        let (roots_committed_with_hash_b, _) = manager_committed.find_last_known_tips(&tips, Some(hash_b));
+        assert_eq!(roots_committed_with_hash_b.len(), 1, "Committed LKT with NCA=B should find D only");
+        assert!(roots_committed_with_hash_b.contains(&hash_d));
 
-        assert_eq!(roots_committed.len(), 2, "Committed should find D, E");
-        assert!(roots_committed.contains(&hash_d));
-        assert!(roots_committed.contains(&hash_e));
-        assert!(!roots_committed.contains(&hash_x), "X should not be in committed roots");
+        // Second coloring for another subgroup
+        let (roots_committed_with_hash_c, _) = manager_committed.find_last_known_tips(&tips, Some(hash_c));
+        assert_eq!(roots_committed_with_hash_c.len(), 1, "Committed LKT with NCA=C should find E only");
+        assert!(roots_committed_with_hash_c.contains(&hash_e));
+
+        let (roots_free, _) = manager_free.find_last_known_tips(&tips, None);
 
         assert_eq!(roots_free.len(), 3, "Free search should find D, E, X");
         assert!(roots_free.contains(&hash_d));
@@ -964,6 +962,9 @@ mod tests {
         );
     }
 
+    /// (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
+    type JsonTestBlock<SP = Hash> = (Hash, Vec<Hash>, Uint192, u32, u64, u64, SP);
+
     #[test]
     fn test_czm_lkt_correctness() {
         let mut reachability = MemoryReachabilityStore::new();
@@ -997,7 +998,7 @@ mod tests {
 
         let blocks = json_data["blocks"].as_array().expect("Blocks is not an array");
 
-        let test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Hash)> = blocks
+        let test_blocks: Vec<JsonTestBlock> = blocks
             .iter()
             .map(|block| {
                 let id = Hash::from_str(block["id"].as_str().unwrap()).unwrap();
@@ -1041,7 +1042,7 @@ mod tests {
         // let tips = vec![];
         println!("lkt base: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
         czm.fill_zone_data(
-            &vec![Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
+            &[Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
             Some(nca_2),
         );
         println!("lkt before nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
@@ -1070,7 +1071,7 @@ mod tests {
         let conflict_genesis = Hash::from_str(json_data["conflict_genesis"].as_str().unwrap()).unwrap();
 
         // (id, parents, blue_work, bits, blue_score, daa_score, selected_parent)
-        let mut test_blocks: Vec<(Hash, Vec<Hash>, Uint192, u32, u64, u64, Option<Hash>)> = json_data["blocks"]
+        let mut test_blocks: Vec<JsonTestBlock<Option<Hash>>> = json_data["blocks"]
             .as_array()
             .unwrap()
             .iter()

@@ -64,6 +64,13 @@ static TESTNET12_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| Netw
     additional_compound_transaction_mass: 100,
 });
 
+static TESTNET13_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| NetworkParams {
+    coinbase_transaction_maturity_period_daa: AtomicU64::new(1_000),
+    coinbase_transaction_stasis_period_daa: 500,
+    user_transaction_maturity_period_daa: AtomicU64::new(100),
+    additional_compound_transaction_mass: 100,
+});
+
 static SIMNET_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| NetworkParams {
     coinbase_transaction_maturity_period_daa: AtomicU64::new(1_000),
     coinbase_transaction_stasis_period_daa: 500,
@@ -85,6 +92,7 @@ impl NetworkParams {
             NetworkType::Testnet => match value.suffix {
                 Some(10) => &TESTNET10_NETWORK_PARAMS,
                 Some(12) => &TESTNET12_NETWORK_PARAMS,
+                Some(13) => &TESTNET13_NETWORK_PARAMS,
                 Some(x) => panic!("Testnet suffix {} is not supported", x),
                 None => panic!("Testnet suffix not provided"),
             },
