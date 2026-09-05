@@ -1262,7 +1262,7 @@ impl VirtualStateProcessor {
         }
         assert!(mergeset_size <= mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
-        self.remove_bounded_merge_breaking_parents(virtual_parents, pruning_point)
+        self.remove_bounded_merge_breaking_parents(virtual_parents[0], virtual_parents, pruning_point)
     }
 
     fn mergeset_increase(&self, selected_parents: &[Hash], candidate: Hash, budget: u64) -> MergesetIncreaseResult {
@@ -1298,13 +1298,13 @@ impl VirtualStateProcessor {
 
     fn remove_bounded_merge_breaking_parents(
         &self,
+        selected_parent: Hash,
         mut virtual_parents: Vec<Hash>,
         current_pruning_point: Hash,
     ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
         let mut topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
-        let mut coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
-            let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&virtual_parents);
-            self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
+        let mut coloring_ghostdag_data = if self.dagknight_executor.is_some() {
+            self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, selected_parent)
         } else {
             self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
         };
@@ -1335,9 +1335,8 @@ impl VirtualStateProcessor {
             virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
             // Recompute ghostdag data since parents changed
             topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
-            coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
-                let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&virtual_parents);
-                self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
+            coloring_ghostdag_data = if self.dagknight_executor.is_some() {
+                self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, selected_parent)
             } else {
                 self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
             };
