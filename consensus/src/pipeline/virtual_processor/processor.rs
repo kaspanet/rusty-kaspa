@@ -49,7 +49,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    BlockHashSet, ChainPath,
+    BlockHashSet, ChainPath, HashMapCustomHasher,
     acceptance_data::AcceptanceData,
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
@@ -1166,24 +1166,37 @@ impl VirtualStateProcessor {
                     // let filtering_blue_work = self.topology_ghostdag_store.get_blue_work(filtering_root).unwrap_or_default();
                     return (candidate, parents.into());
                 } else {
-                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
+                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate);
+                    tip_set.remove(&candidate);
                 }
             } else if finality_point != pruning_point {
                 // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
                 warn!("Finality Violation Detected. Block {} violates finality and is ignored from Virtual chain.", candidate);
             }
-            // Same as GHOSTDAG sink search popping the heap: drop a rejected candidate
-            // before considering its parents. Leaving it in tip_set makes every parent
-            // look like a DAG ancestor of the current set, so genesis is never added
-            // and the loop retries the same UTXO-invalid tip forever.
-            tip_set.remove(&candidate);
             // PRUNE SAFETY: see comment within [`resolve_virtual`]
             let prune_guard = self.pruning_lock.blocking_read();
-            for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
-                if self.reachability_service.is_dag_ancestor_of(finality_point, parent)
-                    && !self.reachability_service.is_dag_ancestor_of_any(parent, &mut tip_set.iter().copied())
+           
+            // Update the tip set with 'chain qualified' representatives from the ancestory of the candidate block, which are:
+            // 1) not covered by some other tip in the current tip set,
+            // 2) not violating finality,
+            // 3) has a valid utxo state
+            let mut parent_queue: VecDeque<Hash> = self.relations_service.get_parents(candidate).unwrap().iter().copied().collect();
+            let mut seen: BlockHashSet = BlockHashSet::new();
+            while let Some(parent) = parent_queue.pop_front() {
+                if !seen.contains(&parent)
+                    && self.reachability_service.is_dag_ancestor_of(finality_point, parent)
+                    && !self.reachability_service.is_dag_ancestor_of_any(
+                        parent,
+                        &mut tip_set.iter().copied(),
+                    )
                 {
-                    tip_set.insert(parent);
+                    seen.insert(parent);
+                    diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, parent);
+                    if diff_point == parent {
+                        tip_set.insert(parent);
+                    } else {
+                        parent_queue.extend(self.relations_service.get_parents(parent).unwrap().iter().copied());
+                    }
                 }
             }
             drop(prune_guard);
