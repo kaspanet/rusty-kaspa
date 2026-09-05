@@ -472,10 +472,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
         let mut visited = BlockHashSet::new();
 
-        loop {
-            let Some(current) = topological_heap.pop() else {
-                break;
-            };
+        while let Some(current) = topological_heap.pop() {
             let current_hash = current.0.hash;
             if !visited.insert(current_hash) {
                 continue;
@@ -512,12 +509,9 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 
                     // all parents here must already exist assuming topological sorting is honored
                     // so finding one that doesn't means an error in processing and must be diagnosed
-                    if let Some(&parent) = agreeing_parents
-                        .iter()
-                        .filter(|&&parent| !self.has(parent))
-                        .filter(|&&parent| tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
-                        .next()
-                    {
+                    if let Some(&parent) = agreeing_parents.iter().find(|&&parent| {
+                        !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip))
+                    }) {
                         last_known_tips
                             .iter()
                             .filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip))
@@ -1048,7 +1042,7 @@ mod tests {
         // let tips = vec![];
         println!("lkt base: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
         czm.fill_zone_data(
-            &vec![Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
+            &[Hash::from_str("b2c22e6c802483e51e37d22a782a5a98379f39328618780e96d195eefbfa9f3e").unwrap()],
             Some(nca_2),
         );
         println!("lkt before nca_1: {:?}", czm.find_last_known_tips(&tips, Some(nca_1)).0);
