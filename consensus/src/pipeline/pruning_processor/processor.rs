@@ -510,11 +510,11 @@ impl PruningProcessor {
                 // Prune the records rooted at this block (may be 0).
                 // TODO[DK]: this can impact DK calls rooted at the current block in the case where the conflict genesis
                 // is already pruned but a new block (obviously should fail) would try to create a conflict.
-                if let Some(dagknight_store) = &self.dagknight_store {
-                    let dk_deleted = dagknight_store.delete_rooted_range(&mut batch, current).unwrap();
-                    if dk_deleted > 0 {
-                        trace!("[PRUNE::DK] Root: {} | Count: {}", current, dk_deleted);
-                    }
+                // TODO[DK][Activation]: This PR makes no activation check here. The idea is that if the data isn't there,
+                // this is just a NOOP
+                let dk_deleted = self.dagknight_store.delete_rooted_range(&mut batch, current).unwrap();
+                if dk_deleted > 0 {
+                    trace!("[PRUNE::DK] Root: {} | Count: {}", current, dk_deleted);
                 }
                 // Prune UMC cascade checkpoints of zones whose conflict genesis is this block
                 let umc_deleted = self.umc_persistence_store.prune_by_conflict_genesis(&mut batch, current).unwrap();
