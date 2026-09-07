@@ -345,8 +345,12 @@ impl VirtualStateProcessor {
             self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips.clone(), finality_point, pruning_point)
         };
 
-        let (virtual_parents, virtual_topology_ghostdag_data, virtual_coloring_ghostdag_data) =
-            self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point, dk_active);
+        let (virtual_parents, virtual_topology_ghostdag_data, virtual_coloring_ghostdag_data) = if dk_active {
+            // TODO [DK], no need to re-run this here, we can return this data directly from ssav2.
+            self.pick_virtual_parents_v2(new_sink, virtual_parent_candidates, pruning_point)
+        } else {
+            self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point)
+        };
 
         assert_eq!(virtual_coloring_ghostdag_data.selected_parent, new_sink);
 
@@ -1029,6 +1033,7 @@ impl VirtualStateProcessor {
     /// The function returns with `diff` being the diff of the new sink from previous virtual.
     /// In addition to the found sink the function also returns a queue of additional virtual
     /// parent candidates ordered in descending blue work order.
+    /// TODO [post-DK cleanp-up] remove this function.
     pub(super) fn sink_search_algorithm(
         &self,
         stores: &VirtualStores,
@@ -1096,6 +1101,7 @@ impl VirtualStateProcessor {
     /// The function returns with `diff` being the diff of the new sink from previous virtual.
     /// In addition to the found sink the function also returns a queue of additional virtual
     /// parent candidates ordered in descending blue work order.
+    /// TODO [post-DK cleanp-up] consider removing the `_v2` suffix.
     pub(super) fn sink_search_algorithm_v2(
         &self,
         stores: &VirtualStores,
@@ -1136,7 +1142,7 @@ impl VirtualStateProcessor {
 
                 // v2 is only invoked when DAGKnight is active
                 let (parents, _, _) =
-                    self.pick_virtual_parents(inner_candidate, conflict_ordered_parents.clone().into(), pruning_point, true);
+                    self.pick_virtual_parents_v2(inner_candidate, conflict_ordered_parents.clone().into(), pruning_point);
 
                 let mut parents_no_sp = BlockHashSet::from(parents.iter().copied().collect());
                 let cg_hashset = BlockHashSet::from(conflict_ordered_parents.iter().copied().collect());
@@ -1203,12 +1209,12 @@ impl VirtualStateProcessor {
     ///     1. `selected_parent` is a UTXO-valid block
     ///     2. `candidates` are an antichain ordered in descending blue work order
     ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`  
+    /// TODO [post-DK cleanp-up] remove this function.
     pub(super) fn pick_virtual_parents(
         &self,
         selected_parent: Hash,
         mut candidates: VecDeque<Hash>,
         pruning_point: Hash,
-        dk_active: bool,
     ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
         // TODO (relaxed): additional tests
 
@@ -1270,9 +1276,85 @@ impl VirtualStateProcessor {
         }
         assert!(mergeset_size <= mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
-        self.remove_bounded_merge_breaking_parents(virtual_parents, pruning_point, dk_active)
+        self.remove_bounded_merge_breaking_parents(virtual_parents, pruning_point)
     }
 
+    /// Picks the virtual parents according to virtual parent selection pruning constrains.
+    /// Assumes:
+    ///     1. `selected_parent` is a UTXO-valid block
+    ///     2. `candidates` are an antichain ordered in descending blue work order
+    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`  
+    /// TODO [post-DK cleanp-up] consider removing the `_v2` suffix.
+    pub(super) fn pick_virtual_parents_v2(
+        &self,
+        selected_parent: Hash,
+        mut candidates: VecDeque<Hash>,
+        pruning_point: Hash,
+    ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
+        // TODO (relaxed): additional tests
+
+        // Mergeset increasing might traverse DAG areas which are below the finality point and which theoretically
+        // can borderline with pruned data, hence we acquire the prune lock to ensure data consistency. Note that
+        // the final selected mergeset can never be pruned (this is the essence of the prunality proof), however
+        // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
+        // enough so we avoid making further optimizations
+        let _prune_guard = self.pruning_lock.blocking_read();
+        let max_block_parents = self.max_block_parents as usize;
+        let mergeset_size_limit = self.mergeset_size_limit;
+        let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
+
+        // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
+        if candidates.len() > max_candidates {
+            // make_contiguous should be a no op since the deque was just built
+            let slice = candidates.make_contiguous();
+
+            // Keep slice[..max_block_parents / 2] as is, choose max_candidates - max_block_parents / 2 in random
+            // from the remainder of the slice while swapping them to slice[max_block_parents / 2..max_candidates].
+            //
+            // Inspired by rand::partial_shuffle (which lacks the guarantee on chosen elements location).
+            for i in max_block_parents / 2..max_candidates {
+                let j = rand::thread_rng().gen_range(i..slice.len()); // i < max_candidates < slice.len()
+                slice.swap(i, j);
+            }
+
+            // Truncate the unchosen elements
+            candidates.truncate(max_candidates);
+        } else if candidates.len() > max_block_parents / 2 {
+            // Fallback to a simpler algo in this case
+            candidates.make_contiguous()[max_block_parents / 2..].shuffle(&mut rand::thread_rng());
+        }
+
+        let mut virtual_parents = Vec::with_capacity(min(max_block_parents, candidates.len() + 1));
+        virtual_parents.push(selected_parent);
+        let mut mergeset_size = 1; // Count the selected parent
+
+        // Try adding parents as long as mergeset size and number of parents limits are not reached
+        while let Some(candidate) = candidates.pop_front() {
+            if mergeset_size >= mergeset_size_limit || virtual_parents.len() >= max_block_parents {
+                break;
+            }
+            match self.mergeset_increase_v2(&virtual_parents, candidate, mergeset_size_limit - mergeset_size) {
+                MergesetIncreaseResult::Accepted { increase_size } => {
+                    mergeset_size += increase_size;
+                    virtual_parents.push(candidate);
+                }
+                MergesetIncreaseResult::Rejected { new_candidate } => {
+                    // If we already have a candidate in the past of new candidate then skip.
+                    if self.reachability_service.is_any_dag_ancestor(&mut candidates.iter().copied(), new_candidate) {
+                        continue; // TODO (optimization): not sure this check is needed if candidates invariant as antichain is kept
+                    }
+                    // Remove all candidates which are in the future of the new candidate
+                    candidates.retain(|&h| !self.reachability_service.is_dag_ancestor_of(new_candidate, h));
+                    candidates.push_back(new_candidate);
+                }
+            }
+        }
+        assert!(mergeset_size <= mergeset_size_limit);
+        assert!(virtual_parents.len() <= max_block_parents);
+        self.remove_bounded_merge_breaking_parents_v2(virtual_parents, pruning_point)
+    }
+
+    /// TODO [post-DK cleanp-up] remove this function.
     fn mergeset_increase(&self, selected_parents: &[Hash], candidate: Hash, budget: u64) -> MergesetIncreaseResult {
         /*
         Algo:
@@ -1304,18 +1386,89 @@ impl VirtualStateProcessor {
         MergesetIncreaseResult::Accepted { increase_size: mergeset_increase }
     }
 
+    /// TODO [post-DK cleanp-up] consider removing the `_v2` suffix.
+    fn mergeset_increase_v2(&self, selected_parents: &[Hash], candidate: Hash, budget: u64) -> MergesetIncreaseResult {
+        /*
+        Algo:
+            Traverse past(candidate) \setminus past(selected_parents) and make
+            sure the increase in mergeset size is within the available budget
+        */
+
+        let candidate_parents = self.relations_service.get_parents(candidate).unwrap();
+        let mut queue: VecDeque<_> = candidate_parents.iter().copied().collect();
+        let mut visited: BlockHashSet = queue.iter().copied().collect();
+        let mut mergeset_increase = 1u64; // Starts with 1 to count for the candidate itself
+
+        while let Some(current) = queue.pop_front() {
+            if self.reachability_service.is_dag_ancestor_of_any(current, &mut selected_parents.iter().copied()) {
+                continue;
+            }
+            mergeset_increase += 1;
+            if mergeset_increase > budget {
+                return MergesetIncreaseResult::Rejected { new_candidate: current };
+            }
+
+            let current_parents = self.relations_service.get_parents(current).unwrap();
+            for &parent in current_parents.iter() {
+                if visited.insert(parent) {
+                    queue.push_back(parent);
+                }
+            }
+        }
+        MergesetIncreaseResult::Accepted { increase_size: mergeset_increase }
+    }
+
+    /// TODO [post-DK cleanp-up]: remove this function.
     fn remove_bounded_merge_breaking_parents(
         &self,
         mut virtual_parents: Vec<Hash>,
         current_pruning_point: Hash,
-        dk_active: bool,
     ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
         let mut topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
-        let mut coloring_ghostdag_data = if dk_active {
+        let mut coloring_ghostdag_data = self.coloring_ghostdag_manager.ghostdag(&virtual_parents);
+        let merge_depth_root = self.depth_manager.calc_merge_depth_root(&coloring_ghostdag_data, current_pruning_point);
+        let mut kosherizing_blues: Option<Vec<Hash>> = None;
+        let mut bad_reds = Vec::new();
+
+        //
+        // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
+        //
+
+        // Find red blocks violating the merge bound and which are not kosherized by any blue
+        for red in coloring_ghostdag_data.mergeset_reds.iter().copied() {
+            if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
+                continue;
+            }
+            // Lazy load the kosherizing blocks since this case is extremely rare
+            if kosherizing_blues.is_none() {
+                kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&coloring_ghostdag_data, merge_depth_root).collect());
+            }
+            if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
+                bad_reds.push(red);
+            }
+        }
+
+        if !bad_reds.is_empty() {
+            // Remove all parents which lead to merging a bad red
+            virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
+            // Recompute ghostdag data since parents changed
+            topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
+            coloring_ghostdag_data = self.coloring_ghostdag_manager.ghostdag(&virtual_parents);
+        };
+
+        (virtual_parents, topology_ghostdag_data, coloring_ghostdag_data)
+    }
+
+    /// TODO [post-DK cleanp-up]: consider removing the `_v2` suffix.
+    fn remove_bounded_merge_breaking_parents_v2(
+        &self,
+        mut virtual_parents: Vec<Hash>,
+        current_pruning_point: Hash,
+    ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
+        let mut topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
+        let mut coloring_ghostdag_data = {
             let DagknightData { selected_parent: dk_sp, .. } = self.dagknight_executor.dagknight(&virtual_parents);
             self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
-        } else {
-            self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
         };
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&coloring_ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
@@ -1344,11 +1497,9 @@ impl VirtualStateProcessor {
             virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
             // Recompute ghostdag data since parents changed
             topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
-            coloring_ghostdag_data = if dk_active {
+            coloring_ghostdag_data = {
                 let DagknightData { selected_parent: dk_sp, .. } = self.dagknight_executor.dagknight(&virtual_parents);
                 self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
-            } else {
-                self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
             };
         }
 
