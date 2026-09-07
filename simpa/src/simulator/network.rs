@@ -5,6 +5,7 @@ use kaspa_core::time::unix_now;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
+use super::adversary::AdversaryPlan;
 use super::miner::{LaneProducer, Miner, MinerOptions, NativeLaneProducer};
 
 use kaspa_consensus::config::Config;
@@ -90,6 +91,58 @@ impl KaspaNetworkSimulator {
         long_payload: bool,
         lane_producer: impl Fn(u64) -> Box<dyn LaneProducer>,
     ) -> &mut Self {
+        self.init_inner(
+            num_miners,
+            target_txs_per_block,
+            rocksdb_stats,
+            rocksdb_stats_period_sec,
+            rocksdb_files_limit,
+            rocksdb_mem_budget,
+            long_payload,
+            lane_producer,
+            |_| None,
+        )
+    }
+
+    /// Initialize miners, assigning each an optional `AdversaryPlan` (see the
+    /// `adversary` module). Miners without a plan behave exactly as honest miners.
+    pub fn init_with_adversary(
+        &mut self,
+        num_miners: u64,
+        target_txs_per_block: u64,
+        rocksdb_stats: bool,
+        rocksdb_stats_period_sec: Option<u32>,
+        rocksdb_files_limit: Option<i32>,
+        rocksdb_mem_budget: Option<usize>,
+        long_payload: bool,
+        adversary_plan: impl Fn(u64) -> Option<AdversaryPlan>,
+    ) -> &mut Self {
+        self.init_inner(
+            num_miners,
+            target_txs_per_block,
+            rocksdb_stats,
+            rocksdb_stats_period_sec,
+            rocksdb_files_limit,
+            rocksdb_mem_budget,
+            long_payload,
+            |_| Box::new(NativeLaneProducer),
+            adversary_plan,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn init_inner(
+        &mut self,
+        num_miners: u64,
+        target_txs_per_block: u64,
+        rocksdb_stats: bool,
+        rocksdb_stats_period_sec: Option<u32>,
+        rocksdb_files_limit: Option<i32>,
+        rocksdb_mem_budget: Option<usize>,
+        long_payload: bool,
+        lane_producer: impl Fn(u64) -> Box<dyn LaneProducer>,
+        adversary_plan: impl Fn(u64) -> Option<AdversaryPlan>,
+    ) -> &mut Self {
         let secp = secp256k1::Secp256k1::new();
         let mut rng = self.seed.map(StdRng::seed_from_u64).unwrap_or_else(StdRng::from_entropy);
         for i in 0..num_miners {
@@ -143,6 +196,7 @@ impl KaspaNetworkSimulator {
                     target_blocks: self.target_blocks,
                     long_payload,
                     lane_producer: lane_producer(i),
+                    adversary: adversary_plan(i),
                 },
             ));
             self.simulation.register(i, miner_process);
