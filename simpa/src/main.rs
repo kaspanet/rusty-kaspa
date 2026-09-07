@@ -3,6 +3,7 @@ use clap::Parser;
 use futures::{Future, future::try_join_all};
 use itertools::Itertools;
 use kaspa_alloc::init_allocator_with_default_settings;
+use kaspa_consensus::processes::dagknight::DagknightCountersSnapshot;
 use kaspa_consensus::{
     config::ConfigBuilder,
     consensus::Consensus,
@@ -31,6 +32,7 @@ use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
 use kaspa_perf_monitor::{builder::Builder, counters::CountersSnapshot};
 use kaspa_utils::fd_budget;
+use simpa::simulator::adversary::{AdversaryParams, AdversaryPlan, Scenario};
 use simpa::simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
@@ -132,6 +134,41 @@ struct Args {
 
     #[arg(long)]
     blocks_json_gz_output_path: Option<String>,
+
+    /// Deterministic simulation seed. Per-miner RNGs and every adversary schedule
+    /// (release times, burst windows, difficulty phases) derive from this, so a
+    /// (scenario, seed) pair is fully reproducible. Defaults to 1 when a scenario
+    /// is selected, otherwise entropy.
+    #[arg(long)]
+    seed: Option<u64>,
+
+    /// Adversarial scenario to run (issue #1112 / DK-208). One of:
+    /// withheld-side-dag, latency-burst, equal-rank-ties, weak-shortcut,
+    /// strong-shortcut, gray-context-change, variable-difficulty.
+    /// When set, the highest-id miners become adversaries and after the run the
+    /// DAGKnight counters are asserted, logging `SCENARIO <name>: PASS/FAIL`.
+    #[arg(long)]
+    scenario: Option<String>,
+
+    /// Number of adversary miners (defaults to the scenario's own default).
+    #[arg(long)]
+    adv_miners: Option<u64>,
+
+    /// Fraction of the run the adversary withholds before its burst release.
+    #[arg(long, default_value_t = 0.5)]
+    release_frac: f64,
+
+    /// Latency-burst window start, as a fraction of the run.
+    #[arg(long, default_value_t = 0.3)]
+    burst_start_frac: f64,
+
+    /// Latency-burst window end, as a fraction of the run.
+    #[arg(long, default_value_t = 0.7)]
+    burst_end_frac: f64,
+
+    /// Extra broadcast delay (ms) applied to adversary blocks during a latency burst.
+    #[arg(long, default_value_t = 60_000)]
+    burst_delay_ms: u64,
 }
 
 #[cfg(feature = "heap")]
@@ -168,6 +205,9 @@ fn main() {
 
 fn main_impl(mut args: Args) {
     let rt = tokio::runtime::Runtime::new().unwrap();
+
+    // Outcome of an adversarial scenario assertion (None if no scenario was run).
+    let mut scenario_outcome: Option<bool> = None;
 
     let stop_perf_monitor = args.perf_metrics.then(|| {
         let ts = Arc::new(TickService::new());
@@ -259,9 +299,74 @@ fn main_impl(mut args: Args) {
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
-        let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, config.clone(), args.output_dir);
-        let (consensus, handles, lifetime) = sim
-            .init(
+
+        // Resolve the optional adversarial scenario.
+        let scenario = args.scenario.as_deref().map(|name| {
+            Scenario::from_name(name).unwrap_or_else(|| {
+                panic!("unknown scenario '{name}'; valid: {:?}", Scenario::ALL.iter().map(|s| s.name()).collect::<Vec<_>>())
+            })
+        });
+        // Scenarios default to a fixed seed so runs are reproducible out of the box.
+        let seed = args.seed.or(scenario.map(|_| 1));
+
+        let mut sim =
+            KaspaNetworkSimulator::new_with_seed(args.delay, args.bps, args.target_blocks, config.clone(), args.output_dir, seed);
+
+        let (consensus, handles, lifetime) = if let Some(scenario) = scenario {
+            let params = AdversaryParams {
+                num_miners: args.miners,
+                adv_miners: args.adv_miners.unwrap_or_else(|| scenario.default_adv_miners()),
+                start_time: config.genesis.timestamp,
+                duration_ms: args.sim_time * 1000,
+                base_delay_ms: (args.delay * 1000.0) as u64,
+                release_frac: args.release_frac,
+                burst_frac: (args.burst_start_frac, args.burst_end_frac),
+                burst_delay_ms: args.burst_delay_ms,
+                seed: seed.unwrap_or(1),
+            };
+            assert!(
+                params.adv_miners > 0 && params.adv_miners < args.miners,
+                "scenario needs at least one honest miner and one adversary: require 0 < adv_miners ({}) < miners ({})",
+                params.adv_miners,
+                args.miners
+            );
+            info!(
+                "Adversarial scenario '{}': miners={}, adversaries={} (ids {}..{}), seed={}, release_at_ms={}, burst_window_ms={:?}",
+                scenario.name(),
+                args.miners,
+                params.adv_miners,
+                args.miners - params.adv_miners,
+                args.miners,
+                params.seed,
+                params.release_at(),
+                params.burst_window(),
+            );
+            let plan_params = params.clone();
+            let (consensus, handles, lifetime) = sim
+                .init_with_adversary(
+                    args.miners,
+                    args.tpb,
+                    args.rocksdb_stats,
+                    args.rocksdb_stats_period_sec,
+                    args.rocksdb_files_limit,
+                    args.rocksdb_mem_budget,
+                    args.long_payload,
+                    move |i| {
+                        if plan_params.is_adversary(i) { Some(AdversaryPlan { scenario, params: plan_params.clone() }) } else { None }
+                    },
+                )
+                .run(until);
+
+            // Snapshot the DAGKnight counters (miner 0's consensus) and assert the
+            // scenario exercised the intended consensus flow.
+            let snapshot = consensus.dagknight_counters().snapshot();
+            let (passed, detail) = scenario_assertion(scenario, &snapshot);
+            info!("SCENARIO {}: {} ({})", scenario.name(), if passed { "PASS" } else { "FAIL" }, detail);
+            scenario_outcome = Some(passed);
+
+            (consensus, handles, lifetime)
+        } else {
+            sim.init(
                 args.miners,
                 args.tpb,
                 args.rocksdb_stats,
@@ -270,7 +375,8 @@ fn main_impl(mut args: Args) {
                 args.rocksdb_mem_budget,
                 args.long_payload,
             )
-            .run(until);
+            .run(until)
+        };
         consensus.shutdown(handles);
         (consensus, lifetime)
     };
@@ -348,6 +454,71 @@ fn main_impl(mut args: Args) {
         _ = rt.block_on(stop_perf_monitor);
     }
     drop(consensus);
+
+    // Non-zero exit on a failed scenario assertion (useful for CI).
+    if scenario_outcome == Some(false) {
+        std::process::exit(1);
+    }
+}
+
+/// Assert that an adversarial scenario moved the DAGKnight counter(s) it is
+/// supposed to move (the strategy -> counter map from the DK-208 design).
+/// Returns `(passed, human-readable detail)`.
+fn scenario_assertion(scenario: Scenario, s: &DagknightCountersSnapshot) -> (bool, String) {
+    match scenario {
+        Scenario::WithheldSideDag => (
+            s.total_calls > 0 && s.total_voting_blocks > 0,
+            format!(
+                "total_calls={}, total_cascade_flips={}, total_voting_blocks={}",
+                s.total_calls, s.total_cascade_flips, s.total_voting_blocks
+            ),
+        ),
+        Scenario::LatencyBurst => (s.total_calls > 0, format!("total_calls={}", s.total_calls)),
+        Scenario::EqualRankTies => (
+            s.total_calls > 0 && s.max_cascade_flips > 0,
+            format!(
+                "total_calls={}, max_cascade_flips={}, total_cascade_flips={}",
+                s.total_calls, s.max_cascade_flips, s.total_cascade_flips
+            ),
+        ),
+        Scenario::WeakShortcut => (
+            s.total_calls > 0 && s.checkpoint_from_scratch > 0,
+            format!(
+                "checkpoint_from_scratch={}, checkpoint_from_checkpoint={}, total_calls={}",
+                s.checkpoint_from_scratch, s.checkpoint_from_checkpoint, s.total_calls
+            ),
+        ),
+        Scenario::StrongShortcut => (
+            s.total_calls > 0 && s.checkpoint_from_checkpoint > 0,
+            format!(
+                "checkpoint_from_checkpoint={}, checkpoint_from_scratch={}, hit_rate={:.1}%, total_calls={}",
+                s.checkpoint_from_checkpoint,
+                s.checkpoint_from_scratch,
+                s.checkpoint_hit_rate(),
+                s.total_calls
+            ),
+        ),
+        Scenario::GrayContextChange => (
+            // No baseline/cascade score-disagreement panic (the run would have
+            // aborted) plus a non-trivial cascade == the baseline path was exercised
+            // and agreed with the cascade.
+            s.total_calls > 0,
+            format!(
+                "total_calls={}, total_voting_blocks={} (no baseline-vs-cascade panic == agreement)",
+                s.total_calls, s.total_voting_blocks
+            ),
+        ),
+        Scenario::VariableDifficulty => (
+            s.total_calls > 0 && s.total_cascade_flips > 0,
+            format!(
+                "total_calls={}, total_cascade_flips={}, max_cascade_flips={}, avg_flips={:.2}",
+                s.total_calls,
+                s.total_cascade_flips,
+                s.max_cascade_flips,
+                s.avg_flips_per_call()
+            ),
+        ),
+    }
 }
 
 fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
