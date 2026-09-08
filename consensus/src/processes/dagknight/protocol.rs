@@ -214,23 +214,9 @@ impl<
         /*
            Notes:
                - ignore parents not agreeing on the pruning point as a chain block
-               - optimize for shortest path
-               - optimize with index
         */
 
-        let start = parents[0];
-
-        if start == self.genesis_hash {
-            return self.genesis_hash;
-        }
-
-        for cb in self.reachability_service.default_backward_chain_iterator(start).skip(1) {
-            if self.reachability_service.is_chain_ancestor_of_all(cb, &parents[1..]) {
-                return cb;
-            }
-        }
-
-        panic!("")
+        self.reachability_service.common_chain_ancestor(parents)
     }
 
     /// Baseline UMC cascade voting: naive reference impl of paper Algorithm 6 (work-weighted),
