@@ -434,12 +434,11 @@ impl<O: HeaderStoreReader + 'static, E: UmcCascadeStore + Clone + 'static, R: Re
     ///         where d-UMC means that each block in U' is majority covered by U' (up to d)
     fn vote(&self, ctx: &UmcVotingContext<'_>) -> CascadeResult {
         let conflict_genesis = ctx.conflict_genesis;
-        let subgroup = ctx.subgroup;
         let virtual_gd = ctx.virtual_gd;
         let k = ctx.k;
         let coloring_reader = ctx.coloring_reader;
 
-        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
+        let next_chain_ancestor_of_subgroup = *ctx.next_chain_ancestor;
 
         // Collect blues and reds by traversing virtual GD chain backward.
         // Build mergesets into a stack: Virtual first, then ChainN, ..., Chain1, CG last.

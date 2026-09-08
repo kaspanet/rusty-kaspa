@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use kaspa_consensus_core::{BlockHashMap, HashMapCustomHasher};
@@ -38,6 +39,66 @@ pub trait HeaderStore: HeaderStoreReader {
     // This is append only
     fn insert(&self, hash: Hash, header: Arc<Header>, block_level: BlockLevel) -> Result<(), StoreError>;
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
+}
+
+impl<T: HeaderStoreReader + ?Sized> HeaderStoreReader for &T {
+    fn get_daa_score(&self, hash: Hash) -> Result<u64, StoreError> {
+        (*self).get_daa_score(hash)
+    }
+
+    fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
+        (*self).get_blue_score(hash)
+    }
+
+    fn get_timestamp(&self, hash: Hash) -> Result<u64, StoreError> {
+        (*self).get_timestamp(hash)
+    }
+
+    fn get_bits(&self, hash: Hash) -> Result<u32, StoreError> {
+        (*self).get_bits(hash)
+    }
+
+    fn get_header(&self, hash: Hash) -> Result<Arc<Header>, StoreError> {
+        (*self).get_header(hash)
+    }
+
+    fn get_header_with_block_level(&self, hash: Hash) -> Result<HeaderWithBlockLevel, StoreError> {
+        (*self).get_header_with_block_level(hash)
+    }
+
+    fn get_compact_header_data(&self, hash: Hash) -> Result<CompactHeaderData, StoreError> {
+        (*self).get_compact_header_data(hash)
+    }
+}
+
+impl<T: HeaderStoreReader + ?Sized> HeaderStoreReader for Arc<T> {
+    fn get_daa_score(&self, hash: Hash) -> Result<u64, StoreError> {
+        self.deref().get_daa_score(hash)
+    }
+
+    fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
+        self.deref().get_blue_score(hash)
+    }
+
+    fn get_timestamp(&self, hash: Hash) -> Result<u64, StoreError> {
+        self.deref().get_timestamp(hash)
+    }
+
+    fn get_bits(&self, hash: Hash) -> Result<u32, StoreError> {
+        self.deref().get_bits(hash)
+    }
+
+    fn get_header(&self, hash: Hash) -> Result<Arc<Header>, StoreError> {
+        self.deref().get_header(hash)
+    }
+
+    fn get_header_with_block_level(&self, hash: Hash) -> Result<HeaderWithBlockLevel, StoreError> {
+        self.deref().get_header_with_block_level(hash)
+    }
+
+    fn get_compact_header_data(&self, hash: Hash) -> Result<CompactHeaderData, StoreError> {
+        self.deref().get_compact_header_data(hash)
+    }
 }
 
 /// A temporary struct for backward compatibility. This struct is used to deserialize old header data with

@@ -1,11 +1,11 @@
-use std::{cell::RefCell, collections::HashMap, fmt, sync::Arc};
-
 use kaspa_consensus_core::KType;
 use kaspa_database::{
     prelude::{DbKey, StoreError},
     registry::DatabaseStorePrefixes,
 };
 use kaspa_hashes::Hash;
+use std::ops::Deref;
+use std::{cell::RefCell, collections::HashMap, fmt, sync::Arc};
 
 use crate::model::stores::ghostdag::GhostdagData;
 use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB};
@@ -19,6 +19,34 @@ pub trait DagknightStoreReader {
     fn get_selected_parent(&self, dk_key: DagknightKey) -> Result<Hash, StoreError>;
     fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError>;
     fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError>;
+}
+
+impl<T: DagknightStoreReader + ?Sized> DagknightStoreReader for &T {
+    fn get_selected_parent(&self, dk_key: DagknightKey) -> Result<Hash, StoreError> {
+        (*self).get_selected_parent(dk_key)
+    }
+
+    fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError> {
+        (*self).get_data(dk_key)
+    }
+
+    fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError> {
+        (*self).has(dk_key)
+    }
+}
+
+impl<T: DagknightStoreReader> DagknightStoreReader for Arc<T> {
+    fn get_selected_parent(&self, dk_key: DagknightKey) -> Result<Hash, StoreError> {
+        self.deref().get_selected_parent(dk_key)
+    }
+
+    fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError> {
+        self.deref().get_data(dk_key)
+    }
+
+    fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError> {
+        self.deref().has(dk_key)
+    }
 }
 
 #[derive(Clone)]
@@ -89,6 +117,34 @@ pub trait DagknightStore {
     fn insert(&self, key: DagknightKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError>;
     fn delete(&self, key: DagknightKey) -> Result<(), StoreError>;
     fn delete_rooted_range(&self, batch: &mut WriteBatch, hash: Hash) -> Result<u32, StoreError>;
+}
+
+impl<T: DagknightStore + ?Sized> DagknightStore for &T {
+    fn insert(&self, key: DagknightKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
+        (*self).insert(key, dk_data)
+    }
+
+    fn delete(&self, key: DagknightKey) -> Result<(), StoreError> {
+        (*self).delete(key)
+    }
+
+    fn delete_rooted_range(&self, batch: &mut WriteBatch, hash: Hash) -> Result<u32, StoreError> {
+        (*self).delete_rooted_range(batch, hash)
+    }
+}
+
+impl<T: DagknightStore> DagknightStore for Arc<T> {
+    fn insert(&self, key: DagknightKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
+        self.deref().insert(key, dk_data)
+    }
+
+    fn delete(&self, key: DagknightKey) -> Result<(), StoreError> {
+        self.deref().delete(key)
+    }
+
+    fn delete_rooted_range(&self, batch: &mut WriteBatch, hash: Hash) -> Result<u32, StoreError> {
+        self.deref().delete_rooted_range(batch, hash)
+    }
 }
 
 impl MemoryDagknightStore {

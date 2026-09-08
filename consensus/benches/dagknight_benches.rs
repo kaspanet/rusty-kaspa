@@ -98,7 +98,7 @@ fn run_tie_breaking_at_k(k: KType) -> (Hash, usize) {
         dagknight_store: dagknight_store.clone(),
         headers_store: headers_store.clone(),
         reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
-        relations_store: Arc::new(RwLock::new(relations.clone())),
+        relations_store: relations.clone(),
         counters: Arc::new(DagknightCounters::new()),
         umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
     };
