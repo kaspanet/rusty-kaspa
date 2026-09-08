@@ -9,7 +9,7 @@ use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_math::Uint192;
 use kaspa_utils::mem_size::MemSizeEstimator;
-use rocksdb::WriteBatch;
+use rocksdb::{IterateBounds, WriteBatch};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -192,14 +192,13 @@ impl UmcCascadeStore for DbUmcCascadeStore {
 
     fn prune_by_conflict_genesis(&self, batch: &mut WriteBatch, conflict_genesis: Hash) -> Result<u32, StoreError> {
         // Build range prefix: DagKnightUMC_prefix || conflict_genesis
-        let prefix: Vec<u8> = kaspa_database::registry::DatabaseStorePrefixes::DagKnightUMC.into();
-        let mut start = prefix.clone();
-        start.extend_from_slice(conflict_genesis.as_ref());
-        // End is start with last byte incremented (or FF)
-        let mut end = start.clone();
-        if let Some(last) = end.last_mut() {
-            *last = last.saturating_add(1);
-        }
+        let mut prefix: Vec<u8> = kaspa_database::registry::DatabaseStorePrefixes::DagKnightUMC.into();
+        prefix.extend_from_slice(conflict_genesis.as_ref());
+        // `PrefixRange` propagates the carry across trailing 0xFF bytes; incrementing only the
+        // final byte yields `end == start` for a conflict genesis ending in 0xFF.
+        let (start, end) = rocksdb::PrefixRange(prefix.as_slice()).into_bounds();
+        // Neither bound can be absent: the leading store-prefix byte is 81, not 0xFF.
+        let (start, end) = (start.expect("prefix is non-empty"), end.expect("prefix is not all-0xFF"));
         let mut count = 0u32;
         let mut iter = self.db.raw_iterator();
         iter.seek(&start);
@@ -222,6 +221,7 @@ impl UmcCascadeStore for DbUmcCascadeStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_database::prelude::ConnBuilder;
 
     fn key(cg: u64, k: KType, nca: u64, cb: u64) -> UmcCascadeKey {
         UmcCascadeKey::new(Hash::from_u64_word(cg), k, Hash::from_u64_word(nca), Hash::from_u64_word(cb))
@@ -255,5 +255,78 @@ mod tests {
         assert!(store.get_checkpoint(key(1, 1, 2, 3)).unwrap().is_none());
         assert!(store.get_checkpoint(key(1, 2, 2, 4)).unwrap().is_none());
         assert!(store.get_checkpoint(key(2, 1, 3, 5)).unwrap().is_some(), "other conflict genesis must be preserved");
+    }
+
+    /// Counts rows physically present under a conflict genesis by direct prefix scan,
+    /// independently of the range bounds under test.
+    fn raw_row_count(db: &Arc<DB>, conflict_genesis: Hash) -> usize {
+        let mut prefix: Vec<u8> = DatabaseStorePrefixes::DagKnightUMC.into();
+        prefix.extend_from_slice(conflict_genesis.as_ref());
+        let mut iter = db.raw_iterator();
+        iter.seek(&prefix);
+        let mut count = 0usize;
+        while iter.valid() {
+            match iter.key() {
+                Some(key) if key.starts_with(&prefix) => {
+                    count += 1;
+                    iter.next();
+                }
+                _ => break,
+            }
+        }
+        count
+    }
+
+    /// A conflict genesis ending in 0xFF must still be pruned: incrementing only the final
+    /// byte of the range end collapsed it onto the start, making the range empty.
+    #[test]
+    fn test_db_prune_by_conflict_genesis_handles_trailing_ff() {
+        let (_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let store = DbUmcCascadeStore::new(db.clone(), CachePolicy::Count(64));
+
+        let ff_cg = Hash::from_slice(&[0xFFu8; 32]);
+        let control_cg = Hash::from_u64_word(7);
+
+        for k in [1u16, 2] {
+            store.insert_checkpoint(UmcCascadeKey::new(ff_cg, k, Hash::from_u64_word(2), Hash::from_u64_word(3)), state(1)).unwrap();
+        }
+        store.insert_checkpoint(UmcCascadeKey::new(control_cg, 1, Hash::from_u64_word(2), Hash::from_u64_word(3)), state(1)).unwrap();
+        assert_eq!(raw_row_count(&db, ff_cg), 2, "sanity: rows were written");
+
+        let mut batch = WriteBatch::default();
+        let deleted = store.prune_by_conflict_genesis(&mut batch, ff_cg).unwrap();
+        db.write(batch).unwrap();
+
+        assert_eq!(deleted, 2, "conflict genesis ending in 0xFF must report the rows it pruned");
+        assert_eq!(raw_row_count(&db, ff_cg), 0, "rows under the 0xFF conflict genesis must be deleted");
+        assert_eq!(raw_row_count(&db, control_cg), 1, "another conflict genesis must be untouched");
+    }
+
+    /// The range must stop at the targeted conflict genesis and not reach the next one in
+    /// key order.
+    #[test]
+    fn test_db_prune_by_conflict_genesis_respects_upper_bound() {
+        let (_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let store = DbUmcCascadeStore::new(db.clone(), CachePolicy::Count(64));
+
+        // Adjacent in key order: [.., 0xFE, 0xFF] sorts immediately below [.., 0xFF, 0x00].
+        let mut lower_bytes = [0xFFu8; 32];
+        lower_bytes[30] = 0xFE;
+        let mut upper_bytes = [0xFFu8; 32];
+        upper_bytes[31] = 0x00;
+        let lower_cg = Hash::from_slice(&lower_bytes);
+        let upper_cg = Hash::from_slice(&upper_bytes);
+
+        for cg in [lower_cg, upper_cg] {
+            store.insert_checkpoint(UmcCascadeKey::new(cg, 1, Hash::from_u64_word(2), Hash::from_u64_word(3)), state(1)).unwrap();
+        }
+
+        let mut batch = WriteBatch::default();
+        let deleted = store.prune_by_conflict_genesis(&mut batch, lower_cg).unwrap();
+        db.write(batch).unwrap();
+
+        assert_eq!(deleted, 1, "only the targeted conflict genesis may be counted");
+        assert_eq!(raw_row_count(&db, lower_cg), 0);
+        assert_eq!(raw_row_count(&db, upper_cg), 1, "the next conflict genesis in key order must survive");
     }
 }
