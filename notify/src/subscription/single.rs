@@ -614,16 +614,16 @@ mod tests {
                 assert_eq!(
                     cmp, self.should_match,
                     "{name}: subscriptions should {equal}, comparing {:?} with {:?}",
-                    &subscriptions[self.left], &subscriptions[self.right],
+                    subscriptions[self.left], subscriptions[self.right],
                 );
                 // Compare Box dyn Single hash
                 assert_eq!(
                     get_hash(&subscriptions[self.left]) == get_hash(&subscriptions[self.right]),
                     self.should_match,
                     "{name}: subscription hashes should {equal}, comparing {:?} => {} with {:?} => {}",
-                    &subscriptions[self.left],
+                    subscriptions[self.left],
                     get_hash(&subscriptions[self.left]),
-                    &subscriptions[self.right],
+                    subscriptions[self.right],
                     get_hash(&subscriptions[self.right]),
                 );
                 // Compare Arc dyn Single

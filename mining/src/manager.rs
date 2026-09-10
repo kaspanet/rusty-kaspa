@@ -197,7 +197,7 @@ impl MiningManager {
                 }
                 Err(err) => {
                     warn!("Building a new block template failed: {}", err);
-                    return Err(err)?;
+                    Err(err)?;
                 }
             }
         }
