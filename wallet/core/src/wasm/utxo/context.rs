@@ -213,7 +213,7 @@ impl UtxoContext {
     pub fn pending(&self) -> Result<UtxoEntryReferenceArrayT> {
         let context = self.context();
         let array = Array::new();
-       for entry in context.pending.values() {
+        for entry in context.pending.values() {
             array.push(&JsValue::from(entry.clone()));
         }
         Ok(array.unchecked_into())

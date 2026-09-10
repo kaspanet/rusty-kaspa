@@ -1343,7 +1343,7 @@ impl ShareHandler {
                     total_blocks_all_time += *overall.blocks_found.lock();
 
                     let stats_map = stats.lock();
-                   for v in stats_map.values() {
+                    for v in stats_map.values() {
                         let elapsed = v.start_time.elapsed().as_secs_f64();
                         let rate = if elapsed > 0.0 {
                             let total_hash_value = *v.shares_diff.lock();
