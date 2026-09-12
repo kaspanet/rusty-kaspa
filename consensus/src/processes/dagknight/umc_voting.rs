@@ -45,7 +45,7 @@ pub trait UmcVoter {
 /// Cascade result including flip statistics for performance monitoring.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CascadeResult {
-    pub virtual_score: SignedWork,
+    pub cascade_score: SignedWork,
     pub accepted: bool,
     pub flips: u64,
     pub voting_blocks: u64,
@@ -246,11 +246,11 @@ pub mod test_fixtures {
             }
         }
 
-        /// Expected `virtual_score`, hand-calculated from the zone (loaded from
+        /// Expected `cascade_score`, hand-calculated from the zone (loaded from
         /// `umc_fixture.json`) as a protocol-independent oracle (the voters must agree
         /// with this without being able to read it):
         ///
-        ///   virtual_score = Σ_blue vote(B) + deficit − Σ_red work(R)
+        ///   cascade_score = Σ_blue vote(B) + deficit − Σ_red work(R)
         ///
         /// Voting blues: 11, 10, 9, 7, 6, 5, 4, 3, 2 + CG(1);
         /// Voting reds: 12..17
@@ -270,7 +270,7 @@ pub mod test_fixtures {
         /// (Gray red 8 never votes although it is a red in the futures of 2 (the NCA) — the NCA
         /// filter removes it. Reds come from blocks extending NCA=12
         ///
-        /// virtual_score = (10 × +w) + 0 − 6w = 4w
+        /// cascade_score = (10 × +w) + 0 − 6w = 4w
         pub fn expected_score(&self) -> SignedWork {
             let w = calc_work(0x207fffff);
             SignedWork::from(w * 4u64)

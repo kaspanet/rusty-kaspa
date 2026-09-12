@@ -77,10 +77,10 @@ impl<O: HeaderStoreReader + 'static, R: ReachabilityStoreReader + Clone> UmcVote
         let voting_blocks = (blues.len() + reds.len()) as u64;
         let is_ancestor = |a: Hash, b: Hash| self.reachability_service.is_dag_ancestor_of(a, b);
         let helper = BaselineCascadeHelper::new(blues, reds, deficit_work, &is_ancestor, conflict_genesis);
-        let (total_vote, virtual_score, _per_blue_buckets) = helper.compute_all_votes();
+        let (total_vote, cascade_score, _per_blue_buckets) = helper.compute_all_votes();
 
         CascadeResult {
-            virtual_score,
+            cascade_score,
             accepted: total_vote >= SignedWork::zero(),
             flips: 0,
             voting_blocks,
@@ -158,9 +158,9 @@ impl<'a> BaselineCascadeHelper<'a> {
 
         let signed_blue_work = votes.values().copied().fold(SignedWork::zero(), |total, vote| total + vote);
         let red_work: BlueWorkType = self.reds.iter().map(|&(_, work, _)| work).sum();
-        let virtual_score = signed_blue_work + SignedWork::from(self.deficit) - SignedWork::from(red_work);
+        let cascade_score = signed_blue_work + SignedWork::from(self.deficit) - SignedWork::from(red_work);
 
-        (votes[&self.conflict_genesis], virtual_score, per_blue_buckets)
+        (votes[&self.conflict_genesis], cascade_score, per_blue_buckets)
     }
 }
 
@@ -177,7 +177,7 @@ mod tests {
 
         let result = voter.vote(&ctx);
 
-        assert_eq!(result.virtual_score, fixture.expected_score(), "virtual score mismatch");
+        assert_eq!(result.cascade_score, fixture.expected_score(), "cascade score mismatch");
         assert!(result.accepted, "zone should be accepted");
         assert_eq!(result.voting_blocks, 16, "blues 11, 10, 9, 7, 6, 5, 4, 3, 2 + CG + reds 12..17 (gray red 8 excluded)");
     }
