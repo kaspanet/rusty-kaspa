@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
     header::Header,
-    pruning::{PruningPointProof, PruningPointsList, PruningProofMetadata},
+    pruning::{PruningPointsList, PruningProofMetadata},
     trusted::TrustedBlock,
     tx::Transaction,
 };
@@ -46,6 +46,7 @@ pub struct IbdFlow {
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: JobReceiver<Block>,
+    use_pruning_proof_chunks: bool,
 }
 
 #[async_trait::async_trait]
@@ -73,8 +74,14 @@ struct QueueChunkOutput {
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: JobReceiver<Block>) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver }
+    pub fn new(
+        ctx: FlowContext,
+        router: Arc<Router>,
+        incoming_route: IncomingRoute,
+        relay_receiver: JobReceiver<Block>,
+        use_pruning_proof_chunks: bool,
+    ) -> Self {
+        Self { ctx, router, incoming_route, relay_receiver, use_pruning_proof_chunks }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -388,8 +395,7 @@ impl IbdFlow {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
-        let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
-        let proof: PruningPointProof = msg.try_into()?;
+        let proof = super::proof::receive_pruning_point_proof(&mut self.incoming_route, self.use_pruning_proof_chunks).await?;
         info!(
             "Received headers proof with overall {} headers ({} unique)",
             proof.iter().map(|l| l.len()).sum::<usize>(),

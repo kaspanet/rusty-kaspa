@@ -58,6 +58,8 @@ message KaspadMessage {
     SmtMetadataMessage smtMetadata = 60;
     SmtLaneChunkMessage smtLaneChunk = 61;
     RequestNextPruningPointSmtChunkMessage requestNextPruningPointSmtChunk = 63;
+    PruningPointProofChunkMessage pruningPointProofChunk = 64;
+    PruningPointProofChunksEndMessage pruningPointProofChunksEnd = 65;
   }
 }
 

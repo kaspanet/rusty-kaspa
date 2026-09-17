@@ -35,6 +35,10 @@ use kaspa_utils::channel;
 use std::sync::Arc;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
+    register_flows(ctx, router, false)
+}
+
+pub(crate) fn register_flows(ctx: FlowContext, router: Arc<Router>, use_pruning_proof_chunks: bool) -> Vec<Box<dyn Flow>> {
     let (ibd_sender, relay_receiver) = channel::job();
     let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
@@ -52,6 +56,8 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::TrustedData,
                 KaspadMessagePayloadType::PruningPoints,
                 KaspadMessagePayloadType::PruningPointProof,
+                KaspadMessagePayloadType::PruningPointProofChunk,
+                KaspadMessagePayloadType::PruningPointProofChunksEnd,
                 KaspadMessagePayloadType::UnexpectedPruningPoint,
                 KaspadMessagePayloadType::PruningPointUtxoSetChunk,
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
@@ -59,6 +65,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::SmtLaneChunk,
             ]),
             relay_receiver,
+            use_pruning_proof_chunks,
         )),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
@@ -76,6 +83,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointProof]),
+            use_pruning_proof_chunks,
         )),
         Box::new(RequestIbdChainBlockLocatorFlow::new(
             ctx.clone(),

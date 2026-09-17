@@ -293,6 +293,14 @@ message PruningPointProofMessage {
   repeated PruningPointProofHeaderArray headers = 1;
 }
 
+message PruningPointProofChunkMessage {
+  repeated BlockHeader chunk = 1;
+  uint32 level = 2;
+}
+
+message PruningPointProofChunksEndMessage {
+}
+
 message PruningPointProofHeaderArray {
   repeated BlockHeader headers = 1;
 }

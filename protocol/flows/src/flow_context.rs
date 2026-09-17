@@ -4,7 +4,7 @@ use crate::flowcontext::{
     transactions::TransactionsSpread,
 };
 use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
-use crate::v10;
+use crate::{v10, v11};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -60,7 +60,7 @@ use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 10;
+const PROTOCOL_VERSION: u32 = 11;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -764,7 +764,8 @@ impl ConnectionInitializer for FlowContext {
 
         // Peers must advertise at least the current protocol version. Register all flows according to version.
         let (flows, applied_protocol_version) = match peer_protocol_version {
-            v if v >= PROTOCOL_VERSION => (v10::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+            v if v >= PROTOCOL_VERSION => (v11::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+            10 => (v10::register(self.clone(), router.clone()), 10),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
