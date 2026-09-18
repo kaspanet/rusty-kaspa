@@ -1,7 +1,7 @@
 use kaspa_consensus_core::{BlockLevel, pruning::PruningPointProof};
 use kaspa_p2p_lib::{
     IncomingRoute,
-    common::ProtocolError,
+    common::{DEFAULT_TIMEOUT, ProtocolError},
     dequeue_with_timeout,
     pb::{PruningPointProofHeaderArray, PruningPointProofMessage, kaspad_message::Payload},
 };
@@ -21,9 +21,8 @@ pub(super) async fn receive_pruning_point_proof(
     let mut current_level: Option<BlockLevel> = None;
     let mut current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
     let mut chunk_count = 0;
-    // Proof generation can take several minutes. Apply the same timeout to each
-    // receive so a peer cannot leave an incomplete stream waiting indefinitely.
-    let timeout = Duration::from_secs(600);
+    // Proof generation can take several minutes, so we start with a long timeout and reset it to the default after the first chunk is received.
+    let mut timeout = Duration::from_secs(600);
     loop {
         let msg = tokio::time::timeout(timeout, incoming_route.recv())
             .await
@@ -31,6 +30,7 @@ pub(super) async fn receive_pruning_point_proof(
             .ok_or(ProtocolError::ConnectionClosed)?;
         match msg.payload {
             Some(Payload::PruningPointProofChunk(chunk)) => {
+                timeout = DEFAULT_TIMEOUT;
                 let level =
                     BlockLevel::try_from(chunk.level).map_err(|_| ProtocolError::Other("Invalid pruning point proof chunk level"))?;
                 if let Some(current_level) = current_level {
