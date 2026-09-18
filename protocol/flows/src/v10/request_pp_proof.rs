@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::pruning::PruningPointProof;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
@@ -9,7 +8,11 @@ use kaspa_p2p_lib::{
 };
 use log::debug;
 
-use crate::{flow_context::FlowContext, flow_trait::Flow};
+use crate::{
+    flow_context::FlowContext,
+    flow_trait::Flow,
+    v10::request_headers::{HEADERS_CHUNK_SIZE, header_chunks},
+};
 
 pub struct RequestPruningPointProofFlow {
     ctx: FlowContext,
@@ -40,8 +43,16 @@ impl RequestPruningPointProofFlow {
             debug!("Got pruning point proof request");
             let proof = self.ctx.consensus().unguarded_session().async_get_pruning_point_proof().await;
             if self.use_pruning_proof_chunks {
-                for chunk in proof_chunks(&proof) {
-                    self.router.enqueue(make_response!(Payload::PruningPointProofChunk, chunk, request_id)).await?;
+                for (level, headers) in proof.iter().enumerate() {
+                    for chunk in header_chunks(headers.iter(), HEADERS_CHUNK_SIZE, self.ctx.config.max_block_level) {
+                        self.router
+                            .enqueue(make_response!(
+                                Payload::PruningPointProofChunk,
+                                PruningPointProofChunkMessage { chunk, level: level as u32 },
+                                request_id
+                            ))
+                            .await?;
+                    }
                 }
                 self.router
                     .enqueue(make_response!(Payload::PruningPointProofChunksEnd, PruningPointProofChunksEndMessage {}, request_id))
@@ -60,13 +71,56 @@ impl RequestPruningPointProofFlow {
     }
 }
 
-const PRUNING_POINT_PROOF_CHUNK_SIZE: usize = 100;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::header::Header;
+    use kaspa_hashes::Hash;
 
-/// Send each level in order, using one empty chunk to preserve an empty level.
-fn proof_chunks(proof: &PruningPointProof) -> impl Iterator<Item = PruningPointProofChunkMessage> + '_ {
-    proof.iter().enumerate().flat_map(|(level, headers)| {
-        headers.chunks(PRUNING_POINT_PROOF_CHUNK_SIZE).chain(headers.is_empty().then_some(&[][..])).map(move |headers| {
-            PruningPointProofChunkMessage { chunk: headers.iter().map(|header| header.as_ref().into()).collect(), level: level as u32 }
-        })
-    })
+    fn header_with_parents(levels: u8, parents_per_level: usize, nonce: u64) -> Arc<Header> {
+        let mut header = Header::from_precomputed_hash(Default::default(), vec![]);
+        header.parents_by_level = vec![(levels, vec![Hash::from(1u64); parents_per_level])].try_into().unwrap();
+        header.nonce = nonce;
+        Arc::new(header)
+    }
+
+    #[test]
+    fn header_chunks_pack_by_expanded_header_size() {
+        let large = header_with_parents(100, 3000, 1);
+        let small = header_with_parents(1, 1, 2);
+        // The large header has one compressed run but 300,000 expanded parents.
+        // Two such headers fit alongside 200 small headers; a third does not.
+        let mut first_level = vec![large.clone(), large.clone()];
+        first_level.extend(vec![small.clone(); 200]);
+        first_level.extend([large.clone(), large]);
+        let proof = [first_level, vec![small; 201]];
+        let chunks = proof
+            .iter()
+            .enumerate()
+            .flat_map(|(level, headers)| {
+                header_chunks(headers.iter(), HEADERS_CHUNK_SIZE, 250)
+                    .map(move |chunk| PruningPointProofChunkMessage { chunk, level: level as u32 })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(chunks.iter().map(|chunk| (chunk.level, chunk.chunk.len())).collect::<Vec<_>>(), [(0, 202), (0, 2), (1, 201)]);
+
+        let mut consumed = vec![0; proof.len()];
+        for chunk in chunks {
+            let level = chunk.level as usize;
+            let start = consumed[level];
+            let end = start + chunk.chunk.len();
+            let headers = &proof[level][start..end];
+            assert_eq!(chunk.chunk, headers.iter().map(|header| header.as_ref().into()).collect::<Vec<_>>());
+            consumed[level] = end;
+        }
+        assert_eq!(consumed, proof.iter().map(Vec::len).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn header_chunks_allow_a_single_header_larger_than_the_budget() {
+        let oversized = header_with_parents(250, 3000, 1);
+        let chunks = header_chunks(std::iter::once(oversized.clone()), 1, 250).collect::<Vec<_>>();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0], vec![oversized.as_ref().into()]);
+    }
 }
