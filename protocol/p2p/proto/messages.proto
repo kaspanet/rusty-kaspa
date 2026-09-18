@@ -60,6 +60,8 @@ message KaspadMessage {
     RequestNextPruningPointSmtChunkMessage requestNextPruningPointSmtChunk = 63;
     PruningPointProofChunkMessage pruningPointProofChunk = 64;
     PruningPointProofChunksEndMessage pruningPointProofChunksEnd = 65;
+    TrustedDataChunkMessage trustedDataChunk = 66;
+    TrustedDataChunksEndMessage trustedDataChunksEnd = 67;
   }
 }
 

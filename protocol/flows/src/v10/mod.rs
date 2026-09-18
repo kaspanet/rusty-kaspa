@@ -38,7 +38,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     register_flows(ctx, router, false)
 }
 
-pub(crate) fn register_flows(ctx: FlowContext, router: Arc<Router>, use_pruning_proof_chunks: bool) -> Vec<Box<dyn Flow>> {
+pub(crate) fn register_flows(ctx: FlowContext, router: Arc<Router>, use_ibd_chunks: bool) -> Vec<Box<dyn Flow>> {
     let (ibd_sender, relay_receiver) = channel::job();
     let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
@@ -54,6 +54,8 @@ pub(crate) fn register_flows(ctx: FlowContext, router: Arc<Router>, use_pruning_
                 KaspadMessagePayloadType::IbdChainBlockLocator,
                 KaspadMessagePayloadType::BlockBody,
                 KaspadMessagePayloadType::TrustedData,
+                KaspadMessagePayloadType::TrustedDataChunk,
+                KaspadMessagePayloadType::TrustedDataChunksEnd,
                 KaspadMessagePayloadType::PruningPoints,
                 KaspadMessagePayloadType::PruningPointProof,
                 KaspadMessagePayloadType::PruningPointProofChunk,
@@ -65,7 +67,7 @@ pub(crate) fn register_flows(ctx: FlowContext, router: Arc<Router>, use_pruning_
                 KaspadMessagePayloadType::SmtLaneChunk,
             ]),
             relay_receiver,
-            use_pruning_proof_chunks,
+            use_ibd_chunks,
         )),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
@@ -83,7 +85,7 @@ pub(crate) fn register_flows(ctx: FlowContext, router: Arc<Router>, use_pruning_
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointProof]),
-            use_pruning_proof_chunks,
+            use_ibd_chunks,
         )),
         Box::new(RequestIbdChainBlockLocatorFlow::new(
             ctx.clone(),
@@ -97,6 +99,7 @@ pub(crate) fn register_flows(ctx: FlowContext, router: Arc<Router>, use_pruning_
                 KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
                 KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
             ]),
+            use_ibd_chunks,
         )),
         Box::new(RequestPruningPointUtxoSetFlow::new(
             ctx.clone(),

@@ -319,6 +319,13 @@ message TrustedDataMessage {
   repeated BlockGhostdagDataHashPair ghostdagData = 2; // TODO: remove once v5 is obsolete
 }
 
+message TrustedDataChunkMessage {
+  repeated DaaBlockV4 headers = 1;
+}
+
+message TrustedDataChunksEndMessage {
+}
+
 // SMT state sync (KIP-21 IBD)
 
 message RequestPruningPointSmtStateMessage {

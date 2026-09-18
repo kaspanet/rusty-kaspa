@@ -21,7 +21,6 @@ use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
-    convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message, make_request,
     pb::{
         RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestPruningPointAndItsAnticoneMessage,
@@ -46,7 +45,7 @@ pub struct IbdFlow {
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: JobReceiver<Block>,
-    use_pruning_proof_chunks: bool,
+    use_ibd_chunks: bool,
 }
 
 #[async_trait::async_trait]
@@ -79,9 +78,9 @@ impl IbdFlow {
         router: Arc<Router>,
         incoming_route: IncomingRoute,
         relay_receiver: JobReceiver<Block>,
-        use_pruning_proof_chunks: bool,
+        use_ibd_chunks: bool,
     ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, use_pruning_proof_chunks }
+        Self { ctx, router, incoming_route, relay_receiver, use_ibd_chunks }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -395,7 +394,7 @@ impl IbdFlow {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
-        let proof = super::proof::receive_pruning_point_proof(&mut self.incoming_route, self.use_pruning_proof_chunks).await?;
+        let proof = super::proof::receive_pruning_point_proof(&mut self.incoming_route, self.use_ibd_chunks).await?;
         info!(
             "Received headers proof with overall {} headers ({} unique)",
             proof.iter().map(|l| l.len()).sum::<usize>(),
@@ -463,8 +462,7 @@ impl IbdFlow {
         // point and its anticone.
         // The latter, the trusted data entries, each represent a block (with daa) from the anticone of the pruning point
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
-        let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
-        let pkg: TrustedDataPackage = msg.try_into()?;
+        let pkg = super::trusted_data::receive_trusted_data(&mut self.incoming_route, self.use_ibd_chunks).await?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
         let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);

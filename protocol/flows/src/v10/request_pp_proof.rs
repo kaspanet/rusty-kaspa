@@ -86,9 +86,9 @@ mod tests {
 
     #[test]
     fn header_chunks_pack_by_expanded_header_size() {
-        let large = header_with_parents(100, 3000, 1);
+        let large = header_with_parents(100, 2500, 1);
         let small = header_with_parents(1, 1, 2);
-        // The large header has one compressed run but 300,000 expanded parents.
+        // The large header has one compressed run but 250,000 expanded parents.
         // Two such headers fit alongside 200 small headers; a third does not.
         let mut first_level = vec![large.clone(), large.clone()];
         first_level.extend(vec![small.clone(); 200]);
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn header_chunks_allow_a_single_header_larger_than_the_budget() {
-        let oversized = header_with_parents(250, 3000, 1);
+        let oversized = header_with_parents(250, 2500, 1);
         let chunks = header_chunks(std::iter::once(oversized.clone()), 1, 250).collect::<Vec<_>>();
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], vec![oversized.as_ref().into()]);

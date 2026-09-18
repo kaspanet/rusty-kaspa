@@ -1,8 +1,4 @@
-use std::{
-    cmp::max,
-    mem::{size_of, size_of_val},
-    sync::Arc,
-};
+use std::{cmp::max, mem::size_of, sync::Arc};
 
 use kaspa_consensus_core::{BlockLevel, api::ConsensusApi, header::Header};
 use kaspa_core::warn;
@@ -107,29 +103,31 @@ impl RequestHeadersFlow {
     }
 }
 
-fn estimated_header_size(header: &Header, max_block_level: BlockLevel) -> usize {
-    let parent_count = header.parents_by_level.expanded_iter().map(|parents| parents.len()).sum::<usize>();
-    let parents_size = parent_count * size_of::<Hash>()
-        + usize::from(max_block_level)
-            * (
-                3 // Length varint upper bound for roughly 0.5M parents.
-            + size_of::<u32>()
-                // cumulativeLevel field
-            );
+pub(super) fn estimated_header_size(header: &Header, max_block_level: BlockLevel) -> usize {
+    const TAG_SIZE: usize = 1; // All BlockHeader and nested-message field numbers are below 16.
+    const MAX_U32_VARINT_SIZE: usize = 5;
+    const MAX_U64_VARINT_SIZE: usize = 10;
+    const MAX_NESTED_MESSAGE_LENGTH_SIZE: usize = 4; // Enough for the maximum accepted expanded-parent set.
+    const HASH_MESSAGE_SIZE: usize = TAG_SIZE + 1 + size_of::<Hash>(); // bytes field: tag, length and value.
+    const HASH_FIELD_SIZE: usize = TAG_SIZE + 1 + HASH_MESSAGE_SIZE; // Hash field: tag, message length and message.
 
-    // Estimate each transmitted field; the cached header hash is not sent.
-    size_of::<u32>() // Version is encoded as uint32 in protobuf.
+    let parent_count = header.parents_by_level.expanded_iter().map(|parents| parents.len()).sum::<usize>();
+    // BlockLevelParents envelope plus the cumulativeLevel field.
+    let block_level_parents_overhead = TAG_SIZE + MAX_NESTED_MESSAGE_LENGTH_SIZE + TAG_SIZE + MAX_U32_VARINT_SIZE;
+    let parent_levels_size = (usize::from(max_block_level) + 1) * block_level_parents_overhead;
+    let parents_size = parent_count * HASH_FIELD_SIZE + parent_levels_size;
+
+    // Estimate each transmitted field; the cached header hash is not sent. Scalar values use their
+    // maximum protobuf varint size, while hashes and blue work include their tags and length prefixes.
+    TAG_SIZE + MAX_U32_VARINT_SIZE // version
         + parents_size
-        + size_of_val(&header.hash_merkle_root)
-        + size_of_val(&header.accepted_id_merkle_root)
-        + size_of_val(&header.utxo_commitment)
-        + size_of_val(&header.timestamp)
-        + size_of_val(&header.bits)
-        + size_of_val(&header.nonce)
-        + size_of_val(&header.daa_score)
-        + size_of_val(&header.blue_work)
-        + size_of_val(&header.blue_score)
-        + size_of_val(&header.pruning_point)
+        + 4 * HASH_FIELD_SIZE // hashMerkleRoot, acceptedIdMerkleRoot, utxoCommitment and pruningPoint
+        + TAG_SIZE + MAX_U64_VARINT_SIZE // timestamp
+        + TAG_SIZE + MAX_U32_VARINT_SIZE // bits
+        + TAG_SIZE + MAX_U64_VARINT_SIZE // nonce
+        + TAG_SIZE + MAX_U64_VARINT_SIZE // daaScore
+        + TAG_SIZE + 1 + header.blue_work.to_be_bytes_var().len() // blueWork
+        + TAG_SIZE + MAX_U64_VARINT_SIZE // blueScore
 }
 
 pub(crate) fn header_chunks<T: AsRef<Header>>(
@@ -138,7 +136,8 @@ pub(crate) fn header_chunks<T: AsRef<Header>>(
     max_block_level: BlockLevel,
 ) -> impl Iterator<Item = Vec<pb::BlockHeader>> {
     let mut headers = headers.map(move |header| {
-        let header_size = estimated_header_size(header.as_ref(), max_block_level);
+        // Account for the repeated BlockHeader field's tag and length prefix in the containing chunk message.
+        let header_size = 1 + 4 + estimated_header_size(header.as_ref(), max_block_level);
         (header, header_size)
     });
     let mut next_header = headers.next();
@@ -171,4 +170,59 @@ pub(crate) fn header_chunks<T: AsRef<Header>>(
 
         Some(chunk)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::BlueWorkType;
+    use prost::Message;
+
+    #[test]
+    fn estimated_header_size_covers_protobuf_size() {
+        let headers = [
+            (
+                Header::new_finalized(
+                    u16::MAX,
+                    vec![vec![Hash::from(1u64)]].try_into().unwrap(),
+                    Hash::from(2u64),
+                    Hash::from(3u64),
+                    Hash::from(4u64),
+                    i64::MAX as u64,
+                    u32::MAX,
+                    u64::MAX,
+                    u64::MAX,
+                    BlueWorkType::from_be_bytes_var(&[u8::MAX; 24]).unwrap(),
+                    u64::MAX,
+                    Hash::from(5u64),
+                ),
+                0,
+            ),
+            (
+                Header::new_finalized(
+                    u16::MAX,
+                    vec![(100, vec![Hash::from(1u64); 3_000])].try_into().unwrap(),
+                    Hash::from(2u64),
+                    Hash::from(3u64),
+                    Hash::from(4u64),
+                    i64::MAX as u64,
+                    u32::MAX,
+                    u64::MAX,
+                    u64::MAX,
+                    BlueWorkType::from_be_bytes_var(&[u8::MAX; 24]).unwrap(),
+                    u64::MAX,
+                    Hash::from(5u64),
+                ),
+                99,
+            ),
+        ];
+
+        for (header, max_block_level) in &headers {
+            let encoded_header = pb::BlockHeader::from(header);
+            assert!(encoded_header.encoded_len() <= estimated_header_size(header, *max_block_level));
+        }
+
+        let (chunk, estimated_size) = header_chunks(std::iter::once(&headers[0].0), usize::MAX, 0).next().unwrap();
+        assert!(BlockHeadersMessage { block_headers: chunk }.encoded_len() <= estimated_size);
+    }
 }
