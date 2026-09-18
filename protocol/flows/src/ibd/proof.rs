@@ -18,7 +18,7 @@ pub(super) async fn receive_pruning_point_proof(
     }
 
     let mut proof = PruningPointProofMessage { headers: Vec::new() };
-    let mut current_level = 0;
+    let mut current_level: Option<BlockLevel> = None;
     let mut current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
     let mut chunk_count = 0;
     // Proof generation can take several minutes. Apply the same timeout to each
@@ -31,24 +31,29 @@ pub(super) async fn receive_pruning_point_proof(
             .ok_or(ProtocolError::ConnectionClosed)?;
         match msg.payload {
             Some(Payload::PruningPointProofChunk(chunk)) => {
-                let level = BlockLevel::try_from(chunk.level)
-                    .map_err(|_| ProtocolError::Other("Invalid pruning point proof chunk level"))? as u16;
-                if level < current_level || level > current_level + 1 {
-                    return Err(ProtocolError::Other(
-                        "Pruning point proof chunk levels must be weakly monotone and increase by at most one",
-                    ));
+                let level =
+                    BlockLevel::try_from(chunk.level).map_err(|_| ProtocolError::Other("Invalid pruning point proof chunk level"))?;
+                if let Some(current_level) = current_level {
+                    if level > current_level || level < current_level.saturating_sub(1) {
+                        return Err(ProtocolError::Other(
+                            "Pruning point proof chunk levels must be weakly monotone and decrease by at most one",
+                        ));
+                    }
+                    if level < current_level {
+                        proof.headers.push(current_headers);
+                        current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
+                    }
                 }
-                if level > current_level {
-                    proof.headers.push(current_headers);
-                    current_level = level;
-                    current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
-                }
+                current_level = Some(level);
                 current_headers.headers.extend(chunk.chunk);
                 chunk_count += 1;
-                info!("Received pruning point proof chunk #{}: level {}", chunk_count, current_level);
+                info!("Received pruning point proof chunk #{}: level {}", chunk_count, level);
             }
             Some(Payload::PruningPointProofChunksEnd(_)) => {
                 proof.headers.push(current_headers);
+                // Chunks arrive from highest to lowest to allow on-the-fly proof validation in the future;
+                // until then, we restore the proof's canonical lowest-to-highest level order before conversion.
+                proof.headers.reverse();
                 return Ok(proof.try_into()?);
             }
             payload => {
@@ -92,7 +97,7 @@ mod tests {
 
     fn proof_chunks(proof: &PruningPointProof) -> impl Iterator<Item = PruningPointProofChunkMessage> + '_ {
         const TEST_CHUNK_SIZE: usize = 3;
-        proof.iter().enumerate().flat_map(|(level, headers)| {
+        proof.iter().enumerate().rev().flat_map(|(level, headers)| {
             headers.chunks(TEST_CHUNK_SIZE).chain(headers.is_empty().then_some(&[][..])).map(move |headers| {
                 PruningPointProofChunkMessage {
                     chunk: headers.iter().map(|header| header.as_ref().into()).collect(),
@@ -183,8 +188,8 @@ mod tests {
         let level_one = PruningPointProofChunkMessage { level: 1, ..chunk.clone() };
         let level_two = PruningPointProofChunkMessage { level: 2, ..chunk.clone() };
         for chunks in [
-            vec![chunk.clone(), level_two],
-            vec![chunk.clone(), level_one, chunk.clone()],
+            vec![level_two.clone(), chunk.clone()],
+            vec![level_two, level_one, chunk.clone(), PruningPointProofChunkMessage { level: 1, ..chunk.clone() }],
             vec![PruningPointProofChunkMessage { level: u32::MAX, ..chunk.clone() }],
         ] {
             let (tx, rx) = mpsc::channel(chunks.len());

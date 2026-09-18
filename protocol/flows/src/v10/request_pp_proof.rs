@@ -43,7 +43,8 @@ impl RequestPruningPointProofFlow {
             debug!("Got pruning point proof request");
             let proof = self.ctx.consensus().unguarded_session().async_get_pruning_point_proof().await;
             if self.use_pruning_proof_chunks {
-                for (level, headers) in proof.iter().enumerate() {
+                // Send levels from highest to lowest to allow on-the-fly proof validation in the future.
+                for (level, headers) in proof.iter().enumerate().rev() {
                     for chunk in header_chunks(headers.iter(), HEADERS_CHUNK_SIZE, self.ctx.config.max_block_level) {
                         self.router
                             .enqueue(make_response!(
@@ -97,12 +98,13 @@ mod tests {
         let chunks = proof
             .iter()
             .enumerate()
+            .rev()
             .flat_map(|(level, headers)| {
                 header_chunks(headers.iter(), HEADERS_CHUNK_SIZE, 250)
                     .map(move |chunk| PruningPointProofChunkMessage { chunk, level: level as u32 })
             })
             .collect::<Vec<_>>();
-        assert_eq!(chunks.iter().map(|chunk| (chunk.level, chunk.chunk.len())).collect::<Vec<_>>(), [(0, 202), (0, 2), (1, 201)]);
+        assert_eq!(chunks.iter().map(|chunk| (chunk.level, chunk.chunk.len())).collect::<Vec<_>>(), [(1, 201), (0, 202), (0, 2)]);
 
         let mut consumed = vec![0; proof.len()];
         for chunk in chunks {
