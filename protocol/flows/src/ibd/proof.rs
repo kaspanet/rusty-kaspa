@@ -5,6 +5,7 @@ use kaspa_p2p_lib::{
     dequeue_with_timeout,
     pb::{PruningPointProofHeaderArray, PruningPointProofMessage, kaspad_message::Payload},
 };
+use log::info;
 use std::time::Duration;
 
 pub(super) async fn receive_pruning_point_proof(
@@ -19,6 +20,7 @@ pub(super) async fn receive_pruning_point_proof(
     let mut proof = PruningPointProofMessage { headers: Vec::new() };
     let mut current_level = 0;
     let mut current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
+    let mut chunk_count = 0;
     // Proof generation can take several minutes. Apply the same timeout to each
     // receive so a peer cannot leave an incomplete stream waiting indefinitely.
     let timeout = Duration::from_secs(600);
@@ -42,6 +44,8 @@ pub(super) async fn receive_pruning_point_proof(
                     current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
                 }
                 current_headers.headers.extend(chunk.chunk);
+                chunk_count += 1;
+                info!("Received pruning point proof chunk #{}: level {}", chunk_count, current_level);
             }
             Some(Payload::PruningPointProofChunksEnd(_)) => {
                 proof.headers.push(current_headers);

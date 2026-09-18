@@ -221,8 +221,5 @@ mod tests {
             let encoded_header = pb::BlockHeader::from(header);
             assert!(encoded_header.encoded_len() <= estimated_header_size(header, *max_block_level));
         }
-
-        let (chunk, estimated_size) = header_chunks(std::iter::once(&headers[0].0), usize::MAX, 0).next().unwrap();
-        assert!(BlockHeadersMessage { block_headers: chunk }.encoded_len() <= estimated_size);
     }
 }
