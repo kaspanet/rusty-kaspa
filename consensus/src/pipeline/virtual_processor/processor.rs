@@ -1351,7 +1351,7 @@ impl VirtualStateProcessor {
         }
         assert!(mergeset_size <= mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
-        self.remove_bounded_merge_breaking_parents_v2(virtual_parents, pruning_point)
+        self.remove_bounded_merge_breaking_parents_v2(selected_parent, virtual_parents, pruning_point)
     }
 
     /// TODO [post-DK cleanp-up] remove this function.
@@ -1462,14 +1462,12 @@ impl VirtualStateProcessor {
     /// TODO [post-DK cleanp-up]: consider removing the `_v2` suffix.
     fn remove_bounded_merge_breaking_parents_v2(
         &self,
+        selected_parent: Hash,
         mut virtual_parents: Vec<Hash>,
         current_pruning_point: Hash,
     ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
         let mut topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
-        let mut coloring_ghostdag_data = {
-            let DagknightData { selected_parent: dk_sp, .. } = self.dagknight_executor.dagknight(&virtual_parents);
-            self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
-        };
+        let mut coloring_ghostdag_data = self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, selected_parent);
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&coloring_ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
         let mut bad_reds = Vec::new();
@@ -1497,10 +1495,7 @@ impl VirtualStateProcessor {
             virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
             // Recompute ghostdag data since parents changed
             topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
-            coloring_ghostdag_data = {
-                let DagknightData { selected_parent: dk_sp, .. } = self.dagknight_executor.dagknight(&virtual_parents);
-                self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
-            };
+            coloring_ghostdag_data = self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, selected_parent);
         }
 
         (virtual_parents, topology_ghostdag_data, coloring_ghostdag_data)
