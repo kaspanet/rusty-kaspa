@@ -1276,7 +1276,7 @@ impl VirtualStateProcessor {
         }
         assert!(mergeset_size <= mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
-        self.remove_bounded_merge_breaking_parents(virtual_parents[0], virtual_parents, pruning_point)
+        self.remove_bounded_merge_breaking_parents(virtual_parents, pruning_point)
     }
 
     /// Picks the virtual parents according to virtual parent selection pruning constrains.
@@ -1351,7 +1351,7 @@ impl VirtualStateProcessor {
         }
         assert!(mergeset_size <= mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
-        self.remove_bounded_merge_breaking_parents_v2(virtual_parents, pruning_point)
+        self.remove_bounded_merge_breaking_parents_v2(selected_parent, virtual_parents, pruning_point)
     }
 
     /// TODO [post-DK cleanp-up] remove this function.
