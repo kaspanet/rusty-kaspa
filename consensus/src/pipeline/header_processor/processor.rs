@@ -23,7 +23,7 @@ use crate::{
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
         },
     },
-    params::Params,
+    params::{ForkActivation, Params},
     pipeline::deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
     processes::{
         dagknight::protocol::DagknightData, ghostdag::ordering::SortableBlock, reachability::inquirer as reachability,
@@ -146,7 +146,8 @@ pub struct HeaderProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) _pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
-    pub(super) dagknight_executor: Option<DbDagknightExecutor>,
+    pub(super) dagknight_executor: DbDagknightExecutor,
+    pub(super) dagknight_activation: ForkActivation,
 
     // Pruning lock
     pruning_lock: SessionLock,
@@ -200,6 +201,7 @@ impl HeaderProcessor {
             _pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
             dagknight_executor: services.dagknight_executor.clone(),
+            dagknight_activation: params.dagknight_activation,
 
             task_manager: BlockTaskDependencyManager::new(),
             pruning_lock,
@@ -352,8 +354,8 @@ impl HeaderProcessor {
     /// Runs the GHOSTDAG algorithm and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
         let coloring_ghostdag_data = self.coloring_ghostdag_store.get_data(ctx.hash).optional().unwrap().unwrap_or_else(|| {
-            Arc::new(if let Some(executor) = &self.dagknight_executor {
-                let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&ctx.known_direct_parents);
+            Arc::new(if self.dagknight_activation.is_active(ctx.header.daa_score) {
+                let DagknightData { selected_parent: dk_sp, .. } = self.dagknight_executor.dagknight(&ctx.known_direct_parents);
                 self.coloring_ghostdag_manager.incremental_coloring(&ctx.known_direct_parents, dk_sp)
             } else {
                 self.coloring_ghostdag_manager.ghostdag(&ctx.known_direct_parents)

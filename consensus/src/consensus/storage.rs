@@ -54,7 +54,7 @@ pub struct ConsensusStorage {
     pub pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
-    pub dagknight_store: Option<Arc<DbDagknightStore>>,
+    pub dagknight_store: Arc<DbDagknightStore>,
     pub umc_persistence_store: Arc<DbUmcCascadeStore>,
 
     // Append-only stores
@@ -270,8 +270,7 @@ impl ConsensusStorage {
 
         // TODO[DK]: Small cache policy for dagknight data; this can be tuned via perf params later
         let dagknight_builder = PolicyBuilder::new().bytes_budget(scaled(5_000_000)).tracked_bytes();
-        // TODO[DK]: Use a config or ForkActivation to gate this
-        let dagknight_store = Some(Arc::new(DbDagknightStore::new(db.clone(), dagknight_builder.build())));
+        let dagknight_store = Arc::new(DbDagknightStore::new(db.clone(), dagknight_builder.build()));
         let umc_persistence_store = Arc::new(DbUmcCascadeStore::new(db.clone(), CachePolicy::Count(256)));
 
         Arc::new(Self {

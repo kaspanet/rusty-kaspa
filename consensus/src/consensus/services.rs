@@ -74,7 +74,7 @@ pub struct ConsensusServices {
     pub depth_manager: DbBlockDepthManager,
     pub mass_calculator: MassCalculator,
     pub transaction_validator: TransactionValidator,
-    pub dagknight_executor: Option<DbDagknightExecutor>,
+    pub dagknight_executor: DbDagknightExecutor,
     pub dagknight_counters: Arc<DagknightCounters>,
 }
 
@@ -140,17 +140,16 @@ impl ConsensusServices {
             storage.topology_ghostdag_store.clone(),
         );
 
-        // TODO[DK]: Use a config or ForkActivation to gate this
         let dagknight_counters = Arc::<crate::processes::dagknight::DagknightCounters>::default();
-        let dagknight_executor = storage.dagknight_store.as_ref().map(|dagknight_store| DagknightExecutor {
+        let dagknight_executor = DagknightExecutor {
             genesis_hash: params.genesis.hash,
-            dagknight_store: dagknight_store.clone(),
+            dagknight_store: storage.dagknight_store.clone(),
             headers_store: storage.headers_store.clone(),
             relations_store: Arc::new(RwLock::new(relations_service.clone())),
             reachability_service: reachability_service.clone(),
             counters: dagknight_counters.clone(),
             umc_persistence_store: storage.umc_persistence_store.clone(),
-        });
+        };
 
         let coinbase_manager = CoinbaseManager::new(
             params.coinbase_payload_script_public_key_max_len,
