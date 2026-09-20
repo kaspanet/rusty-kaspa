@@ -2,12 +2,14 @@
 
 use crate::imports::*;
 use kaspa_addresses::Prefix;
+use kaspa_consensus_core::hashing::sighash_type::{SIG_HASH_ALL, SigHashType};
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 use kaspa_wallet_core::account::pskb::finalize_pskt_one_or_more_sig_and_redeem_script;
 use kaspa_wallet_pskt::{
     prelude::{Bundle, PSKT, Signer, lock_script_sig_templating, script_sig_to_address, unlock_utxos_as_pskb},
     pskt::Inner,
 };
+use std::collections::HashSet;
 
 #[derive(Default, Handler)]
 #[help("Send a Kaspa transaction to a public address")]
@@ -151,7 +153,12 @@ impl Pskb {
                         }
                     }
                     "sign" => {
+                        let allow_non_sighash_all = Self::take_allow_non_sighash_all_flag(&mut argv);
+                        if argv.len() != 1 {
+                            return self.display_help(ctx, argv).await;
+                        }
                         let pskb = Self::parse_input_pskb(argv.first().unwrap().as_str())?;
+                        Self::ensure_non_all_sighash_types_allowed(&pskb, allow_non_sighash_all)?;
 
                         // Sign PSKB using the account's receiver address.
                         match account.pskb_sign(&pskb, wallet_secret.clone(), payment_secret.clone(), Some(&receive_address)).await {
@@ -172,11 +179,13 @@ impl Pskb {
                 }
             }
             "sign" => {
+                let allow_non_sighash_all = Self::take_allow_non_sighash_all_flag(&mut argv);
                 if argv.len() != 1 {
                     return self.display_help(ctx, argv).await;
                 }
-                let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(None).await?;
                 let pskb = Self::parse_input_pskb(argv.first().unwrap().as_str())?;
+                Self::ensure_non_all_sighash_types_allowed(&pskb, allow_non_sighash_all)?;
+                let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(None).await?;
                 let account = ctx.wallet().account()?;
                 match account.pskb_sign(&pskb, wallet_secret.clone(), payment_secret.clone(), None).await {
                     Ok(signed_pskb) => {
@@ -248,23 +257,83 @@ impl Pskb {
         }
     }
 
+    fn take_allow_non_sighash_all_flag(argv: &mut Vec<String>) -> bool {
+        if let Some(index) = argv.iter().position(|argument| argument == "--allow-non-sighashall") {
+            argv.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn non_all_sighash_types(pskb: &Bundle) -> HashSet<SigHashType> {
+        pskb.0
+            .iter()
+            .flat_map(|inner| inner.inputs.iter().map(|input| input.sighash_type))
+            .filter(|sighash_type| *sighash_type != SIG_HASH_ALL)
+            .collect()
+    }
+
+    fn ensure_non_all_sighash_types_allowed(pskb: &Bundle, allow_non_sighash_all: bool) -> Result<()> {
+        if allow_non_sighash_all {
+            return Ok(());
+        }
+
+        let sighash_types = Self::non_all_sighash_types(pskb);
+        if sighash_types.is_empty() {
+            return Ok(());
+        }
+
+        let mut sighash_types = sighash_types.iter().map(ToString::to_string).collect::<Vec<_>>();
+        sighash_types.sort();
+        let sighash_types = sighash_types.join(", ");
+        Err(Error::custom(format!(
+            "Refusing to sign PSKB inputs using {sighash_types}. Pass --allow-non-sighashall to explicitly allow non-SIG_HASH_ALL signatures."
+        )))
+    }
+
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
                 ("pskb create <address> <amount> <priority fee>", "Create a PSKB from single send transaction"),
-                ("pskb sign <pskb>", "Sign given PSKB"),
+                ("pskb sign <pskb> [--allow-non-sighashall]", "Sign given PSKB"),
                 ("pskb send <pskb>", "Broadcast bundled transactions"),
                 ("pskb debug <payload>", "Print PSKB debug view"),
                 ("pskb parse <payload>", "Print PSKB formatted view"),
                 ("pskb script lock <payload> <amount> [priority fee]", "Generate a PSKB with one send transaction to given P2SH payload. Optional public key placeholder in payload: {{pubkey}}"),
                 ("pskb script unlock <payload> <fee>", "Generate a PSKB to unlock UTXOS one by one from given P2SH payload. Fee amount will be applied to every spent UTXO, meaning every transaction. Optional public key placeholder in payload: {{pubkey}}"),
-                ("pskb script sign <pskb>", "Sign all PSKB's P2SH locked inputs"),
-                ("pskb script sign <pskb>", "Sign all PSKB's P2SH locked inputs"),
+                (
+                    "pskb script sign <payload> <pskb> [--allow-non-sighashall]",
+                    "Sign all PSKB's P2SH locked inputs",
+                ),
                 ("pskb script address <pskb>", "Prints P2SH address"),
             ],
             None,
         )?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_NONE;
+    use kaspa_wallet_pskt::prelude::InputBuilder;
+
+    fn bundle_with_sighash_type(sighash_type: SigHashType) -> Bundle {
+        let input = InputBuilder::default().sighash_type(sighash_type).build().unwrap();
+        Bundle(vec![Inner { inputs: vec![input], ..Default::default() }])
+    }
+
+    #[test]
+    fn non_all_sighash_type_requires_explicit_opt_in() {
+        let non_all = bundle_with_sighash_type(SIG_HASH_NONE);
+        let all = bundle_with_sighash_type(SIG_HASH_ALL);
+
+        let error = Pskb::ensure_non_all_sighash_types_allowed(&non_all, false).unwrap_err();
+        assert!(error.to_string().contains("--allow-non-sighashall"));
+        assert!(Pskb::ensure_non_all_sighash_types_allowed(&non_all, true).is_ok());
+        assert!(Pskb::ensure_non_all_sighash_types_allowed(&all, false).is_ok());
     }
 }
