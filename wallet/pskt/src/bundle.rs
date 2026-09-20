@@ -88,6 +88,7 @@ impl Bundle {
 
             for (key_inner, input) in pskt.clone().inputs.iter().enumerate() {
                 result.push_str(&format!("Input #{:02}\r\n", key_inner + 1));
+                result.push_str(&format!("  sighash type: {}\r\n", input.sighash_type));
 
                 if let Some(utxo_entry) = &input.utxo_entry {
                     result.push_str(&format!("  amount: {}\r\n", sompi_formatter(utxo_entry.amount, &NetworkType::from(network_id))));
@@ -282,7 +283,11 @@ mod tests {
     use crate::prelude::*;
     use crate::role::Creator;
     use crate::role::*;
-    use kaspa_consensus_core::tx::{TransactionId, TransactionOutpoint, UtxoEntry};
+    use kaspa_consensus_core::{
+        hashing::sighash_type::SIG_HASH_NONE,
+        network::{NetworkId, NetworkType},
+        tx::{TransactionId, TransactionOutpoint, UtxoEntry},
+    };
     use kaspa_txscript::{multisig_redeem_script, pay_to_script_hash_script};
     use secp256k1::Secp256k1;
     use secp256k1::{Keypair, rand::thread_rng};
@@ -390,5 +395,16 @@ mod tests {
         bundle1.merge(bundle2);
 
         assert_eq!(bundle1.0.len(), 2);
+    }
+
+    #[test]
+    fn test_display_format_includes_sighash_type() {
+        let mut inner = mock_pskt_constructor().deref().clone();
+        inner.inputs[0].sighash_type = SIG_HASH_NONE;
+        let bundle = Bundle(vec![inner]);
+
+        let display = bundle.display_format(NetworkId::with_suffix(NetworkType::Mainnet, 0), |amount, _| amount.to_string());
+
+        assert!(display.contains("sighash type: SIG_HASH_NONE"));
     }
 }
