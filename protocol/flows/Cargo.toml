@@ -33,6 +33,7 @@ indexmap.workspace = true
 itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
+prost.workspace = true
 rand.workspace = true
 regex.workspace = true
 semver.workspace = true
@@ -41,9 +42,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = { workspace = true, features = ["net"] }
 uuid = { workspace = true, features = ["v4", "fast-rng"] }
 chrono.workspace = true
-
-[dev-dependencies]
-prost.workspace = true
 
 [features]
 # Lowers `SMT_CHUNK_SIZE` and `SMT_FLOW_CONTROL_WINDOW` to tiny values so

@@ -6,7 +6,19 @@ use kaspa_p2p_lib::{
     pb::{PruningPointProofHeaderArray, PruningPointProofMessage, kaspad_message::Payload},
 };
 use log::info;
+use prost::Message;
 use std::time::Duration;
+
+const MAX_PRUNING_POINT_PROOF_SIZE: usize = 1024 * 1024 * 1024;
+
+fn add_pruning_point_proof_chunk_size(cumulative_size: &mut usize, chunk_size: usize) -> Result<(), ProtocolError> {
+    let new_size = cumulative_size
+        .checked_add(chunk_size)
+        .filter(|size| *size < MAX_PRUNING_POINT_PROOF_SIZE)
+        .ok_or(ProtocolError::Other("Cumulative pruning point proof chunk size must be less than 1 GiB"))?;
+    *cumulative_size = new_size;
+    Ok(())
+}
 
 pub(super) async fn receive_pruning_point_proof(
     incoming_route: &mut IncomingRoute,
@@ -21,6 +33,7 @@ pub(super) async fn receive_pruning_point_proof(
     let mut current_level: Option<BlockLevel> = None;
     let mut current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
     let mut chunk_count = 0;
+    let mut cumulative_size = 0;
     // Proof generation can take several minutes, so we start with a long timeout and reset it to the default after the first chunk is received.
     let mut timeout = Duration::from_secs(600);
     loop {
@@ -31,6 +44,10 @@ pub(super) async fn receive_pruning_point_proof(
         match msg.payload {
             Some(Payload::PruningPointProofChunk(chunk)) => {
                 timeout = DEFAULT_TIMEOUT;
+                if chunk.chunk.is_empty() {
+                    return Err(ProtocolError::Other("Received an empty pruning point proof chunk"));
+                }
+                add_pruning_point_proof_chunk_size(&mut cumulative_size, chunk.encoded_len())?;
                 let level =
                     BlockLevel::try_from(chunk.level).map_err(|_| ProtocolError::Other("Invalid pruning point proof chunk level"))?;
                 if let Some(current_level) = current_level {
@@ -98,18 +115,16 @@ mod tests {
     fn proof_chunks(proof: &PruningPointProof) -> impl Iterator<Item = PruningPointProofChunkMessage> + '_ {
         const TEST_CHUNK_SIZE: usize = 3;
         proof.iter().enumerate().rev().flat_map(|(level, headers)| {
-            headers.chunks(TEST_CHUNK_SIZE).chain(headers.is_empty().then_some(&[][..])).map(move |headers| {
-                PruningPointProofChunkMessage {
-                    chunk: headers.iter().map(|header| header.as_ref().into()).collect(),
-                    level: level as u32,
-                }
+            headers.chunks(TEST_CHUNK_SIZE).map(move |headers| PruningPointProofChunkMessage {
+                chunk: headers.iter().map(|header| header.as_ref().into()).collect(),
+                level: level as u32,
             })
         })
     }
 
     #[tokio::test]
     async fn proof_roundtrip_preserves_levels_and_header_order() {
-        for sizes in [&[0][..], &[0, 0], &[0, 101, 0], &[1], &[99], &[100], &[101], &[200], &[73, 0, 134, 2, 0]] {
+        for sizes in [&[1][..], &[1, 101, 1], &[99], &[100], &[101], &[200], &[73, 4, 134, 2, 5]] {
             let proof = proof_with_levels(sizes);
             let chunks: Vec<_> = proof_chunks(&proof).collect();
 
@@ -188,6 +203,7 @@ mod tests {
         let level_one = PruningPointProofChunkMessage { level: 1, ..chunk.clone() };
         let level_two = PruningPointProofChunkMessage { level: 2, ..chunk.clone() };
         for chunks in [
+            vec![PruningPointProofChunkMessage { chunk: vec![], level: 0 }],
             vec![level_two.clone(), chunk.clone()],
             vec![level_two, level_one, chunk.clone(), PruningPointProofChunkMessage { level: 1, ..chunk.clone() }],
             vec![PruningPointProofChunkMessage { level: u32::MAX, ..chunk.clone() }],
@@ -199,5 +215,13 @@ mod tests {
             }
             assert!(matches!(receive_pruning_point_proof(&mut route, true).await, Err(ProtocolError::Other(_))));
         }
+    }
+
+    #[test]
+    fn proof_rejects_cumulative_chunk_size_of_one_gib() {
+        let mut cumulative_size = MAX_PRUNING_POINT_PROOF_SIZE - 2;
+        add_pruning_point_proof_chunk_size(&mut cumulative_size, 1).unwrap();
+        assert_eq!(cumulative_size, MAX_PRUNING_POINT_PROOF_SIZE - 1);
+        assert!(add_pruning_point_proof_chunk_size(&mut cumulative_size, 1).is_err());
     }
 }
