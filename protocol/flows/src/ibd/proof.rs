@@ -7,9 +7,10 @@ use kaspa_p2p_lib::{
 };
 use log::info;
 use prost::Message;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const MAX_PRUNING_POINT_PROOF_SIZE: usize = 1024 * 1024 * 1024;
+const MAX_PRUNING_POINT_PROOF_RECEIVE_TIME: Duration = Duration::from_secs(900);
 
 fn add_pruning_point_proof_chunk_size(cumulative_size: &mut usize, chunk_size: usize) -> Result<(), ProtocolError> {
     let new_size = cumulative_size
@@ -34,6 +35,7 @@ pub(super) async fn receive_pruning_point_proof(
     let mut current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
     let mut chunk_count = 0;
     let mut cumulative_size = 0;
+    let started_at = Instant::now();
     // Proof generation can take several minutes, so we start with a long timeout and reset it to the default after the first chunk is received.
     let mut timeout = Duration::from_secs(600);
     loop {
@@ -44,6 +46,11 @@ pub(super) async fn receive_pruning_point_proof(
         match msg.payload {
             Some(Payload::PruningPointProofChunk(chunk)) => {
                 timeout = DEFAULT_TIMEOUT;
+
+                if started_at.elapsed() > MAX_PRUNING_POINT_PROOF_RECEIVE_TIME {
+                    return Err(ProtocolError::Timeout(MAX_PRUNING_POINT_PROOF_RECEIVE_TIME));
+                }
+
                 if chunk.chunk.is_empty() {
                     return Err(ProtocolError::Other("Received an empty pruning point proof chunk"));
                 }

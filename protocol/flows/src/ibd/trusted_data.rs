@@ -7,8 +7,10 @@ use kaspa_p2p_lib::{
 };
 use log::info;
 use prost::Message;
+use std::time::{Duration, Instant};
 
 const MAX_TRUSTED_DATA_SIZE: usize = 1024 * 1024 * 1024;
+const MAX_TRUSTED_DATA_RECEIVE_TIME: Duration = Duration::from_secs(240);
 
 fn add_trusted_data_chunk_size(cumulative_size: &mut usize, chunk_size: usize) -> Result<(), ProtocolError> {
     let new_size = cumulative_size
@@ -31,6 +33,7 @@ pub(crate) async fn receive_trusted_data(
     let mut pkg = TrustedDataPackage::new(Vec::new(), Vec::new());
     let mut chunk_count = 0;
     let mut cumulative_size = 0;
+    let started_at = Instant::now();
     loop {
         let msg = tokio::time::timeout(DEFAULT_TIMEOUT, incoming_route.recv())
             .await
@@ -38,6 +41,9 @@ pub(crate) async fn receive_trusted_data(
             .ok_or(ProtocolError::ConnectionClosed)?;
         match msg.payload {
             Some(Payload::TrustedDataChunk(chunk)) => {
+                if started_at.elapsed() > MAX_TRUSTED_DATA_RECEIVE_TIME {
+                    return Err(ProtocolError::Timeout(MAX_TRUSTED_DATA_RECEIVE_TIME));
+                }
                 if chunk.headers.is_empty() {
                     return Err(ProtocolError::Other("Received an empty trusted data chunk"));
                 }
