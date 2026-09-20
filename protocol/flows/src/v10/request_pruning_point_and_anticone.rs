@@ -4,7 +4,7 @@
 //!
 
 use itertools::Itertools;
-use kaspa_consensus_core::{BlockLevel, block::Block, trusted::TrustedHeader};
+use kaspa_consensus_core::{block::Block, trusted::TrustedHeader};
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
@@ -66,8 +66,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             let trusted_data = session.async_get_pruning_point_anticone_and_trusted_data().await?;
             if self.use_trusted_data_chunks {
                 for (i, (chunk, chunk_size)) in
-                    trusted_data_chunks(&trusted_data.daa_window_blocks, TRUSTED_DATA_CHUNK_SIZE, self.ctx.config.max_block_level)
-                        .enumerate()
+                    trusted_data_chunks(&trusted_data.daa_window_blocks, TRUSTED_DATA_CHUNK_SIZE).enumerate()
                 {
                     let count = chunk.headers.len();
                     self.router.enqueue(make_response!(Payload::TrustedDataChunk, chunk, request_id)).await?;
@@ -130,7 +129,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
     }
 }
 
-fn estimated_trusted_header_size(header: &TrustedHeader, max_block_level: BlockLevel) -> usize {
+fn estimated_trusted_header_size(header: &TrustedHeader) -> usize {
     // A nested protobuf Hash has a tag and length for both the message and its 32-byte value.
     const HASH_SIZE: usize = 32 + 4;
     // Each anticone-size entry wraps a Hash and a uint32 (up to five varint bytes).
@@ -143,13 +142,12 @@ fn estimated_trusted_header_size(header: &TrustedHeader, max_block_level: BlockL
         + ghostdag.blues_anticone_sizes.len() * ANTICONE_ENTRY_SIZE;
 
     // Include the header, ghostdag and DaaBlockV4 message tags and length prefixes.
-    estimated_header_size(&header.header, max_block_level) + ghostdag_size + 3 * (1 + 5)
+    estimated_header_size(&header.header) + ghostdag_size + 3 * (1 + 5)
 }
 
 fn trusted_data_chunks(
     headers: &[TrustedHeader],
     max_chunk_size: usize,
-    max_block_level: BlockLevel,
 ) -> impl Iterator<Item = (TrustedDataChunkMessage, usize)> + '_ {
     let mut headers = headers.iter().peekable();
     std::iter::from_fn(move || {
@@ -157,7 +155,7 @@ fn trusted_data_chunks(
         let mut chunk_headers = Vec::new();
         let mut chunk_size = 0;
         while let Some(&header) = headers.peek() {
-            let header_size = estimated_trusted_header_size(header, max_block_level);
+            let header_size = estimated_trusted_header_size(header);
             // As with proof headers, let the receiver decide whether to accept a single oversized entry.
             if !chunk_headers.is_empty() && chunk_size + header_size > max_chunk_size {
                 break;
@@ -205,13 +203,13 @@ mod tests {
     fn trusted_chunks_respect_budget_and_include_ghostdag_size() {
         let small = trusted_header(0, 1, 1, 0);
         let large = trusted_header(1, 1, 1, 1000);
-        let small_size = estimated_trusted_header_size(&small, 250);
-        let large_size = estimated_trusted_header_size(&large, 250);
+        let small_size = estimated_trusted_header_size(&small);
+        let large_size = estimated_trusted_header_size(&large);
         assert_eq!(large_size - small_size, 2 * 1000 * 36);
 
         let headers = [small, large, trusted_header(2, 1, 1, 1000), trusted_header(3, 1, 1, 0)];
         let budget = small_size + large_size;
-        let chunks = trusted_data_chunks(&headers, budget, 250).collect::<Vec<_>>();
+        let chunks = trusted_data_chunks(&headers, budget).collect::<Vec<_>>();
         assert_eq!(chunks.iter().map(|(chunk, _)| chunk.headers.len()).collect::<Vec<_>>(), [2, 2]);
         for (chunk, size) in &chunks {
             assert_eq!(*size, budget);
@@ -222,9 +220,9 @@ mod tests {
     }
 
     #[test]
-    fn trusted_chunks_use_expanded_parents_and_twenty_mib_budget() {
-        let headers = (0..5).map(|i| trusted_header(i, 100, 2500, 10)).collect::<Vec<_>>();
-        let chunks = trusted_data_chunks(&headers, TRUSTED_DATA_CHUNK_SIZE, 250).collect::<Vec<_>>();
+    fn trusted_chunks_use_compressed_parent_size_and_twenty_mib_budget() {
+        let headers = (0..5).map(|i| trusted_header(i, 1, 250_000, 10)).collect::<Vec<_>>();
+        let chunks = trusted_data_chunks(&headers, TRUSTED_DATA_CHUNK_SIZE).collect::<Vec<_>>();
         assert_eq!(chunks.iter().map(|(chunk, _)| chunk.headers.len()).collect::<Vec<_>>(), [2, 2, 1]);
         for (chunk, size) in chunks {
             assert!(size <= TRUSTED_DATA_CHUNK_SIZE);
@@ -234,10 +232,10 @@ mod tests {
 
     #[test]
     fn trusted_chunks_isolate_oversized_entries_and_skip_empty_input() {
-        assert!(trusted_data_chunks(&[], 1, 250).next().is_none());
+        assert!(trusted_data_chunks(&[], 1).next().is_none());
         let headers = [trusted_header(0, 1, 1, 0), trusted_header(1, 1, 1, 1000), trusted_header(2, 1, 1, 0)];
-        let budget = estimated_trusted_header_size(&headers[0], 250) * 2;
-        let chunks = trusted_data_chunks(&headers, budget, 250).collect::<Vec<_>>();
+        let budget = estimated_trusted_header_size(&headers[0]) * 2;
+        let chunks = trusted_data_chunks(&headers, budget).collect::<Vec<_>>();
         assert_eq!(chunks.iter().map(|(chunk, _)| chunk.headers.len()).collect::<Vec<_>>(), [1, 1, 1]);
         assert!(chunks[0].1 <= budget);
         assert!(chunks[1].1 > budget);
@@ -247,8 +245,8 @@ mod tests {
     #[tokio::test]
     async fn trusted_chunks_roundtrip_and_build_subdag_without_standalone_ghostdag_data() {
         let headers = (0..7).map(|i| trusted_header(i, 1, 1, 2)).collect::<Vec<_>>();
-        let budget = estimated_trusted_header_size(&headers[0], 250) * 2;
-        let chunks = trusted_data_chunks(&headers, budget, 250).collect::<Vec<_>>();
+        let budget = estimated_trusted_header_size(&headers[0]) * 2;
+        let chunks = trusted_data_chunks(&headers, budget).collect::<Vec<_>>();
         assert_eq!(chunks.len(), 4);
         let (tx, rx) = mpsc::channel(1);
         let mut route = IncomingRoute::new(rx);

@@ -1,6 +1,6 @@
 use std::{cmp::max, mem::size_of, sync::Arc};
 
-use kaspa_consensus_core::{BlockLevel, api::ConsensusApi, header::Header};
+use kaspa_consensus_core::{api::ConsensusApi, header::Header};
 use kaspa_core::warn;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
@@ -70,7 +70,7 @@ impl RequestHeadersFlow {
                     session.spawn_blocking(move |c| Self::get_headers_between(c, low, high, max_blocks)).await?;
                 debug!("Got {} header hashes above {}", block_headers.len(), low);
                 low = last;
-                for block_headers in header_chunks(block_headers.into_iter(), HEADERS_CHUNK_SIZE, self.ctx.config.max_block_level) {
+                for block_headers in header_chunks(block_headers.into_iter(), HEADERS_CHUNK_SIZE) {
                     self.router
                         .enqueue(make_response!(Payload::BlockHeaders, BlockHeadersMessage { block_headers }, request_id))
                         .await?;
@@ -103,19 +103,25 @@ impl RequestHeadersFlow {
     }
 }
 
-pub(super) fn estimated_header_size(header: &Header, max_block_level: BlockLevel) -> usize {
+pub(super) fn estimated_header_size(header: &Header) -> usize {
     const TAG_SIZE: usize = 1; // All BlockHeader and nested-message field numbers are below 16.
     const MAX_U32_VARINT_SIZE: usize = 5;
     const MAX_U64_VARINT_SIZE: usize = 10;
-    const MAX_NESTED_MESSAGE_LENGTH_SIZE: usize = 4; // Enough for the maximum accepted expanded-parent set.
+    // Each BlockLevelParents entry in BlockHeader.parents is prefixed with its encoded byte length.
+    // Since the entire P2P message is limited to 21 MiB, four bytes are enough for this protobuf varint.
+    const MAX_BLOCK_LEVEL_PARENTS_LENGTH_PREFIX_SIZE: usize = 4;
     const HASH_MESSAGE_SIZE: usize = TAG_SIZE + 1 + size_of::<Hash>(); // bytes field: tag, length and value.
     const HASH_FIELD_SIZE: usize = TAG_SIZE + 1 + HASH_MESSAGE_SIZE; // Hash field: tag, message length and message.
 
-    let parent_count = header.parents_by_level.expanded_iter().map(|parents| parents.len()).sum::<usize>();
-    // BlockLevelParents envelope plus the cumulativeLevel field.
-    let block_level_parents_overhead = TAG_SIZE + MAX_NESTED_MESSAGE_LENGTH_SIZE + TAG_SIZE + MAX_U32_VARINT_SIZE;
-    let parent_levels_size = (usize::from(max_block_level) + 1) * block_level_parents_overhead;
-    let parents_size = parent_count * HASH_FIELD_SIZE + parent_levels_size;
+    let parents_size = header
+        .parents_by_level
+        .raw()
+        .iter()
+        .map(|(_, parents)| {
+            let block_level_parents_size = HASH_FIELD_SIZE * parents.len() + TAG_SIZE + MAX_U32_VARINT_SIZE;
+            TAG_SIZE + MAX_BLOCK_LEVEL_PARENTS_LENGTH_PREFIX_SIZE + block_level_parents_size
+        })
+        .sum::<usize>();
 
     // Estimate each transmitted field; the cached header hash is not sent. Scalar values use their
     // maximum protobuf varint size, while hashes and blue work include their tags and length prefixes.
@@ -133,11 +139,10 @@ pub(super) fn estimated_header_size(header: &Header, max_block_level: BlockLevel
 pub(crate) fn header_chunks<T: AsRef<Header>>(
     headers: impl Iterator<Item = T>,
     max_chunk_size: usize,
-    max_block_level: BlockLevel,
 ) -> impl Iterator<Item = Vec<pb::BlockHeader>> {
     let mut headers = headers.map(move |header| {
         // Account for the repeated BlockHeader field's tag and length prefix in the containing chunk message.
-        let header_size = 1 + 4 + estimated_header_size(header.as_ref(), max_block_level);
+        let header_size = 1 + 4 + estimated_header_size(header.as_ref());
         (header, header_size)
     });
     let mut next_header = headers.next();
@@ -181,45 +186,39 @@ mod tests {
     #[test]
     fn estimated_header_size_covers_protobuf_size() {
         let headers = [
-            (
-                Header::new_finalized(
-                    u16::MAX,
-                    vec![vec![Hash::from(1u64)]].try_into().unwrap(),
-                    Hash::from(2u64),
-                    Hash::from(3u64),
-                    Hash::from(4u64),
-                    i64::MAX as u64,
-                    u32::MAX,
-                    u64::MAX,
-                    u64::MAX,
-                    BlueWorkType::from_be_bytes_var(&[u8::MAX; 24]).unwrap(),
-                    u64::MAX,
-                    Hash::from(5u64),
-                ),
-                0,
+            Header::new_finalized(
+                u16::MAX,
+                vec![vec![Hash::from(1u64)]].try_into().unwrap(),
+                Hash::from(2u64),
+                Hash::from(3u64),
+                Hash::from(4u64),
+                i64::MAX as u64,
+                u32::MAX,
+                u64::MAX,
+                u64::MAX,
+                BlueWorkType::from_be_bytes_var(&[u8::MAX; 24]).unwrap(),
+                u64::MAX,
+                Hash::from(5u64),
             ),
-            (
-                Header::new_finalized(
-                    u16::MAX,
-                    vec![(100, vec![Hash::from(1u64); 3_000])].try_into().unwrap(),
-                    Hash::from(2u64),
-                    Hash::from(3u64),
-                    Hash::from(4u64),
-                    i64::MAX as u64,
-                    u32::MAX,
-                    u64::MAX,
-                    u64::MAX,
-                    BlueWorkType::from_be_bytes_var(&[u8::MAX; 24]).unwrap(),
-                    u64::MAX,
-                    Hash::from(5u64),
-                ),
-                99,
+            Header::new_finalized(
+                u16::MAX,
+                vec![(100, vec![Hash::from(1u64); 3_000])].try_into().unwrap(),
+                Hash::from(2u64),
+                Hash::from(3u64),
+                Hash::from(4u64),
+                i64::MAX as u64,
+                u32::MAX,
+                u64::MAX,
+                u64::MAX,
+                BlueWorkType::from_be_bytes_var(&[u8::MAX; 24]).unwrap(),
+                u64::MAX,
+                Hash::from(5u64),
             ),
         ];
 
-        for (header, max_block_level) in &headers {
+        for header in &headers {
             let encoded_header = pb::BlockHeader::from(header);
-            assert!(encoded_header.encoded_len() <= estimated_header_size(header, *max_block_level));
+            assert!(encoded_header.encoded_len() <= estimated_header_size(header));
         }
     }
 }

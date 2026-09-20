@@ -45,7 +45,7 @@ impl RequestPruningPointProofFlow {
             if self.use_pruning_proof_chunks {
                 // Send levels from highest to lowest to allow on-the-fly proof validation in the future.
                 for (level, headers) in proof.iter().enumerate().rev() {
-                    for chunk in header_chunks(headers.iter(), HEADERS_CHUNK_SIZE, self.ctx.config.max_block_level) {
+                    for chunk in header_chunks(headers.iter(), HEADERS_CHUNK_SIZE) {
                         self.router
                             .enqueue(make_response!(
                                 Payload::PruningPointProofChunk,
@@ -86,10 +86,10 @@ mod tests {
     }
 
     #[test]
-    fn header_chunks_pack_by_expanded_header_size() {
-        let large = header_with_parents(100, 2500, 1);
+    fn header_chunks_pack_by_compressed_wire_size() {
+        let large = header_with_parents(1, 250_000, 1);
         let small = header_with_parents(1, 1, 2);
-        // The large header has one compressed run but 250,000 expanded parents.
+        // The large header has one compressed run containing 250,000 transmitted parents.
         // Two such headers fit alongside 200 small headers; a third does not.
         let mut first_level = vec![large.clone(), large.clone()];
         first_level.extend(vec![small.clone(); 200]);
@@ -100,7 +100,7 @@ mod tests {
             .enumerate()
             .rev()
             .flat_map(|(level, headers)| {
-                header_chunks(headers.iter(), HEADERS_CHUNK_SIZE, 250)
+                header_chunks(headers.iter(), HEADERS_CHUNK_SIZE)
                     .map(move |chunk| PruningPointProofChunkMessage { chunk, level: level as u32 })
             })
             .collect::<Vec<_>>();
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn header_chunks_allow_a_single_header_larger_than_the_budget() {
         let oversized = header_with_parents(250, 2500, 1);
-        let chunks = header_chunks(std::iter::once(oversized.clone()), 1, 250).collect::<Vec<_>>();
+        let chunks = header_chunks(std::iter::once(oversized.clone()), 1).collect::<Vec<_>>();
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], vec![oversized.as_ref().into()]);
     }
